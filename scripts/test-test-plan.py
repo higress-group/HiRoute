@@ -17,7 +17,7 @@ spec.loader.exec_module(plan)
 class SelectionTests(unittest.TestCase):
     def test_validation_tooling_selects_runner_consumers_without_product_builds(self):
         result = plan.select(['scripts/validation.py', 'scripts/local-rust.py', 'scripts/pilot-builds.py',
-                              'scripts/desktop-pilot.py', 'docs/validation-routing.md', '.github/workflows/gateway-core.yml'])
+                              'scripts/desktop-pilot.py', 'docs/validation-routing.md'])
         self.assertFalse(result['rust'])
         self.assertFalse(result['frontend'])
         for name in ('test-validation.py', 'test-local-rust.py', 'test-remote-rust.py',
@@ -26,6 +26,17 @@ class SelectionTests(unittest.TestCase):
         mixed = plan.select(['scripts/validation.py', 'crates/daemon/src/lib.rs'])
         self.assertTrue(mixed['rust'])
         self.assertIn('daemon', mixed['groups'])
+
+    def test_hosted_backend_execution_contract_runs_full_matrix(self):
+        for path in sorted(plan.HOSTED_BACKEND_EXECUTION):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertEqual(result['mode'], 'full')
+                self.assertTrue(result['rust'])
+                self.assertTrue(result['frontend'])
+                self.assertIn('--workspace', result['commands'][2])
+                self.assertIn('hosted backend execution contract: ' + path, result['reasons'])
+                self.assertIn(['python3', 'scripts/test-ci-shards.py'], result['commands'])
 
     def test_docs_do_not_build_rust(self):
         result = plan.select(["docs/testing.md", "README.md", "AGENTS.md"])

@@ -29,6 +29,10 @@ cross-shard target fails selection instead of being silently omitted. The requir
 `backend` status is a small aggregate job, so the public branch-protection contract remains
 stable while individual shard jobs can run concurrently.
 
+Changes to `gateway-core.yml`, `ci-run.py`, or `ci-shards.py` force a full plan on the pull
+request because those files define the hosted backend execution contract. Changes only to
+their tests or documentation keep the ordinary tooling-only selection.
+
 The toolchain comes from `rust-toolchain.toml`. Cargo sources are cached, not
 `target/`; shards do not exchange compiled binaries or claim another runner's build
 evidence. Build concurrency defaults to the runner CPU count; incremental compilation is
