@@ -1,6 +1,6 @@
-# 在 Linux 上运行 HiRoute headless
+# 在 Linux 上以无界面模式运行 HiRoute
 
-Linux headless 把 HiRoute 的本机服务、Gateway、CLI 和 Agent 管理 Skill 安装到当前用户目录，适合服务器、远程工作站和无图形界面的自动化环境。它不是精简的只读客户端：模型来源、智能路由、Agent 接入、会话观测和任务委派都可以从 CLI 完成。
+Linux 无界面版把 HiRoute 的本机服务、Gateway、CLI 和 Agent 管理 Skill 安装到当前用户目录，适合服务器、远程工作站和无图形界面的自动化环境。它不是精简的只读客户端：模型来源、智能路由、Agent 接入、会话观测和任务委派都可以从 CLI 完成。
 
 当前公开产品验证以 Linux 为准，支持 `x86_64` 和 `aarch64`。不需要 `sudo`；需要 `curl`、Python 3，以及能够运行 HiRoute 二进制的 glibc Linux 环境。
 
@@ -26,7 +26,7 @@ sh install.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-安装脚本只选择官网发布清单中的最新稳定 Linux 包。现有安装器会核对目标架构、归档 SHA256、闭合文件清单和逐文件摘要；官网脚本不复制第二套安装逻辑。Desktop 与 standalone 不应在同一个 `HOME` 中同时管理服务。
+安装脚本只选择官网发布清单中的最新稳定 Linux 包。现有安装器会核对目标架构、归档 SHA256、闭合文件清单和逐文件摘要；官网脚本不复制第二套安装逻辑。桌面应用与独立服务版（standalone）不应在同一个 `HOME` 中同时管理服务。
 
 ## 2. 显式启动服务
 
@@ -85,7 +85,7 @@ hiroute sessions status --output json
 
 写操作遵循同一个安全流程：先读取 schema 和 options，执行有界 test，再把同一份变更送入 `preview`；确认 preview 的摘要、revision 和影响后才执行 `apply`。密码或 API key 通过 `protected-input` 传入，不放进普通 JSON、参数或日志。
 
-## 4. 完成 headless 配置
+## 4. 完成无界面配置
 
 按下面顺序建立第一条路由：
 
@@ -95,7 +95,7 @@ hiroute sessions status --output json
 4. 用 `agents scan/list/check` 发现本机 Agent，再用 `agents connect preview/apply/status` 接入。恢复时使用 `agents restore preview/apply`，HiRoute 只撤销仍由自己拥有的配置字段。
 5. 从 Agent 发起真实请求后，用 `sessions list/show/receipt/status` 查看路由事实和用量，用 `value show` 查看已有价格证据下的价值记录。
 
-这些不是另一套 headless 控制面；CLI 与 Desktop 调用相同的 Application、Local Control、存储、发布和恢复路径。
+这些不是另一套无界面控制面；CLI 与桌面应用调用相同的 Application、Local Control、存储、发布和恢复路径。
 
 ## 5. 任务委派
 

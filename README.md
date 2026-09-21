@@ -1,6 +1,6 @@
 # HiRoute
 
-[简体中文](README.zh-CN.md)
+[Simplified Chinese](README.zh-CN.md)
 
 HiRoute is a local model-routing and agent-coordination engine for long-running tasks. It
 keeps model sources, routing plans, agent connections and execution evidence in one place,

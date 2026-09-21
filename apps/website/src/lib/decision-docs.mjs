@@ -34,7 +34,10 @@ const maps = {
 function rewriteTarget(target, page, language) {
   if (/^(?:https?:|mailto:|#)/.test(target)) return target;
   if (target.startsWith('assets/') && target.endsWith('.png')) return `/decision-assets/${path.basename(target)}`;
-  if (target === '../../docs/smart-saving-model-classification.md') return route(language, 'model-routing');
+  if (target === '../../docs/smart-saving-model-classification.md'
+      || target === '../../docs/smart-saving-model-classification.zh-CN.md') {
+    return route(language, 'model-routing');
+  }
   const mapped = maps[page][target];
   if (!mapped) throw new Error(`unmapped relative decision-document link in ${page}: ${target}`);
   return mapped;

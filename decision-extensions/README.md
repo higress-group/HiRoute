@@ -1,6 +1,6 @@
 # HiRoute decision extensions
 
-[简体中文](README.zh-CN.md) · [Decision API](api/README.md) · [Official Jev extension](extensions/jev-decider/README.md)
+[Simplified Chinese](README.zh-CN.md) · [Decision API](api/README.md) · [Official Jev extension](extensions/jev-decider/README.md)
 
 HiRoute can ask a trusted decision service which branch should handle a routing execution round. The same response can assess how well the model handled the preceding execution stage. The protocol describes branch decisions and competence assessments; it is not inherently a simple/complex binary classifier. The current smart-saving integration supplies two branches, while the API's `branches` map and the Jev extension's `auto` mode support multiple allowed branches. This does not add new routing modes to the current product.
 

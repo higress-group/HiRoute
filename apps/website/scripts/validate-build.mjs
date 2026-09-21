@@ -34,4 +34,28 @@ for (const file of htmlFiles) {
     if (!fs.existsSync(candidate)) throw new Error(`broken local reference in ${file}: ${target}`);
   }
 }
+
+for (const file of htmlFiles.filter(file => path.relative(dist, file).startsWith(`en${path.sep}`))) {
+  const html = fs.readFileSync(file, 'utf8').replaceAll('中文', '');
+  if (/[\u3400-\u9fff]/u.test(html)) throw new Error(`Chinese copy leaked into English page: ${file}`);
+}
+
+const untranslatedChinesePageCopy = [
+  'Intelligent routing for long-horizon agents.',
+  'ONE TASK. MANY DECISIONS.',
+  'Powered by TypeSafe Jev',
+  'Evidence for the next decision',
+  'From evidence to better delegation',
+  'Agent ecosystem',
+  'Your policy, one interface',
+  'Start with HiRoute',
+  'Questions',
+  'CHANGELOG',
+  'DOWNLOAD',
+];
+for (const file of htmlFiles.filter(file => !path.relative(dist, file).startsWith(`en${path.sep}`))) {
+  const html = fs.readFileSync(file, 'utf8');
+  const leaked = untranslatedChinesePageCopy.find(value => html.includes(value));
+  if (leaked) throw new Error(`English copy leaked into Chinese page ${file}: ${leaked}`);
+}
 console.log(`Validated ${htmlFiles.length} static HTML pages and ${required.length} required outputs.`);

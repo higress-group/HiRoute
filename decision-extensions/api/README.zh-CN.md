@@ -60,4 +60,4 @@ HiRoute 不设置额外固定输入字节限额，也不截断当前用户文本
 
 计划 `timeout_ms` 覆盖历史准备、凭据、连接和响应读取，同时受源请求取消与 deadline 限制。默认 3000 ms，官方服务默认总预算 2.8 秒；服务预算应略小于计划值。HiRoute 只调用一次，不自动重试。外部服务失败回退本地规则；源取消/deadline、本地 Replay 完整性或资源错误直接终止，不伪装成服务失败继续执行。
 
-当前智能省钱配置与具体工具状态映射见[实现使用说明](../../docs/smart-saving-model-classification.md)。
+当前智能省钱配置与具体工具状态映射见[实现使用说明](../../docs/smart-saving-model-classification.zh-CN.md)。

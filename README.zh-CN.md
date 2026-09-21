@@ -25,13 +25,13 @@ HiRoute 当前处于 MVP 阶段。下载页会说明各版本已验证的平台�
 
 - [下载 HiRoute](https://hiroute.ai/download/)
 - [使用文档](https://hiroute.ai/docs/)
-- [macOS 自签名安装](docs/macos-installation.md)
-- [Linux headless 与 CLI](docs/standalone-cli.md)
+- [macOS 自签名安装](docs/macos-installation.zh-CN.md)
+- [Linux headless 与 CLI](docs/standalone-cli.zh-CN.md)
 - [模型选择决策机制与扩展](decision-extensions/README.zh-CN.md)
 - [Decision API OpenAPI 文档](decision-extensions/api/decision.openapi.json)
 
 参与开发时，Rust 版本由 `rust-toolchain.toml` 固定，Desktop UI 使用 Node.js/npm 与 Tauri。
-请阅读 [贡献指南](CONTRIBUTING.md)、[Desktop 开发入口](apps/desktop/README.md)和
+请阅读 [贡献指南](CONTRIBUTING.md)、[Desktop 开发入口](apps/desktop/README.zh-CN.md)和
 [官网开发及发布指南](apps/website/README.md)。
 
 ## 代码结构

@@ -1,12 +1,25 @@
-# 智能省钱自定义分类服务
+# Custom decision service for smart saving
 
-智能省钱默认使用 HiRoute 内置的确定性规则。需要自定义策略时，在计划编辑器选择“自定义分类服务”，填写服务地址；认证可留空，也可选择一个 header 名称并创建或引用 Secret。服务可基于 Jev、LLM 或其他自定义策略实现；HiRoute 只消费本文的 HTTP JSON 合同，不直接调用或解析供应商协议。
+[Simplified Chinese](smart-saving-model-classification.zh-CN.md)
 
-官方可部署参考实现位于 [`decision-extensions/extensions/jev-decider`](../decision-extensions/extensions/jev-decider/README.md)。它演示用一次 OpenRouter Jev Decisions 请求同时完成本轮 branch 选择和上一执行阶段的可选胜任度评分，也可作为自定义策略的起点。
+Smart saving uses HiRoute's deterministic built-in rules by default. To use a custom policy,
+select “Custom decision service” in the plan editor and enter its address. Authentication may
+be omitted or configured with a header name and a newly created or existing Secret. The
+service may use Jev, an LLM, or another custom policy. HiRoute consumes only the HTTP JSON
+contract below and never calls or parses a provider-specific protocol directly.
 
-Desktop 的“查看接入协议”弹窗提供可复制的 `curl` 请求和响应示例，并可下载单一当前 [OpenAPI 3.1 文档](../decision-extensions/api/decision.openapi.json)。弹窗中的地址只是示例；运行时始终向 AgentPlan 配置的完整 endpoint 发起请求。
+The official deployable reference is
+[`decision-extensions/extensions/jev-decider`](../decision-extensions/extensions/jev-decider/README.md).
+It demonstrates one OpenRouter Jev Decisions call that both selects the current branch and,
+when applicable, scores the previous execution stage. It is also a starting point for custom
+policies.
 
-## 配置
+Desktop's “View integration protocol” dialog provides copyable `curl` request/response
+examples and downloads the single current
+[OpenAPI 3.1 document](../decision-extensions/api/decision.openapi.json). Its endpoint is an
+example only; runtime always calls the complete endpoint configured in the AgentPlan.
+
+## Configuration
 
 ```json
 {
@@ -20,16 +33,27 @@ Desktop 的“查看接入协议”弹窗提供可复制的 `curl` 请求和响�
 }
 ```
 
-- `endpoint` 接受操作者授信的完整 HTTP/HTTPS URL，不允许 userinfo 或 fragment，也不跟随 redirect。
-- `timeout_ms` 是整个分类链路的毫秒期限，合法范围 `1..=3_600_000`；Desktop 初值为 `3000`。有效 deadline 还会受源请求 deadline 限制。
-- `auth_header` 可省略。Secret 保存完整 header 值，例如 `Bearer ...`；HiRoute 不自动补 scheme。
-- 计划不保存明文 Secret，不配置分类 instructions、计划用途或可编辑 branch descriptions。
-- “测试决策”显式发送固定合成首轮请求，使用与生产相同的 Secret、HTTP、timeout_ms 和响应校验。保存与发布不会自动调用服务；测试可能产生外部费用，也不会产生质量样本。
-- 外置服务自己的总超时应略小于 timeout_ms，为 HiRoute 序列化和网络收尾留余量。官方 Jev 决策器通过 `JEV_REQUEST_TIMEOUT_SECONDS` 设置，默认 `2.8` 秒。
+- `endpoint` is a complete HTTP/HTTPS URL trusted by the operator. Userinfo and fragments are
+  rejected, and redirects are not followed.
+- `timeout_ms` is the millisecond deadline for the whole decision path. Its valid range is
+  `1..=3_600_000`; Desktop starts at `3000`. The source request deadline can shorten the
+  effective deadline.
+- `auth_header` is optional. Its Secret stores the complete header value, such as `Bearer ...`;
+  HiRoute does not add a scheme.
+- A plan stores no plaintext Secret and configures no classifier instructions, plan purpose,
+  or editable branch descriptions.
+- “Test decision” explicitly sends a fixed synthetic first-turn request through the same
+  Secret, HTTP, timeout, and response validation as production. Save and publish never call
+  the service automatically. A test may incur an external charge and never creates a quality
+  sample.
+- The external service's own total timeout should be slightly shorter than `timeout_ms` so
+  HiRoute can serialize and close the network operation. The official Jev decider uses
+  `JEV_REQUEST_TIMEOUT_SECONDS`, defaulting to `2.8` seconds.
 
-## 请求合同
+## Request contract
 
-每个新的 Agent turn 最多发一个 `POST`。同一 turn 的工具续轮继承已冻结分支，不再调用决策器。
+Each new Agent turn sends at most one `POST`. Tool continuations within that turn inherit the
+frozen branch and do not call the decision service again.
 
 ```json
 {
@@ -37,14 +61,14 @@ Desktop 的“查看接入协议”弹窗提供可复制的 `curl` 请求和响�
     "smart_saving_simple": "Use the economy model group for a clear, well-scoped task.",
     "smart_saving_complex": "Use the primary model group for an ambiguous, cross-module, diagnostic, concurrent, or deep-reasoning task."
   },
-  "latest_user": [{"kind": "text", "text": "修复这条失败测试。"}],
+  "latest_user": [{"kind": "text", "text": "Fix this failing test."}],
   "visible_conversation": [{
     "branch_id": "smart_saving_simple",
-    "user": [{"kind": "text", "text": "先修复类型错误。"}],
+    "user": [{"kind": "text", "text": "Fix the type error first."}],
     "status": "completed",
     "steps": [
       [{"kind": "tool_activity", "tool": "functions.run_tests", "status": "failed"}],
-      [{"kind": "text", "text": "已修复并重新验证。"}]
+      [{"kind": "text", "text": "Fixed and verified again."}]
     ]
   }],
   "history_partial": false,
@@ -52,29 +76,46 @@ Desktop 的“查看接入协议”弹窗提供可复制的 `curl` 请求和响�
 }
 ```
 
-顶层恰好五个字段：
+The top level has exactly five fields:
 
-- `branches`：本次允许的 branch ID 和 HiRoute 内置说明。服务只能返回其中一个 ID。
-- `latest_user`：本轮完整用户 content parts。服务可以只看它。
-- `visible_conversation`：内存中已结束的 Agent turns。每个 step 是一次业务模型请求，只保留回答文本和工具名称、顺序、粗粒度状态。
-- `history_partial`：重启、TTL、LRU 或捕获缺口导致历史不完整时为 true。
-- `assessment_from`：需要评价的上一连续执行阶段在数组中的起始下标；null 表示没有可靠评分目标。
+- `branches`: allowed branch IDs and HiRoute's built-in descriptions. The service must return
+  one of these IDs.
+- `latest_user`: complete content parts for this turn. A service may choose to inspect only
+  this field.
+- `visible_conversation`: completed Agent turns held in memory. Each step is one business-model
+  request and retains only accepted response text plus tool name, order, and coarse status.
+- `history_partial`: true when restart, TTL, LRU eviction, or a capture gap made history
+  incomplete.
+- `assessment_from`: the start index of the previous contiguous execution stage to assess;
+  null means that no reliable assessment target exists.
 
-工具状态只来自入站协议的显式事实：Messages 使用 `is_error`，Responses function output 使用 `completed/incomplete/in_progress`，provider 原生 web search 使用其明确终态；Chat tool result、Responses custom output 或缺省 Responses function status 均为 `unknown`。HiRoute 不解析工具输出正文猜测失败，因此 Chat Agent 可以在结果内容中告知业务模型错误，但分类历史不会把该自由文本冒充结构化失败。
+Tool status comes only from explicit ingress-protocol facts. Messages uses `is_error`;
+Responses function output uses `completed/incomplete/in_progress`; provider-native web search
+uses its explicit terminal state. Chat tool results, Responses custom output, and Responses
+function output without a status are `unknown`. HiRoute never parses tool-output prose to
+guess failure. A Chat Agent can still tell the business model about an error in result text,
+but classification history does not promote that free-form text to a structured failure.
 
-协议不发送 system/developer、reasoning、工具参数和结果、provider state、凭据、计划用途、plan/model/session 内部 ID 或逐 step 模型。若只有实际兜底分支产生被接受输出，turn 会额外包含 `executed_branch_id`；混合模型贡献不会成为单模型评分目标。
+The protocol excludes system/developer text, reasoning, tool arguments and results, provider
+state, credentials, plan purpose, plan/model/session internal IDs, and per-step models. If only
+the actual fallback branch produced accepted output, a turn also includes
+`executed_branch_id`; mixed-model contribution is not a single-model assessment target.
 
-HiRoute 不给分类请求设置额外字节上限，也不截断 `latest_user` 或文本块。超过 8 KiB 的字段从同请求 ReplayStore 流式读取；8 KiB 是存放位置阈值，不是 REST 协议限额。决策服务若有 32K token 等模型限制，应在服务内部按自己的 tokenizer 和策略裁剪完整 turns，并正确返回 partial。
+HiRoute imposes no extra byte limit on a decision request and does not truncate `latest_user`
+or text blocks. Fields above 8 KiB are streamed from the request's ReplayStore; 8 KiB is a
+storage-location threshold, not a REST protocol limit. A decision service with a 32K-token
+model limit must use its own tokenizer and policy to trim complete turns and return `partial`
+accurately.
 
-## 响应合同
+## Response contract
 
-最小成功响应：
+Minimal success:
 
 ```json
 {"branch_id":"smart_saving_complex"}
 ```
 
-带上一阶段胜任度：
+With previous-stage competence:
 
 ```json
 {
@@ -82,24 +123,37 @@ HiRoute 不给分类请求设置额外字节上限，也不截断 `latest_user` 
   "assessment": {
     "score": 0.25,
     "partial": false,
-    "reason": "可选的可见行为说明"
+    "reason": "Optional explanation of visible behavior"
   }
 }
 ```
 
-- `branch_id` 必填且必须属于请求的 `branches`。
-- `assessment` 可省略；省略表示不更新评分，不是 0 分。
-- `score` 是 `[0,1]` 的模型胜任度，不是置信度、成功概率或问题复杂度。
-- `partial` 必填，表示服务是否删减了被评分区间。
-- `reason` 可省略；Jev 没有文字 reason 时无需拼造。
+- `branch_id` is required and must be present in request `branches`.
+- `assessment` is optional. Omission means “do not update the score,” not zero.
+- `score` is model competence in `[0,1]`, not confidence, success probability, or task
+  complexity.
+- `partial` is required within an assessment and states whether the service reduced the
+  assessed interval.
+- `reason` is optional. A Jev implementation should not invent text when Jev supplies none.
 
-合法 branch 配非法 assessment 时，HiRoute 仍使用 branch、丢弃评分；branch 非法时整次响应无效，评分也不会保存。成功正文上限 64 KiB，不接受未知字段、重复字段、多个对象、Markdown 或供应商 envelope。
+With a valid branch and invalid assessment, HiRoute uses the branch and drops the score. An
+invalid branch invalidates the complete response and stores no score. A successful body is at
+most 64 KiB. Unknown fields, duplicate fields, multiple objects, Markdown, and provider
+envelopes are rejected.
 
-## 阶段评分和查询
+## Stage scoring and queries
 
-HiRoute 按连续的计划版本、选择/实际分支、实际模型配置和有效 profile 识别执行阶段。Key 轮换不切阶段；实际模型、profile、分支或计划版本变化在真实执行后开启新阶段。服务每轮都可返回上一阶段评分，也可以省略；合法新评分覆盖该阶段最新值，不为每轮创建独立分数。
+HiRoute identifies an execution stage by contiguous plan revision, selected/actual branch,
+actual model configuration, and effective profile. Credential rotation does not split a
+stage. A real change of model, profile, branch, or plan revision starts a new stage after
+execution. A service may return a score every turn or omit it. A valid new score replaces the
+latest score for that stage rather than creating a per-turn series.
 
-Desktop 的会话“模型表现”和计划编辑“运行表现”读取同一数据。计划页默认列出当前生效版本已经选择的模型，并按所选时间范围展示这些模型的阶段胜任度；用户无需输入内部模型 ID。CLI 仍可按计划或会话查询，并组合版本、精确模型、时间、严格大于和严格小于筛选，例如：
+Desktop's session “Model performance” and plan-editor “Runtime performance” read the same
+data. The plan page lists models selected by the current effective revision and shows their
+stage competence over the selected time range, without asking for an internal model ID. CLI
+queries can still filter by plan or session and combine revision, exact model, time, strict
+greater-than, and strict less-than filters, for example:
 
 ```sh
 hiroute observation plan-quality samples \
@@ -108,12 +162,18 @@ hiroute observation plan-quality samples \
   --score-lt 0.5
 ```
 
-未评分样本不会被当作 0；`score_lt 0.5` 不包含等于 0.5。评分用于人工或获准主 Agent 分析某模型在特定 AgentPlan 下是否胜任，以及是否值得拆出更专门的场景；HiRoute 不会自动修改或新建计划。
+An unrated sample is not zero, and `score_lt 0.5` excludes exactly 0.5. A human or authorized
+main Agent can use scores to judge whether a model is competent under a specific AgentPlan and
+whether a narrower scenario would help. HiRoute never modifies or creates a plan automatically.
 
-## 失败边界
+## Failure boundary
 
-- 历史准备、Secret 解析、DNS/连接和 HTTP 读写共享 timeout_ms，并同时受源请求 deadline 和取消控制。
-- 服务每轮最多调用一次，不重试，不裁剪后重试。
-- 外部超时、不可用、拒绝输入或非法输出使用一次本地规则兜底并记录结构化原因。
-- 源取消、源 deadline、Replay 完整性或本地资源错误直接终止，不能伪装成 REST 失败后继续。
-- Observation 写入失败不阻塞模型回答；只有真正持久化的评分才会出现在查询中。
+- History preparation, Secret resolution, DNS/connect, and HTTP I/O share `timeout_ms` and
+  remain bounded by the source request deadline and cancellation.
+- A turn calls the service at most once, with no retry and no trim-and-retry path.
+- External timeout, unavailability, input rejection, or invalid output uses the local rules
+  once and records a structured reason.
+- Source cancellation, source deadline, Replay integrity failure, or local resource failure
+  terminates directly; it cannot masquerade as a REST failure followed by fallback.
+- Observation-write failure does not block the model answer. Only a persisted score appears in
+  queries.

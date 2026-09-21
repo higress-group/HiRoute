@@ -1,13 +1,13 @@
-# Quickstart
+# 快速开始
 
-先选择 macOS Desktop 或 Linux headless，再用一条固定模型路由完成第一次接入；熟悉基本路径后按需要启用智能省钱或任务委派。开始使用不要求部署外部决策服务。
+先选择 macOS 桌面应用或 Linux 无界面版，再用一条固定模型路由完成第一次接入；熟悉基本路径后按需要启用智能省钱或任务委派。开始使用不要求部署外部决策服务。
 
 ## 1. 选择运行方式
 
-- **macOS Desktop**：要求 macOS 15.0 或更高版本。公开安装包为自签名构建，下载后先核对 SHA256，再按 [macOS 安装与首次启动](/docs/install-macos/) 的说明打开应用。
-- **Linux headless**：面向服务器、远程工作站和自动化环境，按当前用户安装，不需要 `sudo`。按 [Linux headless 安装](/docs/install-linux/) 启动服务并通过 CLI 完成后续配置。
+- **macOS 桌面应用**：要求 macOS 15.0 或更高版本。公开安装包为自签名构建，下载后先核对 SHA256，再按 [macOS 安装与首次启动](/docs/install-macos/) 的说明打开应用。
+- **Linux 无界面版**：面向服务器、远程工作站和自动化环境，按当前用户安装，不需要 `sudo`。按 [Linux 无界面版安装](/docs/install-linux/) 启动服务并通过 CLI 完成后续配置。
 
-下面第 2–5 步展示 Desktop 的可视化路径。Linux 用户在 headless 指南中通过同一套生产能力完成对应流程。无论使用哪种入口，都先确认本机服务已经就绪；模型路由、会话记录和任务执行都依赖它。
+下面第 2–5 步展示桌面应用的可视化路径。Linux 用户在无界面版指南中通过同一套生产能力完成对应流程。无论使用哪种入口，都先确认本机服务已经就绪；模型路由、会话记录和任务执行都依赖它。
 
 ## 2. 连接一个模型
 
@@ -48,5 +48,5 @@ HiRoute 会保留恢复点。若以后停用模型路由，可以在“连接详
 
 - [使用智能模型路由](/docs/model-routing/)：理解三种路由模式、切换边界和运行表现。
 - [使用智能任务路由](/docs/task-routing/)：把适合独立执行的工作委派给执行 Agent。
-- [Linux headless 安装](/docs/install-linux/)：从空环境安装并用 CLI 配置模型、路由和 Agent。
+- [Linux 无界面版安装](/docs/install-linux/)：从空环境安装并用 CLI 配置模型、路由和 Agent。
 - [HiRoute CLI](/docs/cli/)：从终端管理 HiRoute、查询运行事实、启动任务并恢复不确定的提交。

@@ -1,16 +1,22 @@
 # HiRoute Linux headless CLI
 
-Standalone 是不安装 Desktop 时的单用户运行方式。正式 `hiroute` CLI、`hirouted`
-role-all daemon、Local Control、Gateway、业务存储和观测共同组成控制与运行闭环。它沿用同 UID
-本机信任边界，不需要额外的“CLI 管理 token”，也不提供第二套 Agent 管理 API。
+[Simplified Chinese](standalone-cli.zh-CN.md)
 
-MVP 不允许 standalone 与 HiRoute Desktop 同时运行，不提供系统级多用户安装、Windows 安装、
-运行时下载或自动更新。macOS 可使用相同候选包机制，但本页验证与 Quickstart 以 Linux 为准。
+Standalone is the single-user mode that does not install Desktop. The production `hiroute`
+CLI, role-all `hirouted` daemon, Local Control, Gateway, business storage, and observation
+form one control and execution loop. It uses the same-UID local trust boundary, needs no
+second “CLI management token,” and exposes no second Agent-management API.
 
-## 安装候选
+The MVP does not allow standalone and HiRoute Desktop to run at the same time. It does not
+provide a system-wide multi-user install, a Windows installer, runtime downloads, or automatic
+updates. macOS can use the same candidate-package mechanism, but this page and the Quickstart
+are validated for Linux.
 
-本仓库不声明官方下载地址。发行或集成方从精确 committed candidate 准备 `hiroute`、
-`hirouted` 和固定版本 CPA，再生成可复现归档及伴随 manifest：
+## Candidate installation
+
+This repository does not declare an official download URL. A distributor or integrator
+prepares `hiroute`, `hirouted`, and the pinned CPA from one exact committed candidate, then
+builds a reproducible archive and companion manifest:
 
 ```sh
 python3 scripts/collect-third-party-licenses.py \
@@ -34,32 +40,36 @@ python3 scripts/install-standalone.py install \
   --archive /absolute/output/PACKAGE.tar.gz
 ```
 
-集成后安装器也接受 `--manifest-url https://.../PACKAGE.tar.gz.json`。重定向和归档必须保持
-HTTPS；安装器会在任何写入前校验平台、归档 SHA-256、闭合集合和逐文件摘要。不要根据本页
-拼造未发布的下载地址。
+After distribution integration, the installer also accepts
+`--manifest-url https://.../PACKAGE.tar.gz.json`. Redirects and archives must remain HTTPS.
+Before any write, the installer checks the platform, archive SHA-256, closed file set, and
+per-file digests. Never infer an unpublished download URL from this page.
 
-收集器只从锁定的 Rust 依赖和 `vendor/cpa/source.json` 指定的 CPA commit 生成材料；
-`--cpa-source-repo` 只是该固定 commit 的本地对象来源，不会采用 checkout 当前分支。
-打包器要求收集器的闭合输出，并将 HiRoute、CPA 及其传递依赖的许可证和确定性清单随归档
-安装到 `licenses/`；材料缺失时打包失败。
+The collector uses only locked Rust dependencies and the CPA commit pinned by
+`vendor/cpa/source.json`. `--cpa-source-repo` supplies local objects for that exact commit and
+does not use the checkout's current branch. The packager requires the collector's closed
+output and installs licenses and deterministic manifests for HiRoute, CPA, and transitive
+dependencies under `licenses/`. Missing material fails packaging.
 
-安装只写当前用户目录：
+Installation writes only current-user paths:
 
-- 稳定入口：`$HOME/.local/bin/hiroute`、`hirouted`；无需 sudo。
-- 版本二进制：`$HOME/.local/lib/hiroute/<version>`。
-- 只读资源和 marker：`$HOME/.local/share/hiroute`。
-- 管理 Skill：`$HOME/.agents/skills/hiroute-management` 和
-  `$HOME/.claude/skills/hiroute-management`。
-- Linux 状态：`${XDG_STATE_HOME:-$HOME/.local/state}/hiroute`。
+- stable entry points: `$HOME/.local/bin/hiroute` and `hirouted`, with no `sudo`;
+- versioned binaries: `$HOME/.local/lib/hiroute/<version>`;
+- read-only resources and marker: `$HOME/.local/share/hiroute`;
+- management Skill: `$HOME/.agents/skills/hiroute-management` and
+  `$HOME/.claude/skills/hiroute-management`;
+- Linux state: `${XDG_STATE_HOME:-$HOME/.local/state}/hiroute`.
 
-安装器会用私有、当前用户拥有的目录安装 Skill；已有符号链接、非目录、非当前用户所有或
-group/world 可写的 Skill 父目录会导致安装在写入前失败。同一安装命令用于首次安装、修复和升级。
-更新后显式运行 `hiroute service restart --output json` 才会切换正在运行的 daemon。
+The installer places the Skill in private, current-user-owned directories. A symlink,
+non-directory, foreign-owned, or group/world-writable Skill parent aborts before any write.
+The same install command handles first install, repair, and upgrade. After an update, run
+`hiroute service restart --output json` explicitly to move the live daemon to the new version.
 
-若存在 `/Applications/HiRoute.app`、`~/Applications/HiRoute.app` 或活动 Desktop Local
-Control，安装会失败。反向切换时也应先停止并卸载 standalone。
+Installation fails if `/Applications/HiRoute.app`, `~/Applications/HiRoute.app`, or an active
+Desktop Local Control exists. Stop and uninstall standalone before switching in the other
+direction.
 
-## 启动并确认真实就绪
+## Start and verify real readiness
 
 ```sh
 hiroute service start --output json
@@ -68,19 +78,20 @@ hiroute system status --output json
 hiroute gateway show --output json
 ```
 
-只有以下事实同时成立才算业务就绪：
+Business readiness requires all of these facts:
 
-- `service status` 的 `data.local_control_ready` 为 `true`；
-- `system status` 的 `data.daemon` 为 `role_all`、`data.gateway` 为 `ready`；
-- `gateway show` 的 `data.ready` 为 `true`，并给出实际 `connect_address`。
+- `service status` reports `data.local_control_ready=true`;
+- `system status` reports `data.daemon=role_all` and `data.gateway=ready`;
+- `gateway show` reports `data.ready=true` and an actual `connect_address`.
 
-进程管理器返回成功不等于服务已就绪。systemd user unit 不可用时，可在受管理的前台终端运行：
+A successful process-manager command is not service readiness. If a systemd user unit is
+unavailable, run the service in a managed foreground terminal:
 
 ```sh
 hiroute service run
 ```
 
-其他生命周期入口：
+Other lifecycle commands:
 
 ```sh
 hiroute service doctor --output json
@@ -91,16 +102,17 @@ hiroute service autostart enable --output json
 hiroute service autostart disable --output json
 ```
 
-登录自启与当前会话启动是两个动作。`SIGTERM`/`SIGINT` 会触发有序停机。
+Login autostart and starting the current session are separate actions. `SIGTERM` and `SIGINT`
+request an orderly shutdown.
 
-## 先发现当前公开合同
+## Discover the current public contract first
 
-CLI 有两层公开合同：
+The CLI has two public-contract layers:
 
-- Host 管理命令以根帮助和 family 帮助为准；`service`、`gateway`、`protected-input` 有意不进入
-  Application release manifest。
-- Application/Local Control 命令以 `schema list/show` 返回的 Released descriptor 和完整 leaf
-  `--help` 为准。
+- Host management commands are defined by root and family help. `service`, `gateway`, and
+  `protected-input` intentionally do not appear in the Application release manifest.
+- Application/Local Control commands are defined by Released descriptors from
+  `schema list/show` plus complete leaf `--help`.
 
 ```sh
 hiroute --help
@@ -112,17 +124,19 @@ hiroute schema show --command-id compute.connection.test --output json
 hiroute compute connection test --help
 ```
 
-不要用 `schema list` 是否返回来判断 Host 管理命令是否可用。Application/Local Control 只使用
-`schema list` 返回的命令；CLI 和 standalone daemon 会同时拒绝 Planned 业务命令，处理函数或开发
-构建中存在命令路径不代表它已公开。所有机器响应都是一个 `hiroute.machine-envelope/v2`：自动化
-读取 `status`、`data`、稳定错误 `error.code`、`warnings[].code` 和
-`next_actions[].command_id`，不要解析展示文案。
+Do not use presence in `schema list` to decide whether a Host command exists. Use only listed
+Application/Local Control commands. CLI and standalone daemon both reject Planned business
+commands; a handler or development-build path does not make a command public. Every machine
+response is a `hiroute.machine-envelope/v2`. Automation reads `status`, `data`, stable
+`error.code`, `warnings[].code`, and `next_actions[].command_id`; it never parses display text.
 
-以下示例中的 JSON 都是不含凭据的普通文件。`jq` 仅用于演示提取字段，不是 HiRoute 依赖。
+The JSON examples below are ordinary credential-free files. `jq` is used only to demonstrate
+field extraction and is not a HiRoute dependency.
 
-## 接入 Native API 模型来源
+## Connect a Native API model source
 
-凭据只能通过受保护 FD 登记。不要把 Key 放进 argv、环境变量、普通 JSON、日志或 Agent 对话：
+Credentials can be registered only through a protected file descriptor. Never put a key in
+argv, environment variables, ordinary JSON, logs, or an Agent conversation:
 
 ```sh
 chmod 600 /absolute/private/provider-key
@@ -133,9 +147,10 @@ hiroute protected-input register \
 exec 3<&-
 ```
 
-按 `compute.connection.test` schema 构造一次有界检查。下面是 Responses API、Bearer 认证、无
-`/models` 目录时手工声明一个文本模型的完整形状；替换 endpoint、模型和能力事实，但不要添加
-secret 字段：
+Construct a bounded check from the `compute.connection.test` schema. This complete shape uses
+Responses API, Bearer authentication, and one manually declared text model for a provider
+without a `/models` catalog. Replace endpoint, model, and capability facts without adding a
+secret field:
 
 ```json
 {
@@ -190,8 +205,9 @@ hiroute compute connection test --request-stdin --output json \
 hiroute compute list --output json > compute-before-save.json
 ```
 
-从 `native-checked.json.data.candidate.models[]` 选择 `selectable=true` 的 `model_ref`，从
-`compute-before-save.json.data.revisions` 复制当前版本，构造保存变更：
+Choose a `model_ref` with `selectable=true` from
+`native-checked.json.data.candidate.models[]`. Copy current revisions from
+`compute-before-save.json.data.revisions` and construct the save change:
 
 ```json
 {
@@ -209,7 +225,8 @@ hiroute compute list --output json > compute-before-save.json
 }
 ```
 
-先 preview，再原样携带返回的 `spec`、`accept_digest`、`expected_revisions` 和新的幂等键 apply：
+Preview first. Pass the returned `spec`, `accept_digest`, `expected_revisions`, and a fresh
+idempotency key unchanged to apply:
 
 ```sh
 hiroute compute connection preview --request-stdin --output json \
@@ -229,7 +246,8 @@ hiroute protected-input release \
   --candidate candidate/native/my-provider --output json
 ```
 
-不要在 apply 结果不确定时换幂等键。保留原请求，并用公开恢复入口按相同作用域查询：
+Do not replace the idempotency key after an uncertain apply response. Keep the original
+request and query the same scope through the public recovery entry:
 
 ```json
 {
@@ -244,16 +262,18 @@ hiroute protected-input release \
 hiroute operations find --request-stdin --output json < operation-find.json
 ```
 
-同一 key 与同一内容会返回原 Operation；同一 key 与不同内容会稳定拒绝，不会重复写入。
+The same key and content returns the original Operation. The same key with different content
+is rejected deterministically and never writes twice.
 
-## 发现并保存订阅来源
+## Discover and save a subscription source
 
 ```sh
 hiroute compute connection options --output json > connection-options.json
 ```
 
-`data.subscriptions` 会如实给出发现状态和候选。选择一个 `connector_owned` 候选后，将候选对象放入
-`{"candidate": ...}`，再使用同一 preview/apply 规则开始检查：
+`data.subscriptions` reports discovery state and candidates exactly. Select one
+`connector_owned` candidate, wrap it as `{"candidate": ...}`, and start its check with the
+same Preview/Apply rules:
 
 ```sh
 jq '{candidate:([.data.subscriptions.candidates[] |
@@ -274,19 +294,21 @@ jq '{action:"result",operation:.operation}' subscription-operation.json \
   > subscription-checked.json
 ```
 
-只有 `data.status=verified` 才表示该检查通过。将
-`data.checked_candidate` 与 `data.validation` 经上节相同的 compute save preview/apply 保存。
-发现、授权检查、保存和真实模型调用是不同事实；不要把发现成功描述成来源已保存或上游已调用。
+Only `data.status=verified` means the check passed. Save `data.checked_candidate` and
+`data.validation` through the same compute-save Preview/Apply flow above. Discovery,
+authorization check, saving, and a real model call are different facts; never describe a
+discovered source as already saved or called.
 
-## 创建、调整并发布路由
+## Create, update, and publish routing
 
-先查询真实候选，不手写内部 binding：
+Query real candidates instead of hand-writing an internal binding:
 
 ```sh
 printf '{}\n' | hiroute routing options --request-stdin --output json > routing-options.json
 ```
 
-从 `data.candidates[].binding_id` 选择来源后构造完整编辑器。固定单模型是合法的最小计划：
+Select a `binding_id` from `data.candidates[]` and construct a complete editor. A fixed single
+model is a valid minimal plan:
 
 ```json
 {
@@ -332,12 +354,13 @@ hiroute routing list --output json
 hiroute routing show PLAN_ID --output json
 ```
 
-更新时把 `target` 改为
-`{"intent":"update","plan_id":"PLAN_ID","expected_head_revision":CURRENT_HEAD}` 并提交完整
-editor。过期 revision/digest 会返回 conflict，旧发布继续服务；重新读取、编辑、preview 后再 apply。
-普通模型请求只执行路由，不会因为计划启用了 Worker 而隐式启动任务。
+For an update, set `target` to
+`{"intent":"update","plan_id":"PLAN_ID","expected_head_revision":CURRENT_HEAD}` and
+submit the complete editor. A stale revision/digest returns conflict while the old publication
+continues serving. Read again, edit, Preview, and Apply. A normal model request performs only
+routing and never starts a Worker implicitly because the plan enables delegation.
 
-## 接入、检查和恢复 Codex
+## Connect, check, and restore Codex
 
 ```sh
 hiroute agents scan --output json > agents.json
@@ -345,11 +368,12 @@ hiroute agents check agent_codex_default \
   --scope native-authentication --output json
 ```
 
-`configuration`、`native-authentication` 和 `collaboration` 是同 UID 本地有界检查，不使用第二个
-授权 token，也不产生上游模型调用。`live` 会产生真实模型请求，仍要求命令 help 声明的明确同意
-与受保护 probe grant。
+`configuration`, `native-authentication`, and `collaboration` are bounded same-UID local
+checks. They use no second authorization token and make no upstream model call. `live` does
+make a real model request and still requires the command help's explicit consent and a
+protected probe grant.
 
-从扫描结果复制 Codex `context_id`，用已发布 `PLAN_ID` 连接：
+Copy the Codex `context_id` from scan results and connect it to a published `PLAN_ID`:
 
 ```json
 {
@@ -383,9 +407,10 @@ jq '{spec:.data.spec,accept_digest:.data.accept_digest,
 hiroute agents connect status CONTEXT_ID --output json > agent-status.json
 ```
 
-Standalone daemon 已是 resident service，因此 preview 不要求 Desktop login item。HiRoute 只修改其
-拥有的 Codex 字段；完成后用户继续运行原来的 `codex` 入口，模型请求会进入本机 Gateway。保存
-`agent-status.json.data.restore_point_ref`。恢复时：
+The standalone daemon is already a resident service, so Preview does not require a Desktop
+login item. HiRoute changes only the Codex fields that it owns. Continue using the original
+`codex` entry afterward; its model requests enter the local Gateway. Save
+`agent-status.json.data.restore_point_ref`. To restore:
 
 ```json
 {
@@ -397,14 +422,15 @@ Standalone daemon 已是 resident service，因此 preview 不要求 Desktop log
 }
 ```
 
-对该 spec 依次调用 `agents restore preview`、复制 preview 返回字段并调用
-`agents restore apply`，最后运行 `agents connect status`。恢复只撤销仍由 HiRoute 拥有的字段；
-并发用户修改会导致冲突而不是被覆盖。Claude Code 使用其公开 profile/launcher 合同；不要把
-Codex 的 Responses 计划直接配置给只支持 Messages 的 surface。
+Pass this spec through `agents restore preview`, copy the returned Preview fields to
+`agents restore apply`, and finish with `agents connect status`. Restore removes only fields
+still owned by HiRoute; concurrent user changes conflict instead of being overwritten. Claude
+Code uses its public profile/launcher contract. Do not configure a Responses-only Codex plan
+for a surface that supports only Messages.
 
-## 会话、实际选择与用量事实
+## Sessions, actual selection, and usage facts
 
-一次 Agent 或 Worker 请求完成后：
+After an Agent or Worker request completes:
 
 ```sh
 hiroute sessions list --include-unlinked --limit 50 --output json
@@ -414,22 +440,25 @@ hiroute sessions status --output json
 hiroute value show --routing PLAN_ID --session SESSION_ID --output json
 ```
 
-`sessions show` 默认只返回事实和 timeline，不返回对话正文。RoutingReceipt 的
-`route_decision`、`attempt_started`、`usage_and_cache` 等有序事实给出实际计划、模型选择、Attempt
-和上游报告的已知 token。`value show` 只返回已有账价值；没有可信价格证据时金额保持 `null`，
-且不得把未知金额或尚未形成账值行的 token 伪造为零成本。正文、搜索、catalog 与 ancestry 仍需
-各自精确的受保护 capability。
+`sessions show` returns facts and timeline by default, not conversation bodies. Ordered
+RoutingReceipt facts such as `route_decision`, `attempt_started`, and `usage_and_cache` record
+the actual plan, model choice, Attempt, and known upstream-reported tokens. `value show`
+returns only existing ledger value. Without trustworthy price evidence, an amount stays
+`null`; unknown amounts or tokens without value-ledger rows are never fabricated as zero
+cost. Bodies, search, catalog, and ancestry each require their own precise protected
+capability.
 
-## 配置 Worker 并委派任务
+## Configure a Worker and delegate a task
 
-Worker 复用现有命令。发现不会安装或选择软件：
+Worker reuses the existing commands. Discovery does not install or select software:
 
 ```sh
 hiroute worker dependencies discover --harness codex_cli --output json \
   > worker-discovery.json
 ```
 
-从同一 Harness 的 `selection_revisions[].revision` 复制并选择完整的 `found` 绝对路径：
+Copy `selection_revisions[].revision` for the same Harness and select complete absolute paths
+whose state is `found`:
 
 ```json
 {
@@ -448,8 +477,9 @@ hiroute worker executors --output json
 hiroute worker plans --output json
 ```
 
-将路由 editor 的 `delegation_enabled` 设为 `true`，并加入
-`"work":{"harness":"codex_cli","protocol":"responses"}` 后重新发布。再提交、定位、等待和读取：
+Set routing-editor `delegation_enabled` to `true`, add
+`"work":{"harness":"codex_cli","protocol":"responses"}`, and publish again. Then submit,
+locate, wait for, and read the task:
 
 ```sh
 hiroute worker exec --plan PLAN_ID --cwd /absolute/project \
@@ -463,11 +493,13 @@ hiroute worker result --run RUN_ID --output json
 hiroute worker list --output json
 ```
 
-等待超时只表示仍在运行，不会取消任务。响应不确定时用原 submission key 查询，或原样重放同一
-`worker exec`；不要换 key。重复提交返回同一个 run，不会执行两次。`selection_revision` 是 Worker
-选择配置的并发版本，不是 Codex、Claude 或 HiRoute 软件版本。
+A wait timeout means only that work is still running and does not cancel it. After an
+uncertain response, query with the original submission key or replay that exact JSON unchanged
+through the same `worker exec`; never replace the key. Duplicate submission returns the same
+run and does not execute twice. `selection_revision` is the concurrency revision for Worker
+installation selection, not a Codex, Claude, or HiRoute CLI/package version.
 
-## Gateway 监听器
+## Gateway listener
 
 ```sh
 hiroute gateway show --output json
@@ -477,47 +509,57 @@ hiroute gateway set --address 192.0.2.10 --port 8317 \
 hiroute gateway recover --output json
 ```
 
-`set` 保存 desired 后重启，并只在真实 ready 后推进 applied。自动端口首次选定后持久化；
-`0.0.0.0` 对本机管理客户端显示为 `127.0.0.1:<port>`。非 loopback 配置要求显式风险确认。
-HiRoute 不自动修改防火墙、TLS 或远端 Agent。IPv6、多监听器和防火墙管理不在 MVP。
+`set` saves desired state, restarts, and advances applied state only after real readiness.
+The first automatically chosen port is persisted. Local management clients see a
+`0.0.0.0` listener as `127.0.0.1:<port>`. A non-loopback address requires explicit risk
+acceptance. HiRoute never changes a firewall, configures TLS, or manages a remote Agent.
+IPv6, multiple listeners, and firewall management are outside the MVP.
 
-## 常见错误与恢复
+## Common errors and recovery
 
-- `DAEMON_UNAVAILABLE`：Standalone 先运行 `hiroute service status`，需要时运行
-  `hiroute service start`，再用 `service doctor`、`service logs` 诊断；Desktop 启动或恢复应用。
-  隔离实例确认使用同一个 `HOME`、`XDG_STATE_HOME` 和 `XDG_RUNTIME_DIR`。CLI 不会自动启动服务
-  或重放请求。
-- `UNKNOWN_COMMAND`：Host 管理路径先读根帮助和 family `--help`；Application 命令不在当前
-  release manifest 时，不要尝试内部 operation 名或 staged 路径，先升级或改用 `schema list`
-  中的入口。
-- `INVALID_ARGUMENTS`：读取 leaf `--help` 和 `schema show`；严格 schema 会拒绝未知字段。
-- `REVISION_CONFLICT` / `CHANGE_PREVIEW_STALE`：重新读取当前资源和 options，重新 preview；不要
-  修改旧 preview 后强行 apply。
-- `IDEMPOTENCY_KEY_REUSED`：同一 key 已用于另一摘要；用 `operations find` 查看胜出 Operation，
-  不要把新内容说成已应用。
-- apply 响应丢失：保留原 spec/digest/revisions/key，先 `operations find`；同一内容的显式重试
-  继续用原 key。
-- Agent restore 冲突：用户或 Agent 已修改受管字段；停止自动覆盖，读取 status 并重新确认。
-- 模型请求成功但金额未知：查看 RoutingReceipt 的实际 model/usage；没有价格证据时 `null` 是
-  正确结果，不等于免费。
+- `DAEMON_UNAVAILABLE`: on Standalone, run `hiroute service status`, then
+  `hiroute service start` if needed, and diagnose with `service doctor` and `service logs`.
+  On Desktop, launch or restore the application. For an isolated instance, confirm the same
+  `HOME`, `XDG_STATE_HOME`, and `XDG_RUNTIME_DIR`. The CLI does not start a service or replay
+  a request automatically.
+- `UNKNOWN_COMMAND`: for Host management, read root and family `--help`. If an Application
+  command is absent from the current release manifest, do not try an internal operation name
+  or staged path; upgrade or use an entry listed by `schema list`.
+- `INVALID_ARGUMENTS`: read leaf `--help` and `schema show`. Strict schemas reject unknown
+  fields.
+- `REVISION_CONFLICT` / `CHANGE_PREVIEW_STALE`: read current resources/options and Preview
+  again. Never modify and force an old Preview through Apply.
+- `IDEMPOTENCY_KEY_REUSED`: the key already names another digest. Use `operations find` to
+  inspect the winning Operation; do not claim that new content was applied.
+- Lost Apply response: keep the original spec/digest/revisions/key and call
+  `operations find` first. An explicit retry of the same content uses the original key.
+- Agent restore conflict: the user or Agent changed a managed field. Stop automatic overwrite,
+  read status, and confirm again.
+- Successful model request with unknown cost: inspect the RoutingReceipt's actual model and
+  usage. `null` without price evidence is correct and does not mean free.
 
-## 管理 Skill
+## Management Skill
 
-安装包把同一份 `hiroute-management` Skill 安装到通用 Agent 和 Claude Code Skill 目录。它只
-组织本页公开命令：检查服务、配置来源与路由、接入/恢复 Agent、查询观测和操作 Worker。它不
-实现业务校验、不直接编辑数据库或 Agent 配置、不接触明文凭据，也不会自行安装、发布、变更
-监听器、取消任务或启用自启动。Agent 对 Host 管理命令先读 `hiroute --help` 和对应 family
-`--help`，对 Application/Local Control 命令先读 `schema list/show` 和完整 leaf `--help`，并遵循
-用户明确授权的外部副作用范围。
+The package installs the same `hiroute-management` Skill in the generic Agent and Claude Code
+Skill directories. It organizes only the public commands on this page: service checks,
+source/routing configuration, Agent integration/restoration, observation queries, and Worker
+operations. It implements no business validation, directly edits no database or Agent
+configuration, handles no plaintext credential, and never installs, publishes, changes a
+listener, cancels a task, or enables autostart on its own. For Host commands, an Agent first
+reads `hiroute --help` and the family `--help`. For Application/Local Control commands, it
+first reads `schema list/show` and complete leaf `--help`, then stays within the user's
+explicitly authorized external side effects.
 
-## 卸载
+## Uninstall
 
-先停止服务，再执行：
+Stop the service first, then run:
 
 ```sh
 python3 scripts/install-standalone.py uninstall
 ```
 
-卸载只删除 marker 记录且仍归 HiRoute 所有的稳定入口、当前版本程序、服务定义和两处 Skill；
-任何条目被外部替换都会中止而不是覆盖。业务存储、诊断和会话默认保留。删除保留数据必须另行
-确认确切目录及其内容已不再需要。
+Uninstall removes only marker-recorded stable entries, the current version's programs,
+service definition, and the two Skills while they are still HiRoute-owned. Any externally
+replaced entry aborts instead of being overwritten. Business storage, diagnostics, and
+sessions are retained by default. Deleting retained data requires a separate confirmation of
+the exact directory and that its contents are no longer needed.

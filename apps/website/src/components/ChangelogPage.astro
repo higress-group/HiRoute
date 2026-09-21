@@ -4,12 +4,13 @@ import { releaseManifest } from '../lib/releases.mjs';
 const { language = 'zh' } = Astro.props;
 const en = language === 'en';
 const t = (zh, english) => en ? english : zh;
+const channelLabel = channel => en ? channel : channel === 'stable' ? '稳定版' : channel === 'preview' ? '预览版' : channel;
 const path = en ? '/en/changelog/' : '/changelog/';
 const alternatePath = en ? '/changelog/' : '/en/changelog/';
 ---
 <SiteLayout language={language} title={t('更新日志', 'Changelog') + ' · HiRoute'}
   description={t('HiRoute 公开版本更新记录。', 'Public HiRoute release notes.')}
   path={path} alternatePath={alternatePath}>
-  <section class="page-hero wrap"><div class="eyebrow section-label">CHANGELOG</div><h1>{t('更新日志', 'Changelog')}</h1><p>{t('与下载页共用同一份发布清单，不单独维护容易漂移的版本列表。', 'Generated from the same release manifest as the download page—no separate version list to drift.')}</p></section>
-  <section class="content-section wrap changelog-list">{releaseManifest.releases.length === 0 ? <div class="empty-release"><h2>{t('尚无公开版本', 'No public releases yet')}</h2><p>{t('首个通过公开发布门槛的版本会显示在这里。', 'The first release admitted by the public release gates will appear here.')}</p></div> : releaseManifest.releases.map(release => <article><span>{release.channel}</span><h2>HiRoute {release.version}</h2><time datetime={release.published_at}>{new Intl.DateTimeFormat(en ? 'en' : 'zh-CN', { dateStyle: 'long' }).format(new Date(release.published_at))}</time><p>{release.notes[language]}</p><a href={en ? '/en/download/' : '/download/'}>{t('下载与摘要', 'Downloads and checksums')} →</a></article>)}</section>
+  <section class="page-hero wrap"><div class="eyebrow section-label">{t('更新日志', 'CHANGELOG')}</div><h1>{t('更新日志', 'Changelog')}</h1><p>{t('与下载页共用同一份发布清单，不单独维护容易漂移的版本列表。', 'Generated from the same release manifest as the download page—no separate version list to drift.')}</p></section>
+  <section class="content-section wrap changelog-list">{releaseManifest.releases.length === 0 ? <div class="empty-release"><h2>{t('尚无公开版本', 'No public releases yet')}</h2><p>{t('首个通过公开发布门槛的版本会显示在这里。', 'The first release admitted by the public release gates will appear here.')}</p></div> : releaseManifest.releases.map(release => <article><span>{channelLabel(release.channel)}</span><h2>HiRoute {release.version}</h2><time datetime={release.published_at}>{new Intl.DateTimeFormat(en ? 'en' : 'zh-CN', { dateStyle: 'long' }).format(new Date(release.published_at))}</time><p>{release.notes[language]}</p><a href={en ? '/en/download/' : '/download/'}>{t('下载与摘要', 'Downloads and checksums')} →</a></article>)}</section>
 </SiteLayout>

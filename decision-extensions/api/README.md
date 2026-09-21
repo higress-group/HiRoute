@@ -1,6 +1,6 @@
 # Decision API
 
-[简体中文](README.zh-CN.md) · [Mechanism and usage](../README.md)
+[Simplified Chinese](README.zh-CN.md) · [Mechanism and usage](../README.md)
 
 [Download the canonical OpenAPI 3.1 JSON](decision.openapi.json). This single schema is also embedded by Desktop's protocol dialog and Save OpenAPI action. The request represents an arbitrary map of allowed branches, not a hard-coded binary choice. Do not maintain a second schema in an extension.
 

@@ -1,6 +1,6 @@
 # macOS 安装与首次启动
 
-HiRoute Desktop 当前支持 macOS 15.0 或更高版本。短期提供的是自签名安装包，没有 Apple Developer ID 签名和公证；因此 macOS 会要求你明确确认首次启动。
+HiRoute 桌面应用当前支持 macOS 15.0 或更高版本。短期提供的是自签名安装包，没有 Apple Developer ID 签名和公证；因此 macOS 会要求你明确确认首次启动。
 
 ## 下载正确的安装包
 
@@ -37,7 +37,7 @@ Apple 的 [安全打开 Mac App 说明](https://support.apple.com/zh-cn/102445) 
 
 ## 安装终端入口（可选）
 
-启动 Desktop 后，打开“设置” → “CLI” → “终端入口”，选择“安装”。该操作会把与当前应用配套的入口安装到：
+启动桌面应用后，打开“设置” → “CLI” → “终端入口”，选择“安装”。该操作会把与当前应用配套的入口安装到：
 
 ```text
 $HOME/.local/bin/hiroute
@@ -55,4 +55,4 @@ export PATH="$HOME/.local/bin:$PATH"
 hiroute --help
 ```
 
-这个终端入口连接 HiRoute 的本机服务；Desktop 应已安装并让本机服务保持可用。更多命令见 [HiRoute CLI](/docs/cli/)。
+这个终端入口连接 HiRoute 的本机服务；桌面应用应已安装并让本机服务保持可用。更多命令见 [HiRoute CLI](/docs/cli/)。

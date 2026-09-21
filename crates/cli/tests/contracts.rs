@@ -124,7 +124,7 @@ fn packaged_management_skill_explains_discovery_dependency_selection_and_recover
 fn packaged_headless_docs_distinguish_host_and_application_discovery() {
     let docs = include_str!("../../../docs/standalone-cli.md");
     for required in [
-        "Host 管理命令",
+        "Host management commands",
         "hiroute --help",
         "hiroute service --help",
         "hiroute gateway --help",

@@ -1,10 +1,13 @@
 # E2E case sharding
 
-通用 `hiroute-e2e` 场景可选地在 `case_shards` 中声明完整分片。每个分片列出
-自己必须一起执行的步骤；所有步骤必须恰好属于一个分片。没有该声明的场景不能
-用 `--case` 切分，避免把隐含顺序、会话或回退状态误判为独立。
+[Simplified Chinese](SHARDING.zh-CN.md)
 
-先查看已声明分片：
+A general `hiroute-e2e` scenario may declare complete shards in `case_shards`. Each shard
+lists the steps that must execute together, and every step must belong to exactly one shard.
+A scenario without that declaration cannot be split with `--case`; this prevents hidden
+ordering, session, or fallback state from being misrepresented as independent.
+
+Inspect declared shards first:
 
 ```sh
 cargo run --locked -p hiroute-e2e -- validate \
@@ -12,7 +15,7 @@ cargo run --locked -p hiroute-e2e -- validate \
   --profile e2e/profiles/local-process.json
 ```
 
-为一个分片运行独立的黑盒进程时，给每次运行唯一结果文件：
+Give each isolated black-box process a unique result file:
 
 ```sh
 cargo run --locked -p hiroute-e2e -- run \
@@ -22,11 +25,11 @@ cargo run --locked -p hiroute-e2e -- run \
   --result target/e2e/responses-complex-continuation.json
 ```
 
-每次 `run` 都创建自己的临时目录、native mock、CPA、SUT 和随机 loopback
-端口；不同 case 只有在独立 checkout 中运行时才可以并发。结果会包含
-`selected_case`，不能将多个 case 报告合并为一条完整场景的 green 证明。完整
-场景仍需运行一次，以验证默认的全步骤顺序。
+Each `run` creates its own temporary directory, native mock, CPA, SUT, and random loopback
+port. Different cases may run in parallel only from independent checkouts. The result records
+`selected_case`; results from several cases cannot be combined into one whole-scenario green
+claim. Run the complete scenario once to validate its default full-step ordering.
 
-P0 Gateway 生产 Oracle 是一条密封的单一场景，`--case` 会被拒绝。它的独立
-组件与协议测试可按 Rust integration-test target 或精确测试名分片，但最终生产
-Oracle 和 seal/汇总必须保持单片、串行。
+The P0 Gateway production Oracle is one sealed scenario and rejects `--case`. Its component
+and protocol tests may be sharded by Rust integration-test target or exact test name, but the
+final production Oracle and seal/aggregation remain single-shard and serial.

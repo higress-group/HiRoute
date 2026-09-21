@@ -2,7 +2,7 @@
 
 模型路由决定“这一阶段用哪个模型”，任务路由决定“这项工作交给哪个执行 Agent”。两者可以独立启用，也可以组合使用。
 
-下面先展示 Desktop 配置路径。Linux headless 可以通过 `routing preview/apply` 发布同一份计划，通过 `agents connect preview/apply` 接入 Agent，再使用同一组 Worker 命令执行；具体字段从当前安装的 schema 获取。
+下面先展示桌面应用配置路径。Linux 无界面版可以通过 `routing preview/apply` 发布同一份计划，通过 `agents connect preview/apply` 接入 Agent，再使用同一组 Worker 命令执行；具体字段从当前安装的 schema 获取。
 
 ## 适合委派什么
 
@@ -27,7 +27,7 @@
 2. 选择允许它发现和调用的已发布计划。
 3. 保存并完成技能检查。
 
-之后可以在日常对话中明确要求委派；若配置为默认委派，主 Agent 也可以对适合独立执行的工作主动选择计划。任务记录会显示在 Desktop 的“任务”页面。
+之后可以在日常对话中明确要求委派；若配置为默认委派，主 Agent 也可以对适合独立执行的工作主动选择计划。任务记录会显示在桌面应用的“任务”页面。
 
 ## 从终端执行同一条生产路径
 

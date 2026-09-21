@@ -1,6 +1,6 @@
 # HiRoute Jev decider
 
-[简体中文](README.zh-CN.md) · [Decision mechanism](../../README.md) · [API and OpenAPI](../../api/README.md)
+[Simplified Chinese](README.zh-CN.md) · [Decision mechanism](../../README.md) · [API and OpenAPI](../../api/README.md)
 
 This is HiRoute's deployable reference implementation of the five-field REST branch-decision protocol. It accepts a HiRoute decision request, makes exactly one OpenRouter Decisions call with `typesafe/jev-1.13`, and returns `branch_id` plus an optional assessment of the preceding execution segment.
 
