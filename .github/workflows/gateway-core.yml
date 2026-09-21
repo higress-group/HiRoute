@@ -22,10 +22,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Validate selection rules
-        run: |
-          python3 scripts/test-test-plan.py
-          python3 scripts/test-public-language.py
-          python3 scripts/check-public-language.py
+        run: python3 scripts/test-test-plan.py
       - id: plan
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

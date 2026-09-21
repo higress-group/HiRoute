@@ -1,6 +1,6 @@
 # E2E case sharding
 
-[Simplified Chinese](SHARDING.zh-CN.md)
+[简体中文](SHARDING.zh-CN.md)
 
 A general `hiroute-e2e` scenario may declare complete shards in `case_shards`. Each shard
 lists the steps that must execute together, and every step must belong to exactly one shard.

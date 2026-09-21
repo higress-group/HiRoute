@@ -1,6 +1,6 @@
 # HiRoute distribution candidate component notice
 
-[Simplified Chinese](DISTRIBUTION-NOTICE.zh-CN.md)
+[简体中文](DISTRIBUTION-NOTICE.zh-CN.md)
 
 The HiRoute Rust workspace is licensed under Apache-2.0. The package contains HiRoute
 Desktop, `hirouted`, `hiroute`, frontend resources, the built-in model catalog, and a pinned

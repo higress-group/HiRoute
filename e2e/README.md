@@ -1,6 +1,6 @@
 # HiRoute black-box E2E
 
-[Simplified Chinese](README.zh-CN.md)
+[简体中文](README.zh-CN.md)
 
 This directory holds environment-independent product-path contracts. It sits above unit,
 component, and `gateway-core` lifecycle tests and verifies user-visible behavior across a

@@ -1,6 +1,6 @@
 # Current-candidate production smoke
 
-[Simplified Chinese](SMOKE.zh-CN.md)
+[简体中文](SMOKE.zh-CN.md)
 
 `hiroute-smoke` is a development-validation entry point. Its default quick run has three
 required cases: a controlled Responses request through the production Gateway; real

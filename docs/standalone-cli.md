@@ -1,6 +1,6 @@
 # HiRoute Linux headless CLI
 
-[Simplified Chinese](standalone-cli.zh-CN.md)
+[简体中文](standalone-cli.zh-CN.md)
 
 Standalone is the single-user mode that does not install Desktop. The production `hiroute`
 CLI, role-all `hirouted` daemon, Local Control, Gateway, business storage, and observation

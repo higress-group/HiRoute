@@ -1,6 +1,6 @@
 # macOS installation candidate
 
-[Simplified Chinese](macos-installation.zh-CN.md)
+[简体中文](macos-installation.zh-CN.md)
 
 The target is macOS 15+, with separate single-architecture packages for Apple Silicon
 (`arm64`) and Intel (`x86_64`). The minimum version comes from the actual build facts of the

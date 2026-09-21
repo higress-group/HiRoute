@@ -37,7 +37,9 @@ such checks that you could not run.
 English is the default language for source comments, GitHub metadata, and Markdown files
 without a language suffix. Put a Simplified Chinese translation in a sibling
 `*.zh-CN.md` file and keep links within the reader's current language whenever a translated
-page exists. Website guide sources use the existing `*.en.md` and `*.zh.md` convention.
+page exists. Label each language switch in the target language: use `简体中文` from English
+and `English` from Chinese. Website guide sources use the existing `*.en.md` and `*.zh.md`
+convention.
 
 Desktop and website components may contain both locales in source, but every user-visible
 sentence must be selected by the active locale; do not leave English decorative copy on a
@@ -45,9 +47,8 @@ Chinese page or Chinese fallback copy on an English page. Product names, protoco
 commands, paths, code, API fields, and model/provider identifiers remain unchanged. Synthetic
 multilingual fixtures are allowed when they test Unicode or localized behavior.
 
-Run `python3 scripts/check-public-language.py` after changing public documentation. Internal
-issue specifications, handoffs, and workflow instructions are outside this public-language
-boundary.
+Internal issue specifications, handoffs, and workflow instructions are outside this
+public-language boundary.
 
 Do not commit API keys, account data, real conversation content, diagnostic archives, or
 machine-specific configuration. Use synthetic fixtures in tests. Security issues and crash

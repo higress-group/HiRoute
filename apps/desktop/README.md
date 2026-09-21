@@ -1,6 +1,6 @@
 # HiRoute Desktop
 
-[Simplified Chinese](README.zh-CN.md)
+[简体中文](README.zh-CN.md)
 
 Desktop provides model management, routing configuration, Agent integration, task results,
 and session history. It reaches the real local service through the shared Client Core. See

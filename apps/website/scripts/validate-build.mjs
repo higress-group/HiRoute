@@ -36,7 +36,7 @@ for (const file of htmlFiles) {
 }
 
 for (const file of htmlFiles.filter(file => path.relative(dist, file).startsWith(`en${path.sep}`))) {
-  const html = fs.readFileSync(file, 'utf8').replaceAll('中文', '');
+  const html = fs.readFileSync(file, 'utf8').replaceAll('简体中文', '').replaceAll('中文', '');
   if (/[\u3400-\u9fff]/u.test(html)) throw new Error(`Chinese copy leaked into English page: ${file}`);
 }
 

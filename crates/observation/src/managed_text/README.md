@@ -1,6 +1,6 @@
 # MVP-15 → MVP-20 managed-text internal interface
 
-[Simplified Chinese](README.zh-CN.md)
+[简体中文](README.zh-CN.md)
 
 The entry points are the types in `hiroute_observation::managed_text` and the
 `LocalObservationStore::managed_text_*` methods. They are not public RPCs and do not grant

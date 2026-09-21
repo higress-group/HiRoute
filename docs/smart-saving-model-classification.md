@@ -1,6 +1,6 @@
 # Custom decision service for smart saving
 
-[Simplified Chinese](smart-saving-model-classification.zh-CN.md)
+[简体中文](smart-saving-model-classification.zh-CN.md)
 
 Smart saving uses HiRoute's deterministic built-in rules by default. To use a custom policy,
 select “Custom decision service” in the plan editor and enter its address. Authentication may
