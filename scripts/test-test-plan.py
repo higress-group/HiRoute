@@ -20,7 +20,8 @@ class SelectionTests(unittest.TestCase):
                               'scripts/desktop-pilot.py', 'docs/validation-routing.md', '.github/workflows/gateway-core.yml'])
         self.assertFalse(result['rust'])
         self.assertFalse(result['frontend'])
-        for name in ('test-validation.py', 'test-local-rust.py', 'test-remote-rust.py', 'test-desktop-pilot.py', 'test-pilot-builds.py'):
+        for name in ('test-validation.py', 'test-local-rust.py', 'test-remote-rust.py',
+                     'test-ci-shards.py', 'test-desktop-pilot.py', 'test-pilot-builds.py'):
             self.assertIn(['python3', 'scripts/' + name], result['commands'])
         mixed = plan.select(['scripts/validation.py', 'crates/daemon/src/lib.rs'])
         self.assertTrue(mixed['rust'])

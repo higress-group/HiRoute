@@ -42,6 +42,7 @@ VALIDATION_TOOLING = {"scripts/validation.py", "scripts/validation-host.py", "sc
                       ".github/workflows/gateway-core.yml",
                       "scripts/validation-report.py", "scripts/test-validation-report.py",
                       "scripts/ci-run.py", "scripts/test-ci-run.py",
+                      "scripts/ci-shards.py", "scripts/test-ci-shards.py",
                       "scripts/pilot-builds.py", "scripts/test-pilot-builds.py",
                       "scripts/desktop-pilot.py", "scripts/test-desktop-pilot.py",
                       "scripts/local-rust.py", "scripts/test-local-rust.py",
@@ -179,7 +180,7 @@ def select(paths, full=False):
     if validation_tooling:
         commands.extend([["python3", "scripts/" + name] for name in
                          ("test-validation.py", "test-validation-report.py", "test-local-rust.py", "test-remote-rust.py", "test-validation-schedule.py",
-                          "test-ci-run.py", "test-desktop-pilot.py", "test-pilot-builds.py")])
+                          "test-ci-run.py", "test-ci-shards.py", "test-desktop-pilot.py", "test-pilot-builds.py")])
     if full or paths:
         commands.append(["python3", "scripts/test-contract-convergence.py"])
         commands.append(["python3", "scripts/check-contract-convergence.py"])

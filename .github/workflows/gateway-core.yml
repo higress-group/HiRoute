@@ -9,6 +9,7 @@ permissions:
   contents: read
 env:
   PYTHONDONTWRITEBYTECODE: '1'
+  CARGO_INCREMENTAL: '0'
 jobs:
   selection:
     runs-on: ubuntu-latest
@@ -16,6 +17,7 @@ jobs:
       rust: ${{ steps.plan.outputs.rust }}
       frontend: ${{ steps.plan.outputs.frontend }}
       native_required: ${{ steps.plan.outputs.native_required }}
+      backend_matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +31,13 @@ jobs:
         run: |
           args=(--full)
           if [[ -n "$BASE_SHA" ]]; then args=(--base "$BASE_SHA"); fi
-          python3 scripts/test-plan.py "${args[@]}" --github-output
+          python3 scripts/test-plan.py "${args[@]}" --github-output | tee "$RUNNER_TEMP/test-plan.json"
+      - id: shards
+        name: Validate and select backend shards
+        run: |
+          python3 scripts/test-ci-shards.py
+          python3 scripts/ci-shards.py check
+          python3 scripts/ci-shards.py matrix --plan "$RUNNER_TEMP/test-plan.json" --github-output
       - if: steps.plan.outputs.native_required == 'true'
         run: echo 'Native Desktop changed. Hosted backend/frontend checks do not replace macOS platform validation.' >> "$GITHUB_STEP_SUMMARY"
       - name: Selected tooling checks when no backend job is needed
@@ -46,12 +54,16 @@ jobs:
           name: tooling-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/ci
           if-no-files-found: ignore
-  backend:
+  backend_shard:
+    name: backend-shard (${{ matrix.shard }})
     needs: selection
     if: needs.selection.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.selection.outputs.backend_matrix) }}
     runs-on:
-      group: Default Larger Runners
-      labels: ubuntu-latest-8-cores
+      group: Default
+      labels: cncf-ubuntu-16-64-x86
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -60,8 +72,10 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/ci-setup
       - name: CI adapter tests
+        if: matrix.shard == 'quality' || matrix.shard == 'affected'
         run: python3 scripts/test-ci-run.py && python3 scripts/test-rust-file-size.py
       - name: Rust size boundary
+        if: matrix.shard == 'quality' || matrix.shard == 'affected'
         env:
           STRUCTURE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -72,19 +86,37 @@ jobs:
             args=(--base HEAD^)
           fi
           python3 scripts/ci-run.py --name structure -- bash scripts/check-rust-file-size.sh "${args[@]}"
-      - name: Selected Rust checks (full short set on main)
+      - name: Selected backend shard
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          args=(--full)
-          if [[ -n "$BASE_SHA" ]]; then args=(--base "$BASE_SHA"); fi
-          python3 scripts/test-plan.py "${args[@]}" --run-ci
+          scope=(--full)
+          if [[ -n "$BASE_SHA" ]]; then scope=(--base "$BASE_SHA"); fi
+          python3 scripts/ci-shards.py run --shard '${{ matrix.shard }}' "${scope[@]}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: backend-${{ github.run_id }}-${{ github.run_attempt }}
+          name: backend-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/ci
           if-no-files-found: warn
+  backend:
+    needs: [selection, backend_shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected backend shard
+        env:
+          SELECTION_RESULT: ${{ needs.selection.result }}
+          RUST_SELECTED: ${{ needs.selection.outputs.rust }}
+          SHARD_RESULT: ${{ needs.backend_shard.result }}
+        run: |
+          test "$SELECTION_RESULT" = success
+          if [[ "$RUST_SELECTED" == true ]]; then
+            test "$SHARD_RESULT" = success
+          else
+            test "$SHARD_RESULT" = skipped
+          fi
   frontend:
     needs: selection
     if: needs.selection.outputs.frontend == 'true'
