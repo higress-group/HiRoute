@@ -5,9 +5,9 @@ const prefix = en ? '/en' : '';
 ---
 <aside class="docs-nav" aria-label={en ? 'HiRoute documentation' : 'HiRoute 文档'}>
   <span>{en ? 'GET STARTED' : '开始使用'}</span>
-  <a class:list={{active:active === 'quickstart'}} href={`${prefix}/docs/`}>Quickstart</a>
+  <a class:list={{active:active === 'quickstart'}} href={`${prefix}/docs/`}>{en ? 'Quickstart' : '快速开始'}</a>
   <a class:list={{active:active === 'install-macos'}} href={`${prefix}/docs/install-macos/`}>{en ? 'Install on macOS' : 'macOS 安装与首次启动'}</a>
-  <a class:list={{active:active === 'install-linux'}} href={`${prefix}/docs/install-linux/`}>{en ? 'Linux headless' : 'Linux headless 安装'}</a>
+  <a class:list={{active:active === 'install-linux'}} href={`${prefix}/docs/install-linux/`}>{en ? 'Linux headless' : 'Linux 无界面版安装'}</a>
 
   <span>{en ? 'USE HIROUTE' : '使用 HIROUTE'}</span>
   <a class:list={{active:active === 'model-routing'}} href={`${prefix}/docs/model-routing/`}>{en ? 'Smart model routing' : '智能模型路由'}</a>

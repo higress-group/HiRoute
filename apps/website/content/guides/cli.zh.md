@@ -1,11 +1,11 @@
 # HiRoute CLI
 
-HiRoute CLI 是 HiRoute 本机服务的正式终端入口，可连接 Desktop，也可以作为 Linux headless 的完整管理界面。模型来源、智能路由、Agent 接入、会话观测和 Worker 任务都复用与 Desktop 相同的生产路径，不存在第二套 headless 控制面。
+HiRoute CLI 是 HiRoute 本机服务的正式终端入口，可连接桌面应用，也可以作为 Linux 无界面版的完整管理界面。模型来源、智能路由、Agent 接入、会话观测和 Worker 任务都复用与桌面应用相同的生产路径，不存在第二套无界面控制面。
 
 ## 安装与检查
 
-- macOS Desktop：打开“设置” → “CLI” → “终端入口”，选择“安装”。
-- Linux headless：按 [Linux headless 安装](/docs/install-linux/) 使用官网一行命令安装，再显式启动服务。
+- macOS 桌面应用：打开“设置” → “CLI” → “终端入口”，选择“安装”。
+- Linux 无界面版：按 [Linux 无界面版安装](/docs/install-linux/) 使用官网一行命令安装，再显式启动服务。
 
 如果 PATH 不包含入口目录，把下面一行加入 shell 配置后重新打开终端：
 
@@ -21,7 +21,7 @@ hiroute schema list --output json
 hiroute schema show --command-id worker.exec --output json
 ```
 
-CLI 入口与本机服务状态相互独立。如果命令提示服务不可用，Desktop 用户先打开应用；standalone 用户运行 `hiroute service status`，并在需要时运行 `hiroute service start`。CLI 不会替你自动启动服务或重放失败请求。
+CLI 入口与本机服务状态相互独立。如果命令提示服务不可用，桌面应用用户先打开应用；独立服务版（standalone）用户运行 `hiroute service status`，并在需要时运行 `hiroute service start`。CLI 不会替你自动启动服务或重放失败请求。
 
 ## 两层命令合同
 
@@ -46,7 +46,7 @@ hiroute routing apply --help
 
 ## 管理模型、路由与 Agent
 
-当前 Released CLI 支持完整 headless 闭环：
+当前已发布的 CLI 支持完整无界面闭环：
 
 - `compute scan/list/show` 发现和读取模型来源；`compute connection options/test/preview/apply/authorize` 检查并保存连接。
 - `models show` 查看候选模型能力。

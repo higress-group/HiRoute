@@ -2,7 +2,7 @@
 
 智能模型路由决定一次 Agent 工作在当前阶段使用哪个模型。HiRoute 只在允许重选的自然边界做决定；普通工具续轮保持原模型，让同一阶段可以持续复用前缀缓存。
 
-下面以 Desktop 页面说明产品概念。Linux headless 使用相同的路由合同，通过 `routing options/list/show/preview/apply` 完成配置；先阅读 [Linux headless 安装](/docs/install-linux/) 和 [HiRoute CLI](/docs/cli/)，并以当前安装返回的 schema 为准。
+下面以桌面应用页面说明产品概念。Linux 无界面版使用相同的路由合同，通过 `routing options/list/show/preview/apply` 完成配置；先阅读 [Linux 无界面版安装](/docs/install-linux/) 和 [HiRoute CLI](/docs/cli/)，并以当前安装返回的 schema 为准。
 
 ## 先选择一种路由模式
 

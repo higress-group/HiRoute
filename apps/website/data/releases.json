@@ -6,7 +6,7 @@
       "channel": "stable",
       "published_at": "2026-09-21T05:14:26Z",
       "notes": {
-        "zh": "HiRoute 首个公开 MVP：提供 macOS Desktop、Linux headless CLI、智能模型路由、Agent 任务路由与可扩展 Decision API。",
+        "zh": "HiRoute 首个公开 MVP：提供 macOS 桌面应用、Linux 无界面 CLI、智能模型路由、Agent 任务路由与可扩展 Decision API。",
         "en": "HiRoute's first public MVP with macOS Desktop, Linux headless CLI, intelligent model routing, Agent task routing, and an extensible Decision API."
       },
       "artifacts": [
