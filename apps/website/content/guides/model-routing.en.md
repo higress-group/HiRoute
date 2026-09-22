@@ -31,7 +31,7 @@ The service receives accepted assistant text plus ordered tool names and coarse 
 
 ## Understand decision boundaries
 
-New user input creates a decision opportunity. During autonomous work, HiRoute also chooses again—and may assess the previous stage—whenever ContextHold says the current context boundary permits a switch. The client does not need to report a separate “compaction happened” signal. Consecutive tool continuations stay within the current stage.
+New user input creates a decision opportunity. During autonomous work, compaction and the context rebuild that follows provide another natural opportunity to choose again and assess the previous stage. HiRoute's routing engine determines whether the existing decision can still be inherited; the client does not need to detect or report compaction separately. Consecutive tool continuations stay within the current stage.
 
 A new decision does not force a model change. HiRoute can keep the existing branch when it still fits. Different models cannot share a KV cache, but deciding at a boundary where context already needs to be rebuilt avoids breaking a stable prefix merely to classify an ordinary tool continuation.
 

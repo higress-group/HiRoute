@@ -2,8 +2,8 @@
 const boundaries = document.documentElement.lang === 'en' ? {
   compaction: {
     kicker: 'A decision point during autonomous work',
-    title: 'A rebuilt context is a chance to choose again.',
-    copy: 'When ContextHold permits a switch, HiRoute reassesses the work ahead; the client need not send a separate compaction signal.',
+    title: 'After context compaction, choose again.',
+    copy: 'Compaction rebuilds a long session around a new prefix. HiRoute uses that moment to assess the prior stage and the work ahead; the client does not need to detect or report compaction separately.',
     assessment: 'Assess the work already performed by model A',
     choice: 'Choose the primary branch; model B takes over'
   },
@@ -17,8 +17,8 @@ const boundaries = document.documentElement.lang === 'en' ? {
 } : {
   compaction: {
     kicker: '自主执行中的决策机会',
-    title: '重建上下文时，可以重新选择。',
-    copy: 'ContextHold 判断当前边界允许切换时，HiRoute 重新评估下一段工作；不要求客户端额外报告“发生了压缩”。',
+    title: '上下文压缩后，可以重新选择。',
+    copy: '长会话压缩并重建上下文时，可复用前缀本来就会变化。HiRoute 利用这个时机评估上一阶段和后续工作；客户端无需额外识别或上报压缩事件。',
     assessment: '回看模型 A 已经完成的执行片段',
     choice: '选择主力分支，让模型 B 接续'
   },

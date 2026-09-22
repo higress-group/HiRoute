@@ -5,6 +5,7 @@ const {
   fullWidth = false,
 } = Astro.props;
 const english = language === 'en';
+const githubUrl = 'https://github.com/higress-group/HiRoute';
 const canonical = new URL(path, Astro.site);
 const alternate = new URL(alternatePath, Astro.site);
 const zhPath = english ? alternatePath : path;
@@ -48,6 +49,7 @@ const nav = english ? [
       </a>
       <nav class="nav" aria-label={english ? 'Primary navigation' : '主要导航'}>
         {nav.map(([label, href]) => <a href={href}>{label}</a>)}
+        <a class="nav-github" href={githubUrl} target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
         <div class="language-switch" aria-label={english ? 'Language' : '语言'}>
           <a data-language lang="zh-CN" hreflang="zh-CN" href={zhPath} aria-current={!english ? 'page' : undefined}>中文</a>
           <a data-language lang="en" hreflang="en" href={enPath} aria-current={english ? 'page' : undefined}>EN</a>
@@ -64,6 +66,7 @@ const nav = english ? [
       <div class="footer-links">
         <a href={english ? '/en/docs/' : '/docs/'}>{english ? 'Docs' : '文档'}</a>
         <a href={english ? '/en/changelog/' : '/changelog/'}>{english ? 'Changelog' : '更新日志'}</a>
+        <a href={githubUrl} target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
     </footer>
   </body>

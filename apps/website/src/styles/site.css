@@ -19,6 +19,8 @@ section{scroll-margin-top:28px}
 .wordmark .brand-lettering{width:142px;height:auto}
 .nav{display:flex;align-items:center;gap:29px;font-size:14px}
 .nav a:hover{color:#475dd8}
+.nav .nav-github{display:inline-flex;align-items:center;gap:5px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;font-weight:600}
+.nav .nav-github:hover{border-color:#aeb8e8;background:#eef0fb}
 .language-switch{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:6px;flex:none}
 .language-switch a{font-size:11px;padding:5px 7px;border-radius:3px;color:var(--muted)}
 .language-switch a[aria-current=page]{background:#e6eafb;color:#344ab8;font-weight:600}
