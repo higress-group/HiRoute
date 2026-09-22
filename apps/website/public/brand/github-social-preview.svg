@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">HiRoute repository social preview</title>
+  <desc id="description">HiRoute display wordmark and a staged routing path on a deep graphite background.</desc>
+  <defs>
+    <linearGradient id="background" x1="82" y1="42" x2="1198" y2="598" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#11141D"/>
+      <stop offset=".58" stop-color="#0B0D12"/>
+      <stop offset="1" stop-color="#10121A"/>
+    </linearGradient>
+    <linearGradient id="route" x1="427" y1="190" x2="864" y2="126" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5A6FE8"/>
+      <stop offset=".58" stop-color="#9AA7FF"/>
+      <stop offset="1" stop-color="#8B73E4"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="390" y1="500" x2="890" y2="500" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5A6FE8" stop-opacity="0"/>
+      <stop offset=".14" stop-color="#697DF0"/>
+      <stop offset=".53" stop-color="#9AA7FF"/>
+      <stop offset=".86" stop-color="#8B73E4"/>
+      <stop offset="1" stop-color="#8B73E4" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(640 265) rotate(90) scale(286 518)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5A6FE8" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#5A6FE8" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur" x="191" y="-44" width="898" height="618" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="56"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#background)"/>
+  <ellipse cx="640" cy="265" rx="337" ry="197" fill="url(#glow)" filter="url(#blur)"/>
+
+  <g opacity=".22" stroke="#7683AD" stroke-width="1">
+    <path d="M80 104H1200"/>
+    <path d="M80 536H1200"/>
+    <path d="M176 64V576"/>
+    <path d="M1104 64V576"/>
+  </g>
+
+  <!-- Complete display wordmark. Geometry is shared with brand/display-wordmark.svg. -->
+  <g transform="translate(345 126)">
+    <path d="M223 61C288 20 398 -7 465 6C499 13 507 39 489 62C486 66 482 69 478 72L474 72C486 58 491 41 480 29C454 -3 330 15 223 61Z" fill="url(#route)"/>
+    <g fill="#F3F5FA" fill-rule="evenodd" transform="translate(8 58)">
+      <path d="M0 16H18V57H69V16H87V120H69V75H18V120H0Z"/>
+      <path d="M103 19Q103 16 106 16H118Q121 16 121 19V31Q121 34 118 34H106Q103 34 103 31ZM103 43H121V120H103Z"/>
+      <path d="M141 16H182C210 16 224 29 224 51C224 67 215 78 201 82L229 120H206L180 84H160V120H141ZM160 33V67H181C196 67 205 62 205 50C205 39 197 33 181 33Z"/>
+      <path d="M279 41C303 41 320 58 320 82C320 106 303 122 279 122C255 122 238 106 238 82C238 58 255 41 279 41ZM279 58C265 58 256 67 256 82C256 97 265 106 279 106C293 106 302 97 302 82C302 67 293 58 279 58Z"/>
+      <path d="M335 43H353V87C353 100 359 106 370 106C382 106 390 97 390 83V43H408V120H391V110C385 118 376 122 365 122C346 122 335 110 335 90Z"/>
+      <path d="M436 22H454V43H477V59H454V93C454 102 458 106 466 106C470 106 474 105 478 103V119C473 121 467 122 461 122C444 122 436 113 436 96V59H424V43H436Z"/>
+      <path d="M570 85H509C510 98 519 106 533 106C543 106 551 103 558 97L569 108C559 118 548 122 533 122C507 122 491 106 491 82C491 58 507 41 531 41C554 41 571 56 571 80C571 82 571 83 570 85ZM509 71H553C551 61 544 56 532 56C521 56 513 62 509 71Z"/>
+    </g>
+  </g>
+
+  <text x="640" y="385" fill="#B9C1D4" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="27" font-weight="450" letter-spacing=".25" text-anchor="middle">Intelligent routing for long-horizon agents</text>
+
+  <g aria-hidden="true">
+    <path d="M390 500H890" stroke="url(#trail)" stroke-width="2"/>
+    <circle cx="445" cy="500" r="6" fill="#697DF0"/>
+    <circle cx="575" cy="500" r="6" fill="#7E8FF7"/>
+    <circle cx="705" cy="500" r="6" fill="#9AA7FF"/>
+    <circle cx="835" cy="500" r="6" fill="#8B73E4"/>
+    <circle cx="705" cy="500" r="15" stroke="#9AA7FF" stroke-opacity=".22"/>
+  </g>
+  <text x="640" y="554" fill="#727B91" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" letter-spacing="2" text-anchor="middle">CHOOSE AGENTS BY TASK · CHOOSE MODELS BY STAGE</text>
+</svg>
