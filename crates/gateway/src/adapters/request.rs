@@ -648,7 +648,6 @@ fn serialize_messages(
                 ContentPart::ToolResult {
                     logical_id,
                     tool_kind,
-                    namespace,
                     output,
                     status,
                 } => {
@@ -657,7 +656,6 @@ fn serialize_messages(
                             "Messages cannot express custom tool results".into(),
                         ));
                     }
-                    reject_namespace(namespace, IngressProtocol::Messages)?;
                     let mut tool_result = json!({
                         "type": "tool_result",
                         "tool_use_id": native_tool_id(request, profile, logical_id)?,
@@ -704,13 +702,6 @@ fn validate_message_shapes(
     target: IngressProtocol,
 ) -> Result<(), ProtocolAdapterError> {
     let mut projected = std::collections::BTreeMap::new();
-    for id in request.continuation_logical_ids()? {
-        let target_id =
-            super::continuation::project_tool_id(&id, request.ingress_protocol, target)?;
-        if projected.insert(target_id, id).is_some() {
-            return Err(ModelIrError::ToolContinuationConflict.into());
-        }
-    }
     if (!request.responses_annotations.is_empty()
         || !request.responses_search_history.is_empty()
         || request.web_search.is_some()
@@ -778,6 +769,22 @@ fn validate_message_shapes(
         let mut native_items = 0_usize;
         let mut message_parts = 0_usize;
         for part in &message.content {
+            if request.ingress_protocol != target
+                && let ContentPart::ToolCall { logical_id, .. }
+                | ContentPart::ToolResult { logical_id, .. } = part
+            {
+                let target_id = super::continuation::project_tool_id(
+                    logical_id,
+                    request.ingress_protocol,
+                    target,
+                )?;
+                if projected
+                    .insert(target_id, logical_id)
+                    .is_some_and(|original| original != logical_id)
+                {
+                    return Err(ModelIrError::ToolContinuationConflict.into());
+                }
+            }
             match part {
                 ContentPart::Text { .. } => message_parts += 1,
                 ContentPart::Image { .. } => {

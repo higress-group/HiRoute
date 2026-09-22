@@ -5,7 +5,7 @@ use responses::{decode_responses_input, decode_responses_tools};
 #[path = "ingress/continuation.rs"]
 mod continuation;
 pub use continuation::IngressRequestBindings;
-use continuation::{pair_tool_history, validate_bindings};
+use continuation::validate_bindings;
 
 use std::collections::BTreeSet;
 
@@ -38,7 +38,7 @@ pub fn decode_ingress_request_with_bindings(
     }) {
         return Err(ModelIrError::ProviderStateNotPortable);
     }
-    let mut request = match protocol {
+    let request = match protocol {
         IngressProtocol::Responses => {
             decode_responses(body, bindings.provider_state_owner.as_ref())
         }
@@ -47,7 +47,6 @@ pub fn decode_ingress_request_with_bindings(
         }
         IngressProtocol::Messages => decode_messages(body, bindings.provider_state_owner.as_ref()),
     }?;
-    pair_tool_history(&mut request)?;
     Ok(request)
 }
 
@@ -370,7 +369,6 @@ fn decode_chat_message(
             content: vec![ContentPart::ToolResult {
                 logical_id: required_string(object, "tool_call_id")?,
                 tool_kind: ToolKindV1::Function,
-                namespace: None,
                 output: decode_tool_output(
                     object
                         .get("content")
@@ -653,7 +651,6 @@ fn decode_messages_content(
             Ok(ContentPart::ToolResult {
                 logical_id: required_string(object, "tool_use_id")?,
                 tool_kind: ToolKindV1::Function,
-                namespace: None,
                 output: decode_tool_output(
                     object
                         .get("content")

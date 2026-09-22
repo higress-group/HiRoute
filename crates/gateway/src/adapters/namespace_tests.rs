@@ -109,7 +109,6 @@ fn responses_namespaced_tool_calls_roundtrip_trusted_namespace_and_native_ids() 
         ContentPart::ToolResult {
             logical_id: calls[0].0.clone(),
             tool_kind: crate::server::core_runtime::model_ir::ToolKindV1::Function,
-            namespace: Some("group-a".into()),
             output: crate::server::core_runtime::model_ir::ToolOutput::Text("done-a".into()),
             status: crate::server::core_runtime::model_ir::ToolResultStatusV1::Failed,
         }

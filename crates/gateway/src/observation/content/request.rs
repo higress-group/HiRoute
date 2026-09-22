@@ -264,7 +264,6 @@ impl RequestObservation {
                 }
                 ContentPart::ToolResult {
                     logical_id,
-                    namespace,
                     output,
                     status,
                     ..
@@ -287,18 +286,6 @@ impl RequestObservation {
                             "text/plain; charset=utf-8",
                             b"true",
                         );
-                        part_ordinal = part_ordinal.saturating_add(1);
-                    }
-                    if let Some(namespace) = namespace {
-                        self.append_value(
-                            replay,
-                            message_ordinal,
-                            part_ordinal,
-                            role,
-                            "tool_result_namespace",
-                            "text/plain; charset=utf-8",
-                            namespace,
-                        )?;
                         part_ordinal = part_ordinal.saturating_add(1);
                     }
                     match output {

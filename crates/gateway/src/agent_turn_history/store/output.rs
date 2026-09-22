@@ -8,7 +8,7 @@ use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1, WebS
 pub(super) struct AcceptedOutput {
     step: Option<usize>,
     blocks: BTreeMap<u32, usize>,
-    tools: BTreeMap<String, (usize, usize)>,
+    tools: BTreeMap<String, Option<(usize, usize)>>,
 }
 
 impl AcceptedOutput {
@@ -28,13 +28,25 @@ impl AcceptedOutput {
     }
 }
 
-pub(super) fn apply_tool_results(active: &mut ActiveTurn, results: &BTreeMap<String, ToolStatus>) {
-    for (id, status) in results {
-        if let Some(&(step, part)) = active.output.tools.get(id)
-            && let Some(VisibleContentPart::ToolActivity { status: target, .. }) = active
-                .steps
-                .get_mut(step)
-                .and_then(|step| step.get_mut(part))
+pub(super) fn apply_tool_results(
+    active: &mut ActiveTurn,
+    results: &[(usize, String, ToolStatus)],
+    previous_message_count: usize,
+) {
+    for (message_index, id, status) in results {
+        if *message_index < previous_message_count {
+            continue;
+        }
+        // Keep an ambiguous ID unknown for the rest of this turn: a late result
+        // from either old call must never be attributed to a later reuse.
+        let Some(Some((step, part))) = active.output.tools.get(id).copied() else {
+            continue;
+        };
+        active.output.tools.remove(id);
+        if let Some(VisibleContentPart::ToolActivity { status: target, .. }) = active
+            .steps
+            .get_mut(step)
+            .and_then(|step| step.get_mut(part))
         {
             *target = *status;
         }
@@ -157,10 +169,17 @@ impl AgentTurnHistoryStore {
                 _ => active.capture_partial = true,
             }
             if let Some(id) = tool_id {
+                // Ambiguous concurrent reuse affects observation only, never forwarding.
                 active
                     .output
                     .tools
-                    .insert(id.clone(), (step_index, part_index));
+                    .entry(id.clone())
+                    .and_modify(|position| {
+                        if *position != Some((step_index, part_index)) {
+                            *position = None;
+                        }
+                    })
+                    .or_insert(Some((step_index, part_index)));
             }
             let old = entry.accounted_bytes;
             entry.accounted_bytes = entry_bytes(&ticket.key, entry);

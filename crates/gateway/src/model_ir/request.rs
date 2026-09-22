@@ -6,8 +6,6 @@ use serde_json::Value;
 use crate::content_ref::ContentValue;
 use crate::server::request_plan::IngressProtocol;
 
-use super::ModelIrError;
-
 pub const MODEL_REQUEST_IR_SCHEMA: &str = "hiroute.model-request-ir/v1";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -232,52 +230,6 @@ impl ModelRequestIRV1 {
         requirements.image_media_types = media_types.into_iter().collect();
         requirements
     }
-
-    /// Returns every client-visible Tool identity that requires trusted
-    /// continuation recovery. One historical call and one matching result are
-    /// the only unambiguous repeated use of the same logical ID.
-    pub fn continuation_logical_ids(&self) -> Result<Vec<String>, ModelIrError> {
-        let mut identities = std::collections::BTreeMap::<String, (bool, bool)>::new();
-        for search in self.responses_search_history.values() {
-            if identities
-                .insert(search.id.clone(), (true, false))
-                .is_some()
-            {
-                return Err(ModelIrError::ToolContinuationConflict);
-            }
-        }
-        for part in self
-            .instructions
-            .iter()
-            .flat_map(|instruction| instruction.content.iter())
-            .chain(
-                self.messages
-                    .iter()
-                    .flat_map(|message| message.content.iter()),
-            )
-        {
-            let (logical_id, is_call) = match part {
-                ContentPart::ToolCall { logical_id, .. } => (logical_id, true),
-                ContentPart::ToolResult { logical_id, .. } => (logical_id, false),
-                ContentPart::Text { .. }
-                | ContentPart::Image { .. }
-                | ContentPart::ProviderState { .. } => continue,
-            };
-            if logical_id.trim().is_empty() {
-                return Err(ModelIrError::ToolContinuationConflict);
-            }
-            let presence = identities.entry(logical_id.clone()).or_default();
-            let duplicate = if is_call {
-                std::mem::replace(&mut presence.0, true)
-            } else {
-                std::mem::replace(&mut presence.1, true)
-            };
-            if duplicate {
-                return Err(ModelIrError::ToolContinuationConflict);
-            }
-        }
-        Ok(identities.into_keys().collect())
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -332,8 +284,6 @@ pub enum ContentPart {
     ToolResult {
         logical_id: String,
         tool_kind: ToolKindV1,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        namespace: Option<ContentValue>,
         output: ToolOutput,
         #[serde(default, skip_serializing_if = "ToolResultStatusV1::is_unknown")]
         status: ToolResultStatusV1,

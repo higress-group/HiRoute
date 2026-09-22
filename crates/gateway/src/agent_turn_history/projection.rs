@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::io::Read;
 
 use super::{AgentTurnHistoryError, ToolStatus, VisibleContentPart};
@@ -11,7 +10,7 @@ use crate::server::core_runtime::model_ir::{
 pub(super) struct AnalyzedRequest {
     pub(super) message_count: usize,
     pub(super) turns: Vec<AnalyzedTurn>,
-    pub(super) tool_results: BTreeMap<String, ToolStatus>,
+    pub(super) tool_results: Vec<(usize, String, ToolStatus)>,
 }
 
 pub(super) struct AnalyzedTurn {
@@ -77,22 +76,23 @@ pub(super) fn project_user(
         .collect()
 }
 
-fn project_tool_results(request: &ModelRequestIRV1) -> BTreeMap<String, ToolStatus> {
-    let mut results = BTreeMap::new();
-    for message in &request.messages {
+fn project_tool_results(request: &ModelRequestIRV1) -> Vec<(usize, String, ToolStatus)> {
+    let mut results = Vec::new();
+    for (message_index, message) in request.messages.iter().enumerate() {
         for part in &message.content {
             if let ContentPart::ToolResult {
                 logical_id, status, ..
             } = part
             {
-                results.insert(
+                results.push((
+                    message_index,
                     logical_id.clone(),
                     match status {
                         ToolResultStatusV1::Completed => ToolStatus::Completed,
                         ToolResultStatusV1::Failed => ToolStatus::Failed,
                         ToolResultStatusV1::Unknown => ToolStatus::Unknown,
                     },
-                );
+                ));
             }
         }
     }

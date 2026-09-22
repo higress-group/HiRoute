@@ -211,6 +211,50 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn repeated_native_ids_preserve_each_result_without_history_pairing() {
+        let document = json!({"model":"alias","input":[
+            {"type":"function_call","call_id":"same","name":"lookup","arguments":"{}"},
+            {"type":"function_call_output","call_id":"same","output":"first"},
+            {"type":"function_call","call_id":"same","name":"lookup","arguments":"{}"},
+            {"type":"function_call_output","call_id":"same","output":"second"}
+        ]});
+        let request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
+        for target in [IngressProtocol::Responses, IngressProtocol::Messages] {
+            let profile = CandidateProtocolProfile::exact_portable_path(
+                IngressProtocol::Responses,
+                target,
+                "candidate",
+                fixed_reasoning("fixed"),
+            );
+            let wire = project_candidate_request(&request, &profile).unwrap().body;
+            if target == IngressProtocol::Responses {
+                assert_eq!(wire["input"], document["input"]);
+            } else {
+                assert_eq!(wire["messages"][1]["content"][0]["content"], "first");
+                assert_eq!(wire["messages"][3]["content"][0]["content"], "second");
+                assert_eq!(wire["messages"][3]["content"][0]["tool_use_id"], "same");
+            }
+        }
+        // The wire item defines its kind; a same-ID call does not override it.
+        let result_only = json!({"model":"alias","input":[
+            {"type":"function_call","call_id":"same","namespace":"group","name":"lookup","arguments":"{}"},
+            {"type":"custom_tool_call_output","call_id":"same","output":"native output"},
+            {"type":"function_call_output","call_id":"unknown","output":"standalone"}
+        ]});
+        let request = decode_ingress_request(IngressProtocol::Responses, &result_only).unwrap();
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "candidate",
+            fixed_reasoning("fixed"),
+        );
+        assert_eq!(
+            project_candidate_request(&request, &profile).unwrap().body["input"],
+            result_only["input"]
+        );
+    }
+
+    #[test]
     fn tool_history_pairs_without_owner_and_rejects_projected_collisions() {
         let id = "call.with-punctuation";
         let projected_id =

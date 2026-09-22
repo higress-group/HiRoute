@@ -294,7 +294,12 @@ fn production_native_tool_history_survives_restart_with_request_authentication()
         ],
     );
     restarted.wait_ready();
-    let resumed = request(address, "continuation-token", &continuation);
+    let mut repeated = continuation.clone();
+    repeated["input"].as_array_mut().unwrap().extend([
+        json!({"type":"function_call","call_id":logical_id,"namespace":"weather-services","name":"weather","arguments":"{}"}),
+        json!({"type":"function_call_output","call_id":logical_id,"output":"second occurrence"}),
+    ]);
+    let resumed = request(address, "continuation-token", &repeated);
     assert_eq!(
         resumed.status,
         200,
@@ -306,6 +311,9 @@ fn production_native_tool_history_survives_restart_with_request_authentication()
     let resumed_body: Value = serde_json::from_slice(http_body(&resumed_requests[3])).unwrap();
     assert_eq!(resumed_body["input"][0]["call_id"], "provider-weather-7");
     assert_eq!(resumed_body["input"][1]["call_id"], "provider-weather-7");
+    assert_eq!(resumed_body["input"][1]["output"], large_result);
+    assert_eq!(resumed_body["input"][2]["call_id"], "provider-weather-7");
+    assert_eq!(resumed_body["input"][3]["output"], "second occurrence");
     restarted.stop();
     receipt.mark_assertion("protocol.continuation_restart_native_history");
     receipt.finish();

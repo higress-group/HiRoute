@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent_turn_history::ToolStatus;
 use hiroute_gateway_core::runtime::body::BudgetTree;
 use serde_json::json;
 use std::path::PathBuf;
@@ -109,7 +110,6 @@ fn tool_result(id: &str, failed: bool) -> CanonicalMessage {
         content: vec![ContentPart::ToolResult {
             logical_id: id.into(),
             tool_kind: ToolKindV1::Function,
-            namespace: Some("functions".into()),
             output: ToolOutput::Text("must not be projected".into()),
             status: if failed {
                 ToolResultStatusV1::Failed
@@ -351,6 +351,201 @@ fn tool_continuation_freezes_branch_and_next_user_starts_one_new_turn() {
 }
 
 #[test]
+fn reused_tool_id_updates_only_the_new_occurrence_from_appended_results() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let key = store.scope_key("workspace", "reused-tool").unwrap();
+    let now = Instant::now();
+    let mut messages = vec![text(MessageRole::User, "Run tools")];
+    let (ticket, history) = new_turn(
+        store
+            .begin(
+                key.clone(),
+                plan(1),
+                &request(messages.clone()),
+                &replay,
+                now,
+            )
+            .unwrap(),
+    );
+    drop(history);
+    store.commit_decision(&ticket, decision("simple")).unwrap();
+    accepted_output::tool(&store, &ticket, "same", "first");
+    let finish = |ticket: &AgentTurnTicket| {
+        store
+            .finish_request(
+                ticket,
+                "request".into(),
+                AgentTurnStatus::Completed,
+                vec![execution("model", "profile", "simple", "request")],
+                false,
+                now,
+            )
+            .unwrap();
+    };
+    let resume = |messages: &[CanonicalMessage]| match store
+        .begin(
+            key.clone(),
+            plan(1),
+            &request(messages.to_vec()),
+            &replay,
+            now,
+        )
+        .unwrap()
+    {
+        AgentTurnBegin::Continuation { ticket, .. } => ticket,
+        _ => panic!("expected continuation"),
+    };
+    let statuses = || {
+        let inner = store.inner.lock();
+        inner.entries[&key]
+            .active
+            .steps
+            .iter()
+            .flatten()
+            .filter_map(|part| match part {
+                VisibleContentPart::ToolActivity { status, .. } => Some(*status),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    finish(&ticket);
+    messages.extend([tool_call("same", "first"), tool_result("same", true)]);
+    let second = resume(&messages);
+    accepted_output::tool(&store, &second, "same", "second");
+    finish(&second);
+    assert_eq!(statuses(), vec![ToolStatus::Failed, ToolStatus::Unknown]);
+
+    // Retrying the same transcript must not apply its old failed result to second.
+    let retry = resume(&messages);
+    assert_eq!(statuses(), vec![ToolStatus::Failed, ToolStatus::Unknown]);
+    finish(&retry);
+    messages.extend([tool_call("same", "second"), tool_result("same", false)]);
+    let third = resume(&messages);
+    assert_eq!(statuses(), vec![ToolStatus::Failed, ToolStatus::Completed]);
+    accepted_output::tool(&store, &third, "ambiguous", "third");
+    finish(&third);
+    let fourth = resume(&messages);
+    accepted_output::tool(&store, &fourth, "ambiguous", "fourth");
+    finish(&fourth);
+    messages.extend([
+        tool_call("ambiguous", "fourth"),
+        tool_result("ambiguous", false),
+    ]);
+    let fifth = resume(&messages);
+    assert_eq!(
+        statuses(),
+        vec![
+            ToolStatus::Failed,
+            ToolStatus::Completed,
+            ToolStatus::Unknown,
+            ToolStatus::Unknown
+        ]
+    );
+    accepted_output::tool(&store, &fifth, "ambiguous", "fifth");
+    finish(&fifth);
+    messages.extend([
+        tool_call("ambiguous", "fifth"),
+        tool_result("ambiguous", true),
+    ]);
+    let sixth = resume(&messages);
+    assert_eq!(
+        statuses(),
+        vec![
+            ToolStatus::Failed,
+            ToolStatus::Completed,
+            ToolStatus::Unknown,
+            ToolStatus::Unknown,
+            ToolStatus::Unknown
+        ]
+    );
+    finish(&sixth);
+}
+
+#[test]
+fn rebuilt_context_does_not_attribute_shifted_old_result_to_reused_id() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let key = store.scope_key("workspace", "shifted-tool-result").unwrap();
+    let now = Instant::now();
+    let user = text(MessageRole::User, "Run tools");
+    let (first, history) = new_turn(
+        store
+            .begin(
+                key.clone(),
+                plan(1),
+                &request(vec![user.clone()]),
+                &replay,
+                now,
+            )
+            .unwrap(),
+    );
+    drop(history);
+    store.commit_decision(&first, decision("simple")).unwrap();
+    accepted_output::tool(&store, &first, "same", "first");
+    let finish = |ticket: &AgentTurnTicket| {
+        store
+            .finish_request(
+                ticket,
+                "request".into(),
+                AgentTurnStatus::Completed,
+                vec![execution("model", "profile", "simple", "request")],
+                false,
+                now,
+            )
+            .unwrap();
+    };
+    finish(&first);
+    let old_messages = vec![
+        user.clone(),
+        tool_call("same", "first"),
+        tool_result("same", true),
+    ];
+    let AgentTurnBegin::Continuation { ticket: second, .. } = store
+        .begin(
+            key.clone(),
+            plan(1),
+            &request(old_messages.clone()),
+            &replay,
+            now,
+        )
+        .unwrap()
+    else {
+        panic!("expected continuation");
+    };
+    accepted_output::tool(&store, &second, "same", "second");
+    finish(&second);
+
+    let mut rebuilt = vec![text(MessageRole::Developer, "New instructions")];
+    rebuilt.extend(old_messages);
+    let (_, history) = new_turn(
+        store
+            .begin_with_context(
+                key,
+                plan(1),
+                &request(rebuilt),
+                &replay,
+                ContextDecisionFacts {
+                    history_continues: false,
+                    has_hold_preference: false,
+                },
+                now,
+            )
+            .unwrap(),
+    );
+    let statuses = history.visible_conversation[0]
+        .steps
+        .iter()
+        .flatten()
+        .filter_map(|part| match part {
+            VisibleContentPart::ToolActivity { status, .. } => Some(*status),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(statuses, vec![ToolStatus::Failed, ToolStatus::Unknown]);
+}
+
+#[test]
 fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
@@ -422,7 +617,13 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
     );
     let encoded = serde_json::to_string(&history.visible_conversation).unwrap();
     assert!(encoded.contains("functions.run_tests"));
-    assert!(encoded.contains("failed"));
+    assert_eq!(
+        history.visible_conversation[0].steps,
+        vec![vec![VisibleContentPart::ToolActivity {
+            tool: "functions.run_tests".into(),
+            status: ToolStatus::Unknown,
+        }]]
+    );
     assert_eq!(history.assessment_from, Some(0));
     assert!(!history.history_partial);
     drop(history);

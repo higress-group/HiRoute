@@ -338,7 +338,6 @@ impl Encoder {
                 ContentPart::ToolResult {
                     logical_id,
                     tool_kind,
-                    namespace,
                     output,
                     status,
                 } => {
@@ -348,7 +347,6 @@ impl Encoder {
                         ToolKindV1::Custom => b"custom",
                     });
                     self.bytes(logical_id.as_bytes());
-                    self.optional_string(namespace.as_deref());
                     self.tag(match status {
                         ToolResultStatusV1::Completed => b"completed",
                         ToolResultStatusV1::Failed => b"failed",
@@ -729,6 +727,28 @@ mod tests {
             visible_history(&changed_citation, &key)
                 .unwrap()
                 .digest_at(3)
+        );
+    }
+
+    #[test]
+    fn later_reused_id_does_not_change_earlier_result_fingerprint() {
+        use crate::server::core_runtime::adapters::decode_ingress_request;
+        use serde_json::json;
+        let mut wire = json!({"model":"alias","input":[
+            {"type":"function_call_output","call_id":"same","output":"first"}
+        ]});
+        let first = decode_ingress_request(IngressProtocol::Responses, &wire).unwrap();
+        wire["input"].as_array_mut().unwrap().extend([
+            json!({"type":"function_call","call_id":"same","namespace":"new-group","name":"lookup","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"same","output":"second"}),
+        ]);
+        let continued = decode_ingress_request(IngressProtocol::Responses, &wire).unwrap();
+        let key = [19; 32];
+        assert_eq!(
+            visible_history(&continued, &key)
+                .unwrap()
+                .digest_at(first.messages.len()),
+            Some(visible_history(&first, &key).unwrap().complete_digest())
         );
     }
 

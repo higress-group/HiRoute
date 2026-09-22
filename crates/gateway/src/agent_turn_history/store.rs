@@ -90,6 +90,7 @@ impl Drop for SnapshotPin {
 #[derive(Clone)]
 struct TranscriptCheckpoint {
     active_user_index: usize,
+    message_count: usize,
 }
 
 struct ActiveTurn {
@@ -255,6 +256,7 @@ impl AgentTurnHistoryStore {
             };
             let checkpoint = TranscriptCheckpoint {
                 active_user_index: latest.user_index,
+                message_count: analyzed.message_count,
             };
             let mut entry = SessionEntry {
                 entry_token,
@@ -339,11 +341,16 @@ impl AgentTurnHistoryStore {
                 if entry.active.finalized {
                     output::reopen_finalized(entry, &latest.user);
                 }
-                output::apply_tool_results(&mut entry.active, &analyzed.tool_results);
+                output::apply_tool_results(
+                    &mut entry.active,
+                    &analyzed.tool_results,
+                    entry.checkpoint.message_count,
+                );
                 entry.active.output.next_step();
                 entry.active.last_request_status = AgentTurnStatus::Unknown;
                 entry.checkpoint = TranscriptCheckpoint {
                     active_user_index: latest.user_index,
+                    message_count: analyzed.message_count,
                 };
                 let ticket = AgentTurnTicket {
                     key: key.clone(),
@@ -399,7 +406,13 @@ impl AgentTurnHistoryStore {
                 .entries
                 .get_mut(&key)
                 .ok_or(AgentTurnHistoryError::Integrity)?;
-            output::apply_tool_results(&mut entry.active, &analyzed.tool_results);
+            if context.history_continues {
+                output::apply_tool_results(
+                    &mut entry.active,
+                    &analyzed.tool_results,
+                    entry.checkpoint.message_count,
+                );
+            }
             if let Some(next_segment_id) = next_segment_id {
                 if appended_user && entry.active.last_request_status == AgentTurnStatus::Unknown {
                     entry.active.last_request_status = AgentTurnStatus::Interrupted;
@@ -448,6 +461,7 @@ impl AgentTurnHistoryStore {
             };
             entry.checkpoint = TranscriptCheckpoint {
                 active_user_index: latest.user_index,
+                message_count: analyzed.message_count,
             };
             let ticket = AgentTurnTicket {
                 key: key.clone(),

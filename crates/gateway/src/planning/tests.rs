@@ -388,7 +388,6 @@ fn planner_user_phrase_and_continuations_have_fixed_precedence() {
         content: vec![ContentPart::ToolResult {
             logical_id: "call-1".into(),
             tool_kind: ToolKindV1::Function,
-            namespace: None,
             output: ToolOutput::Text("opaque Tool output".into()),
             status: ToolResultStatusV1::Unknown,
         }],

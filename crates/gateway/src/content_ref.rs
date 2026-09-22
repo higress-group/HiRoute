@@ -358,7 +358,7 @@ fn part_field_count(parts: &[ContentPart]) -> Result<usize, ReplayError> {
         count
             .checked_add(match part {
                 ContentPart::ToolCall { namespace, .. } => 2 + usize::from(namespace.is_some()),
-                ContentPart::ToolResult { namespace, .. } => 1 + usize::from(namespace.is_some()),
+                ContentPart::ToolResult { .. } => 1,
                 ContentPart::Text { .. }
                 | ContentPart::Image { .. }
                 | ContentPart::ProviderState { .. } => 1,

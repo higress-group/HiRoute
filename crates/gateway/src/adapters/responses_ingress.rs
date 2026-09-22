@@ -82,7 +82,6 @@ pub(super) fn decode_responses_input(
                 content: vec![ContentPart::ToolResult {
                     logical_id: required_string(object, "call_id")?,
                     tool_kind: ToolKindV1::Function,
-                    namespace: None,
                     output: decode_tool_output(
                         object
                             .get("output")
@@ -143,7 +142,6 @@ pub(super) fn decode_responses_input(
                 content: vec![ContentPart::ToolResult {
                     logical_id: required_string(object, "call_id")?,
                     tool_kind: ToolKindV1::Custom,
-                    namespace: None,
                     output: decode_tool_output(
                         object
                             .get("output")
