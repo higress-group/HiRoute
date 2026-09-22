@@ -5,7 +5,7 @@ use hiroute_gateway::server::core_runtime::adapters::{
 };
 use hiroute_gateway::server::core_runtime::model_ir::{
     FinishReason, ModelEvent, ModelIrError, ModelStreamEventV1, OpaqueProviderState, ResponseBlock,
-    ResponseBlockKind, ToolIdMapEntryV1, ToolKindV1,
+    ResponseBlockKind,
 };
 use hiroute_gateway::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, Fidelity,
@@ -332,7 +332,6 @@ fn protocol_reviewer_exact_owner_is_required_for_provider_state_and_tool_continu
         &body,
         &IngressRequestBindings {
             provider_state_owner: Some(owner.clone()),
-            tool_id_map: Vec::new(),
         },
     )
     .unwrap();
@@ -462,19 +461,10 @@ fn protocol_reviewer_json_tool_result_uses_exact_native_binding_for_all_targets(
             format!("physical-{target:?}"),
             fixed_reasoning("fixed"),
         );
-        let owner = profile.exact_provider_path().unwrap();
-        let mut request = canonical.clone();
-        request.tool_id_map = vec![ToolIdMapEntryV1 {
-            logical_id: "logical_weather".into(),
-            native_id: format!("native-{target:?}"),
-            kind: ToolKindV1::Function,
-            name: "weather".into(),
-            namespace: None,
-            owner,
-        }];
+        let request = canonical.clone();
         let body = project_candidate_request(&request, &profile).unwrap().body;
         let (native_id, native_wire, output) = native_tool_result(target, &body);
-        assert_eq!(native_id, format!("native-{target:?}"));
+        assert_eq!(native_id, "logical_weather");
         assert_eq!(
             native_wire,
             r#"{"nested":{"a":1,"z":2},"temperature":21,"z":1}"#
@@ -482,15 +472,6 @@ fn protocol_reviewer_json_tool_result_uses_exact_native_binding_for_all_targets(
         assert_eq!(
             output,
             json!({"z":1,"temperature":21,"nested":{"z":2,"a":1}})
-        );
-
-        let mut unbound = request;
-        unbound.tool_id_map.clear();
-        assert_eq!(
-            project_candidate_request(&unbound, &profile)
-                .unwrap_err()
-                .code(),
-            "PROTOCOL_SEMANTICS_UNSUPPORTED"
         );
     }
 
@@ -503,14 +484,6 @@ fn protocol_reviewer_json_tool_result_uses_exact_native_binding_for_all_targets(
     let mut missing_declaration = canonical;
     missing_declaration.tools.clear();
     missing_declaration.responses_tool_order.clear();
-    missing_declaration.tool_id_map = vec![ToolIdMapEntryV1 {
-        logical_id: "logical_weather".into(),
-        native_id: "native-chat-without-declaration".into(),
-        kind: ToolKindV1::Function,
-        name: "weather".into(),
-        namespace: None,
-        owner: profile.exact_provider_path().unwrap(),
-    }];
     assert_eq!(
         project_candidate_request(&missing_declaration, &profile)
             .unwrap_err()
@@ -755,7 +728,7 @@ fn protocol_reviewer_native_tool_ids_are_physical_and_refusal_is_typed_three_by_
         );
         assert!(decoded.response.blocks.iter().any(|block| matches!(
             block,
-            ResponseBlock::ToolCall { logical_id, .. } if logical_id == "hiroute_tool_2"
+            ResponseBlock::ToolCall { logical_id, .. } if native_ids.last().unwrap().contains(logical_id)
         )));
     }
     assert_ne!(native_ids[0], native_ids[1]);
@@ -772,15 +745,14 @@ fn protocol_reviewer_native_tool_ids_are_physical_and_refusal_is_typed_three_by_
             decode_fragmented_for_profile(&profile, false, &native_nonstream(source), &[3, 1]);
         let binding = decoded.response.tool_id_map[0].clone();
         assert_eq!(profile.exact_provider_path().unwrap(), binding.owner);
-        let mut continuation = decode_ingress_request(
+        let continuation = decode_ingress_request(
             IngressProtocol::Responses,
             &json!({
                 "model":"agent/research",
-                "input":[{"type":"function_call_output","call_id":"hiroute_tool_2","output":{"ok":true}}]
+                "input":[{"type":"function_call_output","call_id":binding.native_id,"output":{"ok":true}}]
             }),
         )
         .unwrap();
-        continuation.tool_id_map = vec![binding.clone()];
         let projected = project_candidate_request(&continuation, &profile).unwrap();
         assert_eq!(
             native_tool_result(source, &projected.body).0,

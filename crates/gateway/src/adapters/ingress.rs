@@ -4,11 +4,8 @@ use responses::{decode_responses_input, decode_responses_tools};
 
 #[path = "ingress/continuation.rs"]
 mod continuation;
-pub use continuation::{
-    IngressRequestBindings, decode_ingress_request_with_state_and_tool_resolver,
-    decode_ingress_request_with_tool_resolver,
-};
-use continuation::{bind_tool_continuations, validate_bindings};
+pub use continuation::IngressRequestBindings;
+use continuation::{pair_tool_history, validate_bindings};
 
 use std::collections::BTreeSet;
 
@@ -50,9 +47,7 @@ pub fn decode_ingress_request_with_bindings(
         }
         IngressProtocol::Messages => decode_messages(body, bindings.provider_state_owner.as_ref()),
     }?;
-    if !bindings.tool_id_map.is_empty() {
-        bind_tool_continuations(&mut request, bindings.tool_id_map.clone())?;
-    }
+    pair_tool_history(&mut request)?;
     Ok(request)
 }
 
@@ -244,7 +239,6 @@ fn decode_responses(
             .unwrap_or_else(RequestedReasoningControl::absent),
         requested_max_output_tokens: optional_u64(object, "max_output_tokens")?,
         provider_state,
-        tool_id_map: Vec::new(),
     })
 }
 
@@ -313,7 +307,6 @@ fn decode_chat(
         requested_reasoning,
         requested_max_output_tokens: compatible_max_output(object)?,
         provider_state: Vec::new(),
-        tool_id_map: Vec::new(),
     })
 }
 
@@ -560,7 +553,6 @@ fn decode_messages(
         requested_reasoning,
         requested_max_output_tokens: optional_u64(object, "max_tokens")?,
         provider_state: Vec::new(),
-        tool_id_map: Vec::new(),
     })
 }
 

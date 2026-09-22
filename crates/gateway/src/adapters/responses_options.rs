@@ -392,7 +392,7 @@ mod tests {
         assert_eq!(duplicate.responses_tool_order.len(), 1);
     }
     #[test]
-    fn acp_tool_item_ids_do_not_replace_trusted_call_bindings() {
+    fn acp_tool_item_ids_remain_distinct_from_call_ids() {
         use super::super::super::project_candidate_request;
         use super::super::decode_ingress_request;
         use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
@@ -400,32 +400,20 @@ mod tests {
             {"type":"function_call","id":"client-item-call","call_id":"logical","name":"lookup","arguments":"{}"},
             {"type":"function_call_output","id":"client-item-result","call_id":"logical","output":"done"}
         ]});
-        let mut request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
+        let request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
         let profile = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
             IngressProtocol::Responses,
             "physical",
             fixed_reasoning("fixed"),
         );
-        assert!(project_candidate_request(&request, &profile).is_err());
-        request.tool_id_map = vec![ToolIdMapEntryV1 {
-            logical_id: "logical".into(),
-            native_id: "trusted-native-call".into(),
-            kind: ToolKindV1::Function,
-            name: "lookup".into(),
-            namespace: None,
-            owner: profile.exact_provider_path().unwrap(),
-        }];
         let projected = project_candidate_request(&request, &profile).unwrap();
         for index in 0..2 {
             assert_eq!(
                 projected.body["input"][index]["id"],
                 document["input"][index]["id"]
             );
-            assert_eq!(
-                projected.body["input"][index]["call_id"],
-                "trusted-native-call"
-            );
+            assert_eq!(projected.body["input"][index]["call_id"], "logical");
         }
     }
     #[test]
@@ -489,7 +477,7 @@ mod tests {
     #[test]
     fn installed_codex_request_matches_same_protocol_projection_except_owned_rewrites() {
         use super::super::super::project_candidate_request;
-        use super::super::decode_ingress_request_with_state_and_tool_resolver;
+        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
         use crate::server::core_runtime::profiles::{
             CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, StateAffinity,
             fixed_reasoning,
@@ -533,19 +521,12 @@ mod tests {
         profile.capability.request.state_affinity = StateAffinity::ExactOwner;
         profile.capability.response.provider_state = Fidelity::Exact;
         profile.capability.response.state_affinity = StateAffinity::ExactOwner;
-        let bindings = vec![ToolIdMapEntryV1 {
-            logical_id: "native-call".into(),
-            native_id: "native-call".into(),
-            kind: ToolKindV1::Function,
-            name: "lookup".into(),
-            namespace: Some("tools".into()),
-            owner: profile.exact_provider_path().unwrap(),
-        }];
-        let request = decode_ingress_request_with_state_and_tool_resolver(
+        let request = decode_ingress_request_with_bindings(
             IngressProtocol::Responses,
             &native,
-            profile.exact_provider_path().ok(),
-            |_| Ok(bindings.clone()),
+            &IngressRequestBindings {
+                provider_state_owner: profile.exact_provider_path().ok(),
+            },
         )
         .unwrap();
         let projected = project_candidate_request(&request, &profile).unwrap().body;
@@ -600,8 +581,7 @@ mod tests {
     #[test]
     fn reasoning_history_preserves_native_fields_but_requires_opaque_owner() {
         use super::super::super::project_candidate_request;
-        use super::super::decode_ingress_request_with_state_and_tool_resolver;
-        use crate::server::core_runtime::model_ir::ToolIdMapEntryV1;
+        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
         use crate::server::core_runtime::profiles::{
             CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, StateAffinity,
             fixed_reasoning,
@@ -623,11 +603,12 @@ mod tests {
         profile.capability.request.state_affinity = StateAffinity::ExactOwner;
         profile.capability.response.provider_state = Fidelity::Exact;
         profile.capability.response.state_affinity = StateAffinity::ExactOwner;
-        let request = decode_ingress_request_with_state_and_tool_resolver(
+        let request = decode_ingress_request_with_bindings(
             IngressProtocol::Responses,
             &native,
-            profile.exact_provider_path().ok(),
-            |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
+            &IngressRequestBindings {
+                provider_state_owner: profile.exact_provider_path().ok(),
+            },
         )
         .unwrap();
         let projected = project_candidate_request(&request, &profile).unwrap().body;
@@ -645,11 +626,12 @@ mod tests {
             json!({"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"native reasoning"}],"provider_extension":{"mode":1},"encrypted_content":"state"}),
         ] {
             let native = json!({"model":"alias","input":[reasoning]});
-            let request = decode_ingress_request_with_state_and_tool_resolver(
+            let request = decode_ingress_request_with_bindings(
                 IngressProtocol::Responses,
                 &native,
-                profile.exact_provider_path().ok(),
-                |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
+                &IngressRequestBindings {
+                    provider_state_owner: profile.exact_provider_path().ok(),
+                },
             )
             .unwrap();
             assert_eq!(
@@ -658,11 +640,12 @@ mod tests {
             );
         }
         assert!(
-            decode_ingress_request_with_state_and_tool_resolver(
+            decode_ingress_request_with_bindings(
                 IngressProtocol::Responses,
                 &native,
-                None,
-                |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
+                &IngressRequestBindings {
+                    provider_state_owner: None
+                },
             )
             .is_err()
         );
@@ -671,8 +654,7 @@ mod tests {
     #[test]
     fn summary_only_reasoning_preserves_native_encrypted_content_shape() {
         use super::super::super::project_candidate_request;
-        use super::super::decode_ingress_request_with_state_and_tool_resolver;
-        use crate::server::core_runtime::model_ir::ToolIdMapEntryV1;
+        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
         use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
         let profile = CandidateProtocolProfile::exact_portable_path(
@@ -700,11 +682,12 @@ mod tests {
                     reasoning["encrypted_content"] = value;
                 }
                 let native = json!({"model":"alias","input":[reasoning]});
-                let request = decode_ingress_request_with_state_and_tool_resolver(
+                let request = decode_ingress_request_with_bindings(
                     IngressProtocol::Responses,
                     &native,
-                    None,
-                    |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
+                    &IngressRequestBindings {
+                        provider_state_owner: None,
+                    },
                 )
                 .unwrap();
                 assert!(request.messages[0].content.is_empty());
@@ -717,11 +700,12 @@ mod tests {
             "type":"reasoning","summary":[],"encrypted_content":7
         }]});
         assert!(
-            decode_ingress_request_with_state_and_tool_resolver(
+            decode_ingress_request_with_bindings(
                 IngressProtocol::Responses,
                 &invalid,
-                None,
-                |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
+                &IngressRequestBindings {
+                    provider_state_owner: None
+                },
             )
             .is_err()
         );

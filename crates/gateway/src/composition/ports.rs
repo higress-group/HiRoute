@@ -330,26 +330,16 @@ fn project_candidate_facts_template(
     match adapters::project_candidate_request_template(request, profile) {
         Ok(projected) => Ok(projected),
         Err(
-            error @ adapters::ProtocolAdapterError::ModelIr(
-                ModelIrError::ProviderStateNotPortable | ModelIrError::ToolIdBindingRequired(_),
-            ),
+            error @ adapters::ProtocolAdapterError::ModelIr(ModelIrError::ProviderStateNotPortable),
         ) => {
             let exact_owner = profile.exact_provider_path()?;
-            // Size a non-executable candidate without granting it continuation
-            // authority. The original Tool IDs and opaque-state owners stay in
-            // Planner input; its state gate excludes mismatching candidates.
+            // Size opaque state without changing Planner's original owner facts.
             let mut sizing_request = request.clone();
             let mut mismatched = false;
             for owner in sizing_request
-                .tool_id_map
+                .provider_state
                 .iter_mut()
-                .map(|entry| &mut entry.owner)
-                .chain(
-                    sizing_request
-                        .provider_state
-                        .iter_mut()
-                        .map(|state| &mut state.owner),
-                )
+                .map(|state| &mut state.owner)
                 .chain(
                     sizing_request
                         .instructions
@@ -788,7 +778,6 @@ mod sizing_tests {
             &json!({"model":"route","input":[{"type":"reasoning","summary":[],"encrypted_content":"state"}]}),
             &adapters::IngressRequestBindings {
                 provider_state_owner: Some(owner.exact_provider_path().unwrap()),
-                tool_id_map: Vec::new(),
             },
         ).unwrap();
         let before = serde_json::to_value(&request).unwrap();

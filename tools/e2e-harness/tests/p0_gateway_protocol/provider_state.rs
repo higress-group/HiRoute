@@ -20,11 +20,68 @@ data: {"type":"response.completed","response":{"id":"native-first","model":"cont
 
 #[test]
 fn production_responses_continuation_keeps_actual_owner_in_multi_candidate_route() {
+    production_continuation(IngressProtocol::Responses, IngressProtocol::Responses);
+}
+
+#[test]
+fn production_messages_signature_keeps_responses_owner_in_multi_candidate_route() {
+    production_continuation(IngressProtocol::Messages, IngressProtocol::Responses);
+}
+
+#[test]
+fn production_native_messages_fragmented_signature_and_tool_result_keep_actual_owner() {
+    production_continuation(IngressProtocol::Messages, IngressProtocol::Messages);
+}
+
+const FIRST_MESSAGES: &[u8] = br#"event: message_start
+data: {"type":"message_start","message":{"id":"native-msg","model":"continuation-native-2","role":"assistant","content":[],"usage":{"input_tokens":4,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"fixture-"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"opaque-final"}}
+
+event: content_block_stop
+data: { "index": 0,
+data: "type": "content_block_stop" }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"physical-tool","name":"Bash","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"pwd\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":8}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+"#;
+
+const SECOND_MESSAGES: &[u8] = br#"{"id":"native-done","model":"continuation-native-2","type":"message","role":"assistant","content":[{"type":"text","text":"done"}],"stop_reason":"end_turn","usage":{"input_tokens":8,"output_tokens":1}}"#;
+
+fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) {
     let _serial = process_test_lock();
     let directory = tempfile::tempdir().unwrap();
     let provider = ContinuationProvider::start(vec![
-        ProviderReply::Sse(FIRST),
-        ProviderReply::Json(SECOND_PROVIDER_JSON),
+        ProviderReply::Sse(if upstream == IngressProtocol::Messages {
+            FIRST_MESSAGES
+        } else {
+            FIRST
+        }),
+        ProviderReply::Json(if upstream == IngressProtocol::Messages {
+            SECOND_MESSAGES
+        } else {
+            SECOND_PROVIDER_JSON
+        }),
     ]);
     let forbidden = ContinuationProvider::start(Vec::new());
     let mut publication = snapshot(
@@ -33,10 +90,38 @@ fn production_responses_continuation_keeps_actual_owner_in_multi_candidate_route
         forbidden.authority(),
     );
     publication.aliases[0].candidates.remove(0); // Two different native Responses models.
+    if upstream == IngressProtocol::Messages {
+        publication.aliases[0].candidates = vec![
+            sealed_native_candidate(
+                2,
+                "continuation-target",
+                &["continuation-credential".into()],
+                provider.authority(),
+                "continuation-native-2",
+                &[(ingress, upstream)],
+            ),
+            sealed_native_candidate(
+                3,
+                "forbidden-fallback-target",
+                &["forbidden-credential".into()],
+                forbidden.authority(),
+                "continuation-native-3",
+                &[(ingress, upstream)],
+            ),
+        ];
+    }
+    publication.aliases[0].protocols = vec![ingress];
+    for grant in &mut publication.grants {
+        grant.protocol = ingress;
+        if ingress == IngressProtocol::Messages {
+            grant.routes.retain(|alias, _| alias == "continuation");
+        }
+    }
     for binding in &mut publication.aliases[0].candidates {
         for profile in &mut binding.protocol_profiles {
             let mut native: CandidateProtocolProfile =
                 serde_json::from_value(serde_json::to_value(&*profile).unwrap()).unwrap();
+            native.ingress_protocol = ingress;
             native.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
             native.capability.request.provider_state = Fidelity::Exact;
             native.capability.request.state_affinity = StateAffinity::ExactOwner;
@@ -85,6 +170,11 @@ fn production_responses_continuation_keeps_actual_owner_in_multi_candidate_route
         directory.path(),
     );
     process.wait_ready();
+    if ingress == IngressProtocol::Messages {
+        assert_messages_continuation(address, &provider, &forbidden, upstream);
+        process.stop();
+        return;
+    }
     let initial = json!({"type":"message","role":"user","content":"first"});
     let metadata = json!({"session_id":"native-continuation-fixture"});
     let first = request(
@@ -157,4 +247,90 @@ fn production_responses_continuation_keeps_actual_owner_in_multi_candidate_route
     assert_eq!(forbidden.connections(), 0);
     assert_eq!(provider.calls(), 2);
     process.stop();
+}
+
+fn assert_messages_continuation(
+    address: SocketAddr,
+    provider: &ContinuationProvider,
+    forbidden: &ContinuationProvider,
+    upstream: IngressProtocol,
+) {
+    let initial = json!({"role":"user","content":"first"});
+    let first = request_at_path(
+        address,
+        "continuation-token",
+        &json!({
+            "model":"continuation","stream":true,"max_tokens":256,"messages":[initial.clone()],
+            "tools":[{"name":"Bash","input_schema":{"type":"object","properties":{"command":{"type":"string"}}}}]
+        }),
+        "/v1/messages",
+    );
+    assert_eq!(
+        first.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&first.body)
+    );
+    let events = decode_downstream_sse(&first.body);
+    let signatures: Vec<_> = events
+        .iter()
+        .filter_map(|(_, value)| value["delta"]["signature"].as_str())
+        .collect();
+    assert_eq!(signatures.concat(), "fixture-opaque-final", "{events:#?}");
+    let mut next = json!({"model":"continuation","stream":false,"max_tokens":256,"messages":[
+        initial,
+        {"role":"assistant","content":[{"type":"thinking","thinking":"","signature":signatures.concat()}]},
+        {"role":"user","content":"continue"}
+    ]});
+    if upstream == IngressProtocol::Messages {
+        let tool = events
+            .iter()
+            .find_map(|(_, event)| {
+                let block = &event["content_block"];
+                (block["type"] == "tool_use").then_some(block)
+            })
+            .expect("delivered tool use");
+        next["messages"][1]["content"]
+            .as_array_mut()
+            .unwrap()
+            .push(tool.clone());
+        next["messages"][2]["content"] =
+            json!([{"type":"tool_result","tool_use_id":tool["id"],"content":"/work"}]);
+    }
+    let second = request_at_path(address, "continuation-token", &next, "/v1/messages");
+    assert_eq!(
+        second.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&second.body)
+    );
+    wait_for_calls(provider, 2);
+    let bodies = provider.requests();
+    let forwarded: Value = serde_json::from_slice(http_body(&bodies[1])).unwrap();
+    assert_eq!(forwarded["model"], "continuation-native-2");
+    if upstream == IngressProtocol::Messages {
+        assert_eq!(
+            forwarded["messages"][1]["content"][0]["signature"],
+            "fixture-opaque-final"
+        );
+        assert_eq!(
+            forwarded["messages"][2]["content"][0]["tool_use_id"],
+            "physical-tool"
+        );
+    } else {
+        assert!(
+            forwarded["input"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["type"] == "reasoning"
+                    && item["encrypted_content"] == "fixture-opaque-final")
+        );
+    }
+    assert_eq!(forbidden.connections(), 0);
+    let mut altered = next;
+    altered["messages"][1]["content"][0]["signature"] = json!("unknown");
+    let rejected = request_at_path(address, "continuation-token", &altered, "/v1/messages");
+    assert_eq!(rejected.status, 400);
+    assert_eq!(provider.calls(), 2);
 }

@@ -135,13 +135,17 @@ impl SseVisitor for ProjectionVisitor<'_> {
             },
             None => None,
         };
-        let (rewritten, mut metadata) = match self.state.project_sse(event_type, data.as_ref()) {
-            Ok(projected) => projected,
-            Err(error) => {
-                self.protocol_error = Some(error);
-                return Err(SseError::FramerFailed);
-            }
-        };
+        let (rewritten, mut metadata) =
+            match self
+                .state
+                .project_sse(event_type, data.as_ref(), event.raw())
+            {
+                Ok(projected) => projected,
+                Err(error) => {
+                    self.protocol_error = Some(error);
+                    return Err(SseError::FramerFailed);
+                }
+            };
         metadata.source_bytes = event.raw().len();
         self.metadata.push_back(metadata);
         if let Some(data) = rewritten {

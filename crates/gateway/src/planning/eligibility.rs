@@ -308,12 +308,7 @@ fn state_gate(
     {
         return Err(ExclusionReasonCodeV1::OpaqueStateUnportable);
     }
-    if state_owners(request).any(|owner| owner != &exact_owner)
-        || request
-            .tool_id_map
-            .iter()
-            .any(|entry| entry.owner != exact_owner)
-    {
+    if state_owners(request).any(|owner| owner != &exact_owner) {
         return Err(ExclusionReasonCodeV1::ProviderStateAffinityMismatch);
     }
     match profile.capability.native_provider_state {

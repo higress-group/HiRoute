@@ -55,7 +55,7 @@ impl ProtocolState {
         state_emission: NativeProviderStateEmission,
         terminal_refusal_buffer: usize,
         terminal_refusal_blocks: u32,
-        tool_id_projection: Option<super::super::continuation::ToolLogicalIdProjection>,
+        tool_id_projection: Option<super::super::continuation::ToolIdProjection>,
         chat_tool_projection: Option<ChatToolProjection>,
     ) -> Self {
         match protocol {

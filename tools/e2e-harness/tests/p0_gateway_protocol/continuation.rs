@@ -8,13 +8,9 @@ use std::time::{Duration, Instant};
 use hiroute_e2e::gateway_fixture::{
     TestTlsListener, TestTlsStream, sealed_native_candidate, write_dial_config,
 };
-use hiroute_gateway::ports::{
-    InMemoryToolContinuationAuthority, ToolContinuationAuthority, ToolContinuationScopeV1,
-};
 use hiroute_gateway::server::core_runtime::adapters::{
-    decode_ingress_request_with_tool_resolver, project_candidate_request,
+    decode_ingress_request, project_candidate_request,
 };
-use hiroute_gateway::server::core_runtime::model_ir::{ToolIdMapEntryV1, ToolKindV1};
 use hiroute_gateway::server::publication::{
     AliasComplexityClassifierV1, AliasGroupIdV1, AliasModelGroupV1, AliasPlanV1,
     AliasRequestOwnedRouteV1, AliasRoutingV1, GatewayPublicationSnapshotV3, GrantV1, token_sha256,
@@ -46,7 +42,7 @@ const NAMESPACE_REJECTED: &[u8] =
 const SSE_FRAGMENT_SIZES: &[usize] = &[1, 2, 7, 3, 11, 1, 17, 5, 2, 29, 13];
 
 #[test]
-fn production_tool_continuation_restores_native_id_and_fails_closed_outside_scope() {
+fn production_native_tool_history_survives_restart_with_request_authentication() {
     let mut receipt = hiroute_e2e::p0_runtime_execution_receipt!("protocol.tool_and_sse");
     let _serial = process_test_lock();
     let directory = tempfile::tempdir().unwrap();
@@ -54,6 +50,7 @@ fn production_tool_continuation_restores_native_id_and_fails_closed_outside_scop
         ProviderReply::Sse(FIRST_PROVIDER_STREAM),
         ProviderReply::Json(SECOND_PROVIDER_JSON),
         ProviderReply::Json(NAMESPACE_ONLY_PROVIDER_JSON),
+        ProviderReply::Json(SECOND_PROVIDER_JSON),
     ]);
     let rejecting_provider = ContinuationProvider::start(vec![ProviderReply::JsonStatus {
         status: 400,
@@ -149,7 +146,6 @@ fn production_tool_continuation_restores_native_id_and_fails_closed_outside_scop
         &credentials_path,
         directory.path(),
         &[
-            ("HIROUTE_TOOL_CONTINUATION_TTL_MS", "2000"),
             ("HIROUTE_REPLAY_ROOT", replay_root.as_str()),
             ("HIROUTE_REPLAY_MEMORY_THRESHOLD", "1024"),
             ("HIROUTE_REPLAY_RECORD_BYTES", "256"),
@@ -208,11 +204,7 @@ fn production_tool_continuation_restores_native_id_and_fails_closed_outside_scop
     assert_eq!(projected["input"][0]["namespace"], "weather-services");
     assert_eq!(projected["input"][0]["arguments"], large_arguments);
     assert_eq!(projected["input"][1]["output"], large_result);
-    assert!(
-        !http_body(&attempts[1])
-            .windows(logical_id.len())
-            .any(|window| window == logical_id.as_bytes())
-    );
+    assert_eq!(logical_id, "provider-weather-7");
     receipt.mark_assertion("protocol.native_tool_identity");
     receipt.mark_assertion("protocol.tool_round_trip");
 
@@ -281,69 +273,11 @@ fn production_tool_continuation_restores_native_id_and_fails_closed_outside_scop
     assert_eq!(rejected_document["tools"][2]["name"], "archive-services");
     receipt.mark_assertion("protocol.namespace_upstream_rejection");
 
-    let providers = ContinuationProviders {
-        continuation: &provider,
-        rejecting: &rejecting_provider,
-        forbidden: &forbidden_provider,
-    };
-    assert_rejected_without_attempt(
-        address,
-        "continuation-token",
-        &json!({
-            "model":"continuation",
-            "input":[{
-                "type":"function_call_output",
-                "call_id":"hiroute_tool_v1_ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-                "output":"forged"
-            }]
-        }),
-        &providers,
-        3,
-        1,
-    );
-    assert_rejected_without_attempt(
-        address,
-        "continuation-token",
-        &json!({
-            "model":"continuation",
-            "input":[{
-                "type":"function_call_output",
-                "call_id":"provider-weather-7",
-                "output":"client-forged-native-id"
-            }]
-        }),
-        &providers,
-        3,
-        1,
-    );
-    assert_rejected_without_attempt(
-        address,
-        "continuation-token",
-        &continuation_request("other-plan", &logical_id, &large_arguments, &large_result),
-        &providers,
-        3,
-        1,
-    );
-    assert_rejected_without_attempt(address, "other-token", &continuation, &providers, 3, 1);
-    receipt.mark_assertion("protocol.continuation_owner_affinity");
-    assert_rejected_without_attempt(
-        address,
-        "continuation-token",
-        &conflicting_request(&logical_id),
-        &providers,
-        3,
-        1,
-    );
-
-    std::thread::sleep(Duration::from_millis(2_100));
-    assert_rejected_without_attempt(
-        address,
-        "continuation-token",
-        &continuation,
-        &providers,
-        3,
-        1,
-    );
+    let unauthorized = request(address, "invalid-token", &continuation);
+    assert_eq!(unauthorized.status, 401);
+    assert_eq!(provider.calls(), 3);
+    assert_eq!(forbidden_provider.calls(), 0);
+    receipt.mark_assertion("protocol.continuation_request_authentication");
 
     process.stop();
     let mut restarted = Hirouted::spawn_with_environment(
@@ -354,102 +288,42 @@ fn production_tool_continuation_restores_native_id_and_fails_closed_outside_scop
         &credentials_path,
         directory.path(),
         &[
-            ("HIROUTE_TOOL_CONTINUATION_TTL_MS", "2000"),
             ("HIROUTE_REPLAY_ROOT", replay_root.as_str()),
             ("HIROUTE_REPLAY_MEMORY_THRESHOLD", "1024"),
             ("HIROUTE_REPLAY_RECORD_BYTES", "256"),
         ],
     );
     restarted.wait_ready();
-    assert_rejected_without_attempt(
-        address,
-        "continuation-token",
-        &continuation,
-        &providers,
-        3,
-        1,
+    let resumed = request(address, "continuation-token", &continuation);
+    assert_eq!(
+        resumed.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&resumed.body)
     );
+    wait_for_calls(&provider, 4);
+    let resumed_requests = provider.requests();
+    let resumed_body: Value = serde_json::from_slice(http_body(&resumed_requests[3])).unwrap();
+    assert_eq!(resumed_body["input"][0]["call_id"], "provider-weather-7");
+    assert_eq!(resumed_body["input"][1]["call_id"], "provider-weather-7");
     restarted.stop();
-    receipt.mark_assertion("protocol.continuation_preconnect_refusal");
+    receipt.mark_assertion("protocol.continuation_restart_native_history");
     receipt.finish();
 }
 
 #[test]
 fn continuation_binding_projects_exact_native_id_across_three_by_three_corpus() {
-    const LOGICAL_ID: &str =
-        "hiroute_tool_v1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     for ingress in PROTOCOLS {
         for upstream in PROTOCOLS {
-            let mut document = request_fixture(ingress);
-            replace_string(&mut document, "call_weather", LOGICAL_ID);
-            let profile = candidate_profile(ingress, upstream);
-            let mapping = ToolIdMapEntryV1 {
-                logical_id: LOGICAL_ID.into(),
-                native_id: format!("native-{ingress:?}-{upstream:?}"),
-                kind: ToolKindV1::Function,
-                name: "weather".into(),
-                namespace: None,
-                owner: profile.exact_provider_path().unwrap(),
-            };
-            let authority =
-                InMemoryToolContinuationAuthority::new(4, Duration::from_secs(1)).unwrap();
-            let scope = ToolContinuationScopeV1 {
-                authority_id: "corpus-authority".into(),
-                authority_epoch: 1,
-                grant_id: "corpus-grant".into(),
-                grant_generation: 1,
-                served_model_id: "agent/research".into(),
-                route: hiroute_domain::ModelRequestRouteV2::Plan {
-                    revision: 1,
-                    semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"corpus"),
-                },
-            };
-            let issuance = authority.begin(scope.clone()).unwrap();
-            let now = Instant::now();
-            authority
-                .record_pending(&issuance, mapping.clone(), now)
-                .unwrap();
-            assert!(authority.accept(&issuance, LOGICAL_ID, now));
-            let request = decode_ingress_request_with_tool_resolver(
-                ingress,
-                &document,
-                |logical_ids| authority.resolve(&scope, logical_ids, now).map_err(|_| {
-                    hiroute_gateway::server::core_runtime::model_ir::ModelIrError::ToolContinuationUnavailable
-                }),
-            )
-            .unwrap();
-            let projected = project_candidate_request(&request, &profile).unwrap();
+            let document = request_fixture(ingress);
+            let request = decode_ingress_request(ingress, &document).unwrap();
+            let projected =
+                project_candidate_request(&request, &candidate_profile(ingress, upstream)).unwrap();
             assert!(
-                projected
-                    .bytes
-                    .windows(mapping.native_id.len())
-                    .any(|window| window == mapping.native_id.as_bytes()),
-                "ingress={ingress:?} upstream={upstream:?}"
-            );
-            assert!(
-                !projected
-                    .bytes
-                    .windows(LOGICAL_ID.len())
-                    .any(|window| window == LOGICAL_ID.as_bytes())
+                String::from_utf8_lossy(&projected.bytes).contains("call_weather"),
+                "{ingress:?} -> {upstream:?}"
             );
         }
-    }
-}
-
-fn replace_string(value: &mut Value, from: &str, to: &str) {
-    match value {
-        Value::String(value) if value == from => *value = to.into(),
-        Value::Array(values) => {
-            for value in values {
-                replace_string(value, from, to);
-            }
-        }
-        Value::Object(values) => {
-            for value in values.values_mut() {
-                replace_string(value, from, to);
-            }
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
     }
 }
 
@@ -537,63 +411,6 @@ fn continuation_request(model: &str, logical_id: &str, arguments: &str, output: 
     })
 }
 
-fn conflicting_request(logical_id: &str) -> Value {
-    json!({
-        "model": "continuation",
-        "input": [
-            {
-                "type":"function_call",
-                "call_id":logical_id,
-                "namespace":"weather-services",
-                "name":"weather",
-                "arguments":"{\"city\":\"Paris\"}"
-            },
-            {
-                "type":"function_call",
-                "call_id":logical_id,
-                "namespace":"archive-services",
-                "name":"weather",
-                "arguments":"{}"
-            }
-        ]
-    })
-}
-
-struct ContinuationProviders<'a> {
-    continuation: &'a ContinuationProvider,
-    rejecting: &'a ContinuationProvider,
-    forbidden: &'a ContinuationProvider,
-}
-
-fn assert_rejected_without_attempt(
-    address: SocketAddr,
-    token: &str,
-    document: &Value,
-    providers: &ContinuationProviders<'_>,
-    expected_attempts: usize,
-    expected_rejections: usize,
-) {
-    let provider_connections = providers.continuation.connections();
-    let rejecting_connections = providers.rejecting.connections();
-    let forbidden_connections = providers.forbidden.connections();
-    let response = request(address, token, document);
-    assert_eq!(
-        response.status,
-        400,
-        "{}",
-        String::from_utf8_lossy(&response.body)
-    );
-    let error: Value = serde_json::from_slice(&response.body).unwrap();
-    assert_eq!(error["code"], "TOOL_CONTINUATION_UNAVAILABLE");
-    assert_eq!(error["phase"], "continuation_authority");
-    assert_eq!(providers.continuation.calls(), expected_attempts);
-    assert_eq!(providers.continuation.connections(), provider_connections);
-    assert_eq!(providers.rejecting.calls(), expected_rejections);
-    assert_eq!(providers.rejecting.connections(), rejecting_connections);
-    assert_eq!(providers.forbidden.calls(), 0);
-    assert_eq!(providers.forbidden.connections(), forbidden_connections);
-}
-
 fn assert_fragmented_tool_stream(body: &[u8], fragments_written: usize) -> String {
     assert_eq!(
         fragments_written,
@@ -612,8 +429,7 @@ fn assert_fragmented_tool_stream(body: &[u8], fragments_written: usize) -> Strin
         .and_then(Value::as_str)
         .expect("downstream Tool-call logical ID")
         .to_owned();
-    assert!(logical_id.starts_with("hiroute_tool_v1_"));
-    assert_ne!(logical_id, "provider-weather-7");
+    assert_eq!(logical_id, "provider-weather-7");
     assert_eq!(
         events,
         vec![
@@ -655,14 +471,10 @@ fn decode_downstream_sse(body: &[u8]) -> Vec<(String, Value)> {
                 .and_then(|line| line.strip_prefix("event: "))
                 .expect("SSE event name");
             let data = lines
-                .next()
-                .and_then(|line| line.strip_prefix("data: "))
-                .expect("SSE event data");
-            assert!(
-                lines.next().is_none(),
-                "SSE event has only name and JSON data"
-            );
-            let value: Value = serde_json::from_str(data).expect("SSE JSON data");
+                .map(|line| line.strip_prefix("data: ").expect("SSE JSON data line"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let value: Value = serde_json::from_str(&data).expect("SSE JSON data");
             assert_eq!(value["type"], name, "SSE name and JSON type agree");
             (name.to_owned(), value)
         })
@@ -670,14 +482,23 @@ fn decode_downstream_sse(body: &[u8]) -> Vec<(String, Value)> {
 }
 
 fn request(address: SocketAddr, token: &str, document: &Value) -> WireResponse {
+    request_at_path(address, token, document, "/v1/responses")
+}
+
+fn request_at_path(address: SocketAddr, token: &str, document: &Value, path: &str) -> WireResponse {
     let body = serialize_document_with_model_first(document);
+    let auth = if path == "/v1/messages" {
+        format!("Authorization: Bearer {token}")
+    } else {
+        format!("X-HiRoute-Token: {token}")
+    };
     let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(2)).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
     write!(
         stream,
-        "POST /v1/responses HTTP/1.1\r\nHost: {address}\r\nX-HiRoute-Token: {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "POST {path} HTTP/1.1\r\nHost: {address}\r\n{auth}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     )
     .unwrap();

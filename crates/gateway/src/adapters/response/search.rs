@@ -232,31 +232,14 @@ impl DecoderCore {
             if !fresh {
                 return Err(invalid_block(index, "duplicate search"));
             }
-            let response_id = self
-                .accumulator
+            self.accumulator
                 .response_id
                 .as_deref()
                 .ok_or_else(|| invalid_block(index, "search before response"))?;
             item.id = if let Some(projection) = &self.tool_id_projection {
-                projection.project(
-                    response_id,
-                    index,
-                    &native_id,
-                    crate::server::core_runtime::model_ir::ToolKindV1::Function,
-                    None,
-                    "web_search",
-                    &self.owner,
-                )?
+                projection.project(&native_id, &self.owner)?
             } else {
-                super::super::continuation::issue_logical_tool_id(
-                    response_id,
-                    index,
-                    &native_id,
-                    crate::server::core_runtime::model_ir::ToolKindV1::Function,
-                    None,
-                    "web_search",
-                    &self.owner,
-                )?
+                super::super::continuation::project_delivered_tool_id(&native_id, &self.owner)?
             };
         } else {
             match self.accumulator.blocks.get(&index) {

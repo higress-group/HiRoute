@@ -56,7 +56,15 @@ impl NativeResponseDecoder {
         status: u16,
         streaming: bool,
     ) -> Result<Self, ProtocolAdapterError> {
-        Self::new_with_projections(profile, status, streaming, None, None)
+        Self::new_with_projections(
+            profile,
+            status,
+            streaming,
+            Some(super::super::continuation::ToolIdProjection::new(
+                profile.ingress_protocol,
+            )),
+            None,
+        )
     }
 
     pub(crate) fn new_for_attempt(
@@ -75,7 +83,7 @@ impl NativeResponseDecoder {
         profile: &CandidateProtocolProfile,
         status: u16,
         streaming: bool,
-        tool_id_projection: super::super::continuation::ToolLogicalIdProjection,
+        tool_id_projection: super::super::continuation::ToolIdProjection,
         chat_tool_projection: Option<ChatToolProjection>,
     ) -> Result<Self, ProtocolAdapterError> {
         Self::new_with_projections(
@@ -91,7 +99,7 @@ impl NativeResponseDecoder {
         profile: &CandidateProtocolProfile,
         status: u16,
         streaming: bool,
-        tool_id_projection: Option<super::super::continuation::ToolLogicalIdProjection>,
+        tool_id_projection: Option<super::super::continuation::ToolIdProjection>,
         chat_tool_projection: Option<ChatToolProjection>,
     ) -> Result<Self, ProtocolAdapterError> {
         if profile.capability.upstream_protocol != profile.connector.upstream_protocol

@@ -50,13 +50,7 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
     assert_eq!(response.status, 200);
     assert!(String::from_utf8_lossy(&response.body).contains("accepted-response-22008"));
     let downstream_logical_id = response_tool_logical_id(&response.body);
-    assert!(downstream_logical_id.starts_with("hiroute_tool_v1_"));
-    assert!(
-        !response
-            .body
-            .windows("call-22008".len())
-            .any(|value| value == b"call-22008")
-    );
+    assert_eq!(downstream_logical_id, "call-22008");
     assert_eq!(rejected.calls(), 1);
     assert_eq!(accepted.calls(), 1);
     wait_replay_empty(&fixture.replay_root);
@@ -343,7 +337,9 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
     assert_eq!(observed_tool["namespace"], "weather-services");
     assert!(observed_tool.get("native_id").is_none());
     assert!(observed_tool.get("owner").is_none());
-    assert!(!response_content.contains("call-22008"));
+    // The public call ID is preserved; provider-only item IDs remain off the
+    // canonical observation path.
+    assert!(response_content.contains("call-22008"));
     assert!(!response_content.contains("fc-native-22008"));
     assert!(!response_content.contains("rejected-attempt-secret-22008"));
     assert!(content.iter().all(|event| {
@@ -710,13 +706,7 @@ fn real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap() {
     let started = Instant::now();
     let first_response = fixture.request();
     assert_eq!(first_response.status, 200);
-    assert!(response_tool_logical_id(&first_response.body).starts_with("hiroute_tool_v1_"));
-    assert!(
-        !first_response
-            .body
-            .windows("call-22008".len())
-            .any(|value| value == b"call-22008")
-    );
+    assert_eq!(response_tool_logical_id(&first_response.body), "call-22008");
     assert!(
         started.elapsed() < Duration::from_millis(750),
         "a one-second sink must not backpressure the model response"
@@ -745,7 +735,10 @@ fn real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap() {
     // cooldown-isolation assertion.
     let second_response = fixture.request();
     assert_eq!(second_response.status, 200);
-    assert!(response_tool_logical_id(&second_response.body).starts_with("hiroute_tool_v1_"));
+    assert_eq!(
+        response_tool_logical_id(&second_response.body),
+        "call-22008"
+    );
     assert_eq!(first.calls(), 1, "cooldown must survive observation faults");
     assert_eq!(second.calls(), 2);
 }

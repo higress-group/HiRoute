@@ -79,18 +79,21 @@ fn search_stream_replays_with_trusted_owner_and_original_action() {
             &body,
             &IngressRequestBindings {
                 provider_state_owner: None,
-                tool_id_map: decoded.response.tool_id_map.clone(),
             },
         )
         .unwrap();
         let native = project_candidate_request(&request, &candidate).unwrap();
         assert_eq!(native.body["input"][0], events()[5]["item"]);
-        let mut unbound = request.clone();
-        unbound.tool_id_map.clear();
-        assert!(project_candidate_request(&unbound, &candidate).is_err());
-        let mut wrong_owner = request;
-        wrong_owner.tool_id_map[0].owner.native_model = "other".into();
-        assert!(project_candidate_request(&wrong_owner, &candidate).is_err());
+        let another = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "another-model",
+            fixed_reasoning("fixed"),
+        );
+        assert_eq!(
+            project_candidate_request(&request, &another).unwrap().body["input"],
+            native.body["input"]
+        );
         assert!(matches!(
             &decoded.response.blocks[0],
             ResponseBlock::WebSearch { .. }

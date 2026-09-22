@@ -5,8 +5,7 @@ use hiroute_gateway::server::core_runtime::adapters::{
     ResponseDecodeStatus, decode_ingress_request, project_candidate_request,
 };
 use hiroute_gateway::server::core_runtime::model_ir::{
-    ContentPart, ModelEvent, ModelIrError, RequestedReasoningDisposition, ToolIdMapEntryV1,
-    ToolKindV1, ToolResultStatusV1,
+    ContentPart, ModelEvent, ModelIrError, RequestedReasoningDisposition, ToolResultStatusV1,
 };
 use hiroute_gateway::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, CriticalFact, NativeProviderStateEmission,
@@ -59,8 +58,8 @@ fn protocol_request_matrix_preserves_shared_content_and_exact_status_semantics()
         let projected = requests
             .iter()
             .map(|request| {
-                let mut profile = candidate_profile(request.ingress_protocol, target);
-                bind_tools_for_profile(request, &mut profile)
+                let profile = candidate_profile(request.ingress_protocol, target);
+                project_candidate_request(request, &profile).unwrap()
             })
             .collect::<Vec<_>>();
         for request in &projected[1..] {
@@ -103,7 +102,6 @@ fn protocol_context_and_capability_boundaries_fail_before_connect() {
         "physical",
         reasoning_profile(IngressProtocol::Responses),
     );
-    bind_request_to_profile(&mut request, &profile);
     let baseline = project_candidate_request(&request, &profile).unwrap();
     let input_n = baseline.context.target_serialized_input_upper_bound;
     let total_n = baseline.context.required_total;
@@ -289,10 +287,32 @@ fn protocol_native_nonstream_and_sse_fragmentation_share_one_ledger() {
                 .iter()
                 .any(|event| { matches!(event.event, ModelEvent::FinishReason { .. }) })
         );
+        // Different providers choose different IDs. Check preservation first,
+        // then compare the remaining semantics using block identity locally.
+        let mut comparable = whole.response.semantic_ledger();
+        for event in &mut comparable.events {
+            use hiroute_gateway::server::core_runtime::model_ir::{
+                ResponseBlock, SemanticLedgerEvent,
+            };
+            if let SemanticLedgerEvent::Block(ResponseBlock::ToolCall {
+                index, logical_id, ..
+            }) = event
+            {
+                assert!(
+                    whole
+                        .response
+                        .tool_id_map
+                        .iter()
+                        .any(|entry| entry.native_id == *logical_id
+                            && entry.logical_id == *logical_id)
+                );
+                *logical_id = format!("fixture-call-{index}");
+            }
+        }
         if let Some(expected) = &expected {
-            assert_eq!(&whole.response.semantic_ledger(), expected);
+            assert_eq!(&comparable, expected);
         } else {
-            expected = Some(whole.response.semantic_ledger());
+            expected = Some(comparable);
         }
     }
 }
@@ -545,48 +565,6 @@ fn protocol_sse_decoder_applies_bounded_backpressure_without_rescanning() {
         "bounded resume must stay linear: {complexity:?} for {} bytes",
         bytes.len()
     );
-}
-
-fn bind_tools_for_profile(
-    request: &hiroute_gateway::server::core_runtime::model_ir::ModelRequestIRV1,
-    profile: &mut CandidateProtocolProfile,
-) -> hiroute_gateway::server::core_runtime::adapters::PreparedNativeRequest {
-    let mut request = request.clone();
-    bind_request_to_profile(&mut request, profile);
-    project_candidate_request(&request, profile).unwrap()
-}
-
-fn bind_request_to_profile(
-    request: &mut hiroute_gateway::server::core_runtime::model_ir::ModelRequestIRV1,
-    profile: &CandidateProtocolProfile,
-) {
-    let owner = profile.exact_provider_path().unwrap();
-    let mut logical_ids = Vec::new();
-    for part in request
-        .messages
-        .iter()
-        .flat_map(|message| message.content.iter())
-    {
-        let logical_id = match part {
-            ContentPart::ToolCall { logical_id, .. }
-            | ContentPart::ToolResult { logical_id, .. } => logical_id,
-            _ => continue,
-        };
-        if !logical_ids.contains(logical_id) {
-            logical_ids.push(logical_id.clone());
-        }
-    }
-    request.tool_id_map = logical_ids
-        .into_iter()
-        .map(|logical_id| ToolIdMapEntryV1 {
-            native_id: format!("native-{logical_id}"),
-            logical_id,
-            kind: ToolKindV1::Function,
-            name: "weather".into(),
-            namespace: None,
-            owner: owner.clone(),
-        })
-        .collect();
 }
 
 fn reject_before_connect(

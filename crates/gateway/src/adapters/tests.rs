@@ -4,11 +4,10 @@ use super::*;
 use crate::content_ref::{
     JsonValueExt, compact_ingress_document, externalize_model_request, model_content_refs,
 };
-use crate::ports::ToolContinuationScopeV1;
 use crate::replay::{ReplayConfig, ReplayManager};
 use crate::server::core_runtime::model_ir::{
     CanonicalTool, ContentPart, ImageSource, MessageRole, ModelIrError, RequestedReasoningControl,
-    ToolChoice, ToolIdMapEntryV1, ToolKindV1, ToolResultStatusV1,
+    ToolChoice, ToolKindV1, ToolResultStatusV1,
 };
 use crate::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, CriticalFact, Fidelity,
@@ -177,15 +176,7 @@ fn messages_ingress_accepts_claude_failed_tool_result() {
             "physical",
             fixed_reasoning("fixed"),
         );
-        let mut continued = request.clone();
-        continued.tool_id_map = vec![ToolIdMapEntryV1 {
-            logical_id: "hiroute_tool_v1_fixture".into(),
-            native_id: "native-tool-id".into(),
-            kind: ToolKindV1::Function,
-            name: "Read".into(),
-            namespace: None,
-            owner: profile.exact_provider_path().unwrap(),
-        }];
+        let continued = request.clone();
         let projected = project_candidate_request(&continued, &profile).unwrap();
         if upstream == IngressProtocol::Messages {
             assert_eq!(
@@ -598,7 +589,6 @@ fn messages_thinking_signature_replays_as_responses_reasoning_item_in_order() {
         }),
         &IngressRequestBindings {
             provider_state_owner: Some(owner),
-            tool_id_map: Vec::new(),
         },
     )
     .unwrap();
@@ -886,30 +876,9 @@ fn observation_decoder_projects_request_bound_tool_id_without_ambient_authority(
         fixed_reasoning("fixed"),
     );
     let owner = profile.exact_provider_path().unwrap();
-    let projection = ToolLogicalIdProjection::for_test(
-        [7_u8; 32],
-        ToolContinuationScopeV1 {
-            authority_id: "authority".into(),
-            authority_epoch: 1,
-            grant_id: "grant".into(),
-            grant_generation: 1,
-            served_model_id: "agent".into(),
-            route: hiroute_domain::ModelRequestRouteV2::Plan {
-                revision: 2,
-                semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"plan"),
-            },
-        },
-    );
+    let projection = ToolIdProjection::new(IngressProtocol::Responses);
     let expected = projection
-        .project(
-            "capture-response",
-            0,
-            "provider-native-secret",
-            ToolKindV1::Function,
-            None,
-            "weather",
-            &owner,
-        )
+        .project("provider-native-secret", &owner)
         .unwrap();
     let decoded = std::thread::spawn(move || {
         let mut decoder =
@@ -939,7 +908,7 @@ fn observation_decoder_projects_request_bound_tool_id_without_ambient_authority(
         .expect("Tool start event");
     assert_eq!(logical_id, &expected);
     assert_eq!(native_id, "provider-native-secret");
-    assert!(logical_id.starts_with("hiroute_tool_v1_"));
+    assert_eq!(logical_id, native_id);
 }
 
 fn assert_nonstream_only_profile(upstream: IngressProtocol) {
@@ -1137,14 +1106,6 @@ fn replay_sequential_encoder_streams_large_json_in_raw_and_string_positions() {
             fixed_reasoning("fixed"),
         );
         let mut request = canonical.clone();
-        request.tool_id_map = vec![ToolIdMapEntryV1 {
-            logical_id: "logical".into(),
-            native_id: format!("native-{target:?}"),
-            kind: ToolKindV1::Function,
-            name: "weather".into(),
-            namespace: None,
-            owner: profile.exact_provider_path().expect("provider path"),
-        }];
         let expected = project_candidate_request(&request, &profile)
             .expect("inline JSON projection")
             .bytes;
@@ -1221,14 +1182,6 @@ fn replay_sequential_encoder_preserves_externalized_custom_input_wrappers() {
             fixed_reasoning("fixed"),
         );
         let mut request = canonical.clone();
-        request.tool_id_map = vec![ToolIdMapEntryV1 {
-            logical_id: "logical".into(),
-            native_id: format!("native-{target:?}"),
-            kind: ToolKindV1::Custom,
-            name: "shell".into(),
-            namespace: None,
-            owner: profile.exact_provider_path().expect("provider path"),
-        }];
         let expected = project_candidate_request(&request, &profile)
             .expect("inline custom projection")
             .bytes;
@@ -1288,14 +1241,6 @@ fn replay_externalization_keeps_tool_identity_keys_comparable_for_chat_projectio
         "physical-chat",
         fixed_reasoning("fixed"),
     );
-    let mapping = ToolIdMapEntryV1 {
-        logical_id: "logical".into(),
-        native_id: "native".into(),
-        kind: ToolKindV1::Function,
-        name: "lookup".into(),
-        namespace: Some("records".into()),
-        owner: profile.exact_provider_path().expect("provider path"),
-    };
     let document = json!({
         "model":"alias",
         "input":[
@@ -1308,10 +1253,7 @@ fn replay_externalization_keeps_tool_identity_keys_comparable_for_chat_projectio
         ]}],
         "tool_choice":{"type":"function","name":"lookup"}
     });
-    let inline =
-        decode_ingress_request_with_tool_resolver(IngressProtocol::Responses, &document, |_| {
-            Ok(vec![mapping.clone()])
-        })
+    let inline = decode_ingress_request(IngressProtocol::Responses, &document)
         .expect("decode inline namespaced continuation");
     let expected = project_candidate_request(&inline, &profile)
         .expect("inline Chat projection")
@@ -1339,10 +1281,7 @@ fn replay_externalization_keeps_tool_identity_keys_comparable_for_chat_projectio
     let mut compacted = document;
     compact_ingress_document(IngressProtocol::Responses, &mut compacted, &store)
         .expect("compact ingress payloads");
-    let mut request =
-        decode_ingress_request_with_tool_resolver(IngressProtocol::Responses, &compacted, |_| {
-            Ok(vec![mapping])
-        })
+    let mut request = decode_ingress_request(IngressProtocol::Responses, &compacted)
         .expect("decode compacted namespaced continuation");
     externalize_model_request(&mut request, &store, 16).expect("externalize request payloads");
     let ContentPart::ToolCall {

@@ -168,7 +168,6 @@ fn assert_replay_to_owner(input: Vec<Value>) {
         &json!({"model":"hiroute-fixture","input":input}),
         &IngressRequestBindings {
             provider_state_owner: Some(profile.exact_provider_path().unwrap()),
-            tool_id_map: Vec::new(),
         },
     )
     .unwrap();
@@ -300,7 +299,6 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
                 &json!({"model":"alias","input":[item]}),
                 &IngressRequestBindings {
                     provider_state_owner: Some(profile.exact_provider_path().unwrap()),
-                    tool_id_map: Vec::new(),
                 },
             );
             if status == "completed" {
@@ -337,7 +335,6 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
             &json!({"model":"alias","input":[item]}),
             &IngressRequestBindings {
                 provider_state_owner: Some(profile.exact_provider_path().unwrap()),
-                tool_id_map: Vec::new(),
             },
         )
         .unwrap();
@@ -362,7 +359,6 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
             }]}),
             &IngressRequestBindings {
                 provider_state_owner: Some(profile.exact_provider_path().unwrap()),
-                tool_id_map: Vec::new(),
             },
         );
         assert!(decoded.is_err(), "accepted {status}");

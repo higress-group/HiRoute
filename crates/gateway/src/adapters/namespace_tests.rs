@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::ports::ToolContinuationScopeV1;
 use crate::server::core_runtime::model_ir::{ContentPart, ResponseBlock, ToolKindV1};
 use crate::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, fixed_reasoning,
@@ -16,20 +15,7 @@ fn responses_namespaced_tool_calls_roundtrip_trusted_namespace_and_native_ids() 
         "physical",
         fixed_reasoning("fixed"),
     );
-    let projection = ToolLogicalIdProjection::for_test(
-        [13_u8; 32],
-        ToolContinuationScopeV1 {
-            authority_id: "authority".into(),
-            authority_epoch: 1,
-            grant_id: "grant".into(),
-            grant_generation: 1,
-            served_model_id: "agent".into(),
-            route: hiroute_domain::ModelRequestRouteV2::Plan {
-                revision: 2,
-                semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"plan"),
-            },
-        },
-    );
+    let projection = ToolIdProjection::new(IngressProtocol::Responses);
     let mut decoder =
         NativeResponseDecoder::new_for_observation(&profile, 200, false, projection, None).unwrap();
     decoder
@@ -117,12 +103,7 @@ fn responses_namespaced_tool_calls_roundtrip_trusted_namespace_and_native_ids() 
             {"type":"function_call_output","call_id":calls[1].0,"output":"done-b"}
         ]
     });
-    let request =
-        decode_ingress_request_with_tool_resolver(IngressProtocol::Responses, &continued, |ids| {
-            assert_eq!(ids.len(), 2);
-            Ok(decoded.response.tool_id_map.clone())
-        })
-        .unwrap();
+    let request = decode_ingress_request(IngressProtocol::Responses, &continued).unwrap();
     assert_eq!(
         request.messages[1].content[0],
         ContentPart::ToolResult {
@@ -151,20 +132,7 @@ fn responses_namespaced_stream_keeps_one_identity_through_added_delta_done_and_c
         "physical",
         fixed_reasoning("fixed"),
     );
-    let projection = ToolLogicalIdProjection::for_test(
-        [19_u8; 32],
-        ToolContinuationScopeV1 {
-            authority_id: "authority".into(),
-            authority_epoch: 1,
-            grant_id: "grant".into(),
-            grant_generation: 1,
-            served_model_id: "agent".into(),
-            route: hiroute_domain::ModelRequestRouteV2::Plan {
-                revision: 2,
-                semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"plan"),
-            },
-        },
-    );
+    let projection = ToolIdProjection::new(IngressProtocol::Responses);
     let mut decoder =
         NativeResponseDecoder::new_for_observation(&profile, 200, true, projection, None).unwrap();
     let status = decoder
@@ -223,7 +191,7 @@ data: {"type":"response.completed","sequence_number":5,"response":{"id":"respons
                 }
             });
     assert_eq!(started_id, finished_id);
-    assert!(started_id.unwrap().starts_with("hiroute_tool_v1_"));
+    assert_eq!(started_id.unwrap(), "native");
     assert_eq!(decoded.response.tool_id_map.len(), 1);
     assert_eq!(
         decoded.response.tool_id_map[0].namespace.as_deref(),
@@ -250,12 +218,7 @@ data: {"type":"response.completed","sequence_number":5,"response":{"id":"respons
     for snapshot in tool_snapshots {
         assert_eq!(snapshot.data["item"]["namespace"], "generic-group");
         assert_eq!(snapshot.data["item"]["name"], "generic-child");
-        assert!(
-            snapshot.data["item"]["call_id"]
-                .as_str()
-                .unwrap()
-                .starts_with("hiroute_tool_v1_")
-        );
+        assert_eq!(snapshot.data["item"]["call_id"], "native");
     }
     assert_eq!(
         rendered.last().unwrap().event.as_deref(),
@@ -286,20 +249,7 @@ fn chat_projection_reverses_namespaced_function_and_custom_calls_for_responses_c
         "physical",
         fixed_reasoning("fixed"),
     );
-    let tool_id_projection = ToolLogicalIdProjection::for_test(
-        [23_u8; 32],
-        ToolContinuationScopeV1 {
-            authority_id: "authority".into(),
-            authority_epoch: 1,
-            grant_id: "grant".into(),
-            grant_generation: 1,
-            served_model_id: "agent".into(),
-            route: hiroute_domain::ModelRequestRouteV2::Plan {
-                revision: 2,
-                semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"plan"),
-            },
-        },
-    );
+    let tool_id_projection = ToolIdProjection::new(IngressProtocol::Responses);
     let mut decoder = NativeResponseDecoder::new_for_observation(
         &profile,
         200,
@@ -389,11 +339,7 @@ fn chat_projection_reverses_namespaced_function_and_custom_calls_for_responses_c
             {"type":"custom","name":"shell","description":"run a command"}
         ]
     });
-    let continued =
-        decode_ingress_request_with_tool_resolver(IngressProtocol::Responses, &continued, |_| {
-            Ok(decoded.response.tool_id_map.clone())
-        })
-        .unwrap();
+    let continued = decode_ingress_request(IngressProtocol::Responses, &continued).unwrap();
     let projected = project_candidate_request(&continued, &profile).unwrap();
     assert_eq!(projected.body["messages"].as_array().unwrap().len(), 3);
     assert_eq!(

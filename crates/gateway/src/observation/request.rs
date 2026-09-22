@@ -18,7 +18,7 @@ use crate::agent_turn_history::{AgentTurnStatus, CompletedAgentTurn, ExecutionAt
 use crate::ports::{
     CasOutcome, ProbeLeaseOutcome, RuntimeHealth, RuntimeStateEntry, RuntimeStateKey,
 };
-use crate::server::core_runtime::adapters::ToolLogicalIdProjection;
+use crate::server::core_runtime::adapters::ToolIdProjection;
 use crate::server::core_runtime::classification::BoundAssessment;
 use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 
@@ -105,7 +105,7 @@ pub(super) struct RequestObservationState {
     pub(super) accepted_wire_usage_recorded: bool,
     pub(super) accepted_attempt_finished: bool,
     pub(super) response_capture: Option<CanonicalCaptureHandle>,
-    pub(super) tool_id_projection: Option<ToolLogicalIdProjection>,
+    pub(super) tool_id_projection: Option<ToolIdProjection>,
     pub(super) response_part_ordinal: u32,
 }
 
@@ -318,7 +318,7 @@ impl RequestObservation {
     /// request scope, and observation remains unable to mutate authority.
     pub(in crate::server::core_runtime) fn bind_tool_id_projection(
         &self,
-        projection: ToolLogicalIdProjection,
+        projection: ToolIdProjection,
     ) {
         let mut state = self.lock_state();
         if state.tool_id_projection.is_none() {

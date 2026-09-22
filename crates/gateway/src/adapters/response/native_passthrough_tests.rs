@@ -1,12 +1,10 @@
-use hiroute_domain::ModelRequestRouteV2;
 use hiroute_gateway_core::runtime::body::BudgetTree;
 use serde_json::{Value, json};
 
 use super::native_passthrough::{
     NativeProjectedUnit, NativeResponseProjector, NativeTerminalOutcome,
 };
-use crate::ports::ToolContinuationScopeV1;
-use crate::server::core_runtime::adapters::ToolLogicalIdProjection;
+use crate::server::core_runtime::adapters::ToolIdProjection;
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 use crate::server::request_plan::IngressProtocol;
 
@@ -19,30 +17,13 @@ fn profile(protocol: IngressProtocol) -> CandidateProtocolProfile {
     )
 }
 
-fn projection() -> ToolLogicalIdProjection {
-    ToolLogicalIdProjection::for_test(
-        [7_u8; 32],
-        ToolContinuationScopeV1 {
-            authority_id: "authority".into(),
-            authority_epoch: 1,
-            grant_id: "grant".into(),
-            grant_generation: 1,
-            served_model_id: "alias".into(),
-            route: ModelRequestRouteV2::Plan {
-                revision: 2,
-                semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"plan"),
-            },
-        },
-    )
-}
-
 fn projector(protocol: IngressProtocol, streaming: bool) -> NativeResponseProjector {
     NativeResponseProjector::new_for_observation(
         &profile(protocol),
         streaming,
         "alias".into(),
         None,
-        projection(),
+        ToolIdProjection::new(protocol),
     )
     .unwrap()
 }
@@ -159,12 +140,7 @@ fn responses_stream_preserves_unknown_wire_and_rewrites_only_owned_paths() {
         assert_eq!(created["vendor"]["model"], "nested-untouched");
         let tool = unit_json(&units[2]);
         assert_eq!(tool["item"]["id"], "item-native");
-        assert!(
-            tool["item"]["call_id"]
-                .as_str()
-                .unwrap()
-                .starts_with("hiroute_tool_v1_")
-        );
+        assert_eq!(tool["item"]["call_id"], "call-native");
         let terminal = unit_json(&units[3]);
         assert_eq!(terminal["response"]["model"], "alias");
         assert_eq!(terminal["response"]["output"][0]["id"], "item-native");
@@ -262,7 +238,7 @@ fn responses_hosted_search_identity_is_trusted_in_native_stream_and_snapshot() {
         .as_str()
         .unwrap()
         .to_owned();
-    assert!(logical.starts_with("hiroute_tool_v1_"));
+    assert_eq!(logical, "native-search");
     assert_eq!(unit_json(&units[2])["item_id"], logical);
     assert_eq!(unit_json(&units[3])["item"]["id"], logical);
     assert_eq!(unit_json(&units[4])["response"]["output"][0]["id"], logical);
@@ -1014,11 +990,9 @@ fn reasoning_and_tool_argument_deltas_emit_before_terminal() {
         "opaque-signature"
     );
     assert_eq!(unit_json(&messages_units[2])["delta"]["thinking"], "plan");
-    assert!(
-        unit_json(&messages_units[3])["content_block"]["id"]
-            .as_str()
-            .unwrap()
-            .starts_with("hiroute_tool_v1_")
+    assert_eq!(
+        unit_json(&messages_units[3])["content_block"]["id"],
+        "native-tool"
     );
     assert_eq!(
         unit_json(&messages_units[4])["delta"]["partial_json"],
@@ -1050,11 +1024,9 @@ fn reasoning_and_tool_argument_deltas_emit_before_terminal() {
         chat_value["choices"][0]["delta"]["reasoning_content"],
         "plan"
     );
-    assert!(
-        chat_value["choices"][0]["delta"]["tool_calls"][0]["id"]
-            .as_str()
-            .unwrap()
-            .starts_with("hiroute_tool_v1_")
+    assert_eq!(
+        chat_value["choices"][0]["delta"]["tool_calls"][0]["id"],
+        "native-chat-tool"
     );
     assert!(chat_units[0].semantic);
     assert_eq!(chat_units[0].terminal, None);

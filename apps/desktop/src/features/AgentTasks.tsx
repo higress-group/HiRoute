@@ -106,7 +106,7 @@ export function AgentTasks({
   }, [active, read.status, selected?.taskId, selected?.runId]);
 
   useEffect(() => {
-    if (!active || !onReadTask || !selected?.detailsLoaded || !['queued', 'running', 'cancelling'].includes(selected.status)) return;
+    if (!active || !onReadTask || !selected?.detailsLoaded) return;
     let disposed = false;
     let timer: number | undefined;
     const poll = async (current: AgentTask) => {
@@ -116,21 +116,22 @@ export function AgentTasks({
         if (disposed) return;
         setTasks(items => items.map(item => sameRun(item, current) ? hydrated : item));
         setError('');
-        if (['queued', 'running', 'cancelling'].includes(hydrated.status)) {
-          timer = window.setTimeout(() => void poll(hydrated), 1800);
-        }
+        // A completed run does not mean the task cannot be continued elsewhere.
+        timer = window.setTimeout(() => void poll(hydrated),
+          ['queued', 'running', 'cancelling'].includes(hydrated.status) ? 1800 : 4500);
       } catch {
         if (disposed) return;
         setError(text('任务状态暂时无法刷新，将继续重试。', 'Task status could not be refreshed. Retrying.'));
         timer = window.setTimeout(() => void poll(current), 4500);
       }
     };
-    timer = window.setTimeout(() => void poll(selected), 1800);
+    timer = window.setTimeout(() => void poll(selected),
+      ['queued', 'running', 'cancelling'].includes(selected.status) ? 1800 : 4500);
     return () => {
       disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [active, onReadTask, selected?.taskId, selected?.runId, selected?.detailsLoaded, selected?.status]);
+  }, [active, onReadTask, selected]);
   const statusLabel = (status: AgentTask['status']) => ({
     running: text('执行中', 'Running'),
     queued: text('准备中', 'Preparing'),

@@ -44,7 +44,6 @@ pub struct ModelRequestIRV1 {
     /// Recorded for audit only. P0 projection always uses the candidate cap.
     pub requested_max_output_tokens: Option<u64>,
     pub provider_state: Vec<OpaqueProviderState>,
-    pub tool_id_map: Vec<ToolIdMapEntryV1>,
     /// Native Responses transport controls are retained, never silently dropped on conversion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub responses_options: Option<ResponsesRequestOptionsV1>,

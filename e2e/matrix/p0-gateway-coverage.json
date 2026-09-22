@@ -63,13 +63,13 @@
         "protocol.stream_usage_terminal",
         "protocol.namespace_native_acceptance",
         "protocol.namespace_upstream_rejection",
-        "protocol.continuation_owner_affinity",
-        "protocol.continuation_preconnect_refusal"
+        "protocol.continuation_request_authentication",
+        "protocol.continuation_restart_native_history"
       ],
       "execution": "real_hirouted_native_provider",
       "id": "protocol.tool_and_sse",
       "source": "tools/e2e-harness/tests/p0_gateway_protocol/continuation.rs",
-      "symbol": "continuation::production_tool_continuation_restores_native_id_and_fails_closed_outside_scope",
+      "symbol": "continuation::production_native_tool_history_survives_restart_with_request_authentication",
       "test_target": "p0_gateway_protocol"
     },
     {
@@ -301,7 +301,7 @@
       "test_target": "p0_gateway_privacy"
     }
   ],
-  "registry_digest": "sha256:957d559bfa1a1d63e97e5bdc20d32865e261031ddf6c9e27e4b36be614281b8a",
+  "registry_digest": "sha256:061cda488951676f3f8a60b38467ba345ee519249f999cb21f75aac9ab793d62",
   "rows": [
     {
       "id": "publication.incompatible_or_gap",

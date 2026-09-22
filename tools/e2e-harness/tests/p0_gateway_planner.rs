@@ -170,7 +170,6 @@ fn corpus_request(case: &CorpusCase) -> ModelRequestIRV1 {
         requested_reasoning: RequestedReasoningControl::absent(),
         requested_max_output_tokens: None,
         provider_state: Vec::new(),
-        tool_id_map: Vec::new(),
     }
 }
 

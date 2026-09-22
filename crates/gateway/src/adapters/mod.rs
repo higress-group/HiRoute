@@ -9,12 +9,11 @@ mod tool_projection;
 pub(crate) use tool_projection::{ChatToolIdentity, ChatToolProjection};
 
 pub(crate) use continuation::{
-    AcceptedToolContinuationScanner, ActiveToolContinuation, ToolLogicalIdProjection,
-    install_process_tool_id_codec, with_active_tool_continuation,
+    AcceptedResponseDeliveryScanner, ActiveResponseDelivery, ToolIdProjection,
+    with_active_response_delivery,
 };
 pub use ingress::{
     IngressRequestBindings, decode_ingress_request, decode_ingress_request_with_bindings,
-    decode_ingress_request_with_state_and_tool_resolver, decode_ingress_request_with_tool_resolver,
 };
 pub use request::{
     PreparedNativeRequest, PreparedNativeTemplate, project_candidate_request,

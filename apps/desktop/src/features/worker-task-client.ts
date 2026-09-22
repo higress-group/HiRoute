@@ -221,6 +221,7 @@ export async function readWorkerTask(
   locator: WorkerTaskLocator,
   presentationFor: (planId: string) => WorkerTaskPresentation,
   invokeWorker: WorkerInvoke = nativeInvoke,
+  previous?: AgentTask,
 ): Promise<AgentTask> {
   const envelope = await invokeWorker<WorkerEnvelope<WorkerTaskStatus>>('worker_task_status', {
     input: {
@@ -231,6 +232,17 @@ export async function readWorkerTask(
     },
   });
   const task = envelopeData(envelope).task;
+  // Completed result content is immutable. Preserve already loaded pages while
+  // refreshing cleanup/latest-run facts; a Continue must fetch its own result.
+  if (previous?.detailsLoaded && previous.taskId === task.task_id
+    && previous.runId === task.run.run_id && previous.resultAvailable === task.run.result_available
+    && previous.contentAvailability === task.content_availability
+    && previous.status === workerTaskState(task.run.state)
+    && ['complete', 'failed', 'cancelled'].includes(previous.status)) {
+    return { ...projectTask(task, presentationFor, true, undefined, envelope.next_actions),
+      result: previous.result, resultAvailable: previous.resultAvailable,
+      resultIncomplete: previous.resultIncomplete, resultNextOffset: previous.resultNextOffset };
+  }
   const result = await readResult(task.run.run_id, task.run.result_available, null, invokeWorker);
   return projectTask(task, presentationFor, true, result, envelope.next_actions);
 }

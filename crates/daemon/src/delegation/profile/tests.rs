@@ -1,5 +1,36 @@
 use super::*;
 
+#[cfg(unix)]
+#[test]
+fn isolated_worker_profiles_can_resolve_standard_tools() {
+    for harness in [WorkerHarnessV1::ClaudeCode, WorkerHarnessV1::CodexCli] {
+        let profile = request(harness, "private-token");
+        let path = profile.env.get("PATH").expect("worker PATH");
+        let entries: Vec<_> = std::env::split_paths(path.as_str()).collect();
+        assert!(entries.iter().all(|entry| entry.is_absolute()));
+        assert!(entries.contains(&std::path::PathBuf::from("/trusted")));
+        assert_eq!(
+            entries
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            entries.len()
+        );
+        let output = std::process::Command::new("/bin/sh")
+            .env_clear()
+            .envs(
+                profile
+                    .env
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.as_str())),
+            )
+            .args(["-c", "test -n \"$PATH\" && command -v sh && command -v env"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{:?}", output);
+    }
+}
+
 fn request(harness: WorkerHarnessV1, token: &str) -> CandidateWorkerProfile {
     request_with_alias(harness, token, "hiroute/1234567890abcdef")
 }

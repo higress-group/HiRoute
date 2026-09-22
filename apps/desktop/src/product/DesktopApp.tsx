@@ -414,8 +414,10 @@ export function DesktopApp() {
 
   async function hydrateTask(task: AgentTask) {
     return readWorkerTask(
-      { taskId: task.taskId, runId: task.runId },
+      { taskId: task.taskId },
       taskPresentation,
+      undefined,
+      task,
     );
   }
 

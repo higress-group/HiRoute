@@ -128,6 +128,9 @@ impl CandidateWorkerProfile {
         };
         let mut env = BTreeMap::new();
         // This is a new child environment, never merged with std::env::vars().
+        // Tool discovery is not authentication. Keep an explicit command search
+        // path while leaving ambient model credentials and configuration behind.
+        env.insert("PATH".into(), Zeroizing::new(worker_path(&input)?));
         env.insert(
             "HOME".into(),
             Zeroizing::new(path_string(&private_root.join("home"))?),
@@ -342,6 +345,47 @@ fn path_string(path: &Path) -> Result<String, DelegationErrorV1> {
         .filter(|s| !s.contains(['\n', '\r', '\0']))
         .map(str::to_owned)
         .ok_or(DelegationErrorV1::InvalidArguments)
+}
+
+fn worker_path(input: &ProfileInput<'_>) -> Result<String, DelegationErrorV1> {
+    let mut paths = Vec::new();
+    for executable in [
+        Some(input.harness_binary),
+        input.node_binary,
+        Some(input.adapter),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(parent) = executable.parent() {
+            paths.push(parent.to_owned());
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&path).filter(|path| path.is_absolute()));
+    }
+    #[cfg(unix)]
+    paths.extend(
+        [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ]
+        .map(PathBuf::from),
+    );
+    let mut unique = Vec::new();
+    for path in paths {
+        if !unique.contains(&path) {
+            unique.push(path);
+        }
+    }
+    std::env::join_paths(unique)
+        .map_err(|_| DelegationErrorV1::InvalidArguments)?
+        .into_string()
+        .map_err(|_| DelegationErrorV1::InvalidArguments)
 }
 
 #[cfg(test)]

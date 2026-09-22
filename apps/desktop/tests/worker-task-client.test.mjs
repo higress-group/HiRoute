@@ -138,6 +138,45 @@ test('task list title truncation counts Unicode scalars', () => {
   assert.equal(workerTaskDisplayTitle(title), `${'界'.repeat(59)}😀…`);
 });
 
+test('refresh discovers an external Continue and never keeps the previous result', async () => {
+  const oldView = view('continued', { run: { ...view('continued').run, state: 'succeeded', result_available: true } });
+  const old = await readWorkerTask({ taskId: 'continued' }, presentation, async command =>
+    command === 'worker_task_status'
+      ? envelope({ task: oldView })
+      : envelope({ text: 'old result', next_offset: null, incomplete: false }));
+  const next = view('continued', { latest_run_id: 'run/new', run: { ...view('continued').run, run_id: 'run/new' } });
+  const refreshed = await readWorkerTask({ taskId: old.taskId }, presentation, async (command, args) => {
+    assert.equal(command, 'worker_task_status');
+    assert.equal(args.input.run_id, null);
+    return envelope({ task: next });
+  }, old);
+  assert.equal(refreshed.runId, 'run/new');
+  assert.equal(refreshed.status, 'running');
+  assert.notEqual(refreshed.result, 'old result');
+  assert.equal(refreshed.resultAvailable, false);
+});
+
+test('terminal refresh preserves loaded pages but refreshes cleanup and clears withdrawn content', async () => {
+  const task = view('finished', { run: { ...view('finished').run, state: 'succeeded', result_available: true } });
+  const previous = await readWorkerTask({ taskId: 'finished' }, presentation, async command =>
+    command === 'worker_task_status' ? envelope({ task })
+      : envelope({ text: 'page one', next_offset: 10, incomplete: true }));
+  previous.result = 'page one plus page two';
+  previous.resultNextOffset = 20;
+  const refreshed = await readWorkerTask({ taskId: 'finished' }, presentation, async command => {
+    assert.equal(command, 'worker_task_status');
+    return envelope({ task: { ...task, run: { ...task.run, cleanup: 'complete' } } });
+  }, previous);
+  assert.equal(refreshed.result, previous.result);
+  assert.equal(refreshed.resultNextOffset, 20);
+  const withdrawn = await readWorkerTask({ taskId: 'finished' }, presentation, async command => {
+    assert.equal(command, 'worker_task_status');
+    return envelope({ task: { ...task, content_availability: 'unavailable', run: { ...task.run, result_available: false } } });
+  }, refreshed);
+  assert.equal(withdrawn.resultAvailable, false);
+  assert.notEqual(withdrawn.result, previous.result);
+});
+
 test('same-name tasks remain separate and a hidden title falls back to task identity', async () => {
   const pager = new WorkerTaskPager(presentation, async () => envelope({
     schema: 'hiroute.delegation-list/v1',

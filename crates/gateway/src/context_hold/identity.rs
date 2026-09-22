@@ -340,7 +340,6 @@ mod tests {
             requested_reasoning: RequestedReasoningControl::absent(),
             requested_max_output_tokens: None,
             provider_state: Vec::new(),
-            tool_id_map: Vec::new(),
             responses_options: None,
             responses_item_ids: Default::default(),
             responses_item_statuses: Default::default(),

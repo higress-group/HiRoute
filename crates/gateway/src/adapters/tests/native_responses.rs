@@ -40,7 +40,7 @@ fn responses_to_messages_keeps_top_level_instructions_and_tool_history_but_rejec
         "glm-5.3",
         fixed_reasoning("fixed"),
     );
-    let mut request = decode_ingress_request(
+    let request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({
             "model": "route", "stream": true, "instructions": "top-level policy",
@@ -57,28 +57,20 @@ fn responses_to_messages_keeps_top_level_instructions_and_tool_history_but_rejec
     )
     .unwrap();
     assert!(!request.requirements().mid_conversation_instructions);
-    request.tool_id_map.push(ToolIdMapEntryV1 {
-        logical_id: "logical-call".into(),
-        native_id: "native-call".into(),
-        kind: ToolKindV1::Function,
-        name: "lookup".into(),
-        namespace: None,
-        owner: profile.exact_provider_path().unwrap(),
-    });
     let body = project_candidate_request(&request, &profile).unwrap().body;
     assert_eq!(body["model"], "glm-5.3");
     assert_eq!(body["system"], "top-level policy");
     assert_eq!(body["stream"], true);
     assert_eq!(body["messages"][0]["content"][0]["text"], "first turn");
     assert_eq!(body["messages"][1]["content"][0]["text"], "checking");
-    assert_eq!(body["messages"][2]["content"][0]["id"], "native-call");
+    assert_eq!(body["messages"][2]["content"][0]["id"], "logical-call");
     assert_eq!(
         body["messages"][2]["content"][0]["input"],
         json!({"key":"v"})
     );
     assert_eq!(
         body["messages"][3]["content"][0]["tool_use_id"],
-        "native-call"
+        "logical-call"
     );
     assert_eq!(body["messages"][4]["content"][0]["text"], "next turn");
     assert_eq!(
@@ -121,7 +113,7 @@ fn codex_input_developer_prelude_is_initial_but_not_messages_representable() {
         "tools": [{"type":"function","name":"lookup","parameters":{"type":"object"}}],
         "tool_choice": "auto", "parallel_tool_calls": false
     });
-    let mut request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
+    let request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
     let requirements = request.requirements();
     assert!(requirements.initial_instructions);
     assert!(!requirements.mid_conversation_instructions);
@@ -133,17 +125,9 @@ fn codex_input_developer_prelude_is_initial_but_not_messages_representable() {
         "physical",
         fixed_reasoning("fixed"),
     );
-    request.tool_id_map.push(ToolIdMapEntryV1 {
-        logical_id: "logical-call".into(),
-        native_id: "native-call".into(),
-        kind: ToolKindV1::Function,
-        name: "lookup".into(),
-        namespace: None,
-        owner: native.exact_provider_path().unwrap(),
-    });
     let projected = project_candidate_request(&request, &native).unwrap().body;
     assert_eq!(projected["input"][0]["role"], "developer");
-    assert_eq!(projected["input"][3]["call_id"], "native-call");
+    assert_eq!(projected["input"][3]["call_id"], "logical-call");
     assert_eq!(projected["input"][5]["content"][0]["text"], "next turn");
     assert_eq!(projected["stream"], true);
 
@@ -244,16 +228,6 @@ fn responses_multitool_continuation_replays_externalized_reasoning_state() {
     let opaque_second = "second-state".repeat(130);
     let bindings = IngressRequestBindings {
         provider_state_owner: Some(owner.clone()),
-        tool_id_map: ["call-1", "call-2"]
-            .map(|id| ToolIdMapEntryV1 {
-                logical_id: id.into(),
-                native_id: id.into(),
-                kind: ToolKindV1::Function,
-                name: "shell".into(),
-                namespace: None,
-                owner: owner.clone(),
-            })
-            .into(),
     };
     let mut request = decode_ingress_request_with_bindings(
         IngressProtocol::Responses,

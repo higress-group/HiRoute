@@ -1,11 +1,9 @@
 use hiroute_gateway::server::core_runtime::adapters::{
     ClientResponseRenderer, IncrementalClientSseRenderer, NativeResponseDecoder,
-    ProtocolAdapterError, RenderedClientResponse, ResponseDecodeStatus,
-    decode_ingress_request_with_tool_resolver, project_candidate_request,
+    ProtocolAdapterError, RenderedClientResponse, ResponseDecodeStatus, decode_ingress_request,
+    project_candidate_request,
 };
-use hiroute_gateway::server::core_runtime::model_ir::{
-    ModelEvent, ModelIrError, ToolIdMapEntryV1, ToolKindV1,
-};
+use hiroute_gateway::server::core_runtime::model_ir::{ModelEvent, ModelIrError};
 use hiroute_gateway::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, fixed_reasoning,
 };
@@ -45,19 +43,7 @@ fn native_codex_request_has_only_owned_same_protocol_rewrites() {
         "physical-model",
         fixed_reasoning("fixed"),
     );
-    let bindings = vec![ToolIdMapEntryV1 {
-        logical_id: "native-call".into(),
-        native_id: "native-call".into(),
-        kind: ToolKindV1::Function,
-        name: "lookup".into(),
-        namespace: Some("tools".into()),
-        owner: profile.exact_provider_path().unwrap(),
-    }];
-    let request =
-        decode_ingress_request_with_tool_resolver(IngressProtocol::Responses, &native, |_| {
-            Ok(bindings.clone())
-        })
-        .unwrap();
+    let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
     let projected = project_candidate_request(&request, &profile).unwrap().body;
     let mut expected = native;
     expected["model"] = json!("physical-model");

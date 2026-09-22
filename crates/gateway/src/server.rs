@@ -35,7 +35,6 @@ use self::publication::{
 use self::test_control::{
     E2eControlEndpoint, E2eControlError, E2eControlHandle, E2eControlOptions,
 };
-use crate::ports::InMemoryToolContinuationAuthority;
 use async_trait::async_trait;
 use bytes::Bytes;
 use hiroute_gateway_core::transport::pingora::GatewayHttpApp;
@@ -377,15 +376,7 @@ impl GatewayLauncher {
             Some(path) => Arc::new(FilePlannerInputAuthority::open(path)?),
             None => Arc::new(PublicationPlannerInputAuthority),
         };
-        let tool_continuations = Arc::new(
-            InMemoryToolContinuationAuthority::from_environment()
-                .map_err(|_| PortError::Rejected)?,
-        );
-        let runtime = ProductionGatewayRuntime::compose_with_planner_and_continuations(
-            ports,
-            planner,
-            tool_continuations,
-        );
+        let runtime = ProductionGatewayRuntime::compose_with_planner(ports, planner);
         let runtime = match launch_identity.executable_sha256() {
             Some(digest) => runtime.with_executable_sha256(Arc::clone(digest)),
             None => runtime,
@@ -453,11 +444,7 @@ impl GatewayLauncher {
             GatewayMode::Production {
                 runtime,
                 test_control,
-            } => {
-                self::core_runtime::adapters::install_process_tool_id_codec()
-                    .map_err(|_| GatewayLauncherError::ContinuationKeyUnavailable)?;
-                (ListenerLifecycle::Production(runtime), test_control)
-            }
+            } => (ListenerLifecycle::Production(runtime), test_control),
         };
         #[cfg(not(feature = "e2e-test-control"))]
         let lifecycle = match mode {
@@ -467,11 +454,7 @@ impl GatewayLauncher {
                 readiness_path: fixture.readiness.path,
                 executable_sha256: launch_identity.executable_sha256,
             }),
-            GatewayMode::Production { runtime } => {
-                self::core_runtime::adapters::install_process_tool_id_codec()
-                    .map_err(|_| GatewayLauncherError::ContinuationKeyUnavailable)?;
-                ListenerLifecycle::Production(runtime)
-            }
+            GatewayMode::Production { runtime } => ListenerLifecycle::Production(runtime),
         };
         let mut server = match run_style {
             ListenerRunStyle::Standalone => pingora_core::server::Server::new(None)

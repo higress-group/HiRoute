@@ -17,24 +17,10 @@ mod wire;
 mod native_passthrough_tests;
 
 #[cfg(test)]
-pub(super) fn test_tool_projection() -> super::continuation::ToolLogicalIdProjection {
+pub(super) fn test_tool_projection() -> super::continuation::ToolIdProjection {
     // Production installs the process key before requests. Golden response tests must supply
     // their own request-bound projection so parallel runtime tests cannot change their result.
-    super::continuation::install_process_tool_id_codec().unwrap();
-    super::continuation::ToolLogicalIdProjection::for_test(
-        [7_u8; 32],
-        crate::ports::ToolContinuationScopeV1 {
-            authority_id: "test-authority".into(),
-            authority_epoch: 1,
-            grant_id: "test-grant".into(),
-            grant_generation: 1,
-            served_model_id: "alias".into(),
-            route: hiroute_domain::ModelRequestRouteV2::Plan {
-                revision: 1,
-                semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"response-test"),
-            },
-        },
-    )
+    super::continuation::ToolIdProjection::new(IngressProtocol::Responses)
 }
 
 pub use decoder::{DecodedNativeResponse, NativeResponseDecoder, ResponseDecodeStatus};
@@ -111,7 +97,7 @@ enum NativeBlockKind {
 #[derive(Clone, Debug)]
 struct DecoderCore {
     owner: ExactProviderPathV1,
-    tool_id_projection: Option<super::continuation::ToolLogicalIdProjection>,
+    tool_id_projection: Option<super::continuation::ToolIdProjection>,
     provider_state_emission: NativeProviderStateEmission,
     accumulator: ResponseAccumulator,
     native_blocks: BTreeMap<(NativeBlockKind, u32), u32>,
@@ -131,7 +117,7 @@ impl DecoderCore {
     fn new(
         owner: ExactProviderPathV1,
         provider_state_emission: NativeProviderStateEmission,
-        tool_id_projection: Option<super::continuation::ToolLogicalIdProjection>,
+        tool_id_projection: Option<super::continuation::ToolIdProjection>,
     ) -> Self {
         Self {
             owner,
@@ -1068,32 +1054,22 @@ impl DecoderCore {
             }) {
                 return Err(ModelIrError::MissingToolIdentity(native_id).into());
             }
-            let response_id = self.accumulator.response_id.as_deref().ok_or_else(|| {
-                ModelIrError::InvalidResponseLifecycle(
+            if self.accumulator.response_id.is_none() {
+                return Err(ModelIrError::InvalidResponseLifecycle(
                     "Tool call arrived before native response identity".into(),
                 )
-            })?;
+                .into());
+            }
             let logical_id = if let Some(projection) = &self.tool_id_projection {
-                projection.project(
-                    response_id,
-                    index,
-                    &native_id,
-                    kind,
-                    namespace.as_deref(),
-                    &name,
-                    &self.owner,
-                )?
+                projection.project(&native_id, &self.owner)?
             } else {
-                super::continuation::issue_logical_tool_id(
-                    response_id,
-                    index,
-                    &native_id,
-                    kind,
-                    namespace.as_deref(),
-                    &name,
-                    &self.owner,
-                )?
+                super::continuation::project_delivered_tool_id(&native_id, &self.owner)?
             };
+            if self.accumulator.blocks.values().any(|block| {
+                matches!(block, MutableResponseBlock::ToolCall { logical_id: current, .. } if current == &logical_id)
+            }) {
+                return Err(ModelIrError::ToolContinuationConflict.into());
+            }
             let item_id = self.native_item_id(native_index);
             self.emit(
                 ModelEvent::ToolCallStarted {

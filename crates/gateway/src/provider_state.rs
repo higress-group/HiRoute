@@ -7,14 +7,24 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::ports::ToolContinuationScopeV1;
 use crate::server::core_runtime::model_ir::{ExactProviderPathV1, ModelIrError};
+use crate::server::request_plan::IngressProtocol;
 
 const CAPACITY: usize = 4096;
 const IDLE_TTL: Duration = Duration::from_secs(3600);
 const MAX_PATTERN: usize = 256 * 1024;
 const MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
-type Key = (ToolContinuationScopeV1, [u8; 32]);
+/// Authorization scope for opaque provider state, never for ordinary tool IDs.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub(crate) struct ProviderStateScopeV1 {
+    pub authority_id: String,
+    pub authority_epoch: u64,
+    pub grant_id: String,
+    pub grant_generation: u64,
+    pub served_model_id: String,
+    pub route: hiroute_domain::ModelRequestRouteV2,
+}
+type Key = (ProviderStateScopeV1, [u8; 32]);
 
 #[derive(Default)]
 pub(crate) struct ProviderStateStore(Mutex<BTreeMap<Key, Entry>>);
@@ -25,7 +35,7 @@ struct Entry {
 }
 
 impl ProviderStateStore {
-    fn accept(&self, scope: &ToolContinuationScopeV1, pending: &Pending, now: Instant) {
+    fn accept(&self, scope: &ProviderStateScopeV1, pending: &Pending, now: Instant) {
         let mut entries = self.0.lock().unwrap_or_else(|e| e.into_inner());
         entries.retain(|_, entry| entry.expires > now);
         let key = (scope.clone(), pending.digest);
@@ -54,7 +64,7 @@ impl ProviderStateStore {
 
     pub(crate) fn resolve(
         &self,
-        scope: &ToolContinuationScopeV1,
+        scope: &ProviderStateScopeV1,
         document: &Value,
         now: Instant,
     ) -> Result<Option<ExactProviderPathV1>, ModelIrError> {
@@ -62,28 +72,45 @@ impl ProviderStateStore {
         entries.retain(|_, entry| entry.expires > now);
         let mut owner = None;
         let mut resolved_keys = Vec::new();
-        if let Some(input) = document.get("input").and_then(Value::as_array) {
-            for item in input.iter().filter(|item| item["type"] == "reasoning") {
-                let state = match item.get("encrypted_content") {
-                    None | Some(Value::Null) => continue,
-                    Some(Value::String(state)) if state.is_empty() => continue,
-                    Some(Value::String(state)) => state,
-                    Some(_) => return Err(ModelIrError::InvalidField("encrypted_content")),
-                };
-                let key = (scope.clone(), digest(state));
-                let entry = entries
-                    .get(&key)
-                    .ok_or(ModelIrError::ProviderStateOwnershipRequired)?;
-                let next = entry
-                    .owner
-                    .as_ref()
-                    .ok_or(ModelIrError::ProviderStateNotPortable)?;
-                if owner.as_ref().is_some_and(|current| current != next) {
-                    return Err(ModelIrError::ProviderStateNotPortable);
-                }
-                owner = Some(next.clone());
-                resolved_keys.push(key);
+        let states = document
+            .get("input")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|item| item["type"] == "reasoning")
+            .map(|item| item.get("encrypted_content"))
+            .chain(
+                document
+                    .get("messages")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter(|message| message["role"] == "assistant")
+                    .filter_map(|message| message.get("content").and_then(Value::as_array))
+                    .flatten()
+                    .filter(|block| block["type"] == "thinking")
+                    .map(|block| block.get("signature")),
+            );
+        for value in states {
+            let state = match value {
+                None | Some(Value::Null) => continue,
+                Some(Value::String(state)) if state.is_empty() => continue,
+                Some(Value::String(state)) => state,
+                Some(_) => return Err(ModelIrError::InvalidField("encrypted_content")),
+            };
+            let key = (scope.clone(), digest(state));
+            let entry = entries
+                .get(&key)
+                .ok_or(ModelIrError::ProviderStateOwnershipRequired)?;
+            let next = entry
+                .owner
+                .as_ref()
+                .ok_or(ModelIrError::ProviderStateNotPortable)?;
+            if owner.as_ref().is_some_and(|current| current != next) {
+                return Err(ModelIrError::ProviderStateNotPortable);
             }
+            owner = Some(next.clone());
+            resolved_keys.push(key);
         }
         // Renew only after the entire replay passes ownership validation.
         for key in resolved_keys {
@@ -109,16 +136,22 @@ struct Pending {
 #[derive(Clone)]
 pub(crate) struct ActiveProviderStates {
     store: Arc<ProviderStateStore>,
-    scope: ToolContinuationScopeV1,
+    scope: ProviderStateScopeV1,
     pending: Arc<Mutex<Vec<Pending>>>,
+    downstream: IngressProtocol,
 }
 
 impl ActiveProviderStates {
-    pub(crate) fn new(store: Arc<ProviderStateStore>, scope: ToolContinuationScopeV1) -> Self {
+    pub(crate) fn new(
+        store: Arc<ProviderStateStore>,
+        scope: ProviderStateScopeV1,
+        downstream: IngressProtocol,
+    ) -> Self {
         Self {
             store,
             scope,
             pending: Arc::new(Mutex::new(Vec::new())),
+            downstream,
         }
     }
 
@@ -131,14 +164,32 @@ impl ActiveProviderStates {
             .as_str()
             .filter(|s| !s.is_empty())
             .ok_or(ModelIrError::InvalidField("encrypted_content"))?;
-        // This exact key/value fragment is written by the native Responses renderer.
+        // Responses ciphertext is surfaced as a thinking signature for Messages.
+        // Bind the actual downstream representation, not the upstream field name.
         // Quotes inside user text are escaped and cannot activate this fragment.
+        let field = match self.downstream {
+            IngressProtocol::Responses => "encrypted_content",
+            IngressProtocol::Messages => "signature",
+            _ => return Err(ModelIrError::ProviderStateNotPortable),
+        };
         let pattern = format!(
-            "\"encrypted_content\":{}",
+            "\"{field}\":{}",
             serde_json::to_string(state)
                 .map_err(|_| ModelIrError::InvalidField("encrypted_content"))?
         )
         .into_bytes();
+        self.record_at_acceptance(state, owner, pattern)
+    }
+
+    pub(crate) fn record_at_acceptance(
+        &self,
+        state: &str,
+        owner: &ExactProviderPathV1,
+        pattern: Vec<u8>,
+    ) -> Result<(), ModelIrError> {
+        if state.is_empty() || state.len() > MAX_PATTERN || pattern.is_empty() {
+            return Err(ModelIrError::InvalidField("provider_state"));
+        }
         if pattern.len() > MAX_PATTERN {
             return Err(ModelIrError::BufferLimit(MAX_PATTERN));
         }
@@ -216,8 +267,8 @@ mod tests {
     use crate::server::request_plan::IngressProtocol;
     use serde_json::json;
 
-    fn scope() -> ToolContinuationScopeV1 {
-        ToolContinuationScopeV1 {
+    fn scope() -> ProviderStateScopeV1 {
+        ProviderStateScopeV1 {
             authority_id: "a".into(),
             authority_epoch: 1,
             grant_id: "g".into(),
@@ -246,9 +297,64 @@ mod tests {
     }
 
     #[test]
+    fn fragmented_native_signature_requires_accepted_matching_block_close() {
+        let store = Arc::new(ProviderStateStore::default());
+        let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Messages);
+        let now = Instant::now();
+        let replay = json!({"messages":[{"role":"assistant","content":[
+            {"type":"thinking","thinking":"","signature":"combined-signature"}
+        ]}]});
+        let closing = br#"{ "index": 0, "type": "content_block_stop" }"#;
+        active
+            .record_at_acceptance("combined-signature", &owner("luna"), closing.to_vec())
+            .unwrap();
+        let mut scanner = active.scanner();
+        scanner.accept_bytes(br#"{"signature":"combined-signature"}"#, now);
+        scanner.accept_bytes(br#"{ "index": 1, "type": "content_block_stop" }"#, now);
+        assert!(store.resolve(&scope(), &replay, now).is_err());
+        for part in closing.chunks(2) {
+            scanner.accept_bytes(part, now);
+        }
+        assert_eq!(
+            store.resolve(&scope(), &replay, now).unwrap(),
+            Some(owner("luna"))
+        );
+    }
+
+    #[test]
+    fn messages_signature_binds_only_accepted_responses_ciphertext() {
+        let store = Arc::new(ProviderStateStore::default());
+        let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Messages);
+        let now = Instant::now();
+        let replay = json!({"messages":[{"role":"assistant","content":[
+            {"type":"thinking","thinking":"","signature":"luna-state"},
+            {"type":"tool_use","id":"tool-one","name":"Bash","input":{"command":"pwd"}}
+        ]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-one","content":"/work"}]}]});
+        active.record(&json!("luna-state"), &owner("luna")).unwrap();
+        assert!(store.resolve(&scope(), &replay, now).is_err());
+        let mut scanner = active.scanner();
+        scanner.accept_bytes(br#"{"encrypted_content":"luna-state"}"#, now);
+        assert!(store.resolve(&scope(), &replay, now).is_err());
+        let escaped = json!({"text":"\"signature\":\"luna-state\""}).to_string();
+        scanner.accept_bytes(escaped.as_bytes(), now);
+        assert!(store.resolve(&scope(), &replay, now).is_err());
+        for part in br#"data: {"type":"content_block_delta","delta":{"type":"signature_delta","signature":"luna-state"}}"#.chunks(3) {
+            scanner.accept_bytes(part, now);
+        }
+        assert_eq!(
+            store.resolve(&scope(), &replay, now).unwrap(),
+            Some(owner("luna"))
+        );
+        let mut foreign = scope();
+        foreign.grant_generation += 1;
+        assert!(store.resolve(&foreign, &replay, now).is_err());
+        assert!(store.resolve(&scope(), &replay, now + IDLE_TTL).is_err());
+    }
+
+    #[test]
     fn only_accepted_ciphertext_resolves_and_scope_expiry_are_enforced() {
         let store = Arc::new(ProviderStateStore::default());
-        let active = ActiveProviderStates::new(store.clone(), scope());
+        let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
         let now = Instant::now();
         let state = "fixture-\\\"ciphertext";
         active.record(&json!(state), &owner("luna")).unwrap();
@@ -282,7 +388,8 @@ mod tests {
         let store = Arc::new(ProviderStateStore::default());
         let now = Instant::now();
         for (value, model) in [("one", "luna"), ("two", "terra")] {
-            let active = ActiveProviderStates::new(store.clone(), scope());
+            let active =
+                ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
             active.record(&json!(value), &owner(model)).unwrap();
             active.scanner().accept_bytes(
                 json!({"encrypted_content":value}).to_string().as_bytes(),
@@ -294,7 +401,7 @@ mod tests {
             store.resolve(&scope(), &mixed, now),
             Err(ModelIrError::ProviderStateNotPortable)
         );
-        let active = ActiveProviderStates::new(store.clone(), scope());
+        let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
         active.record(&json!("one"), &owner("terra")).unwrap();
         active
             .scanner()
@@ -304,7 +411,7 @@ mod tests {
             Err(ModelIrError::ProviderStateNotPortable)
         );
         assert!(
-            ActiveProviderStates::new(store, scope())
+            ActiveProviderStates::new(store, scope(), IngressProtocol::Responses)
                 .record(&json!("x".repeat(MAX_PATTERN)), &owner("luna"))
                 .is_err()
         );
@@ -313,7 +420,7 @@ mod tests {
     #[test]
     fn active_replay_renews_idle_deadline_but_eventually_expires() {
         let store = Arc::new(ProviderStateStore::default());
-        let active = ActiveProviderStates::new(store.clone(), scope());
+        let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
         let now = Instant::now();
         active.record(&json!("state"), &owner("luna")).unwrap();
         active
@@ -351,7 +458,8 @@ mod tests {
             let store = Arc::new(ProviderStateStore::default());
             let now = Instant::now();
             for (state, model) in [("state", "luna"), ("terra-state", "terra")] {
-                let active = ActiveProviderStates::new(store.clone(), scope());
+                let active =
+                    ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
                 active.record(&json!(state), &owner(model)).unwrap();
                 active.scanner().accept_bytes(
                     json!({"encrypted_content":state}).to_string().as_bytes(),

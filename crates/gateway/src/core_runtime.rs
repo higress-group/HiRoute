@@ -45,9 +45,7 @@ use crate::content_ref::{
     scan_ingress_document,
 };
 use crate::context_hold::{ContextHoldStore, ContextRequest, HoldCompletion, begin_context};
-use crate::ports::{
-    InMemoryToolContinuationAuthority, ToolContinuationAuthority, ToolContinuationScopeV1,
-};
+use crate::provider_state::ProviderStateScopeV1;
 use crate::replay::{ReplayError, ReplayManager, ReplayReader, ReplayStore};
 use crate::runtime::{
     ProductionProvider, ProductionReplaySeed, ProductionReplaySeedEnvelope, ProductionRouteContext,
@@ -82,7 +80,6 @@ pub struct ProductionGatewayRuntime {
     observation: Arc<GatewayObservation>,
     context_holds: Arc<ContextHoldStore>,
     agent_turn_history: Arc<AgentTurnHistoryStore>,
-    tool_continuations: Arc<dyn ToolContinuationAuthority>,
     replay: Option<ReplayManager>,
     provider_states: Arc<crate::provider_state::ProviderStateStore>,
     executable_sha256: Option<Arc<str>>,
@@ -105,44 +102,16 @@ impl ProductionGatewayRuntime {
         ports: ProductionPorts,
         planner_inputs: Arc<dyn PlannerInputAuthority>,
     ) -> Self {
-        Self::compose_with_planner_and_continuations(
-            ports,
-            planner_inputs,
-            Arc::new(InMemoryToolContinuationAuthority::default()),
-        )
-    }
-
-    pub fn compose_with_planner_and_continuations(
-        ports: ProductionPorts,
-        planner_inputs: Arc<dyn PlannerInputAuthority>,
-        tool_continuations: Arc<dyn ToolContinuationAuthority>,
-    ) -> Self {
-        Self::compose_with_planner_observation_and_continuations(
+        Self::compose_with_planner_and_observation(
             ports,
             planner_inputs,
             Arc::new(GatewayObservation::from_environment()),
-            tool_continuations,
         )
     }
-
     pub fn compose_with_planner_and_observation(
-        ports: ProductionPorts,
-        planner_inputs: Arc<dyn PlannerInputAuthority>,
-        observation: Arc<GatewayObservation>,
-    ) -> Self {
-        Self::compose_with_planner_observation_and_continuations(
-            ports,
-            planner_inputs,
-            observation,
-            Arc::new(InMemoryToolContinuationAuthority::default()),
-        )
-    }
-
-    fn compose_with_planner_observation_and_continuations(
         mut ports: ProductionPorts,
         planner_inputs: Arc<dyn PlannerInputAuthority>,
         observation: Arc<GatewayObservation>,
-        tool_continuations: Arc<dyn ToolContinuationAuthority>,
     ) -> Self {
         ports.credentials = Arc::new(ObservedCredentialResolver::new(Arc::clone(
             &ports.credentials,
@@ -174,7 +143,6 @@ impl ProductionGatewayRuntime {
             observation,
             context_holds: Arc::new(ContextHoldStore::default()),
             agent_turn_history: Arc::new(AgentTurnHistoryStore::default()),
-            tool_continuations,
             replay: ReplayManager::from_environment().ok(),
             provider_states: Arc::new(crate::provider_state::ProviderStateStore::default()),
             executable_sha256: None,
@@ -530,7 +498,30 @@ impl ProductionGatewayRuntime {
                     return write_typed_error_phase(session, status, code, "planner").await;
                 }
             };
-            let provider_state_owner = if protocol == IngressProtocol::Responses {
+            // Native Messages state already has an exact single-source binding.
+            // Responses ciphertext, including its Messages signature projection,
+            // must instead resolve the source actually accepted downstream.
+            let native_messages_owner = if protocol == IngressProtocol::Messages {
+                match provider_state_owner(&authorized, protocol) {
+                    Ok(owner) => {
+                        owner.filter(|owner| owner.upstream_protocol == IngressProtocol::Messages)
+                    }
+                    Err(_) => {
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "PROVIDER_STATE_AUTHORITY_UNAVAILABLE",
+                            "continuation_authority",
+                        )
+                        .await;
+                    }
+                }
+            } else {
+                None
+            };
+            let provider_state_owner = if protocol == IngressProtocol::Responses
+                || (protocol == IngressProtocol::Messages && native_messages_owner.is_none())
+            {
                 match self
                     .provider_states
                     .resolve(&continuation_scope, &document, Instant::now())
@@ -552,7 +543,11 @@ impl ProductionGatewayRuntime {
                     }
                 }
             } else {
-                match provider_state_owner(&authorized, protocol) {
+                match if protocol == IngressProtocol::Messages {
+                    Ok(native_messages_owner)
+                } else {
+                    provider_state_owner(&authorized, protocol)
+                } {
                     Ok(owner) => owner,
                     Err(_) => {
                         return write_typed_error_phase(
@@ -576,43 +571,27 @@ impl ProductionGatewayRuntime {
                 return write_typed_error_phase(session, status, code, "canonical_request").await;
             }
             let parse_started = Instant::now();
-            let mut canonical_request =
-                match adapters::decode_ingress_request_with_state_and_tool_resolver(
-                    protocol,
-                    &document,
+            let mut canonical_request = match adapters::decode_ingress_request_with_bindings(
+                protocol,
+                &document,
+                &adapters::IngressRequestBindings {
                     provider_state_owner,
-                    |logical_ids| {
-                        self.tool_continuations
-                            .resolve(&continuation_scope, logical_ids, Instant::now())
-                            .map_err(|_| model_ir::ModelIrError::ToolContinuationUnavailable)
-                    },
-                )
-                .map(Box::new)
-                {
-                    Ok(request) => request,
-                    Err(
-                        model_ir::ModelIrError::ToolContinuationUnavailable
-                        | model_ir::ModelIrError::ToolContinuationConflict,
-                    ) => {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::BAD_REQUEST,
-                            "TOOL_CONTINUATION_UNAVAILABLE",
-                            "continuation_authority",
-                        )
-                        .await;
-                    }
-                    Err(error) => {
-                        let error = adapters::ProtocolAdapterError::from(error);
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::BAD_REQUEST,
-                            error.code(),
-                            "canonical_request",
-                        )
-                        .await;
-                    }
-                };
+                },
+            )
+            .map(Box::new)
+            {
+                Ok(request) => request,
+                Err(error) => {
+                    let error = adapters::ProtocolAdapterError::from(error);
+                    return write_typed_error_phase(
+                        session,
+                        StatusCode::BAD_REQUEST,
+                        error.code(),
+                        "canonical_request",
+                    )
+                    .await;
+                }
+            };
             let parse_elapsed = parse_started.elapsed();
             let (identity, hold_ticket) = begin_context(
                 &self.context_holds,
@@ -1147,31 +1126,16 @@ impl ProductionGatewayRuntime {
             }
             let frozen_candidates: Arc<[DecisionCandidateAuthority]> = frozen_candidates.into();
             let route_binding = frozen_candidates[0].binding;
-            let continuation_issuance =
-                match self.tool_continuations.begin(continuation_scope.clone()) {
-                    Ok(issuance) => issuance,
-                    Err(_) => {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "TOOL_CONTINUATION_UNAVAILABLE",
-                            "continuation_authority",
-                        )
-                        .await;
-                    }
-                };
-            let active_continuation = adapters::ActiveToolContinuation::new(
-                Arc::clone(&self.tool_continuations),
-                continuation_issuance,
-            )
-            .with_provider_states(crate::provider_state::ActiveProviderStates::new(
-                Arc::clone(&self.provider_states),
-                continuation_scope,
-            ));
-            if let Ok(projection) = active_continuation.logical_id_projection() {
-                request_observation.bind_tool_id_projection(projection);
-            }
-            let _continuation_guard = ToolContinuationRequestGuard(active_continuation.clone());
+            let active_continuation = adapters::ActiveResponseDelivery::new(
+                protocol,
+                crate::provider_state::ActiveProviderStates::new(
+                    Arc::clone(&self.provider_states),
+                    continuation_scope,
+                    protocol,
+                ),
+            );
+            request_observation.bind_tool_id_projection(active_continuation.tool_id_projection());
+            let response_delivery = active_continuation.clone();
             let admission = BoundRequestAdmission {
                 route_binding,
                 accepted_response_body_plan: authorized.accepted_response_plan().body_plan.clone(),
@@ -1217,7 +1181,7 @@ impl ProductionGatewayRuntime {
                 budget,
                 seed,
             ));
-            let execution = adapters::with_active_tool_continuation(active_continuation, execution);
+            let execution = adapters::with_active_response_delivery(active_continuation, execution);
             let execution = Box::pin(with_active_request(request_observation.clone(), execution));
             let result = execution.await;
             let response_started = core_session.response_started;
@@ -1257,7 +1221,7 @@ impl ProductionGatewayRuntime {
                     request_observation.metadata().request_id.clone(),
                     status,
                     executions,
-                    _continuation_guard.0.accepted_count() == 0,
+                    response_delivery.accepted_count() == 0,
                     Instant::now(),
                 ) {
                     if let Some(completed) = completed {
@@ -1414,14 +1378,6 @@ impl Drop for AgentTurnRequestGuard {
     }
 }
 
-struct ToolContinuationRequestGuard(adapters::ActiveToolContinuation);
-
-impl Drop for ToolContinuationRequestGuard {
-    fn drop(&mut self) {
-        self.0.abort_pending();
-    }
-}
-
 struct ReplayBodySession<'a> {
     inner: &'a mut dyn GatewaySession,
     request_head: GatewayRequestHead,
@@ -1430,7 +1386,7 @@ struct ReplayBodySession<'a> {
     response_capture: AcceptedResponseCapture,
     response_started: bool,
     runtime_state_authority: crate::runtime::RuntimeStateAuthoritySignal,
-    continuation_scanner: adapters::AcceptedToolContinuationScanner,
+    continuation_scanner: adapters::AcceptedResponseDeliveryScanner,
 }
 
 #[async_trait]
@@ -1496,9 +1452,9 @@ impl GatewaySession for ReplayBodySession<'_> {
     }
 }
 
-fn tool_continuation_scope(authorized: &AuthorizedRequestPlan) -> ToolContinuationScopeV1 {
+fn tool_continuation_scope(authorized: &AuthorizedRequestPlan) -> ProviderStateScopeV1 {
     let receipt = authorized.receipt();
-    ToolContinuationScopeV1 {
+    ProviderStateScopeV1 {
         authority_id: receipt.authority_id.to_string(),
         authority_epoch: receipt.authority_epoch,
         grant_id: receipt.grant_id.to_string(),

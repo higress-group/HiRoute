@@ -19,7 +19,7 @@ use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 use crate::server::request_plan::IngressProtocol;
 
 use super::super::continuation::{
-    ToolLogicalIdProjection, issue_logical_tool_id, record_provider_state,
+    ToolIdProjection, project_delivered_tool_id, record_provider_state,
 };
 use super::super::{ChatToolIdentity, ChatToolProjection, ProtocolAdapterError};
 
@@ -28,6 +28,8 @@ mod helpers;
 use helpers::*;
 #[path = "native_passthrough_evidence.rs"]
 mod evidence;
+#[path = "native_passthrough_state.rs"]
+mod provider_state;
 
 const MAX_NATIVE_BODY_BYTES: usize = 16 * 1024 * 1024;
 const MAX_SSE_EVENT_BYTES: usize = 256 * 1024;
@@ -73,7 +75,7 @@ impl NativeResponseProjector {
             streaming,
             served_model_alias,
             chat_projection,
-            ToolAuthority::Active,
+            ToolIdDelivery::Active,
             budget,
         )
     }
@@ -83,7 +85,7 @@ impl NativeResponseProjector {
         streaming: bool,
         served_model_alias: String,
         chat_projection: Option<ChatToolProjection>,
-        tool_projection: ToolLogicalIdProjection,
+        tool_projection: ToolIdProjection,
     ) -> Result<Self, ProtocolAdapterError> {
         // Capture already reserves its own bounded input/output copies. This
         // local framer budget is off-path and cannot grant execution authority.
@@ -97,7 +99,7 @@ impl NativeResponseProjector {
             streaming,
             served_model_alias,
             chat_projection,
-            ToolAuthority::Projection(tool_projection),
+            ToolIdDelivery::Projection(tool_projection),
             budget,
         )
     }
@@ -107,7 +109,7 @@ impl NativeResponseProjector {
         streaming: bool,
         served_model_alias: String,
         chat_projection: Option<ChatToolProjection>,
-        authority: ToolAuthority,
+        authority: ToolIdDelivery,
         budget: StreamBudget,
     ) -> Result<Self, ProtocolAdapterError> {
         if profile.ingress_protocol != profile.capability.upstream_protocol
@@ -158,6 +160,7 @@ impl NativeResponseProjector {
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
                 reasoning_state: BTreeMap::new(),
+                messages_signatures: BTreeMap::new(),
                 responses_done_seen: false,
                 usage: ModelUsage::default(),
                 usage_input_overflow: false,
@@ -243,30 +246,20 @@ impl NativeResponseProjector {
 }
 
 #[derive(Clone)]
-enum ToolAuthority {
+enum ToolIdDelivery {
     Active,
-    Projection(ToolLogicalIdProjection),
+    Projection(ToolIdProjection),
 }
 
-impl ToolAuthority {
-    #[allow(clippy::too_many_arguments)]
-    fn issue(
+impl ToolIdDelivery {
+    fn project(
         &self,
-        response_id: &str,
-        index: u32,
         native_id: &str,
-        kind: ToolKindV1,
-        namespace: Option<&str>,
-        name: &str,
         owner: &ExactProviderPathV1,
     ) -> Result<String, ProtocolAdapterError> {
         match self {
-            Self::Active => {
-                issue_logical_tool_id(response_id, index, native_id, kind, namespace, name, owner)
-            }
-            Self::Projection(projection) => {
-                projection.project(response_id, index, native_id, kind, namespace, name, owner)
-            }
+            Self::Active => project_delivered_tool_id(native_id, owner),
+            Self::Projection(projection) => projection.project(native_id, owner),
         }
     }
 
@@ -295,7 +288,7 @@ pub(super) struct ProjectionState {
     pub(super) protocol: IngressProtocol,
     alias: String,
     owner: ExactProviderPathV1,
-    authority: ToolAuthority,
+    authority: ToolIdDelivery,
     chat_projection: Option<ChatToolProjection>,
     response_id: Option<String>,
     native_model: Option<String>,
@@ -305,6 +298,7 @@ pub(super) struct ProjectionState {
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
     reasoning_state: BTreeMap<u32, [u8; 32]>,
+    messages_signatures: BTreeMap<u32, String>,
     responses_done_seen: bool,
     usage: ModelUsage,
     usage_input_overflow: bool,
@@ -342,6 +336,7 @@ impl ProjectionState {
         &mut self,
         event_type: Option<&str>,
         data: &[u8],
+        raw_event: &[u8],
     ) -> Result<(Option<Vec<u8>>, ProjectionMetadata), ProtocolAdapterError> {
         if self.protocol == IngressProtocol::Responses && data == b"[DONE]" {
             if event_type.is_some() || self.terminal.is_none() || self.responses_done_seen {
@@ -391,9 +386,14 @@ impl ProjectionState {
             Err(error) => return Err(ModelIrError::InvalidJson(error.to_string()).into()),
         };
         let object = value.as_object_mut().expect("checked JSON object");
+        let tools_before = self.tools.len();
         let mut metadata = match self.protocol {
             IngressProtocol::Responses => self.project_responses_sse(event_type, object)?,
-            IngressProtocol::Messages => self.project_messages_sse(event_type, object)?,
+            IngressProtocol::Messages => {
+                let metadata = self.project_messages_sse(event_type, object)?;
+                self.observe_messages_state(object, raw_event)?;
+                metadata
+            }
             IngressProtocol::ChatCompletions => self.project_chat_sse(object)?,
         };
         if after_terminal {
@@ -404,7 +404,10 @@ impl ProjectionState {
         let changed = value
             != serde_json::from_slice::<Value>(data)
                 .map_err(|error| ModelIrError::InvalidJson(error.to_string()))?;
-        let rewritten = changed
+        // Tool delivery bookkeeping matches the serialized ID field only after
+        // transport acceptance. Normalize this known frame's JSON syntax even
+        // when the native ID itself is unchanged (including escaped IDs).
+        let rewritten = (changed || self.tools.len() != tools_before)
             .then(|| serde_json::to_vec(&value))
             .transpose()
             .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
@@ -691,6 +694,14 @@ impl ProjectionState {
                         u32::try_from(index).map_err(|_| ModelIrError::InvalidField("content"))?,
                         block,
                     )?;
+                }
+                if block.get("type").and_then(Value::as_str) == Some("thinking")
+                    && let Some(signature) = block
+                        .get("signature")
+                        .filter(|value| value.as_str().is_some_and(|s| !s.is_empty()))
+                    && self.authority.records_state()
+                {
+                    record_provider_state(signature, &self.owner)?;
                 }
             }
         }
@@ -983,19 +994,17 @@ impl ProjectionState {
             .budget
             .reserve(MemoryRole::SemanticState, retained)
             .map_err(|_| ModelIrError::BufferLimit(retained))?;
-        let response_id = self
-            .response_id
+        self.response_id
             .as_deref()
             .ok_or_else(|| ModelIrError::MissingToolIdentity("response id".into()))?;
-        let logical_id = self.authority.issue(
-            response_id,
-            index,
-            native_id,
-            kind,
-            namespace,
-            name,
-            &self.owner,
-        )?;
+        let logical_id = self.authority.project(native_id, &self.owner)?;
+        if self
+            .tools
+            .values()
+            .any(|tool| tool.logical_id == logical_id)
+        {
+            return Err(ModelIrError::ToolContinuationConflict.into());
+        }
         self.tools.insert(
             index,
             NativeToolIdentity {
@@ -1008,33 +1017,6 @@ impl ProjectionState {
         );
         self.retained.push(charge);
         Ok(logical_id)
-    }
-
-    fn observe_reasoning_state(
-        &mut self,
-        index: u32,
-        value: &Value,
-    ) -> Result<(), ProtocolAdapterError> {
-        let digest: [u8; 32] = Sha256::digest(
-            serde_json::to_vec(&value)
-                .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?,
-        )
-        .into();
-        if self.reasoning_state.get(&index) == Some(&digest) {
-            return Ok(());
-        }
-        if !self.reasoning_state.contains_key(&index) {
-            let charge = self
-                .budget
-                .reserve(MemoryRole::SemanticState, 128)
-                .map_err(|_| ModelIrError::BufferLimit(128))?;
-            self.retained.push(charge);
-        }
-        if self.authority.records_state() {
-            record_provider_state(value, &self.owner)?;
-        }
-        self.reasoning_state.insert(index, digest);
-        Ok(())
     }
 
     fn observe_usage(&mut self, protocol: IngressProtocol, value: Option<&Value>) {

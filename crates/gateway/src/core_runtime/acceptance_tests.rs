@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -10,10 +9,7 @@ use hiroute_gateway_core::transport::{
 use http::{HeaderMap, Method};
 
 use super::*;
-use crate::ports::{
-    InMemoryToolContinuationAuthority, ToolContinuationAuthority, ToolContinuationScopeV1,
-};
-use crate::server::core_runtime::model_ir::{ToolIdMapEntryV1, ToolKindV1};
+use crate::provider_state::ProviderStateScopeV1;
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
 struct FailSecondBodyWrite {
@@ -54,9 +50,7 @@ impl GatewaySession for FailSecondBodyWrite {
 
 #[tokio::test]
 async fn production_response_sink_keeps_only_the_tool_unit_accepted_before_reset() {
-    let authority: Arc<dyn ToolContinuationAuthority> =
-        Arc::new(InMemoryToolContinuationAuthority::new(4, Duration::from_secs(30)).unwrap());
-    let scope = ToolContinuationScopeV1 {
+    let scope = ProviderStateScopeV1 {
         authority_id: "authority:runtime-test".into(),
         authority_epoch: 1,
         grant_id: "grant:runtime-test".into(),
@@ -67,39 +61,39 @@ async fn production_response_sink_keeps_only_the_tool_unit_accepted_before_reset
             semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"runtime-test-plan"),
         },
     };
-    let issuance = authority.begin(scope.clone()).unwrap();
+    let first_id = "native-first".to_owned();
+    let second_id = "native-second".to_owned();
+    let active = adapters::ActiveResponseDelivery::new(
+        IngressProtocol::Responses,
+        crate::provider_state::ActiveProviderStates::new(
+            Arc::new(crate::provider_state::ProviderStateStore::default()),
+            scope,
+            IngressProtocol::Responses,
+        ),
+    );
     let profile = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Responses,
         IngressProtocol::Responses,
         "native-runtime-test",
         fixed_reasoning("fixed"),
     );
-    let owner = profile.exact_provider_path().unwrap();
-    let first_id = format!("hiroute_tool_v1_{}", "a".repeat(64));
-    let second_id = format!("hiroute_tool_v1_{}", "b".repeat(64));
-    let first = ToolIdMapEntryV1 {
-        logical_id: first_id.clone(),
-        native_id: "native-first".into(),
-        kind: ToolKindV1::Function,
-        namespace: Some("first-group".into()),
-        name: "shared".into(),
-        owner: owner.clone(),
-    };
-    let second = ToolIdMapEntryV1 {
-        logical_id: second_id.clone(),
-        native_id: "native-second".into(),
-        kind: ToolKindV1::Function,
-        namespace: Some("second-group".into()),
-        name: "shared".into(),
-        owner,
-    };
-    let now = Instant::now();
-    authority
-        .record_pending(&issuance, first.clone(), now)
-        .unwrap();
-    authority.record_pending(&issuance, second, now).unwrap();
-    let active = adapters::ActiveToolContinuation::new(Arc::clone(&authority), issuance.clone());
-    let guard = ToolContinuationRequestGuard(active.clone());
+    let tool_frames = adapters::with_active_response_delivery(active.clone(), async {
+        let mut frames = Vec::new();
+        for id in [&first_id, &second_id] {
+            let mut projector = adapters::NativeResponseProjector::new_for_attempt(
+                &profile, true, "runtime-test".into(), None, budget(),
+            ).unwrap();
+            projector.feed(b"data: {\"type\":\"response.created\",\"response\":{\"id\":\"response\",\"model\":\"native-runtime-test\"}}\n\n", false).unwrap();
+            let item = serde_json::json!({"type":"response.output_item.added","output_index":0,
+                "item":{"type":"function_call","call_id":id,"id":"item","name":"weather","arguments":"","status":"in_progress"}});
+            // Native whitespace and escaped IDs must not hide a delivered tool.
+            let encoded = serde_json::to_string(&item).unwrap().replace(":", ": ").replace("native-f", "native-\\u0066");
+            let units = projector.feed(format!("data: {encoded}\n\n").as_bytes(), false).unwrap();
+            assert_eq!(units.len(), 1);
+            frames.push(units[0].bytes.clone());
+        }
+        frames
+    }).await;
     let observation = observation::accepted_request_for_runtime_test();
     let budget = budget();
     let mut downstream = FailSecondBodyWrite {
@@ -118,10 +112,7 @@ async fn production_response_sink_keeps_only_the_tool_unit_accepted_before_reset
     };
 
     session
-        .write_response_body(
-            Bytes::from(format!("data: {{\"call_id\":\"{first_id}\"}}\n\n")),
-            false,
-        )
+        .write_response_body(Bytes::from(tool_frames[0].clone()), false)
         .await
         .unwrap();
     assert!(observation.has_accepted_attempt());
@@ -131,10 +122,7 @@ async fn production_response_sink_keeps_only_the_tool_unit_accepted_before_reset
     );
 
     let error = session
-        .write_response_body(
-            Bytes::from(format!("data: {{\"call_id\":\"{second_id}\"}}\n\n")),
-            true,
-        )
+        .write_response_body(Bytes::from(tool_frames[1].clone()), true)
         .await
         .unwrap_err();
     assert!(matches!(error, TransportError::Io(_)));
@@ -143,13 +131,7 @@ async fn production_response_sink_keeps_only_the_tool_unit_accepted_before_reset
         1
     );
     drop(session);
-    drop(guard);
-
-    assert_eq!(
-        authority.resolve(&scope, &[first_id], now).unwrap(),
-        vec![first]
-    );
-    assert!(authority.resolve(&scope, &[second_id], now).is_err());
+    assert_eq!(active.accepted_count(), 1);
     assert_eq!(downstream.accepted.len(), 1);
 }
 

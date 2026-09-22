@@ -223,14 +223,7 @@ fn serialize_responses(
                     };
                     let mut item = json!({
                         "type": match tool_kind { ToolKindV1::Function => "function_call", ToolKindV1::Custom => "custom_tool_call" },
-                        "call_id": native_tool_call_id(
-                            request,
-                            profile,
-                            logical_id,
-                            *tool_kind,
-                            namespace.as_deref(),
-                            name,
-                        )?,
+                        "call_id": native_tool_id(request, profile, logical_id)?,
                         "name": name,
                     });
                     item[match tool_kind {
@@ -251,7 +244,6 @@ fn serialize_responses(
                 ContentPart::ToolResult {
                     logical_id,
                     tool_kind,
-                    namespace,
                     output,
                     ..
                 } => {
@@ -269,13 +261,7 @@ fn serialize_responses(
                         false,
                         json!({
                             "type": match tool_kind { ToolKindV1::Function => "function_call_output", ToolKindV1::Custom => "custom_tool_call_output" },
-                            "call_id": native_tool_result_id(
-                                request,
-                                profile,
-                                logical_id,
-                                *tool_kind,
-                                namespace.as_deref(),
-                            )?,
+                            "call_id": native_tool_id(request, profile, logical_id)?,
                             "output": render_tool_output(output)?,
                         }),
                     )?);
@@ -495,17 +481,13 @@ fn serialize_chat(
                         .expect("emitted name came from this projection");
                     let chat_arguments = ChatToolProjection::chat_arguments(identity, arguments)?;
                     tool_calls.push(json!({
-                        "id": native_tool_call_id(request, profile, logical_id, *tool_kind, namespace.as_deref(), name)?,
+                        "id": native_tool_id(request, profile, logical_id)?,
                         "type": "function",
                         "function": {"name": emitted_name, "arguments": compact_json(&chat_arguments)?},
                     }));
                 }
                 ContentPart::ToolResult {
-                    logical_id,
-                    tool_kind,
-                    namespace,
-                    output,
-                    ..
+                    logical_id, output, ..
                 } => {
                     if message.content.len() != 1 || message.role != MessageRole::User {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(
@@ -516,13 +498,7 @@ fn serialize_chat(
                     object.insert("role".into(), Value::String("tool".into()));
                     object.insert(
                         "tool_call_id".into(),
-                        Value::String(native_tool_result_id(
-                            request,
-                            profile,
-                            logical_id,
-                            *tool_kind,
-                            namespace.as_deref(),
-                        )?),
+                        Value::String(native_tool_id(request, profile, logical_id)?),
                     );
                     object.insert("content".into(), render_tool_output(output)?);
                     if let Some(name) = &message.name {
@@ -664,7 +640,7 @@ fn serialize_messages(
                     reject_namespace(namespace, IngressProtocol::Messages)?;
                     content.push(json!({
                         "type": "tool_use",
-                        "id": native_tool_call_id(request, profile, logical_id, *tool_kind, None, name)?,
+                        "id": native_tool_id(request, profile, logical_id)?,
                         "name": name,
                         "input": arguments.wire_value(),
                     }));
@@ -684,7 +660,7 @@ fn serialize_messages(
                     reject_namespace(namespace, IngressProtocol::Messages)?;
                     let mut tool_result = json!({
                         "type": "tool_result",
-                        "tool_use_id": native_tool_result_id(request, profile, logical_id, *tool_kind, None)?,
+                        "tool_use_id": native_tool_id(request, profile, logical_id)?,
                         "content": render_tool_output(output)?,
                     });
                     if *status == ToolResultStatusV1::Failed {
@@ -727,6 +703,14 @@ fn validate_message_shapes(
     request: &ModelRequestIRV1,
     target: IngressProtocol,
 ) -> Result<(), ProtocolAdapterError> {
+    let mut projected = std::collections::BTreeMap::new();
+    for id in request.continuation_logical_ids()? {
+        let target_id =
+            super::continuation::project_tool_id(&id, request.ingress_protocol, target)?;
+        if projected.insert(target_id, id).is_some() {
+            return Err(ModelIrError::ToolContinuationConflict.into());
+        }
+    }
     if (!request.responses_annotations.is_empty()
         || !request.responses_search_history.is_empty()
         || request.web_search.is_some()
@@ -1031,68 +1015,13 @@ fn ensure_state_owner(
 fn native_tool_id(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
-    logical_id: &str,
+    id: &str,
 ) -> Result<String, ProtocolAdapterError> {
-    let owner = profile.exact_provider_path()?;
-    let mut matches = request
-        .tool_id_map
-        .iter()
-        .filter(|binding| binding.logical_id == logical_id && binding.owner == owner);
-    let binding = matches
-        .next()
-        .ok_or_else(|| ModelIrError::ToolIdBindingRequired(logical_id.into()))?;
-    if binding.native_id.trim().is_empty() || matches.next().is_some() {
-        return Err(ModelIrError::ToolIdBindingRequired(logical_id.into()).into());
-    }
-    Ok(binding.native_id.clone())
-}
-
-fn native_tool_call_id(
-    request: &ModelRequestIRV1,
-    profile: &CandidateProtocolProfile,
-    logical_id: &str,
-    kind: ToolKindV1,
-    namespace: Option<&str>,
-    name: &str,
-) -> Result<String, ProtocolAdapterError> {
-    let binding = native_tool_binding(request, profile, logical_id)?;
-    if binding.kind != kind || binding.name != name || binding.namespace.as_deref() != namespace {
-        return Err(ModelIrError::ToolContinuationConflict.into());
-    }
-    Ok(binding.native_id.clone())
-}
-
-fn native_tool_result_id(
-    request: &ModelRequestIRV1,
-    profile: &CandidateProtocolProfile,
-    logical_id: &str,
-    kind: ToolKindV1,
-    namespace: Option<&str>,
-) -> Result<String, ProtocolAdapterError> {
-    let binding = native_tool_binding(request, profile, logical_id)?;
-    if binding.kind != kind || binding.namespace.as_deref() != namespace {
-        return Err(ModelIrError::ToolContinuationConflict.into());
-    }
-    Ok(binding.native_id.clone())
-}
-
-fn native_tool_binding<'a>(
-    request: &'a ModelRequestIRV1,
-    profile: &CandidateProtocolProfile,
-    logical_id: &str,
-) -> Result<&'a ToolIdMapEntryV1, ProtocolAdapterError> {
-    let owner = profile.exact_provider_path()?;
-    let mut matches = request
-        .tool_id_map
-        .iter()
-        .filter(|binding| binding.logical_id == logical_id && binding.owner == owner);
-    let binding = matches
-        .next()
-        .ok_or_else(|| ModelIrError::ToolIdBindingRequired(logical_id.into()))?;
-    if binding.native_id.trim().is_empty() || matches.next().is_some() {
-        return Err(ModelIrError::ToolIdBindingRequired(logical_id.into()).into());
-    }
-    Ok(binding)
+    Ok(super::continuation::project_tool_id(
+        id,
+        request.ingress_protocol,
+        profile.capability.upstream_protocol,
+    )?)
 }
 
 fn reject_namespace(

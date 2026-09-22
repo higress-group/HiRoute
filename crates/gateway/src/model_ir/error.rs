@@ -22,8 +22,6 @@ pub enum ModelIrError {
     ProviderStateOwnershipRequired,
     #[error("Tool call has no exact logical/native ID binding: {0}")]
     ToolIdBindingRequired(String),
-    #[error("Tool continuation authority is unavailable")]
-    ToolContinuationUnavailable,
     #[error("Tool continuation identity is ambiguous or conflicting")]
     ToolContinuationConflict,
     #[error("native response lifecycle is invalid: {0}")]

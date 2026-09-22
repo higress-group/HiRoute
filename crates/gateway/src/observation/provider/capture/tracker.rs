@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::server::core_runtime::adapters::{
     ChatToolProjection, ClientResponseRenderer, IncrementalClientSseRenderer,
     NativeResponseDecoder, NativeResponseProjector, RenderedClientResponse, ResponseDecodeStatus,
-    ToolLogicalIdProjection,
+    ToolIdProjection,
 };
 use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, ClientProtocolProfile};
@@ -20,7 +20,7 @@ pub(super) struct CanonicalResponseTracker {
     ingress: IngressProtocol,
     alias: String,
     streaming: bool,
-    tool_id_projection: ToolLogicalIdProjection,
+    tool_id_projection: ToolIdProjection,
     chat_tool_projection: Option<ChatToolProjection>,
     decoder: Option<NativeResponseDecoder>,
     renderer: Option<IncrementalClientSseRenderer>,
@@ -41,7 +41,7 @@ struct CanonicalWireUnit {
 impl CanonicalResponseTracker {
     pub(super) fn new(
         profile: Arc<CandidateProtocolProfile>,
-        tool_id_projection: ToolLogicalIdProjection,
+        tool_id_projection: ToolIdProjection,
         chat_tool_projection: Option<ChatToolProjection>,
         streaming: bool,
         alias: String,
@@ -345,29 +345,14 @@ fn captures_conversation_content(event: &ModelEvent) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use hiroute_domain::ModelRequestRouteV2;
     use serde_json::json;
 
     use super::*;
-    use crate::ports::ToolContinuationScopeV1;
-    use crate::server::core_runtime::adapters::ToolLogicalIdProjection;
+    use crate::server::core_runtime::adapters::ToolIdProjection;
     use crate::server::core_runtime::profiles::fixed_reasoning;
 
-    fn projection() -> ToolLogicalIdProjection {
-        ToolLogicalIdProjection::for_test(
-            [3_u8; 32],
-            ToolContinuationScopeV1 {
-                authority_id: "authority".into(),
-                authority_epoch: 1,
-                grant_id: "grant".into(),
-                grant_generation: 1,
-                served_model_id: "alias".into(),
-                route: ModelRequestRouteV2::Plan {
-                    revision: 1,
-                    semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"plan"),
-                },
-            },
-        )
+    fn projection() -> ToolIdProjection {
+        ToolIdProjection::new(IngressProtocol::Responses)
     }
 
     #[test]

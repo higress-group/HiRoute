@@ -169,7 +169,7 @@ pub const RECEIPTS: &[FrozenReceipt] = &[
     runtime_receipt!(
         "protocol.tool_and_sse",
         "p0_gateway_protocol",
-        "continuation::production_tool_continuation_restores_native_id_and_fails_closed_outside_scope",
+        "continuation::production_native_tool_history_survives_restart_with_request_authentication",
         "tools/e2e-harness/tests/p0_gateway_protocol/continuation.rs",
         [
             "protocol.tool_round_trip",
@@ -178,8 +178,8 @@ pub const RECEIPTS: &[FrozenReceipt] = &[
             "protocol.stream_usage_terminal",
             "protocol.namespace_native_acceptance",
             "protocol.namespace_upstream_rejection",
-            "protocol.continuation_owner_affinity",
-            "protocol.continuation_preconnect_refusal",
+            "protocol.continuation_request_authentication",
+            "protocol.continuation_restart_native_history",
         ]
     ),
     receipt!(
