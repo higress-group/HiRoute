@@ -4,7 +4,7 @@
     {
       "version": "0.1.0",
       "channel": "stable",
-      "published_at": "2026-09-21T05:14:26Z",
+      "published_at": "2026-09-22T07:41:14Z",
       "notes": {
         "zh": "HiRoute 首个公开 MVP：提供 macOS 桌面应用、Linux 无界面 CLI、智能模型路由、Agent 任务路由与可扩展 Decision API。",
         "en": "HiRoute's first public MVP with macOS Desktop, Linux headless CLI, intelligent model routing, Agent task routing, and an extensible Decision API."
@@ -17,9 +17,9 @@
           "format": "dmg",
           "minimum_os": "15.0",
           "distribution": "self-signed",
-          "filename": "HiRoute-0.1.0-5dac9bcddb99-macos-arm64-trial.dmg",
-          "sha256": "0e47b6e983ad0732fee2767643eee9d190fe800e25f9aa3a23a6c60e2a29b799",
-          "size": 72858294
+          "filename": "HiRoute-0.1.0-5f3ee7c96f4f-macos-arm64-trial.dmg",
+          "sha256": "6f3babf6ba3c16bb760cff6c5afa664c326dd651728f7cd36f54b27268a643b1",
+          "size": 73383351
         },
         {
           "kind": "standalone",
@@ -28,11 +28,11 @@
           "target": "x86_64-unknown-linux-gnu",
           "format": "tar.gz",
           "distribution": "unsigned",
-          "filename": "hiroute-0.1.0-5dac9bcddb99-x86_64-unknown-linux-gnu.tar.gz",
-          "sha256": "b314dbaafbabca77f31756e0a1e4475cedd7e1e8d92f2b6311cdeb26bdff682c",
-          "size": 62649955,
-          "manifest_filename": "hiroute-0.1.0-5dac9bcddb99-x86_64-unknown-linux-gnu.tar.gz.json",
-          "manifest_sha256": "c110751de1518d519707939409f02988fd054b19996c8bc3cac86c6bfbd3dbca",
+          "filename": "hiroute-0.1.0-5f3ee7c96f4f-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "b54b62e48d9576d382a29e6c99e0903ecaed8cabd2b5a3d9c74f8f3ea19bdf94",
+          "size": 62812169,
+          "manifest_filename": "hiroute-0.1.0-5f3ee7c96f4f-x86_64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "d3e2b5a41d6624b48bf14c72670fd4c4ce6870a6247bdc785e7253cfc9935bba",
           "manifest_size": 2123
         }
       ]
