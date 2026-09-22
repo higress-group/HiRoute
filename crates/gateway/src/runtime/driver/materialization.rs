@@ -34,6 +34,9 @@ use crate::server::core_runtime::profiles::{
 };
 
 use super::response::{PrecommitDecoderBudget, connector_error_profile, failure_facts};
+#[path = "materialization/lease_target.rs"]
+mod lease_target;
+
 use super::{
     MATERIALIZATION_AUTHORITY_FAILED, MATERIALIZATION_BINDING_COOLING_PREFIX,
     MATERIALIZATION_BINDING_DISABLED, MATERIALIZATION_BINDING_PROBE_BUSY,
@@ -312,15 +315,7 @@ pub(super) async fn materialize_attempt(
     {
         return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
     }
-    let lease_target =
-        if execution.connector_runtime == hiroute_domain::ConnectorRuntimeKind::BuiltinNative {
-            execution
-                .operational_target
-                .for_protocol_path(&profile.connector.request_path)
-                .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
-        } else {
-            execution.operational_target.clone()
-        };
+    let lease_target = lease_target::for_request(&execution, &profile.connector.request_path)?;
     let lease_target_digest = hiroute_domain::CanonicalDigest::of(&lease_target)
         .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
     let lease_logical_endpoint =

@@ -12,7 +12,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "authority.live_publication",
       "source": "tools/e2e-harness/tests/p0_gateway_request_authority.rs",
-      "source_sha256": "sha256:e4fb25e88d1d7e53e2f8b7d5099697fff56dd60b5bb2bf2d94c020bf38623d98",
       "symbol": "production_hirouted_live_publication_control_pins_cutover_and_preserves_lkg_on_nack",
       "test_target": "p0_gateway_request_authority"
     },
@@ -29,7 +28,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "authority.wire_listener",
       "source": "tools/e2e-harness/tests/p0_gateway_request_authority.rs",
-      "source_sha256": "sha256:e4fb25e88d1d7e53e2f8b7d5099697fff56dd60b5bb2bf2d94c020bf38623d98",
       "symbol": "production_hirouted_wire_authority_catalog_deadline_and_actual_restart",
       "test_target": "p0_gateway_request_authority"
     },
@@ -53,7 +51,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "protocol.nine_native_pairs",
       "source": "tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs",
-      "source_sha256": "sha256:d869c60f64aff049d0a3498debc2ce1243dbf831c012e4058c5510ea0a2841d6",
       "symbol": "production_matrix::protocol_real_hirouted_executes_every_native_protocol_pair_and_rejects_before_provider",
       "test_target": "p0_gateway_protocol"
     },
@@ -72,7 +69,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "protocol.tool_and_sse",
       "source": "tools/e2e-harness/tests/p0_gateway_protocol/continuation.rs",
-      "source_sha256": "sha256:7e420079c22a789cdb2340fa4aef638728fe48b8550cf9a39d47cbd01050aebd",
       "symbol": "continuation::production_tool_continuation_restores_native_id_and_fails_closed_outside_scope",
       "test_target": "p0_gateway_protocol"
     },
@@ -85,7 +81,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "planner.runtime_consumption",
       "source": "tools/e2e-harness/tests/p0_gateway_runtime.rs",
-      "source_sha256": "sha256:bd377611bc6bc162f7eb207488a0c06271f0bb7a7a40f18a50894cc41c433ee2",
       "symbol": "real_listener_consumes_planner_order_and_binds_reason_ledger_identity",
       "test_target": "p0_gateway_runtime"
     },
@@ -99,7 +94,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "runtime.fallback",
       "source": "tools/e2e-harness/tests/p0_gateway_runtime.rs",
-      "source_sha256": "sha256:bd377611bc6bc162f7eb207488a0c06271f0bb7a7a40f18a50894cc41c433ee2",
       "symbol": "real_hirouted_reaches_native_provider_and_falls_back_before_commit",
       "test_target": "p0_gateway_runtime"
     },
@@ -114,7 +108,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "runtime.context_hold.classified",
       "source": "tools/e2e-harness/tests/p0_gateway_context_hold.rs",
-      "source_sha256": "sha256:9a299142be261057edceba9ab16d0242705e86f0da0d83585999836e929c8511",
       "symbol": "real_hirouted_holds_only_inside_each_classified_branch",
       "test_target": "p0_gateway_context_hold"
     },
@@ -127,7 +120,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "runtime.context_hold.fallback",
       "source": "tools/e2e-harness/tests/p0_gateway_context_hold.rs",
-      "source_sha256": "sha256:9a299142be261057edceba9ab16d0242705e86f0da0d83585999836e929c8511",
       "symbol": "real_hirouted_holds_the_successful_fallback_and_releases_it_on_rebuild",
       "test_target": "p0_gateway_context_hold"
     },
@@ -139,7 +131,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "protocol.previous_response_id",
       "source": "tools/e2e-harness/tests/p0_gateway_context_hold.rs",
-      "source_sha256": "sha256:9a299142be261057edceba9ab16d0242705e86f0da0d83585999836e929c8511",
       "symbol": "real_hirouted_rejects_opaque_previous_response_id_before_provider_io",
       "test_target": "p0_gateway_context_hold"
     },
@@ -153,7 +144,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "runtime.key_handoff",
       "source": "tools/e2e-harness/tests/p0_gateway_runtime.rs",
-      "source_sha256": "sha256:bd377611bc6bc162f7eb207488a0c06271f0bb7a7a40f18a50894cc41c433ee2",
       "symbol": "real_listener_distinguishes_quota_key_scope_from_overload_binding_scope",
       "test_target": "p0_gateway_runtime"
     },
@@ -168,7 +158,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "runtime.cas_write_fault",
       "source": "tools/e2e-harness/tests/p0_gateway_runtime.rs",
-      "source_sha256": "sha256:bd377611bc6bc162f7eb207488a0c06271f0bb7a7a40f18a50894cc41c433ee2",
       "symbol": "real_listener_runtime_state_cas_write_failure_is_fail_closed_and_one_shot",
       "test_target": "p0_gateway_runtime"
     },
@@ -182,7 +171,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "runtime.probe_write_fault",
       "source": "tools/e2e-harness/tests/p0_gateway_runtime.rs",
-      "source_sha256": "sha256:bd377611bc6bc162f7eb207488a0c06271f0bb7a7a40f18a50894cc41c433ee2",
       "symbol": "real_listener_probe_write_failure_creates_no_attempt_and_recovers_once",
       "test_target": "p0_gateway_runtime"
     },
@@ -195,7 +183,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "runtime.postcommit",
       "source": "tools/e2e-harness/tests/p0_gateway_commit_boundary.rs",
-      "source_sha256": "sha256:89ec48e8dbaaa9f0af21de62978b7258ddf23031743785807209e4941818c6b3",
       "symbol": "real_listener_postcommit_disconnect_never_creates_another_attempt",
       "test_target": "p0_gateway_commit_boundary"
     },
@@ -209,7 +196,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "replay.threshold",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "source_sha256": "sha256:96ec0214d8119074e3f488375a6fca51883de648b69531e92a47e6fb247a0a2c",
       "symbol": "real_hirouted_replays_threshold_below_and_above_for_two_fallbacks",
       "test_target": "p0_gateway_replay"
     },
@@ -222,7 +208,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "replay.owner_only_permission",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "source_sha256": "sha256:96ec0214d8119074e3f488375a6fca51883de648b69531e92a47e6fb247a0a2c",
       "symbol": "real_hirouted_rejects_non_owner_only_replay_root",
       "test_target": "p0_gateway_replay"
     },
@@ -235,7 +220,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "replay.request_capacity",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "source_sha256": "sha256:96ec0214d8119074e3f488375a6fca51883de648b69531e92a47e6fb247a0a2c",
       "symbol": "real_hirouted_rejects_request_body_plan_capacity_before_provider_call",
       "test_target": "p0_gateway_replay"
     },
@@ -248,7 +232,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "replay.local_plaintext",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "source_sha256": "sha256:96ec0214d8119074e3f488375a6fca51883de648b69531e92a47e6fb247a0a2c",
       "symbol": "real_hirouted_uses_one_owner_only_plaintext_replay_backing",
       "test_target": "p0_gateway_replay"
     },
@@ -261,7 +244,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "replay.cancel_orphan",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "source_sha256": "sha256:96ec0214d8119074e3f488375a6fca51883de648b69531e92a47e6fb247a0a2c",
       "symbol": "real_hirouted_cleans_exhaustion_deadline_disconnect_and_restart_orphan",
       "test_target": "p0_gateway_replay"
     },
@@ -276,7 +258,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "replay.long_sse",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "source_sha256": "sha256:96ec0214d8119074e3f488375a6fca51883de648b69531e92a47e6fb247a0a2c",
       "symbol": "real_hirouted_releases_large_namespace_replay_before_long_sse_completion",
       "test_target": "p0_gateway_replay"
     },
@@ -291,7 +272,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "observation.accepted_content",
       "source": "tools/e2e-harness/tests/p0_gateway_observation.rs",
-      "source_sha256": "sha256:4e68c22745ae0f3b99fed99ded34e23bfb66e337a4d226d305bc18d822d7f34a",
       "symbol": "real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_content",
       "test_target": "p0_gateway_observation"
     },
@@ -305,7 +285,6 @@
       "execution": "real_hirouted_native_provider",
       "id": "observation.slow_sink",
       "source": "tools/e2e-harness/tests/p0_gateway_observation.rs",
-      "source_sha256": "sha256:4e68c22745ae0f3b99fed99ded34e23bfb66e337a4d226d305bc18d822d7f34a",
       "symbol": "real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap",
       "test_target": "p0_gateway_observation"
     },
@@ -318,12 +297,11 @@
       "execution": "real_hirouted_native_provider",
       "id": "privacy.secret_scan",
       "source": "tools/e2e-harness/tests/p0_gateway_privacy.rs",
-      "source_sha256": "sha256:019b8f2b0c4866420108b2d41064aa335759d3798b87a50e0dbe91815e0c8dfa",
       "symbol": "lifecycle_facts_and_default_otel_are_zero_content_and_rejected_auth_has_no_content",
       "test_target": "p0_gateway_privacy"
     }
   ],
-  "registry_digest": "sha256:18d61f7bcfb384691785faeacd39161ce634afe87a435195d2bc878f049714ae",
+  "registry_digest": "sha256:957d559bfa1a1d63e97e5bdc20d32865e261031ddf6c9e27e4b36be614281b8a",
   "rows": [
     {
       "id": "publication.incompatible_or_gap",
@@ -690,5 +668,5 @@
       "spec_id": "SPEC-20008"
     }
   ],
-  "schema_version": "hiroute.e2e.p0-scenario-coverage/v2"
+  "schema_version": "hiroute.e2e.p0-scenario-coverage/v3"
 }

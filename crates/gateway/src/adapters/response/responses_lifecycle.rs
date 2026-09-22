@@ -8,8 +8,8 @@ use super::protocols::ResponsesToolIdentity;
 use super::wire::*;
 use super::{DecoderCore, NativeBlockKind, ProtocolAdapterError, invalid_block};
 use crate::server::core_runtime::model_ir::{
-    ModelIrError, ModelStreamEventV1, MutableResponseBlock, ResponseItemStatus, ToolKindV1,
-    UrlCitationV1,
+    FinishReason, ModelIrError, ModelStreamEventV1, MutableResponseBlock, ResponseItemStatus,
+    ToolKindV1, UrlCitationV1,
 };
 
 pub(super) fn register_item(
@@ -519,4 +519,58 @@ fn item_status(item: &Map<String, Value>) -> Result<ResponseItemStatus, Protocol
         "incomplete" => Ok(ResponseItemStatus::Incomplete),
         _ => Err(ModelIrError::InvalidField("response output item status").into()),
     }
+}
+
+pub(super) fn decode_terminal(
+    core: &mut DecoderCore,
+    response: &Map<String, Value>,
+    output: &mut VecDeque<ModelStreamEventV1>,
+) -> Result<(), ProtocolAdapterError> {
+    validate_responses_envelope_metadata(response)?;
+    core.responses_metadata(response, output)?;
+    core.start_response(
+        required_str(response, "id")?.into(),
+        required_str(response, "model")?.into(),
+        output,
+    )?;
+    if let Some(usage) = response.get("usage")
+        && !usage.is_null()
+    {
+        core.usage(decode_responses_usage(usage)?, output)?;
+    }
+    let status = required_str(response, "status")?;
+    let incomplete_reason = response
+        .get("incomplete_details")
+        .filter(|details| !details.is_null())
+        .and_then(|details| details.get("reason"))
+        .and_then(Value::as_str);
+    let reason = match status {
+        "completed" if incomplete_reason.is_some() => {
+            return Err(ModelIrError::InvalidResponseLifecycle(
+                "completed Responses terminal carries incomplete details".into(),
+            )
+            .into());
+        }
+        "completed" => Some(
+            if core.accumulator.blocks.values().any(|block| {
+                matches!(
+                    block,
+                    crate::server::core_runtime::model_ir::MutableResponseBlock::ToolCall { .. }
+                )
+            }) {
+                FinishReason::ToolCall
+            } else {
+                FinishReason::Stop
+            },
+        ),
+        "incomplete" => incomplete_reason
+            .map(decode_finish_reason)
+            .or_else(|| core.has_refusal().then_some(FinishReason::Refusal)),
+        "failed" | "cancelled" => None,
+        other => return Err(unsupported("Responses terminal status", other)),
+    };
+    if let Some(reason) = reason {
+        core.finish_reason(reason, output)?;
+    }
+    Ok(())
 }

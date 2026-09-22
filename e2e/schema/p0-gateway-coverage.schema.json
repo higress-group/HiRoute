@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "process", "listener_transport", "registry_digest", "receipts", "rows"],
   "properties": {
-    "schema_version": {"const": "hiroute.e2e.p0-scenario-coverage/v2"},
+    "schema_version": {"const": "hiroute.e2e.p0-scenario-coverage/v3"},
     "process": {"const": "PROCESS-22009"},
     "listener_transport": {"const": "loopback_h1"},
     "registry_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
@@ -17,7 +17,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "execution", "assertion_binding", "test_target", "symbol", "source", "source_sha256", "assertion_ids"],
+        "required": ["id", "execution", "assertion_binding", "test_target", "symbol", "source", "assertion_ids"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
           "execution": {"const": "real_hirouted_native_provider"},
@@ -25,7 +25,6 @@
           "test_target": {"type": "string", "minLength": 1},
           "symbol": {"type": "string", "minLength": 1},
           "source": {"type": "string", "minLength": 1},
-          "source_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
           "assertion_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
         }
       }

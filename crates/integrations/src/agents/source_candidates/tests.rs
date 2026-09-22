@@ -9,6 +9,12 @@ fn codex_empty_or_missing_config_keeps_the_builtin_native_source() {
         fs::create_dir_all(layout.codex_user_config.parent().unwrap()).unwrap();
         if empty_file {
             fs::write(&layout.codex_user_config, "").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&layout.codex_user_config, fs::Permissions::from_mode(0o600))
+                    .unwrap();
+            }
         }
         let scanner = FilesystemAgentScannerV1::new(layout, registry());
         let candidates = scanner

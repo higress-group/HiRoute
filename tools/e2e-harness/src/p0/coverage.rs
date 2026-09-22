@@ -9,11 +9,10 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 use super::canonical::{canonical_json_digest, canonical_json_value};
 
-pub const SCHEMA_VERSION: &str = "hiroute.e2e.p0-scenario-coverage/v2";
+pub const SCHEMA_VERSION: &str = "hiroute.e2e.p0-scenario-coverage/v3";
 pub const PROCESS_ID: &str = "PROCESS-22009";
 pub const LISTENER_TRANSPORT: &str = "loopback_h1";
 
@@ -752,25 +751,21 @@ pub fn registry_digest() -> String {
     digest_json(&shape)
 }
 
-pub fn manifest_value(root: &Path) -> Value {
+/// Projects the typed registry without coupling the contract to source-file bytes.
+/// `validate_manifest` separately verifies each registered source and test symbol.
+pub fn manifest_value() -> Value {
     canonical_json_value(&json!({
         "schema_version": SCHEMA_VERSION,
         "process": PROCESS_ID,
         "listener_transport": LISTENER_TRANSPORT,
         "registry_digest": registry_digest(),
-        "receipts": RECEIPTS.iter().map(|receipt| {
-            let mut value = receipt_value(receipt);
-            value["source_sha256"] = Value::String(digest_bytes(&fs::read(root.join(receipt.source)).expect("registered receipt source")));
-            value
-        }).collect::<Vec<_>>(),
+        "receipts": RECEIPTS.iter().map(receipt_value).collect::<Vec<_>>(),
         "rows": REQUIRED_ROWS.iter().map(row_value).collect::<Vec<_>>(),
     }))
 }
 
 pub fn write_manifest(e2e_root: &Path) -> std::io::Result<()> {
-    let root = e2e_root.parent().expect("e2e root has repository parent");
-    let bytes =
-        serde_json::to_vec_pretty(&manifest_value(root)).expect("coverage manifest serializes");
+    let bytes = serde_json::to_vec_pretty(&manifest_value()).expect("coverage manifest serializes");
     fs::write(
         e2e_root.join("matrix/p0-gateway-coverage.json"),
         [bytes, b"\n".to_vec()].concat(),
@@ -778,7 +773,7 @@ pub fn write_manifest(e2e_root: &Path) -> std::io::Result<()> {
 }
 
 pub fn validate_manifest(root: &Path, value: &Value) -> Result<(), String> {
-    let expected = manifest_value(root);
+    let expected = manifest_value();
     if value != &expected {
         return Err("coverage manifest must be regenerated from the frozen typed registry".into());
     }
@@ -914,10 +909,4 @@ fn verify_test_symbol(source: &str, receipt: &FrozenReceipt) -> Result<(), Strin
 
 fn digest_json(value: &Value) -> String {
     canonical_json_digest(value)
-}
-
-fn digest_bytes(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("sha256:{:x}", hasher.finalize())
 }

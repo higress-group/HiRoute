@@ -157,11 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             hiroute_e2e::p0::coverage::write_manifest(&e2e_root)?;
             println!(
                 "{}",
-                serde_json::to_string_pretty(&hiroute_e2e::p0::coverage::manifest_value(
-                    e2e_root
-                        .parent()
-                        .ok_or("e2e root has no repository parent")?
-                ))?
+                serde_json::to_string_pretty(&hiroute_e2e::p0::coverage::manifest_value())?
             );
         }
         Command::Run {

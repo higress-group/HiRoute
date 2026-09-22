@@ -1,9 +1,8 @@
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
-
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use thiserror::Error;
 use zeroize::Zeroizing;
 
@@ -28,7 +27,6 @@ pub(crate) mod shared_input;
 pub use journal::OperationJournalUpdate;
 mod source_price;
 mod subscription_check;
-
 pub use agent_access_grant::{
     AGENT_ACCESS_GRANT_EFFECT_SCHEMA_V1, AgentAccessGrantMaterial,
     AgentAccessGrantMaterialActionV1, AgentAccessGrantMutationKindV1, AgentAccessGrantMutationV1,
