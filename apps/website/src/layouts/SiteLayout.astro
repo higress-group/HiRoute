@@ -22,6 +22,7 @@ const nav = english ? [
 <html lang={english ? 'en' : 'zh-CN'}>
   <head>
     <meta charset="utf-8">
+    <script is:inline src="/scripts/language.js"></script>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{title}</title>
     <meta name="description" content={description}>
@@ -31,15 +32,21 @@ const nav = english ? [
     <link rel="alternate" hreflang="zh-CN" href={english ? alternate : canonical}>
     <link rel="alternate" hreflang="en" href={english ? canonical : alternate}>
     <link rel="alternate" hreflang="x-default" href={new URL('/', Astro.site)}>
-    <link rel="icon" type="image/svg+xml" href="/brand/mark-switch.svg">
+    <link rel="icon" type="image/png" sizes="1024x1024" href="/brand/app-icon.png">
+    <link rel="apple-touch-icon" href="/brand/app-icon.png">
     <meta property="og:type" content="website">
     <meta property="og:title" content={title}>
     <meta property="og:description" content={description}>
     <meta property="og:url" content={canonical}>
-    <meta property="og:image" content={new URL('/brand/og.svg', Astro.site)}>
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
-    <meta name="twitter:card" content="summary_large_image">
+    <meta property="og:site_name" content="HiRoute">
+    <meta property="og:image" content={new URL('/brand/app-icon.png', Astro.site)}>
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1024">
+    <meta property="og:image:height" content="1024">
+    <meta property="og:image:alt" content="HiRoute logo">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content={new URL('/brand/app-icon.png', Astro.site)}>
+    <meta name="twitter:description" content={description}>
   </head>
   <body>
     <header class="header wrap site-header">

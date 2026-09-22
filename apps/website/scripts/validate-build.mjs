@@ -54,7 +54,8 @@ const untranslatedChinesePageCopy = [
   'DOWNLOAD',
 ];
 for (const file of htmlFiles.filter(file => !path.relative(dist, file).startsWith(`en${path.sep}`))) {
-  const html = fs.readFileSync(file, 'utf8');
+  // Sharing metadata may intentionally use English; visible page copy stays localized.
+  const html = fs.readFileSync(file, 'utf8').replace(/<head\b[^>]*>[\s\S]*?<\/head>/i, '');
   const leaked = untranslatedChinesePageCopy.find(value => html.includes(value));
   if (leaked) throw new Error(`English copy leaked into Chinese page ${file}: ${leaked}`);
 }

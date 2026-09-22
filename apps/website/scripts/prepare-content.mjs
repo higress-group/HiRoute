@@ -18,6 +18,8 @@ await fs.rm(installDirectory, { recursive: true, force: true });
 await fs.mkdir(apiDirectory, { recursive: true });
 await fs.mkdir(assetsDirectory, { recursive: true });
 await fs.mkdir(installDirectory, { recursive: true });
+// Reuse the Desktop logo for raster-only link preview services.
+await fs.copyFile(path.join(repository, 'apps/desktop/src-tauri/icons/icon.png'), path.join(publicDirectory, 'brand/app-icon.png'));
 await fs.copyFile(path.join(source, 'api/decision.openapi.json'), path.join(apiDirectory, 'decision.openapi.json'));
 for (const entry of await fs.readdir(path.join(source, 'assets'), { withFileTypes: true })) {
   if (entry.isFile() && /\.(png|svg)$/.test(entry.name)) {
