@@ -123,31 +123,16 @@
 }
 
 .brand-mark {
-  position: relative;
-  display: grid;
-  place-items: center;
+  display: block;
   width: 34px;
   height: 34px;
+  flex: 0 0 34px;
   overflow: hidden;
-  border: 1px solid rgba(137, 151, 255, 0.35);
   border-radius: 11px;
-  background: linear-gradient(145deg, #697cff, #7658d9);
   box-shadow: 0 8px 26px rgba(101, 116, 242, 0.25);
 }
 
-.brand-mark::before,
-.brand-mark::after {
-  position: absolute;
-  width: 15px;
-  height: 3px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.95);
-  content: "";
-  transform: rotate(-32deg);
-}
-
-.brand-mark::before { transform: translateY(-4px) rotate(-32deg); }
-.brand-mark::after { transform: translateY(4px) rotate(-32deg); }
+.brand-mark img { display: block; width: 100%; height: 100%; }
 
 .brand-copy strong {
   display: block;

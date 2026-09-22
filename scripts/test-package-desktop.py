@@ -2,6 +2,7 @@
 """Bundle identity regressions; does not claim macOS installation acceptance."""
 import importlib.util
 from contextlib import contextmanager
+import struct
 import subprocess
 import tempfile
 from pathlib import Path
@@ -44,6 +45,14 @@ class BundleIdentityTests(unittest.TestCase):
         with patch.object(package.subprocess, "run", return_value=completed) as invoked:
             self.assertEqual(package.run("fixture"), "ok")
         self.assertNotIn("pass_fds", invoked.call_args.kwargs)
+
+    def test_desktop_icon_matches_the_website_brand_and_has_a_retina_source(self):
+        desktop_svg = package.NATIVE / "icons/icon.svg"
+        website_svg = package.REPO / "apps/website/public/brand/app-icon.svg"
+        self.assertEqual(desktop_svg.read_text(), website_svg.read_text())
+        png = (package.NATIVE / "icons/icon.png").read_bytes()
+        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", png[16:24]), (1024, 1024))
 
     def test_final_signed_bytes_verified_and_resigning_rejected(self):
         package.verify_contents(self.app, self.manifest)

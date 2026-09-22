@@ -79,7 +79,7 @@ with heights 400 for session, 980 for English config and 1050 for Chinese config
 The quality view scrolls the real editor to its performance section. Only the
 canvas and crop are styled; product controls, row layout and text are unchanged.
 
-Capture provenance: product components from website baseline
-`967da635faab2435da52b5183dd147121bdc9a18`, unchanged by this screenshot revision.
-The documentation wrapper and images are updated together. These checks do not
-validate native window integration, evidence navigation, model scoring or persistence.
+Capture provenance: product components and shared styles from the same repository
+revision as these images. The documentation wrapper and images are updated together.
+These checks do not validate native window integration, evidence navigation, model
+scoring or persistence.
