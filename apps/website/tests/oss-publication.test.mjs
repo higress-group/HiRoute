@@ -28,9 +28,18 @@ function fixture() {
   const manifestPath = path.join(root, 'releases.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest));
   const log = path.join(root, 'aliyun.log');
-  const fake = `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' \"$*\" >> \"$OSS_TEST_LOG\"\nif [[ \"$1 $2\" == 'oss stat' ]]; then printf 'Content-Length         : %s\\nX-Oss-Meta-Sha256   : %s\\n' \"$OSS_TEST_SIZE\" \"$OSS_TEST_SHA\"; fi\n`;
-  fs.writeFileSync(path.join(bin, 'aliyun'), fake, { mode: 0o755 });
-  return { root, assets, bin, dist, manifestPath, log, state: path.join(root, 'uploaded'), filename, sha256, size: bytes.length };
+  const curlLog = path.join(root, 'curl.log');
+  const state = path.join(root, 'uploaded');
+  fs.writeFileSync(state, '');
+  const fakeAliyun = `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' \"$*\" >> \"$OSS_TEST_LOG\"\nif [[ \"$1 $2\" == 'oss cp' ]]; then touch \"$OSS_TEST_STATE\"; fi\n`;
+  const fakeCurl = `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' \"$*\" >> \"$CURL_TEST_LOG\"\noutput=\nwhile (( $# )); do\n  case \"$1\" in\n    --output) output=$2; shift 2 ;;\n    *) shift ;;\n  esac\ndone\nif [[ ! -f \"$OSS_TEST_STATE\" ]]; then\n  printf 'HTTP/1.1 404 Not Found\\r\\n\\r\\n' > \"$output\"\n  printf '404'\n  exit 0\nfi\nprintf 'HTTP/1.1 200 OK\\r\\nContent-Length: %s\\r\\nx-oss-meta-sha256: %s\\r\\n\\r\\n' \"$OSS_TEST_SIZE\" \"$OSS_TEST_SHA\" > \"$output\"\nprintf '200'\n`;
+  fs.writeFileSync(path.join(bin, 'aliyun'), fakeAliyun, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'curl'), fakeCurl, { mode: 0o755 });
+  return { root, assets, bin, dist, manifestPath, log, curlLog, state, filename, sha256, size: bytes.length };
+}
+
+function readLog(filename) {
+  return fs.existsSync(filename) ? fs.readFileSync(filename, 'utf8') : '';
 }
 
 function execute(script, args, data, extraEnv = {}) {
@@ -38,6 +47,7 @@ function execute(script, args, data, extraEnv = {}) {
     cwd: repository, encoding: 'utf8', env: {
       ...process.env, PATH: `${path.join(data.root, 'bin')}:${process.env.PATH}`,
       ACCESS_KEYID: 'fixture-id', ACCESS_KEYSECRET: 'fixture-secret', OSS_TEST_LOG: data.log,
+      CURL_TEST_LOG: data.curlLog,
       OSS_TEST_SHA: data.sha256, OSS_TEST_SIZE: String(data.size), OSS_TEST_STATE: data.state,
       ...extraEnv,
     },
@@ -52,25 +62,22 @@ function run(script, args, data, extraEnv = {}) {
 test('release publisher uses immutable hiroute-ai paths and SHA metadata', () => {
   const data = fixture();
   run('.github/scripts/publish-release-oss.sh', [data.assets, data.manifestPath, 'v1.2.3'], data);
-  const log = fs.readFileSync(data.log, 'utf8');
-  assert.match(log, new RegExp(`oss://hiroute-ai/releases/1\\.2\\.3/${data.filename}`));
+  const log = readLog(data.log);
+  assert.match(readLog(data.curlLog), new RegExp(`https://hiroute-ai\\.oss-cn-hongkong\\.aliyuncs\\.com/releases/1\\.2\\.3/${data.filename}`));
   assert.doesNotMatch(log, /oss cp/);
+  assert.doesNotMatch(log, /oss stat/);
   assert.doesNotMatch(log, /higress-ai/);
 });
 
 test('release publisher creates only a missing object and never forces an overwrite', () => {
   const data = fixture();
-  const fake = '#!/usr/bin/env bash\n' +
-    'set -euo pipefail\n' +
-    'printf "%s\\n" "$*" >> "$OSS_TEST_LOG"\n' +
-    'if [[ "$1 $2" == "oss stat" && ! -f "$OSS_TEST_STATE" ]]; then echo "ErrorCode: NoSuchKey; StatusCode: 404" >&2; exit 1; fi\n' +
-    'if [[ "$1 $2" == "oss cp" ]]; then touch "$OSS_TEST_STATE"; else printf "Content-Length         : %s\\nX-Oss-Meta-Sha256   : %s\\n" "$OSS_TEST_SIZE" "$OSS_TEST_SHA"; fi\n';
-  fs.writeFileSync(path.join(data.bin, 'aliyun'), fake, { mode: 0o755 });
+  fs.rmSync(data.state);
   run('.github/scripts/publish-release-oss.sh', [data.assets, data.manifestPath, 'v1.2.3'], data);
-  const log = fs.readFileSync(data.log, 'utf8');
+  const log = readLog(data.log);
   assert.match(log, /oss cp/);
   assert.match(log, new RegExp(`X-Oss-Meta-Sha256:${data.sha256}`));
   assert.doesNotMatch(log, /--force/);
+  assert.doesNotMatch(log, /oss stat/);
 });
 
 test('release publisher rejects an existing object with different immutable metadata', () => {
@@ -79,7 +86,7 @@ test('release publisher rejects an existing object with different immutable meta
     [data.assets, data.manifestPath, 'v1.2.3'], data, { OSS_TEST_SHA: '0'.repeat(64) });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /different SHA256/);
-  assert.doesNotMatch(fs.readFileSync(data.log, 'utf8'), /oss cp/);
+  assert.doesNotMatch(readLog(data.log), /oss cp/);
 });
 
 test('OSS object sizes must match the complete Content-Length field', () => {
@@ -91,16 +98,17 @@ test('OSS object sizes must match the complete Content-Length field', () => {
     const result = execute(script, argumentsFor(data), data, { OSS_TEST_SIZE: `${data.size}0` });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, message);
-    assert.doesNotMatch(fs.readFileSync(data.log, 'utf8'), /oss cp/);
+    assert.doesNotMatch(readLog(data.log), /oss cp/);
   }
 });
 
 test('website deploy checks release metadata and never targets a destructive sync', () => {
   const data = fixture();
   run('.github/scripts/deploy-website-oss.sh', [data.dist, data.manifestPath], data);
-  const log = fs.readFileSync(data.log, 'utf8');
-  assert.match(log, /oss stat oss:\/\/hiroute-ai\/releases\//);
+  const log = readLog(data.log);
+  assert.match(readLog(data.curlLog), /https:\/\/hiroute-ai\.oss-cn-hongkong\.aliyuncs\.com\/releases\//);
   assert.match(log, /oss cp .* oss:\/\/hiroute-ai\//);
+  assert.doesNotMatch(log, /oss stat/);
   assert.doesNotMatch(log, /\b(?:rm|sync)\b/);
   assert.doesNotMatch(log, /higress-ai/);
 });
@@ -115,5 +123,6 @@ test('manifest generation failures stop OSS scripts before any remote command', 
     const result = execute(script, argumentsFor(data), data);
     assert.notEqual(result.status, 0);
     assert.equal(fs.existsSync(data.log), false);
+    assert.equal(fs.existsSync(data.curlLog), false);
   }
 });

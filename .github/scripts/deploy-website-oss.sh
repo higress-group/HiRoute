@@ -14,14 +14,32 @@ region=cn-hongkong
 common=(--endpoint "$endpoint" --region "$region" --access-key-id "$ACCESS_KEYID" --access-key-secret "$ACCESS_KEYSECRET")
 
 asset_list=$(mktemp)
-trap 'rm -f "$asset_list"' EXIT
+object_headers=$(mktemp)
+head_error=$(mktemp)
+trap 'rm -f "$asset_list" "$object_headers" "$head_error"' EXIT
 node apps/website/scripts/release-manifest.mjs artifacts "$manifest" > "$asset_list"
+
+head_object() {
+  local key=$1 status
+  : > "$object_headers"
+  : > "$head_error"
+  if ! status=$(curl --silent --show-error --head \
+    --output "$object_headers" --write-out '%{http_code}' \
+    --connect-timeout 10 --max-time 30 \
+    "https://$bucket.$endpoint/$key" 2> "$head_error"); then
+    cat "$head_error" >&2
+    echo "Could not inspect public release object: $key" >&2
+    return 1
+  fi
+  printf '%s' "$status"
+}
 
 # A manifest entry is never exposed until its immutable object exists in OSS.
 while IFS=$'\t' read -r _ key sha size; do
-  facts=$(aliyun oss stat "oss://$bucket/$key" "${common[@]}")
-  grep -Eiq "^X-Oss-Meta-Sha256[[:blank:]]*:[[:blank:]]*$sha[[:space:]]*$" <<<"$facts" || { echo "Release object metadata does not match manifest: $key" >&2; exit 1; }
-  grep -Eiq "^Content-Length[[:blank:]]*:[[:blank:]]*$size[[:space:]]*$" <<<"$facts" || { echo "Release object size does not match manifest: $key" >&2; exit 1; }
+  status=$(head_object "$key") || exit 1
+  [[ "$status" == 200 ]] || { echo "Release object is not publicly readable (HTTP $status): $key" >&2; exit 1; }
+  grep -Eiq "^X-Oss-Meta-Sha256[[:blank:]]*:[[:blank:]]*$sha[[:space:]]*$" "$object_headers" || { echo "Release object metadata does not match manifest: $key" >&2; exit 1; }
+  grep -Eiq "^Content-Length[[:blank:]]*:[[:blank:]]*$size[[:space:]]*$" "$object_headers" || { echo "Release object size does not match manifest: $key" >&2; exit 1; }
 done < "$asset_list"
 
 # Upload website objects without deleting or replacing the releases/ prefix.
