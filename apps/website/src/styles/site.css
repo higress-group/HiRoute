@@ -73,8 +73,8 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .scenario-tabs{display:flex;gap:6px;flex-wrap:wrap;padding-top:15px}
 .scenario-tabs button{font-size:11px;padding:7px 10px;border-radius:4px;background:transparent;border:1px solid #d2d9e9;color:#64708a}
 .scenario-tabs button[aria-pressed=true]{background:var(--white);color:var(--ink);border-color:#a5b0d8}
-.trust-line{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:22px 0 25px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
-.trust-line b{font-weight:500;color:var(--ink)}
+.trust-line{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:26px 0 29px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:16px;line-height:1.8;color:#596174}
+.trust-line b{font-size:18px;font-weight:600;color:var(--ink)}
 .section{padding:88px 0}
 .section-title{display:flex;justify-content:space-between;align-items:flex-end;gap:30px}
 .section h2{font-size:34px;letter-spacing:-.9px;line-height:1.45}
