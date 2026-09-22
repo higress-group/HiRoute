@@ -108,7 +108,12 @@ At a decision boundary, a service may do two related jobs in one response:
 - optionally assess how competently the previous model handled its execution stage.
 
 The official [TypeSafe Jev extension](decision-extensions/extensions/jev-decider/README.md)
-implements this contract with one OpenRouter request. Its simple policy principle is:
+implements this contract with one OpenRouter request. Its Rules policy uses task complexity
+and the optional assessment together: choose economy only when the simple-task probability
+meets the threshold and no valid current score falls below the competence floor. Otherwise,
+choose primary. A missing score leaves the decision to complexity alone.
+
+The principle is:
 
 > **Competence blocks risky cost-cutting; complexity creates opportunities to save.**
 

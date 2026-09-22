@@ -101,7 +101,10 @@ hiroute system status --output json
 - 可选地评价上一模型在执行阶段中的胜任程度。
 
 官方 [TypeSafe Jev 扩展](decision-extensions/extensions/jev-decider/README.zh-CN.md)通过一次
-OpenRouter 请求实现这套协议，其简单规则是：
+OpenRouter 请求实现这套协议。其 Rules 策略结合任务复杂度与可选胜任度：任务简单的概率达到门槛，
+且本次合法评分未低于胜任度下限时，选择经济分支；否则选择主力分支。缺少评分时，仅依据复杂度判断。
+
+这套机制的原则是：
 
 > **胜任度只负责阻止冒险降本，复杂度负责提供降本机会。**
 
