@@ -63,8 +63,43 @@ pub(super) fn dispatch(
                     .map_err(|_| ErrorCode::InvalidArguments)
             })
             .transpose()?;
-        let codex_capabilities =
-            codex_capabilities(payload.editor.as_ref(), &state.facts, port.as_ref())?;
+        if payload.published_plan.is_some() && payload.editor.is_some() {
+            return Err(ErrorCode::InvalidArguments);
+        }
+        let (codex_capabilities, claude_capabilities, context_window) = if let Some(reference) =
+            &payload.published_plan
+        {
+            let publication = state
+                .active_publication
+                .as_ref()
+                .ok_or(ErrorCode::ResourceNotFound)?;
+            let plan = published_preview_plan(publication, reference)?;
+            let upper = plan
+                .body
+                .materialized
+                .context_window_upper_bound()
+                .map_err(|_| ErrorCode::CapabilityDenied)?;
+            (
+                Some(
+                    port.codex_client_capability_preview(&plan)
+                        .map_err(map_control_error)?,
+                ),
+                Some(
+                    port.claude_client_capability_preview(&plan)
+                        .map_err(map_control_error)?,
+                ),
+                Some(PlanContextWindowPreviewV1 {
+                    maximum_tokens: upper,
+                    default_tokens: upper.min(hiroute_domain::DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS),
+                }),
+            )
+        } else {
+            (
+                codex_capabilities(payload.editor.as_ref(), &state.facts, port.as_ref())?,
+                claude_capabilities(payload.editor.as_ref(), &state.facts, port.as_ref()),
+                context_window_preview(payload.editor.as_ref(), &state.facts),
+            )
+        };
         let candidates = state
             .facts
             .candidates
@@ -84,6 +119,8 @@ pub(super) fn dispatch(
             })
             .collect();
         Ok(PlanEditorOptionsV1 {
+            claude_capabilities,
+            context_window,
             suggested_alias,
             candidates,
             ratings,
@@ -127,6 +164,28 @@ fn codex_capabilities(
         .map_err(map_control_error)
 }
 
+fn context_window_preview(
+    editor: Option<&PlanEditorStateV2>,
+    facts: &crate::compiler::AgentPlanCompilationFactsV1,
+) -> Option<PlanContextWindowPreviewV1> {
+    let mut editor = editor?.clone();
+    // Inspect the capability ceiling even when the custom setting exceeds new candidates.
+    editor.limits.context_window_tokens = None;
+    let configuration = editor.effective().ok()?;
+    let identity = AgentPlanIdentityV1 {
+        agent_plan_id: AgentPlanId::parse("plan/context-window-preview").ok()?,
+        model_alias: ModelAlias::parse("hiroute-context-window-preview").ok()?,
+        display_name: configuration.display_name.clone(),
+        purpose: configuration.purpose.clone(),
+    };
+    let plan = compile_agent_plan_v2(identity, 1, &configuration, facts).ok()?;
+    let maximum_tokens = plan.body.materialized.context_window_upper_bound().ok()?;
+    Some(PlanContextWindowPreviewV1 {
+        maximum_tokens,
+        default_tokens: maximum_tokens.min(hiroute_domain::DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS),
+    })
+}
+
 fn compilation_unavailable(error: &AgentPlanCompilerError) -> CodexClientCapabilityPreviewV1 {
     let binding_id = match error {
         AgentPlanCompilerError::UnknownBinding(binding_id)
@@ -140,6 +199,60 @@ fn compilation_unavailable(error: &AgentPlanCompilerError) -> CodexClientCapabil
             binding_id,
         }],
     }
+}
+
+fn claude_capabilities(
+    editor: Option<&PlanEditorStateV2>,
+    facts: &crate::compiler::AgentPlanCompilationFactsV1,
+    port: &dyn crate::control::RoutingFactsPort,
+) -> Option<ClaudeClientCapabilityPreviewV1> {
+    let editor = editor?;
+    let unavailable = |reason: &str| {
+        Some(ClaudeClientCapabilityPreviewV1::Unavailable {
+            reason: reason.into(),
+        })
+    };
+    let Ok(configuration) = editor.effective() else {
+        return None;
+    };
+    let identity = AgentPlanIdentityV1 {
+        agent_plan_id: AgentPlanId::parse("plan/claude-capability-preview").ok()?,
+        model_alias: ModelAlias::parse("hiroute-claude-capability-preview").ok()?,
+        display_name: configuration.display_name.clone(),
+        purpose: configuration.purpose.clone(),
+    };
+    let Ok(plan) = compile_agent_plan_v2(identity, 1, &configuration, facts) else {
+        return unavailable("plan_compilation");
+    };
+    Some(
+        port.claude_client_capability_preview(&plan)
+            .unwrap_or_else(|_| ClaudeClientCapabilityPreviewV1::Unavailable {
+                reason: "request_capabilities".into(),
+            }),
+    )
+}
+
+fn published_preview_plan(
+    publication: &hiroute_domain::GatewayPublicationV1,
+    reference: &PublishedPlanCapabilityRequestV1,
+) -> Result<hiroute_domain::CompiledAgentPlanV1, ErrorCode> {
+    if !publication
+        .published_agent_plans()
+        .map_err(|_| ErrorCode::Internal)?
+        .iter()
+        .any(|plan| plan.agent_plan_id == reference.plan_id && plan.active)
+    {
+        return Err(ErrorCode::ResourceNotFound);
+    }
+    let plan = publication
+        .plans
+        .iter()
+        .find(|plan| plan.agent_plan_id() == &reference.plan_id)
+        .ok_or(ErrorCode::ResourceNotFound)?;
+    if plan.body.agent_plan_revision != reference.revision {
+        return Err(ErrorCode::RevisionConflict);
+    }
+    plan.clone().into_current().map_err(|_| ErrorCode::Internal)
 }
 
 #[cfg(test)]
@@ -210,6 +323,51 @@ mod tests {
             requirements: desired.requirements,
             limits: desired.limits,
         }
+    }
+
+    #[test]
+    fn claude_deployment_preview_reads_the_published_revision_not_current_candidate_facts() {
+        let publication = crate::compiler::test_fixtures::compiled_publication(1);
+        let active = publication
+            .published_agent_plans()
+            .unwrap()
+            .into_iter()
+            .find(|plan| plan.active)
+            .unwrap();
+        let mut reference = PublishedPlanCapabilityRequestV1 {
+            plan_id: active.agent_plan_id.clone(),
+            revision: active.agent_plan_revision,
+        };
+        let exact = published_preview_plan(&publication, &reference).unwrap();
+        let original = publication
+            .plans
+            .iter()
+            .find(|plan| plan.agent_plan_id() == &reference.plan_id)
+            .unwrap()
+            .clone()
+            .into_current()
+            .unwrap();
+        assert_eq!(exact, original);
+        // A newer draft or changed model metadata cannot be mistaken for a saved revision.
+        reference.revision += 1;
+        assert!(matches!(
+            published_preview_plan(&publication, &reference),
+            Err(ErrorCode::RevisionConflict)
+        ));
+    }
+
+    #[test]
+    fn context_bound_survives_a_custom_value_invalidated_by_candidates() {
+        let mut value = editor();
+        value.limits.context_window_tokens = Some(1_050_000);
+        let bounds = context_window_preview(Some(&value), &compilation_facts()).unwrap();
+        assert!(bounds.maximum_tokens < 1_050_000);
+        assert_eq!(bounds.default_tokens, bounds.maximum_tokens.min(272_000));
+        assert!(matches!(
+            codex_capabilities(Some(&value), &compilation_facts(), &PreviewPort::default())
+                .unwrap(),
+            Some(CodexClientCapabilityPreviewV1::Unavailable { .. })
+        ));
     }
 
     #[test]

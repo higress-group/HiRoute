@@ -1,3 +1,4 @@
+import { AgentCapabilityPreview } from './agent-capability-preview';
 import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon } from './ui';
 import { confirmDiscard, useDiscardGuard } from './ui/discard-guard';
 import React, { useEffect, useRef, useState } from 'react';
@@ -639,12 +640,6 @@ export function Agents({
           title: text('已定位 Agent，但它当前不可执行', 'The Agent was located but is not executable'),
           detail: text('请检查目标是否为普通可执行文件。安装目录的组写权限本身不会阻止接入。', 'Check that the target is a regular executable file. Group-writable installation directories do not block routing.'),
         };
-      case 'executable_probe_timed_out':
-        return {
-          label: text('检查超时', 'Check timed out'),
-          title: text('Agent 版本检查超时', 'The Agent version check timed out'),
-          detail: text('探测进程已回收；可以重新扫描后再进行真实验证。', 'The probe process was cleaned up. Scan again before live verification.'),
-        };
       case 'executable_probe_unavailable':
         return {
           label: text('命令检查失败', 'Command check failed'),
@@ -778,6 +773,14 @@ export function Agents({
           ? text('当前默认模型名称或所选路由无法用于 Codex Responses。请在“默认选择”中改选已勾选且支持该入口的路由；若要保留原生模型，请先接入对应来源。配置未修改。', 'The current default model name or a selected route cannot be used by Codex Responses. Under Default selection, choose an enabled route that supports this ingress; to preserve a native model, connect its source first. Configuration was not changed.')
         : block.reason === 'model_plan_unavailable' && selected?.agent_id === 'agent_codex_default'
           ? text('所选路由、固定来源或当前默认模型无法用于 Codex Responses。请核对路由是否已启用并支持该入口协议，或改选可用路由；配置未修改。', 'A selected route, fixed source, or current default model cannot be used by Codex Responses. Check that the route is enabled and supports this ingress protocol, or choose an available route. Configuration was not changed.')
+        : block.reason === 'codex_context_override'
+          ? text('Codex 的显式窗口配置会覆盖计划设置。请移除有效配置中的 model_context_window 和 model_auto_compact_token_limit 后重试；HiRoute 不会删除这些配置。', 'Explicit Codex window settings override the plan. Remove model_context_window and model_auto_compact_token_limit from the effective configuration and retry; HiRoute will not delete these settings.')
+        : block.reason === 'claude_plan_capability_unavailable'
+          ? text('所选计划无法满足 Claude Code 的工具调用或流式请求能力，请检查全部候选模型。', 'A selected plan cannot meet Claude Code tool or streaming requirements. Check all candidate models.')
+        : block.reason === 'claude_context_override'
+          ? text('Claude Code 存在窗口覆盖或禁用自动压缩的设置。请移除进程、项目或托管配置中的窗口覆盖，以及禁用压缩的环境变量后重试。', 'Claude Code has window overrides or compaction disabled. Remove process, project, or managed window overrides and compaction-disabling environment variables, then retry.')
+        : block.reason === 'claude_context_window_unsupported'
+          ? text('所选计划的共同窗口低于 Claude Code 的 100K 最低值。请调整计划窗口或使用 Codex。', 'The shared plan window is below Claude Code’s 100K minimum. Adjust the plan window or use Codex.')
         : block.reason === 'skill_file_conflict'
           ? text('同名任务委派技能内容不同；原文件已保留。请先移走或明确处理该文件后再预览。', 'A task delegation skill with different content already exists. The original was preserved; move or explicitly resolve it before previewing again.')
         : capabilities.has('skill_loading') || capabilities.has('trusted_cli_execution')
@@ -931,6 +934,7 @@ export function Agents({
                         {modelFormInvalid && <span className="oc-inline-error">{text('至少将一个预设映射到可用智能路由，或保留已有固定模型。', 'Map at least one preset to an enabled smart route, or retain an existing fixed model.')}</span>}
                         {!enabledPlans.length && <div className="callout"><UiIcon name="route" /><div><span>{text('先创建并启用一条智能路由。', 'Create and enable a smart route first.')}</span></div>{onCreatePlan && <button className="btn" type="button" onClick={createPlanFromEditor}>{text('创建路由', 'Create route')}</button>}</div>}
                       </div>}
+                      {facetEnabled && editor.facet === 'model' && <AgentCapabilityPreview agent={selected.agent_id === 'agent_claude_default' ? 'claude' : 'codex'} language={language} plans={enabledPlans.filter(plan => selected.agent_id === 'agent_claude_default' ? Object.values(editorValues.claudePresets).some(choice => choice.kind === 'plan' && choice.plan_id === plan.agent_plan_id) : editorValues.allowedPlanIds.includes(plan.agent_plan_id))} />}
                       {facetEnabled && editor.facet === 'collaboration' && <fieldset className="worker-choices"><legend className="field-label">{text('委派时机', 'When to delegate')}</legend><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="explicit" checked={editorValues.triggerMode === 'explicit'} onChange={() => setTriggerMode('explicit')} /><div><strong>{text('仅在明确要求时', 'Only when explicitly requested')}</strong><span>{text('只有当你要求执行、委派或交给 Worker 时，Agent 才会启动任务。', 'The Agent starts a task only when you ask it to execute, delegate, or hand work to a Worker.')}</span></div></label><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="delegate_by_default" checked={editorValues.triggerMode === 'delegate_by_default'} onChange={() => setTriggerMode('delegate_by_default')} /><div><strong>{text('默认由 Agent 判断', 'Let the Agent decide by default')}</strong><span>{text('Agent 可以主动委派适合执行的任务；明确要求只回答时不会启动任务。', 'The Agent may proactively delegate suitable work, but will not start a task when you explicitly ask for an answer only.')}</span></div></label><p className="field-help">{text('可用执行路由由当前路由目录决定，这里不维护第二份名单。', 'Available execution routes come from the current route catalog; this setting does not maintain a second list.')}</p></fieldset>}
                       {!selectionKnown && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{text('当前配置状态无法核实，不能覆盖保存。请刷新或处理配置变化。', 'The current setting cannot be verified. Refresh or resolve configuration changes before saving.')}</span></div>}
                     </fieldset>

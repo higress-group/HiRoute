@@ -5,6 +5,14 @@ pub(super) fn main_claude_observation(
     version: &str,
     observations: &[ObservedClaudeSettings],
 ) -> (AgentDiscoveryOutcomeV1, bool) {
+    main_claude_observation_with_format(version, observations, false)
+}
+
+pub(super) fn main_claude_observation_with_format(
+    version: &str,
+    observations: &[ObservedClaudeSettings],
+    legacy: bool,
+) -> (AgentDiscoveryOutcomeV1, bool) {
     let mut observation = base_observation(
         "agent_claude_default",
         AgentKindV1::ClaudeCode,
@@ -77,7 +85,18 @@ pub(super) fn main_claude_observation(
         .iter()
         .map(|item| (&item.source_ref, &item.digest, item.revision))
         .collect::<Vec<_>>();
-    let digest = CanonicalDigest::of(&(&observation, inputs)).expect("bounded native observation");
+    let digest = if legacy {
+        CanonicalDigest::of(&(&observation, inputs))
+    } else {
+        CanonicalDigest::of(&(
+            &observation.schema,
+            &observation.agent_id,
+            observation.kind,
+            &observation.config,
+            inputs,
+        ))
+    }
+    .expect("bounded native observation");
     let mut outcome = resolve_agent_observation(observation);
     let conflict = same_layer_secret_conflict(observations)
         || matches!(

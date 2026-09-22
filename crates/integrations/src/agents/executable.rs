@@ -27,7 +27,6 @@ pub(super) enum ProbeFailure {
     Failed,
     TimedOut,
     OutputLimit,
-    InvalidOutput,
 }
 
 pub(super) fn executable_probe(path: &Path) -> ExecutableProbe {
@@ -43,16 +42,21 @@ fn probe(path: &Path, timeout: Duration) -> ExecutableProbe {
     let Some(canonical_path) = canonical.to_str().map(str::to_owned) else {
         return ExecutableProbe::Unknown(ProbeFailure::Unavailable);
     };
-    match bounded_version(&canonical, timeout) {
-        Ok(bytes) => match parse_version(&bytes) {
-            Some(version) => ExecutableProbe::Installed(ExecutableObservationV1 {
-                version,
-                canonical_path,
-            }),
-            None => ExecutableProbe::Unknown(ProbeFailure::InvalidOutput),
-        },
-        Err(reason) => ExecutableProbe::Unknown(reason),
-    }
+    let version = match bounded_version(&canonical, timeout) {
+        Ok(bytes) => parse_version(&bytes).unwrap_or_default(),
+        Err(ProbeFailure::LaunchFailed(code)) => {
+            return ExecutableProbe::Unknown(ProbeFailure::LaunchFailed(code));
+        }
+        Err(ProbeFailure::NotExecutable) => {
+            return ExecutableProbe::Unknown(ProbeFailure::NotExecutable);
+        }
+        // The process started: version diagnostics cannot establish capability or deny admission.
+        Err(_) => String::new(),
+    };
+    ExecutableProbe::Installed(ExecutableObservationV1 {
+        version,
+        canonical_path,
+    })
 }
 
 pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {

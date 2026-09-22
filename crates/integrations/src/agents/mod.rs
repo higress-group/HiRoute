@@ -1,9 +1,11 @@
 //! Built-in Codex and managed Claude Code integration profiles.
 
+mod claude_capabilities;
 mod claude_native_effects;
 mod codex_catalog;
 mod codex_catalog_effects;
 mod codex_catalog_plan;
+pub use claude_capabilities::claude_plan_capability_preview;
 mod codex_catalog_schema;
 mod codex_catalog_source;
 mod codex_config;

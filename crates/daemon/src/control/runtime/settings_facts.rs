@@ -763,7 +763,37 @@ impl LocalControlAdapter {
                         == hiroute_domain::CollaborationSkillFileOwnership::BorrowedIdentical
                         && record.contexts.contains(&spec.context_id)
                 });
+        let codex_context_override = class == SettingsAgentClass::Codex
+            && matches!(&spec.model, AgentFacetIntent::Configure { settings } if !settings.allowed_plan_ids().is_empty())
+            && hiroute_integrations::codex_has_context_override(
+                &hiroute_integrations::CodexConfigurationScope::user_file(
+                    self.scanner.codex_user_config_target(),
+                ),
+            )
+            .map_err(|_| ControlReadError::Unavailable)?;
+        let claude_plan_capability_unavailable = if let (
+            SettingsAgentClass::Claude,
+            AgentFacetIntent::Configure { settings },
+            Some(publication),
+        ) = (class, &spec.model, active.as_ref())
+        {
+            settings.allowed_plan_ids().iter().any(|id| publication.plans.iter().find(|plan| plan.agent_plan_id() == id).is_none_or(|plan| {
+                let Ok(plan) = plan.clone().into_current() else { return true; };
+                matches!(hiroute_integrations::agents::claude_plan_capability_preview(&plan), hiroute_application_api::ClaudeClientCapabilityPreviewV1::Unavailable { reason } if reason != "context_window_below_minimum")
+            }))
+        } else {
+            false
+        };
+        let claude_context_override = class == SettingsAgentClass::Claude
+            && matches!(&spec.model, AgentFacetIntent::Configure { settings } if !settings.allowed_plan_ids().is_empty())
+            && self
+                .scanner
+                .claude_context_override()
+                .map_err(|_| ControlReadError::Unavailable)?;
         let dependency_digest = CanonicalDigest::of(&serde_json::json!({
+            "claude_context_override": claude_context_override,
+            "claude_plan_capability_unavailable": claude_plan_capability_unavailable,
+            "codex_context_override": codex_context_override,
             "context":spec.context_id,"agent":class.context_segment(),"observation":installation.observation_digest,
             "claude_executable": if class == SettingsAgentClass::Claude { claude_executable.as_deref() } else { None },
             "capabilities":semantic_evidence,"content":expected_content,"fingerprint":before_fingerprint,
@@ -844,6 +874,9 @@ impl LocalControlAdapter {
                 template,
             },
             facts: AgentSettingsFacts {
+                codex_context_override,
+                claude_context_override,
+                claude_plan_capability_unavailable,
                 context_id: spec.context_id.clone(),
                 dependency_digest,
                 capabilities,

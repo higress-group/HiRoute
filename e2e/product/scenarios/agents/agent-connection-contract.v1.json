@@ -11,7 +11,7 @@
     "grant_catalog_overlay_exact",
     "installed-standalone-headless-management-loop",
     "optional_exact_marker_rewrite",
-    "unknown_version_report_only"
+    "client_version_diagnostic_only"
   ],
   "scenario_states": [
     {

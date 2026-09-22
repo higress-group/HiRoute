@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use hiroute_domain::{
-    AgentConfigDocumentV1, AgentKindV1, CLAUDE_CODE_MANAGED_LAUNCH_VERSION_V1, CanonicalDigest,
-    ConfigLayerV1, ProtectedSecret, SupportedAgentInstallationV1,
+    AgentConfigDocumentV1, AgentKindV1, CanonicalDigest, ConfigLayerV1, ProtectedSecret,
+    SupportedAgentInstallationV1,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -144,6 +144,7 @@ impl AgentFilesystemLayoutV1 {
             "ANTHROPIC_SMALL_FAST_MODEL",
         ]
         .into_iter()
+        .chain(hiroute_domain::CLAUDE_CONTEXT_CONFLICT_ENVIRONMENT)
         .filter_map(|name| {
             std::env::var(name)
                 .ok()
@@ -185,6 +186,8 @@ impl AgentFilesystemLayoutV1 {
 pub struct FilesystemAgentScannerV1 {
     pub(super) layout: AgentFilesystemLayoutV1,
     registry: ClaudeRegistrationIndexV1,
+    legacy_recovery_version: Option<String>,
+    legacy_process_format: bool,
     #[cfg(unix)]
     codex_ingress: std::sync::Arc<std::sync::Mutex<Option<super::CodexIngressEvidence>>>,
     #[cfg(unix)]
@@ -237,6 +240,8 @@ impl FilesystemAgentScannerV1 {
         Self {
             layout,
             registry,
+            legacy_recovery_version: None,
+            legacy_process_format: false,
             #[cfg(unix)]
             codex_ingress: Default::default(),
             #[cfg(unix)]
@@ -321,6 +326,26 @@ impl FilesystemAgentScannerV1 {
         {
             evidence.attach_collaboration(executable, installation);
         }
+    }
+
+    /// Read-only verifier for a pre-version-neutral successful Operation. The old label is
+    /// supplied by that immutable Operation, never by current client output. All physical
+    /// identity, permissions, configuration and native evidence are still sampled normally.
+    pub fn matches_legacy_claude_observation(
+        &self,
+        recorded_version: &str,
+        expected: &CanonicalDigest,
+    ) -> bool {
+        let mut recovery = self.clone();
+        recovery.legacy_recovery_version = Some(recorded_version.to_owned());
+        [false, true].into_iter().any(|legacy_process_format| {
+            recovery.legacy_process_format = legacy_process_format;
+            recovery.scan().into_iter().any(|found| {
+                matches!(found.outcome, AgentDiscoveryOutcomeV1::Supported { installation }
+                    if installation.profile.kind == AgentKindV1::ClaudeCode && &installation.observation_digest == expected)
+                    && found.managed_launch.is_some_and(|preflight| preflight.is_launchable())
+            })
+        })
     }
 
     pub fn scan(&self) -> Vec<FilesystemAgentDiscoveryV1> {
@@ -548,6 +573,11 @@ impl FilesystemAgentScannerV1 {
             .as_ref()
             .map(|value| value.version.clone())
             .unwrap_or_default();
+        let version = self
+            .legacy_recovery_version
+            .as_ref()
+            .unwrap_or(&version)
+            .clone();
         // Settings writes bind the actual executable and target file, not the native
         // endpoint/model registration used by ordinary account discovery. A user may
         // switch an otherwise runnable Claude installation from an unknown provider.
@@ -569,7 +599,12 @@ impl FilesystemAgentScannerV1 {
                 &self.layout.process_environment,
                 &self.layout.process_environment_presence,
             ) {
-                Ok(observed) => observations.push(observed),
+                Ok(mut observed) => {
+                    if self.legacy_process_format {
+                        super::filesystem_config::recover_pre_context_process_digest(&mut observed);
+                    }
+                    observations.push(observed);
+                }
                 Err(error) => {
                     return FilesystemAgentDiscoveryV1 {
                         outcome: configuration_failure_outcome(error.report_reason()),
@@ -585,12 +620,13 @@ impl FilesystemAgentScannerV1 {
         let main_observations =
             main_observation::resolve_project_local_fields(&self.layout, &observations);
         let (observed_outcome, main_conflict) =
-            main_observation::main_claude_observation(&version, &main_observations);
+            main_observation::main_claude_observation_with_format(
+                &version,
+                &main_observations,
+                self.legacy_recovery_version.is_some(),
+            );
         let mut outcome = executable_outcome.unwrap_or(observed_outcome);
-        let managed_launch = if let Some(executable) = executable
-            .as_ref()
-            .filter(|_| for_settings || version == CLAUDE_CODE_MANAGED_LAUNCH_VERSION_V1)
-        {
+        let managed_launch = if let Some(executable) = executable.as_ref() {
             let profile = match &outcome {
                 AgentDiscoveryOutcomeV1::Supported { installation } => {
                     installation.profile.managed_launch.as_ref()
@@ -609,7 +645,6 @@ impl FilesystemAgentScannerV1 {
             };
             Some(ManagedClaudeLaunchPreflightV1::from_observations(
                 executable.canonical_path.clone(),
-                profile.exact_version.clone(),
                 profile,
                 &observations,
             ))
@@ -619,10 +654,15 @@ impl FilesystemAgentScannerV1 {
         if let (Some(preflight), AgentDiscoveryOutcomeV1::Supported { installation }) =
             (&managed_launch, &mut outcome)
         {
+            let mut preflight_value =
+                serde_json::to_value(preflight).expect("serializable preflight");
+            if let Some(version) = &self.legacy_recovery_version {
+                preflight_value["exact_version"] = serde_json::json!(version);
+            }
             installation.observation_digest = CanonicalDigest::of(&(
                 "hiroute.managed-launch-observation/v1",
                 &installation.observation_digest,
-                preflight,
+                preflight_value,
             ))
             .unwrap_or_else(|_| CanonicalDigest::of_bytes(b"invalid-managed-launch-observation"));
         }

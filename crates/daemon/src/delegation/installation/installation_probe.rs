@@ -291,6 +291,7 @@ fn build_profile(
     };
     let catalog = (worker == WorkerHarnessV1::CodexCli).then(|| test_codex_catalog(PROBE_MODEL));
     CandidateWorkerProfile::build(ProfileInput {
+        claude_context_window: None,
         harness: worker,
         adapter,
         harness_binary: harness,

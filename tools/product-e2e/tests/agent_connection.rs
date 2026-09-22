@@ -156,7 +156,7 @@ fn agent_connection_boundary_golden_records_public_completion() {
     assert_eq!(golden.composition_owner, PRODUCTION_EVIDENCE_OWNER);
     assert_eq!(golden.codex_protocol, "responses");
     assert_eq!(golden.claude_protocol, "messages");
-    assert_eq!(golden.unknown_version_behavior, "report_only");
+    assert_eq!(golden.unknown_version_behavior, "capability_based");
 
     let states = BTreeSet::from([
         golden.profile_grant_catalog_contract,

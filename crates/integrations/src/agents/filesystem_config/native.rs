@@ -1,7 +1,7 @@
 //! Native field rendering and ownership, shared by persistent and isolated file effects.
 use super::*;
 
-const CLAUDE_MANAGED_PATHS: [&str; 8] = [
+const CLAUDE_MANAGED_PATHS: [&str; 10] = [
     "apiKeyHelper",
     "hiroute.auth_environment",
     "env.ANTHROPIC_BASE_URL",
@@ -10,6 +10,8 @@ const CLAUDE_MANAGED_PATHS: [&str; 8] = [
     "env.ANTHROPIC_DEFAULT_SONNET_MODEL",
     "env.ANTHROPIC_DEFAULT_HAIKU_MODEL",
     "env.ANTHROPIC_SMALL_FAST_MODEL",
+    "env.CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+    "env.CLAUDE_CODE_MAX_CONTEXT_TOKENS",
 ];
 
 /// Renders one exact semantic change into Claude Code's user settings while preserving every
@@ -86,13 +88,36 @@ pub(in crate::agents) fn rebase_claude_change_bytes(
     if !claude_change_bytes_are_applied(current, previous_change)? {
         return Err(AgentFilesystemScanError::SourceChanged);
     }
-    let rendered = render_claude_change_bytes(current, change)?;
+    // Check the accepted before-values before constructing the release transition.
+    render_claude_change_bytes(current, change)?;
     let base = claude_document_from_bytes(base)?;
+    let desired_change: BTreeMap<_, _> =
+        change
+            .fields
+            .iter()
+            .map(|field| {
+                let after = if field.after.is_none()
+                    && field.path.strip_prefix("env.").is_some_and(|key| {
+                        hiroute_domain::CLAUDE_CONTEXT_ENVIRONMENT.contains(&key)
+                    }) {
+                    base.fields.get(&field.path).cloned()
+                } else {
+                    field.after.clone()
+                };
+                (field.path.clone(), after)
+            })
+            .collect();
+    let adjusted = AgentConfigChangeV1::preview(
+        &claude_document_from_bytes(current)?,
+        desired_change.clone(),
+    )
+    .map_err(|_| AgentFilesystemScanError::InvalidDescriptor)?;
+    let rendered = render_claude_change_bytes(current, &adjusted)?;
     let desired = CLAUDE_MANAGED_PATHS
         .into_iter()
         .map(|path| {
-            let after = if let Some(field) = change.fields.iter().find(|field| field.path == path) {
-                field.after.clone()
+            let after = if let Some(after) = desired_change.get(path) {
+                after.clone()
             } else if let Some(field) = previous_change
                 .fields
                 .iter()
@@ -419,19 +444,11 @@ fn validate_change(change: &AgentConfigChangeV1) -> Result<(), AgentFilesystemSc
     change
         .validate()
         .map_err(|_| AgentFilesystemScanError::InvalidDescriptor)?;
-    if change.fields.iter().any(|field| {
-        !matches!(
-            field.path.as_str(),
-            "apiKeyHelper"
-                | "hiroute.auth_environment"
-                | "env.ANTHROPIC_BASE_URL"
-                | "env.ANTHROPIC_MODEL"
-                | "env.ANTHROPIC_DEFAULT_OPUS_MODEL"
-                | "env.ANTHROPIC_DEFAULT_SONNET_MODEL"
-                | "env.ANTHROPIC_DEFAULT_HAIKU_MODEL"
-                | "env.ANTHROPIC_SMALL_FAST_MODEL"
-        )
-    }) {
+    if change
+        .fields
+        .iter()
+        .any(|field| !CLAUDE_MANAGED_PATHS.contains(&field.path.as_str()))
+    {
         return Err(AgentFilesystemScanError::InvalidDescriptor);
     }
     Ok(())

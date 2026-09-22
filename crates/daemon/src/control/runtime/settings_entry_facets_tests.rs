@@ -141,17 +141,15 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
             "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
             "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.3[1m]",
             "ANTHROPIC_AUTH_TOKEN": "fixture-user-token",
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000",
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "900000",
             "UNRELATED": "keep-me"
         }
     });
     fs::write(&settings, serde_json::to_vec_pretty(&original).unwrap()).unwrap();
     fs::set_permissions(&settings, fs::Permissions::from_mode(0o600)).unwrap();
     let executable = root.path().join("claude-fixture");
-    fs::write(
-        &executable,
-        b"#!/bin/sh\nprintf '2.1.231 (Claude Code)\\n'\n",
-    )
-    .unwrap();
+    fs::write(&executable, b"#!/bin/sh\nprintf '2.1.0 (Claude Code)\\n'\n").unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
 
     let mut layout = AgentFilesystemLayoutV1::from_process(&home, root.path());
@@ -278,15 +276,34 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
             .unwrap()
             .iter()
             .any(|agent| {
-                agent["agent_id"] == "agent_claude_default" && agent["supported"] == false
+                agent["agent_id"] == "agent_claude_default" && agent["supported"] == true
             })
     );
-    let settings_preview = ordinary.dispatch_wire(request(
-        "PreviewAgentConnectionChange",
-        json!({"spec":spec}),
-        None,
-    ));
-    assert!(settings_preview.error.is_none(), "{settings_preview:?}");
+    // Version diagnostics cannot add blockers to Plan-window configuration.
+    for script in [
+        "#!/bin/sh\nexit 9\n",
+        "#!/bin/sh\nprintf 'unknown client version\\n'\n",
+        "#!/bin/sh\nprintf '2.1.0 (Claude Code)\\n'\n",
+    ] {
+        fs::write(&executable, script).unwrap();
+        let settings_preview = ordinary.dispatch_wire(request(
+            "PreviewAgentConnectionChange",
+            json!({"spec":spec}),
+            None,
+        ));
+        assert!(settings_preview.error.is_none(), "{settings_preview:?}");
+        let settings_preview = settings_preview.data.unwrap();
+        assert_eq!(settings_preview["blockers"], unproven["blockers"]);
+        assert_eq!(
+            settings_preview["model_effect"]["claude_context_window"],
+            unproven["model_effect"]["claude_context_window"]
+        );
+        assert!(
+            settings_preview["model_effect"]["claude_context_window"]
+                .as_u64()
+                .is_some()
+        );
+    }
     fs::write(&executable, original_executable).unwrap();
 
     let service = LocalControlDaemon::new(ApplicationService::new(
@@ -400,6 +417,18 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
         "http://127.0.0.1:5837"
     );
     assert_eq!(launch_descriptor["grant_generation"], 1);
+    let window = launch_descriptor["context_window_tokens"]
+        .as_u64()
+        .expect("Claude launch carries plan window");
+    assert!((100_000..=272_000).contains(&window));
+    assert_eq!(
+        native["env"]["CLAUDE_CODE_AUTO_COMPACT_WINDOW"],
+        window.to_string()
+    );
+    assert_eq!(
+        native["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"],
+        window.to_string()
+    );
     assert_eq!(
         launch_descriptor["presets"],
         json!({"opus":native["env"]["ANTHROPIC_DEFAULT_OPUS_MODEL"],

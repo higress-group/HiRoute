@@ -294,7 +294,9 @@ def run(repository, expected_sha=None, desktop_data_root=None):
         plans = {}
         for protocol in PROTOCOLS:
             saved = save_native_source(product, upstream, NATIVE_TOKEN,
-                                       protocol=protocol, variant=protocol)
+                                       protocol=protocol, variant=protocol,
+                                       # Claude requires at least 100K after output reservation.
+                                       context_tokens=131072 if protocol == 'messages' else 32768)
             plan_id, alias = publish_plan(product, saved['binding_id'], protocol)
             plans[protocol] = plan_id
             agent = ('agent_codex_default' if protocol == 'responses'

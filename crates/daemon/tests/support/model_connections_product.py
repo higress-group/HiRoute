@@ -153,7 +153,8 @@ def declared(value):
 
 
 def save_native_source(product, upstream, token=None, unknown=False,
-                       protocol='responses', upstream_model_id=MODEL, variant=''):
+                       protocol='responses', upstream_model_id=MODEL, variant='',
+                       context_tokens=32768):
     status = control(product, 'GetClientServiceStatus', {})['data']
     suffix = ('-unknown' if unknown else '') + ('-' + variant if variant else '')
     candidate_ref = 'candidate/native/product' + suffix
@@ -196,7 +197,7 @@ def save_native_source(product, upstream, token=None, unknown=False,
                 'tool': declared(True),
                 'vision': declared(False),
                 'streaming': declared(True),
-                'context_tokens': declared(32768),
+                'context_tokens': declared(context_tokens),
                 'max_output_tokens': declared(4096),
                 'native_reasoning': declared({
                     'kind': 'fixed', 'profile': 'provider-default'}),

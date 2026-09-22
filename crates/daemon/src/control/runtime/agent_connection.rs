@@ -35,7 +35,7 @@ struct ActiveJoinV1 {
 impl LocalControlAdapter {
     fn active_join(&self, connection_id: &str) -> Result<ActiveJoinV1, ControlReadError> {
         // The scanner is deliberately invoked for every join. A descriptor or raw-token request
-        // never inherits a prior Preview's executable, version, or auth-precedence observation.
+        // never inherits a prior Preview's executable or auth-precedence observation.
         let (connection, operation) = self.latest_connection_operation(connection_id)?;
         let discovery = self.exact_discovery(
             &connection.connection.agent_id,
@@ -47,14 +47,16 @@ impl LocalControlAdapter {
         };
         match connection.connection.activation_mode {
             AgentActivationModeV1::ManagedLaunch => {
-                if installation.observation_digest != connection.observation_digest {
+                if installation.observation_digest != connection.observation_digest
+                    && !self.scanner.matches_legacy_claude_observation(
+                        &connection.installed_version,
+                        &connection.observation_digest,
+                    )
+                {
                     return Err(ControlReadError::Denied);
                 }
                 let preflight = discovery.managed_launch.ok_or(ControlReadError::Denied)?;
-                if !preflight.is_launchable()
-                    || preflight.exact_version != connection.installed_version
-                    || preflight.executable.is_empty()
-                {
+                if !preflight.is_launchable() || preflight.executable.is_empty() {
                     return Err(ControlReadError::Denied);
                 }
             }
@@ -254,15 +256,12 @@ impl LocalControlAdapter {
                 .discovered_credential
                 .as_ref()
                 .is_some_and(|descriptor| self.scanner.is_claude_user_credential(descriptor));
-        let activation_mode = if installation
-            .profile
-            .supports_managed_launch(&installation.version)
-            && !persistent_claude_source
-        {
-            AgentActivationModeV1::ManagedLaunch
-        } else {
-            AgentActivationModeV1::ManagedConfiguration
-        };
+        let activation_mode =
+            if installation.profile.supports_managed_launch() && !persistent_claude_source {
+                AgentActivationModeV1::ManagedLaunch
+            } else {
+                AgentActivationModeV1::ManagedConfiguration
+            };
         let current_config = AgentConfigDocumentV1 {
             fields: installation
                 .effective_config
@@ -274,9 +273,6 @@ impl LocalControlAdapter {
         let mut blockers = Vec::new();
         if activation_mode == AgentActivationModeV1::ManagedLaunch {
             let preflight = discovery.managed_launch.ok_or(ControlReadError::Corrupt)?;
-            if preflight.exact_version != installation.version {
-                return Err(ControlReadError::Corrupt);
-            }
             warnings.extend(preflight.warnings.iter().map(|warning| WarningV1 {
                 code: warning.code.clone(),
                 details_schema: "hiroute.managed-launch-warning/v1".to_owned(),
@@ -521,7 +517,7 @@ impl AgentConnectionControlPort for LocalControlAdapter {
             return Err(ControlReadError::Denied);
         }
         let executable = expected_snapshot.executable.as_str();
-        let descriptor = ManagedClaudeLaunchDescriptorV2::trusted(
+        let mut descriptor = ManagedClaudeLaunchDescriptorV2::trusted(
             request.connection_id.clone(),
             "claude-messages-v1",
             executable,
@@ -533,6 +529,10 @@ impl AgentConnectionControlPort for LocalControlAdapter {
             runtime.trusted_hiroute_executable,
         )
         .map_err(|_| ControlReadError::Corrupt)?;
+        descriptor.context_window_tokens = expected_snapshot.context_window_tokens;
+        descriptor
+            .validate()
+            .map_err(|_| ControlReadError::Corrupt)?;
         Ok(descriptor)
     }
 }
@@ -737,10 +737,7 @@ mod tests {
         let observed = adapter
             .exact_discovery(&spec.agent_id, &spec.profile_id, &spec.installed_version)
             .unwrap();
-        assert_eq!(
-            observed.managed_launch.as_ref().unwrap().exact_version,
-            "2.1.231"
-        );
+        assert!(observed.managed_launch.as_ref().unwrap().is_launchable());
         let subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
             spec.agent_id.clone(),
             spec.profile_id.clone(),
@@ -1058,8 +1055,8 @@ mod tests {
                 .require_action(hiroute_domain::AgentAction::ConfigureModel)
                 .is_err()
         );
-        // An installation that drifted off the verified managed-launch version keeps its
-        // grant frozen out of the active join: neither launch nor raw resolution recovers.
+        // Replacing the executable invalidates its identity proof, independently of the
+        // diagnostic version printed by that executable.
         assert!(adapter.resolve_active_agent_grant(&connection_id).is_err());
     }
 }

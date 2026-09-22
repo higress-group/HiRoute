@@ -277,6 +277,11 @@
               "minimum": 1000,
               "type": "integer"
             },
+            "context_window_tokens": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
             "maximum_attempts": {
               "maximum": 64,
               "minimum": 1,

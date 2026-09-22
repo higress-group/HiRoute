@@ -39,7 +39,7 @@ pub enum AgentReportOnlyReasonV1 {
     ExecutableProbeTimedOut,
     ExecutableProbeUnavailable,
     UnknownObservationSchema,
-    UnknownVersion,
+    UnknownProfile,
     AmbiguousProfile,
     ConflictingEffectiveConfig,
     InvalidObservation,
@@ -68,8 +68,13 @@ pub enum AgentDiscoveryOutcomeV1 {
 }
 
 pub fn resolve_agent_observation(observation: AgentScanObservationV1) -> AgentDiscoveryOutcomeV1 {
-    let observation_digest = CanonicalDigest::of(&observation)
-        .unwrap_or_else(|_| CanonicalDigest::of_bytes(b"invalid-agent-observation"));
+    let observation_digest = CanonicalDigest::of(&(
+        &observation.schema,
+        &observation.agent_id,
+        observation.kind,
+        &observation.config,
+    ))
+    .unwrap_or_else(|_| CanonicalDigest::of_bytes(b"invalid-agent-observation"));
     let report = |reason| AgentDiscoveryOutcomeV1::ReportOnly {
         agent_id: observation.agent_id.clone(),
         kind: observation.kind,
@@ -80,10 +85,7 @@ pub fn resolve_agent_observation(observation: AgentScanObservationV1) -> AgentDi
     if observation.schema != AGENT_SCAN_OBSERVATION_SCHEMA_V1 {
         return report(AgentReportOnlyReasonV1::UnknownObservationSchema);
     }
-    if !valid_agent_id(&observation.agent_id)
-        || observation.version.len() > 128
-        || observation.version.contains('\0')
-    {
+    if !valid_agent_id(&observation.agent_id) {
         return report(AgentReportOnlyReasonV1::InvalidObservation);
     }
     let profiles = builtin_agent_profiles()
@@ -92,7 +94,7 @@ pub fn resolve_agent_observation(observation: AgentScanObservationV1) -> AgentDi
         .collect::<Vec<_>>();
     let [profile] = profiles.as_slice() else {
         return report(if profiles.is_empty() {
-            AgentReportOnlyReasonV1::UnknownVersion
+            AgentReportOnlyReasonV1::UnknownProfile
         } else {
             AgentReportOnlyReasonV1::AmbiguousProfile
         });

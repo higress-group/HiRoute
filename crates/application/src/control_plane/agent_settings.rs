@@ -86,6 +86,10 @@ pub(crate) fn preview(
         }
         (hiroute_application_api::AgentFacetIntent::Keep, _) => json!({"action":"keep"}),
     };
+    if !preview.context_windows.is_empty() {
+        result["model_effect"]["context_windows"] = json!(preview.context_windows);
+        result["model_effect"]["claude_context_window"] = json!(preview.claude_context_window);
+    }
     succeeded(result, request.request_id)
 }
 

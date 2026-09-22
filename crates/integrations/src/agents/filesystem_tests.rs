@@ -89,7 +89,7 @@ fn layout_with_claude_version(root: &Path, claude_version: &str) -> AgentFilesys
 }
 
 #[test]
-fn filesystem_scanner_exact_versions_registers_claude_and_never_serializes_token() {
+fn filesystem_scanner_registers_claude_and_never_serializes_token() {
     let directory = tempfile::tempdir().unwrap();
     let layout = layout(directory.path());
     write_secret_settings(
@@ -126,7 +126,11 @@ fn filesystem_scanner_exact_versions_registers_claude_and_never_serializes_token
     );
     let encoded = serde_json::to_string(&results).unwrap();
     assert!(!encoded.contains("secret-do-not-serialize"));
-    assert!(!encoded.contains(directory.path().to_string_lossy().as_ref()));
+    // Internal launch preflight includes its executable; public discovery remains path-free.
+    let public =
+        serde_json::to_string(&results.iter().map(|item| &item.outcome).collect::<Vec<_>>())
+            .unwrap();
+    assert!(!public.contains(directory.path().to_string_lossy().as_ref()));
     let secret = scanner
         .read_discovered_secret(claude.discovered_credential.as_ref().unwrap())
         .unwrap();
@@ -705,12 +709,14 @@ fn managed_2_1_231_isolates_multiple_project_settings() {
 }
 
 #[test]
-fn managed_launch_is_exactly_2_1_231_only() {
+fn managed_launch_accepts_old_new_and_unparseable_versions() {
     for (version, supported, managed) in [
-        (CLAUDE_CODE_VERIFIED_VERSION_V1, true, false),
-        ("2.1.230", true, false),
+        (CLAUDE_CODE_VERIFIED_VERSION_V1, true, true),
+        ("0.0.1", true, true),
         (CLAUDE_CODE_VERIFIED_VERSION_2_1_231_V1, true, true),
-        ("2.1.232", true, false),
+        ("99.1.2", true, true),
+        ("", true, true),
+        ("unparseable version", true, true),
     ] {
         let directory = tempfile::tempdir().unwrap();
         let result = FilesystemAgentScannerV1::new(

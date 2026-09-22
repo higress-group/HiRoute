@@ -48,7 +48,7 @@ impl AgentConnectionContractV1 {
                     "grant_catalog_overlay_exact".to_owned(),
                     PRODUCTION_EVIDENCE.to_owned(),
                     "optional_exact_marker_rewrite".to_owned(),
-                    "unknown_version_report_only".to_owned(),
+                    "client_version_diagnostic_only".to_owned(),
                 ])
         {
             return Err(AgentConnectionContractError::InvalidContract);

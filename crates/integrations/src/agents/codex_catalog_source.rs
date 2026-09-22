@@ -305,6 +305,11 @@ pub fn sample_codex_catalog_plan(
     retained_models: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<CodexCatalogPlan, super::CodexCatalogError> {
     use super::CodexCatalogSelection;
+    if !plans.is_empty()
+        && super::codex_has_context_override(scope).map_err(catalog_source_error)?
+    {
+        return Err(super::CodexCatalogError::ContextOverride);
+    }
     let configured = match baseline {
         CodexCatalogBaseline::Original(Some(path)) => {
             let before = sample_codex_configuration(scope).map_err(catalog_source_error)?;
@@ -379,6 +384,11 @@ pub fn sample_codex_hiroute_only_catalog_plan(
     let bytes =
         serde_json::to_vec(&catalog).map_err(|_| super::CodexCatalogError::InvalidCatalog)?;
     let content_digest = CanonicalDigest::of_bytes(&bytes);
+    if !plans.is_empty()
+        && super::codex_has_context_override(scope).map_err(catalog_source_error)?
+    {
+        return Err(super::CodexCatalogError::ContextOverride);
+    }
     let observed = sample_codex_configuration(scope).map_err(catalog_source_error)?;
     let dependency_digest = CanonicalDigest::of(&(
         "hiroute-only-codex-catalog/v1",

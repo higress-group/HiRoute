@@ -7,7 +7,6 @@ use crate::{AgentClaudePresetValuesV2, CanonicalDigest, valid_client_model_name}
 
 pub const MANAGED_CLAUDE_LAUNCH_DESCRIPTOR_SCHEMA_V2: &str =
     "hiroute.managed-claude-launch-descriptor/v2";
-pub const CLAUDE_CODE_MANAGED_LAUNCH_VERSION_V1: &str = "2.1.231";
 pub const HIDDEN_AGENT_GRANT_HELPER_VERB_V1: &str = "__internal-agent-grant-v1";
 pub const MANAGED_CLAUDE_SETTINGS_ARGUMENT_V1: &str = "--settings";
 pub const MANAGED_CLAUDE_SETTING_SOURCES_ARGUMENT_V1: &str = "--setting-sources";
@@ -54,18 +53,22 @@ pub enum AgentActivationModeV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedLaunchProfileV1 {
-    /// The exact installation version whose managed-launch capability has been verified
-    /// empirically; discovery refuses the managed boundary for any other version.
-    pub exact_version: String,
+    /// Recovery-only historical label, excluded from capability validation.
+    #[serde(
+        default,
+        rename = "exact_version",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub legacy_exact_version: String,
     pub settings_argument: String,
     pub environment_removals: BTreeSet<String>,
     pub caller_forbidden_options: BTreeSet<String>,
 }
 
 impl ManagedLaunchProfileV1 {
-    pub fn claude_code_2_1_231() -> Self {
+    pub fn claude_code() -> Self {
         Self {
-            exact_version: CLAUDE_CODE_MANAGED_LAUNCH_VERSION_V1.to_owned(),
+            legacy_exact_version: String::new(),
             settings_argument: MANAGED_CLAUDE_SETTINGS_ARGUMENT_V1.to_owned(),
             environment_removals: MANAGED_CLAUDE_ENVIRONMENT_REMOVALS_V1
                 .into_iter()
@@ -79,7 +82,11 @@ impl ManagedLaunchProfileV1 {
     }
 
     pub fn validate(&self) -> Result<(), ManagedLaunchError> {
-        if self != &Self::claude_code_2_1_231() {
+        let trusted = Self::claude_code();
+        if self.settings_argument != trusted.settings_argument
+            || self.environment_removals != trusted.environment_removals
+            || self.caller_forbidden_options != trusted.caller_forbidden_options
+        {
             return Err(ManagedLaunchError::UntrustedProfile);
         }
         Ok(())
@@ -101,6 +108,8 @@ impl ManagedLaunchProfileV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedClaudeLaunchDescriptorV2 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window_tokens: Option<u64>,
     pub schema: String,
     pub connection_id: String,
     pub profile_id: String,
@@ -134,6 +143,7 @@ impl ManagedClaudeLaunchDescriptorV2 {
         let connection_id = connection_id.into();
         let helper_executable = trusted_hiroute_executable.into();
         let value = Self {
+            context_window_tokens: None,
             schema: MANAGED_CLAUDE_LAUNCH_DESCRIPTOR_SCHEMA_V2.to_owned(),
             connection_id: connection_id.clone(),
             profile_id: profile_id.into(),
@@ -155,7 +165,10 @@ impl ManagedClaudeLaunchDescriptorV2 {
     }
 
     pub fn validate(&self) -> Result<(), ManagedLaunchError> {
-        if self.schema != MANAGED_CLAUDE_LAUNCH_DESCRIPTOR_SCHEMA_V2
+        if self
+            .context_window_tokens
+            .is_some_and(|value| crate::claude_context_window(value) != Some(value))
+            || self.schema != MANAGED_CLAUDE_LAUNCH_DESCRIPTOR_SCHEMA_V2
             || self.grant_generation == 0
             || !valid_connection_id(&self.connection_id)
             || !valid_identifier(&self.profile_id)

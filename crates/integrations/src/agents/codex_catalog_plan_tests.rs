@@ -607,3 +607,138 @@ fn generic_prompt_and_test_catalog_are_exact_pinned_assets() {
     );
     assert!(include_str!("codex_generic_prompt.license").contains("Apache License"));
 }
+
+#[test]
+fn context_window_default_custom_and_worker_catalog_agree() {
+    let mut large = plan();
+    for candidate in std::sync::Arc::make_mut(&mut large.body)
+        .materialized
+        .attempt_owned
+        .groups
+        .iter_mut()
+        .flat_map(|g| &mut g.candidates)
+    {
+        for profile in &mut candidate.protocol_profiles {
+            let context = &mut profile.capability.context;
+            context.max_input_tokens = GatewayCriticalFactV1::Exact(1_050_000);
+            context.max_output_tokens = GatewayCriticalFactV1::Exact(128_000);
+            context.max_total_tokens = GatewayCriticalFactV1::Exact(Some(1_178_000));
+        }
+    }
+    let large = reseal(large);
+    assert_eq!(
+        large
+            .body
+            .materialized
+            .context_window_upper_bound()
+            .unwrap(),
+        1_050_000
+    );
+    for (setting, expected) in [
+        (None, 272_000),
+        (Some(128_000), 128_000),
+        (Some(500_000), 500_000),
+        (Some(1_050_000), 1_050_000),
+    ] {
+        let mut selected = large.clone();
+        std::sync::Arc::make_mut(&mut selected.body)
+            .materialized
+            .attempt_owned
+            .limits
+            .context_window_tokens = setting;
+        let selected = reseal(selected);
+        let entry = plan_entry(&selected, 0).unwrap();
+        assert_eq!(entry["context_window"], expected);
+        assert_eq!(entry["max_context_window"], expected);
+        let worker: Value =
+            serde_json::from_slice(&codex_private_worker_catalog(&selected).unwrap()).unwrap();
+        assert_eq!(worker["models"][0], entry);
+        assert!(
+            matches!(codex_plan_capability_preview(&selected), CodexClientCapabilityPreviewV1::Available { context_window, .. } if context_window == expected)
+        );
+    }
+}
+
+#[test]
+fn context_window_overrides_block_plan_catalog_without_editing_user_files() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("config.toml");
+    let mut scope = CodexConfigurationScope::user_file(config.clone());
+    let plan = plan();
+    for key in ["model_context_window", "model_auto_compact_token_limit"] {
+        let content = format!("{key} = 900000\n");
+        std::fs::write(&config, &content).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        assert!(matches!(
+            sample_codex_hiroute_only_catalog_plan(
+                &scope,
+                std::slice::from_ref(&plan),
+                plan.model_alias().as_str()
+            ),
+            Err(CodexCatalogError::ContextOverride)
+        ));
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), content);
+        std::fs::write(&config, "").unwrap();
+        scope.cli_overrides.push(format!("{key}=900000"));
+        assert!(matches!(
+            sample_codex_hiroute_only_catalog_plan(
+                &scope,
+                std::slice::from_ref(&plan),
+                plan.model_alias().as_str()
+            ),
+            Err(CodexCatalogError::ContextOverride)
+        ));
+        scope.cli_overrides.clear();
+    }
+    assert!(
+        sample_codex_hiroute_only_catalog_plan(
+            &scope,
+            std::slice::from_ref(&plan),
+            plan.model_alias().as_str()
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn claude_capability_preview_rejects_missing_tools_and_streaming_in_any_candidate() {
+    use crate::agents::claude_plan_capability_preview;
+    use hiroute_application_api::ClaudeClientCapabilityPreviewV1 as Preview;
+    assert!(matches!(
+        claude_plan_capability_preview(&plan()),
+        Preview::Available { .. }
+    ));
+    for missing_tools in [true, false] {
+        let mut value = plan();
+        let candidate = &mut std::sync::Arc::make_mut(&mut value.body)
+            .materialized
+            .attempt_owned
+            .groups[0]
+            .candidates[1];
+        for profile in &mut candidate.protocol_profiles {
+            if profile.ingress_protocol == UpstreamProtocol::Messages {
+                if missing_tools {
+                    profile.capability.request.function_tools = GatewayFidelityV1::Unsupported;
+                } else {
+                    profile.capability.native_streaming = GatewayCriticalFactV1::Exact(false);
+                }
+            }
+        }
+        assert!(
+            matches!(claude_plan_capability_preview(&reseal(value)), Preview::Unavailable { reason } if reason == "request_capabilities")
+        );
+    }
+    let mut value = plan();
+    std::sync::Arc::make_mut(&mut value.body)
+        .materialized
+        .attempt_owned
+        .limits
+        .context_window_tokens = Some(99_999);
+    assert!(
+        matches!(claude_plan_capability_preview(&reseal(value)), Preview::Unavailable { reason } if reason == "context_window_below_minimum")
+    );
+}

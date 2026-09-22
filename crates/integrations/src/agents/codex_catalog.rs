@@ -8,6 +8,10 @@ pub const CODEX_CATALOG_SOURCE_REVISION: &str = "be6e8eac029b183056b7e4402879f15
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum CodexCatalogError {
+    #[error(
+        "remove model_context_window and model_auto_compact_token_limit from the effective Codex configuration before using plan windows"
+    )]
+    ContextOverride,
     #[error("the catalog selection fields are invalid or ambiguous")]
     InvalidCatalog,
     #[error("the native default cannot be resolved")]

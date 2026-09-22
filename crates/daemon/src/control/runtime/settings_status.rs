@@ -183,12 +183,24 @@ impl LocalControlAdapter {
         let (active_grant, configured_join) = match action {
             ModelAction::Configure => {
                 let file_applied = if class == SettingsAgentClass::Claude {
-                    hiroute_integrations::claude_native_configuration_is_applied(
-                        &self.artifacts,
-                        &operation.operation_id,
-                        intent,
-                    )
-                    .map_err(super::map_port)?
+                    let policy =
+                        hiroute_application::agent_connection::decode_settings_claude_model_file(
+                            intent,
+                        )
+                        .map_err(super::map_port)?;
+                    let window_owned = matches!(policy.change, hiroute_application::agent_connection::ClaudeModelFileAction::Configure { snapshot, .. } if snapshot.context_window_tokens.is_some());
+                    let context_conflict = window_owned
+                        && self
+                            .scanner
+                            .claude_context_override()
+                            .map_err(|_| ControlReadError::Corrupt)?;
+                    !context_conflict
+                        && hiroute_integrations::claude_native_configuration_is_applied(
+                            &self.artifacts,
+                            &operation.operation_id,
+                            intent,
+                        )
+                        .map_err(super::map_port)?
                         && !self
                             .scanner
                             .claude_native_routing_conflict()

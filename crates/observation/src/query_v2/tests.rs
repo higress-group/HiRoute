@@ -346,11 +346,29 @@ fn query_workers_are_bounded_and_released_on_drop() {
         Err(ObservationV2Error::Busy)
     );
     drop(permits);
-    assert!(
-        store
-            .observed_requests(&reader(None), &query(50), 500)
-            .is_ok()
+    // Prove that all worker slots were returned, independently of SQLite/OS query
+    // execution and its separate deadline. Public query tests cover successful reads.
+    let mut reacquired = (0..4)
+        .map(|_| {
+            store
+                .query_permit()
+                .expect("dropped worker slot must be reusable")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        store.observed_requests(&reader(None), &query(50), 500),
+        Err(ObservationV2Error::Busy)
     );
+    drop(reacquired.pop());
+    let replacement = store
+        .query_permit()
+        .expect("one released slot must be reusable");
+    assert!(matches!(
+        store.query_permit(),
+        Err(ObservationV2Error::Busy)
+    ));
+    drop(replacement);
+    drop(reacquired);
 }
 
 #[test]

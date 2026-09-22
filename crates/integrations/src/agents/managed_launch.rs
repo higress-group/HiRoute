@@ -64,7 +64,6 @@ pub struct AgentAuthPrecedenceConflictV1 {
 #[serde(deny_unknown_fields)]
 pub struct ManagedClaudeLaunchPreflightV1 {
     pub executable: String,
-    pub exact_version: String,
     pub inherited_environment_removals: BTreeSet<String>,
     pub warnings: Vec<ManagedLaunchWarningV1>,
     pub conflicts: Vec<AgentAuthPrecedenceConflictV1>,
@@ -73,7 +72,6 @@ pub struct ManagedClaudeLaunchPreflightV1 {
 impl ManagedClaudeLaunchPreflightV1 {
     pub(super) fn from_observations(
         executable: String,
-        exact_version: String,
         profile: &ManagedLaunchProfileV1,
         observations: &[super::filesystem_config::ObservedClaudeSettings],
     ) -> Self {
@@ -125,7 +123,6 @@ impl ManagedClaudeLaunchPreflightV1 {
             .collect();
         Self {
             executable,
-            exact_version,
             inherited_environment_removals,
             warnings,
             conflicts,
@@ -210,6 +207,12 @@ fn configure_command(
     }
     if let Some(haiku) = &descriptor.presets.haiku {
         command.env("ANTHROPIC_DEFAULT_HAIKU_MODEL", haiku);
+    }
+    if let Some(window) = descriptor.context_window_tokens {
+        for key in hiroute_domain::CLAUDE_CONTEXT_CONFLICT_ENVIRONMENT {
+            command.env_remove(key);
+        }
+        command.envs(hiroute_domain::claude_context_environment(window).expect("validated window"));
     }
     command
         .arg(MANAGED_CLAUDE_SETTINGS_ARGUMENT_V1)
@@ -357,6 +360,16 @@ fn write_overlay(
     for (name, value) in managed_env {
         env.insert(name, value);
     }
+    if let Some(window) = descriptor.context_window_tokens {
+        for key in hiroute_domain::CLAUDE_CONTEXT_CONFLICT_ENVIRONMENT {
+            env.remove(key);
+        }
+        for (key, value) in
+            hiroute_domain::claude_context_environment(window).expect("validated window")
+        {
+            env.insert(key, json!(value));
+        }
+    }
     overlay.insert("env".to_owned(), Value::Object(env));
     overlay.insert("apiKeyHelper".to_owned(), json!(helper_command));
     serde_json::to_writer(file, &Value::Object(overlay))
@@ -380,3 +393,46 @@ const MANAGED_CLAUDE_ENVIRONMENT: [&str; 11] = [
     "CLAUDE_CODE_USE_FOUNDRY",
     "CLAUDE_CODE_USE_VERTEX",
 ];
+
+#[cfg(test)]
+mod context_window_tests {
+    use super::*;
+
+    #[test]
+    fn managed_claude_context_window_overrides_caller_settings_and_process_environment() {
+        let mut descriptor = ManagedClaudeLaunchDescriptorV2::trusted(
+            "agent-connection/context-test",
+            "claude-messages-v1",
+            "/trusted/claude",
+            hiroute_domain::CanonicalDigest::of_bytes(b"snapshot"),
+            1,
+            hiroute_domain::CanonicalDigest::of_bytes(b"publication"),
+            "http://127.0.0.1:4321",
+            hiroute_domain::AgentClaudePresetValuesV2 {
+                opus: Some("hiroute-plan".into()),
+                sonnet: None,
+                haiku: None,
+            },
+            "/trusted/hiroute",
+        )
+        .unwrap();
+        descriptor.context_window_tokens = Some(272_000);
+        descriptor.validate().unwrap();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        write_overlay(&mut file.reopen().unwrap(), &descriptor, &json!({"theme":"dark", "env":{"DISABLE_COMPACT":"1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW":"900000", "UNRELATED":"keep"}})).unwrap();
+        let overlay: Value = serde_json::from_reader(file.reopen().unwrap()).unwrap();
+        assert_eq!(overlay["theme"], "dark");
+        assert_eq!(overlay["env"]["UNRELATED"], "keep");
+        assert_eq!(overlay["env"]["CLAUDE_CODE_AUTO_COMPACT_WINDOW"], "272000");
+        assert_eq!(overlay["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"], "272000");
+        assert!(overlay["env"].get("DISABLE_COMPACT").is_none());
+        let mut command = Command::new("/trusted/claude");
+        configure_command(&mut command, &descriptor, file.path(), &[]);
+        let environment: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+        assert_eq!(
+            environment[OsStr::new("CLAUDE_CODE_AUTO_COMPACT_WINDOW")],
+            Some(OsStr::new("272000"))
+        );
+        assert_eq!(environment[OsStr::new("DISABLE_COMPACT")], None);
+    }
+}

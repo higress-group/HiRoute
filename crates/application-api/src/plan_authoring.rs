@@ -245,6 +245,8 @@ pub enum CodexClientCapabilityPreviewV1 {
 #[serde(deny_unknown_fields)]
 pub struct PlanEditorOptionsRequestV1 {
     #[serde(default)]
+    pub published_plan: Option<PublishedPlanCapabilityRequestV1>,
+    #[serde(default)]
     pub display_name: Option<String>,
     #[serde(default)]
     pub requirements: CapabilityRequirementsV1,
@@ -260,10 +262,39 @@ pub struct PlanEditorOptionsRequestV1 {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanEditorOptionsV1 {
+    pub claude_capabilities: Option<ClaudeClientCapabilityPreviewV1>,
+    pub context_window: Option<PlanContextWindowPreviewV1>,
     pub suggested_alias: Option<ModelAlias>,
     pub candidates: Vec<PlanCandidateOptionV1>,
     pub free_suggestions: Option<FreeSuggestionsV1>,
     pub ratings: Option<crate::ResolveModelRatingsResultV1>,
     pub codex_capabilities: Option<CodexClientCapabilityPreviewV1>,
     pub revisions: RevisionSetV1,
+}
+
+/// Independent capability bound remains visible when a saved custom window becomes invalid.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanContextWindowPreviewV1 {
+    pub maximum_tokens: u64,
+    pub default_tokens: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ClaudeClientCapabilityPreviewV1 {
+    Available {
+        context_window: u64,
+        plan_window: u64,
+    },
+    Unavailable {
+        reason: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishedPlanCapabilityRequestV1 {
+    pub plan_id: hiroute_domain::AgentPlanId,
+    pub revision: u64,
 }

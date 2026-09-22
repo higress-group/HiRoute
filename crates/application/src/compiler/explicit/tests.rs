@@ -315,3 +315,48 @@ fn fixed_name_colliding_with_an_allowed_plan_alias_is_rejected_before_publicatio
         AgentConnectionError::InvalidGrant
     );
 }
+
+#[test]
+fn context_window_is_bounded_persisted_and_changes_the_route_digest() {
+    let mut desired = desired();
+    let facts = compilation_facts();
+    let default = compile(&desired, &facts).unwrap();
+    let upper = default
+        .body
+        .materialized
+        .context_window_upper_bound()
+        .unwrap();
+    assert_eq!(
+        default.body.materialized.context_window_tokens().unwrap(),
+        upper.min(272_000)
+    );
+    desired.limits.context_window_tokens = Some(64_000);
+    let custom = compile(&desired, &facts).unwrap();
+    assert_eq!(
+        custom.body.materialized.context_window_tokens().unwrap(),
+        64_000
+    );
+    assert_ne!(
+        default.body.materialized_route_digest,
+        custom.body.materialized_route_digest
+    );
+    let version = PlanVersionV1::new(WorkspaceId::default(), desired.clone(), custom).unwrap();
+    let saved: PlanVersionV1 =
+        serde_json::from_value(serde_json::to_value(&version).unwrap()).unwrap();
+    assert_eq!(saved, version);
+    for invalid in [0, upper + 1, u64::MAX] {
+        desired.limits.context_window_tokens = Some(invalid);
+        assert!(compile(&desired, &facts).is_err());
+    }
+    desired.limits.context_window_tokens = Some(upper);
+    assert!(compile(&desired, &facts).is_ok());
+    let mut changed = facts;
+    for profile in &mut changed.candidates[0].protocol_profiles {
+        profile.capability.context.max_input_tokens = GatewayCriticalFactV1::Exact(32_000);
+    }
+    // Changing an active candidate's bound must not silently lower the saved custom value.
+    if let AgentPlanStrategyV2::Custom { candidates } = &mut desired.strategy {
+        candidates[0].binding_id = changed.candidates[0].binding.binding_id.clone();
+    }
+    assert!(compile(&desired, &changed).is_err());
+}

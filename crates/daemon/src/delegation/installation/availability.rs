@@ -156,6 +156,47 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn worker_installation_accepts_every_diagnostic_version_without_running_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("worker");
+        let marker = root.path().join("version-was-run");
+        for harness in [WorkerHarnessV1::CodexCli, WorkerHarnessV1::ClaudeCode] {
+            for output in ["0.0.1", "99.1.2", "", "not a version"] {
+                fs::write(
+                    &binary,
+                    format!(
+                        "#!/bin/sh\ntouch '{}'\nprintf '%s' '{}'\n",
+                        marker.display(),
+                        output
+                    ),
+                )
+                .unwrap();
+                fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+                let config = WorkerInstallationConfig {
+                    harness,
+                    adapter: binary.clone(),
+                    harness_binary: binary.clone(),
+                    node_binary: None,
+                };
+                assert!(check_installation(&config).is_ok());
+                let snapshot = registry(vec![config]).snapshot();
+                assert_eq!(
+                    snapshot
+                        .executors
+                        .iter()
+                        .find(|item| item.harness == harness)
+                        .unwrap()
+                        .state,
+                    State::Ready
+                );
+                assert!(!marker.exists());
+            }
+        }
+    }
+
+    #[test]
     fn installed_is_launchable_not_behavior_verified_and_contents_are_not_pinned() {
         let root = tempfile::tempdir().unwrap();
         let adapter = root.path().join("adapter");

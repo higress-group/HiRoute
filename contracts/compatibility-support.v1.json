@@ -731,5 +731,56 @@
     "crates/domain/src/publication/mod.rs",
     "crates/gateway/src/publication/tests.rs",
     "tools/e2e-harness/tests/p0_gateway_request_authority.rs"
+  ],
+  "field_compatibility_support": [
+    {
+      "contract": "hiroute.settings-claude-model-file/v1",
+      "field": "snapshot.context_window_tokens",
+      "mode": "recovery_read_only",
+      "owner": "agent-connections",
+      "reason": "Immutable pre-window Claude operations omit the field. Preserve their serialized digest and native restoration facts; new plan configurations always seal the window.",
+      "removal_condition": "Retire only after all retained operations and supported backups contain no pre-window snapshots.",
+      "allowed_paths": [
+        "crates/application/src/agent_connection/claude_model_journal.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.managed-claude-launch-descriptor/v2",
+      "field": "context_window_tokens",
+      "mode": "recovery_read_only",
+      "owner": "agent-connections",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "removal_condition": "Retire with the pre-window settings operation recovery reader.",
+      "allowed_paths": [
+        "crates/domain/src/agents/managed_launch.rs",
+        "crates/daemon/src/control/runtime/agent_connection.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.agent-profile/v1",
+      "field": "exact_versions / managed_launch.exact_version",
+      "mode": "recovery_read_only",
+      "owner": "agent-connections",
+      "reason": "Historical profile labels remain readable without participating in validation or admission. Current producers omit both fields.",
+      "removal_condition": "No supported backup or frozen fixture contains legacy client-version profile labels.",
+      "allowed_paths": [
+        "crates/domain/src/agents/profile.rs",
+        "crates/domain/src/agents/managed_launch.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.agent-profile/v1",
+      "field": "legacy version-bound observation digest",
+      "mode": "recovery_read_only",
+      "owner": "agent-connections",
+      "reason": "Verify retained successful managed-launch Operations using their immutable diagnostic label and current physical identity/configuration/evidence. Never accept a new baseline or write this digest. Includes the original pre-window process digest format; any current context environment override prevents that fallback.",
+      "removal_condition": "All supported successful managed-launch Operations use version-neutral observations.",
+      "allowed_paths": [
+        "crates/integrations/src/agents/claude_observation.rs",
+        "crates/integrations/src/agents/filesystem.rs",
+        "crates/daemon/src/control/runtime/agent_connection.rs",
+        "crates/integrations/src/agents/filesystem_config.rs"
+      ]
+    }
   ]
 }

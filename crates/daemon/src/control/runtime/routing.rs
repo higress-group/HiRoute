@@ -15,6 +15,13 @@ use hiroute_domain::{
 use super::LocalControlAdapter;
 
 impl RoutingFactsPort for LocalControlAdapter {
+    fn claude_client_capability_preview(
+        &self,
+        plan: &hiroute_domain::CompiledAgentPlanV1,
+    ) -> Result<hiroute_application_api::ClaudeClientCapabilityPreviewV1, ControlReadError> {
+        Ok(hiroute_integrations::agents::claude_plan_capability_preview(plan))
+    }
+
     fn codex_client_capability_preview(
         &self,
         plan: &hiroute_domain::CompiledAgentPlanV1,

@@ -34,17 +34,27 @@ def scenario(repository, boundary):
         product.stop()
         product.start(boundary)
         editor = dict(product.editor, display_name='资料整理', purpose='Updated complete purpose',
+                      limits=dict(product.editor['limits'], context_window_tokens=16384),
                       work={'harness': 'claude_code', 'protocol': 'messages'})
         change = {'schema': 'hiroute.plan-content-change/v2',
                   'target': {'intent': 'update', 'plan_id': product.plan_id, 'expected_head_revision': 1},
                   'editor': editor, 'consumed_draft': None}
         operations_before = operation_count(product)
+        if boundary is None:
+            for invalid in [0, 1.5, 9223372036854775807]:
+                rejected_change = json.loads(json.dumps(change))
+                rejected_change['editor']['limits']['context_window_tokens'] = invalid
+                code, rejected = product.cli('routing preview', {'change': rejected_change}, success=False)
+                assert code != 0, rejected
+            assert operation_count(product) == operations_before
+            assert read_content(product) == (head, versions)
         preview = product.preview('routing preview', {'change': change})
         assert operation_count(product) == operations_before, 'Preview created an Operation'
         assert read_content(product) == (head, versions), 'Preview published content'
         assert product.catalog()[0] == catalog, 'Preview changed the installed catalog'
         assert preview['plan_head']['model_alias'] == product.model_alias
         assert preview['plan_version']['configuration']['work'] == editor['work']
+        assert preview['plan_version']['compiled']['body']['materialized']['attempt_owned']['limits']['context_window_tokens'] == 16384
         result, body, capability = product.apply('routing apply', 'ApplyAgentPlanChange', preview,
                                                 {'change': change}, 'content-two', crash=bool(boundary))
         if boundary:
@@ -76,7 +86,8 @@ def draft_scenario(repository):
         bootstrap(product)
         before = read_content(product)
         before_models = product.catalog()[0]
-        editor = dict(product.editor, display_name='尚未完成的草稿', requirements={
+        editor = dict(product.editor, display_name='尚未完成的草稿',
+                      limits=dict(product.editor['limits'], context_window_tokens=32768), requirements={
             'tool': False, 'vision': False, 'streaming': False,
             'minimum_context_tokens': 0, 'minimum_output_tokens': 0})
         draft = {'schema': 'hiroute.plan-draft/v1', 'workspace_id': 'personal/default',

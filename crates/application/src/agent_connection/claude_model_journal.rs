@@ -12,6 +12,8 @@ const SCHEMA: &str = "hiroute.settings-claude-model-file/v1";
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClaudeLaunchSnapshotIntent {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window_tokens: Option<u64>,
     pub native_presets: AgentClaudePresetValuesV2,
     pub presets: AgentClaudePresetValuesV2,
     pub executable: String,
@@ -169,6 +171,9 @@ fn validate_payload(payload: &ClaudeModelFilePayload) -> Result<(), OperationVal
             trusted_hiroute_executable,
         } => {
             if !local_gateway_base_url(gateway_base_url)
+                || snapshot.context_window_tokens.is_some_and(|value| {
+                    hiroute_domain::claude_context_window(value) != Some(value)
+                })
                 || change.validate().is_err()
                 || change.fields.iter().any(|field| {
                     !matches!(
@@ -179,6 +184,8 @@ fn validate_payload(payload: &ClaudeModelFilePayload) -> Result<(), OperationVal
                             | "env.ANTHROPIC_DEFAULT_OPUS_MODEL"
                             | "env.ANTHROPIC_DEFAULT_SONNET_MODEL"
                             | "env.ANTHROPIC_DEFAULT_HAIKU_MODEL"
+                            | "env.CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+                            | "env.CLAUDE_CODE_MAX_CONTEXT_TOKENS"
                     )
                 })
                 || !Path::new(trusted_hiroute_executable).is_absolute()
@@ -244,6 +251,7 @@ mod tests {
                 )
                 .unwrap(),
                 snapshot: Box::new(ClaudeLaunchSnapshotIntent {
+                    context_window_tokens: None,
                     native_presets: AgentClaudePresetValuesV2 {
                         opus: Some("Vendor/Opus[1m]".into()),
                         sonnet: None,

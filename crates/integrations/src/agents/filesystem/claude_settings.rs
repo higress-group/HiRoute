@@ -1,6 +1,20 @@
 use super::*;
 
 impl FilesystemAgentScannerV1 {
+    pub fn claude_context_override(&self) -> Result<bool, AgentFilesystemScanError> {
+        Ok(self.claude_observations()?.iter().any(|observation| {
+            observation
+                .settings
+                .env
+                .context_environment
+                .keys()
+                .any(|key| {
+                    observation.layer != ConfigLayerV1::User
+                        || !hiroute_domain::CLAUDE_CONTEXT_ENVIRONMENT.contains(&key.as_str())
+                })
+        }))
+    }
+
     /// User-file edits cannot override another active settings source or inherited process
     /// authentication. Report that boundary before promising ordinary-CLI routing.
     pub fn claude_native_routing_conflict(&self) -> Result<bool, AgentFilesystemScanError> {
@@ -55,6 +69,11 @@ impl FilesystemAgentScannerV1 {
             .ok_or(AgentFilesystemScanError::InvalidConfig)?;
         let env = &user.settings.env;
         let mut fields = BTreeMap::new();
+        for key in hiroute_domain::CLAUDE_CONTEXT_ENVIRONMENT {
+            if let Some(value) = env.context_environment.get(key) {
+                fields.insert(format!("env.{key}"), json!(value));
+            }
+        }
         for (path, value) in [
             ("env.ANTHROPIC_BASE_URL", env.base_url.as_deref()),
             ("env.ANTHROPIC_MODEL", env.model.as_deref()),

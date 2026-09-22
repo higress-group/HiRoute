@@ -6,7 +6,9 @@ use hiroute_domain::{
 };
 use serde_json::json;
 
+#[cfg(test)]
 pub const CLAUDE_CODE_VERIFIED_VERSION_V1: &str = "2.1.0";
+#[cfg(test)]
 pub const CLAUDE_CODE_VERIFIED_VERSION_2_1_231_V1: &str = "2.1.231";
 pub const CODEX_PROFILE_ID_V1: &str = "codex-responses-v1";
 pub const CLAUDE_PROFILE_ID_V1: &str = "claude-messages-v1";
@@ -26,7 +28,7 @@ pub fn codex_profile_v1() -> AgentProfileV1 {
         kind: AgentKindV1::Codex,
         // Codex versions are diagnostic only. MVP admission never uses a binary-version
         // allowlist; concrete Desktop and CLI surfaces locate and launch their actual engine.
-        exact_versions: BTreeSet::new(),
+        legacy_exact_versions: BTreeSet::new(),
         ingress_protocol: AgentIngressProtocolV1::Responses,
         config_precedence: AgentKindV1::Codex.config_precedence().to_vec(),
         owned_config_fields: vec![
@@ -60,10 +62,7 @@ pub fn claude_code_profile_v1() -> AgentProfileV1 {
         profile_id: CLAUDE_PROFILE_ID_V1.to_owned(),
         integration_profile_ref: CLAUDE_INTEGRATION_PROFILE_REF_V1.to_owned(),
         kind: AgentKindV1::ClaudeCode,
-        exact_versions: BTreeSet::from([
-            CLAUDE_CODE_VERIFIED_VERSION_V1.to_owned(),
-            CLAUDE_CODE_VERIFIED_VERSION_2_1_231_V1.to_owned(),
-        ]),
+        legacy_exact_versions: BTreeSet::new(),
         ingress_protocol: AgentIngressProtocolV1::Messages,
         config_precedence: AgentKindV1::ClaudeCode.config_precedence().to_vec(),
         owned_config_fields: vec![
@@ -83,7 +82,7 @@ pub fn claude_code_profile_v1() -> AgentProfileV1 {
         static_catalog_fallback: false,
         native_subagent_routing: false,
         spawn_guidance: None,
-        managed_launch: Some(ManagedLaunchProfileV1::claude_code_2_1_231()),
+        managed_launch: Some(ManagedLaunchProfileV1::claude_code()),
     }
 }
 

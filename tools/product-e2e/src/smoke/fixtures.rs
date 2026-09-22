@@ -41,14 +41,19 @@ pub fn discovery(root: &Path, secret: &str) -> Result<(PathBuf, PathBuf)> {
     ))?;
     for (binary, profile_id, prefix, diagnostic_version) in [
         ("codex", "codex-responses-v1", "codex-cli", Some("99.99.99")),
-        ("claude", "claude-messages-v1", "Claude Code", None),
+        (
+            "claude",
+            "claude-messages-v1",
+            "Claude Code",
+            Some("unknown"),
+        ),
     ] {
         let profile = profiles["profiles"]
             .as_array()
             .and_then(|p| p.iter().find(|p| p["profile_id"] == profile_id))
             .ok_or(super::SmokeError("invalid_agent_fixture"))?;
         let version = diagnostic_version
-            .or_else(|| profile["exact_versions"][0].as_str())
+            .or_else(|| profile["diagnostic_version"].as_str())
             .ok_or(super::SmokeError("invalid_agent_fixture"))?;
         require(
             version

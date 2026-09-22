@@ -2,6 +2,7 @@
 
 mod capability;
 mod collaboration;
+mod context_window;
 mod emulator;
 mod managed_launch;
 mod model_grant;
@@ -14,6 +15,7 @@ mod surface_check;
 
 pub use capability::*;
 pub use collaboration::*;
+pub use context_window::*;
 pub use emulator::*;
 pub use managed_launch::*;
 pub use model_grant::*;

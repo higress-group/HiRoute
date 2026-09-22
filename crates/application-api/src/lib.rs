@@ -55,8 +55,7 @@ pub use hiroute_domain::delegation::{
     WorkspaceAccessV1,
 };
 pub use hiroute_domain::{
-    AgentActivationModeV1, AgentPlanId, CHANGE_SPEC_SCHEMA_V1,
-    CLAUDE_CODE_MANAGED_LAUNCH_VERSION_V1, CanonicalDigest, ChangeSpecV1,
+    AgentActivationModeV1, AgentPlanId, CHANGE_SPEC_SCHEMA_V1, CanonicalDigest, ChangeSpecV1,
     ComputeCredentialSelectionError, ComputeCredentialSelectionV2, ContentMode,
     HIDDEN_AGENT_GRANT_HELPER_VERB_V1, MANAGED_CLAUDE_SETTING_SOURCES_ARGUMENT_V1,
     MANAGED_CLAUDE_SETTINGS_ARGUMENT_V1, ManagedClaudeLaunchDescriptorV2, ManagedLaunchProfileV1,

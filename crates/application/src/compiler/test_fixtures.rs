@@ -541,6 +541,7 @@ fn requirements() -> CapabilityRequirementsV1 {
 
 fn limits() -> RoutingLimitsV1 {
     RoutingLimitsV1 {
+        context_window_tokens: None,
         maximum_attempts: 6,
         request_timeout_ms: 120_000,
         attempt_timeout_ms: 60_000,

@@ -6,6 +6,7 @@
 
 mod authoring;
 mod classifier;
+mod context_window;
 mod gateway_execution;
 mod materialized;
 mod ordering;

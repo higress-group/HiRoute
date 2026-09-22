@@ -490,6 +490,13 @@ pub trait ComputeManagementControlPort: Send + Sync {
 }
 
 pub trait RoutingFactsPort: Send + Sync {
+    fn claude_client_capability_preview(
+        &self,
+        _plan: &hiroute_domain::CompiledAgentPlanV1,
+    ) -> Result<hiroute_application_api::ClaudeClientCapabilityPreviewV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+
     fn codex_client_capability_preview(
         &self,
         _plan: &hiroute_domain::CompiledAgentPlanV1,

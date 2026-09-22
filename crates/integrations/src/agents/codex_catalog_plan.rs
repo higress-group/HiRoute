@@ -264,6 +264,9 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
     if image {
         input_modalities.push(CodexInputModalityV1::Image);
     }
+    let Ok(context_window) = plan.body.materialized.context_window_tokens() else {
+        return unavailable(CodexCapabilityIssueKindV1::ContextWindow, None);
+    };
     CodexClientCapabilityPreviewV1::Available {
         context_window,
         input_modalities,
@@ -298,7 +301,7 @@ fn unavailable(
     }
 }
 
-fn requirements(image: bool) -> RequestCapabilityRequirementsV1 {
+pub(super) fn requirements(image: bool) -> RequestCapabilityRequirementsV1 {
     RequestCapabilityRequirementsV1 {
         ingress_protocol: IngressProtocol::Responses,
         text: true,

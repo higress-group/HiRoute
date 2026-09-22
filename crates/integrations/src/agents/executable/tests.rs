@@ -19,7 +19,7 @@ fn agent_probe_missing_and_failed_probe_are_distinct() {
     let path = program(dir.path(), "exit 2");
     assert!(matches!(
         probe(&path, Duration::from_secs(1)),
-        ExecutableProbe::Unknown(ProbeFailure::Failed)
+        ExecutableProbe::Installed(ExecutableObservationV1 { version, .. }) if version.is_empty()
     ));
 }
 
@@ -47,14 +47,8 @@ fn agent_probe_timeout_kills_process_group_without_waiting_for_output_eof() {
     let dir = tempfile::tempdir().unwrap();
     let path = program(dir.path(), "sleep 30 & wait");
     let start = Instant::now();
-    match probe(&path, Duration::from_millis(80)) {
-        ExecutableProbe::Unknown(ProbeFailure::TimedOut) => {}
-        ExecutableProbe::Unknown(reason) => {
-            panic!("timeout probe failed before timeout: {reason:?}")
-        }
-        ExecutableProbe::Installed(_) => panic!("timeout probe unexpectedly exited successfully"),
-        ExecutableProbe::NotFound => panic!("timeout probe disappeared"),
-    }
+    assert!(matches!(probe(&path, Duration::from_millis(80)),
+        ExecutableProbe::Installed(ExecutableObservationV1 { version, .. }) if version.is_empty()));
     assert!(start.elapsed() < Duration::from_secs(2));
 }
 
@@ -67,7 +61,7 @@ fn agent_probe_output_is_bounded() {
     );
     assert!(matches!(
         probe(&path, Duration::from_secs(1)),
-        ExecutableProbe::Unknown(ProbeFailure::OutputLimit)
+        ExecutableProbe::Installed(ExecutableObservationV1 { version, .. }) if version.is_empty()
     ));
 }
 

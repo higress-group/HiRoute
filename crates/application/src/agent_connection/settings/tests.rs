@@ -24,6 +24,9 @@ fn facts() -> AgentSettingsFacts {
     )
     .unwrap();
     AgentSettingsFacts {
+        codex_context_override: false,
+        claude_context_override: false,
+        claude_plan_capability_unavailable: false,
         context_id: "agent-context/test".into(),
         dependency_digest,
         capabilities,
@@ -431,6 +434,9 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
         )
         .unwrap();
         AgentSettingsFacts {
+            codex_context_override: false,
+            claude_context_override: false,
+            claude_plan_capability_unavailable: false,
             context_id: "agent-context/test".into(),
             dependency_digest,
             capabilities,
@@ -526,6 +532,16 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
         preview_agent_settings(spec(plan_selection.clone()), &no_detected_surface).unwrap();
     assert!(without_client.blockers.is_empty());
     assert!(without_client.model_grant.is_some());
+
+    no_detected_surface.codex_context_override = true;
+    let conflict =
+        preview_agent_settings(spec(plan_selection.clone()), &no_detected_surface).unwrap();
+    assert!(
+        conflict
+            .blockers
+            .iter()
+            .any(|block| block.reason == SettingsBlockReason::CodexContextOverride)
+    );
 
     // Catalog facts make the same plan selection preview cleanly.
     let mut proven_facts = codex_facts(Some(SettingsModelCatalogFacts {
@@ -976,4 +992,70 @@ fn login_item_intent_binds_only_active_host_declarations() {
             "an inactive or inconsistent declaration must not seal"
         );
     }
+}
+
+#[test]
+fn claude_settings_share_the_smallest_published_window_and_block_overrides() {
+    let original = crate::compiler::test_fixtures::compiled_publication(1);
+    let mut plans: Vec<_> = original.plans.clone();
+    for (plan, window) in plans.iter_mut().zip([100_000, 120_000]) {
+        let body = std::sync::Arc::make_mut(&mut plan.body);
+        body.materialized.attempt_owned.limits.context_window_tokens = Some(window);
+        body.materialized_route_digest = body.materialized.route_digest().unwrap();
+        *plan = hiroute_domain::CompiledAgentPlanV1::seal_current(body.clone()).unwrap();
+    }
+    let ids: Vec<_> = plans
+        .iter()
+        .map(|plan| plan.agent_plan_id().clone())
+        .collect();
+    let publication = GatewayPublicationV1::seal(
+        original.workspace_id,
+        original.authority_id,
+        original.authority_epoch,
+        original.publication_revision,
+        original.catalog_renderer_revision,
+        original.alias_registry,
+        plans,
+        Vec::new(),
+    )
+    .unwrap();
+    let spec: AgentSettingsSpecV2 = serde_json::from_value(json!({
+        "schema_version":{"major":2,"minor":0}, "context_id":"agent-context/test",
+        "model":{"intent":"configure","settings":{"mode":"claude_launcher","surfaces":["claude_cli"],"fixed_models":[],"preset_mappings":{
+            "opus":{"kind":"plan","plan_id":ids[0]},"sonnet":{"kind":"plan","plan_id":ids[1]},"haiku":{"kind":"preserve_native"}}}}
+    })).unwrap();
+    let mut facts = facts();
+    facts.model_publication = Some(publication);
+    facts.native_claude_presets = Some(hiroute_domain::AgentClaudePresetValuesV2 {
+        opus: None,
+        sonnet: None,
+        haiku: None,
+    });
+    let preview = preview_agent_settings(spec.clone(), &facts).unwrap();
+    assert_eq!(preview.claude_context_window, Some(100_000));
+    assert_eq!(
+        preview
+            .context_windows
+            .values()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        [100_000, 120_000].into()
+    );
+    facts.claude_context_override = true;
+    let blocked = preview_agent_settings(spec.clone(), &facts).unwrap();
+    assert!(
+        blocked
+            .blockers
+            .iter()
+            .any(|block| block.reason == SettingsBlockReason::ClaudeContextOverride)
+    );
+    facts.claude_context_override = false;
+    facts.claude_plan_capability_unavailable = true;
+    let blocked = preview_agent_settings(spec, &facts).unwrap();
+    assert!(
+        blocked
+            .blockers
+            .iter()
+            .any(|block| block.reason == SettingsBlockReason::ClaudePlanCapabilityUnavailable)
+    );
 }

@@ -397,6 +397,9 @@ impl MaterializedAgentPlanV1 {
             }
             super::ordering::validate_ordering_facts(group)?;
         }
+        if self.attempt_owned.limits.context_window_tokens.is_some() {
+            self.context_window_tokens()?;
+        }
         validate_request_groups(&self.request_owned, &groups)
     }
 

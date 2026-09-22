@@ -8,5 +8,5 @@
   "composition_owner": "TASK-142003",
   "codex_protocol": "responses",
   "claude_protocol": "messages",
-  "unknown_version_behavior": "report_only"
+  "unknown_version_behavior": "capability_based"
 }

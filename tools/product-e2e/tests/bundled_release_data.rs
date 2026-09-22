@@ -66,7 +66,7 @@ fn bundled_current_agent_profiles_are_exact_typed_artifacts() {
         .find(|profile| profile.kind == AgentKindV1::Codex)
         .unwrap();
     assert!(
-        codex.exact_versions.is_empty(),
+        codex.legacy_exact_versions.is_empty(),
         "Codex discovery must not reintroduce a binary-version admission gate"
     );
     let claude = artifact
@@ -74,14 +74,7 @@ fn bundled_current_agent_profiles_are_exact_typed_artifacts() {
         .iter()
         .find(|profile| profile.kind == AgentKindV1::ClaudeCode)
         .unwrap();
-    assert_eq!(
-        claude
-            .exact_versions
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        ["2.1.0", "2.1.231"]
-    );
+    assert!(claude.legacy_exact_versions.is_empty());
 }
 
 #[test]

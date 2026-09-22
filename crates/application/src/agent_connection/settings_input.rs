@@ -102,7 +102,7 @@ impl AgentSettingsPlanningInput {
                             .map(|catalog| catalog.content_digest.clone()),
                     }),
                     SettingsModelTargetFacts::Claude(claude) => {
-                        let snapshot = claude_model_snapshot(
+                        let mut snapshot = claude_model_snapshot(
                             settings,
                             grant,
                             claude,
@@ -111,12 +111,14 @@ impl AgentSettingsPlanningInput {
                                 .as_ref()
                                 .ok_or_else(invalid)?,
                         )?;
+                        snapshot.context_window_tokens = preview.claude_context_window;
                         SettingsModelAction::Claude(ClaudeModelFileAction::Configure {
                             previous_operation: file.active_configuration.clone(),
                             change: claude_native_change(
                                 &snapshot,
                                 claude,
                                 &self.facts.context_id,
+                                file.active_configuration.is_some(),
                             )?,
                             snapshot: Box::new(snapshot),
                             gateway_base_url: claude.gateway_base_url.clone(),
@@ -417,6 +419,7 @@ fn claude_model_snapshot(
         .claude_preset_values(settings, native_presets)
         .map_err(|_| invalid())?;
     Ok(ClaudeLaunchSnapshotIntent {
+        context_window_tokens: None,
         native_presets: native_presets.clone(),
         presets,
         executable: facts.executable.clone().ok_or_else(invalid)?,
@@ -428,6 +431,7 @@ fn claude_native_change(
     snapshot: &ClaudeLaunchSnapshotIntent,
     facts: &SettingsClaudeModelFacts,
     context_id: &str,
+    reconfigure: bool,
 ) -> Result<hiroute_domain::AgentConfigChangeV1, OperationValidationError> {
     let invalid = || OperationValidationError::UnregisteredEffectPlan;
     let endpoint = facts
@@ -454,6 +458,17 @@ fn claude_native_change(
         desired.insert(
             format!("env.ANTHROPIC_DEFAULT_{name}_MODEL"),
             value.as_ref().map(|value| json!(value)),
+        );
+    }
+    for key in hiroute_domain::CLAUDE_CONTEXT_ENVIRONMENT {
+        if snapshot.context_window_tokens.is_none() && !reconfigure {
+            continue;
+        }
+        desired.insert(
+            format!("env.{key}"),
+            snapshot
+                .context_window_tokens
+                .map(|value| json!(value.to_string())),
         );
     }
     hiroute_domain::AgentConfigChangeV1::preview(&facts.user_document, desired)

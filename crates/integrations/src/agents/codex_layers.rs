@@ -214,6 +214,13 @@ pub fn sample_codex_configuration(
     })
 }
 
+pub fn codex_has_context_override(scope: &CodexConfigurationScope) -> Result<bool, Error> {
+    let config = sample_codex_configuration(scope)?;
+    Ok(["model_context_window", "model_auto_compact_token_limit"]
+        .iter()
+        .any(|key| config.source_document.contains_key(key)))
+}
+
 fn merge_source(
     target: &mut toml_edit::Table,
     source: &toml_edit::Table,
@@ -226,7 +233,12 @@ fn merge_source(
         if depth == 0
             && !matches!(
                 key,
-                "model" | "model_provider" | "model_providers" | "model_catalog_json"
+                "model"
+                    | "model_provider"
+                    | "model_providers"
+                    | "model_catalog_json"
+                    | "model_context_window"
+                    | "model_auto_compact_token_limit"
             )
         {
             continue;
@@ -249,6 +261,15 @@ fn collect(
     digest: &CanonicalDigest,
     output: &mut BTreeMap<String, (ConfigLayerV1, String, CanonicalDigest)>,
 ) -> Result<(), Error> {
+    for key in ["model_context_window", "model_auto_compact_token_limit"] {
+        if let Some(item) = table.get(key) {
+            let value = item
+                .as_integer()
+                .filter(|value| *value > 0)
+                .ok_or(Error::InvalidConfig)?;
+            output.insert(key.to_owned(), (layer, value.to_string(), digest.clone()));
+        }
+    }
     for key in ["model", "model_provider", "model_catalog_json"] {
         if let Some(item) = table.get(key) {
             let value = item.as_str().ok_or(Error::InvalidConfig)?;

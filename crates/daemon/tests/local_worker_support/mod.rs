@@ -48,6 +48,7 @@ pub fn request(root: &Path, cwd: &Path, nonce: &str, mode: &str) -> WorkerLaunch
     .unwrap();
     let builder_root = cwd.join(format!("build-{nonce}"));
     let mut profile = CandidateWorkerProfile::build(ProfileInput {
+        claude_context_window: None,
         harness: WorkerHarnessV1::CodexCli,
         adapter: &binary,
         harness_binary: &binary,

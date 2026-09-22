@@ -579,12 +579,13 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     },
   };
   if (command === 'plan_editor_options') return {
+    context_window: fresh || !payload?.input?.editor ? null : { maximum_tokens: 64000, default_tokens: 64000 },
     suggested_alias: 'hiroute-daily-coding',
     candidates: fresh ? [] : readyManagement.sources.flatMap(source => source.models.map(model => ({ binding_id: model.binding_id, model_configuration_id: model.catalog_configuration_id ?? model.upstream_model_id, display_name: model.display_name, reasoning: model.native_reasoning ?? { kind: 'fixed', profile: 'provider-default' }, billing_class: model.presentation?.billing_class ?? 'unknown', routable: source.state === 'ready', ingress_protocols: ['responses', 'messages'] }))),
     free_suggestions: fresh ? { candidates: [], unavailable: {} } : { candidates: [{ selection: { binding_id: 'binding/free/deepseek' } }, { selection: { binding_id: 'binding/free/glm' } }, { selection: { binding_id: 'binding/free/qwen' } }], unavailable: {} },
     codex_capabilities: fresh || !payload?.input?.editor ? null : {
       state: 'available',
-      context_window: 64000,
+      context_window: payload?.input?.editor?.limits?.context_window_tokens ?? 64000,
       input_modalities: ['text'],
       reasoning: 'route_configuration',
       limitations: [

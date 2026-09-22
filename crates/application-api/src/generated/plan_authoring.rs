@@ -28,6 +28,7 @@ fn definitions() -> Value {
             "attempt_timeout_ms",
         ],
         json!({
+        "context_window_tokens":{"type":"integer","minimum":1,"maximum":9223372036854775807u64},
         "maximum_attempts":{"type":"integer","minimum":1,"maximum":64},"request_timeout_ms":{"type":"integer","minimum":1000,"maximum":3600000},"attempt_timeout_ms":{"type":"integer","minimum":1000,"maximum":3600000}}),
     );
     let classifier = json!({"oneOf":[

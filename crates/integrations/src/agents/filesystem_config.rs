@@ -172,6 +172,14 @@ impl ClaudeSource {
                         small_fast_model: process
                             .get("ANTHROPIC_SMALL_FAST_MODEL")
                             .map(|value| value.as_str().to_owned()),
+                        context_environment: hiroute_domain::CLAUDE_CONTEXT_CONFLICT_ENVIRONMENT
+                            .into_iter()
+                            .filter_map(|key| {
+                                process
+                                    .get(key)
+                                    .map(|value| (key.to_owned(), value.as_str().to_owned()))
+                            })
+                            .collect(),
                         present_environment_fields: process_presence.clone(),
                     },
                     api_key_helper_present: false,
@@ -243,6 +251,14 @@ impl ClaudeSource {
                         small_fast_model: process
                             .get("ANTHROPIC_SMALL_FAST_MODEL")
                             .map(|value| value.as_str().to_owned()),
+                        context_environment: hiroute_domain::CLAUDE_CONTEXT_CONFLICT_ENVIRONMENT
+                            .into_iter()
+                            .filter_map(|key| {
+                                process
+                                    .get(key)
+                                    .map(|value| (key.to_owned(), value.as_str().to_owned()))
+                            })
+                            .collect(),
                         present_environment_fields: process_presence.clone(),
                     },
                     api_key_helper_present: false,
@@ -283,6 +299,7 @@ pub(super) struct ClaudeSettingsSubset {
 
 #[derive(Clone, Default)]
 pub(super) struct ClaudeEnvironmentSubset {
+    pub(super) context_environment: BTreeMap<String, String>,
     pub(super) base_url: Option<String>,
     pub(super) model: Option<String>,
     pub(super) default_opus_model: Option<String>,
@@ -361,6 +378,13 @@ impl<'de> Deserialize<'de> for ClaudeEnvironmentSubset {
                 let mut result = ClaudeEnvironmentSubset::default();
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
+                        key if hiroute_domain::CLAUDE_CONTEXT_CONFLICT_ENVIRONMENT
+                            .contains(&key) =>
+                        {
+                            result
+                                .context_environment
+                                .insert(key.to_owned(), map.next_value()?);
+                        }
                         "ANTHROPIC_BASE_URL" => {
                             result.base_url = Some(map.next_value()?);
                             result.present_environment_fields.insert(key);
@@ -638,6 +662,36 @@ fn source_ref(path: &Path, layer: ConfigLayerV1) -> String {
     format!("claude/settings/{}", &digest.as_str()[7..39])
 }
 
+/// Historical process-source hash from 9e1ddbb. Only the recovery verifier uses it;
+/// never hide newly observed context settings behind an older digest format.
+pub(super) fn recover_pre_context_process_digest(observed: &mut ObservedClaudeSettings) {
+    if observed.layer != ConfigLayerV1::Process
+        || !observed.settings.env.context_environment.is_empty()
+    {
+        return;
+    }
+    let settings = &observed.settings;
+    let present = settings
+        .env
+        .present_environment_fields
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(",");
+    observed.digest = CanonicalDigest::of_bytes(
+        format!(
+            "{}\0{}\0{}\0{}\0{}",
+            settings.env.base_url.as_deref().unwrap_or(""),
+            settings.env.model.as_deref().unwrap_or(""),
+            settings.env.default_opus_model.as_deref().unwrap_or(""),
+            present,
+            settings.api_key_helper_present
+        )
+        .as_bytes(),
+    );
+    observed.revision = revision_from_digest(&observed.digest);
+}
+
 fn safe_settings_digest(settings: &ClaudeSettingsSubset) -> CanonicalDigest {
     let present = settings
         .env
@@ -648,12 +702,13 @@ fn safe_settings_digest(settings: &ClaudeSettingsSubset) -> CanonicalDigest {
         .join(",");
     CanonicalDigest::of_bytes(
         format!(
-            "{}\0{}\0{}\0{}\0{}",
+            "{}\0{}\0{}\0{}\0{}\0{:?}",
             settings.env.base_url.as_deref().unwrap_or(""),
             settings.env.model.as_deref().unwrap_or(""),
             settings.env.default_opus_model.as_deref().unwrap_or(""),
             present,
             settings.api_key_helper_present,
+            settings.env.context_environment,
         )
         .as_bytes(),
     )

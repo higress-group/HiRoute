@@ -11,7 +11,7 @@ fn profile(kind: AgentKindV1, protocol: AgentIngressProtocolV1) -> AgentProfileV
         profile_id: format!("{}.verified.v1", kind.as_str()),
         integration_profile_ref: format!("integration/{}/v1", kind.as_str()),
         kind,
-        exact_versions: BTreeSet::from(["1.2.3".to_owned()]),
+        legacy_exact_versions: BTreeSet::from(["1.2.3".to_owned()]),
         ingress_protocol: protocol,
         config_precedence: kind.config_precedence().to_vec(),
         owned_config_fields: vec![
@@ -37,8 +37,6 @@ fn profile(kind: AgentKindV1, protocol: AgentIngressProtocolV1) -> AgentProfileV
 fn agents_profiles_bind_protocol_to_exact_kind_and_version() {
     let codex = profile(AgentKindV1::Codex, AgentIngressProtocolV1::Responses);
     assert!(codex.validate().is_ok());
-    assert!(codex.supports_exact_version("1.2.3"));
-    assert!(!codex.supports_exact_version("1.2.4"));
 
     let mut invalid = codex;
     invalid.ingress_protocol = AgentIngressProtocolV1::Messages;
@@ -76,7 +74,7 @@ fn agents_probe_has_no_caller_control_over_protocol_or_prompt() {
 }
 
 #[test]
-fn managed_launch_profile_is_backward_compatible_and_exact_version_only() {
+fn managed_launch_profile_preserves_legacy_labels_without_admission() {
     let legacy = profile(AgentKindV1::ClaudeCode, AgentIngressProtocolV1::Messages);
     let encoded = serde_json::to_value(&legacy).unwrap();
     assert!(encoded.get("managed_launch").is_none());
@@ -84,14 +82,20 @@ fn managed_launch_profile_is_backward_compatible_and_exact_version_only() {
     assert_eq!(decoded.managed_launch, None);
 
     let mut managed = legacy;
-    managed
-        .exact_versions
-        .insert(CLAUDE_CODE_MANAGED_LAUNCH_VERSION_V1.to_owned());
-    managed.managed_launch = Some(ManagedLaunchProfileV1::claude_code_2_1_231());
-    assert!(managed.validate().is_ok());
-    assert!(managed.supports_managed_launch("2.1.231"));
-    assert!(!managed.supports_managed_launch("2.1.230"));
-    assert!(!managed.supports_managed_launch("2.1.232"));
+    managed.managed_launch = Some(ManagedLaunchProfileV1::claude_code());
+    for label in ["2.1.0", "99.1.2", "", "unparseable version"] {
+        managed.legacy_exact_versions = [label.to_owned()].into();
+        managed
+            .managed_launch
+            .as_mut()
+            .unwrap()
+            .legacy_exact_version = label.into();
+        assert!(managed.validate().is_ok());
+        assert!(managed.supports_managed_launch());
+    }
+    managed.managed_launch.as_mut().unwrap().settings_argument = "--untrusted".into();
+    assert!(managed.validate().is_err());
+    assert!(!managed.supports_managed_launch());
 }
 
 #[test]

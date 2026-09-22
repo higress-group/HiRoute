@@ -93,8 +93,6 @@ impl AgentConnectionRestorePointV1 {
             || !valid_identifier(&self.agent_id)
             || !valid_identifier(&self.profile_id)
             || !valid_identifier(&self.integration_profile_ref)
-            || self.installed_version.is_empty()
-            || self.installed_version.len() > 64
         {
             return Err(AgentConnectionPlanningError::ProfileMismatch);
         }
@@ -210,7 +208,6 @@ pub fn preview_agent_connection_restore(
     }
     if spec.agent_id != restore_point.agent_id
         || spec.profile_id != restore_point.profile_id
-        || spec.installed_version != restore_point.installed_version
         || spec.restore_point_ref != restore_point.restore_point_ref
         || facts.installation.agent_id != restore_point.agent_id
         || profile.profile_id != restore_point.profile_id

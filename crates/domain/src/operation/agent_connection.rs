@@ -495,7 +495,6 @@ impl TransactionPlanV1 {
             || desired_digest("grant_digest")? != payload.connection.grant.digest
             || desired_digest("publication_digest")? != payload.publication_digest
             || desired_digest("config_change_digest")? != payload.config_change_digest
-            || installed_version.is_empty()
         {
             return Err(OperationValidationError::UnregisteredEffectPlan);
         }

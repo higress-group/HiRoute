@@ -60,9 +60,14 @@ impl CapabilityRequirementsV1 {
     }
 }
 
+pub const DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS: u64 = 272_000;
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingLimitsV1 {
+    /// None follows the bounded default; omission preserves historical signed digests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window_tokens: Option<u64>,
     pub maximum_attempts: u16,
     pub request_timeout_ms: u64,
     pub attempt_timeout_ms: u64,
@@ -70,7 +75,10 @@ pub struct RoutingLimitsV1 {
 
 impl RoutingLimitsV1 {
     pub fn validate(&self) -> Result<(), RoutingStrategyError> {
-        if !(1..=64).contains(&self.maximum_attempts)
+        if self
+            .context_window_tokens
+            .is_some_and(|value| value == 0 || value > i64::MAX as u64)
+            || !(1..=64).contains(&self.maximum_attempts)
             || !(1_000..=3_600_000).contains(&self.request_timeout_ms)
             || !(1_000..=self.request_timeout_ms).contains(&self.attempt_timeout_ms)
         {

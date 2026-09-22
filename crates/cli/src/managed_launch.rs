@@ -81,7 +81,7 @@ pub(crate) fn parse_invocation(
     AgentGrantRawRequestV1::new(&connection_id)
         .map_err(|_| ManagedLaunchFailure::InvalidArguments)?;
 
-    let profile = ManagedLaunchProfileV1::claude_code_2_1_231();
+    let profile = ManagedLaunchProfileV1::claude_code();
     let mut child_arguments = Vec::new();
     let mut user_settings = json!({});
     let mut rest = &arguments[index..];

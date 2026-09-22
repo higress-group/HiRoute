@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub struct AgentSettingsFacts {
+    pub codex_context_override: bool,
+    pub claude_context_override: bool,
+    pub claude_plan_capability_unavailable: bool,
     pub context_id: String,
     pub dependency_digest: CanonicalDigest,
     pub capabilities: AgentCapabilitySet,
@@ -83,6 +86,8 @@ pub enum CodexCatalogProducerKindV1 {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct AgentSettingsPreview {
+    pub context_windows: BTreeMap<String, u64>,
+    pub claude_context_window: Option<u64>,
     pub spec: AgentSettingsSpecV2,
     pub dependency_digest: CanonicalDigest,
     pub accept_digest: CanonicalDigest,
@@ -106,6 +111,10 @@ pub struct AgentSettingsBlock {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SettingsBlockReason {
+    CodexContextOverride,
+    ClaudeContextOverride,
+    ClaudePlanCapabilityUnavailable,
+    ClaudeContextWindowUnsupported,
     CapabilityUnavailable,
     ModelPlanUnavailable,
     NativeModelCoverageUnavailable,
@@ -212,6 +221,17 @@ pub fn preview_agent_settings(
                 && !surfaces.is_subset(&facts.available_surfaces)
             {
                 return Err(SettingsPlanningError::InvalidSelection);
+            }
+            if matches!(settings, AgentModelSelectionV2::CodexDefault { .. })
+                && !settings.allowed_plan_ids().is_empty()
+                && facts.codex_context_override
+            {
+                blockers.push(AgentSettingsBlock {
+                    facet: AgentSettingsFacet::Model,
+                    reason: SettingsBlockReason::CodexContextOverride,
+                    capabilities: Vec::new(),
+                    model_ids: Vec::new(),
+                });
             }
             let grant = derive_model_grant(settings, facts);
             match grant {
@@ -380,18 +400,74 @@ pub fn preview_agent_settings(
         )
     })
     .collect::<Vec<_>>();
+    let context_windows = match model_grant
+        .as_ref()
+        .map(|grant| plan_context_windows(grant, facts.model_publication.as_ref()))
+        .transpose()
+    {
+        Ok(windows) => windows.unwrap_or_default(),
+        Err(_) => {
+            blockers.push(AgentSettingsBlock {
+                facet: AgentSettingsFacet::Model,
+                reason: SettingsBlockReason::ModelPlanUnavailable,
+                capabilities: Vec::new(),
+                model_ids: Vec::new(),
+            });
+            BTreeMap::new()
+        }
+    };
+    let claude_context_window = if matches!(
+        &spec.model,
+        AgentFacetIntent::Configure {
+            settings: AgentModelSelectionV2::ClaudeLauncher { .. }
+        }
+    ) && !context_windows.is_empty()
+    {
+        if facts.claude_plan_capability_unavailable {
+            blockers.push(AgentSettingsBlock {
+                facet: AgentSettingsFacet::Model,
+                reason: SettingsBlockReason::ClaudePlanCapabilityUnavailable,
+                capabilities: Vec::new(),
+                model_ids: Vec::new(),
+            });
+        }
+        let window = context_windows
+            .values()
+            .copied()
+            .min()
+            .and_then(hiroute_domain::claude_context_window);
+        if facts.claude_context_override || window.is_none() {
+            blockers.push(AgentSettingsBlock {
+                facet: AgentSettingsFacet::Model,
+                reason: if facts.claude_context_override {
+                    SettingsBlockReason::ClaudeContextOverride
+                } else {
+                    SettingsBlockReason::ClaudeContextWindowUnsupported
+                },
+                capabilities: Vec::new(),
+                model_ids: Vec::new(),
+            });
+        }
+        window
+    } else {
+        None
+    };
     let accept_digest = CanonicalDigest::of(&(
         "hiroute.agent-settings-preview/v2",
         &spec,
         &facts.dependency_digest,
         proofs,
         &model_grant,
+        &context_windows,
+        claude_context_window,
         &collaboration_trigger_mode,
         &facts.restore_points,
         &blockers,
     ))
     .map_err(|_| SettingsPlanningError::Encoding)?;
     Ok(AgentSettingsPreview {
+        context_windows,
+        claude_context_window,
         spec,
         dependency_digest: facts.dependency_digest.clone(),
         accept_digest,
@@ -552,3 +628,43 @@ pub use confirmation::*;
 
 #[cfg(test)]
 mod tests;
+
+/// Bind displayed and installed windows to the same exact publication used to derive the grant.
+pub fn plan_context_windows(
+    grant: &AgentModelGrantV2,
+    publication: Option<&GatewayPublicationV1>,
+) -> Result<BTreeMap<String, u64>, SettingsPlanningError> {
+    let mut windows = BTreeMap::new();
+    for (name, route) in &grant.routes {
+        if let AgentModelRouteV2::Plan {
+            plan_id,
+            revision,
+            semantic_digest,
+            ..
+        } = route
+        {
+            let plan = publication
+                .and_then(|p| {
+                    p.plans.iter().find(|p| {
+                        p.agent_plan_id() == plan_id && p.body.agent_plan_revision == *revision
+                    })
+                })
+                .ok_or(SettingsPlanningError::InvalidSelection)?;
+            let plan = plan
+                .clone()
+                .into_current()
+                .map_err(|_| SettingsPlanningError::InvalidSelection)?;
+            if &plan.body.materialized_route_digest != semantic_digest {
+                return Err(SettingsPlanningError::InvalidSelection);
+            }
+            windows.insert(
+                name.clone(),
+                plan.body
+                    .materialized
+                    .context_window_tokens()
+                    .map_err(|_| SettingsPlanningError::InvalidSelection)?,
+            );
+        }
+    }
+    Ok(windows)
+}

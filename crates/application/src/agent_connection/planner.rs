@@ -54,6 +54,13 @@ impl AgentConnectionPlanningFactsV1 {
         {
             proof.observed_at_unix_ms = 0;
         }
+        for facts in [&mut first, &mut second] {
+            facts.installation.version.clear();
+            facts.installation.profile.legacy_exact_versions.clear();
+            if let Some(profile) = &mut facts.installation.profile.managed_launch {
+                profile.legacy_exact_version.clear();
+            }
+        }
         first == second
     }
 }
@@ -407,7 +414,8 @@ impl AgentConnectionPlanner {
                 facts.before_fingerprints.model_catalog,
                 &ModelCatalogPayloadV1 {
                     delivery,
-                    client_version: facts.installation.version.clone(),
+                    // Diagnostic output must not change an accepted configuration payload.
+                    client_version: "not-probed".into(),
                     renderer_ref: format!(
                         "{}/catalog-renderer/v1",
                         profile.integration_profile_ref
@@ -703,7 +711,6 @@ fn validate_wire_spec(
     }
     if spec.agent_id != facts.installation.agent_id
         || spec.profile_id != profile.profile_id
-        || spec.installed_version != facts.installation.version
         || !valid_registered_endpoint(&facts.gateway)
     {
         return Err(AgentConnectionPlanningError::ProfileMismatch);

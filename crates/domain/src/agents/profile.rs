@@ -152,9 +152,13 @@ pub struct AgentProfileV1 {
     pub profile_id: String,
     pub integration_profile_ref: String,
     pub kind: AgentKindV1,
-    /// Optional exact labels used by adapters with a version-bound managed-launch contract.
-    /// This set is not general installation admission; Codex intentionally leaves it empty.
-    pub exact_versions: BTreeSet<String>,
+    /// Recovery-only labels from historical profiles; never used for client admission.
+    #[serde(
+        default,
+        rename = "exact_versions",
+        skip_serializing_if = "BTreeSet::is_empty"
+    )]
+    pub legacy_exact_versions: BTreeSet<String>,
     pub ingress_protocol: AgentIngressProtocolV1,
     pub config_precedence: Vec<ConfigLayerV1>,
     pub owned_config_fields: Vec<OwnedConfigFieldV1>,
@@ -174,13 +178,6 @@ impl AgentProfileV1 {
         }
         validate_identifier(&self.profile_id)?;
         validate_identifier(&self.integration_profile_ref)?;
-        if self
-            .exact_versions
-            .iter()
-            .any(|version| !valid_exact_version(version))
-        {
-            return Err(AgentProfileError::InvalidVersionSet);
-        }
         let expected_precedence = self.kind.config_precedence();
         if self.config_precedence.as_slice() != expected_precedence {
             return Err(AgentProfileError::InvalidConfigPrecedence);
@@ -212,7 +209,6 @@ impl AgentProfileV1 {
         if let Some(managed_launch) = &self.managed_launch
             && (self.kind != AgentKindV1::ClaudeCode
                 || self.ingress_protocol != AgentIngressProtocolV1::Messages
-                || !self.exact_versions.contains(&managed_launch.exact_version)
                 || managed_launch.validate().is_err())
         {
             return Err(AgentProfileError::InvalidManagedLaunch);
@@ -224,15 +220,10 @@ impl AgentProfileV1 {
         }
     }
 
-    /// Adapter-declared exact labels. Main-Agent actions do not infer admission from this set.
-    pub fn supports_exact_version(&self, version: &str) -> bool {
-        self.exact_versions.contains(version)
-    }
-
-    pub fn supports_managed_launch(&self, version: &str) -> bool {
+    pub fn supports_managed_launch(&self) -> bool {
         self.managed_launch
             .as_ref()
-            .is_some_and(|capability| capability.exact_version == version)
+            .is_some_and(|capability| capability.validate().is_ok())
     }
 
     pub const fn client_protocol(&self) -> AgentIngressProtocolV1 {
@@ -334,14 +325,6 @@ impl SupportedAgentInstallationV1 {
     }
 }
 
-fn valid_exact_version(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+' | b'_'))
-}
-
 fn validate_identifier(value: &str) -> Result<(), AgentProfileError> {
     let valid = !value.is_empty()
         && value.len() <= 256
@@ -381,8 +364,6 @@ pub enum AgentProfileError {
     UnsupportedSchema,
     #[error("Agent profile identifier is invalid")]
     InvalidIdentifier,
-    #[error("Agent profile contains invalid diagnostic version labels")]
-    InvalidVersionSet,
     #[error("Agent profile config precedence is not the frozen effective order")]
     InvalidConfigPrecedence,
     #[error("Agent profile config field is invalid")]

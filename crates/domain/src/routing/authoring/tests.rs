@@ -102,3 +102,24 @@ fn draft_bounds_do_not_require_a_publishable_name_purpose_or_budget() {
     draft.candidates = vec![draft.candidates[0].clone(); 129];
     assert!(draft.validate_draft().is_err());
 }
+
+#[test]
+fn context_window_round_trips_without_changing_omitted_legacy_limits() {
+    let mut value = editor();
+    let old = serde_json::to_value(&value).unwrap();
+    assert!(old["limits"].get("context_window_tokens").is_none());
+    value.limits.context_window_tokens = Some(500_000);
+    let saved: PlanEditorStateV2 =
+        serde_json::from_value(serde_json::to_value(&value).unwrap()).unwrap();
+    assert_eq!(
+        saved.effective().unwrap().limits.context_window_tokens,
+        Some(500_000)
+    );
+    value.limits.context_window_tokens = None;
+    assert_eq!(serde_json::to_value(&value).unwrap(), old);
+    for invalid in [serde_json::json!(-1), serde_json::json!(1.5)] {
+        let mut wire = old.clone();
+        wire["limits"]["context_window_tokens"] = invalid;
+        assert!(serde_json::from_value::<PlanEditorStateV2>(wire).is_err());
+    }
+}

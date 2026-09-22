@@ -90,6 +90,7 @@ fn try_request_at_with_catalog(
         revoked: false,
     };
     CandidateWorkerProfile::build(ProfileInput {
+        claude_context_window: Some(272_000),
         harness,
         adapter: Path::new("/trusted/adapter"),
         harness_binary: Path::new("/trusted/harness"),
@@ -250,6 +251,14 @@ fn managed_codex_profile_routes_only_through_run_env_without_embedding_secret_in
 fn managed_claude_profile_disables_ambient_settings_and_native_delegation() {
     let profile = request(WorkerHarnessV1::ClaudeCode, "run-secret-b");
     assert_eq!(profile.env["ANTHROPIC_AUTH_TOKEN"].as_str(), "run-secret-b");
+    assert_eq!(
+        profile.env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"].as_str(),
+        "272000"
+    );
+    assert_eq!(
+        profile.env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"].as_str(),
+        "272000"
+    );
     assert_eq!(
         profile.env["ANTHROPIC_BASE_URL"].as_str(),
         "http://127.0.0.1:44123"

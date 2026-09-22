@@ -211,6 +211,7 @@ fn inputs() -> (WorkerLaunchRequest, AcpRunInput, tempfile::TempDir) {
         delegation_depth: 1,
     };
     let profile = CandidateWorkerProfile::build(ProfileInput {
+        claude_context_window: None,
         harness: WorkerHarnessV1::CodexCli,
         adapter: &adapter,
         harness_binary: &harness,

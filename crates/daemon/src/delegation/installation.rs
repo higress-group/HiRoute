@@ -350,7 +350,27 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         } else {
             None
         };
+        if installation.harness == WorkerHarnessV1::ClaudeCode
+            && !matches!(
+                hiroute_integrations::agents::claude_plan_capability_preview(&input.compiled_plan),
+                hiroute_application_api::ClaudeClientCapabilityPreviewV1::Available { .. }
+            )
+        {
+            return Err(DelegationErrorV1::CapabilityUnavailable);
+        }
         CandidateWorkerProfile::build(ProfileInput {
+            claude_context_window: if installation.harness == WorkerHarnessV1::ClaudeCode {
+                Some(
+                    input
+                        .compiled_plan
+                        .body
+                        .materialized
+                        .context_window_tokens()
+                        .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?,
+                )
+            } else {
+                None
+            },
             harness: installation.harness,
             adapter: &installation.adapter,
             harness_binary: &installation.harness_binary,

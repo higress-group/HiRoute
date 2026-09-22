@@ -19,6 +19,7 @@ pub(crate) use materials::native_history;
 pub use materials::{RunMaterialFile, RunMaterials, SessionRootUse, TaskSessionRoot};
 
 pub struct ProfileInput<'a> {
+    pub claude_context_window: Option<u64>,
     pub harness: WorkerHarnessV1,
     pub adapter: &'a Path,
     pub harness_binary: &'a Path,
@@ -192,6 +193,13 @@ impl CandidateWorkerProfile {
                 env.insert("HIROUTE_RUN_TOKEN".into(), Zeroizing::new(token.to_owned()));
             }
             WorkerHarnessV1::ClaudeCode => {
+                if let Some(window) = input.claude_context_window {
+                    let values = hiroute_domain::claude_context_environment(window)
+                        .ok_or(DelegationErrorV1::CapabilityUnavailable)?;
+                    for (key, value) in values {
+                        env.insert(key, Zeroizing::new(value));
+                    }
+                }
                 env.insert(
                     "CLAUDE_CODE_EXECUTABLE".into(),
                     Zeroizing::new(path_string(input.harness_binary)?),

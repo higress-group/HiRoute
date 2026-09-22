@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn main_claude_project_layer_is_not_erased_by_worker_version_support() {
+fn main_claude_project_layer_and_managed_launch_are_version_independent() {
     for version in [CLAUDE_CODE_VERIFIED_VERSION_2_1_231_V1, "9.9.999"] {
         let directory = tempfile::tempdir().unwrap();
         let layout = layout_with_claude_version(directory.path(), version);
@@ -29,10 +29,7 @@ fn main_claude_project_layer_is_not_erased_by_worker_version_support() {
                 .require_action(hiroute_domain::AgentAction::RestoreModel)
                 .is_ok()
         );
-        assert_eq!(
-            found.managed_launch.is_some(),
-            version == CLAUDE_CODE_VERIFIED_VERSION_2_1_231_V1
-        );
+        assert!(found.managed_launch.is_some());
     }
 }
 

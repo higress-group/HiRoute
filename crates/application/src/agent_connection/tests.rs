@@ -34,12 +34,16 @@ fn agent_connection_apply_requires_current_action_evidence_even_for_listed_versi
 
 #[test]
 fn agent_connection_current_proof_allows_unlisted_version_without_version_allowlist() {
-    let mut input = facts(AgentKindV1::Codex);
-    input.installation.version = "future-unlisted-build".into();
-    input.installation.profile.exact_versions.clear();
-    let mut request = spec(AgentKindV1::Codex, false, false);
-    request.installed_version = input.installation.version.clone();
-    assert!(AgentConnectionPlanner::preview_connect(request, input).is_ok());
+    for kind in [AgentKindV1::Codex, AgentKindV1::ClaudeCode] {
+        for version in ["0.0.1", "99.1.2", "", "unparseable version"] {
+            let mut input = facts(kind);
+            input.installation.version = version.into();
+            // The request deliberately retains its earlier diagnostic version.
+            assert!(
+                AgentConnectionPlanner::preview_connect(spec(kind, false, false), input).is_ok()
+            );
+        }
+    }
 }
 
 fn installation(kind: AgentKindV1) -> SupportedAgentInstallationV1 {
@@ -85,7 +89,7 @@ fn profile(kind: AgentKindV1) -> AgentProfileV1 {
                 profile_id: "codex-responses-v1".to_owned(),
                 integration_profile_ref: "builtin/codex-responses/v1".to_owned(),
                 kind,
-                exact_versions: BTreeSet::from([CODEX_VERIFIED_VERSION_V1.to_owned()]),
+                legacy_exact_versions: BTreeSet::from([CODEX_VERIFIED_VERSION_V1.to_owned()]),
                 ingress_protocol: AgentIngressProtocolV1::Responses,
                 config_precedence: precedence,
                 owned_config_fields: vec![
@@ -115,7 +119,7 @@ fn profile(kind: AgentKindV1) -> AgentProfileV1 {
             profile_id: "claude-messages-v1".to_owned(),
             integration_profile_ref: "builtin/claude-messages/v1".to_owned(),
             kind,
-            exact_versions: BTreeSet::from([CLAUDE_CODE_VERIFIED_VERSION_V1.to_owned()]),
+            legacy_exact_versions: BTreeSet::from([CLAUDE_CODE_VERIFIED_VERSION_V1.to_owned()]),
             ingress_protocol: AgentIngressProtocolV1::Messages,
             config_precedence: precedence,
             owned_config_fields: vec![
@@ -197,10 +201,7 @@ fn plans() -> Vec<PublishedAgentPlanV1> {
 
 fn facts(kind: AgentKindV1) -> AgentConnectionPlanningFactsV1 {
     let installation = installation(kind);
-    let activation_mode = if installation
-        .profile
-        .supports_managed_launch(&installation.version)
-    {
+    let activation_mode = if installation.profile.supports_managed_launch() {
         hiroute_domain::AgentActivationModeV1::ManagedLaunch
     } else {
         hiroute_domain::AgentActivationModeV1::ManagedConfiguration
@@ -406,9 +407,9 @@ fn agent_connection_exact_2_1_231_uses_managed_launch_without_persistent_config(
     facts
         .installation
         .profile
-        .exact_versions
+        .legacy_exact_versions
         .insert("2.1.231".to_owned());
-    facts.installation.profile.managed_launch = Some(ManagedLaunchProfileV1::claude_code_2_1_231());
+    facts.installation.profile.managed_launch = Some(ManagedLaunchProfileV1::claude_code());
     facts.activation_mode = hiroute_domain::AgentActivationModeV1::ManagedLaunch;
     let mut spec = spec(AgentKindV1::ClaudeCode, false, false);
     spec.installed_version = "2.1.231".to_owned();
@@ -601,14 +602,16 @@ fn agent_connection_restore_reuses_typed_transaction_and_exact_restore_point() {
         installed_version: CODEX_VERIFIED_VERSION_V1.to_owned(),
         restore_point_ref: "restore/codex/1".to_owned(),
     };
-    for observed_version in [CODEX_VERIFIED_VERSION_V1, "future-unlisted-build"] {
+    for observed_version in ["0.0.1", "99.1.2", "", "unparseable version"] {
         let mut current_installation = installation(AgentKindV1::Codex);
         current_installation.version = observed_version.into();
         current_installation.capability_evidence.retain(|proof| {
             proof.capability != hiroute_domain::AgentCapability::IngressAuthentication
         });
+        let mut current_spec = restore_spec.clone();
+        current_spec.installed_version = observed_version.into();
         let outcome = preview_agent_connection_restore(
-            restore_spec.clone(),
+            current_spec,
             restore_point.clone(),
             AgentConnectionRestorePlanningFactsV1 {
                 installation: current_installation,
@@ -707,6 +710,28 @@ fn repeated_planning_snapshot_ignores_probe_time_but_not_proof_or_native_changes
         hiroute_domain::CanonicalDigest::of_bytes(b"different-proof-input");
     assert!(!first.same_snapshot(&changed));
     changed = later;
-    changed.installation.version = "replaced".into();
-    assert!(!first.same_snapshot(&changed));
+    changed.installation.version = "different diagnostic label".into();
+    assert!(first.same_snapshot(&changed));
+}
+
+#[test]
+fn client_version_changes_do_not_invalidate_configuration_snapshot() {
+    for kind in [AgentKindV1::Codex, AgentKindV1::ClaudeCode] {
+        let original = facts(kind);
+        for version in ["0.0.1", "99.1.2", "", "unparseable version"] {
+            let mut changed = original.clone();
+            changed.installation.version = version.into();
+            changed.installation.profile.legacy_exact_versions.clear();
+            assert!(original.same_snapshot(&changed));
+            let request = spec(kind, kind == AgentKindV1::Codex, false);
+            let before =
+                AgentConnectionPlanner::preview_connect(request.clone(), original.clone()).unwrap();
+            let after = AgentConnectionPlanner::preview_connect(request, changed.clone()).unwrap();
+            assert_eq!(before.change_digest, after.change_digest);
+            assert_eq!(before.effects, after.effects);
+            changed.installation.observation_digest =
+                hiroute_domain::CanonicalDigest::of_bytes(b"different executable or configuration");
+            assert!(!original.same_snapshot(&changed));
+        }
+    }
 }
