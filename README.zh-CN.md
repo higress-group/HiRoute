@@ -88,16 +88,7 @@ hiroute system status --output json
 
 ## 路由机制
 
-```mermaid
-flowchart LR
-    U["用户目标"] --> A["Agent 或 Worker 计划"]
-    A --> G["HiRoute Gateway"]
-    G --> R["路由计划"]
-    R --> M["模型分支与来源"]
-    G --> O["执行证据"]
-    O --> D["内置规则或决策 API"]
-    D -. "下一个决策边界" .-> R
-```
+![Jev 决策机制：一次请求选择下一分支，并可评价此前阶段](decision-extensions/assets/jev-decision-zh-CN.svg)
 
 一个路由执行轮次从一次分支选择开始。当前上下文可以持续复用时，普通工具续轮会保持该选择；新的
 用户请求改变工作目标，或长会话发生压缩并重建上下文时，HiRoute 会再次决策。是否能继承已有决策

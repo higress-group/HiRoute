@@ -20,7 +20,7 @@ await fs.mkdir(assetsDirectory, { recursive: true });
 await fs.mkdir(installDirectory, { recursive: true });
 await fs.copyFile(path.join(source, 'api/decision.openapi.json'), path.join(apiDirectory, 'decision.openapi.json'));
 for (const entry of await fs.readdir(path.join(source, 'assets'), { withFileTypes: true })) {
-  if (entry.isFile() && entry.name.endsWith('.png')) {
+  if (entry.isFile() && /\.(png|svg)$/.test(entry.name)) {
     await fs.copyFile(path.join(source, 'assets', entry.name), path.join(assetsDirectory, entry.name));
   }
 }

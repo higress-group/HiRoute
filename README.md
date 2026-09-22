@@ -93,16 +93,7 @@ real product components. It demonstrates the UI states and is not a model benchm
 
 ## How routing works
 
-```mermaid
-flowchart LR
-    U["User goal"] --> A["Agent or Worker plan"]
-    A --> G["HiRoute Gateway"]
-    G --> R["Routing plan"]
-    R --> M["Model branch and source"]
-    G --> O["Execution evidence"]
-    O --> D["Built-in rules or Decision API"]
-    D -. "next decision boundary" .-> R
-```
+![Jev decision flow: one request selects the next branch and optionally assesses the prior stage](decision-extensions/assets/jev-decision-en.svg)
 
 A routing execution round begins with one branch decision. Ordinary tool continuations keep
 that decision while the current context remains reusable. HiRoute decides again when a new user
