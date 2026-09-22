@@ -32,6 +32,32 @@ fn discovery() -> RegisteredComputeDiscoveryFactV1 {
 }
 
 #[test]
+fn discovered_messages_source_stays_bound_to_messages_when_responses_is_also_available() {
+    let catalog = current_catalog();
+    let candidate = catalog.authorize_compute_discovery(discovery()).unwrap();
+    let ids = catalog.compute_projection_ids(&candidate).unwrap();
+    let prepared = catalog
+        .prepare_compute_projection(
+            candidate,
+            hiroute_domain::ComputeProjectionExpectationV1 {
+                source_revision: 0,
+                source_digest: None,
+                binding_revision: 0,
+                binding_digest: None,
+                inventory_revision: 0,
+                inventory_digest: None,
+            },
+            true,
+        )
+        .unwrap();
+    assert_eq!(prepared.desired.binding.binding_id, ids.binding_id);
+    assert_eq!(
+        prepared.desired.binding.capability_id,
+        "cap.zhipu.glm-5.3.coding-plan.messages"
+    );
+}
+
+#[test]
 fn projection_ids_keep_source_and_binding_stable_across_scanner_refresh() {
     let catalog = current_catalog();
     let original = catalog

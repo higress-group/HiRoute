@@ -158,6 +158,7 @@ impl NativeResponseProjector {
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
                 reasoning_state: BTreeMap::new(),
+                responses_done_seen: false,
                 usage: ModelUsage::default(),
                 usage_input_overflow: false,
                 terminal: None,
@@ -291,7 +292,7 @@ struct ResponseItemEvidence {
 }
 
 pub(super) struct ProjectionState {
-    protocol: IngressProtocol,
+    pub(super) protocol: IngressProtocol,
     alias: String,
     owner: ExactProviderPathV1,
     authority: ToolAuthority,
@@ -304,9 +305,10 @@ pub(super) struct ProjectionState {
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
     reasoning_state: BTreeMap<u32, [u8; 32]>,
+    responses_done_seen: bool,
     usage: ModelUsage,
     usage_input_overflow: bool,
-    terminal: Option<NativeTerminalOutcome>,
+    pub(super) terminal: Option<NativeTerminalOutcome>,
     messages_stop: Option<NativeTerminalOutcome>,
     messages_stop_digest: Option<[u8; 32]>,
     chat_seen: bool,
@@ -341,6 +343,16 @@ impl ProjectionState {
         event_type: Option<&str>,
         data: &[u8],
     ) -> Result<(Option<Vec<u8>>, ProjectionMetadata), ProtocolAdapterError> {
+        if self.protocol == IngressProtocol::Responses && data == b"[DONE]" {
+            if event_type.is_some() || self.terminal.is_none() || self.responses_done_seen {
+                return Err(ModelIrError::InvalidResponseLifecycle(
+                    "Responses [DONE] must follow one terminal event".into(),
+                )
+                .into());
+            }
+            self.responses_done_seen = true;
+            return Ok((None, ProjectionMetadata::opaque()));
+        }
         let after_terminal = self.terminal.take().is_some();
         if after_terminal {
             // Reuse the same owned identity projection, but a second provider

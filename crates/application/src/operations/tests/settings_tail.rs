@@ -26,12 +26,16 @@ fn settings_spec() -> AgentSettingsSpecV2 {
         context_id: CONTEXT_ID.to_owned(),
         model: AgentFacetIntent::Configure {
             settings: AgentModelSelectionV2::CodexDefault {
+                native_model_mode: hiroute_domain::CodexNativeModelModeV2::HirouteOnly,
                 fixed_models: Vec::new(),
                 allowed_plan_ids: BTreeSet::from([plan_id.clone()]),
                 default_selection: AgentModelDefaultSelectionV2::Plan { plan_id },
             },
         },
         collaboration: AgentFacetIntent::Keep,
+        restore_native_model: None,
+        protected_native_model_ids: Vec::new(),
+        access_token: hiroute_domain::AgentAccessTokenIntentV1::Keep,
     }
 }
 

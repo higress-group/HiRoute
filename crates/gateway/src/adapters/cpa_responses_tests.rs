@@ -372,7 +372,7 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
 #[test]
 fn reasoning_ir_requires_explicit_encrypted_content_shape() {
     use crate::server::core_runtime::model_ir::ResponsesReasoningHistoryV1;
-    let mut history = json!({"summary": [], "content_is_null": false});
+    let mut history = json!({"native_fields": {"summary": [], "content": [{"type":"reasoning_text","text":"plain"}]}});
     assert!(serde_json::from_value::<ResponsesReasoningHistoryV1>(history.clone()).is_err());
     for shape in ["opaque", "absent", "null", "empty"] {
         history["encrypted_content"] = json!(shape);

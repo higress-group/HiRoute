@@ -39,7 +39,7 @@ function seedLater(control, at) {
 }
 function seedUserText(control, request, textValue) {
   const contentId = `${request.request_id}/user`;
-  control.catalog[request.request_id] = [{ content_id: contentId, role: 'user', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1, part_ordinal: 1 }];
+  control.catalog[request.request_id] = [{ content_id: contentId, role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1, part_ordinal: 1 }];
   control.texts[contentId] = textValue;
 }
 
@@ -65,7 +65,7 @@ const scenarios = [
     await until(() => rows().length === 60, 'second list page');
     const second = queryOf(reads('sessions').at(-1));
     assert(second.from_ms === first.from_ms && second.to_ms === first.to_ms, 'Pagination changed the pinned window');
-    assert(!document.querySelector('[data-error-code]'), 'Pagination surfaced an error');
+    assert(!document.querySelector('[data-error-code]'), `Pagination surfaced ${document.querySelector('[data-error-code]')?.outerHTML.slice(0, 300)}`);
   }],
   ['keyword search starts a new window and keeps it while paging', async () => {
     await fresh(control => {
@@ -254,6 +254,20 @@ const scenarios = [
     await until(() => rows().length === 1 && rows()[0].textContent.includes('解释缓存命中率'), 'real title after injected context');
     assert(!rows()[0].textContent.includes('workspace facts'), 'Injected environment block became the title');
   }],
+  ['Claude reminder prelude is folded in the real transcript while the question stays visible', async () => {
+    const captured = '<system-reminder>date and rules</system-reminder>\n发布前功能验证';
+    await fresh(control => {
+      seedSimple(control);
+      seedUserText(control, control.requests['observation-session/simple'][0], captured);
+    });
+    await until(() => document.querySelector('.message-context') && document.querySelector('.message-content')?.innerText.includes('发布前功能验证'), 'readable question and reminder disclosure');
+    const disclosure = document.querySelector('.message-context');
+    assert(!disclosure.open, 'Agent-added reminder was expanded by default');
+    assert(!document.querySelector('.message-content').innerText.includes('date and rules'), 'Agent-added reminder obscured the user question');
+    disclosure.querySelector('summary').click();
+    await until(() => disclosure.open && document.querySelector('.message-content').innerText.includes('date and rules'), 'original reminder available on expansion');
+    assert(disclosure.textContent.includes('date and rules'), 'Captured reminder was lost');
+  }],
   ['title refresh adopts a real user input that arrives after setup context', async () => {
     const sessionId = 'observation-session/title-refresh';
     await fresh(control => {
@@ -301,7 +315,9 @@ const scenarios = [
     const pages = reads('timeline').filter(call => queryOf(call).session_id === sessionId);
     const second = pages.findIndex(call => queryOf(call).cursor);
     assert(second > 0, 'Title scan did not request a second page');
-    const first = pages.slice(0, second).findLast(call => !queryOf(call).cursor);
+    // The list row and detail title scan independently. Match the cursor to
+    // its own frozen window, not whichever scan most recently started.
+    const first = pages.slice(0, second).findLast(call => !queryOf(call).cursor && queryOf(call).to_ms === queryOf(pages[second]).to_ms);
     assert(first && queryOf(first).to_ms === queryOf(pages[second]).to_ms, 'Title scan changed the cursor-bound window');
   }],
   ['Home title refreshes after the same session gains a real user request', async () => {
@@ -322,7 +338,7 @@ const scenarios = [
   }],
   ['run record shows tokens and weighted cache hit even when cost is unpriced', async () => {
     await fresh(control => {
-      seedSimple(control);
+      seedSimple(control, Date.now() - 60_000, { outcome: 'accepted' });
       seedUserText(control, control.requests['observation-session/simple'][0], '查看用量统计');
     });
     await until(() => button('运行记录'), 'run record button');
@@ -332,6 +348,84 @@ const scenarios = [
     assert(text().includes('190 / 1,100'), 'Cache-hit basis was not disclosed');
     assert(text().includes('2 / 2 个 Attempt 可计算'), 'Cache-hit sample coverage was not disclosed');
     assert(text().includes('已排除 1 个连接探针'), 'Excluded probe count was not disclosed');
+    assert(text().includes('响应已交付') && !text().includes('已受理'), 'Terminal accepted response was presented as still pending');
+  }],
+  ['returning to the mounted Sessions page reads a newly arrived request-scoped session', async () => {
+    await fresh(control => { seedSimple(control); });
+    await until(() => rows().length === 1, 'initial row');
+    const first = queryOf(reads('sessions')[0]);
+    c().showHome();
+    seedLater(c(), Date.now() + 30);
+    await pause(160);
+    c().showSessions();
+    await until(() => rows().length === 2, 'new session after navigation');
+    const latest = queryOf(reads('sessions').at(-1));
+    assert(latest.to_ms > first.to_ms, 'Navigation reused the mounted query window');
+  }],
+  ['Codex setup envelope is folded while the real prompt titles the session', async () => {
+    const prelude = '<recommended_plugins>plugins</recommended_plugins>\n# AGENTS.md instructions\n\n<INSTRUCTIONS>rules</INSTRUCTIONS>\n<environment_context>cwd</environment_context>';
+    await fresh(control => {
+      const sessionId = 'observation-session/codex-context';
+      const first = control.makeRequest(sessionId, 0, Date.now() - 60_000);
+      control.requests[sessionId] = [first];
+      seedUserText(control, first, prelude);
+      const secondId = `${first.request_id}/question`;
+      control.catalog[first.request_id].push({ content_id: secondId, role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '2', message_ordinal: 2, part_ordinal: 1 });
+      control.texts[secondId] = 'Run one tool and reply HIR-TOOL-OK-SEP21';
+    });
+    await until(() => rows()[0]?.textContent.includes('Run one tool'), 'real user title');
+    rows()[0].click();
+    await until(() => document.querySelector('.message-context'), 'Codex context disclosure');
+    const firstMessage = document.querySelector('.transcript-body .message');
+    assert(firstMessage?.querySelector('.message-role')?.textContent.includes('Agent 附加上下文'), 'Context is mislabeled as the user question');
+    assert(!firstMessage?.innerText.includes('plugins'), 'Codex context expanded by default');
+    assert(document.querySelector('.transcript-body')?.textContent.includes('Run one tool'), 'Real user question missing');
+    firstMessage.querySelector('summary').click();
+    await until(() => firstMessage.textContent.includes('plugins'), 'original Codex context available on expansion');
+  }],
+  ['continue reading crosses a tool response into the final assistant request', async () => {
+    await fresh(control => {
+      const sessionId = 'observation-session/tool-turn';
+      const first = control.makeRequest(sessionId, 0, Date.now() - 60_000);
+      const second = control.makeRequest(sessionId, 1, Date.now() - 50_000);
+      control.requests[sessionId] = [first, second];
+      seedUserText(control, first, 'Run one tool and report the result');
+      const mediaType = 'application/vnd.hiroute.model-stream-event+json;version=1';
+      control.catalog[first.request_id].push({ content_id: `${first.request_id}/tool`, role: 'assistant', kind: 'tool_call_finished', state: 'complete', direction: 'response_delivered', media_type: mediaType, message_occurrence_id: '2', message_ordinal: 2, part_ordinal: 1 });
+      control.texts[`${first.request_id}/tool`] = JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence: 1, event: { kind: 'tool_call_finished', logical_id: 'tool/exec', name: 'exec_command', namespace: '', arguments: { cmd: 'printf ok' } } });
+      const input = `${second.request_id}/provider-state`;
+      const toolField = `${second.request_id}/tool-name`;
+      control.catalog[second.request_id] = [
+        { content_id: input, role: 'assistant', kind: 'provider_state', state: 'complete', direction: 'request_input', media_type: 'application/json', message_occurrence_id: '1', message_ordinal: 1, part_ordinal: 0 },
+        { content_id: toolField, role: 'assistant', kind: 'tool_call_name', state: 'complete', direction: 'request_input', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1, part_ordinal: 1 },
+      ];
+      control.texts[input] = '{"type":"thinking","signature":"private-signature-marker"}';
+      control.texts[toolField] = 'functions.exec';
+      ['HIR', '-', 'TO', 'OL', '-', 'OK', '-', 'SEP', '21'].forEach((fragment, index) => {
+        const contentId = `${second.request_id}/delta-${index}`;
+        control.catalog[second.request_id].push({ content_id: contentId, role: 'assistant', kind: 'text_delta', state: 'complete', direction: 'response_delivered', media_type: mediaType, message_occurrence_id: '2', message_ordinal: 2, part_ordinal: index });
+        control.texts[contentId] = JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence: index + 1, event: { kind: 'text_delta', index: 0, text: fragment } });
+      });
+      const finished = `${second.request_id}/finished`;
+      control.catalog[second.request_id].push({ content_id: finished, role: 'assistant', kind: 'text_finished', state: 'complete', direction: 'response_delivered', media_type: mediaType, message_occurrence_id: '2', message_ordinal: 2, part_ordinal: 9 });
+      control.texts[finished] = JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence: 10, event: { kind: 'text_finished', index: 0, text: 'HIR-TOOL-OK-SEP21' } });
+    });
+    await until(() => rows().length === 1, 'tool session row');
+    rows()[0].click();
+    await until(() => document.querySelector('.transcript-body .tool-block')?.textContent.includes('exec_command'), 'first request tool event');
+    const toolBlock = document.querySelector('.transcript-body .tool-block');
+    assert(visible(toolBlock), 'Tool-first execution summary is hidden with technical context');
+    assert(!toolBlock.closest('.transcript-context'), 'Tool-first execution summary is nested in collapsed context');
+    assert(!document.querySelector('.transcript-body')?.textContent.includes('HIR-TOOL-OK-SEP21'), 'final response appeared before reading the next request');
+    const next = button('继续读取下一请求');
+    assert(next, 'No continuation after the first request body ended');
+    next.click();
+    await until(() => document.querySelector('.session-detail')?.innerText.includes('HIR-TOOL-OK-SEP21'), 'final assistant response');
+    assert(document.querySelector('.session-detail')?.innerText.includes('exec_command'), 'Continuing removed the earlier tool response');
+    assert(document.querySelector('.session-detail')?.innerText.match(/HIR-TOOL-OK-SEP21/g)?.length === 1, 'Delta fragments duplicated the finished answer');
+    assert(!document.querySelector('.session-detail')?.innerText.includes('private-signature-marker'), 'Provider state leaked into the transcript');
+    assert(!document.querySelector('.session-detail')?.innerText.includes('functions.exec'), 'Tool metadata expanded as an answer');
+    assert(document.querySelector('.transcript-context'), 'Canonical tool fields lacked a context disclosure');
   }],
 ];
 

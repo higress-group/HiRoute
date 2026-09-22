@@ -184,8 +184,8 @@ pub fn externalize_model_request(
         )?;
     }
     for history in request.responses_reasoning_history.values_mut() {
-        for part in &mut history.summary {
-            externalize_value(&mut part.text, replay, &mut pool, &mut inline_remaining)?;
+        for value in history.native_fields.values_mut() {
+            externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
         }
     }
     // Tool kind/name/namespace values are request-scoped identity keys. Keep
@@ -253,8 +253,8 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
         collect_part_content_refs(&message.content, &mut refs);
     }
     for history in request.responses_reasoning_history.values() {
-        for part in &history.summary {
-            collect_string_content_ref(&part.text, &mut refs);
+        for value in history.native_fields.values() {
+            collect_json_content_ref(value, &mut refs);
         }
     }
     for tool in &request.tools {
@@ -312,7 +312,7 @@ fn content_field_count(request: &ModelRequestIRV1) -> Result<usize, ReplayError>
         .values()
         .try_fold(count, |count, history| {
             count
-                .checked_add(history.summary.len())
+                .checked_add(history.native_fields.len())
                 .ok_or(ReplayError::LengthOverflow)
         })?;
     for tool in &request.tools {

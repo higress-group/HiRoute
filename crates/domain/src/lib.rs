@@ -36,9 +36,9 @@ pub use error::{PortError, PortErrorCode, PortResult};
 pub use observation::*;
 pub use operation::{
     AGENT_ACCESS_GRANT_EFFECT_SCHEMA_V1, ActiveAgentConnectionV1, AgentAccessGrantMaterial,
-    AgentAccessGrantMutationKindV1, AgentAccessGrantMutationV1, AgentAccessGrantRefV1,
-    AgentAccessGrantScopeV1, AgentConfigPermissionIntentV1, AgentConnectionControlIntentV1,
-    AgentConnectionEffectRoleV1, AgentConnectionTransactionKindV1,
+    AgentAccessGrantMaterialActionV1, AgentAccessGrantMutationKindV1, AgentAccessGrantMutationV1,
+    AgentAccessGrantRefV1, AgentAccessGrantScopeV1, AgentConfigPermissionIntentV1,
+    AgentConnectionControlIntentV1, AgentConnectionEffectRoleV1, AgentConnectionTransactionKindV1,
     AgentConnectionTransactionSubjectV1, BeginOperationOutcome,
     COMPUTE_SUBSCRIPTION_CHECK_COMMAND_ID_V2, COMPUTE_SUBSCRIPTION_EFFECT_ID_V2,
     CompensationOutcome, ComputeSourceControlPort, ComputeSourceMutationV1, ConsumedPlanDraftV1,
@@ -55,7 +55,7 @@ pub use operation::{
     decode_subscription_check_intent, is_agent_access_grant_effect,
     is_settings_managed_configuration, is_settings_publication, is_subscription_check_effect,
     routing_publication_record, settings_model_publication_intent,
-    settings_model_publication_record, validate_idempotency_key,
+    settings_model_publication_record, valid_user_agent_token, validate_idempotency_key,
     validate_settings_model_publication_intent,
 };
 pub use publication::*;

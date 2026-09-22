@@ -243,6 +243,12 @@ pub struct CodexIngressEvidence {
     collaboration: bool,
 }
 impl CodexIngressEvidence {
+    pub(super) fn attach_collaboration(&self, installation: &mut SupportedAgentInstallationV1) {
+        if self.collaboration {
+            self.attach(installation);
+        }
+    }
+
     pub(super) fn attach(&self, installation: &mut SupportedAgentInstallationV1) {
         if self.observed.elapsed() > Duration::from_secs(300) {
             return;
@@ -352,6 +358,7 @@ pub(super) fn cache_error() -> NativeIngressProbeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hiroute_domain::{ConnectorRegistryBundleV1, ReleaseModelDataBundleV2};
     use std::os::unix::fs::PermissionsExt;
     #[test]
     fn native_evidence_expires_but_does_not_gate_on_codex_binary_identity() {
@@ -408,6 +415,81 @@ mod tests {
             replaced
                 .require_action(hiroute_domain::AgentAction::ConfigureModel)
                 .is_ok()
+        );
+    }
+
+    #[test]
+    fn collaboration_settings_consume_only_an_explicit_collaboration_check() {
+        let root = tempfile::tempdir().unwrap();
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let home = root.path().join("home");
+        let config_dir = home.join(".codex");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o700)).unwrap();
+        let config = config_dir.join("config.toml");
+        fs::write(&config, b"# private fixture\n").unwrap();
+        fs::set_permissions(&config, fs::Permissions::from_mode(0o600)).unwrap();
+        let binary = root.path().join("codex");
+        fs::write(&binary, b"#!/bin/sh\nprintf 'codex-cli 99.99.99\\n'\n").unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+        let mut layout = super::super::AgentFilesystemLayoutV1::from_process(&home, root.path());
+        layout.codex_executable = binary;
+        layout.codex_desktop_executable = None;
+        let registry: ConnectorRegistryBundleV1 = serde_json::from_slice(include_bytes!(
+            "../../../../assets/connector-registry/current/registry-seed.json"
+        ))
+        .unwrap();
+        let models: ReleaseModelDataBundleV2 = serde_json::from_slice(include_bytes!(
+            "../../../../assets/release-facts/current/bundle/model-data.json"
+        ))
+        .unwrap();
+        let registry = super::super::ClaudeRegistrationIndexV1::from_verified_model_data(
+            &registry,
+            &models.data,
+        )
+        .unwrap();
+        let scanner = super::super::FilesystemAgentScannerV1::new(layout.clone(), registry.clone())
+            .with_codex_ingress_evidence(CodexIngressEvidence {
+                observed: Instant::now(),
+                observed_at: now(),
+                collaboration: true,
+            });
+        let supported = |discovery: super::super::FilesystemAgentDiscoveryV1| {
+            let super::super::AgentDiscoveryOutcomeV1::Supported { installation } =
+                discovery.outcome
+            else {
+                panic!("supported Codex fixture");
+            };
+            installation
+        };
+        let model_only = supported(scanner.codex_settings_discovery(false));
+        let collaboration = supported(scanner.codex_settings_discovery(true));
+        assert!(
+            model_only
+                .require_action(hiroute_domain::AgentAction::InstallCollaborationSkill)
+                .is_err()
+        );
+        assert!(
+            collaboration
+                .require_action(hiroute_domain::AgentAction::InstallCollaborationSkill)
+                .is_ok()
+        );
+        assert_ne!(
+            model_only.observation_digest,
+            collaboration.observation_digest
+        );
+
+        let auth_only = super::super::FilesystemAgentScannerV1::new(layout, registry)
+            .with_codex_ingress_evidence(CodexIngressEvidence {
+                observed: Instant::now(),
+                observed_at: now(),
+                collaboration: false,
+            });
+        assert!(
+            supported(auth_only.codex_settings_discovery(true))
+                .require_action(hiroute_domain::AgentAction::InstallCollaborationSkill)
+                .is_err()
         );
     }
 }

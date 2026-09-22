@@ -129,15 +129,10 @@ pub(crate) fn apply(
         Ok(input) => input,
         Err(error) => return failed(map_control_error(error), request.request_id),
     };
-    if input.facts.login_item_required
-        && !payload
-            .login_item
-            .as_ref()
-            .is_some_and(|declaration| declaration.establishes_resident_service())
-    {
-        // The first managed connection must not complete without an active resident login
-        // item; an unapproved, disabled, or failed registration stays service_unavailable.
-        return failed(ErrorCode::GatewayUnavailable, request.request_id);
+    if !input.facts.login_item_removal_required && payload.login_item.is_some() {
+        // New saves do not own startup state; an unsolicited host declaration must not be
+        // silently accepted after an older Desktop has changed the system login item.
+        return failed(ErrorCode::InvalidArguments, request.request_id);
     }
     if input.facts.login_item_removal_required
         && !payload

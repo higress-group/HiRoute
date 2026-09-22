@@ -2,8 +2,6 @@
 //! only on a Responses upstream; they convey no HiRoute identity or provider-state ownership.
 use super::*;
 
-const MAX_REASONING_SUMMARY_PARTS: usize = 64;
-
 pub(super) fn annotations(
     input: Option<&Value>,
 ) -> Result<
@@ -118,35 +116,20 @@ pub(super) fn reasoning_history(
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("input[]"))?;
-    let summary = object
-        .get("summary")
-        .and_then(Value::as_array)
-        .ok_or(ModelIrError::InvalidField("reasoning summary"))?;
-    if summary.len() > MAX_REASONING_SUMMARY_PARTS {
-        return Err(ModelIrError::InvalidField("reasoning summary"));
-    }
-    let summary = summary
+    let native_fields = object
         .iter()
-        .map(|part| {
-            let part = checked_object(part, &["type", "text"], "reasoning summary[]")?;
-            if required_string(part, "type")? != "summary_text" {
-                return Err(ModelIrError::UnsupportedValue(
-                    "reasoning summary item".into(),
-                ));
-            }
-            let text = part
-                .get("text")
-                .and_then(Value::as_str)
-                .ok_or(ModelIrError::InvalidField("reasoning summary text"))?
-                .to_owned();
-            Ok(ResponsesReasoningSummaryPartV1 { text })
+        .filter(|(key, _)| {
+            !matches!(
+                key.as_str(),
+                "type"
+                    | "id"
+                    | "status"
+                    | "encrypted_content"
+                    | "internal_chat_message_metadata_passthrough"
+            )
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    let content_is_null = match object.get("content") {
-        None => false,
-        Some(Value::Null) => true,
-        Some(_) => return Err(ModelIrError::ProviderStateNotPortable),
-    };
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
     let encrypted_content = match object.get("encrypted_content") {
         None => ResponsesReasoningEncryptedContentV1::Absent,
         Some(Value::Null) => ResponsesReasoningEncryptedContentV1::Null,
@@ -157,8 +140,7 @@ pub(super) fn reasoning_history(
         Some(_) => return Err(ModelIrError::InvalidField("encrypted_content")),
     };
     Ok(ResponsesReasoningHistoryV1 {
-        summary,
-        content_is_null,
+        native_fields,
         encrypted_content,
     })
 }
@@ -182,10 +164,9 @@ pub(super) fn decode(
                 }
             }
             let context = optional_string(reasoning, "context")?;
-            if context
-                .as_deref()
-                .is_some_and(|value| !matches!(value, "auto" | "current_turn" | "all_turns"))
-            {
+            if context.as_deref().is_some_and(|value| {
+                value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
+            }) {
                 return Err(ModelIrError::InvalidField("reasoning.context"));
             }
             Ok((optional_string(reasoning, "summary")?, context))
@@ -204,17 +185,22 @@ pub(super) fn decode(
             let values = value
                 .as_array()
                 .ok_or(ModelIrError::InvalidField("include"))?;
-            if values.len() > 1
-                || values
-                    .iter()
-                    .any(|value| value != "reasoning.encrypted_content")
-            {
-                return Err(ModelIrError::UnsupportedField("responses include".into()));
+            if values.len() > 16 {
+                return Err(ModelIrError::InvalidField("include"));
             }
-            Ok(values
+            values
                 .iter()
-                .map(|_| "reasoning.encrypted_content".into())
-                .collect())
+                .map(|value| {
+                    let value = value
+                        .as_str()
+                        .ok_or(ModelIrError::InvalidField("include"))?;
+                    if value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
+                    {
+                        return Err(ModelIrError::InvalidField("include"));
+                    }
+                    Ok(value.to_owned())
+                })
+                .collect::<Result<Vec<_>, _>>()
         })
         .transpose()?;
     let prompt_cache_key = optional_string(object, "prompt_cache_key")?;
@@ -302,10 +288,49 @@ mod tests {
                 assert!(projection.is_err());
             }
         }
-        for invalid in [json!(null), json!(false), json!("future")] {
+        for invalid in [
+            json!(null),
+            json!(false),
+            json!(""),
+            json!("x".repeat(257)),
+            json!("line\nbreak"),
+        ] {
             let mut document = document.clone();
             document["reasoning"]["context"] = invalid;
             assert!(decode_ingress_request(IngressProtocol::Responses, &document).is_err());
+        }
+    }
+    #[test]
+    fn bounded_native_responses_options_are_provider_decided_not_gateway_enumerated() {
+        use super::super::super::project_candidate_request;
+        use super::super::decode_ingress_request;
+        use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
+
+        let document = json!({
+            "model":"alias", "input":"hello",
+            "reasoning":{"context":"provider_future_context"},
+            "include":["reasoning.encrypted_content", "provider.future_output"]
+        });
+        let request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
+        for target in [
+            IngressProtocol::Responses,
+            IngressProtocol::ChatCompletions,
+            IngressProtocol::Messages,
+        ] {
+            let profile = CandidateProtocolProfile::exact_portable_path(
+                IngressProtocol::Responses,
+                target,
+                "physical",
+                fixed_reasoning("fixed"),
+            );
+            let projected = project_candidate_request(&request, &profile);
+            if target == IngressProtocol::Responses {
+                let body = projected.unwrap().body;
+                assert_eq!(body["reasoning"], document["reasoning"]);
+                assert_eq!(body["include"], document["include"]);
+            } else {
+                assert!(projected.is_err());
+            }
         }
     }
     #[test]
@@ -573,7 +598,7 @@ mod tests {
         }
     }
     #[test]
-    fn reasoning_history_is_typed_bounded_and_preserves_absent_content() {
+    fn reasoning_history_preserves_native_fields_but_requires_opaque_owner() {
         use super::super::super::project_candidate_request;
         use super::super::decode_ingress_request_with_state_and_tool_resolver;
         use crate::server::core_runtime::model_ir::ToolIdMapEntryV1;
@@ -617,18 +642,30 @@ mod tests {
             json!({"type":"reasoning","summary":[{"type":"other","text":"x"}],"encrypted_content":"state"}),
             json!({"type":"reasoning","summary":[{"type":"summary_text","text":7}],"encrypted_content":"state"}),
             json!({"type":"reasoning","summary":(0..65).map(|_| json!({"type":"summary_text","text":""})).collect::<Vec<_>>(),"encrypted_content":"state"}),
-            json!({"type":"reasoning","summary":[],"content":[],"encrypted_content":"state"}),
+            json!({"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"native reasoning"}],"provider_extension":{"mode":1},"encrypted_content":"state"}),
         ] {
-            assert!(
-                decode_ingress_request_with_state_and_tool_resolver(
-                    IngressProtocol::Responses,
-                    &json!({"model":"alias","input":[reasoning]}),
-                    profile.exact_provider_path().ok(),
-                    |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
-                )
-                .is_err()
+            let native = json!({"model":"alias","input":[reasoning]});
+            let request = decode_ingress_request_with_state_and_tool_resolver(
+                IngressProtocol::Responses,
+                &native,
+                profile.exact_provider_path().ok(),
+                |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
+            )
+            .unwrap();
+            assert_eq!(
+                project_candidate_request(&request, &profile).unwrap().body["input"],
+                native["input"]
             );
         }
+        assert!(
+            decode_ingress_request_with_state_and_tool_resolver(
+                IngressProtocol::Responses,
+                &native,
+                None,
+                |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -644,27 +681,36 @@ mod tests {
             "physical",
             fixed_reasoning("fixed"),
         );
-        for encrypted_content in [None, Some(Value::Null), Some(json!(""))] {
-            let mut reasoning = json!({
-                "type":"reasoning",
-                "id":"reasoning-item",
-                "summary":[{"type":"summary_text","text":"used a tool"}],
-                "content":null
-            });
-            if let Some(value) = encrypted_content {
-                reasoning["encrypted_content"] = value;
+        for content in [
+            None,
+            Some(Value::Null),
+            Some(json!([])),
+            Some(json!([{"type":"reasoning_text","text":"provider-owned plain text"}])),
+        ] {
+            for encrypted_content in [None, Some(Value::Null), Some(json!(""))] {
+                let mut reasoning = json!({
+                    "type":"reasoning",
+                    "id":"reasoning-item",
+                    "summary":[{"type":"summary_text","text":"used a tool"}]
+                });
+                if let Some(content) = &content {
+                    reasoning["content"] = content.clone();
+                }
+                if let Some(value) = encrypted_content {
+                    reasoning["encrypted_content"] = value;
+                }
+                let native = json!({"model":"alias","input":[reasoning]});
+                let request = decode_ingress_request_with_state_and_tool_resolver(
+                    IngressProtocol::Responses,
+                    &native,
+                    None,
+                    |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
+                )
+                .unwrap();
+                assert!(request.messages[0].content.is_empty());
+                let projected = project_candidate_request(&request, &profile).unwrap().body;
+                assert_eq!(projected["input"], native["input"]);
             }
-            let native = json!({"model":"alias","input":[reasoning]});
-            let request = decode_ingress_request_with_state_and_tool_resolver(
-                IngressProtocol::Responses,
-                &native,
-                None,
-                |_| Ok(Vec::<ToolIdMapEntryV1>::new()),
-            )
-            .unwrap();
-            assert!(request.messages[0].content.is_empty());
-            let projected = project_candidate_request(&request, &profile).unwrap().body;
-            assert_eq!(projected["input"], native["input"]);
         }
 
         let invalid = json!({"model":"alias","input":[{
@@ -921,7 +967,10 @@ mod tests {
         for value in [
             json!({"store":true}),
             json!({"store":"false"}),
-            json!({"include":["unknown"]}),
+            json!({"include":[false]}),
+            json!({"include":[""]}),
+            json!({"include":["x".repeat(257)]}),
+            json!({"include":vec!["x"; 17]}),
             json!({"client_metadata":{"nested":{}}}),
             json!({"prompt_cache_key":"x".repeat(257)}),
         ] {

@@ -4,6 +4,7 @@ import { agentEditorSeed, codexDefaultChoiceValid, editorFingerprint } from '../
 
 const codexSelection = {
   mode: 'codex_default',
+  native_model_mode: 'preserve_available',
   fixed_models: [{ client_model_id: 'native-model', candidate: { binding_id: 'binding/native' } }],
   allowed_plan_ids: ['a', 'b'],
   default_selection: { kind: 'plan', plan_id: 'a' },
@@ -36,6 +37,7 @@ test('Codex seed preserves the shared allowlist and default choice', () => {
   assert.equal(value.known, true);
   assert.deepEqual(value.allowedPlanIds, ['a', 'b']);
   assert.deepEqual(value.defaultChoice, { kind: 'plan', plan_id: 'a' });
+  assert.equal(value.nativeModelMode, 'preserve_available');
   assert.equal(value.fixedModels[0].client_model_id, 'native-model');
 });
 
@@ -69,22 +71,24 @@ test('Codex discovery facts do not change the initial shared configuration', () 
   assert.equal(desktop.known, true);
   assert.deepEqual(desktop, cli);
   assert.deepEqual(desktop.allowedPlanIds, []);
+  assert.equal(desktop.nativeModelMode, 'hiroute_only');
   assert.deepEqual(desktop.defaultChoice, { kind: 'preserve_native' });
 });
 
 test('preserving the current Codex default leaves route coverage to the backend', () => {
   assert.equal(
-    codexDefaultChoiceValid({ kind: 'preserve_native' }, 'gpt-6-astra', [], ['plan/translate']),
+    codexDefaultChoiceValid({ kind: 'preserve_native' }, 'preserve_available', 'gpt-6-astra', [], ['plan/translate']),
     true,
   );
   assert.equal(
-    codexDefaultChoiceValid({ kind: 'preserve_native' }, undefined, [], ['plan/translate']),
+    codexDefaultChoiceValid({ kind: 'preserve_native' }, 'preserve_available', undefined, [], ['plan/translate']),
     false,
   );
   assert.equal(
-    codexDefaultChoiceValid({ kind: 'plan', plan_id: 'plan/translate' }, 'gpt-6-astra', [], []),
+    codexDefaultChoiceValid({ kind: 'plan', plan_id: 'plan/translate' }, 'hiroute_only', 'gpt-6-astra', [], []),
     false,
   );
+  assert.equal(codexDefaultChoiceValid({ kind: 'preserve_native' }, 'hiroute_only', 'gpt-6-astra', [], ['plan/translate']), false);
 });
 
 test('configured collaboration requires an explicit current selection', () => {

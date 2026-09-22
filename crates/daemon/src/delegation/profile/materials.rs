@@ -221,11 +221,22 @@ impl TaskSessionRoot {
     pub(super) fn prepare_codex_provider(
         &self,
         gateway: std::net::SocketAddr,
+        catalog_path: Option<&Path>,
     ) -> Result<(), DelegationErrorV1> {
         use std::io::{Read, Write};
         checked_directory(&self.path)?;
+        let catalog_setting = catalog_path.map_or(Ok(String::new()), |path| {
+            let path = path
+                .to_str()
+                .filter(|value| !value.contains(['\n', '\r', '\0']))
+                .ok_or(DelegationErrorV1::InvalidArguments)?;
+            Ok::<_, DelegationErrorV1>(format!(
+                "model_catalog_json = {}\n",
+                serde_json::to_string(path).map_err(|_| DelegationErrorV1::InvalidArguments)?
+            ))
+        })?;
         let contents = format!(
-            "model_provider = \"hiroute\"\n[model_providers.hiroute]\nname = \"HiRoute managed run\"\nbase_url = \"http://{gateway}/v1\"\nwire_api = \"responses\"\nenv_key = \"HIROUTE_RUN_TOKEN\"\nrequires_openai_auth = false\n"
+            "model_provider = \"hiroute\"\n{catalog_setting}[model_providers.hiroute]\nname = \"HiRoute managed run\"\nbase_url = \"http://{gateway}/v1\"\nwire_api = \"responses\"\nenv_key = \"HIROUTE_RUN_TOKEN\"\nrequires_openai_auth = false\n"
         );
         let path = self.path.join("config.toml");
         let mut options = fs::OpenOptions::new();
@@ -266,6 +277,75 @@ impl TaskSessionRoot {
             }
             Err(_) => Err(DelegationErrorV1::StorageUnavailable),
         }
+    }
+
+    /// The task root is a private Codex target. Its catalog contains only the frozen Plan alias;
+    /// no user's native catalog or cache is copied into it. A Continue must see identical bytes.
+    pub(super) fn prepare_codex_catalog(
+        &self,
+        alias: &str,
+        contents: &[u8],
+    ) -> Result<PathBuf, DelegationErrorV1> {
+        use std::io::{Read, Write};
+        checked_directory(&self.path)?;
+        if contents.is_empty() || contents.len() > 1024 * 1024 {
+            return Err(DelegationErrorV1::CapabilityUnavailable);
+        }
+        let value: Value = serde_json::from_slice(contents)
+            .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+        hiroute_integrations::agents::CodexCatalogSelection::for_current_adapter(value.clone())
+            .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+        if value["models"]
+            .as_array()
+            .is_none_or(|models| models.len() != 1 || models[0]["slug"].as_str() != Some(alias))
+        {
+            return Err(DelegationErrorV1::Conflict);
+        }
+        let path = self.path.join("worker-model-catalog.json");
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&path) {
+            Ok(mut file) => {
+                file.write_all(contents)
+                    .and_then(|()| file.sync_all())
+                    .map_err(|_| DelegationErrorV1::StorageUnavailable)?;
+                fs::File::open(&self.path)
+                    .and_then(|directory| directory.sync_all())
+                    .map_err(|_| DelegationErrorV1::StorageUnavailable)?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let metadata = fs::symlink_metadata(&path)
+                    .map_err(|_| DelegationErrorV1::StorageUnavailable)?;
+                if linked(&metadata) || !metadata.is_file() || metadata.len() > 1024 * 1024 {
+                    return Err(DelegationErrorV1::PermissionDenied);
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::MetadataExt;
+                    if metadata.uid() != nix::unistd::geteuid().as_raw()
+                        || metadata.mode() & 0o077 != 0
+                        || metadata.nlink() != 1
+                    {
+                        return Err(DelegationErrorV1::PermissionDenied);
+                    }
+                }
+                let mut actual = Vec::new();
+                open_marker(&path)?
+                    .take(1024 * 1024 + 1)
+                    .read_to_end(&mut actual)
+                    .map_err(|_| DelegationErrorV1::StorageUnavailable)?;
+                if actual != contents {
+                    return Err(DelegationErrorV1::Conflict);
+                }
+            }
+            Err(_) => return Err(DelegationErrorV1::StorageUnavailable),
+        }
+        Ok(path)
     }
 }
 

@@ -2,6 +2,7 @@
 """Prepare the deterministic current ReleaseFacts bundle shipped with the client."""
 
 import argparse
+import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -215,8 +216,8 @@ def converge_preserved_registered_facts(registry, projection):
     profile["inventory_protocol_endpoint_id"] = chat["protocol_endpoint_id"]
 
 
-def converge_scanned_zhipu_facts(registry):
-    """Bind the exact Messages transport already recognized by Agent discovery."""
+def converge_scanned_zhipu_facts(registry, metadata):
+    """Preserve Messages and prefer the documented native Responses transport."""
     option = next(
         (value for value in registry["connection_options"]
          if value["connection_option_id"] == "zhipu.coding-plan.cn.v1"),
@@ -249,6 +250,51 @@ def converge_scanned_zhipu_facts(registry):
     # transport is Authorization Bearer, plus the standard version header for Messages.
     messages["authentication_semantics"] = {"kind": "bearer"}
     messages["required_headers"] = [["anthropic-version", "2023-06-01"]]
+    product = next(
+        value for value in metadata["access_products"]
+        if value["product_key"] == "zhipu-coding-cn"
+    )
+    interface = next(
+        value for value in product["interfaces"]
+        if value["interface_key"] == "zhipu-coding-cn/openai-responses"
+    )
+    source = next(
+        value for value in metadata["evidence_sources"]
+        if value["source_key"] == "source-125"
+    )
+    if {key: interface[key] for key in (
+        "interface_key", "protocol", "base_url", "request_path"
+    )} != {
+        "interface_key": "zhipu-coding-cn/openai-responses",
+        "protocol": "openai-responses",
+        "base_url": "https://open.bigmodel.cn/api/v1",
+        "request_path": "/responses",
+    } or source["locator"] != "https://docs.bigmodel.cn/cn/coding-plan/tool/codex" \
+            or source["source_key"] not in product["evidence_refs"]:
+        raise ValueError("Zhipu Coding Plan Responses source is not qualified")
+    responses = {
+        "protocol_endpoint_id": "endpoint.zhipu.coding-plan.cn.v1.responses",
+        "protocol": "responses",
+        "base_url": "https://open.bigmodel.cn",
+        "request_path": "/api/v1/responses",
+        "adapter_ref": "adapter.openai-responses.v1",
+        "adapter_revision": 1,
+        "stable_preference": 0,
+        "authentication_semantics": {"kind": "bearer"},
+    }
+    if any(value["protocol_endpoint_id"] == responses["protocol_endpoint_id"]
+           for value in profile["protocol_endpoints"]):
+        raise ValueError("preserved Zhipu registry unexpectedly contains Responses")
+    profile["protocol_endpoints"].append(responses)
+    for endpoint in profile["protocol_endpoints"]:
+        if endpoint is not responses:
+            endpoint["stable_preference"] += 1
+    profile["verification_evidence"] = digest_value([
+        profile["verification_evidence"], product["evidence_refs"], source["locator"]
+    ])
+    profile["last_verified_at"] = int(datetime.datetime.strptime(
+        source["collected_on"], "%Y-%m-%d"
+    ).replace(tzinfo=datetime.timezone.utc).timestamp())
 
 
 def compiler_input():
@@ -267,7 +313,7 @@ def compiler_input():
     model_data["data"]["connector_registry_version"] = PRODUCT_RELEASE
     apply_runtime_projection(registry, model_data, projection)
     converge_preserved_registered_facts(registry, projection)
-    converge_scanned_zhipu_facts(registry)
+    converge_scanned_zhipu_facts(registry, model_data["metadata_catalog"])
     templates = {value["connection_option_id"]: value for value in projection["connection_templates"]}
     for option in registry["connection_options"]:
         template = templates[option["connection_option_id"]]

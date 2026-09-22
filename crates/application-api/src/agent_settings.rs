@@ -1,10 +1,11 @@
 //! Wire confirmation for independent main-Agent settings.
 use hiroute_domain::CanonicalDigest;
 pub use hiroute_domain::{
-    AGENT_SETTINGS_SCHEMA_V2, AgentClaudePresetMappingsV2, AgentClaudePresetSelectionV2,
-    AgentClaudePresetValuesV2, AgentCollaborationSelectionV2, AgentCollaborationTriggerModeV2,
-    AgentFacetIntent, AgentFixedModelSelectionV2, AgentModelDefaultSelectionV2,
-    AgentModelSelectionV2, AgentModelSurfaceV2, AgentSettingsFacet, AgentSettingsSpecV2,
+    AGENT_SETTINGS_SCHEMA_V2, AgentAccessTokenIntentV1, AgentClaudePresetMappingsV2,
+    AgentClaudePresetSelectionV2, AgentClaudePresetValuesV2, AgentCollaborationSelectionV2,
+    AgentCollaborationTriggerModeV2, AgentFacetIntent, AgentFixedModelSelectionV2,
+    AgentModelDefaultSelectionV2, AgentModelSelectionV2, AgentModelSurfaceV2, AgentSettingsFacet,
+    AgentSettingsSpecV2, CodexNativeModelModeV2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -134,6 +135,9 @@ pub struct AgentModelSettingsStatusV2 {
     /// Present only while current managed configuration and authority agree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_selection: Option<AgentModelSelectionV2>,
+    /// Original Codex names whose fixed account/model bindings are sealed by the active setup.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub protected_native_model_ids: Vec<String>,
     /// Independent collaboration state. Older servers omit it instead of implying that model
     /// configuration also grants Worker authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -285,10 +289,12 @@ mod tests {
             live_check_targets: Vec::new(),
             model_verified: false,
             current_selection: Some(AgentModelSelectionV2::CodexDefault {
+                native_model_mode: hiroute_domain::CodexNativeModelModeV2::PreserveAvailable,
                 fixed_models: Vec::new(),
                 allowed_plan_ids: [AgentPlanId::parse("plan/test").unwrap()].into(),
                 default_selection: AgentModelDefaultSelectionV2::PreserveNative,
             }),
+            protected_native_model_ids: Vec::new(),
             collaboration: None,
         }
     }

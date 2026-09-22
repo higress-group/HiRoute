@@ -19,6 +19,7 @@ pub(super) enum ProtocolState {
     Responses {
         core: DecoderCore,
         tools: BTreeMap<u32, ResponsesToolIdentity>,
+        done_seen: bool,
     },
     Chat {
         core: DecoderCore,
@@ -61,6 +62,7 @@ impl ProtocolState {
             IngressProtocol::Responses => Self::Responses {
                 core: DecoderCore::new(owner, state_emission, tool_id_projection),
                 tools: BTreeMap::new(),
+                done_seen: false,
             },
             IngressProtocol::ChatCompletions => Self::Chat {
                 core: DecoderCore::new(owner, state_emission, tool_id_projection),
@@ -81,7 +83,21 @@ impl ProtocolState {
         output: &mut VecDeque<ModelStreamEventV1>,
     ) -> Result<(), ProtocolAdapterError> {
         match self {
-            Self::Responses { core, tools } => {
+            Self::Responses {
+                core,
+                tools,
+                done_seen,
+            } => {
+                if data == b"[DONE]" {
+                    if event_type.is_some() || !core.accumulator.terminal || *done_seen {
+                        return Err(ModelIrError::InvalidResponseLifecycle(
+                            "Responses [DONE] must follow one terminal event".into(),
+                        )
+                        .into());
+                    }
+                    *done_seen = true;
+                    return Ok(());
+                }
                 decode_responses_sse(core, tools, event_type, data, output)
             }
             Self::Chat {

@@ -45,6 +45,15 @@ def run(*args, cwd=REPO, env=None, timeout=None):
     return result.stdout.strip()
 
 
+def ensure_sccache_server():
+    try:
+        run("sccache", "--start-server")
+    except subprocess.CalledProcessError:
+        # A previous build may already own the server socket. Only proceed if
+        # the cache is actually reachable before acquiring the shared lock.
+        run("sccache", "--show-stats")
+
+
 def digest(path):
     value = hashlib.sha256()
     with path.open("rb") as stream:
@@ -378,7 +387,7 @@ def main():
         if args.command == "build":
             # Share the existing host lock with all managed Desktop builds and cleanup.
             # Start the cache server before children inherit the shared lock FDs.
-            run("sccache", "--show-stats")
+            ensure_sccache_server()
             local = module("desktop_package_local_rust", "local-rust.py")
             with local.Store().locked(REPO):
                 result = build(args)

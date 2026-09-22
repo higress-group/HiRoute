@@ -6,6 +6,8 @@ const port = Number(process.argv[2]);
 const baseUrl = process.argv[3];
 const outputRoot = path.resolve(process.argv[4]);
 const routeSaveOnly = process.argv[5] === '--route-save-only';
+const workerReplacementOnly = process.argv[5] === '--worker-replacement-only';
+const claudeCollaborationOnly = process.argv[5] === '--claude-collaboration-only';
 if (!Number.isInteger(port) || !baseUrl || !process.argv[4]) {
   throw new Error('Usage: node agent-trust-active.mjs <cdp-port> <base-url> <output-directory>');
 }
@@ -15,10 +17,10 @@ try {
   const client = await connectPage(port);
   try {
     const checks = [];
-    if (!routeSaveOnly) {
+    if (!routeSaveOnly && !workerReplacementOnly) {
       await navigate(client, new URL('agent-trust.html', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.agentTrust)', { timeout: 7000 });
-      const batches = [[0, 4], [4, 8]];
+      const batches = claudeCollaborationOnly ? [[11, 14]] : [[0, 5], [5, 10], [10, 17]];
       for (const [start, end] of batches) {
         const batch = await evaluate(client, `import('/agent-trust-scenarios.mjs').then(module => module.runAgentTrustScenarios(${start}, ${end}))`);
         checks.push(...batch.results);
@@ -27,14 +29,27 @@ try {
         }
       }
     }
-    await navigate(client, new URL('?page=routing&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
-    await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
-    const routing = await evaluate(client, routeSaveOnly
-      ? "import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios(5, 6))"
-      : "import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios())");
-    checks.push(...routing.results);
-    for (const item of routing.results) {
-      process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
+    if (!claudeCollaborationOnly) {
+      await navigate(client, new URL('?page=routing&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
+      await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
+      const routing = await evaluate(client, routeSaveOnly
+        ? "import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios(5, 6))"
+        : workerReplacementOnly
+          ? "import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios(3, 5))"
+          : "import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios())");
+      checks.push(...routing.results);
+      for (const item of routing.results) {
+        process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
+      }
+    }
+    if (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly) {
+      await navigate(client, new URL('?page=models&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
+      await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
+      const fromModel = await evaluate(client, "import('/model-to-route-scenarios.mjs').then(module => module.runModelToRouteScenarios())");
+      checks.push(...fromModel.results);
+      for (const item of fromModel.results) {
+        process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
+      }
     }
     const report = {
       generatedAt: new Date().toISOString(),

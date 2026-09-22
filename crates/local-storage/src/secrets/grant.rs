@@ -1,10 +1,10 @@
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use hiroute_domain::{
-    AgentAccessGrantMaterial, AgentAccessGrantMutationKindV1, AgentAccessGrantMutationV1,
-    AgentAccessGrantRefV1, AgentAccessGrantScopeV1, CanonicalDigest, CompensationOutcome,
-    EffectReconciliation, OperationId, OwnedEffectV1, PortErrorCode, PortResult,
-    is_agent_access_grant_effect,
+    AgentAccessGrantMaterial, AgentAccessGrantMaterialActionV1, AgentAccessGrantMutationKindV1,
+    AgentAccessGrantMutationV1, AgentAccessGrantRefV1, AgentAccessGrantScopeV1, CanonicalDigest,
+    CompensationOutcome, EffectReconciliation, OperationId, OwnedEffectV1, PortErrorCode,
+    PortResult, ProtectedSecret, is_agent_access_grant_effect,
 };
 use rusqlite::{Connection, TransactionBehavior, params};
 use serde_json::Value;
@@ -99,6 +99,7 @@ pub(super) fn apply(
     store: &LocalSecretStore,
     operation_id: &OperationId,
     mutation: &AgentAccessGrantMutationV1,
+    input: Option<&ProtectedSecret>,
 ) -> PortResult<OwnedEffectV1> {
     mutation.validate().map_err(|_| {
         port(
@@ -131,9 +132,10 @@ pub(super) fn apply(
     }
     let before_version =
         active_version(&transaction, before_head.as_ref(), mutation.connection_id())?;
-    if let Some(version) = &before_version {
-        authenticate_version(store, version)?;
-    }
+    let before_material = before_version
+        .as_ref()
+        .map(|version| authenticate_version(store, version).map(|(_, material)| material))
+        .transpose()?;
 
     let (action, after_generation, after_active, after_metadata) = match mutation.kind() {
         AgentAccessGrantMutationKindV1::Ensure => {
@@ -141,8 +143,54 @@ pub(super) fn apply(
                 port(PortErrorCode::InvalidData, "agent_access_grant.apply.scope")
             })?;
             let scope_hash = scope_digest(scope)?;
+            let selected_material = match mutation.material_action() {
+                AgentAccessGrantMaterialActionV1::Preserve => {
+                    if input.is_some() {
+                        return Err(port(
+                            PortErrorCode::InvalidData,
+                            "agent_access_grant.apply.unexpected_input",
+                        ));
+                    }
+                    None
+                }
+                AgentAccessGrantMaterialActionV1::Regenerate => {
+                    if input.is_some() || before_material.is_none() {
+                        return Err(port(
+                            PortErrorCode::InvalidData,
+                            "agent_access_grant.apply.regenerate",
+                        ));
+                    }
+                    Some(generate_material()?)
+                }
+                AgentAccessGrantMaterialActionV1::Set { fingerprint, .. } => {
+                    let input = input.ok_or_else(|| {
+                        port(PortErrorCode::NotFound, "agent_access_grant.apply.input")
+                    })?;
+                    if store.fingerprint_secret(input)? != *fingerprint {
+                        return Err(port(
+                            PortErrorCode::Conflict,
+                            "agent_access_grant.apply.input_fingerprint",
+                        ));
+                    }
+                    Some(
+                        AgentAccessGrantMaterial::from_user_input(input.expose().to_vec())
+                            .map_err(|_| {
+                                port(
+                                    PortErrorCode::InvalidData,
+                                    "agent_access_grant.apply.input_encoding",
+                                )
+                            })?,
+                    )
+                }
+            };
+            let same_material = selected_material.as_ref().is_none_or(|selected| {
+                before_material
+                    .as_ref()
+                    .is_some_and(|before| selected.expose() == before.expose())
+            });
             if let Some(before) = &before_version
                 && before.scope_hash == scope_hash.as_str()
+                && same_material
             {
                 (
                     "reuse",
@@ -161,7 +209,13 @@ pub(super) fn apply(
                     Some(version) => version.grant_id.clone(),
                     None => generate_grant_id()?,
                 };
-                let material = generate_material()?;
+                let material = match selected_material {
+                    Some(material) => material,
+                    None => match before_material {
+                        Some(material) => material,
+                        None => generate_material()?,
+                    },
+                };
                 let material_sha256 = material.sha256();
                 let scope_json = serde_json::to_string(scope).map_err(|_| {
                     port(

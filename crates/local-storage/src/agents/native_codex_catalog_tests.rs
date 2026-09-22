@@ -6,6 +6,13 @@ fn catalog() -> Vec<u8> {
 }
 
 fn catalog_intent(bytes: &[u8]) -> ExternalEffectIntentV1 {
+    catalog_intent_with_before(bytes, None)
+}
+
+fn catalog_intent_with_before(
+    bytes: &[u8],
+    before: Option<CanonicalDigest>,
+) -> ExternalEffectIntentV1 {
     let spec = ChangeSpecV1 {
         schema_version: hiroute_domain::CHANGE_SPEC_SCHEMA_V1,
         command_id: "agents.settings.apply".into(),
@@ -15,6 +22,7 @@ fn catalog_intent(bytes: &[u8]) -> ExternalEffectIntentV1 {
             "context_id":"agent-context/catalog",
             "model":{"intent":"configure","settings":{
                 "mode":"codex_default",
+                "native_model_mode":"preserve_available",
                 "fixed_models":[{"client_model_id":"native","candidate":{"binding_id":"binding/native"}}],
                 "allowed_plan_ids":[],"default_selection":{"kind":"preserve_native"}
             }},
@@ -37,7 +45,7 @@ fn catalog_intent(bytes: &[u8]) -> ExternalEffectIntentV1 {
     ExternalEffectIntentV1::from_agent_connection_planner(
         &control,
         AgentConnectionEffectRoleV1::ModelCatalog,
-        None,
+        before,
         &json!({
             "schema":"hiroute.codex-catalog-artifact/v1",
             "context_id":"agent-context/catalog",
@@ -52,6 +60,26 @@ fn catalog_intent(bytes: &[u8]) -> ExternalEffectIntentV1 {
         0o600,
     )
     .unwrap()
+}
+
+#[test]
+fn existing_identical_immutable_catalog_is_a_protected_no_change_reuse() {
+    let temp = crate::test_tempdir().unwrap();
+    let path = temp.path().join("catalog.json");
+    let bytes = catalog();
+    write(&path, &bytes);
+    let prototype = catalog_intent(&bytes);
+    let artifacts = store(temp.path(), prototype.target(), &path);
+    let before = artifacts
+        .current_external_fingerprint(prototype.target())
+        .unwrap();
+    assert!(before.is_some());
+    let intent = catalog_intent_with_before(&bytes, before);
+    let op = operation();
+    artifacts.save_native_restore(&op, &intent, &bytes).unwrap();
+    let effect = restage_codex_catalog(&artifacts, &op, &intent).unwrap();
+    artifacts.activate_artifact(&effect).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), bytes);
 }
 
 fn operation() -> OperationId {

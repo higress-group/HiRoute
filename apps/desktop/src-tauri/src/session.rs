@@ -715,10 +715,10 @@ impl Session {
         if result
             .as_ref()
             .is_some_and(|operation| terminal(&operation.state))
-            && self
-                .hint
-                .as_ref()
-                .is_some_and(|hint| hint.operation_kind == APPLY_COMPUTE_SAVE_OPERATION_V2)
+            && self.hint.as_ref().is_some_and(|hint| {
+                self.pending_model_inputs
+                    .contains_key(&hint.idempotency_key)
+            })
         {
             let idempotency_key = self
                 .hint

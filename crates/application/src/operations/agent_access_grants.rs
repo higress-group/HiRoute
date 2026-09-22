@@ -25,9 +25,31 @@ where
                 EffectReconciliation::Staged(effect) | EffectReconciliation::Applied(effect) => {
                     effect
                 }
-                EffectReconciliation::Missing => self
-                    .secrets
-                    .apply_agent_access_grant(&operation.operation_id, &mutation)?,
+                EffectReconciliation::Missing => {
+                    let input = mutation
+                        .material_action()
+                        .input()
+                        .map(|(slot, fingerprint)| {
+                            let input =
+                                self.protected_inputs.read_secret(slot).map_err(|error| {
+                                    if error.code == hiroute_domain::PortErrorCode::NotFound {
+                                        TransactionError::ProtectedInputUnavailable
+                                    } else {
+                                        TransactionError::Port(error)
+                                    }
+                                })?;
+                            if self.secrets.fingerprint(&input)? != *fingerprint {
+                                return Err(TransactionError::ChangePreviewStale);
+                            }
+                            Ok(input)
+                        })
+                        .transpose()?;
+                    self.secrets.apply_agent_access_grant(
+                        &operation.operation_id,
+                        &mutation,
+                        input.as_ref(),
+                    )?
+                }
                 EffectReconciliation::OwnershipLost(effect) => {
                     self.record_effect(operation, OperationStepKind::ApplySecrets, effect)?;
                     return Err(TransactionError::EffectOwnershipLost);

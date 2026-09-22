@@ -514,6 +514,7 @@ impl SecretStorePort for MemoryPorts {
         &self,
         operation_id: &OperationId,
         mutation: &hiroute_domain::AgentAccessGrantMutationV1,
+        _input: Option<&hiroute_domain::ProtectedSecret>,
     ) -> PortResult<OwnedEffectV1> {
         Ok(self.stage(
             operation_id,

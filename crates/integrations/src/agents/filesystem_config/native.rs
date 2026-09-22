@@ -46,6 +46,23 @@ pub(in crate::agents) fn render_claude_change_bytes(
         }
         apply_claude_semantic_value(&mut root, &field.path, field.after.as_ref())?;
     }
+    if change
+        .fields
+        .iter()
+        .any(|field| field.path == "apiKeyHelper" && field.after.is_some())
+        && root
+            .get("env")
+            .and_then(Value::as_object)
+            .is_some_and(|env| {
+                CLAUDE_AUTH_ENVIRONMENT_FIELDS
+                    .iter()
+                    .any(|name| env.contains_key(*name))
+            })
+    {
+        // A managed helper alongside a leftover user token creates Claude's dual-auth warning
+        // and can silently select the wrong credential. Never stage that native file.
+        return Err(AgentFilesystemScanError::InvalidDescriptor);
+    }
     let mut rendered = Zeroizing::new(
         serde_json::to_vec_pretty(&root).map_err(|_| AgentFilesystemScanError::InvalidConfig)?,
     );
@@ -125,7 +142,7 @@ pub(in crate::agents) fn claude_user_change_is_applied(
     claude_change_bytes_are_applied(&bytes, change)
 }
 
-pub(super) fn claude_change_bytes_are_applied(
+pub(in crate::agents) fn claude_change_bytes_are_applied(
     bytes: &[u8],
     change: &AgentConfigChangeV1,
 ) -> Result<bool, AgentFilesystemScanError> {
@@ -172,6 +189,23 @@ pub(super) fn claude_change_bytes_are_applied(
         if !applied {
             return Ok(false);
         }
+    }
+    // Absent original auth fields produce no semantic change field. If one is added later,
+    // Claude can prefer it over our helper even though every changed field still matches.
+    if change
+        .fields
+        .iter()
+        .any(|field| field.path == "apiKeyHelper" && field.after.is_some())
+        && object
+            .get("env")
+            .and_then(Value::as_object)
+            .is_some_and(|env| {
+                CLAUDE_AUTH_ENVIRONMENT_FIELDS
+                    .iter()
+                    .any(|name| env.contains_key(*name))
+            })
+    {
+        return Ok(false);
     }
     Ok(true)
 }
@@ -545,5 +579,15 @@ mod tests {
             serde_json::from_slice::<Value>(&restored).unwrap(),
             serde_json::from_slice::<Value>(&original).unwrap()
         );
+    }
+
+    #[test]
+    fn managed_claude_helper_cannot_leave_an_original_token_in_the_native_file() {
+        let original = br#"{"env":{"ANTHROPIC_AUTH_TOKEN":"must-not-survive"}}"#;
+        let document = claude_document_from_bytes(original).unwrap();
+        let mut desired = managed_values("hiroute/selected");
+        desired.remove("hiroute.auth_environment");
+        let unsafe_change = AgentConfigChangeV1::preview(&document, desired).unwrap();
+        assert!(render_claude_change_bytes(original, &unsafe_change).is_err());
     }
 }

@@ -281,6 +281,27 @@ fn configure_codex_base(
 }
 
 impl CodexNativeRestore {
+    /// Status follows the fields HiRoute wrote. Other native settings and TOML formatting
+    /// may change independently after the configuration Operation succeeds.
+    pub fn managed_fields_are_applied(&self, current: &str) -> bool {
+        let Ok(document) = parse(current) else {
+            return false;
+        };
+        self.fields
+            .iter()
+            .filter(|field| !field.passive_model)
+            .all(|field| {
+                let Some((key, parent)) = field.path.split_last() else {
+                    return false;
+                };
+                optional_table(&document, parent)
+                    .ok()
+                    .flatten()
+                    .and_then(|table| table.get(key))
+                    .is_some_and(|item| fingerprint(item) == field.after)
+            })
+    }
+
     fn owns_provider(&self, provider_id: &str) -> bool {
         [
             "name",
@@ -328,6 +349,37 @@ pub fn restore_codex_native(
     current: &str,
     restore: &CodexNativeRestore,
 ) -> Result<Zeroizing<String>, CodexNativeError> {
+    restore_codex_native_with_model(current, restore, None)
+}
+
+pub fn codex_explicit_model(text: &str) -> Result<Option<String>, CodexNativeError> {
+    Ok(parse(text)?
+        .get("model")
+        .and_then(Item::as_str)
+        .map(str::to_owned))
+}
+
+pub fn codex_explicit_reasoning_effort(text: &str) -> Result<Option<String>, CodexNativeError> {
+    parse(text)?
+        .get("model_reasoning_effort")
+        .map(|item| {
+            item.as_str()
+                .map(str::to_owned)
+                .ok_or(CodexNativeError::UnsupportedLayout)
+        })
+        .transpose()
+}
+
+/// Restore native ownership and, when explicitly chosen, set a model proven by the original
+/// catalog in the caller's preview. The same choice is rechecked by the daemon at Apply.
+pub fn restore_codex_native_with_model(
+    current: &str,
+    restore: &CodexNativeRestore,
+    native_model: Option<&str>,
+) -> Result<Zeroizing<String>, CodexNativeError> {
+    if native_model.is_some_and(|model| !valid_client_model_name(model)) {
+        return Err(CodexNativeError::InvalidIntent);
+    }
     let mut document = parse(current)?;
     let mut pending = Vec::new();
     for field in &restore.fields {
@@ -386,6 +438,19 @@ pub fn restore_codex_native(
                 .ok_or(CodexNativeError::UnsupportedLayout)?;
             table_at_mut(&mut document, parent)?.remove(key);
         }
+    }
+    if let Some(native_model) = native_model {
+        let field = restore
+            .fields
+            .iter()
+            .find(|field| field.path.last().is_some_and(|key| key == "model"))
+            .ok_or(CodexNativeError::UnsupportedLayout)?;
+        let (_, parent) = field
+            .path
+            .split_last()
+            .ok_or(CodexNativeError::UnsupportedLayout)?;
+        let table = table_at_mut(&mut document, parent)?;
+        table["model"] = toml_edit::value(native_model);
     }
     render_bounded(&document)
 }

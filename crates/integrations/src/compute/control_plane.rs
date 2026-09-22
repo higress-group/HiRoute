@@ -237,11 +237,18 @@ impl TrustedReleaseCatalog {
             .resolve_connection_option(&fact.connection_option_id)
             .map_err(ComputeControlPlaneError::Release)?;
         let model_data = self.model_data();
+        let messages_endpoint = resolved
+            .endpoint_profile
+            .protocol_endpoints
+            .iter()
+            .find(|endpoint| endpoint.protocol == UpstreamProtocol::Messages)
+            .ok_or(ComputeControlPlaneError::DiscoveryMismatch)?;
         let capability = unique(model_data.model_endpoint_capabilities.iter().filter(
             |capability| {
                 capability.endpoint_profile_id == fact.endpoint_profile_id
                     && capability.model_configuration_id == fact.model_configuration_id
                     && capability.upstream_model_id == fact.observed_model_id
+                    && capability.protocol_endpoint_id == messages_endpoint.protocol_endpoint_id
             },
         ))?;
         let offer = unique(model_data.offers.iter().filter(|offer| {
@@ -380,11 +387,18 @@ impl TrustedReleaseCatalog {
             .resolve_connection_option(&fact.connection_option_id)
             .map_err(ComputeControlPlaneError::Release)?;
         let model_data = self.model_data();
+        let messages_endpoint = resolved
+            .endpoint_profile
+            .protocol_endpoints
+            .iter()
+            .find(|endpoint| endpoint.protocol == UpstreamProtocol::Messages)
+            .ok_or(ComputeControlPlaneError::DiscoveryMismatch)?;
         let capability = unique(model_data.model_endpoint_capabilities.iter().filter(
             |capability| {
                 capability.endpoint_profile_id == fact.endpoint_profile_id
                     && capability.model_configuration_id == fact.model_configuration_id
                     && capability.upstream_model_id == fact.observed_model_id
+                    && capability.protocol_endpoint_id == messages_endpoint.protocol_endpoint_id
             },
         ))?;
         let offer = unique(model_data.offers.iter().filter(|offer| {

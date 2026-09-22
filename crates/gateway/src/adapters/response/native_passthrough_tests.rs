@@ -80,6 +80,46 @@ fn unit_json(unit: &NativeProjectedUnit) -> Value {
 }
 
 #[test]
+fn responses_native_done_tail_preserves_wire_and_certifies_one_terminal_at_eof() {
+    let created = sse(
+        Some("response.created"),
+        &json!({"type":"response.created","response":{"id":"resp","model":"physical","status":"in_progress"}}),
+    );
+    let answer = sse(
+        Some("response.output_item.done"),
+        &json!({"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK"}]}}),
+    );
+    let completed = sse(
+        Some("response.completed"),
+        &json!({"type":"response.completed","response":{"id":"resp","model":"physical","status":"completed","output":[{"type":"message","id":"msg","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK"}]}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}}),
+    );
+    let done = b"data: [DONE]\n\n";
+    let wire = [created, answer, completed, done.to_vec()].concat();
+
+    for fragment in [1, 7, wire.len()] {
+        let mut projector = projector(IngressProtocol::Responses, true);
+        let mut units = feed_fragmented(&mut projector, &wire, fragment);
+        units.extend(projector.feed(&[], true).unwrap());
+        assert_eq!(units.len(), 5);
+        assert_eq!(unit_json(&units[2])["response"]["model"], "alias");
+        assert_eq!(units[3].bytes, done);
+        assert!(units[..4].iter().all(|unit| unit.terminal.is_none()));
+        assert!(units[4].bytes.is_empty());
+        assert_eq!(units[4].terminal, Some(NativeTerminalOutcome::Complete));
+        assert_eq!(projector.usage().input_tokens, Some(5));
+    }
+
+    let mut duplicate = projector(IngressProtocol::Responses, true);
+    assert!(
+        duplicate
+            .feed(&[wire, done.to_vec()].concat(), true)
+            .is_err()
+    );
+    let mut missing_terminal = projector(IngressProtocol::Responses, true);
+    assert!(missing_terminal.feed(done, true).is_err());
+}
+
+#[test]
 fn responses_stream_preserves_unknown_wire_and_rewrites_only_owned_paths() {
     let unknown = b"event: response.vendor_extension\nid: opaque\ndata: {\"type\":\"response.vendor_extension\",\"model\":\"nested-untouched\",\"x\":7}\n\n";
     let created = json!({
@@ -111,7 +151,8 @@ fn responses_stream_preserves_unknown_wire_and_rewrites_only_owned_paths() {
 
     for fragment in [1, 7, wire.len()] {
         let mut projector = projector(IngressProtocol::Responses, true);
-        let units = feed_fragmented(&mut projector, &wire, fragment);
+        let mut units = feed_fragmented(&mut projector, &wire, fragment);
+        units.extend(projector.feed(&[], true).unwrap());
         assert_eq!(units[0].bytes, unknown);
         let created = unit_json(&units[1]);
         assert_eq!(created["response"]["model"], "alias");
@@ -140,7 +181,6 @@ fn responses_stream_preserves_unknown_wire_and_rewrites_only_owned_paths() {
             Some(NativeTerminalOutcome::Complete)
         );
         assert_eq!(projector.usage().input_tokens, Some(5));
-        projector.feed(&[], true).unwrap();
     }
 }
 
@@ -169,15 +209,17 @@ fn responses_provider_state_can_advance_before_terminal() {
     .concat();
 
     let mut projector = projector(IngressProtocol::Responses, true);
-    let units = feed_fragmented(&mut projector, &wire, 1);
-    assert_eq!(units.len(), 3);
+    let mut units = feed_fragmented(&mut projector, &wire, 1);
+    units.extend(projector.feed(&[], true).unwrap());
+    assert_eq!(units.len(), 4);
     assert_eq!(unit_json(&units[0])["item"]["encrypted_content"], "initial");
     assert_eq!(unit_json(&units[1])["item"]["encrypted_content"], "final");
     assert_eq!(
         unit_json(&units[2])["response"]["output"][0]["encrypted_content"],
         "final"
     );
-    assert_eq!(units[2].terminal, Some(NativeTerminalOutcome::Complete));
+    assert_eq!(units[2].terminal, None);
+    assert_eq!(units[3].terminal, Some(NativeTerminalOutcome::Complete));
 }
 
 #[test]
@@ -214,7 +256,8 @@ fn responses_hosted_search_identity_is_trusted_in_native_stream_and_snapshot() {
     ]
     .concat();
     let mut stream = projector(IngressProtocol::Responses, true);
-    let units = feed_fragmented(&mut stream, &wire, 3);
+    let mut units = feed_fragmented(&mut stream, &wire, 3);
+    units.extend(stream.feed(&[], true).unwrap());
     let logical = unit_json(&units[1])["item"]["id"]
         .as_str()
         .unwrap()
@@ -223,8 +266,8 @@ fn responses_hosted_search_identity_is_trusted_in_native_stream_and_snapshot() {
     assert_eq!(unit_json(&units[2])["item_id"], logical);
     assert_eq!(unit_json(&units[3])["item"]["id"], logical);
     assert_eq!(unit_json(&units[4])["response"]["output"][0]["id"], logical);
-    assert_eq!(units[4].terminal, Some(NativeTerminalOutcome::Complete));
-    stream.feed(&[], true).unwrap();
+    assert_eq!(units[4].terminal, None);
+    assert_eq!(units[5].terminal, Some(NativeTerminalOutcome::Complete));
 
     let mut document = projector(IngressProtocol::Responses, false);
     let body = serde_json::to_vec(&terminal["response"]).unwrap();
@@ -370,9 +413,9 @@ fn native_control_only_stream_has_no_semantic_output_even_with_a_valid_terminal(
     wire.extend(terminal);
     let mut projector = projector(IngressProtocol::Responses, true);
     let units = projector.feed(&wire, true).unwrap();
-    assert_eq!(units.len(), 3);
+    assert_eq!(units.len(), 4);
     assert!(units.iter().all(|unit| !unit.semantic));
-    assert_eq!(units[2].terminal, Some(NativeTerminalOutcome::Complete));
+    assert_eq!(units[3].terminal, Some(NativeTerminalOutcome::Complete));
 }
 
 #[test]
@@ -395,8 +438,11 @@ fn opaque_extension_and_control_tail_keep_wire_without_certifying_completion() {
     assert_eq!(units[0].bytes, opaque);
     assert_eq!(units[2].bytes, b": trailing heartbeat\n\n");
     assert_eq!(units[1].terminal, None);
-    assert_eq!(units[2].terminal, Some(NativeTerminalOutcome::Unknown));
-    stream.feed(&[], true).unwrap();
+    assert_eq!(units[2].terminal, None);
+    assert_eq!(
+        stream.feed(&[], true).unwrap()[0].terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 
     let mut late_content = projector(IngressProtocol::Responses, true);
     let wire = [
@@ -421,8 +467,11 @@ fn opaque_extension_and_control_tail_keep_wire_without_certifying_completion() {
     let units = late_content.feed(&wire, false).unwrap();
     assert_eq!(units[0].terminal, None);
     assert_eq!(unit_json(&units[1])["delta"], "late");
-    assert_eq!(units[1].terminal, Some(NativeTerminalOutcome::Unknown));
-    late_content.feed(&[], true).unwrap();
+    assert_eq!(units[1].terminal, None);
+    assert_eq!(
+        late_content.feed(&[], true).unwrap()[0].terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 }
 
 #[test]
@@ -448,8 +497,11 @@ fn terminal_waits_for_a_split_legal_sse_tail_before_closing_the_wire() {
     let after_tail = stream.feed(&tail[split..], false).unwrap();
     assert_eq!(after_tail.len(), 1);
     assert_eq!(after_tail[0].bytes, tail);
-    assert_eq!(after_tail[0].terminal, Some(NativeTerminalOutcome::Unknown));
-    stream.feed(&[], true).unwrap();
+    assert_eq!(after_tail[0].terminal, None);
+    assert_eq!(
+        stream.feed(&[], true).unwrap()[0].terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 }
 
 #[test]
@@ -469,7 +521,8 @@ fn native_sse_keeps_unrecognized_data_prefixed_fields_as_opaque_metadata() {
         .feed(&[extension.as_slice(), &terminal].concat(), true)
         .unwrap();
     assert_eq!(units[0].bytes, extension);
-    assert_eq!(units[1].terminal, Some(NativeTerminalOutcome::Complete));
+    assert_eq!(units[1].terminal, None);
+    assert_eq!(units[2].terminal, Some(NativeTerminalOutcome::Complete));
 }
 
 #[test]
@@ -492,7 +545,10 @@ fn native_inconsistent_descriptions_pass_wire_but_never_certify_complete() {
     );
     let units = responses.feed(&[added, terminal].concat(), true).unwrap();
     assert_eq!(unit_json(&units[0])["item"]["id"], "output");
-    assert_eq!(units[1].terminal, Some(NativeTerminalOutcome::Unknown));
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 
     let mut added_identity = projector(IngressProtocol::Responses, true);
     let events = [
@@ -515,7 +571,10 @@ fn native_inconsistent_descriptions_pass_wire_but_never_certify_complete() {
     ]
     .concat();
     let units = added_identity.feed(&events, true).unwrap();
-    assert_eq!(units[1].terminal, Some(NativeTerminalOutcome::Unknown));
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 
     let mut mismatched_status = projector(IngressProtocol::Responses, true);
     let event = sse(
@@ -528,7 +587,10 @@ fn native_inconsistent_descriptions_pass_wire_but_never_certify_complete() {
         }),
     );
     let units = mismatched_status.feed(&event, true).unwrap();
-    assert_eq!(units[0].terminal, Some(NativeTerminalOutcome::Unknown));
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
     assert_eq!(unit_json(&units[0])["response"]["status"], "incomplete");
 
     let mut mismatched_event_field = projector(IngressProtocol::Responses, true);
@@ -542,7 +604,10 @@ fn native_inconsistent_descriptions_pass_wire_but_never_certify_complete() {
         }),
     );
     let units = mismatched_event_field.feed(&event, true).unwrap();
-    assert_eq!(units[0].terminal, Some(NativeTerminalOutcome::Unknown));
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
     assert_eq!(
         unit_json(&units[0])["response"]["output"][0]["content"][0]["text"],
         "kept"
@@ -568,7 +633,10 @@ fn native_inconsistent_descriptions_pass_wire_but_never_certify_complete() {
     .concat();
     let units = early_progress.feed(&events, true).unwrap();
     assert_eq!(unit_json(&units[0])["item_id"], "native");
-    assert_eq!(units[1].terminal, Some(NativeTerminalOutcome::Unknown));
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 
     let mut messages = projector(IngressProtocol::Messages, true);
     let conflicting = [

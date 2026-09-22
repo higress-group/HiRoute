@@ -319,8 +319,8 @@ fn request_content_refs(
         }
     }
     for history in request.responses_reasoning_history.values() {
-        for part in &history.summary {
-            collect_string_ref(Some(&part.text), &mut refs);
+        for value in history.native_fields.values() {
+            collect_json_ref(value, ReplacementEncoding::RawJson, &mut refs);
         }
     }
     for tool in &request.tools {

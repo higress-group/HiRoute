@@ -1,13 +1,39 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readableEvent, excerpt, excerptAround, groupToolEvents, summarizeToolArguments } from '../src/features/session-content.ts';
+import { readableEvent, excerpt, excerptAround, groupToolEvents, summarizeToolArguments, contentDisplayRuns, coalesceResponseText, isPrivateContentKind, isTechnicalContentKind } from '../src/features/session-content.ts';
 const media = 'application/vnd.hiroute.model-stream-event+json;version=1';
 const encode = event => JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence: 1, event });
 test('canonical text is read only from the declared response media type', () => {
  const raw = encode({ kind: 'text_delta', index: 0, text: '<script>hello</script>' });
- assert.deepEqual(readableEvent(raw, media, 'response_delivered'), { kind: 'text', text: '<script>hello</script>' });
+ assert.deepEqual(readableEvent(raw, media, 'response_delivered'), { kind: 'text', text: '<script>hello</script>', sequence: 1, index: 0, phase: 'delta' });
  assert.equal(readableEvent(raw, 'text/plain', 'response_delivered'), null);
  assert.equal(readableEvent(raw, media, 'request_input'), null);
+});
+test('technical context is grouped without moving or hiding user turns', () => {
+ assert.deepEqual(contentDisplayRuns([{role:'system'},{role:'developer'},{role:'user'},{role:'tool_definition'},{role:'assistant'}]), [
+  {start:0,end:2,technical:true}, {start:2,end:3,technical:false}, {start:3,end:4,technical:true}, {start:4,end:5,technical:false},
+ ]);
+ assert.deepEqual(contentDisplayRuns([{role:'user'},{role:'assistant'}]), [{start:0,end:2,technical:false}]);
+ assert.deepEqual(contentDisplayRuns([]), []);
+ assert.deepEqual(contentDisplayRuns([{role:'assistant',technical:true},{role:'assistant',technical:false}]), [{start:0,end:1,technical:true},{start:1,end:2,technical:false}]);
+});
+test('canonical kinds keep provider state and reasoning private while classifying tool fields', () => {
+ assert.equal(isPrivateContentKind('provider_state'), true);
+ assert.equal(isPrivateContentKind('reasoning_delta'), true);
+ assert.equal(isPrivateContentKind('reasoning_finished'), true);
+ assert.equal(isPrivateContentKind('text'), false);
+ assert.equal(isTechnicalContentKind('tool_call_arguments'), true);
+ assert.equal(isTechnicalContentKind('tool_result_text'), true);
+ assert.equal(isTechnicalContentKind('message_name'), true);
+ assert.equal(isTechnicalContentKind('text'), false);
+});
+test('delta fragments are contiguous and a finished snapshot replaces them once', () => {
+ const parse = (sequence, kind, text, index = 0) => readableEvent(JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence, event: { kind, index, text } }), media, 'response_delivered');
+ const fragments = [parse(3, 'text_delta', 'R-'), parse(1, 'text_delta', 'HI'), parse(4, 'text_delta', 'OK'), parse(2, 'text_delta', '-')];
+ assert.deepEqual(coalesceResponseText(fragments), [{ kind: 'text', index: 0, text: 'HI-R-OK' }]);
+ assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', 'HIR-TOOL-OK-SEP21')]), [{ kind: 'text', index: 0, text: 'HIR-TOOL-OK-SEP21' }]);
+ assert.deepEqual(coalesceResponseText([parse(5, 'text_finished', 'Only final')]), [{ kind: 'text', index: 0, text: 'Only final' }]);
+ assert.deepEqual(coalesceResponseText([parse(1, 'reasoning_finished', 'private'), parse(2, 'refusal_finished', 'Cannot do that')]), [{ kind: 'refusal', index: 0, text: 'Cannot do that' }]);
 });
 test('tool identity keeps namespace and distinguishes arguments from execution results', () => {
  const start = readableEvent(encode({ kind: 'tool_call_started', logical_id: 'call/1', namespace: 'math', name: 'add' }), media, 'response_delivered');

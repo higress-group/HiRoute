@@ -9,6 +9,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(here, '../../..');
 const outputRoot = path.resolve(process.argv[2] ?? path.join(desktopRoot, 'test-results/v3-agent-trust'));
 const routeSaveOnly = process.argv[3] === '--route-save-only';
+const workerReplacementOnly = process.argv[3] === '--worker-replacement-only';
+const claudeCollaborationOnly = process.argv[3] === '--claude-collaboration-only';
 
 const availablePort = () => new Promise((resolve, reject) => {
   const server = net.createServer();
@@ -61,7 +63,7 @@ try {
   const chromeExecutable = process.env.CHROME_BIN || (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome');
   chrome = spawn(chromeExecutable, ['--headless=new', '--disable-gpu', `--remote-debugging-port=${cdpPort}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1280,900', 'about:blank'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   await waitFor(`http://127.0.0.1:${cdpPort}/json/version`);
-  const runner = spawn(process.execPath, [path.join(here, 'agent-trust-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...(routeSaveOnly ? ['--route-save-only'] : [])], { cwd: desktopRoot, stdio: 'inherit' });
+  const runner = spawn(process.execPath, [path.join(here, 'agent-trust-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...(routeSaveOnly ? ['--route-save-only'] : workerReplacementOnly ? ['--worker-replacement-only'] : claudeCollaborationOnly ? ['--claude-collaboration-only'] : [])], { cwd: desktopRoot, stdio: 'inherit' });
   const outcome = await waitForExit(runner);
   if (outcome.code !== 0) process.exitCode = outcome.code ?? 1;
 } finally {

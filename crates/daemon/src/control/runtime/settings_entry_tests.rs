@@ -8,15 +8,20 @@ use hiroute_application::{
     control::{AgentConnectionControlPort, ControlReadError},
 };
 use hiroute_application_api::{self as api, LocalControlWireRequestV2};
+use hiroute_gateway::server::{
+    dispatch::{DispatchError, GatewayRequestAuthority},
+    publication::GatewayPublicationInstaller,
+    request_plan::IngressProtocol,
+};
 use hiroute_integrations::{
     AgentFilesystemLayoutV1, ClaudeRegistrationIndexV1, FilesystemAgentScannerV1,
 };
 use std::sync::Arc;
 
 #[test]
-fn v2_settings_preview_does_not_version_gate_codex_catalog() {
+fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() {
     if crate::test_support::isolated_agent_home(
-        "control::runtime::native_model::tests::settings_entry_tests::v2_settings_preview_does_not_version_gate_codex_catalog",
+        "control::runtime::native_model::tests::settings_entry_tests::v2_settings_first_save_without_native_probe_and_reenable_identical_catalog",
     ) {
         return;
     }
@@ -87,7 +92,7 @@ fn v2_settings_preview_does_not_version_gate_codex_catalog() {
         })
         .unwrap();
     let spec = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"configure","settings":{
-        "mode":"codex_default","fixed_models":[],
+        "mode":"codex_default","native_model_mode":"hiroute_only","fixed_models":[],
         "allowed_plan_ids":[plan.agent_plan_id],
         "default_selection":{"kind":"plan","plan_id":plan.agent_plan_id}}}});
     for operation in [
@@ -115,15 +120,10 @@ fn v2_settings_preview_does_not_version_gate_codex_catalog() {
     assert!(unproven.error.is_none(), "{unproven:?}");
     assert_eq!(
         unproven.data.unwrap()["applicable"],
-        false,
-        "printing a version is not native authentication proof"
+        true,
+        "Codex configuration safety is independent of the optional native HTTP diagnostic"
     );
-    let service = LocalControlDaemon::new(ApplicationService::new(
-        runtime
-            .application_ports()
-            .with_agent_connection(Arc::new(FixtureFacts::model(runtime.adapter.clone()))),
-    ));
-    let preview = service.dispatch_wire(request(
+    let preview = ordinary.dispatch_wire(request(
         "PreviewAgentConnectionChange",
         json!({"spec":spec}),
         None,
@@ -136,6 +136,29 @@ fn v2_settings_preview_does_not_version_gate_codex_catalog() {
     );
     assert!(preview["blockers"].as_array().is_some_and(Vec::is_empty));
     assert_eq!(fs::read(&path).unwrap(), before);
+
+    // HiRoute-only routing does not claim Codex's original subscription models, even when
+    // Codex has a native auth file. Its selected Plan alone is the published catalog.
+    let auth = path.parent().unwrap().join("auth.json");
+    fs::write(&path, b"").unwrap();
+    fs::write(&auth, b"{}").unwrap();
+    fs::set_permissions(&auth, fs::Permissions::from_mode(0o600)).unwrap();
+    let empty_with_auth = ordinary.dispatch_wire(request(
+        "PreviewAgentConnectionChange",
+        json!({"spec":spec}),
+        None,
+    ));
+    assert!(empty_with_auth.error.is_none(), "{empty_with_auth:?}");
+    let empty_with_auth = empty_with_auth.data.unwrap();
+    assert_eq!(empty_with_auth["applicable"], true);
+    assert!(
+        empty_with_auth["blockers"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+    assert_eq!(fs::read(&path).unwrap(), b"");
+    fs::remove_file(&auth).unwrap();
+    fs::write(&path, before).unwrap();
     assert!(
         runtime
             .adapter
@@ -149,18 +172,29 @@ fn v2_settings_preview_does_not_version_gate_codex_catalog() {
     let native_alias = format!("model = {alias:?}\nuser_option = true\n");
     fs::write(&path, &native_alias).unwrap();
     let mut preserve = spec.clone();
+    preserve["model"]["settings"]["native_model_mode"] = json!("preserve_available");
     preserve["model"]["settings"]["default_selection"] = json!({"kind":"preserve_native"});
-    let preserved = service.dispatch_wire(request(
+    let preserved = ordinary.dispatch_wire(request(
         "PreviewAgentConnectionChange",
         json!({"spec":preserve.clone()}),
         None,
     ));
     assert!(preserved.error.is_none(), "{preserved:?}");
-    assert_eq!(preserved.data.unwrap()["applicable"], true);
+    let preserved = preserved.data.unwrap();
+    assert_eq!(preserved["applicable"], false);
+    assert!(
+        preserved["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|block| {
+                block["reason"] == "native_default_invalid" && block["model_ids"] == json!([alias])
+            })
+    );
     assert_eq!(fs::read_to_string(&path).unwrap(), native_alias);
 
     fs::write(&path, "model = 'hiroute-unpublished'\nuser_option = true\n").unwrap();
-    let rejected = service.dispatch_wire(request(
+    let rejected = ordinary.dispatch_wire(request(
         "PreviewAgentConnectionChange",
         json!({"spec":preserve}),
         None,
@@ -169,6 +203,277 @@ fn v2_settings_preview_does_not_version_gate_codex_catalog() {
     let rejected = rejected.data.unwrap();
     assert_eq!(rejected["applicable"], false);
     assert_eq!(rejected["blockers"][0]["reason"], "model_plan_unavailable");
+
+    // Use the real daemon, planner, external guard, artifact store and native config renderer.
+    // Repeated saves can carry different producer observations; a restored scope with the
+    // unchanged baseline must reuse the original content-addressed artifact.
+    fs::write(&path, before).unwrap();
+    let first = apply(&ordinary, &runtime, spec.clone(), "catalog-first");
+    let first_operation = OperationId::parse(first["operation_id"].as_str().unwrap()).unwrap();
+    let catalog_for = |operation_id: &OperationId| {
+        let stores = runtime.adapter.stores_lock().unwrap();
+        let operation = stores
+            .control()
+            .load_operation(operation_id)
+            .unwrap()
+            .unwrap();
+        operation
+            .plan
+            .external()
+            .iter()
+            .find(|intent| is_settings_codex_catalog(intent))
+            .unwrap()
+            .target()
+            .to_owned()
+    };
+    let catalog_target = catalog_for(&first_operation);
+    let artifact_path = runtime
+        .adapter
+        .artifacts
+        .native_target_path(&catalog_target)
+        .unwrap();
+    let catalog_bytes = fs::read(&artifact_path).unwrap();
+    assert_eq!(
+        fs::read_to_string(&path)
+            .unwrap()
+            .matches("# keep me")
+            .count(),
+        1
+    );
+    let same = apply(&ordinary, &runtime, spec.clone(), "catalog-same");
+    let same_operation = OperationId::parse(same["operation_id"].as_str().unwrap()).unwrap();
+    let repeated_path = runtime
+        .adapter
+        .artifacts
+        .native_target_path(&catalog_for(&same_operation))
+        .unwrap();
+    assert_eq!(fs::read(&repeated_path).unwrap(), catalog_bytes);
+    assert_eq!(fs::read(&artifact_path).unwrap(), catalog_bytes);
+    let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
+        "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&same_operation)}});
+    apply(&ordinary, &runtime, restore, "catalog-disable");
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert_eq!(fs::read(&artifact_path).unwrap(), catalog_bytes);
+    let protected_config = fs::read(&path).unwrap();
+    let pending = ordinary.dispatch_wire(request(
+        "PreviewAgentConnectionChange",
+        json!({"spec":spec}),
+        None,
+    ));
+    assert!(pending.error.is_none(), "{pending:?}");
+    let pending = pending.data.unwrap();
+    assert_eq!(pending["applicable"], true);
+    assert_eq!(pending["resident_service"]["login_item_required"], false);
+    fs::write(&artifact_path, b"outside edit").unwrap();
+    let stale = ordinary.dispatch_wire(request(
+        "ApplyAgentConnectionChange",
+        json!({
+            "spec":spec, "accept_digest":pending["accept_digest"],
+            "dependency_digest":pending["dependency_digest"],
+            "expected_revisions":pending["expected_revisions"],
+            "idempotency_key":"catalog-drift",
+        }),
+        None,
+    ));
+    assert_eq!(
+        stale.error.unwrap().code,
+        api::ErrorCode::ChangePreviewStale
+    );
+    assert_eq!(fs::read(&artifact_path).unwrap(), b"outside edit");
+    assert_eq!(fs::read(&path).unwrap(), protected_config);
+    fs::write(&artifact_path, &catalog_bytes).unwrap();
+    let again = apply(&ordinary, &runtime, spec.clone(), "catalog-enable-again");
+    let again_operation = OperationId::parse(again["operation_id"].as_str().unwrap()).unwrap();
+    assert_eq!(catalog_for(&again_operation), catalog_target);
+    assert_eq!(fs::read(&artifact_path).unwrap(), catalog_bytes);
+    assert_eq!(
+        fs::read_to_string(&path)
+            .unwrap()
+            .matches("# keep me")
+            .count(),
+        1
+    );
+    let configured = fs::read_to_string(&path).unwrap();
+    fs::write(&path, format!("{configured}unrelated_native = true\n")).unwrap();
+    apply(
+        &ordinary,
+        &runtime,
+        json!({"schema_version":{"major":2,"minor":0},"context_id":context,
+        "model":{"intent":"configure","settings":{"mode":"codex_default","native_model_mode":"hiroute_only","fixed_models":[],
+        "allowed_plan_ids":[plan.agent_plan_id],"default_selection":{"kind":"plan","plan_id":plan.agent_plan_id}}}}),
+        "catalog-preserve-unrelated",
+    );
+    assert!(
+        fs::read_to_string(&path)
+            .unwrap()
+            .contains("unrelated_native = true")
+    );
+
+    // This same wire entry replaces the token without changing the Codex model binding.
+    // The old credential must disappear from both the secret store and Gateway publication.
+    let connection_id = format!("agent-connection/{context}");
+    let previous_ref = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .secrets()
+        .inspect_agent_access_grant(WorkspaceId::DEFAULT, &connection_id)
+        .unwrap()
+        .unwrap();
+    let previous_material = runtime
+        .adapter
+        .resolve_active_agent_grant(&connection_id)
+        .unwrap();
+    let gateway_auth = |token: &[u8]| {
+        let gateway = Arc::new(
+            GatewayPublicationInstaller::open(root.path().join("gateway-lkg.json")).unwrap(),
+        );
+        let bearer = format!("Bearer {}", std::str::from_utf8(token).unwrap());
+        GatewayRequestAuthority::new(gateway)
+            .begin(IngressProtocol::Responses, Some(&bearer))
+            .map(|_| ())
+    };
+    let candidate = api::ComputeCandidateRefV2 {
+        candidate_ref: "candidate/native/agent-token-settings-entry".into(),
+        candidate_revision: 1,
+    };
+    let custom_token = "0123456789abcdef-Custom.Token_~";
+    runtime
+        .register_manual_protected_input(
+            candidate.clone(),
+            hiroute_domain::ProtectedSecret::new(custom_token.as_bytes().to_vec()).unwrap(),
+        )
+        .unwrap();
+    assert!(
+        runtime
+            .adapter
+            .manual_protected_inputs
+            .lock()
+            .unwrap()
+            .is_empty()
+    );
+    let mut custom_spec = spec.clone();
+    custom_spec["access_token"] = json!({"intent":"set","input_slot":candidate.candidate_ref});
+    let custom = apply(&ordinary, &runtime, custom_spec, "catalog-custom-token");
+    let custom_material = runtime
+        .adapter
+        .resolve_active_agent_grant(&connection_id)
+        .unwrap();
+    assert_eq!(custom_material.expose(), custom_token.as_bytes());
+    assert_ne!(custom_material.sha256(), previous_material.sha256());
+    assert!(gateway_auth(custom_material.expose()).is_ok());
+    assert!(matches!(
+        gateway_auth(previous_material.expose()),
+        Err(DispatchError::Unauthorized)
+    ));
+    let custom_ref = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .secrets()
+        .inspect_agent_access_grant(WorkspaceId::DEFAULT, &connection_id)
+        .unwrap()
+        .unwrap();
+    assert!(
+        runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .secrets()
+            .resolve_agent_access_grant(&previous_ref)
+            .is_err()
+    );
+    let published = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .active_publication(&WorkspaceId::default())
+        .unwrap()
+        .unwrap()
+        .verify()
+        .unwrap();
+    assert!(published.grants.iter().any(|grant| {
+        grant.grant_id == custom_ref.grant_id()
+            && grant.bearer_token_sha256 == custom_material.sha256()
+    }));
+    assert!(
+        !published
+            .grants
+            .iter()
+            .any(|grant| grant.bearer_token_sha256 == previous_material.sha256())
+    );
+    let custom_operation = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .load_operation(&OperationId::parse(custom["operation_id"].as_str().unwrap()).unwrap())
+        .unwrap()
+        .unwrap();
+    assert!(
+        !serde_json::to_string(&custom_operation)
+            .unwrap()
+            .contains(custom_token)
+    );
+    runtime
+        .release_manual_protected_input(&candidate.candidate_ref)
+        .unwrap();
+
+    let mut regenerated_spec = spec;
+    regenerated_spec["access_token"] = json!({"intent":"regenerate"});
+    apply(
+        &ordinary,
+        &runtime,
+        regenerated_spec,
+        "catalog-regenerate-token",
+    );
+    let regenerated = runtime
+        .adapter
+        .resolve_active_agent_grant(&connection_id)
+        .unwrap();
+    assert_ne!(regenerated.sha256(), custom_material.sha256());
+    assert!(gateway_auth(regenerated.expose()).is_ok());
+    assert!(matches!(
+        gateway_auth(custom_material.expose()),
+        Err(DispatchError::Unauthorized)
+    ));
+    let republished = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .active_publication(&WorkspaceId::default())
+        .unwrap()
+        .unwrap()
+        .verify()
+        .unwrap();
+    assert!(
+        republished
+            .grants
+            .iter()
+            .any(|grant| grant.bearer_token_sha256 == regenerated.sha256())
+    );
+    assert!(
+        !republished
+            .grants
+            .iter()
+            .any(|grant| grant.bearer_token_sha256 == custom_material.sha256())
+    );
+    assert!(
+        runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .secrets()
+            .resolve_agent_access_grant(&custom_ref)
+            .is_err()
+    );
+    assert!(
+        fs::read_to_string(&path)
+            .unwrap()
+            .contains(std::str::from_utf8(regenerated.expose()).unwrap())
+    );
 }
 
 #[test]
@@ -258,7 +563,7 @@ fn exercise_settings_entry() {
         })
         .unwrap();
     let spec = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"configure","settings":{
-        "mode":"codex_default","fixed_models":[],
+        "mode":"codex_default","native_model_mode":"hiroute_only","fixed_models":[],
         "allowed_plan_ids":[plan.agent_plan_id],
         "default_selection":{"kind":"plan","plan_id":plan.agent_plan_id}}}});
     for operation in [
@@ -295,9 +600,7 @@ fn exercise_settings_entry() {
     assert_eq!(checked.data.unwrap()["model_verified"], false);
     assert_eq!(fs::read(&path).unwrap(), b"# keep me\nuser_option = true\n");
     let service = ordinary;
-    // The first resident-service connection: the preview announces the login item, an apply
-    // without the host's declaration stays service_unavailable, and the sealed operation
-    // journals the declared before/after as a LoginItem owned effect.
+    // The first model connection does not need a host login-item declaration.
     let guard_preview = service.dispatch_wire(request(
         "PreviewAgentConnectionChange",
         json!({"spec":spec}),
@@ -307,22 +610,7 @@ fn exercise_settings_entry() {
     let guard_preview = guard_preview.data.unwrap();
     assert_eq!(
         guard_preview["resident_service"]["login_item_required"],
-        true
-    );
-    let guard_key = "settings-login-item-guard";
-    let guard_payload = json!({
-        "spec":spec,
-        "accept_digest":guard_preview["accept_digest"],
-        "dependency_digest":guard_preview["dependency_digest"],
-        "expected_revisions":guard_preview["expected_revisions"],
-        "idempotency_key":guard_key,
-    });
-    let rejected =
-        service.dispatch_wire(request("ApplyAgentConnectionChange", guard_payload, None));
-    assert_eq!(
-        rejected.error.unwrap().code,
-        api::ErrorCode::GatewayUnavailable,
-        "a first resident-service connection without a host login-item declaration cannot complete"
+        false
     );
     let first = apply(&service, &runtime, spec.clone(), "settings-first");
     let operation = runtime
@@ -335,21 +623,13 @@ fn exercise_settings_entry() {
         )
         .unwrap()
         .unwrap();
-    let login_effect = operation
-        .steps
-        .iter()
-        .flat_map(|step| step.effects.iter())
-        .find(|effect| effect.kind == hiroute_domain::OwnedEffectKind::LoginItem)
-        .expect("the first connection journals its login-item evidence");
-    assert_eq!(login_effect.effect_id, "agent-connection-login-item");
-    assert_ne!(
-        login_effect.before_fingerprint, login_effect.after_fingerprint,
-        "the effect binds the observed not_registered-to-enabled transition"
-    );
-    assert_eq!(
-        *login_effect.compensation,
-        json!({"revert":"unregister","owner":"desktop-host"}),
-        "only this operation's creation is compensable"
+    assert!(
+        operation
+            .steps
+            .iter()
+            .flat_map(|step| step.effects.iter())
+            .all(|effect| effect.kind != hiroute_domain::OwnedEffectKind::LoginItem),
+        "new settings saves never create a login-item effect"
     );
     let configured = fs::read_to_string(&path).unwrap();
     assert!(configured.contains("experimental_bearer_token"));
@@ -383,7 +663,7 @@ fn exercise_settings_entry() {
         "an identical settings apply reuses the current grant generation"
     );
     let update_spec = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"configure","settings":{
-        "mode":"codex_default","fixed_models":[],
+        "mode":"codex_default","native_model_mode":"hiroute_only","fixed_models":[],
         "allowed_plan_ids":[plan.agent_plan_id,extra_plan.agent_plan_id],
         "default_selection":{"kind":"plan","plan_id":plan.agent_plan_id}}}});
     let update = apply(&service, &runtime, update_spec, "settings-update");
@@ -415,8 +695,8 @@ fn exercise_settings_entry() {
     let updated_material = runtime
         .adapter
         .resolve_active_agent_grant(&connection_id)
-        .expect("updated V2 settings must rotate their exact grant");
-    assert_ne!(first_material.sha256(), updated_material.sha256());
+        .expect("updated V2 settings must preserve their exact grant");
+    assert_eq!(first_material.sha256(), updated_material.sha256());
     assert!(
         fs::read_to_string(&path)
             .unwrap()
@@ -477,16 +757,6 @@ fn apply(
     spec: serde_json::Value,
     key: &str,
 ) -> serde_json::Value {
-    apply_with_host_login_item(service, runtime, spec, key, None)
-}
-
-fn apply_with_host_login_item(
-    service: &LocalControlDaemon,
-    runtime: &ProductionControlRuntime,
-    spec: serde_json::Value,
-    key: &str,
-    host_login_item: Option<serde_json::Value>,
-) -> serde_json::Value {
     let model_changed = spec["model"].get("intent").is_some();
     let model_restore = spec["model"]["intent"] == "restore";
     let restore = model_restore || spec["collaboration"]["intent"] == "restore";
@@ -506,14 +776,8 @@ fn apply_with_host_login_item(
     assert_eq!(preview["applicable"], true, "{preview}");
     let mut payload = json!({"spec":spec,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],
         "expected_revisions":preview["expected_revisions"],"idempotency_key":key});
-    // The harness plays the Desktop host: the first resident-service connection carries the
-    // login-item declaration exactly as the native confirmation flow would provide it, and
-    // the last connection's restore carries the host's removal observation. An explicit
-    // host declaration overrides the first-connection default, e.g. a pre-existing user item.
-    if preview["resident_service"]["login_item_required"] == json!(true) {
-        payload["login_item"] = host_login_item
-            .unwrap_or(json!({"before":"not_registered","after":"enabled","created":true}));
-    } else if preview["resident_service"]["login_item_removal_required"] == json!(true) {
+    // Only restoration of a journal-owned item from an older connection needs a host action.
+    if preview["resident_service"]["login_item_removal_required"] == json!(true) {
         payload["login_item"] =
             json!({"before":"enabled","after":"not_registered","created":false});
     }
@@ -546,6 +810,26 @@ fn apply_with_host_login_item(
     );
     let data = response.data.unwrap();
     if model_changed {
+        if data["state"] != "succeeded" {
+            let id = OperationId::parse(data["operation_id"].as_str().unwrap().to_owned()).unwrap();
+            let stored = runtime
+                .adapter
+                .stores_lock()
+                .unwrap()
+                .control()
+                .load_operation(&id)
+                .unwrap()
+                .unwrap();
+            panic!(
+                "settings operation failed: code={:?}, steps={:?}",
+                stored.safe_error_code,
+                stored
+                    .steps
+                    .iter()
+                    .map(|step| (step.kind, step.status, step.terminal_result.as_deref()))
+                    .collect::<Vec<_>>()
+            );
+        }
         let status = service.dispatch_wire(request(
             "GetAgentConnectionStatus",
             json!({"schema_version":{"major":2,"minor":0},"context_id":spec["context_id"]}),
@@ -561,7 +845,8 @@ fn apply_with_host_login_item(
                 "not_configured"
             } else {
                 "configured"
-            }
+            },
+            "apply={data} status={status}"
         );
         assert_eq!(status["model_verified"], false);
         if model_restore {

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Bundle identity regressions; does not claim macOS installation acceptance."""
 import importlib.util
+from contextlib import contextmanager
+import subprocess
 import tempfile
 from pathlib import Path
 import unittest
@@ -107,6 +109,49 @@ class BundleIdentityTests(unittest.TestCase):
 
 
 class DmgTests(unittest.TestCase):
+    def test_cache_server_starts_before_shared_build_lock(self):
+        events = []
+
+        class Store:
+            @contextmanager
+            def locked(self, _repo):
+                events.append("lock")
+                yield ()
+
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "HiRoute.app"
+            app.mkdir()
+            with patch.object(package, "run", side_effect=lambda *args: events.append(args[1])), \
+                    patch.object(package, "module", return_value=type("Local", (), {"Store": Store})), \
+                    patch.object(package, "build", side_effect=lambda _args: events.append("build") or {"app": str(app)}), \
+                    patch.object(sys, "argv", ["package-desktop.py", "build", "--cpa-source-repo", directory]):
+                self.assertEqual(package.main(), 0)
+        self.assertEqual(events, ["--start-server", "lock", "build"])
+
+    def test_existing_cache_server_is_verified_before_shared_build_lock(self):
+        events = []
+
+        class Store:
+            @contextmanager
+            def locked(self, _repo):
+                events.append("lock")
+                yield ()
+
+        def cache_run(*args):
+            events.append(args[1])
+            if args[1] == "--start-server":
+                raise subprocess.CalledProcessError(2, args, stderr="Address in use")
+
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "HiRoute.app"
+            app.mkdir()
+            with patch.object(package, "run", side_effect=cache_run), \
+                    patch.object(package, "module", return_value=type("Local", (), {"Store": Store})), \
+                    patch.object(package, "build", side_effect=lambda _args: events.append("build") or {"app": str(app)}), \
+                    patch.object(sys, "argv", ["package-desktop.py", "build", "--cpa-source-repo", directory]):
+                self.assertEqual(package.main(), 0)
+        self.assertEqual(events, ["--start-server", "--show-stats", "lock", "build"])
+
     def test_names_and_repeated_output_preserve_previous_round(self):
         for arch in package.TARGETS:
             name = package.artifact_name("0.1.0", "a" * 40, arch, True)

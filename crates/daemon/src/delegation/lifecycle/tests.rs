@@ -219,6 +219,7 @@ fn inputs() -> (WorkerLaunchRequest, AcpRunInput, tempfile::TempDir) {
         session_root: &session,
         workspace: &cwd,
         alias: "fixed-alias",
+        codex_catalog: None,
         native_effort: None,
         gateway: "127.0.0.1:10001".parse().unwrap(),
         permit: &permit,

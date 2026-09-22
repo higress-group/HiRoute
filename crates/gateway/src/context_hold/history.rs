@@ -415,11 +415,7 @@ impl Encoder {
         match request.responses_reasoning_history.get(&message_index) {
             Some(history) => {
                 self.tag(b"responses-reasoning-history");
-                self.usize(history.summary.len());
-                for part in &history.summary {
-                    self.string(&part.text);
-                }
-                self.bool(history.content_is_null);
+                self.json(&Value::Object(history.native_fields.clone()))?;
                 self.tag(match history.encrypted_content {
                     ResponsesReasoningEncryptedContentV1::Opaque => b"opaque",
                     ResponsesReasoningEncryptedContentV1::Absent => b"absent",

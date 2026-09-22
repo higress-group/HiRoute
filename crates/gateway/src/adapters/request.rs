@@ -163,15 +163,8 @@ fn serialize_responses(
                     "Responses reasoning history shape is inconsistent".into(),
                 ));
             }
-            let summary = history
-                .summary
-                .iter()
-                .map(|part| json!({"type":"summary_text","text":part.text.wire_value()}))
-                .collect::<Vec<_>>();
-            let mut item = json!({"type":"reasoning","summary":summary});
-            if history.content_is_null {
-                item["content"] = Value::Null;
-            }
+            let mut item = responses_reasoning_native_fields(history);
+            item["type"] = json!("reasoning");
             match history.encrypted_content {
                 ResponsesReasoningEncryptedContentV1::Absent => {}
                 ResponsesReasoningEncryptedContentV1::Null => {
@@ -298,10 +291,14 @@ fn serialize_responses(
                     ensure_state_owner(state, profile)?;
                     if message.role != MessageRole::Assistant
                         || state.kind != "encrypted_content"
-                        || !state
+                        || !(state
                             .value
                             .as_str()
                             .is_some_and(|value| !value.is_empty())
+                            || state
+                                .value
+                                .content_ref()
+                                .is_some_and(|content| content.byte_len() > 2))
                     {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(
                             "Responses reasoning continuation state is not exact".into(),
@@ -316,25 +313,12 @@ fn serialize_responses(
                             "Responses reasoning history shape is inconsistent".into(),
                         ));
                     }
-                    let summary = history
-                        .map(|history| {
-                            history
-                                .summary
-                                .iter()
-                                .map(|part| {
-                                    json!({"type":"summary_text","text":part.text.wire_value()})
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_default();
-                    let mut item = json!({
-                        "type": "reasoning",
-                        "summary": summary,
-                        "encrypted_content": state.value.wire_value(),
-                    });
-                    if history.is_none_or(|history| history.content_is_null) {
-                        item["content"] = Value::Null;
-                    }
+                    let mut item = history.map_or_else(
+                        || json!({"summary":[],"content":null}),
+                        responses_reasoning_native_fields,
+                    );
+                    item["type"] = json!("reasoning");
+                    item["encrypted_content"] = state.value.wire_value();
                     input.push(with_responses_item_fields(
                         request,
                         message_index,
@@ -377,6 +361,16 @@ fn serialize_responses(
         Value::from(candidate_max_output(profile)?),
     );
     Ok(Value::Object(body))
+}
+
+fn responses_reasoning_native_fields(history: &ResponsesReasoningHistoryV1) -> Value {
+    Value::Object(
+        history
+            .native_fields
+            .iter()
+            .map(|(key, value)| (key.clone(), value.wire_value()))
+            .collect(),
+    )
 }
 
 fn flush_responses_message(
@@ -1144,7 +1138,7 @@ fn role_label_messages(role: &MessageRole) -> Result<&'static str, ProtocolAdapt
         MessageRole::Assistant => Ok("assistant"),
         MessageRole::System | MessageRole::Developer => {
             Err(ProtocolAdapterError::ClientUnrepresentable(
-                "Messages cannot preserve a mid-conversation instruction role".into(),
+                "Messages cannot preserve a distinct Responses input system/developer role or its position".into(),
             ))
         }
     }

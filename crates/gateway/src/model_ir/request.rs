@@ -71,7 +71,7 @@ pub struct ModelRequestIRV1 {
         std::collections::BTreeMap<usize, ResponsesInternalChatMessageMetadataV1>,
     /// Native Responses reasoning-item history retained for an exact same-provider
     /// continuation. The opaque encrypted state remains a ProviderState content part;
-    /// this sidecar preserves the bounded visible summary and null-field shape.
+    /// this sidecar preserves other native fields without interpreting their format.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub responses_reasoning_history: std::collections::BTreeMap<usize, ResponsesReasoningHistoryV1>,
 }
@@ -106,8 +106,10 @@ pub struct ResponsesInternalChatMessageMetadataV1 {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResponsesReasoningHistoryV1 {
-    pub summary: Vec<ResponsesReasoningSummaryPartV1>,
-    pub content_is_null: bool,
+    /// Native, non-authority fields of a Responses reasoning item. These are
+    /// returned only to a Responses upstream; the Gateway does not interpret
+    /// a provider's plain reasoning format.
+    pub native_fields: serde_json::Map<String, serde_json::Value>,
     /// Wire shape of the native `encrypted_content` sibling. Only `Opaque`
     /// corresponds to ProviderState and therefore requires exact-owner authority.
     pub encrypted_content: ResponsesReasoningEncryptedContentV1,
@@ -123,12 +125,6 @@ pub enum ResponsesReasoningEncryptedContentV1 {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ResponsesReasoningSummaryPartV1 {
-    pub text: crate::content_ref::ContentValue,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponsesMessagePhaseV1 {
     Commentary,
@@ -137,6 +133,24 @@ pub enum ResponsesMessagePhaseV1 {
 
 impl ModelRequestIRV1 {
     pub fn requirements(&self) -> RequestCapabilityRequirementsV1 {
+        // Responses may put instruction-role input items before the first conversation
+        // message. Their position is initial even though the item remains a message in
+        // the IR so native Responses identity and metadata can be preserved. An
+        // instruction after user/assistant history is genuinely mid-conversation.
+        let mut conversation_started = false;
+        let mut initial_input_instructions = false;
+        let mut mid_conversation_instructions = false;
+        for message in &self.messages {
+            if matches!(message.role, MessageRole::System | MessageRole::Developer) {
+                if conversation_started {
+                    mid_conversation_instructions = true;
+                } else {
+                    initial_input_instructions = true;
+                }
+            } else {
+                conversation_started = true;
+            }
+        }
         let namespace_functions = self
             .tool_namespaces
             .iter()
@@ -150,10 +164,8 @@ impl ModelRequestIRV1 {
         let mut requirements = RequestCapabilityRequirementsV1 {
             ingress_protocol: self.ingress_protocol,
             text: false,
-            initial_instructions: !self.instructions.is_empty(),
-            mid_conversation_instructions: self.messages.iter().any(|message| {
-                matches!(message.role, MessageRole::System | MessageRole::Developer)
-            }),
+            initial_instructions: !self.instructions.is_empty() || initial_input_instructions,
+            mid_conversation_instructions,
             image_url: false,
             image_base64: false,
             image_media_types: Vec::new(),

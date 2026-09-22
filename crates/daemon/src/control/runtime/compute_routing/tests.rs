@@ -363,6 +363,7 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
         release_catalog: Some(catalog),
         protected_inputs: Mutex::new(BTreeMap::new()),
         manual_protected_inputs: Mutex::new(BTreeMap::new()),
+        agent_token_inputs: Mutex::new(BTreeMap::new()),
         model_connections: hiroute_integrations::NativeModelConnectionServiceV1::new(
             hiroute_application::compute_management::TrustedComputeCandidateRegistry::new(),
             Arc::new(hiroute_integrations::ReqwestModelDirectoryTransportV1),
@@ -428,6 +429,15 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
         hiroute_domain::ConnectorRuntimeKind::BuiltinNative
     );
     assert_eq!(snapshot.facts.candidates[0].protocol_profiles.len(), 3);
+    let responses = snapshot.facts.candidates[0]
+        .protocol_profiles
+        .iter()
+        .find(|profile| profile.ingress_protocol == hiroute_domain::UpstreamProtocol::Responses)
+        .expect("the existing Responses-to-Messages conversion remains routable");
+    assert_eq!(
+        responses.capability.upstream_protocol,
+        hiroute_domain::UpstreamProtocol::Messages
+    );
     assert_eq!(
         snapshot
             .expected_revisions

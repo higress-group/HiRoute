@@ -47,14 +47,14 @@ fn codex_startup_provider_is_private_token_free_and_never_overwritten() {
     )
     .unwrap();
     let gateway = "127.0.0.1:12345".parse().unwrap();
-    session.prepare_codex_provider(gateway).unwrap();
+    session.prepare_codex_provider(gateway, None).unwrap();
     let path = session.path().join("config.toml");
     let before = fs::read_to_string(&path).unwrap();
     assert!(before.contains("requires_openai_auth = false"));
     assert!(before.contains("env_key = \"HIROUTE_RUN_TOKEN\""));
-    session.prepare_codex_provider(gateway).unwrap();
+    session.prepare_codex_provider(gateway, None).unwrap();
     assert_eq!(
-        session.prepare_codex_provider("127.0.0.1:12346".parse().unwrap()),
+        session.prepare_codex_provider("127.0.0.1:12346".parse().unwrap(), None),
         Err(DelegationErrorV1::Conflict)
     );
     assert_eq!(fs::read_to_string(&path).unwrap(), before);

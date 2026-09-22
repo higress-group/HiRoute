@@ -26,7 +26,7 @@ use crate::delegation::lifecycle::{self, WorkerRunJournal};
 use crate::delegation::local_worker::LocalWorkerPlatform;
 use crate::delegation::platform::WorkerLaunchRequest;
 use crate::delegation::profile::{
-    CandidateWorkerProfile, ProfileInput, SessionRootUse, TaskSessionRoot,
+    CandidateWorkerProfile, ProfileInput, SessionRootUse, TaskSessionRoot, test_codex_catalog,
 };
 
 const PROBE_MODEL: &str = "hiroute/0011223344556677";
@@ -136,6 +136,7 @@ fn run_installation_acceptance_inner(
     diagnostics.worker_stage_begin(probe_harness, WorkerStageKind::ProbePrompt);
     let first = run_normal(
         &platform,
+        config.harness,
         first,
         AcpSessionStart::New,
         "probe-new",
@@ -288,6 +289,7 @@ fn build_profile(
         duration_ms: PROBE_DEADLINE.as_millis() as u64,
         delegation_depth: 1,
     };
+    let catalog = (worker == WorkerHarnessV1::CodexCli).then(|| test_codex_catalog(PROBE_MODEL));
     CandidateWorkerProfile::build(ProfileInput {
         harness: worker,
         adapter,
@@ -297,6 +299,7 @@ fn build_profile(
         session_root: session,
         workspace,
         alias: PROBE_MODEL,
+        codex_catalog: catalog.as_deref(),
         native_effort: None,
         gateway,
         permit: &permit,
@@ -336,6 +339,7 @@ fn probe_load(
     )?;
     let loaded = run_normal(
         platform,
+        worker,
         profile,
         AcpSessionStart::Load(previous.clone()),
         "probe-load",
@@ -349,6 +353,7 @@ fn probe_load(
 
 fn run_normal(
     platform: &LocalWorkerPlatform,
+    profile_harness: WorkerHarnessV1,
     profile: CandidateWorkerProfile,
     session: AcpSessionStart,
     nonce: &str,
@@ -394,8 +399,11 @@ fn run_normal(
         release_probe(platform, &result)?;
         result.execution
     })?;
-    // Native Harnesses may prepend a model-metadata notice for our private alias. Keep that
-    // text intact; verify the controlled answer and complete delivery, not an empty warning stream.
+    // A Codex Worker receives the private alias catalog before startup. Its absence is a real
+    // metadata regression even if the controlled model still answers successfully.
+    if profile_harness == WorkerHarnessV1::CodexCli && outcome.text.contains("Model metadata for") {
+        return Err(DelegationErrorV1::ProtocolFailed);
+    }
     let final_line_matches = outcome.text.lines().last() == Some(PROBE_TEXT);
     let journal_completed = journal.completed();
     if !final_line_matches || outcome.content_incomplete || !journal_completed {

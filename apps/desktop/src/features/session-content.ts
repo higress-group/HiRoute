@@ -1,4 +1,41 @@
-export type ReadableEvent = { kind: 'text' | 'reasoning' | 'refusal'; text: string } | { kind: 'tool'; sequence: number; name: string; logicalId: string; phase: 'started' | 'arguments' | 'ready'; arguments: string } | { kind: 'block'; block: string };
+export type ReadableEvent = { kind: 'text' | 'reasoning' | 'refusal'; text: string; sequence: number; index: number; phase: 'delta' | 'finished' } | { kind: 'tool'; sequence: number; name: string; logicalId: string; phase: 'started' | 'arguments' | 'ready'; arguments: string } | { kind: 'block'; block: string };
+
+// These names come from the canonical Gateway content contract, not text patterns.
+export function isPrivateContentKind(kind: string): boolean {
+  return kind === 'provider_state' || kind === 'reasoning_delta' || kind === 'reasoning_finished';
+}
+
+export function isTechnicalContentKind(kind: string): boolean {
+  return kind === 'message_name' || kind.startsWith('tool_');
+}
+
+export function coalesceResponseText(events: readonly ReadableEvent[]): { kind: 'text' | 'refusal'; index: number; text: string }[] {
+  const parts = new Map<string, Extract<ReadableEvent, { kind: 'text' | 'reasoning' | 'refusal' }>[]>();
+  for (const event of events) {
+    if (event.kind !== 'text' && event.kind !== 'refusal') continue;
+    const key = `${event.kind}\u0000${event.index}`;
+    const group = parts.get(key) ?? [];
+    group.push(event);
+    parts.set(key, group);
+  }
+  return [...parts.values()].map(group => {
+    group.sort((a, b) => a.sequence - b.sequence);
+    const finished = group.filter(event => event.phase === 'finished').at(-1);
+    return { kind: group[0].kind as 'text' | 'refusal', index: group[0].index, text: finished?.text ?? group.filter(event => event.phase === 'delta').map(event => event.text).join('') };
+  }).sort((a, b) => a.index - b.index);
+}
+
+export function contentDisplayRuns(messages: readonly { role: string; technical?: boolean }[]): { start: number; end: number; technical: boolean }[] {
+  const runs: { start: number; end: number; technical: boolean }[] = [];
+  for (let index = 0; index < messages.length; index++) {
+    const technical = messages[index].technical ?? ['system', 'developer', 'tool_definition'].includes(messages[index].role);
+    const last = runs.at(-1);
+    if (last?.technical === technical) last.end = index + 1;
+    else runs.push({ start: index, end: index + 1, technical });
+  }
+  return runs;
+}
+
 export function readableEvent(raw: string, mediaType: string, direction: string): ReadableEvent | null {
   if (mediaType !== 'application/vnd.hiroute.model-stream-event+json;version=1' || direction !== 'response_delivered') return null;
   try {
@@ -7,7 +44,7 @@ export function readableEvent(raw: string, mediaType: string, direction: string)
     const event = value.event;
     if (!event || typeof event !== 'object') return null;
     const kinds: Record<string, 'text' | 'reasoning' | 'refusal'> = { text_delta: 'text', text_finished: 'text', reasoning_delta: 'reasoning', reasoning_finished: 'reasoning', refusal_delta: 'refusal', refusal_finished: 'refusal' };
-    if (kinds[event.kind] && typeof event.text === 'string') return { kind: kinds[event.kind], text: event.text };
+    if (kinds[event.kind] && typeof event.text === 'string') return { kind: kinds[event.kind], text: event.text, sequence: value.sequence, index: Number.isSafeInteger(event.index) && event.index >= 0 ? event.index : 0, phase: event.kind.endsWith('_finished') ? 'finished' : 'delta' };
     if (event.kind === 'content_block_started' && typeof event.block_kind === 'string') return { kind: 'block', block: event.block_kind };
     if (typeof event.logical_id !== 'string') return null;
     if (event.kind === 'tool_arguments_delta' && typeof event.delta === 'string') return { kind: 'tool', sequence: value.sequence, logicalId: event.logical_id, name: '', phase: 'arguments', arguments: event.delta };

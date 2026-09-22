@@ -478,10 +478,11 @@ impl SecretStorePort for LocalControlAdapter {
         &self,
         operation_id: &OperationId,
         mutation: &AgentAccessGrantMutationV1,
+        input: Option<&ProtectedSecret>,
     ) -> PortResult<OwnedEffectV1> {
         self.stores_lock()?
             .secrets()
-            .apply_agent_access_grant(operation_id, mutation)
+            .apply_agent_access_grant(operation_id, mutation, input)
     }
 
     fn observe_agent_access_grant(
@@ -546,6 +547,15 @@ impl RuntimeStatePort for LocalControlAdapter {
 
 impl ProtectedInputPort for LocalControlAdapter {
     fn read_secret(&self, input_slot: &str) -> PortResult<ProtectedSecret> {
+        if let Some(secret) = self
+            .agent_token_inputs
+            .lock()
+            .map_err(|_| unavailable("agent_token.input.lock"))?
+            .get(input_slot)
+        {
+            return ProtectedSecret::new(secret.expose().to_vec())
+                .map_err(|_| unavailable("agent_token.input.invalid"));
+        }
         if let Some(secret) = self
             .manual_protected_inputs
             .lock()

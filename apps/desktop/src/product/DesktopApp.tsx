@@ -159,19 +159,7 @@ export function DesktopApp() {
   const serviceOperational = service?.daemon === 'running'
     && Boolean(service.recoveryReady)
     && ['ready', 'empty', 'no_new_calls'].includes(service.gateway);
-  const setupHasModel = home.reads.compute.status === 'ready' && home.reads.compute.data.sources.length > 0;
-  const setupHasRoute = home.reads.plans.status === 'ready'
-    && home.reads.plans.data.plans.some(plan => plan.publication === 'published');
-  const setupHasAgent = home.reads.agents.status === 'ready' && home.reads.agents.data.agents.some(agent =>
-    ['configured', 'verified'].includes(agent.model) || ['configured', 'verified'].includes(agent.collaboration));
-  const setupComplete = setupHasModel && setupHasRoute && setupHasAgent;
-  const navigationReady = serviceOperational && setupComplete;
-  const navigationTitle = serviceOperational && !setupComplete
-    ? language === 'zh' ? '尚未完成配置' : 'Setup incomplete'
-    : undefined;
-  const navigationLabel = serviceOperational && !setupComplete
-    ? language === 'zh' ? '从首页开始' : 'Start from Home'
-    : serviceOperational
+  const navigationLabel = serviceOperational
       ? language === 'zh' ? '仅在本机运行' : 'Running locally'
       : serviceLabel;
   const settingsServiceLabel = serviceOperational
@@ -297,6 +285,7 @@ export function DesktopApp() {
   }
 
   function openPage(next: Page) {
+    if (next === 'home' && page !== 'home') void home.refreshActivity();
     setVisited(current => current.has(next) ? current : new Set([...current, next]));
     setPage(next);
   }
@@ -576,9 +565,8 @@ export function DesktopApp() {
         language={language}
         items={navigation}
         current={page}
-        serviceTitle={navigationTitle}
         serviceLabel={navigationLabel}
-        serviceReady={navigationReady}
+        serviceReady={serviceOperational}
         onNavigate={id => void navigate(id)}
         onOpenSettings={() => void openPageSafely('settings')}
       />
@@ -589,7 +577,7 @@ export function DesktopApp() {
           <div>
             <strong>{language === 'zh' ? '本机服务启动失败' : 'Local service failed to start'}</strong>
             <p>{startupFailure.code === 'DAEMON_STORAGE_UNREADABLE'
-              ? (language === 'zh' ? 'HiRoute 数据无法读取或已损坏。原数据未被清空或迁移；请先在恢复目录中备份，再决定是否移走 storage 后重启。' : 'HiRoute data is unreadable or damaged. It was not cleared or migrated. Back it up from the recovery directory before moving storage aside and restarting.')
+              ? (language === 'zh' ? 'HiRoute 数据无法读取或已损坏。原数据未被清空或迁移；请先备份恢复目录，再同时移走其中的 storage 和 gateway.lkg 后重启。' : 'HiRoute data is unreadable or damaged. It was not cleared or migrated. Back up the recovery directory, then move both storage and gateway.lkg aside before restarting.')
               : (language === 'zh' ? `启动阶段失败（${startupFailure.code ?? 'STARTUP_FAILED'}）。原数据保持不变，可打开恢复目录查看日志并备份。` : `Startup failed (${startupFailure.code ?? 'STARTUP_FAILED'}). Existing data is unchanged; open the recovery directory to inspect logs and back it up.`)}</p>
             {startupFailure.recovery_available && <button className="btn" type="button" onClick={() => {
               void invoke('open_startup_recovery_directory').catch(() => setNotice(language === 'zh' ? '无法安全打开恢复目录，请检查目录权限后重试。' : 'The recovery directory could not be opened safely. Check its permissions and try again.'));
@@ -622,7 +610,7 @@ export function DesktopApp() {
               const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId);
               if (plan) void showRouting({ key: plan.agent_plan_id, plan });
             }}
-            onCreatePlan={() => void showRouting({ key: `routing/${crypto.randomUUID()}` })}
+            onCreatePlan={bindingId => void showRouting({ key: `routing/${crypto.randomUUID()}`, initialBindingId: bindingId })}
           /></div>}
         {visited.has('routing') && <div hidden={page !== 'routing'}><RoutingPage
             key={routingIntent.key}
@@ -673,6 +661,7 @@ export function DesktopApp() {
           /></div>}
         {visited.has('sessions') && <div hidden={page !== 'sessions'}><Sessions
             key={sessionIntent.key}
+            active={page === 'sessions'}
             initialSession={sessionIntent.sessionId ?? null}
             initialRequest={sessionIntent.requestId ?? null}
             refreshVersion={refreshVersion}

@@ -226,6 +226,14 @@ impl RequestObservation {
         self.inner.context.emit(event);
     }
 
+    pub(super) fn wire_diagnostic(&self, mut event: hiroute_diagnostics::event::UpstreamWire) {
+        event.request_token = self.inner.context.token(
+            CorrelationDomain::ModelRequest,
+            &self.inner.metadata.request_id,
+        );
+        self.emit_diagnostic(DiagnosticEvent::UpstreamWire(event));
+    }
+
     fn attempt_token(&self, attempt_id: &str) -> Option<CorrelationToken> {
         self.inner
             .context

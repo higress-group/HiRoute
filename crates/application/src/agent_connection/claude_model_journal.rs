@@ -1,8 +1,8 @@
 use hiroute_domain::{
-    AgentClaudePresetValuesV2, AgentConnectionControlIntentV1, AgentConnectionEffectRoleV1,
-    AgentConnectionTransactionKindV1, AgentFacetIntent, AgentModelGrantV2, AgentSettingsSpecV2,
-    CanonicalDigest, ExternalEffectIntentV1, OperationId, OperationV1, OperationValidationError,
-    PortError, PortErrorCode, PortResult,
+    AgentClaudePresetValuesV2, AgentConfigChangeV1, AgentConnectionControlIntentV1,
+    AgentConnectionEffectRoleV1, AgentConnectionTransactionKindV1, AgentFacetIntent,
+    AgentModelGrantV2, AgentSettingsSpecV2, CanonicalDigest, ExternalEffectIntentV1, OperationId,
+    OperationV1, OperationValidationError, PortError, PortErrorCode, PortResult,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -23,6 +23,7 @@ pub struct ClaudeLaunchSnapshotIntent {
 pub enum ClaudeModelFileAction {
     Configure {
         previous_operation: Option<OperationId>,
+        change: AgentConfigChangeV1,
         snapshot: Box<ClaudeLaunchSnapshotIntent>,
         gateway_base_url: String,
         trusted_hiroute_executable: String,
@@ -162,11 +163,24 @@ fn validate_payload(payload: &ClaudeModelFilePayload) -> Result<(), OperationVal
     match &payload.change {
         ClaudeModelFileAction::Configure {
             previous_operation,
+            change,
             snapshot,
             gateway_base_url,
             trusted_hiroute_executable,
         } => {
             if !local_gateway_base_url(gateway_base_url)
+                || change.validate().is_err()
+                || change.fields.iter().any(|field| {
+                    !matches!(
+                        field.path.as_str(),
+                        "apiKeyHelper"
+                            | "hiroute.auth_environment"
+                            | "env.ANTHROPIC_BASE_URL"
+                            | "env.ANTHROPIC_DEFAULT_OPUS_MODEL"
+                            | "env.ANTHROPIC_DEFAULT_SONNET_MODEL"
+                            | "env.ANTHROPIC_DEFAULT_HAIKU_MODEL"
+                    )
+                })
                 || !Path::new(trusted_hiroute_executable).is_absolute()
                 || trusted_hiroute_executable.contains(['\0', '\r', '\n'])
                 || previous_operation.as_ref().is_some_and(|previous| {
@@ -224,6 +238,11 @@ mod tests {
             expected_content: CanonicalDigest::of_bytes(b""),
             change: ClaudeModelFileAction::Configure {
                 previous_operation: None,
+                change: AgentConfigChangeV1::preview(
+                    &hiroute_domain::AgentConfigDocumentV1::default(),
+                    std::collections::BTreeMap::new(),
+                )
+                .unwrap(),
                 snapshot: Box::new(ClaudeLaunchSnapshotIntent {
                     native_presets: AgentClaudePresetValuesV2 {
                         opus: Some("Vendor/Opus[1m]".into()),
@@ -245,8 +264,32 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_retains_native_values_without_user_file_mutations() {
-        let original = payload();
+    fn native_change_and_optional_launcher_facts_are_sealed_without_original_secret_bytes() {
+        let mut original = payload();
+        if let ClaudeModelFileAction::Configure { change, .. } = &mut original.change {
+            *change = AgentConfigChangeV1::preview(
+                &hiroute_domain::AgentConfigDocumentV1 {
+                    fields: std::collections::BTreeMap::from([
+                        (
+                            "apiKeyHelper".into(),
+                            serde_json::json!({"configured":true}),
+                        ),
+                        (
+                            "hiroute.auth_environment".into(),
+                            serde_json::json!({"configured":true}),
+                        ),
+                    ]),
+                },
+                std::collections::BTreeMap::from([
+                    ("hiroute.auth_environment".into(), None),
+                    (
+                        "env.ANTHROPIC_BASE_URL".into(),
+                        Some(serde_json::json!("http://127.0.0.1:8080")),
+                    ),
+                ]),
+            )
+            .unwrap();
+        }
         assert!(validate_payload(&original).is_ok());
         let value = serde_json::to_value(&original).unwrap();
         let snapshot = &value["change"]["snapshot"];
@@ -254,7 +297,22 @@ mod tests {
         assert_eq!(snapshot["presets"]["opus"], "hr-plan-opus");
         assert_eq!(snapshot["executable"], "/opt/claude/bin/claude");
         assert!(snapshot["native_presets"]["sonnet"].is_null());
-        assert!(value["change"].get("change").is_none());
+        assert_eq!(
+            value["change"]["change"]["fields"][0]["path"],
+            "env.ANTHROPIC_BASE_URL"
+        );
+        assert_eq!(
+            value["change"]["change"]["fields"][1]["path"],
+            "hiroute.auth_environment"
+        );
+        assert_eq!(
+            value["change"]["change"]["fields"][1]["before"],
+            serde_json::json!({"configured":true})
+        );
+        assert!(
+            !value.to_string().contains("user-owned-helper")
+                && !value.to_string().contains("user-secret")
+        );
         let decoded: ClaudeModelFilePayload = serde_json::from_value(value).unwrap();
         assert!(validate_payload(&decoded).is_ok());
     }
@@ -300,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_does_not_accept_old_semantic_file_changes() {
+    fn native_change_rejects_invalid_semantic_file_changes() {
         let mut value = serde_json::to_value(payload()).unwrap();
         value["change"]["change"] = serde_json::json!({"fields": []});
         assert!(serde_json::from_value::<ClaudeModelFilePayload>(value).is_err());

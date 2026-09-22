@@ -431,11 +431,17 @@ button.option-row[aria-pressed='true'] { border-color: var(--accent); background
 .transcript-head h2 { margin: 0; font-size:calc(18px * var(--hr-text-scale)); }
 .transcript-head p { margin: 5px 0 0; color: var(--text-muted); font-size:calc(11px * var(--hr-text-scale)); }
 .transcript-body { width: min(760px, 100%); margin: 0 auto; padding: 25px 28px 70px; }
+.transcript-context { margin-bottom: 20px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-soft); }
+.transcript-context > summary { padding: 11px 13px; color: var(--text-muted); font-size: calc(11px * var(--hr-text-scale)); }
+.transcript-context .disclosure-body { padding: 0 13px 12px; }
 .message { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 11px; margin-bottom: 22px; }
 .message-avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--bg-active); color: var(--text-soft); font-size:calc(10px * var(--hr-text-scale)); font-weight: 760; }
 .message.assistant .message-avatar { background: var(--accent-soft); color: var(--accent-bright); }
 .message-role { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size:calc(12px * var(--hr-text-scale)); font-weight: 670; }
 .message-content { margin-top: 5px; color: var(--text-soft); font-size:calc(14px * var(--hr-text-scale)); line-height: 1.65; white-space: pre-wrap; }
+.message-context { margin: 0 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-soft); }
+.message-context > summary { min-height: 36px; padding: 7px 11px; color: var(--text-muted); font-size:calc(11px * var(--hr-text-scale)); }
+.message-context .disclosure-body { padding: 0 11px 10px; }
 .tool-block { margin-top: 9px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-soft); font: calc(11px * var(--hr-text-scale))/1.5 var(--font-mono); color: var(--text-muted); }
 .switch-marker { display: flex; align-items: center; gap: 9px; width: calc(100% - 45px); margin: 3px 0 19px 45px; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--yellow) 22%, var(--border)); border-radius: 9px; background: var(--yellow-soft); color: var(--yellow); text-align: left; font-size:calc(11px * var(--hr-text-scale)); }
 .switch-marker .icon { width: 15px; }

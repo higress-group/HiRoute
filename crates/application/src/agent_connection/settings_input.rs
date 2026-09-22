@@ -1,10 +1,11 @@
 //! Settings facts transported from the real backend to the existing typed planner.
 use super::*;
 use hiroute_domain::{
-    AgentAccessGrantMutationV1, AgentAccessGrantRefV1, AgentAccessGrantScopeV1,
-    AgentConnectionTransactionSubjectV1, AgentFacetIntent, AgentIngressProtocolV1, CanonicalDigest,
-    OperationId, OperationValidationError, RevisionSetV1, SupportedAgentInstallationV1,
-    TransactionPlanV1, WorkspaceId, settings_model_publication_intent,
+    AgentAccessGrantMaterialActionV1, AgentAccessGrantMutationV1, AgentAccessGrantRefV1,
+    AgentAccessGrantScopeV1, AgentAccessTokenIntentV1, AgentConnectionTransactionSubjectV1,
+    AgentFacetIntent, AgentIngressProtocolV1, CanonicalDigest, OperationId,
+    OperationValidationError, RevisionSetV1, SupportedAgentInstallationV1, TransactionPlanV1,
+    WorkspaceId, settings_model_publication_intent,
 };
 use serde_json::json;
 use std::path::Path;
@@ -26,6 +27,7 @@ pub struct SettingsModelFileFacts {
     /// still require and bind the exact active publication when their effect is sealed.
     pub publication_digest: Option<CanonicalDigest>,
     pub expected_grant_generation: u64,
+    pub token_input_fingerprint: Option<CanonicalDigest>,
     /// The exact succeeded configuration that owns the currently active grant, if any.
     pub active_configuration: Option<OperationId>,
     pub restore: Option<(OperationId, AgentAccessGrantRefV1)>,
@@ -48,6 +50,7 @@ pub struct SettingsClaudeModelFacts {
     pub executable: Option<String>,
     pub gateway_base_url: String,
     pub trusted_hiroute_executable: String,
+    pub user_document: hiroute_domain::AgentConfigDocumentV1,
 }
 
 /// Shared-file facts for one registered Agent-owned Skill root.  The template is bundled product
@@ -74,12 +77,6 @@ impl AgentSettingsPlanningInput {
             return Err(invalid());
         }
         let file = &self.model_file;
-        let grant_has_plans = preview.model_grant.as_ref().is_some_and(|grant| {
-            grant
-                .routes
-                .iter()
-                .any(|(_, route)| matches!(route, hiroute_domain::AgentModelRouteV2::Plan { .. }))
-        });
         let (model_mutations, model_action, restore_grant) = match &preview.spec.model {
             AgentFacetIntent::Configure { settings } => {
                 let grant = preview.model_grant.as_ref().ok_or_else(invalid)?;
@@ -105,28 +102,52 @@ impl AgentSettingsPlanningInput {
                             .map(|catalog| catalog.content_digest.clone()),
                     }),
                     SettingsModelTargetFacts::Claude(claude) => {
+                        let snapshot = claude_model_snapshot(
+                            settings,
+                            grant,
+                            claude,
+                            self.facts
+                                .native_claude_presets
+                                .as_ref()
+                                .ok_or_else(invalid)?,
+                        )?;
                         SettingsModelAction::Claude(ClaudeModelFileAction::Configure {
                             previous_operation: file.active_configuration.clone(),
-                            snapshot: Box::new(claude_model_snapshot(
-                                settings,
-                                grant,
+                            change: claude_native_change(
+                                &snapshot,
                                 claude,
-                                self.facts
-                                    .native_claude_presets
-                                    .as_ref()
-                                    .ok_or_else(invalid)?,
-                            )?),
+                                &self.facts.context_id,
+                            )?,
+                            snapshot: Box::new(snapshot),
                             gateway_base_url: claude.gateway_base_url.clone(),
                             trusted_hiroute_executable: claude.trusted_hiroute_executable.clone(),
                         })
                     }
                 };
+                let material_action = match &preview.spec.access_token {
+                    AgentAccessTokenIntentV1::Keep => AgentAccessGrantMaterialActionV1::Preserve,
+                    AgentAccessTokenIntentV1::Regenerate => {
+                        AgentAccessGrantMaterialActionV1::Regenerate
+                    }
+                    AgentAccessTokenIntentV1::Set { input_slot } => {
+                        AgentAccessGrantMaterialActionV1::Set {
+                            input_slot: input_slot.clone(),
+                            fingerprint: file
+                                .token_input_fingerprint
+                                .clone()
+                                .ok_or_else(invalid)?,
+                        }
+                    }
+                };
                 (
-                    vec![AgentAccessGrantMutationV1::ensure(
-                        WorkspaceId::DEFAULT,
-                        scope,
-                        file.expected_grant_generation,
-                    )?],
+                    vec![
+                        AgentAccessGrantMutationV1::ensure(
+                            WorkspaceId::DEFAULT,
+                            scope,
+                            file.expected_grant_generation,
+                        )?
+                        .with_material_action(material_action)?,
+                    ],
                     Some(action),
                     None,
                 )
@@ -142,6 +163,7 @@ impl AgentSettingsPlanningInput {
                     SettingsModelTargetFacts::Codex { .. } => {
                         SettingsModelAction::Codex(CodexModelFileAction::Restore {
                             original_operation: operation.clone(),
+                            native_model: preview.spec.restore_native_model.clone(),
                         })
                     }
                     SettingsModelTargetFacts::Claude(_) => {
@@ -186,20 +208,9 @@ impl AgentSettingsPlanningInput {
             model_mutations,
             |control| {
                 let mut external = Vec::new();
-                if self.facts.login_item_required {
-                    // The first resident-service connection records the host's login-item
-                    // observation first: the item must exist before any publication can be
-                    // allowed to point a client at this service.
-                    let declaration = confirmed.login_item().ok_or_else(invalid)?;
-                    external.push(settings_login_item_intent(
-                        control,
-                        &self.facts.context_id,
-                        declaration,
-                    )?);
-                } else if self.facts.login_item_removal_required {
+                if self.facts.login_item_removal_required {
                     // The last managed connection's restore releases the login item this
-                    // feature owns: the host unregisters it under the restore confirmation,
-                    // and the effect journals that observation alongside the revoke.
+                    // feature created in an older version. New connections never create one.
                     let declaration = confirmed.login_item().ok_or_else(invalid)?;
                     external.push(settings_login_item_intent(
                         control,
@@ -218,9 +229,11 @@ impl AgentSettingsPlanningInput {
                                     &self.facts.context_id,
                                     catalog,
                                 )?);
-                            } else if grant_has_plans {
-                                // A plan-carrying selection without catalog facts was already
-                                // blocked at Preview; sealing must not silently proceed.
+                            } else if matches!(
+                                &preview.spec.model,
+                                AgentFacetIntent::Configure { .. }
+                            ) {
+                                // Every Codex configuration publishes a filtered catalog.
                                 return Err(invalid());
                             }
                             external.push(settings_codex_model_file_intent(
@@ -409,6 +422,42 @@ fn claude_model_snapshot(
         executable: facts.executable.clone().ok_or_else(invalid)?,
         installation_digest: installation.observation_digest.clone(),
     })
+}
+
+fn claude_native_change(
+    snapshot: &ClaudeLaunchSnapshotIntent,
+    facts: &SettingsClaudeModelFacts,
+    context_id: &str,
+) -> Result<hiroute_domain::AgentConfigChangeV1, OperationValidationError> {
+    let invalid = || OperationValidationError::UnregisteredEffectPlan;
+    let endpoint = facts
+        .gateway_base_url
+        .strip_suffix("/v1")
+        .ok_or_else(invalid)?;
+    let connection_id = format!("agent-connection/{context_id}");
+    let mut desired = std::collections::BTreeMap::from([
+        (
+            "apiKeyHelper".to_owned(),
+            Some(json!({
+                "executable": facts.trusted_hiroute_executable,
+                "argv": [hiroute_domain::HIDDEN_AGENT_GRANT_HELPER_VERB_V1, connection_id]
+            })),
+        ),
+        ("hiroute.auth_environment".to_owned(), None),
+        ("env.ANTHROPIC_BASE_URL".to_owned(), Some(json!(endpoint))),
+    ]);
+    for (name, value) in [
+        ("OPUS", &snapshot.presets.opus),
+        ("SONNET", &snapshot.presets.sonnet),
+        ("HAIKU", &snapshot.presets.haiku),
+    ] {
+        desired.insert(
+            format!("env.ANTHROPIC_DEFAULT_{name}_MODEL"),
+            value.as_ref().map(|value| json!(value)),
+        );
+    }
+    hiroute_domain::AgentConfigChangeV1::preview(&facts.user_document, desired)
+        .map_err(|_| invalid())
 }
 
 fn local_gateway_origin(value: &str) -> bool {

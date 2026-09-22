@@ -17,8 +17,8 @@ use super::filesystem::{FILESYSTEM_AGENT_SCANNER_ID_V1, FILESYSTEM_AGENT_SCANNER
 
 mod native;
 pub(super) use native::{
-    claude_user_change_is_applied, rebase_claude_change_bytes, render_claude_change_bytes,
-    render_claude_user_change, restore_claude_change_bytes,
+    claude_change_bytes_are_applied, claude_user_change_is_applied, rebase_claude_change_bytes,
+    render_claude_change_bytes, render_claude_user_change, restore_claude_change_bytes,
 };
 mod auth;
 use auth::read_settings_auth_field;
@@ -152,6 +152,7 @@ impl ClaudeSource {
         match self {
             Self::Process => {
                 let settings = ClaudeSettingsSubset {
+                    model: None,
                     env: ClaudeEnvironmentSubset {
                         base_url: process
                             .get("ANTHROPIC_BASE_URL")
@@ -222,6 +223,7 @@ impl ClaudeSource {
                     .or_else(|| std::env::var(field).ok().map(Zeroizing::new))
                     .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
                 let settings = ClaudeSettingsSubset {
+                    model: None,
                     env: ClaudeEnvironmentSubset {
                         base_url: process
                             .get("ANTHROPIC_BASE_URL")
@@ -273,6 +275,8 @@ pub(super) struct ObservedClaudeSettings {
 
 #[derive(Clone, Default)]
 pub(super) struct ClaudeSettingsSubset {
+    /// Claude's initial selection in settings.json, distinct from preset alias mappings.
+    pub(super) model: Option<String>,
     pub(super) env: ClaudeEnvironmentSubset,
     pub(super) api_key_helper_present: bool,
 }
@@ -306,9 +310,15 @@ impl<'de> Deserialize<'de> for ClaudeSettingsSubset {
                 M: MapAccess<'de>,
             {
                 let mut env = None;
+                let mut model = None;
                 let mut api_key_helper_present = false;
                 while let Some(key) = map.next_key::<String>()? {
-                    if key == "env" {
+                    if key == "model" {
+                        if model.is_some() {
+                            return Err(serde::de::Error::duplicate_field("model"));
+                        }
+                        model = Some(map.next_value()?);
+                    } else if key == "env" {
                         if env.is_some() {
                             return Err(serde::de::Error::duplicate_field("env"));
                         }
@@ -321,6 +331,7 @@ impl<'de> Deserialize<'de> for ClaudeSettingsSubset {
                     }
                 }
                 Ok(ClaudeSettingsSubset {
+                    model,
                     env: env.unwrap_or_default(),
                     api_key_helper_present,
                 })

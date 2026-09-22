@@ -210,6 +210,7 @@ pub enum CodexCapabilityIssueKindV1 {
     InvalidCompiledPlan,
     ResponsesProtocol,
     RequestCapabilities,
+    InstructionRoles,
     ContextInput,
     ContextOutput,
     ContextTotal,

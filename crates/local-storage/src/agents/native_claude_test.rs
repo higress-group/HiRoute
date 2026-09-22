@@ -20,7 +20,13 @@ fn native_claude_consumes_helper_and_restores_owned_file() {
     for path in binary.ancestors() {
         let metadata = fs::metadata(path).unwrap();
         assert!(metadata.uid() == 0 || metadata.uid() == rustix::process::geteuid().as_raw());
-        assert!(metadata.mode() & 0o022 == 0 || metadata.mode() & 0o1000 != 0);
+        assert!(metadata.mode() & 0o002 == 0 || metadata.mode() & 0o1000 != 0);
+        assert!(
+            metadata.mode() & 0o020 == 0
+                || metadata.mode() & 0o1000 != 0
+                || metadata.uid() == rustix::process::geteuid().as_raw(),
+            "a group-writable system-owned ancestor cannot select the native binary"
+        );
     }
     let root = tempfile::Builder::new()
         .prefix("hiroute-native-claude-")
@@ -47,21 +53,34 @@ fn native_claude_consumes_helper_and_restores_owned_file() {
     listener.set_nonblocking(true).unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());
     let model = "hiroute/0011223344556677";
-    let change = AgentConfigChangeV1::preview(&AgentConfigDocumentV1 { fields: BTreeMap::new() }, BTreeMap::from([
+    let path = config.join("settings.json");
+    let initial = json!({"theme":"dark","apiKeyHelper":"never-execute-original-helper",
+        "env":{"ANTHROPIC_AUTH_TOKEN":"never-send-original-token","UNRELATED":"keep"}});
+    write(&path, serde_json::to_vec(&initial).unwrap().as_slice());
+    let change = AgentConfigChangeV1::preview(&AgentConfigDocumentV1 { fields: BTreeMap::from([
+        ("apiKeyHelper".into(), json!({"configured":true})),
+        ("hiroute.auth_environment".into(), json!({"configured":true})),
+    ]) }, BTreeMap::from([
         ("apiKeyHelper".into(), Some(json!({"executable":helper, "argv":[
             hiroute_domain::HIDDEN_AGENT_GRANT_HELPER_VERB_V1,"agent-connection/claude/native-test"]}))),
+        ("hiroute.auth_environment".into(), None),
         ("env.ANTHROPIC_MODEL".into(), Some(json!(model))),
         ("env.ANTHROPIC_BASE_URL".into(), Some(json!(endpoint))),
     ])).unwrap();
-    let path = config.join("settings.json");
-    let install = claude_intent(AgentConnectionTransactionKindV1::Apply, None);
-    let artifacts = store(&root, install.target(), &path);
+    let proto = claude_intent(AgentConnectionTransactionKindV1::Apply, None);
+    let artifacts = store(&root, proto.target(), &path);
+    let install = claude_intent(
+        AgentConnectionTransactionKindV1::Apply,
+        artifacts
+            .current_external_fingerprint(proto.target())
+            .unwrap(),
+    );
     let operation = OperationId::parse("op_12345678123456781234567812345678").unwrap();
     let staged = stage_claude_configuration(
         &artifacts,
         &operation,
         &install,
-        &CanonicalDigest::of_bytes(b""),
+        &CanonicalDigest::of_bytes(&serde_json::to_vec(&initial).unwrap()),
         &change,
     )
     .unwrap();
@@ -76,7 +95,6 @@ fn native_claude_consumes_helper_and_restores_owned_file() {
         &binary,
         &home,
         &workspace,
-        &path,
         &listener,
         challenge.expose(),
         model,
@@ -100,9 +118,10 @@ fn native_claude_consumes_helper_and_restores_owned_file() {
     )
     .unwrap();
     artifacts.activate_artifact(&staged).unwrap();
-    assert!(
-        !path.exists(),
-        "native configuration must be restored before cleanup"
+    let restored: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(
+        restored, initial,
+        "native auth must be restored before cleanup"
     );
     let after = fs::metadata(&binary).unwrap();
     assert_eq!(
@@ -135,7 +154,6 @@ fn run(
     binary: &Path,
     home: &Path,
     workspace: &Path,
-    settings: &Path,
     listener: &TcpListener,
     challenge: &[u8],
     model: &str,
@@ -144,15 +162,8 @@ fn run(
     let observer = output.try_clone().map_err(|_| "output")?;
     let mut child = Command::new(binary)
         .args([
-            "--bare",
             "--print",
             "--no-session-persistence",
-            "--setting-sources",
-            "",
-            "--settings",
-        ])
-        .arg(settings)
-        .args([
             "--tools",
             "",
             "--strict-mcp-config",

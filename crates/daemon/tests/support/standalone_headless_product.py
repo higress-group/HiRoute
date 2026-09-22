@@ -136,7 +136,7 @@ finally:
 
         codex = self.fixture_bin / 'codex'
         codex.write_text(r'''#!/usr/bin/python3
-import http.client, json, os, re, sys, tomllib
+import ast, configparser, http.client, json, os, re, sys
 from urllib.parse import urlparse
 
 if '--version' in sys.argv:
@@ -158,15 +158,24 @@ for argument in sys.argv:
             }
             probe = True
     elif argument.startswith('model='):
-        model = json.loads(argument.removeprefix('model='))
+        model = json.loads(argument[len('model='):])
 
 if provider is None:
     try:
-        with open(os.path.join(os.environ['CODEX_HOME'], 'config.toml'), 'rb') as stream:
-            configuration = tomllib.load(stream)
-        provider = configuration['model_providers']['hiroute']
-        model = configuration['model']
-    except (KeyError, OSError, tomllib.TOMLDecodeError):
+        with open(os.path.join(os.environ['CODEX_HOME'], 'config.toml'), encoding='utf-8') as stream:
+            configuration = configparser.ConfigParser(interpolation=None)
+            configuration.optionxform = str
+            configuration.read_string('[root]\n' + stream.read())
+        provider = {
+            'base_url': ast.literal_eval(configuration['model_providers.hiroute']['base_url']),
+            'wire_api': ast.literal_eval(configuration['model_providers.hiroute']['wire_api']),
+            'http_headers': {
+                'X-HiRoute-Token': ast.literal_eval(
+                    configuration['model_providers.hiroute.http_headers']['X-HiRoute-Token']),
+            },
+        }
+        model = ast.literal_eval(configuration['root']['model'])
+    except (KeyError, OSError, ValueError, SyntaxError, configparser.Error):
         raise SystemExit(2)
 
 endpoint = urlparse(provider['base_url'])
@@ -257,12 +266,24 @@ for line in sys.stdin:
         auth_path.chmod(0o600)
         codex_config = self.codex_home / 'config.toml'
         codex_config.write_text(
-            'model = "gpt-5.3-codex-spark"\nmodel_reasoning_effort = "low"\n')
+            'model = ' + json.dumps(MODEL) + '\n'
+            'model_reasoning_effort = "low"\n'
+            'model_provider = "fixture_native"\n'
+            '[model_providers.fixture_native]\n'
+            'name = "Fixture native source"\n'
+            'base_url = ' + json.dumps(self.upstream.base_url) + '\n'
+            'wire_api = "responses"\n'
+            'experimental_bearer_token = ' + json.dumps(NATIVE_TOKEN) + '\n'
+            'requires_openai_auth = false\n')
         codex_config.chmod(0o600)
-        shutil.copy2(
-            self.repo / 'crates/integrations/src/agents/codex_bundled_catalog.json',
-            self.codex_home / 'models_cache.json')
-        (self.codex_home / 'models_cache.json').chmod(0o600)
+        # The complete cache is metadata; this account serves only the saved model.
+        catalog = json.loads((
+            self.repo / 'crates/integrations/src/agents/codex_bundled_catalog.json'
+        ).read_text())
+        assert any(entry['slug'] == MODEL for entry in catalog['models'])
+        model_cache = self.codex_home / 'models_cache.json'
+        model_cache.write_bytes(wire(catalog))
+        model_cache.chmod(0o600)
 
         cpa = self.root / 'cpa_upstream.py'
         shutil.copy2(self.repo / 'crates/daemon/tests/support/cpa_upstream.py', cpa)
@@ -328,7 +349,7 @@ for line in sys.stdin:
         self.outputs.extend((package.stdout, package.stderr))
         assert package.returncode == 0, package.stderr.decode(errors='replace')
         manifest = next(self.package.glob('*.tar.gz.json'))
-        archive = self.package / manifest.name.removesuffix('.json')
+        archive = manifest.with_suffix('')
         installed = subprocess.run([
             'python3', '-B', str(self.repo / 'scripts/install-standalone.py'), 'install',
             '--manifest', str(manifest), '--archive', str(archive),
@@ -655,7 +676,7 @@ def run(repository):
             'schema_version': {'major': 2, 'minor': 0},
             'context_id': context,
             'model': {'intent': 'configure', 'settings': {
-                'mode': 'codex_default', 'fixed_models': [],
+                'mode': 'codex_default', 'native_model_mode': 'hiroute_only', 'fixed_models': [],
                 'allowed_plan_ids': [plan_id],
                 'default_selection': {'kind': 'plan', 'plan_id': plan_id},
             }},
@@ -676,6 +697,15 @@ def run(repository):
         assert agent_apply['operation']['state'] == 'succeeded'
         agent_status = product.cli('agents', 'connect', 'status', context)['data']
         assert agent_status['state'] == 'configured', agent_status
+        managed_config = (product.codex_home / 'config.toml').read_text()
+        catalog_pointers = [json.loads(value.strip())
+                            for line in managed_config.splitlines()
+                            for key, separator, value in [line.partition('=')]
+                            if separator and key.strip() == 'model_catalog_json']
+        assert len(catalog_pointers) == 1, managed_config
+        managed_catalog = json.loads(Path(catalog_pointers[0]).read_text())
+        assert [entry['slug'] for entry in managed_catalog['models']] == [alias], managed_catalog
+        assert len(json.loads((product.codex_home / 'models_cache.json').read_text())['models']) > 1
         restore_point = agent_status['restore_point_ref']
         launched = subprocess.run(
             [str(product.codex), 'exec', 'headless request'], cwd=product.project,
@@ -794,7 +824,9 @@ def run(repository):
         restored_status = product.cli('agents', 'connect', 'status', context)['data']
         assert restored_status['state'] in ('restored', 'not_configured'), restored_status
         codex_configuration = (product.codex_home / 'config.toml').read_text()
-        assert 'model = "gpt-5.3-codex-spark"' in codex_configuration
+        assert 'model = ' + json.dumps(MODEL) in codex_configuration
+        assert 'model_provider = "fixture_native"' in codex_configuration
+        assert 'experimental_bearer_token = ' + json.dumps(NATIVE_TOKEN) in codex_configuration
         assert 'model_providers.hiroute' not in codex_configuration
         assert 'X-HiRoute-Token' not in codex_configuration
 

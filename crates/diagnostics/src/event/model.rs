@@ -169,3 +169,34 @@ pub enum ExclusionReason {
     UnavailableConnector,
     Other,
 }
+
+/// Wire-shape facts only: never header values, URLs, model names or response bodies.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpstreamWire {
+    pub request_token: Option<CorrelationToken>,
+    pub phase: UpstreamWirePhase,
+    pub bearer_present: bool,
+    pub api_key_present: bool,
+    pub authorization_bytes: u64,
+    pub body_bytes: Option<u64>,
+    pub http_status: Option<u16>,
+    pub content_type: WireContentType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpstreamWirePhase {
+    Request,
+    Response,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireContentType {
+    Json,
+    EventStream,
+    Html,
+    Other,
+    Missing,
+}

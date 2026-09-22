@@ -1066,7 +1066,7 @@
             "request_path": "/api/coding/paas/v4/chat/completions",
             "adapter_ref": "adapter.openai-chat.v1",
             "adapter_revision": 1,
-            "stable_preference": 0,
+            "stable_preference": 1,
             "authentication_semantics": {
               "kind": "bearer"
             }
@@ -1078,7 +1078,7 @@
             "request_path": "/api/anthropic/v1/messages",
             "adapter_ref": "adapter.anthropic-messages.v1",
             "adapter_revision": 1,
-            "stable_preference": 1,
+            "stable_preference": 2,
             "authentication_semantics": {
               "kind": "bearer"
             },
@@ -1088,11 +1088,23 @@
                 "2023-06-01"
               ]
             ]
+          },
+          {
+            "protocol_endpoint_id": "endpoint.zhipu.coding-plan.cn.v1.responses",
+            "protocol": "responses",
+            "base_url": "https://open.bigmodel.cn",
+            "request_path": "/api/v1/responses",
+            "adapter_ref": "adapter.openai-responses.v1",
+            "adapter_revision": 1,
+            "stable_preference": 0,
+            "authentication_semantics": {
+              "kind": "bearer"
+            }
           }
         ],
         "inventory_strategy": "bundled_catalog",
-        "verification_evidence": "sha256:dad45c2ef96c761acffc75c3a5b718c825c7aadf1498fd1a18931980e321d5e7",
-        "last_verified_at": 1787788800
+        "verification_evidence": "sha256:a59d2385310bbcc357077c5d89d4c1497eb85971aae29b659b5ea6ec1af66722",
+        "last_verified_at": 1789862400
       },
       {
         "endpoint_profile_id": "endpoint.zhipu.general.cn.v1",
@@ -1630,6 +1642,21 @@
           "revision": 1,
           "upstream_model_id": "glm-5.3",
           "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.zhipu.glm-5.3.coding-plan.responses",
+          "connector_id": "connector.zhipu.p0",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.zhipu.coding-plan.cn.v1",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:9d1c3bd35942ce2ce5b97e582378bd581d45b54beff14a4cf68c6d82796d1dde",
+          "model_configuration_id": "model.zhipu.glm-5.3",
+          "protocol_endpoint_id": "endpoint.zhipu.coding-plan.cn.v1.responses",
+          "required_adapter_ref": "adapter.openai-responses.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "glm-5.3",
+          "upstream_protocol": "responses"
         }
       ],
       "models": [
@@ -3212,7 +3239,8 @@
           "documented_upstream_model_ids": [],
           "evidence_refs": [
             "source-024",
-            "source-025"
+            "source-025",
+            "source-125"
           ],
           "interfaces": [
             {
@@ -3229,6 +3257,14 @@
               "interface_key": "zhipu-coding-cn/openai-chat",
               "protocol": "openai-chat",
               "request_path": "/chat/completions",
+              "request_path_template": null
+            },
+            {
+              "base_url": "https://open.bigmodel.cn/api/v1",
+              "base_url_template": null,
+              "interface_key": "zhipu-coding-cn/openai-responses",
+              "protocol": "openai-responses",
+              "request_path": "/responses",
               "request_path_template": null
             }
           ],
@@ -5088,6 +5124,28 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "glm-5.3"
+        },
+        {
+          "availability": {
+            "condition": "documented Coding Plan access; the plan credential and Responses request still require live qualification",
+            "state": "conditional"
+          },
+          "binding_key": "zhipu-coding-cn/glm-5-3-global/glm-5-3",
+          "evidence_refs": [
+            "source-125"
+          ],
+          "interface_candidates": [
+            "zhipu-coding-cn/anthropic-messages",
+            "zhipu-coding-cn/openai-chat",
+            "zhipu-coding-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-global",
+          "product_key": "zhipu-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.3"
         }
       ],
       "evidence_sources": [
@@ -6205,6 +6263,15 @@
           "digest_state": "not-captured",
           "locator": "https://vercel.com/docs/ai-gateway",
           "source_key": "source-124",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.bigmodel.cn",
+          "bytes_digest": null,
+          "collected_on": "2026-09-20",
+          "digest_state": "not-captured",
+          "locator": "https://docs.bigmodel.cn/cn/coding-plan/tool/codex",
+          "source_key": "source-125",
           "source_kind": "provider-documentation"
         }
       ],
@@ -96022,7 +96089,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:d87aadd54b9ca20a6cc7510a07ad35a1de817bbfe906a9f84374eb92e9515824"
+      "source_catalog_digest": "sha256:287a35c089d5eecc396f5bfd347b59bec2045117a43df3119ae5e05d6a1a8415"
     },
     "rating_snapshot": {
       "digest": "sha256:92eb5556b5042ea0d2a3b9a918880fb1ccb3cc632c12a1b0d4cc3e52304efc7d",

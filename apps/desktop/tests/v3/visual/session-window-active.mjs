@@ -15,7 +15,7 @@ try {
   try {
     await navigate(client, new URL('session-window.html', baseUrl).href, { width: 1280, height: 900 });
     await waitFor(client, 'Boolean(window.sessionWindow)', { timeout: 7000 });
-    const batches = [[0, 4], [4, 7], [7, 10], [10, 12], [12, 18]];
+    const batches = [[0, 4], [4, 7], [7, 10], [10, 12], [12, 19], [19, 22]];
     const checks = [];
     for (const [start, end] of batches) {
       const batch = await evaluate(client, `import('/session-window-scenarios.mjs').then(module => module.runSessionWindowScenarios(${start}, ${end}))`);

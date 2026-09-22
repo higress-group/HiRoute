@@ -388,8 +388,8 @@ mod tests {
         assert_eq!(metadata.provider_records.len(), 103);
         assert_eq!(metadata.model_records.len(), 761);
         assert_eq!(metadata.inference_rules.len(), 187);
-        assert_eq!(metadata.evidence_sources.len(), 124);
-        assert_eq!(metadata.endpoint_bindings.len(), 24);
+        assert_eq!(metadata.evidence_sources.len(), 125);
+        assert_eq!(metadata.endpoint_bindings.len(), 25);
         assert!(
             metadata
                 .model_records
@@ -471,6 +471,24 @@ mod tests {
                 .runtime_fallback_denied_model_ids
                 .contains("deepseek-future-text-model")
         );
+
+        let coding_plan = runtime
+            .adapter
+            .trusted_registered_draft(&request(&catalog, "zhipu.coding-plan.cn.v1"))
+            .unwrap();
+        assert_eq!(coding_plan.protocol, UpstreamProtocol::Responses);
+        assert_eq!(coding_plan.base_url, "https://open.bigmodel.cn");
+        assert_eq!(
+            coding_plan.request_path_override.as_deref(),
+            Some("/api/v1/responses")
+        );
+        assert!(
+            coding_plan
+                .protocol_header_semantics
+                .required_headers
+                .is_empty()
+        );
+        assert_eq!(coding_plan.models[0].upstream_model_id, "glm-5.3");
 
         let mut stale = request(&catalog, "bailian.payg.cn.v1");
         stale.expected_catalog.release_sequence += 1;

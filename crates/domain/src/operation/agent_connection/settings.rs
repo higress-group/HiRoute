@@ -1,6 +1,9 @@
 //! Independent settings enter the existing journal with a facet-specific effect contract.
 use super::*;
-use crate::{AGENT_SETTINGS_SCHEMA_V2, AgentFacetIntent, AgentSettingsSpecV2};
+use crate::{
+    AGENT_SETTINGS_SCHEMA_V2, AgentAccessGrantMaterialActionV1, AgentAccessTokenIntentV1,
+    AgentFacetIntent, AgentSettingsSpecV2,
+};
 
 impl AgentConnectionControlIntentV1 {
     /// The Application planner supplies the reproduced settings and current shared Skill file
@@ -57,6 +60,17 @@ pub(super) fn decode_spec(
     }
     if let AgentFacetIntent::Restore { restore_point_ref } = &settings.collaboration
         && !bounded_reference(restore_point_ref)
+    {
+        return Err(OperationValidationError::UnregisteredEffectPlan);
+    }
+    if !matches!(settings.access_token, AgentAccessTokenIntentV1::Keep)
+        && !matches!(settings.model, AgentFacetIntent::Configure { .. })
+    {
+        return Err(OperationValidationError::UnregisteredEffectPlan);
+    }
+    if let AgentAccessTokenIntentV1::Set { input_slot } = &settings.access_token
+        && (!bounded_reference(input_slot)
+            || !input_slot.starts_with("candidate/native/agent-token-"))
     {
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }
@@ -137,6 +151,29 @@ pub(super) fn validate_model_grants(
         mutation.validate()?;
         if Some(mutation.kind()) != expected
             || mutation.connection_id() != format!("agent-connection/{}", settings.context_id)
+            || !matches!(
+                (&settings.access_token, mutation.material_action()),
+                (
+                    AgentAccessTokenIntentV1::Keep,
+                    AgentAccessGrantMaterialActionV1::Preserve
+                ) | (
+                    AgentAccessTokenIntentV1::Regenerate,
+                    AgentAccessGrantMaterialActionV1::Regenerate
+                ) | (
+                    AgentAccessTokenIntentV1::Set { .. },
+                    AgentAccessGrantMaterialActionV1::Set { .. }
+                )
+            )
+        {
+            return Err(OperationValidationError::UnregisteredEffectPlan);
+        }
+        if let (
+            AgentAccessTokenIntentV1::Set { input_slot },
+            AgentAccessGrantMaterialActionV1::Set {
+                input_slot: staged, ..
+            },
+        ) = (&settings.access_token, mutation.material_action())
+            && input_slot != staged
         {
             return Err(OperationValidationError::UnregisteredEffectPlan);
         }

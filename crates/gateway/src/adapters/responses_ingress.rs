@@ -155,19 +155,6 @@ pub(super) fn decode_responses_input(
             });
         }
         "reasoning" => {
-            ensure_keys(
-                object,
-                &[
-                    "type",
-                    "id",
-                    "status",
-                    "summary",
-                    "content",
-                    "encrypted_content",
-                    "internal_chat_message_metadata_passthrough",
-                ],
-                "responses reasoning",
-            )?;
             let encrypted = match object.get("encrypted_content") {
                 None | Some(Value::Null) => None,
                 Some(Value::String(value)) if value.is_empty() => None,

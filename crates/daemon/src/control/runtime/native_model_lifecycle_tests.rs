@@ -36,6 +36,7 @@ fn settings_codex_daemon_stages_real_grant_reopens_and_restores_native_file() {
         .apply_agent_access_grant(
             &install.operation_id,
             &install.plan.agent_access_grants()[0],
+            None,
         )
         .unwrap();
     let file_effect = adapter.apply_external(&install, &intent).unwrap();
@@ -135,6 +136,7 @@ fn settings_codex_daemon_stages_real_grant_reopens_and_restores_native_file() {
         .apply_agent_access_grant(
             &restore.operation_id,
             &restore.plan.agent_access_grants()[0],
+            None,
         )
         .unwrap();
     let staged = runtime

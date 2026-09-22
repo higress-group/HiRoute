@@ -51,6 +51,27 @@ impl GatewayOperationalTargetV1 {
         Some(&rest[path_start..])
     }
 
+    /// A registered catalog may publish several protocol paths on the same exact HTTPS
+    /// authority. The catalog-bound protocol profile chooses the path; the transport target
+    /// and its credential stay scoped to that authority. User-configured targets remain exact.
+    pub fn for_protocol_path(&self, path: &str) -> Option<Self> {
+        match self {
+            Self::RegisteredHttps { uri } => {
+                if !valid_executable_endpoint(uri) {
+                    return None;
+                }
+                let prefix = uri.strip_suffix(self.request_path()?)?;
+                let selected = format!("{prefix}{path}");
+                valid_executable_endpoint(&selected)
+                    .then_some(Self::RegisteredHttps { uri: selected })
+            }
+            Self::UserConfiguredNative { .. } if self.request_path() == Some(path) => {
+                Some(self.clone())
+            }
+            Self::UserConfiguredNative { .. } | Self::ManagedCpaLoopback { .. } => None,
+        }
+    }
+
     pub fn validate_for(&self, runtime_kind: ConnectorRuntimeKind, logical_endpoint: &str) -> bool {
         match self {
             Self::RegisteredHttps { uri } => {
@@ -437,18 +458,36 @@ impl GatewayCandidateProtocolProfileV1 {
             || self.adapter_revision.trim().is_empty()
             || self.serializer_revision.trim().is_empty()
             || self.decoder_revision.trim().is_empty()
-            || self.capability.capability_id != candidate.capability_id
-            || self.capability.capability_revision != candidate.capability_revision.to_string()
+            || (self.capability.capability_id != candidate.capability_id
+                && !matches!(
+                    &candidate.operational_target,
+                    GatewayOperationalTargetV1::RegisteredHttps { .. }
+                ))
+            || self.capability.capability_id.trim().is_empty()
+            || self
+                .capability
+                .capability_revision
+                .parse::<u64>()
+                .ok()
+                .is_none_or(|value| value == 0)
+            || (self.capability.capability_id == candidate.capability_id
+                && self.capability.capability_revision != candidate.capability_revision.to_string())
             || self.capability.model_configuration_id != candidate.model_configuration_id
             || self.capability.native_model != candidate.native_transport_model
             || self.capability.upstream_protocol != self.connector.upstream_protocol
             || (candidate.connector_runtime != ConnectorRuntimeKind::CpaBridge
-                && self.capability.upstream_protocol != candidate.upstream_protocol)
+                && self.capability.upstream_protocol != candidate.upstream_protocol
+                && !matches!(
+                    &candidate.operational_target,
+                    GatewayOperationalTargetV1::RegisteredHttps { .. }
+                ))
             || self.connector.connector_id != candidate.connector_id
             || self.connector.connector_revision != candidate.connector_revision.to_string()
             || (candidate.connector_runtime != ConnectorRuntimeKind::CpaBridge
-                && self.connector.request_path
-                    != candidate.operational_target.request_path().unwrap_or(""))
+                && candidate
+                    .operational_target
+                    .for_protocol_path(&self.connector.request_path)
+                    .is_none())
             || self.capability.native_provider_state
                 == GatewayNativeProviderStateEmissionV1::Unknown
             || self.capability.native_streaming.exact().is_none()
@@ -610,6 +649,35 @@ fn valid_numeric_loopback_http(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::ReasoningRenderModeV1;
+
+    #[test]
+    fn registered_protocol_path_keeps_authority_and_user_target_stays_exact() {
+        let registered = GatewayOperationalTargetV1::RegisteredHttps {
+            uri: "https://open.bigmodel.cn/api/v1/responses".into(),
+        };
+        assert_eq!(
+            registered
+                .for_protocol_path("/api/anthropic/v1/messages")
+                .unwrap()
+                .uri(),
+            "https://open.bigmodel.cn/api/anthropic/v1/messages"
+        );
+        for unsafe_path in [
+            "//other.invalid/v1/messages",
+            "/api/../messages",
+            "/api/messages?token=x",
+        ] {
+            assert!(registered.for_protocol_path(unsafe_path).is_none());
+        }
+        let configured = GatewayOperationalTargetV1::UserConfiguredNative {
+            uri: "https://custom.invalid/v1/responses".into(),
+        };
+        assert!(configured.for_protocol_path("/v1/messages").is_none());
+        assert_eq!(
+            configured.for_protocol_path("/v1/responses"),
+            Some(configured.clone())
+        );
+    }
 
     #[test]
     fn discrete_reasoning_matches_a_protocol_owned_nested_wire_path() {

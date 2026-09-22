@@ -1,6 +1,7 @@
 use super::*;
 use hiroute_application_api::{
-    PlanContentChangeV2, PlanContentPreviewV2, PlanContentTargetV2, PlanEditorOptionsV1,
+    CodexClientCapabilityPreviewV1, PlanContentChangeV2, PlanContentPreviewV2, PlanContentTargetV2,
+    PlanEditorOptionsV1,
 };
 use hiroute_domain::{BillingClass, ComputeManagementRepositoryPort, WorkspaceId};
 use hiroute_local_storage::LocalStorageSet;
@@ -59,6 +60,27 @@ pub async fn publish(
         },
         "consumed_draft": null
     })).unwrap();
+    let options: PlanEditorOptionsV1 = succeeded(
+        daemon
+            .client
+            .query(
+                "GetPlanEditorOptions",
+                "registered-codex-capabilities",
+                &json!({"editor": change.editor}),
+            )
+            .await
+            .unwrap(),
+    );
+    let CodexClientCapabilityPreviewV1::Available { limitations, .. } = options
+        .codex_capabilities
+        .expect("compiled GLM Responses preview")
+    else {
+        panic!("registered GLM native Responses facts should support Codex routing");
+    };
+    assert!(
+        limitations.is_empty(),
+        "native Responses must not carry Messages limits"
+    );
     let preview: PlanContentPreviewV2 = succeeded(
         daemon
             .client
@@ -80,6 +102,39 @@ pub async fn publish(
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].candidates.len(), 1);
     let candidate = &groups[0].candidates[0];
+    assert!(matches!(
+        hiroute_integrations::codex_plan_capability_preview(&preview.plan_version.compiled),
+        CodexClientCapabilityPreviewV1::Available { .. }
+    ));
+    let bundled: Value = serde_json::from_slice(include_bytes!(
+        "../../../../crates/integrations/src/agents/codex_bundled_catalog.json"
+    ))
+    .unwrap();
+    let codex_catalog =
+        hiroute_integrations::CodexCatalogSelection::for_current_adapter(bundled).unwrap();
+    let merged = codex_catalog
+        .append_plans(
+            std::slice::from_ref(&preview.plan_version.compiled),
+            hiroute_integrations::CodexDefaultPolicy {
+                explicit_model: None,
+                uses_codex_backend: true,
+                allow_provider_model_fallback: false,
+            },
+            hiroute_integrations::CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
+        )
+        .expect("native GLM Responses plan enters Codex catalog");
+    let codex_entry = merged["models"].as_array().unwrap().last().unwrap();
+    assert_eq!(
+        codex_entry["slug"],
+        preview.plan_version.compiled.model_alias().as_str()
+    );
+    assert!(
+        !codex_entry["description"]
+            .as_str()
+            .unwrap()
+            .contains("Messages 候选")
+    );
     assert_eq!(candidate.binding_id, model.binding_id);
     assert_eq!(candidate.binding_revision, model.revision);
     assert_eq!(candidate.source_id, saved.source_id);
@@ -90,12 +145,12 @@ pub async fn publish(
     assert_eq!(candidate.model_configuration_id, "model.zhipu.glm-5.3");
     assert_eq!(
         candidate.capability_id,
-        "cap.zhipu.glm-5.3.coding-plan.messages"
+        "cap.zhipu.glm-5.3.coding-plan.responses"
     );
-    assert_eq!(candidate.upstream_protocol, UpstreamProtocol::Messages);
+    assert_eq!(candidate.upstream_protocol, UpstreamProtocol::Responses);
     assert_eq!(
         candidate.endpoint,
-        "https://open.bigmodel.cn/api/anthropic/v1/messages"
+        "https://open.bigmodel.cn/api/v1/responses"
     );
     assert_eq!(candidate.credential_refs.len(), 1);
     let target = hiroute_domain::ComputeManagementTargetV2 {
@@ -111,12 +166,42 @@ pub async fn publish(
         candidate.credential_destination_ref,
         Some(target.credential_destination().unwrap())
     );
-    assert!(candidate.protocol_profiles.iter().all(|profile| {
-        profile.connector.authentication.exact() == Some(&GatewayAuthenticationSemanticsV1::Bearer)
-            && profile.capability.request.function_tools == hiroute_domain::GatewayFidelityV1::Exact
-            && profile.connector.headers.exact().unwrap().required_headers
-                == [("anthropic-version".into(), "2023-06-01".into())]
-    }));
+    for (ingress, path, capability_id, required_headers) in [
+        (
+            UpstreamProtocol::Responses,
+            "/api/v1/responses",
+            "cap.zhipu.glm-5.3.coding-plan.responses",
+            Vec::new(),
+        ),
+        (
+            UpstreamProtocol::Messages,
+            "/api/anthropic/v1/messages",
+            "cap.zhipu.glm-5.3.coding-plan.messages",
+            vec![("anthropic-version".into(), "2023-06-01".into())],
+        ),
+    ] {
+        let profile = candidate
+            .protocol_profiles
+            .iter()
+            .find(|profile| profile.ingress_protocol == ingress)
+            .unwrap();
+        assert_eq!(profile.capability.upstream_protocol, ingress);
+        assert_eq!(profile.capability.capability_id, capability_id);
+        assert_eq!(profile.capability.native_model, "glm-5.3");
+        assert_eq!(profile.connector.request_path, path);
+        assert_eq!(
+            profile.connector.authentication.exact(),
+            Some(&GatewayAuthenticationSemanticsV1::Bearer)
+        );
+        assert_eq!(
+            profile.connector.headers.exact().unwrap().required_headers,
+            required_headers
+        );
+        assert_eq!(
+            profile.capability.request.function_tools,
+            hiroute_domain::GatewayFidelityV1::Exact
+        );
+    }
     let mut unsupported = change.clone();
     unsupported.editor.requirements.vision = true;
     let rejected: MachineEnvelopeV2<Value> = daemon
@@ -234,9 +319,11 @@ pub fn assert_durable_routing(root: &std::path::Path, preview: &PlanContentPrevi
         .as_ref()
         .expect("a saved Registered source retains its exact endpoint/header descriptor");
     assert_eq!(recheck.inventory_path, None);
-    assert_eq!(
-        recheck.protocol_header_semantics.required_headers,
-        [("anthropic-version".into(), "2023-06-01".into())]
+    assert!(
+        recheck
+            .protocol_header_semantics
+            .required_headers
+            .is_empty()
     );
     let candidate = &preview
         .plan_version
@@ -278,6 +365,30 @@ pub fn assert_durable_routing(root: &std::path::Path, preview: &PlanContentPrevi
             .lease_native_credential_exact(&request)
             .unwrap()
             .is_some()
+    );
+    let messages = candidate
+        .protocol_profiles
+        .iter()
+        .find(|profile| profile.ingress_protocol == UpstreamProtocol::Messages)
+        .unwrap();
+    let mut messages_request = request.clone();
+    messages_request.upstream_protocol = UpstreamProtocol::Messages;
+    messages_request.request_path = messages.connector.request_path.clone();
+    messages_request.operational_target = candidate
+        .operational_target
+        .for_protocol_path(&messages.connector.request_path)
+        .unwrap();
+    messages_request.logical_endpoint = messages_request.operational_target.uri().into();
+    messages_request.operational_target_digest =
+        CanonicalDigest::of(&messages_request.operational_target).unwrap();
+    messages_request.protocol_profile_digest = CanonicalDigest::of(messages).unwrap();
+    assert!(
+        stores
+            .secrets()
+            .lease_native_credential_exact(&messages_request)
+            .unwrap()
+            .is_some(),
+        "the same saved key must authorize the catalog-bound Messages path"
     );
     let mut legacy_destination = request;
     legacy_destination.credential_destination_ref =

@@ -46,6 +46,7 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .apply_agent_access_grant(
             &install.operation_id,
             &install.plan.agent_access_grants()[0],
+            None,
         )
         .unwrap();
     install.step_mut(OperationStepKind::ApplySecrets).effects = vec![grant_effect.clone()];
@@ -130,6 +131,26 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         ]
     );
     assert!(!first.model_verified);
+
+    // Native clients may update unrelated settings after HiRoute configures the route.
+    // A collaboration skill restore likewise must not turn this model selection off.
+    let unrelated = configured.replace("user_setting = true", "user_setting = false");
+    assert_ne!(unrelated, configured);
+    fs::write(&path, &unrelated).unwrap();
+    let unchanged_route = status();
+    assert_eq!(unchanged_route.state, AgentModelSettingsStateV2::Configured);
+    assert_eq!(unchanged_route.current_selection, first.current_selection);
+    let altered_provider = unrelated.replacen(
+        "model_provider = \"hiroute\"",
+        "model_provider = \"elsewhere\"",
+        1,
+    );
+    assert_ne!(altered_provider, unrelated);
+    fs::write(&path, altered_provider).unwrap();
+    let managed_drift = status();
+    assert_eq!(managed_drift.state, AgentModelSettingsStateV2::Drift);
+    assert!(managed_drift.current_selection.is_none());
+    fs::write(&path, &configured).unwrap();
 
     let save = |record: &AgentSurfaceCheckRecordV1| {
         adapter
@@ -254,7 +275,11 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .stores_lock()
         .unwrap()
         .secrets()
-        .apply_agent_access_grant(&update.operation_id, &update.plan.agent_access_grants()[0])
+        .apply_agent_access_grant(
+            &update.operation_id,
+            &update.plan.agent_access_grants()[0],
+            None,
+        )
         .unwrap();
     update.step_mut(OperationStepKind::ApplySecrets).effects = vec![update_grant.clone()];
     adapter
@@ -384,6 +409,7 @@ fn settings_codex_catalog_dispatch_does_not_require_a_verified_consumer() {
         .apply_agent_access_grant(
             &install.operation_id,
             &install.plan.agent_access_grants()[0],
+            None,
         )
         .unwrap();
     install.step_mut(OperationStepKind::ApplySecrets).effects = vec![grant_effect];
@@ -415,9 +441,9 @@ fn settings_codex_catalog_dispatch_does_not_require_a_verified_consumer() {
 }
 
 #[test]
-fn settings_codex_catalog_cache_drift_fails_before_native_configuration_write() {
+fn settings_codex_hiroute_only_ignores_native_cache_drift_before_configuration_write() {
     if crate::test_support::isolated_agent_home(
-        "control::runtime::native_model::tests::settings_codex_catalog_cache_drift_fails_before_native_configuration_write",
+        "control::runtime::native_model::tests::settings_codex_hiroute_only_ignores_native_cache_drift_before_configuration_write",
     ) {
         return;
     }
@@ -442,6 +468,7 @@ fn settings_codex_catalog_cache_drift_fails_before_native_configuration_write() 
         .apply_agent_access_grant(
             &install.operation_id,
             &install.plan.agent_access_grants()[0],
+            None,
         )
         .unwrap();
     install.step_mut(OperationStepKind::ApplySecrets).effects = vec![grant_effect];
@@ -465,19 +492,17 @@ fn settings_codex_catalog_cache_drift_fails_before_native_configuration_write() 
     fs::write(&cache, serde_json::to_vec(&changed).unwrap()).unwrap();
     fs::set_permissions(&cache, fs::Permissions::from_mode(0o644)).unwrap();
 
-    let error = adapter
-        .apply_external(&install, &catalog_intent)
-        .unwrap_err();
-    assert_eq!(error.code, PortErrorCode::Conflict);
-    assert_eq!(error.context, "codex.catalog.context_drift");
+    // A HiRoute-only catalog is derived from published plans, not the unused native cache.
+    let staged = adapter.apply_external(&install, &catalog_intent).unwrap();
+    assert_eq!(staged.effect_id, catalog_intent.effect_id());
     assert_eq!(fs::read(&path).unwrap(), before);
     assert!(
         adapter
             .artifacts
             .load_native_restore(&install.operation_id, &catalog_intent)
             .unwrap()
-            .is_none(),
-        "drift must not stage the private merged artifact"
+            .is_some(),
+        "the private HiRoute-only catalog is staged without touching native config"
     );
 }
 
@@ -544,6 +569,7 @@ fn settings_operation(
         resource_id: Some(context.to_owned()),
         desired_state: json!({"schema_version":{"major":2,"minor":0},"context_id":context,
             "model":{"intent":"configure","settings":{"mode":"codex_default",
+                "native_model_mode":"hiroute_only",
                 "fixed_models":[],
                 "allowed_plan_ids":plan_ids,
                 "default_selection":{"kind":"plan","plan_id":selected[0].agent_plan_id}}}}),
@@ -948,7 +974,7 @@ fn operation(
         command_id: "agents.settings.apply".into(),
         resource_id: Some("context/one".into()),
         desired_state: json!({"schema_version":{"major":2,"minor":0},"context_id":"context/one",
-            "model": original.map_or_else(|| json!({"intent":"configure","settings":{"mode":"codex_default","fixed_models":[],"allowed_plan_ids":[plan.agent_plan_id],"default_selection":{"kind":"plan","plan_id":plan.agent_plan_id}}}),
+            "model": original.map_or_else(|| json!({"intent":"configure","settings":{"mode":"codex_default","native_model_mode":"hiroute_only","fixed_models":[],"allowed_plan_ids":[plan.agent_plan_id],"default_selection":{"kind":"plan","plan_id":plan.agent_plan_id}}}),
                 |op| json!({"intent":"restore","restore_point_ref":codex_model_restore_point_ref(op)}))}),
     };
     let accept = CanonicalDigest::of_bytes(key.as_bytes());
@@ -1011,6 +1037,7 @@ fn operation(
         },
         |op| CodexModelFileAction::Restore {
             original_operation: op.clone(),
+            native_model: None,
         },
     );
     let native = settings_codex_model_file_intent(
@@ -1135,10 +1162,14 @@ fn catalog_facts(plan: &hiroute_integrations::CodexCatalogPlan) -> SettingsModel
         hiroute_integrations::CodexCatalogMetadataSourceV1::TargetBundled => {
             CodexCatalogProducerKindV1::TargetBundled
         }
+        hiroute_integrations::CodexCatalogMetadataSourceV1::HirouteGenerated => {
+            CodexCatalogProducerKindV1::HirouteGenerated
+        }
     };
     SettingsModelCatalogFacts {
         source_revision: hiroute_integrations::CODEX_CATALOG_SOURCE_REVISION.into(),
         content_digest: plan.content_digest.clone(),
+        before_fingerprint: None,
         producer_kind,
         producer_path: plan.producer.path.to_str().unwrap().into(),
         producer_content_digest: plan.producer.content_digest.clone(),

@@ -244,36 +244,44 @@ fn production_hirouted_wire_authority_catalog_deadline_and_actual_restart() {
     assert_eq!(unchanged.headers["etag"], etag);
     assert!(unchanged.body.is_empty());
 
-    for (path, model, header) in [
+    for (path, model, header, status, code) in [
         (
             "/v1/responses",
             "unknown",
             ("X-HiRoute-Token", "wire-token"),
+            404,
+            "AGENT_MODEL_NOT_GRANTED",
         ),
         (
             "/v1/responses",
             "wire-private",
             ("X-HiRoute-Token", "wire-token"),
+            404,
+            "AGENT_MODEL_NOT_GRANTED",
         ),
         (
             "/v1/messages",
             "wire-fast",
             ("Authorization", "Bearer wire-messages-token"),
+            404,
+            "AGENT_MODEL_NOT_GRANTED",
         ),
         (
             "/v1/messages",
             "wire-deep",
             ("Authorization", "Bearer wire-token"),
+            422,
+            "AGENT_PROTOCOL_UNSUPPORTED",
         ),
     ] {
         let body = serde_json::to_vec(&json!({"model": model})).unwrap();
         let response = request(address, "POST", path, &[header], &body);
-        assert_json_response(&response, 404);
+        assert_json_response(&response, status);
         assert_eq!(
             serde_json::from_slice::<Value>(&response.body).unwrap(),
             json!({
                 "schema_version": "hiroute.gateway.error/v1",
-                "code": "AGENT_PLAN_NOT_AVAILABLE",
+                "code": code,
                 "phase": "request_authority",
             })
         );

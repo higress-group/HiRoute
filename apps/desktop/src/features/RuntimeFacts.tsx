@@ -19,7 +19,7 @@ export function RuntimeFacts({ language, summary, facts, partial, busy, error, n
 }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const meaningful = facts.filter(fact => fact.native_model !== null || fact.outcome !== null || [fact.input_tokens, fact.output_tokens, fact.cache_read_tokens, fact.cache_write_tokens, fact.reasoning_tokens].some(value => value !== null));
-  const outcomes: Record<string, string> = { accepted: text('已受理', 'Accepted'), failed: text('失败', 'Failed'), cancelled: text('已取消', 'Cancelled'), completed: text('请求已完成', 'Request completed') };
+  const outcomes: Record<string, string> = { accepted: text('响应已交付', 'Response delivered'), failed: text('失败', 'Failed'), cancelled: text('已取消', 'Cancelled'), completed: text('请求已完成', 'Request completed') };
   const finalModel = summary?.finalModel ?? [...meaningful].reverse().find(fact => fact.native_model)?.native_model ?? null;
   const panel = useRef<HTMLElement>(null);
   const returnTarget = useRef<HTMLElement | null>(null);

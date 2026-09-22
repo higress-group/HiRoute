@@ -332,7 +332,7 @@ export const readyAgents: AgentSnapshot = {
           { context_id: 'agent-context/codex/default', surface: 'codex_desktop', expected_applied_revision: 19, client_model_ids: ['hiroute.plan.daily'] },
         ],
         current_selection: {
-          mode: 'codex_default', fixed_models: [],
+          mode: 'codex_default', native_model_mode: 'hiroute_only', fixed_models: [],
           allowed_plan_ids: [dailyPlan.agent_plan_id],
           default_selection: { kind: 'plan', plan_id: dailyPlan.agent_plan_id },
         },
@@ -668,14 +668,14 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
       const requestId = query.request_id as string;
       const incomplete = requestId === 'request/stream-gap';
       const gatewayContents = requestId === 'request/gateway-refactor' ? [
-        { content_id: `${requestId}/user`, role: 'user', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' },
-        { content_id: `${requestId}/assistant-initial`, role: 'assistant', state: 'complete', direction: 'egress', media_type: 'text/plain', message_occurrence_id: '2' },
-        { content_id: `${requestId}/tool-start`, role: 'assistant', state: 'complete', direction: 'response_delivered', media_type: 'application/vnd.hiroute.model-stream-event+json;version=1', message_occurrence_id: '3' },
-        { content_id: `${requestId}/tool-args`, role: 'assistant', state: 'complete', direction: 'response_delivered', media_type: 'application/vnd.hiroute.model-stream-event+json;version=1', message_occurrence_id: '4' },
-        { content_id: `${requestId}/tool-ready`, role: 'assistant', state: 'complete', direction: 'response_delivered', media_type: 'application/vnd.hiroute.model-stream-event+json;version=1', message_occurrence_id: '5' },
-        { content_id: `${requestId}/assistant`, role: 'assistant', state: 'complete', direction: 'egress', media_type: 'text/plain', message_occurrence_id: '6' },
+        { content_id: `${requestId}/user`, role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' },
+        { content_id: `${requestId}/assistant-initial`, role: 'assistant', kind: 'text', state: 'complete', direction: 'egress', media_type: 'text/plain', message_occurrence_id: '2' },
+        { content_id: `${requestId}/tool-start`, role: 'assistant', kind: 'tool_call_started', state: 'complete', direction: 'response_delivered', media_type: 'application/vnd.hiroute.model-stream-event+json;version=1', message_occurrence_id: '3' },
+        { content_id: `${requestId}/tool-args`, role: 'assistant', kind: 'tool_arguments_delta', state: 'complete', direction: 'response_delivered', media_type: 'application/vnd.hiroute.model-stream-event+json;version=1', message_occurrence_id: '4' },
+        { content_id: `${requestId}/tool-ready`, role: 'assistant', kind: 'tool_call_finished', state: 'complete', direction: 'response_delivered', media_type: 'application/vnd.hiroute.model-stream-event+json;version=1', message_occurrence_id: '5' },
+        { content_id: `${requestId}/assistant`, role: 'assistant', kind: 'text', state: 'complete', direction: 'egress', media_type: 'text/plain', message_occurrence_id: '6' },
       ] : null;
-      return { contents: messages[requestId] ? gatewayContents ?? [{ content_id: `${requestId}/user`, role: 'user', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' }, { content_id: `${requestId}/assistant`, role: 'assistant', state: incomplete ? 'partial' : 'complete', direction: 'egress', media_type: 'text/plain', message_occurrence_id: '2' }] : [], transcript_roots: [], roots_partial: false, next_cursor: null };
+      return { contents: messages[requestId] ? gatewayContents ?? [{ content_id: `${requestId}/user`, role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' }, { content_id: `${requestId}/assistant`, role: 'assistant', kind: 'text', state: incomplete ? 'partial' : 'complete', direction: 'egress', media_type: 'text/plain', message_occurrence_id: '2' }] : [], transcript_roots: [], roots_partial: false, next_cursor: null };
     }
     if (view === 'content') {
       const requestId = query.request_id as string;

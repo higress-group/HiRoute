@@ -3,9 +3,10 @@ use hiroute_application_api::{
     AGENT_SETTINGS_SCHEMA_V2, AgentFacetIntent, AgentSettingsFacet, AgentSettingsSpecV2,
 };
 use hiroute_domain::{
-    AgentAction, AgentCapability, AgentCapabilitySet, AgentCollaborationTriggerModeV2,
-    AgentIngressProtocolV1, AgentModelDefaultSelectionV2, AgentModelGrantV2, AgentModelRouteV2,
-    AgentModelSelectionV2, CanonicalDigest, GatewayPublicationV1,
+    AgentAccessTokenIntentV1, AgentAction, AgentCapability, AgentCapabilitySet,
+    AgentCollaborationTriggerModeV2, AgentIngressProtocolV1, AgentModelDefaultSelectionV2,
+    AgentModelGrantV2, AgentModelRouteV2, AgentModelSelectionV2, CanonicalDigest,
+    GatewayPublicationV1,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -30,11 +31,25 @@ pub struct AgentSettingsFacts {
     /// part of the restore. A pre-existing user login item is never owned and never removed.
     pub login_item_removal_required: bool,
     pub fixed_candidate_facts: Vec<crate::compiler::CandidateCompilationFactV1>,
-    /// Native Codex source/account bindings added by the trusted backend during initial adoption.
-    /// An explicit selection for the same client model wins, so later full-state edits can replace
-    /// or remove an earlier binding.
+    /// Native Codex source/account bindings established at initial adoption and carried through
+    /// subsequent full-state edits. Explicit replacements are rejected by the coverage check.
     pub preserved_codex_models: Vec<hiroute_domain::AgentFixedModelSelectionV2>,
+    /// Sealed fixed routes for protected names. These remain usable for a Plan edit even if the
+    /// source is temporarily absent from the current discovery snapshot.
+    pub preserved_codex_bindings: BTreeMap<String, hiroute_domain::AttemptOwnedCandidateV1>,
+    /// Original names proven usable on the same account and retained for this selection.
+    pub required_native_model_ids: Option<Vec<String>>,
+    /// Names in Codex metadata without a proven same-account route, shown as guidance only.
+    pub unproven_native_model_ids: Vec<String>,
+    /// The user chose to keep proven native names alongside HiRoute routes.
+    pub require_native_model_routes: bool,
+    /// Preserving the native default requires an exact proven route for that name.
+    pub native_default_must_be_original: bool,
     pub native_default_model: Option<String>,
+    /// Original directory for a Codex restore, never the HiRoute merged catalog.
+    pub restore_native_model_ids: Option<Vec<String>>,
+    /// Model that an unmodified restore would leave in the native configuration.
+    pub restored_native_model: Option<String>,
     pub native_claude_presets: Option<hiroute_domain::AgentClaudePresetValuesV2>,
     /// Preview-time ownership check for an existing collaboration Skill file.
     pub collaboration_file_conflict: bool,
@@ -47,6 +62,9 @@ pub struct SettingsModelCatalogFacts {
     pub source_revision: String,
     /// Digest of the private merged artifact written by HiRoute.
     pub content_digest: CanonicalDigest,
+    /// The exact content-addressed artifact may already exist from an earlier save. Bind its
+    /// observed fingerprint to Preview/Apply instead of assuming every save creates a new path.
+    pub before_fingerprint: Option<CanonicalDigest>,
     pub producer_kind: CodexCatalogProducerKindV1,
     pub producer_path: String,
     pub producer_content_digest: CanonicalDigest,
@@ -60,6 +78,7 @@ pub enum CodexCatalogProducerKindV1 {
     UserConfigured,
     TargetCache,
     TargetBundled,
+    HirouteGenerated,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -72,6 +91,7 @@ pub struct AgentSettingsPreview {
     /// None means keep/restore; Configure always persists the selected Skill trigger mode.
     pub collaboration_trigger_mode: Option<AgentCollaborationTriggerModeV2>,
     pub blockers: Vec<AgentSettingsBlock>,
+    pub unproven_native_model_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -80,12 +100,17 @@ pub struct AgentSettingsBlock {
     pub reason: SettingsBlockReason,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<hiroute_domain::CapabilityBlock>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub model_ids: Vec<String>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SettingsBlockReason {
     CapabilityUnavailable,
     ModelPlanUnavailable,
+    NativeModelCoverageUnavailable,
+    NativeDefaultInvalid,
+    RestoreNativeModelInvalid,
     RestorePointUnavailable,
     SkillFileConflict,
 }
@@ -113,6 +138,21 @@ pub fn preview_agent_settings(
     {
         return Err(SettingsPlanningError::InvalidContext);
     }
+    if spec.restore_native_model.is_some()
+        && !matches!(&spec.model, AgentFacetIntent::Restore { .. })
+    {
+        return Err(SettingsPlanningError::InvalidSelection);
+    }
+    if !matches!(spec.access_token, AgentAccessTokenIntentV1::Keep)
+        && !matches!(spec.model, AgentFacetIntent::Configure { .. })
+    {
+        return Err(SettingsPlanningError::InvalidSelection);
+    }
+    spec.protected_native_model_ids = if facts.require_native_model_routes {
+        facts.required_native_model_ids.clone().unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     if let AgentFacetIntent::Configure {
         settings: AgentModelSelectionV2::CodexDefault { fixed_models, .. },
     } = &mut spec.model
@@ -135,12 +175,36 @@ pub fn preview_agent_settings(
         AgentFacetIntent::Keep => {}
         AgentFacetIntent::Configure { settings } => {
             changed_facets.insert(AgentSettingsFacet::Model);
-            require(
-                facts,
-                AgentAction::ConfigureModel,
-                AgentSettingsFacet::Model,
-                &mut blockers,
-            );
+            if matches!(settings, AgentModelSelectionV2::CodexDefault { .. }) {
+                // A short-lived isolated HTTP challenge diagnoses a native client; it is not
+                // authorization to write a safely observed Codex configuration. Actual client
+                // calls have independent per-surface verification results.
+                let capabilities: Vec<_> = [
+                    AgentCapability::EffectiveConfiguration,
+                    AgentCapability::AtomicManagedReplace,
+                ]
+                .into_iter()
+                .filter_map(|capability| {
+                    missing_capability(facts, capability)
+                        .map(|reason| hiroute_domain::CapabilityBlock { capability, reason })
+                })
+                .collect();
+                if !capabilities.is_empty() {
+                    blockers.push(AgentSettingsBlock {
+                        facet: AgentSettingsFacet::Model,
+                        reason: SettingsBlockReason::CapabilityUnavailable,
+                        capabilities,
+                        model_ids: Vec::new(),
+                    });
+                }
+            } else {
+                require(
+                    facts,
+                    AgentAction::ConfigureModel,
+                    AgentSettingsFacet::Model,
+                    &mut blockers,
+                );
+            }
             settings
                 .validate()
                 .map_err(|_| SettingsPlanningError::InvalidSelection)?;
@@ -152,10 +216,9 @@ pub fn preview_agent_settings(
             let grant = derive_model_grant(settings, facts);
             match grant {
                 Ok(grant) => {
-                    // Plan-carrying Codex selections ride an immutable catalog artifact; a
-                    // selection whose merged catalog is not derivable cannot be published.
-                    if facts.ingress == AgentIngressProtocolV1::Responses
-                        && !settings.allowed_plan_ids().is_empty()
+                    // Every Codex selection publishes one exact client catalog, including
+                    // HiRoute-only fixed routes without a Plan.
+                    if matches!(settings, AgentModelSelectionV2::CodexDefault { .. })
                         && facts.model_catalog.is_none()
                     {
                         blockers.push(AgentSettingsBlock {
@@ -166,7 +229,46 @@ pub fn preview_agent_settings(
                                 reason: missing_capability(facts, AgentCapability::ModelCatalog)
                                     .unwrap_or(hiroute_domain::CapabilityBlockReason::Unavailable),
                             }],
+                            model_ids: Vec::new(),
                         });
+                    }
+                    if let Some(required) = &facts.required_native_model_ids {
+                        let missing = required
+                            .iter()
+                            .filter(|name| {
+                                !facts.preserved_codex_models.iter().any(|preserved| {
+                                    preserved.client_model_id == name.as_str()
+                                        && settings
+                                            .fixed_models()
+                                            .iter()
+                                            .any(|selected| selected == preserved)
+                                })
+                            })
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        if facts.require_native_model_routes
+                            && (required.is_empty() || !missing.is_empty())
+                        {
+                            blockers.push(AgentSettingsBlock {
+                                facet: AgentSettingsFacet::Model,
+                                reason: SettingsBlockReason::NativeModelCoverageUnavailable,
+                                capabilities: Vec::new(),
+                                model_ids: missing,
+                            });
+                        }
+                        if facts.native_default_must_be_original
+                            && facts
+                                .native_default_model
+                                .as_ref()
+                                .is_some_and(|default| !required.contains(default))
+                        {
+                            blockers.push(AgentSettingsBlock {
+                                facet: AgentSettingsFacet::Model,
+                                reason: SettingsBlockReason::NativeDefaultInvalid,
+                                capabilities: Vec::new(),
+                                model_ids: facts.native_default_model.iter().cloned().collect(),
+                            });
+                        }
                     }
                     model_grant = Some(grant)
                 }
@@ -174,6 +276,7 @@ pub fn preview_agent_settings(
                     facet: AgentSettingsFacet::Model,
                     reason: SettingsBlockReason::ModelPlanUnavailable,
                     capabilities: Vec::new(),
+                    model_ids: Vec::new(),
                 }),
             }
         }
@@ -186,6 +289,28 @@ pub fn preview_agent_settings(
                 restore_point_ref,
                 &mut blockers,
             );
+            if facts.ingress == AgentIngressProtocolV1::Responses {
+                let chosen = spec
+                    .restore_native_model
+                    .as_ref()
+                    .or(facts.restored_native_model.as_ref());
+                let valid = facts
+                    .restore_native_model_ids
+                    .as_ref()
+                    .is_some_and(|models| {
+                        !models.is_empty() && chosen.is_none_or(|model| models.contains(model))
+                    });
+                if !valid {
+                    blockers.push(AgentSettingsBlock {
+                        facet: AgentSettingsFacet::Model,
+                        reason: SettingsBlockReason::RestoreNativeModelInvalid,
+                        capabilities: Vec::new(),
+                        model_ids: facts.restored_native_model.iter().cloned().collect(),
+                    });
+                }
+            } else if spec.restore_native_model.is_some() {
+                return Err(SettingsPlanningError::InvalidSelection);
+            }
         }
     }
     match &spec.collaboration {
@@ -204,6 +329,7 @@ pub fn preview_agent_settings(
                     facet: AgentSettingsFacet::Collaboration,
                     reason: SettingsBlockReason::SkillFileConflict,
                     capabilities: Vec::new(),
+                    model_ids: Vec::new(),
                 });
             }
         }
@@ -221,6 +347,7 @@ pub fn preview_agent_settings(
                     facet: AgentSettingsFacet::Collaboration,
                     reason: SettingsBlockReason::SkillFileConflict,
                     capabilities: Vec::new(),
+                    model_ids: Vec::new(),
                 });
             }
         }
@@ -272,6 +399,7 @@ pub fn preview_agent_settings(
         model_grant,
         collaboration_trigger_mode,
         blockers,
+        unproven_native_model_ids: facts.unproven_native_model_ids.clone(),
     })
 }
 
@@ -280,11 +408,29 @@ fn derive_model_grant(
     facts: &AgentSettingsFacts,
 ) -> Result<AgentModelGrantV2, SettingsPlanningError> {
     let invalid = || SettingsPlanningError::InvalidSelection;
-    let fixed = crate::compiler::compile_fixed_model_bindings(
-        settings.fixed_models(),
+    let ordinary_fixed = settings
+        .fixed_models()
+        .iter()
+        .filter(|selection| {
+            !facts
+                .preserved_codex_bindings
+                .contains_key(&selection.client_model_id)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut fixed = crate::compiler::compile_fixed_model_bindings(
+        &ordinary_fixed,
         &facts.fixed_candidate_facts,
     )
     .map_err(|_| invalid())?;
+    for selection in settings.fixed_models() {
+        if let Some(binding) = facts
+            .preserved_codex_bindings
+            .get(&selection.client_model_id)
+        {
+            fixed.insert(selection.client_model_id.clone(), binding.clone());
+        }
+    }
     let grant = AgentModelGrantV2::derive(
         facts.ingress,
         settings,
@@ -320,6 +466,10 @@ fn validate_model_default(
                 )
                 .map_err(|_| invalid())?;
             match facts.native_default_model.as_deref() {
+                // Claude chooses Default from account/organization state when neither native
+                // setting selects a concrete model (or the setting literally says "default").
+                // Preset mappings can be saved, but they do not prove that initial selection.
+                None | Some("default") => return Ok(()),
                 Some("opus") => claude_presets.opus.as_deref(),
                 Some("sonnet") => claude_presets.sonnet.as_deref(),
                 Some("haiku") => claude_presets.haiku.as_deref(),
@@ -344,6 +494,7 @@ fn require(
             facet,
             reason: SettingsBlockReason::CapabilityUnavailable,
             capabilities,
+            model_ids: Vec::new(),
         });
     }
 }
@@ -360,6 +511,7 @@ fn restore(
             facet,
             reason: SettingsBlockReason::RestorePointUnavailable,
             capabilities: Vec::new(),
+            model_ids: Vec::new(),
         });
     }
 }

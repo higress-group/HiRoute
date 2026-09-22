@@ -353,6 +353,7 @@ mod tests {
 
     fn selection(default_selection: AgentModelDefaultSelectionV2) -> AgentModelSelectionV2 {
         AgentModelSelectionV2::CodexDefault {
+            native_model_mode: crate::CodexNativeModelModeV2::PreserveAvailable,
             fixed_models: Vec::new(),
             allowed_plan_ids: [AgentPlanId::parse("plan/example").unwrap()].into(),
             default_selection,

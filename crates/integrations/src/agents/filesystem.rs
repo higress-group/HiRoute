@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use hiroute_domain::{
     AgentConfigDocumentV1, AgentKindV1, CLAUDE_CODE_MANAGED_LAUNCH_VERSION_V1, CanonicalDigest,
-    ConfigLayerV1, ProtectedSecret,
+    ConfigLayerV1, ProtectedSecret, SupportedAgentInstallationV1,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -129,6 +129,10 @@ pub struct AgentFilesystemLayoutV1 {
 
 impl AgentFilesystemLayoutV1 {
     pub fn from_process(home: &Path, project: &Path) -> Self {
+        let claude_home = std::env::var_os("CLAUDE_CONFIG_DIR")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".claude"));
         let process_environment = [
             "ANTHROPIC_BASE_URL",
             "ANTHROPIC_MODEL",
@@ -159,7 +163,7 @@ impl AgentFilesystemLayoutV1 {
                 project.join(".claude/settings.local.json"),
                 project.join(".claude/settings.json"),
             ],
-            claude_user_settings: home.join(".claude/settings.json"),
+            claude_user_settings: claude_home.join("settings.json"),
             claude_managed_settings: managed_settings_paths(),
             process_environment,
             process_environment_presence,
@@ -286,6 +290,35 @@ impl FilesystemAgentScannerV1 {
             .lock()
             .map_err(|_| super::native_ingress_probe::cache_error())? = Some(evidence);
         Ok(())
+    }
+
+    #[cfg(unix)]
+    pub fn check_claude_collaboration(
+        &self,
+        cli: &std::path::Path,
+    ) -> Result<(), super::NativeIngressProbeError> {
+        let evidence = super::ClaudeNativeIngressProbe::run_collaboration(
+            &self.layout.claude_executable,
+            cli,
+        )?;
+        *self
+            .claude_ingress
+            .lock()
+            .map_err(|_| super::native_ingress_probe::cache_error())? = Some(evidence);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    pub fn attach_claude_collaboration_evidence(
+        &self,
+        executable: &std::path::Path,
+        installation: &mut SupportedAgentInstallationV1,
+    ) {
+        if let Ok(cache) = self.claude_ingress.lock()
+            && let Some(evidence) = cache.as_ref()
+        {
+            evidence.attach_collaboration(executable, installation);
+        }
     }
 
     pub fn scan(&self) -> Vec<FilesystemAgentDiscoveryV1> {
@@ -503,6 +536,40 @@ impl FilesystemAgentScannerV1 {
         self.layout.claude_user_settings.clone()
     }
 
+    /// User-file edits cannot override another active settings source or inherited process
+    /// authentication. Report that boundary before promising ordinary-CLI routing.
+    pub fn claude_native_routing_conflict(&self) -> Result<bool, AgentFilesystemScanError> {
+        Ok(self.claude_observations()?.iter().any(|observation| {
+            if observation.layer == ConfigLayerV1::User {
+                return false;
+            }
+            let env = &observation.settings.env;
+            observation.settings.model.is_some()
+                || env.base_url.is_some()
+                || env.model.is_some()
+                || env.default_opus_model.is_some()
+                || env.default_sonnet_model.is_some()
+                || env.default_haiku_model.is_some()
+                || env.small_fast_model.is_some()
+                || !env.present_environment_fields.is_empty()
+                || observation.settings.api_key_helper_present
+        }))
+    }
+
+    /// Claude's explicit initial model, not the three independently configurable preset
+    /// mappings. An environment selection wins over settings.model; absent both, Claude's
+    /// account-dependent Default remains unknown and must not be inferred from a preset.
+    pub fn claude_explicit_model_selection(
+        &self,
+    ) -> Result<Option<String>, AgentFilesystemScanError> {
+        let observations = self.claude_observations()?;
+        Ok(
+            select_effective(&observations, |settings| settings.env.model.as_deref())
+                .or_else(|| select_effective(&observations, |settings| settings.model.as_deref()))
+                .map(|(model, _)| model.to_owned()),
+        )
+    }
+
     /// Native-host fact used to prove Agent discovery and Worker selection resolve the same
     /// explicitly selected Claude installation. This path is never serialized to a client.
     pub fn claude_executable_target(&self) -> PathBuf {
@@ -581,40 +648,47 @@ impl FilesystemAgentScannerV1 {
         claude_user_change_is_applied(&self.layout.claude_user_settings, change)
     }
 
-    /// Reconstructs the registered Claude installation only for a daemon-validated, currently
-    /// applied user-file change. Normal discovery continues to reject arbitrary unregistered
-    /// endpoints and models; this narrow path exists so an already-owned local Gateway
-    /// configuration can complete its formal restore without treating its local endpoint as an
-    /// upstream registry entry.
+    /// Reconstructs settings facts only for a daemon-validated, currently applied user-file
+    /// change. The local Gateway is not an upstream in the discovery registry. Repeated saves
+    /// and restoration therefore use the active Operation's ownership proof, while retaining
+    /// native layer and target checks without running the diagnostic version probe.
     pub fn claude_installation_for_applied_user_change(
         &self,
         change: &hiroute_domain::AgentConfigChangeV1,
-    ) -> Result<hiroute_domain::SupportedAgentInstallationV1, AgentFilesystemScanError> {
+    ) -> Result<(hiroute_domain::SupportedAgentInstallationV1, String), AgentFilesystemScanError>
+    {
         if !self.claude_user_config_change_is_applied(change)? {
             return Err(AgentFilesystemScanError::SourceChanged);
         }
-        let ExecutableProbe::Installed(executable) =
-            executable_probe(&self.layout.claude_executable)
-        else {
-            return Err(AgentFilesystemScanError::SourceUnavailable);
-        };
+        let executable = super::executable::resolve(&self.layout.claude_executable)
+            .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?
+            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
+        let executable_path = executable
+            .to_str()
+            .ok_or(AgentFilesystemScanError::SourceUnavailable)?
+            .to_owned();
         let observations = self.claude_observations()?;
         let observations =
             main_observation::resolve_project_local_fields(&self.layout, &observations);
         let (outcome, conflict) =
-            main_observation::main_claude_observation(&executable.version, &observations);
+            main_observation::main_claude_observation("not-probed", &observations);
         if conflict {
             return Err(AgentFilesystemScanError::SourceChanged);
         }
         let AgentDiscoveryOutcomeV1::Supported { mut installation } = outcome else {
             return Err(AgentFilesystemScanError::InvalidConfig);
         };
-        super::observed_capabilities::attach_file_capabilities(
+        super::observed_capabilities::attach_target_file_capabilities(
             &mut installation,
-            &self.layout.claude_executable,
             &self.layout.claude_user_settings,
         );
-        Ok(*installation)
+        #[cfg(unix)]
+        if let Ok(cache) = self.claude_ingress.lock()
+            && let Some(evidence) = cache.as_ref()
+        {
+            evidence.attach(&executable, &mut installation);
+        }
+        Ok((*installation, executable_path))
     }
 
     /// Identifies whether an opaque discovered credential came from the exact user settings file
@@ -640,7 +714,10 @@ impl FilesystemAgentScannerV1 {
             .as_ref()
             .map(|value| value.version.clone())
             .unwrap_or_default();
-        let preserve_executable_outcome = executable_outcome.is_some();
+        // Settings writes bind the actual executable and target file, not the native
+        // endpoint/model registration used by ordinary account discovery. A user may
+        // switch an otherwise runnable Claude installation from an unknown provider.
+        let preserve_executable_outcome = executable_outcome.is_some() || for_settings;
         let configuration_failure_outcome = |reason: AgentReportOnlyReasonV1| {
             executable_outcome.clone().unwrap_or_else(|| {
                 report_only_agent(

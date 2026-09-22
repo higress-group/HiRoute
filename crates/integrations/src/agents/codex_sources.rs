@@ -96,9 +96,8 @@ impl FilesystemAgentScannerV1 {
     ) -> Result<Option<Draft>, Error> {
         let sampled = super::sample_codex_configuration(scope)?;
         let document = &sampled.source_document;
-        if document.is_empty() {
-            return Ok(None);
-        }
+        // An absent or empty config.toml is a valid Codex configuration: the built-in
+        // OpenAI provider and native login still apply.
         let value = |field: &str| -> Result<Option<&str>, Error> {
             document
                 .get(field)

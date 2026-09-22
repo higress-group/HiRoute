@@ -51,6 +51,9 @@ def stream_body(protocol):
     usage = provider_usage(protocol, True)
     if protocol == 'responses':
         complete = response_body(protocol, True)
+        # CPA repeats request fields in response.completed. Keep this event
+        # above the accepted response plan's 64 KiB transport frame limit.
+        complete['instructions'] = 'i' * 100_000
         return (json_event('response.created', {
             'type': 'response.created', 'response': {
                 'id': 'usage-stream', 'model': MODEL, 'status': 'in_progress'}})
@@ -182,6 +185,10 @@ def gateway_request(product, protocol, alias, streaming, token):
         product.outputs.append(payload)
         assert response.status == 200 and b'usage-ok' in payload, (
             protocol, streaming, response.status, payload)
+        if protocol == 'responses' and streaming:
+            assert payload.count(b'event: response.completed\n') == 1, (
+                'large native terminal was truncated', len(payload))
+            assert payload.endswith(b'\n\n'), 'large native terminal lacks SSE boundary'
     finally:
         client.close()
 

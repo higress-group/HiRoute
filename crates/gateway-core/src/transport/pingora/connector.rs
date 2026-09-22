@@ -49,8 +49,16 @@ pub(super) struct PingoraConnectorRegistry {
 
 struct ConnectorSlot {
     fingerprint: ConnectionEpochFingerprint,
+    pool_compatibility_fingerprint: [u8; 32],
     connection_config_fingerprint: [u8; 32],
     connector: Arc<Connector>,
+}
+
+fn pool_compatibility_fingerprint(target: &TransportTarget) -> [u8; 32] {
+    // A hostname is resolved for every request. DNS answers and their order
+    // can change without a publication epoch change; Pingora's peer key still
+    // includes the selected socket address.
+    target.derive_pool_compatibility_fingerprint()
 }
 
 impl PingoraConnectorRegistry {
@@ -60,6 +68,7 @@ impl PingoraConnectorRegistry {
         connection_config_fingerprint: [u8; 32],
     ) -> Result<Arc<Connector>, AttemptError> {
         let requested = target.connection_epoch_fingerprint();
+        let pool_compatibility_fingerprint = pool_compatibility_fingerprint(target);
         let mut slots = self
             .slots
             .lock()
@@ -70,6 +79,7 @@ impl PingoraConnectorRegistry {
                 requested.reuse_class,
                 ConnectorSlot {
                     fingerprint: requested,
+                    pool_compatibility_fingerprint,
                     connection_config_fingerprint,
                     connector: Arc::clone(&connector),
                 },
@@ -83,7 +93,7 @@ impl PingoraConnectorRegistry {
             return Ok(Arc::new(Connector::new(None)));
         }
         if requested.pool_epoch == current.fingerprint.pool_epoch {
-            if requested != current.fingerprint {
+            if pool_compatibility_fingerprint != current.pool_compatibility_fingerprint {
                 return Err(AttemptError::Transport(
                     "connection fingerprint changed without a pool epoch bump".into(),
                 ));
@@ -101,6 +111,7 @@ impl PingoraConnectorRegistry {
             requested.reuse_class,
             ConnectorSlot {
                 fingerprint: requested,
+                pool_compatibility_fingerprint,
                 connection_config_fingerprint,
                 connector: Arc::clone(&connector),
             },

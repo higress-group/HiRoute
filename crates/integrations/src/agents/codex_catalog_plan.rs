@@ -8,7 +8,7 @@ use hiroute_application_api::{
 use hiroute_domain::{CompiledAgentPlanV1, UpstreamProtocol};
 use hiroute_gateway::server::core_runtime::{
     model_ir::{RequestCapabilityRequirementsV1, ToolChoice},
-    profiles::CandidateProtocolProfile,
+    profiles::{CandidateProtocolProfile, CapabilityError},
 };
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
@@ -31,6 +31,7 @@ impl CodexCatalogSelection {
         plans: &[CompiledAgentPlanV1],
         policy: CodexDefaultPolicy<'_>,
         metadata_source: CodexCatalogMetadataSourceV1,
+        retained_models: Option<&BTreeSet<String>>,
     ) -> Result<Value, CodexCatalogError> {
         self.validate_schema()?;
         let priorities = self.plan_priorities(plans.len())?;
@@ -39,6 +40,14 @@ impl CodexCatalogSelection {
             .get_mut("models")
             .and_then(Value::as_array_mut)
             .ok_or(CodexCatalogError::InvalidCatalog)?;
+        if let Some(retained) = retained_models {
+            models.retain(|model| {
+                model
+                    .get("slug")
+                    .and_then(Value::as_str)
+                    .is_some_and(|name| retained.contains(name))
+            });
+        }
         if metadata_source == CodexCatalogMetadataSourceV1::TargetCache {
             for model in models.iter_mut() {
                 let model = model
@@ -59,7 +68,10 @@ impl CodexCatalogSelection {
     }
 }
 
-fn plan_entry(plan: &CompiledAgentPlanV1, priority: i32) -> Result<Value, CodexCatalogError> {
+pub(super) fn plan_entry(
+    plan: &CompiledAgentPlanV1,
+    priority: i32,
+) -> Result<Value, CodexCatalogError> {
     let (context_window, input_modalities) = match codex_plan_capability_preview(plan) {
         CodexClientCapabilityPreviewV1::Available {
             context_window,
@@ -79,10 +91,14 @@ fn plan_entry(plan: &CompiledAgentPlanV1, priority: i32) -> Result<Value, CodexC
             CodexInputModalityV1::Image => "image",
         })
         .collect::<Vec<_>>();
+    let description = format!(
+        "HiRoute 路由计划：{}；推理强度由计划配置决定",
+        plan.body.identity.purpose.as_str(),
+    );
     Ok(json!({
         "slug": plan.model_alias().as_str(),
         "display_name": plan.body.identity.display_name.as_str(),
-        "description": format!("HiRoute 路由计划：{}；推理强度由计划配置决定", plan.body.identity.purpose.as_str()),
+        "description": description,
         "visibility": "list", "supported_in_api": true, "priority": priority,
         "default_reasoning_level": null, "supported_reasoning_levels": [],
         "shell_type": "shell_command", "apply_patch_tool_type": null,
@@ -107,6 +123,17 @@ fn plan_entry(plan: &CompiledAgentPlanV1, priority: i32) -> Result<Value, CodexC
         "model_specialty": null, "multi_agent_version": null,
         "service_tiers": [], "additional_speed_tiers": []
     }))
+}
+
+/// A Worker owns a fresh private CODEX_HOME, so its only native model is the exact task Plan.
+/// Reuse the same plan entry as the user-target merge without importing or changing that target's
+/// catalog. The run's Gateway grant, not this metadata, still authorizes model requests.
+pub fn codex_private_worker_catalog(
+    plan: &CompiledAgentPlanV1,
+) -> Result<Vec<u8>, CodexCatalogError> {
+    let catalog = json!({"models": [plan_entry(plan, 0)?]});
+    CodexCatalogSelection::for_current_adapter(catalog.clone())?;
+    serde_json::to_vec(&catalog).map_err(|_| CodexCatalogError::InvalidCatalog)
 }
 
 pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientCapabilityPreviewV1 {
@@ -144,9 +171,26 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
                 Some(&candidate.binding_id),
             );
         };
-        if executable.validate(&requirements(false)).is_err() {
+        // Codex emits developer-role input items in normal requests. Anthropic
+        // Messages has no distinct developer role, even when that item is a
+        // prelude, and cannot guarantee later instruction positions either.
+        if executable.capability.upstream_protocol == IngressProtocol::Messages {
             return unavailable(
-                CodexCapabilityIssueKindV1::RequestCapabilities,
+                CodexCapabilityIssueKindV1::InstructionRoles,
+                Some(&candidate.binding_id),
+            );
+        }
+        if let Err(error) = executable.validate(&requirements(false)) {
+            return unavailable(
+                if matches!(
+                    error,
+                    CapabilityError::InitialInstructionsUnsupported
+                        | CapabilityError::MidConversationInstructionsUnsupported
+                ) {
+                    CodexCapabilityIssueKindV1::InstructionRoles
+                } else {
+                    CodexCapabilityIssueKindV1::RequestCapabilities
+                },
                 Some(&candidate.binding_id),
             );
         }

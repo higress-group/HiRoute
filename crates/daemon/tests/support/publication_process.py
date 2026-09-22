@@ -35,7 +35,8 @@ def ensure_native_model_evidence(product, agent_id):
 
 
 def configure_model_settings_v2(product, allowed_plan_ids, key, default_plan_id=None,
-                                agent_id='agent_codex_default'):
+                                agent_id='agent_codex_default',
+                                native_model_mode='hiroute_only'):
     """Use the current typed settings transaction through same-user Local Control."""
     context = getattr(product, 'agent_context_id', None)
     if context is None:
@@ -46,7 +47,8 @@ def configure_model_settings_v2(product, allowed_plan_ids, key, default_plan_id=
     product.agent_settings_agent_id = agent_id
     product.agent_connection = 'agent-connection/' + context
     ensure_native_model_evidence(product, agent_id)
-    spec = model_settings_spec_v2(product, allowed_plan_ids, default_plan_id)
+    spec = model_settings_spec_v2(product, allowed_plan_ids, default_plan_id,
+                                  native_model_mode)
     preview, body, capability = prepare_agent_settings_v2(product, spec, key)
     _, applied = product.cli('agents connect apply', body, capability)
     if applied['data']['state'] != 'succeeded':
@@ -64,7 +66,8 @@ def configure_model_settings_v2(product, allowed_plan_ids, key, default_plan_id=
     return applied
 
 
-def model_settings_spec_v2(product, allowed_plan_ids, default_plan_id=None):
+def model_settings_spec_v2(product, allowed_plan_ids, default_plan_id=None,
+                           native_model_mode='hiroute_only'):
     default_plan_id = default_plan_id or allowed_plan_ids[0]
     agent_id = getattr(product, 'agent_settings_agent_id', 'agent_codex_default')
     if agent_id == 'agent_claude_default':
@@ -98,6 +101,7 @@ def model_settings_spec_v2(product, allowed_plan_ids, default_plan_id=None):
         'context_id': product.agent_context_id,
         'model': {'intent': 'configure', 'settings': {
             'mode': 'codex_default',
+            'native_model_mode': native_model_mode,
             'fixed_models': fixed_models,
             'allowed_plan_ids': allowed_plan_ids,
             'default_selection': {'kind': 'plan', 'plan_id': default_plan_id},
@@ -245,6 +249,11 @@ def bootstrap(product):
     product.saved_source = saved
     product.source_id = saved['source_id']
     product.binding = identity
+    if product.project_source:
+        # Importing a project source does not authorize HiRoute's user-level Agent settings
+        # to override that project's native auth. The fixture owner removes its project
+        # override before explicitly enabling the ordinary Claude connection.
+        product.project_settings.unlink()
     selection = {'binding_id': identity['binding_id']}
     if product.cpa_args:
         selection['reasoning'] = {'kind': 'profile', 'profile': 'low'}

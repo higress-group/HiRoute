@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn codex_empty_or_missing_config_keeps_the_builtin_native_source() {
+    use crate::agents::{CodexSelectionTarget, DiscoveredAuthSource};
+    for empty_file in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let layout = layout(directory.path());
+        fs::create_dir_all(layout.codex_user_config.parent().unwrap()).unwrap();
+        if empty_file {
+            fs::write(&layout.codex_user_config, "").unwrap();
+        }
+        let scanner = FilesystemAgentScannerV1::new(layout, registry());
+        let candidates = scanner
+            .codex_source_candidates(&CodexSelectionTarget::Root)
+            .unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].authentication,
+            DiscoveredAuthSource::NativeSessionNeedsConfirmation
+        );
+        assert_eq!(
+            candidates[0].endpoint_origin.as_deref(),
+            Some("https://api.openai.com")
+        );
+    }
+}
+
+#[test]
 #[cfg(unix)]
 fn codex_source_rechecks_all_selected_layers_and_native_cli_provider_override() {
     use crate::agents::CodexConfigurationScope;

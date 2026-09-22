@@ -11,6 +11,6 @@
     {"request_id": "${REQUEST_ID}", "sequence": 1, "kind": "request_ir", "ingress_protocol": "messages", "upstream_protocol": "chat_completions", "semantic_digest": "sha256:8a29de5074cfc559e349223d6521f8967e025718ce56fdc8b78f96e764e56784"},
     {"request_id": "${REQUEST_ID}", "sequence": 2, "kind": "text_delta", "text_digest": "${RUN_CHALLENGE_SHA256}"},
     {"request_id": "${REQUEST_ID}", "sequence": 3, "kind": "completed", "finish_reason": "end_turn", "input_tokens": 12, "output_tokens": 1},
-    {"request_id": "${REQUEST_ID}", "sequence": 1, "kind": "admission_rejected", "code": "AGENT_PLAN_NOT_AVAILABLE", "alias_visibility": "uniform", "provider_connect_count": 0}
+    {"request_id": "${REQUEST_ID}", "sequence": 1, "kind": "admission_rejected", "code": "AGENT_MODEL_NOT_GRANTED", "alias_visibility": "uniform", "provider_connect_count": 0}
   ]
 }

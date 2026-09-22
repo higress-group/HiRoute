@@ -1,5 +1,6 @@
+use super::super::{CodexConfigurationScope, sample_codex_hiroute_only_catalog_plan};
 use super::*;
-use hiroute_domain::{CanonicalDigest, GatewayCriticalFactV1, GatewayFidelityV1};
+use hiroute_domain::{CanonicalDigest, GatewayCriticalFactV1, GatewayFidelityV1, UpstreamProtocol};
 
 fn plan() -> CompiledAgentPlanV1 {
     let fixture: Value = serde_json::from_slice(include_bytes!(
@@ -24,6 +25,76 @@ fn policy() -> CodexDefaultPolicy<'static> {
         uses_codex_backend: true,
         allow_provider_model_fallback: false,
     }
+}
+
+#[test]
+fn hiroute_only_catalog_uses_published_plan_without_native_cache() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("config.toml");
+    let scope = CodexConfigurationScope::user_file(config.clone());
+    let plan = plan();
+    let first = sample_codex_hiroute_only_catalog_plan(
+        &scope,
+        std::slice::from_ref(&plan),
+        plan.model_alias().as_str(),
+    )
+    .unwrap();
+    let second = sample_codex_hiroute_only_catalog_plan(
+        &scope,
+        std::slice::from_ref(&plan),
+        plan.model_alias().as_str(),
+    )
+    .unwrap();
+    assert_eq!(
+        first.producer.metadata_source,
+        CodexCatalogMetadataSourceV1::HirouteGenerated
+    );
+    assert_eq!(first.producer.path, config);
+    assert_eq!(first.content_digest, second.content_digest);
+    assert_eq!(
+        first.producer.dependency_digest,
+        second.producer.dependency_digest
+    );
+    assert_eq!(
+        first.selection.original()["models"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        first.selection.original()["models"][0]["slug"],
+        plan.model_alias().as_str()
+    );
+    assert!(!config.exists());
+    assert!(matches!(
+        sample_codex_hiroute_only_catalog_plan(&scope, &[plan], "different-default"),
+        Err(CodexCatalogError::MissingDefault)
+    ));
+}
+
+#[test]
+fn private_worker_catalog_uses_the_same_plan_entry_as_the_user_target_merge() {
+    let plan = plan();
+    let private: Value =
+        serde_json::from_slice(&codex_private_worker_catalog(&plan).unwrap()).unwrap();
+    let merged = original()
+        .append_plans(
+            std::slice::from_ref(&plan),
+            policy(),
+            CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
+        )
+        .unwrap();
+    assert_eq!(private["models"].as_array().unwrap().len(), 1);
+    assert_eq!(private["models"][0]["slug"], plan.model_alias().as_str());
+    assert_eq!(private["models"][0]["supports_parallel_tool_calls"], false);
+    let mut private_entry = private["models"][0].clone();
+    let mut merged_entry = merged["models"].as_array().unwrap().last().unwrap().clone();
+    private_entry.as_object_mut().unwrap().remove("priority");
+    merged_entry.as_object_mut().unwrap().remove("priority");
+    assert_eq!(private_entry, merged_entry);
+    CodexCatalogSelection::for_current_adapter(private).unwrap();
 }
 
 fn reseal(mut plan: CompiledAgentPlanV1) -> CompiledAgentPlanV1 {
@@ -51,6 +122,7 @@ fn exact_original_entries_remain_unchanged_when_plan_is_appended() {
             std::slice::from_ref(&plan),
             policy(),
             CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
         )
         .unwrap();
     let before = source.original()["models"].as_array().unwrap();
@@ -95,6 +167,55 @@ fn exact_original_entries_remain_unchanged_when_plan_is_appended() {
 }
 
 #[test]
+fn managed_catalog_exposes_only_authorized_names_from_full_metadata() {
+    let source = original();
+    let before = source.original()["models"].as_array().unwrap().clone();
+    assert!(
+        before.len() > 1,
+        "fixture must retain the full client metadata catalog"
+    );
+    let retained_name = before[1]["slug"].as_str().unwrap().to_owned();
+    let retained = BTreeSet::from([retained_name.clone()]);
+    let plan = plan();
+    let merged = source
+        .append_plans(
+            std::slice::from_ref(&plan),
+            CodexDefaultPolicy {
+                explicit_model: Some(plan.model_alias().as_str()),
+                uses_codex_backend: true,
+                allow_provider_model_fallback: false,
+            },
+            CodexCatalogMetadataSourceV1::TargetCache,
+            Some(&retained),
+        )
+        .unwrap();
+    let models = merged["models"].as_array().unwrap();
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0]["slug"], retained_name);
+    assert_eq!(models[1]["slug"], plan.model_alias().as_str());
+    assert_eq!(
+        source.original()["models"].as_array().unwrap(),
+        &before,
+        "source metadata remains untouched"
+    );
+
+    let fixed_only = source
+        .append_plans(
+            &[],
+            CodexDefaultPolicy {
+                explicit_model: Some(&retained_name),
+                uses_codex_backend: true,
+                allow_provider_model_fallback: false,
+            },
+            CodexCatalogMetadataSourceV1::UserConfigured,
+            Some(&retained),
+        )
+        .unwrap();
+    assert_eq!(fixed_only["models"].as_array().unwrap().len(), 1);
+    assert_eq!(fixed_only["models"][0], before[1]);
+}
+
+#[test]
 fn target_cache_missing_parallel_flag_defaults_true_without_mutating_source() {
     let mut raw = original().original().clone();
     raw["models"][0]
@@ -111,6 +232,7 @@ fn target_cache_missing_parallel_flag_defaults_true_without_mutating_source() {
             &[plan()],
             policy(),
             CodexCatalogMetadataSourceV1::TargetCache,
+            None,
         )
         .unwrap();
     let before = raw["models"].as_array().unwrap();
@@ -146,6 +268,7 @@ fn user_configured_catalog_does_not_infer_missing_parallel_flag() {
             &[plan()],
             policy(),
             CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
         )
         .unwrap();
     let before = raw["models"].as_array().unwrap();
@@ -198,8 +321,149 @@ fn missing_function_tools_rejects_plan_without_pruning_candidates() {
             &[value],
             policy(),
             CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
         ),
         Err(CodexCatalogError::CapabilityUnproven)
+    );
+}
+
+#[test]
+fn codex_catalog_rejects_missing_instruction_roles_even_when_tools_and_stream_are_exact() {
+    let mut value = plan();
+    let candidate = &mut std::sync::Arc::make_mut(&mut value.body)
+        .materialized
+        .attempt_owned
+        .groups[0]
+        .candidates[0];
+    let binding_id = candidate.binding_id.clone();
+    for profile in &mut candidate.protocol_profiles {
+        if profile.ingress_protocol == UpstreamProtocol::Responses {
+            profile.capability.request.mid_conversation_instructions =
+                GatewayFidelityV1::Unsupported;
+        }
+    }
+    let value = reseal(value);
+    assert_eq!(
+        codex_plan_capability_preview(&value),
+        CodexClientCapabilityPreviewV1::Unavailable {
+            issues: vec![CodexCapabilityIssueV1 {
+                kind: CodexCapabilityIssueKindV1::InstructionRoles,
+                binding_id: Some(binding_id),
+            }],
+        }
+    );
+    assert_eq!(
+        original().append_plans(
+            &[value],
+            policy(),
+            CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
+        ),
+        Err(CodexCatalogError::CapabilityUnproven)
+    );
+}
+
+#[test]
+fn messages_candidate_cannot_enter_codex_catalog_beside_a_native_responses_candidate() {
+    let mut value = plan();
+    let candidate = &mut std::sync::Arc::make_mut(&mut value.body)
+        .materialized
+        .attempt_owned
+        .groups[0]
+        .candidates[0];
+    let binding_id = candidate.binding_id.clone();
+    candidate.endpoint = candidate.endpoint.replace("/v1/responses", "/v1/messages");
+    candidate.operational_target = serde_json::from_value(json!({
+        "kind": "registered_https", "uri": candidate.endpoint
+    }))
+    .unwrap();
+    candidate.operational_target_digest =
+        CanonicalDigest::of(&candidate.operational_target).unwrap();
+    candidate.upstream_protocol = UpstreamProtocol::Messages;
+    for profile in &mut candidate.protocol_profiles {
+        profile.capability.upstream_protocol = UpstreamProtocol::Messages;
+        profile.capability.request.mid_conversation_instructions = GatewayFidelityV1::Unsupported;
+        profile.connector.upstream_protocol = UpstreamProtocol::Messages;
+        profile.connector.request_path = "/v1/messages".into();
+        for reasoning in &mut profile.capability.reasoning_profiles {
+            let mut render = serde_json::to_value(&reasoning.render).unwrap();
+            render["protocol"] = json!("messages");
+            reasoning.render = serde_json::from_value(render).unwrap();
+        }
+    }
+    let value = reseal(value);
+    assert_eq!(
+        value.body.materialized.attempt_owned.groups[0]
+            .candidates
+            .len(),
+        2
+    );
+    assert_eq!(
+        codex_plan_capability_preview(&value),
+        CodexClientCapabilityPreviewV1::Unavailable {
+            issues: vec![CodexCapabilityIssueV1 {
+                kind: CodexCapabilityIssueKindV1::InstructionRoles,
+                binding_id: Some(binding_id),
+            }],
+        }
+    );
+    assert_eq!(
+        original().append_plans(
+            &[value],
+            policy(),
+            CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
+        ),
+        Err(CodexCatalogError::CapabilityUnproven)
+    );
+}
+
+#[test]
+fn messages_only_candidate_does_not_claim_codex_responses_capability() {
+    let mut value = plan();
+    let candidate = &mut std::sync::Arc::make_mut(&mut value.body)
+        .materialized
+        .attempt_owned
+        .groups[0]
+        .candidates[0];
+    candidate
+        .protocol_profiles
+        .retain(|profile| profile.ingress_protocol != UpstreamProtocol::Responses);
+    let binding_id = candidate.binding_id.clone();
+    let value = reseal(value);
+    assert_eq!(
+        codex_plan_capability_preview(&value),
+        CodexClientCapabilityPreviewV1::Unavailable {
+            issues: vec![CodexCapabilityIssueV1 {
+                kind: CodexCapabilityIssueKindV1::ResponsesProtocol,
+                binding_id: Some(binding_id),
+            }],
+        }
+    );
+    let plan_id = value.agent_plan_id().clone();
+    let mut aliases = hiroute_domain::AliasRegistryV1::default();
+    aliases
+        .active
+        .insert(plan_id.clone(), value.model_alias().clone());
+    let publication = hiroute_domain::GatewayPublicationV1::seal(
+        hiroute_domain::WorkspaceId::default(),
+        "workspace/personal/default/gateway",
+        1,
+        hiroute_domain::GatewayPublicationRevision::new(1).unwrap(),
+        hiroute_domain::DEFAULT_CATALOG_RENDERER_REVISION,
+        aliases,
+        vec![value],
+        vec![],
+    )
+    .unwrap();
+    assert_eq!(
+        hiroute_domain::AgentModelGrantV2::from_plan_ids(
+            hiroute_domain::AgentIngressProtocolV1::Responses,
+            [plan_id].into(),
+            &publication,
+        )
+        .unwrap_err(),
+        hiroute_domain::AgentConnectionError::PlanNotRoutable
     );
 }
 
@@ -233,6 +497,7 @@ fn unknown_context_rejects_plan_instead_of_copying_fallback_limits() {
             &[value],
             policy(),
             CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
         ),
         Err(CodexCatalogError::CapabilityUnproven)
     );
@@ -305,6 +570,7 @@ fn alias_collision_does_not_replace_an_original_entry() {
             &[value],
             policy(),
             CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
         ),
         Err(CodexCatalogError::InvalidCatalog)
     );
@@ -323,6 +589,7 @@ fn plan_append_rejects_implicit_default_change_for_all_hidden_catalog() {
             &[plan()],
             policy(),
             CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
         ),
         Err(CodexCatalogError::DefaultChanged)
     );

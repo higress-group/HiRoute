@@ -61,7 +61,7 @@ impl crate::LocalObservationStore {
         };
         let after = cursor.after.clone().unwrap_or_default();
         let mut contents = {
-            let mut stmt=tx.prepare("SELECT c.content_id,c.message_instance_id,m.message_ordinal,c.part_ordinal,m.message_role,c.direction,c.fork_id,c.canonical_media_type,c.accumulated_byte_count,c.state,c.downstream_delivery
+            let mut stmt=tx.prepare("SELECT c.content_id,c.message_instance_id,m.message_ordinal,c.part_ordinal,m.message_role,c.direction,c.fork_id,c.canonical_media_type,c.accumulated_byte_count,c.state,c.downstream_delivery,c.content_kind
              FROM content_instances_v2 c JOIN content_message_instances_v2 m ON m.workspace_id=c.workspace_id AND m.message_instance_id=c.message_instance_id
              JOIN logical_requests r ON r.workspace_id=c.workspace_id AND r.request_id=c.request_id
              WHERE c.workspace_id=?1 AND c.request_id=?2 AND r.started_at_ms>?3 AND c.rowid<=?4
@@ -88,6 +88,7 @@ impl crate::LocalObservationStore {
                         message_ordinal: r.get(2)?,
                         part_ordinal: r.get(3)?,
                         role: r.get(4)?,
+                        kind: r.get(11)?,
                         direction: r.get(5)?,
                         fork_id: r.get(6)?,
                         media_type: r.get(7)?,

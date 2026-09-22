@@ -1,6 +1,7 @@
 import type { Agent, AgentFixedModel } from './agents';
 
 export type AgentCollaborationTriggerMode = 'explicit' | 'delegate_by_default';
+export type CodexNativeModelMode = 'hiroute_only' | 'preserve_available';
 export type AgentDefaultChoice =
   | { kind: 'preserve_native' }
   | { kind: 'fixed_model'; client_model_id: string }
@@ -15,6 +16,7 @@ export type AgentClaudePresetMappings = {
 };
 export type AgentEditorValues = {
   fixedModels: AgentFixedModel[];
+  nativeModelMode: CodexNativeModelMode;
   allowedPlanIds: string[];
   defaultChoice: AgentDefaultChoice;
   claudePresets: AgentClaudePresetMappings;
@@ -32,11 +34,13 @@ export function editorFingerprint(value: AgentEditorValues): string {
 
 export function codexDefaultChoiceValid(
   choice: AgentDefaultChoice,
+  mode: CodexNativeModelMode,
   nativeDefault: string | undefined,
   fixedModels: AgentFixedModel[],
   allowedPlanIds: string[],
 ): boolean {
   if (choice.kind === 'preserve_native') {
+    if (mode === 'hiroute_only') return false;
     // The backend checks whether this name resolves to an authorized fixed model or selected
     // plan alias. The WebView only checks that a current name exists before Preview.
     return Boolean(nativeDefault);
@@ -67,6 +71,7 @@ export function agentEditorSeed(
       ? known && (initial || (agent.agent_id === 'agent_codex_default' ? !!codex : !!claude))
       : known,
     fixedModels: currentModel?.fixed_models ?? [],
+    nativeModelMode: codex?.native_model_mode ?? 'hiroute_only',
     allowedPlanIds: codex?.allowed_plan_ids ?? [],
     defaultChoice: codex?.default_selection ?? { kind: 'preserve_native' },
     claudePresets: claude?.preset_mappings ?? {

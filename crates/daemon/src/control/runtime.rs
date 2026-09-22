@@ -348,6 +348,7 @@ impl ProductionControlRuntime {
             release_catalog: Some(release_catalog),
             protected_inputs: Mutex::new(BTreeMap::new()),
             manual_protected_inputs: Mutex::new(BTreeMap::new()),
+            agent_token_inputs: Mutex::new(BTreeMap::new()),
             model_connections: hiroute_integrations::NativeModelConnectionServiceV1::new(
                 hiroute_application::compute_management::TrustedComputeCandidateRegistry::new(),
                 overrides.model_transport.unwrap_or_else(|| {
@@ -608,6 +609,29 @@ impl ProductionControlRuntime {
         candidate: hiroute_application_api::ComputeCandidateRefV2,
         secret: hiroute_domain::ProtectedSecret,
     ) -> Result<(), String> {
+        if candidate
+            .candidate_ref
+            .starts_with("candidate/native/agent-token-")
+        {
+            candidate
+                .validate_shape()
+                .map_err(|_| "protected input registration is invalid".to_owned())?;
+            if candidate.candidate_revision != 1
+                || !hiroute_domain::valid_user_agent_token(secret.expose())
+            {
+                return Err("protected agent token is invalid".to_owned());
+            }
+            let mut inputs = self
+                .adapter
+                .agent_token_inputs
+                .lock()
+                .map_err(|_| "protected input registry is unavailable".to_owned())?;
+            if inputs.len() >= 256 || inputs.contains_key(&candidate.candidate_ref) {
+                return Err("protected input registration is invalid".to_owned());
+            }
+            inputs.insert(candidate.candidate_ref, secret);
+            return Ok(());
+        }
         self.adapter
             .model_connections
             .reserve_candidate_ref(&candidate)
@@ -630,6 +654,11 @@ impl ProductionControlRuntime {
         }
         self.adapter
             .manual_protected_inputs
+            .lock()
+            .map_err(|_| "protected input registry is unavailable".to_owned())?
+            .remove(candidate_ref);
+        self.adapter
+            .agent_token_inputs
             .lock()
             .map_err(|_| "protected input registry is unavailable".to_owned())?
             .remove(candidate_ref);
@@ -665,6 +694,7 @@ struct LocalControlAdapter {
     release_catalog: Option<TrustedReleaseCatalog>,
     protected_inputs: Mutex<BTreeMap<String, DiscoveredCredentialRefV1>>,
     manual_protected_inputs: Mutex<BTreeMap<String, ProtectedSecret>>,
+    agent_token_inputs: Mutex<BTreeMap<String, ProtectedSecret>>,
     model_connections: hiroute_integrations::NativeModelConnectionServiceV1<
         hiroute_application::compute_management::TrustedComputeCandidateRegistry,
         Arc<dyn hiroute_integrations::ModelDirectoryTransportV1>,
@@ -981,7 +1011,7 @@ impl AgentDiscoveryPort for LocalControlAdapter {
             )
             .map(|snapshot| snapshot.facts.candidates)
             .unwrap_or_default();
-        let codex_catalog = self.scanner.codex_catalog_summary().ok().map(|catalog| {
+        let codex_catalog = self.scanner.codex_catalog_summary().ok().and_then(|catalog| {
             let metadata_source = match catalog.metadata_source {
                 hiroute_integrations::CodexCatalogMetadataSourceV1::UserConfigured => {
                     AgentModelCatalogMetadataSourceV1::UserConfigured
@@ -991,6 +1021,10 @@ impl AgentDiscoveryPort for LocalControlAdapter {
                 }
                 hiroute_integrations::CodexCatalogMetadataSourceV1::TargetBundled => {
                     AgentModelCatalogMetadataSourceV1::TargetBundled
+                }
+                // This is an output artifact, never a native metadata source.
+                hiroute_integrations::CodexCatalogMetadataSourceV1::HirouteGenerated => {
+                    return None;
                 }
             };
             let models = catalog
@@ -1054,11 +1088,11 @@ impl AgentDiscoveryPort for LocalControlAdapter {
                     }
                 })
                 .collect();
-            DiscoveredAgentModelCatalogV1 {
+            Some(DiscoveredAgentModelCatalogV1 {
                 metadata_source,
                 native_default_model: catalog.native_default_model,
                 models,
-            }
+            })
         });
         self.refresh_discovery()
             .map_err(|_| ControlReadError::Unavailable)?

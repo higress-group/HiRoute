@@ -27,6 +27,7 @@ def encoded(value):
 class Product:
     def __init__(self, repository, project_source=False, root=None):
         self.repo = Path(repository)
+        self.project_source = project_source
         self.bin = Path(os.environ.get('HIROUTE_VALIDATION_PRODUCT_BIN_DIR',
                                        str(self.repo / 'target/debug')))
         self.command_descriptors = json.loads(
@@ -99,10 +100,10 @@ finally:
         if project_source:
             # Managed launch isolates project auth from Agent writes while discovery can
             # independently import the original upstream configuration.
-            project_settings = self.project / '.claude/settings.json'
-            project_settings.parent.mkdir(mode=0o700)
-            project_settings.write_bytes(self.settings.read_bytes())
-            project_settings.chmod(0o600)
+            self.project_settings = self.project / '.claude/settings.json'
+            self.project_settings.parent.mkdir(mode=0o700)
+            self.project_settings.write_bytes(self.settings.read_bytes())
+            self.project_settings.chmod(0o600)
             self.settings.write_bytes(encoded({}))
         self.storage = self.root / 'storage'
         self.storage.mkdir(mode=0o700)
@@ -133,6 +134,8 @@ finally:
                               provider_base_url=None, provider_token=None):
         """Install a bounded native-check fixture; model traffic still uses the real Gateway."""
         codex = self.root / 'bin/codex'
+        if codex.is_symlink():
+            raise RuntimeError(f'refusing to replace a linked Codex binary: {codex}')
         codex.write_text(r'''#!/usr/bin/python3
 import http.client
 import json
@@ -172,9 +175,9 @@ finally:
             'CODEX_HOME', str(self.root / 'home/.codex')))
         codex_home.mkdir(mode=0o700, exist_ok=True)
         self.codex_settings = codex_home / 'config.toml'
+        fixture_model = model or 'gpt-5.4'
         if (not self.codex_settings.exists() or model is not None
                 or reasoning is not None or provider_base_url is not None):
-            fixture_model = model or 'gpt-5.4'
             fixture_reasoning = reasoning or 'medium'
             settings = [
                 'model = ' + json.dumps(fixture_model),
@@ -194,13 +197,15 @@ finally:
                 self.secrets.add(provider_token)
             self.codex_settings.write_text('\n'.join(settings) + '\n')
             self.codex_settings.chmod(0o600)
-        # This isolated file represents the selected fixture target's native cache. Production
-        # resolution never falls back to the repository copy used to populate it here.
+        # Keep the full client metadata catalog: names in this file are not account rights.
+        # Production resolution never falls back to the repository copy used here.
         model_cache = codex_home / 'models_cache.json'
         if not model_cache.exists():
-            shutil.copy2(
-                self.repo / 'crates/integrations/src/agents/codex_bundled_catalog.json',
-                model_cache)
+            catalog = json.loads((
+                self.repo / 'crates/integrations/src/agents/codex_bundled_catalog.json'
+            ).read_text())
+            assert any(entry['slug'] == fixture_model for entry in catalog['models'])
+            model_cache.write_bytes(encoded(catalog))
             model_cache.chmod(0o644)
         return codex
 
@@ -216,10 +221,10 @@ finally:
                          'id_token': 'fixture.id.token', 'refresh_token': 'fixture-refresh-sentinel',
                          'account_id': 'mvp01-cpa-account'}}))
         auth.chmod(0o600)
-        if model is not None:
-            model_path = fixture / 'model-id'
-            model_path.write_text(model)
-            model_path.chmod(0o600)
+        native_model = model or 'gpt-5.5'
+        model_path = fixture / 'model-id'
+        model_path.write_text(native_model)
+        model_path.chmod(0o600)
         self.cpa_args = ['--cpa-binary', str(binary), '--cpa-sha256',
                          hashlib.sha256(binary.read_bytes()).hexdigest()]
         self.env['CODEX_HOME'] = str(fixture)
@@ -227,7 +232,7 @@ finally:
         # The selected CPA target is now this exact CODEX_HOME. Install the bounded native
         # engine/config/cache fixture there as well; a cache under the previous target must not
         # satisfy strict target-bound catalog resolution.
-        self.install_codex_fixture()
+        self.install_codex_fixture(model=native_model)
 
     def start(self, fault=None, expected_failure=False):
         # Native Agent capability evidence is deliberately process-local and must be

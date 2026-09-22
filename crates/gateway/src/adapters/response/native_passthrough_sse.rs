@@ -59,6 +59,24 @@ pub(super) fn feed_projected_sse(
             failure: metadata.failure,
         })
         .collect();
+    if state.protocol == super::IngressProtocol::Responses {
+        // Responses may append a native [DONE] marker after its response terminal.
+        // Preserve both wire events, but certify the single terminal only after
+        // transport EOF has proved that no later semantic event follows them.
+        for unit in &mut output {
+            unit.terminal = None;
+        }
+        if end_stream && let Some(terminal) = state.terminal {
+            output.push(NativeProjectedUnit {
+                bytes: Vec::new(),
+                source_bytes: 0,
+                semantic: false,
+                terminal: Some(terminal),
+                failure: None,
+            });
+        }
+        return Ok(output);
+    }
     if let Some(index) = output.iter().position(|unit| unit.terminal.is_some())
         && (index + 1 < output.len() || framer.pending_bytes() > 0)
     {
@@ -94,6 +112,11 @@ impl SseVisitor for ProjectionVisitor<'_> {
     ) -> Result<(), SseError> {
         let data = event.data(self.budget)?;
         if data.as_ref().is_empty() {
+            if self.state.protocol == super::IngressProtocol::Responses
+                && self.state.terminal.is_some()
+            {
+                self.state.withhold_terminal_completion();
+            }
             self.metadata.push_back(ProjectionMetadata {
                 semantic: false,
                 terminal: None,

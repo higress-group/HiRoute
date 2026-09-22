@@ -8,9 +8,7 @@ pub(super) fn serve(stream: &mut TcpStream, token: &[u8], model: &str) -> Result
     serve_challenge(stream, token, model, None)
 }
 
-#[path = "collaboration_probe.rs"]
-mod collaboration;
-pub(super) use collaboration::CollaborationChallenge;
+pub(super) use super::super::collaboration_probe::CollaborationChallenge;
 
 pub(super) fn serve_challenge(
     stream: &mut TcpStream,

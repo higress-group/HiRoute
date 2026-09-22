@@ -71,12 +71,10 @@ function Harness() {
   const [theme, setTheme] = useState<ThemePreference>(() => parseTheme(params.get('theme')));
   const [textScale, setTextScale] = useState<TextScale>(() => parseTextScale(params.get('scale')));
   const [page, setPage] = useState<Page>(initialPage);
+  const [newRouteFromModel, setNewRouteFromModel] = useState<string | null>(null);
   const reads = productHomeReads(scenario);
   const taskRead = productTaskRead(scenario);
   const serviceReady = reads.service.status === 'ready' && reads.service.data.daemon === 'running' && reads.service.data.gateway === 'ready';
-  const setupComplete = reads.compute.status === 'ready' && reads.compute.data.sources.length > 0
-    && reads.plans.status === 'ready' && reads.plans.data.plans.length > 0
-    && reads.agents.status === 'ready' && reads.agents.data.agents.some(agent => ['configured', 'verified'].includes(agent.model) || ['configured', 'verified'].includes(agent.collaboration));
   const pageLabels: Record<Page, [string, string]> = { home: ['首页', 'Home'], models: ['模型', 'Models'], routing: ['智能路由', 'Smart routing'], agents: ['Agent', 'Agent'], sessions: ['会话', 'Sessions'], settings: ['设置', 'Settings'] };
   const labels = language === 'zh' ? { service: '仅在本机运行' } : { service: 'Running locally' };
   const action = (_value: HomeAction) => undefined;
@@ -119,8 +117,8 @@ function Harness() {
   }, []);
 
   const content = page === 'home' ? <Home language={language} reads={reads} hasTasks={taskRead.status === 'ready' && taskRead.tasks.length > 0} onAction={action} />
-    : page === 'models' ? <ModelManagementPage language={language} active={page === 'models'} trustedAuthority refreshVersion={0} startAdding={params.get('modal') === 'add'} plans={freshProduct ? [] : readyDesktop.catalog.plans} agents={freshProduct ? [] : readyAgents.agents} onOpenPlan={() => setPage('routing')} onOperation={() => undefined} onRecoveryRefresh={() => undefined} onChanged={() => undefined} />
-      : page === 'routing' ? <RoutingPage language={language} snapshot={freshProduct ? { ...readyDesktop, catalog: { plans: [], drafts: [] } } : readyDesktop} agentSnapshot={freshProduct ? { ...readyAgents, agents: [] } : readyAgents} loading={false} busy={false} initialEditor={freshProduct ? null : { key: dailyPlan.agent_plan_id, plan: dailyPlan }} onRefresh={async () => undefined} onOperation={() => undefined} onOpenAgent={() => setPage('agents')} />
+    : page === 'models' ? <ModelManagementPage language={language} active={page === 'models'} trustedAuthority refreshVersion={0} startAdding={params.get('modal') === 'add'} plans={freshProduct ? [] : readyDesktop.catalog.plans} agents={freshProduct ? [] : readyAgents.agents} onOpenPlan={() => setPage('routing')} onCreatePlan={bindingId => { setNewRouteFromModel(bindingId); setPage('routing'); }} onOperation={() => undefined} onRecoveryRefresh={() => undefined} onChanged={() => undefined} />
+      : page === 'routing' ? <RoutingPage language={language} snapshot={freshProduct ? { ...readyDesktop, catalog: { plans: [], drafts: [] } } : readyDesktop} agentSnapshot={freshProduct ? { ...readyAgents, agents: [] } : readyAgents} loading={false} busy={false} initialEditor={newRouteFromModel ? { key: 'new/from-model', initialBindingId: newRouteFromModel } : freshProduct ? null : { key: dailyPlan.agent_plan_id, plan: dailyPlan }} onRefresh={async () => undefined} onOperation={() => undefined} onOpenAgent={() => setPage('agents')} />
     : page === 'agents' ? <Agents language={language} initialAgentId={params.get('capture') === 'task_routing_only' ? 'agent_claude_default' : null} initialFacet="collaboration" initialTab={scenario === 'task_cancelled' ? 'tasks' : 'configuration'} initialTaskId={scenario === 'task_cancelled' ? 'task/fix-empty-list' : null} taskRead={taskRead} onTaskCancel={async (_task, onAccepted) => { fixtureTrace.commands.push('fixture_task_cancel'); onAccepted?.('cancelling'); await wait(1200); return 'cancelled'; }} onOpenTaskSession={() => setPage('sessions')} onCreatePlan={() => setPage('routing')} onMutation={() => undefined} />
           : page === 'sessions' ? <Sessions language={language} initialSession={scenario === 'gap' ? 'session/stream-gap' : null} onOpenAgents={() => setPage('agents')} />
             : <SettingsPage active language={language} languagePreference={languagePreference} theme={theme} textScale={textScale} serviceLabel={labels.service} serviceReady={serviceReady} onLanguageChange={setLanguagePreference} onThemeChange={setTheme} onTextScaleChange={setTextScale} onOpenSessions={() => setPage('sessions')} />;
@@ -131,7 +129,7 @@ function Harness() {
         <div className="window-controls" />
         <div className="titlebar-main"><div className="window-title"><span>HiRoute</span><span>/</span><span>{pageLabels[page][language === 'zh' ? 0 : 1]}</span></div></div>
       </header>
-      <HomeNavigation language={language} items={items(language)} current={page} serviceTitle={serviceReady && !setupComplete ? (language === 'zh' ? '尚未完成配置' : 'Setup incomplete') : undefined} serviceLabel={serviceReady && !setupComplete ? (language === 'zh' ? '从首页开始' : 'Start from Home') : labels.service} serviceReady={serviceReady && setupComplete} onNavigate={id => setPage(id as Page)} onOpenSettings={() => setPage('settings')} />
+      <HomeNavigation language={language} items={items(language)} current={page} serviceLabel={labels.service} serviceReady={serviceReady} onNavigate={id => setPage(id as Page)} onOpenSettings={() => setPage('settings')} />
       <main className="main">
         {content}
       </main>

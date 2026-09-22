@@ -42,6 +42,8 @@
 .route-avatar[data-mode='fixed_model'] {background:#8c66c8;}
 .agent-form .worker-choices {margin:0;padding:0;border:0;}
 .agent-form .worker-choices>.field-label {margin-bottom:10px;color:var(--text);font-size:calc(14px * var(--hr-text-scale));font-weight:620;}
+.agent-surface-results {display:grid;gap:8px;margin-top:12px;}
+.agent-surface-result {display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--text-muted);font-size:calc(12px * var(--hr-text-scale));}
 .native-details .actions {display:flex;flex-wrap:wrap;gap:8px;padding:4px 0 16px;}
 .task-workspace .master-toolbar {grid-template-columns:minmax(0,1fr) auto;align-items:center;}
 .task-workspace .master-list {padding-bottom:12px;}

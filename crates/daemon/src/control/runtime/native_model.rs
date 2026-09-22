@@ -6,16 +6,16 @@ use hiroute_application::agent_connection::{
 };
 use hiroute_domain::{
     AgentAccessGrantRefV1, AgentIngressProtocolV1, AgentModelDefaultSelectionV2, AgentModelRouteV2,
-    AgentModelSelectionV2, CanonicalDigest, ControlRepositoryPort, EffectReconciliation,
-    ExternalEffectIntentV1, GatewayPublicationV1, NativeAgentArtifactPort, OperationId,
-    OperationState, OperationStepKind, OwnedEffectV1, PortError, PortErrorCode, PortResult,
-    SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
+    AgentModelSelectionV2, CanonicalDigest, CodexNativeModelModeV2, ControlRepositoryPort,
+    EffectReconciliation, ExternalEffectIntentV1, GatewayPublicationV1, NativeAgentArtifactPort,
+    OperationId, OperationState, OperationStepKind, OwnedEffectV1, PortError, PortErrorCode,
+    PortResult, SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
 };
 use hiroute_integrations::{
     CodexCatalogBaseline, CodexCatalogError, CodexDefaultPolicy, CodexFileConfiguration,
     CodexSelectionTarget, codex_catalog_baseline as decode_catalog_baseline, restage_codex_catalog,
-    sample_codex_catalog_plan, stage_codex_catalog, stage_codex_configuration,
-    stage_codex_reconfiguration, stage_codex_restoration,
+    sample_codex_catalog_plan, sample_codex_hiroute_only_catalog_plan, stage_codex_catalog,
+    stage_codex_configuration, stage_codex_reconfiguration, stage_codex_restoration,
 };
 
 pub(super) fn is_settings_codex_model(intent: &ExternalEffectIntentV1) -> bool {
@@ -65,7 +65,10 @@ pub(super) fn codex_catalog_plan_for(
     baseline: &CodexCatalogBaseline,
 ) -> Result<hiroute_integrations::CodexCatalogPlan, CodexCatalogError> {
     let AgentModelSelectionV2::CodexDefault {
-        default_selection, ..
+        default_selection,
+        native_model_mode,
+        fixed_models,
+        ..
     } = settings
     else {
         return Err(CodexCatalogError::InvalidCatalog);
@@ -104,7 +107,21 @@ pub(super) fn codex_catalog_plan_for(
         allow_provider_model_fallback: false,
     };
     let scope = hiroute_integrations::CodexConfigurationScope::user_file(user_config.to_owned());
-    sample_codex_catalog_plan(&scope, &plans, policy, baseline)
+    if *native_model_mode == CodexNativeModelModeV2::HirouteOnly && fixed_models.is_empty() {
+        return sample_codex_hiroute_only_catalog_plan(
+            &scope,
+            &plans,
+            explicit_model
+                .as_deref()
+                .ok_or(CodexCatalogError::MissingDefault)?,
+        );
+    }
+    let retained = settings
+        .fixed_models()
+        .iter()
+        .map(|model| model.client_model_id.clone())
+        .collect();
+    sample_codex_catalog_plan(&scope, &plans, policy, baseline, Some(&retained))
 }
 
 impl LocalControlAdapter {
@@ -194,6 +211,9 @@ impl LocalControlAdapter {
             }
             hiroute_integrations::CodexCatalogMetadataSourceV1::TargetBundled => {
                 CodexCatalogProducerKindV1::TargetBundled
+            }
+            hiroute_integrations::CodexCatalogMetadataSourceV1::HirouteGenerated => {
+                CodexCatalogProducerKindV1::HirouteGenerated
             }
         };
         if payload.source_revision != hiroute_integrations::CODEX_CATALOG_SOURCE_REVISION
@@ -372,7 +392,10 @@ impl LocalControlAdapter {
                     ),
                 }
             }
-            CodexModelFileAction::Restore { original_operation } => {
+            CodexModelFileAction::Restore {
+                original_operation,
+                native_model,
+            } => {
                 let original = stores
                     .control()
                     .load_operation(original_operation)?
@@ -419,6 +442,7 @@ impl LocalControlAdapter {
                     intent,
                     original_operation,
                     original_intent,
+                    native_model.as_deref(),
                 )
             }
         }

@@ -55,6 +55,7 @@ fn isolated_agent_home_inner(test_name: &str, ignored: bool) -> bool {
         .env(CHILD, test_name)
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
+        .env("CLAUDE_CONFIG_DIR", &claude_home)
         .env("PATH", "/usr/bin:/bin");
     for name in [
         "ANTHROPIC_API_KEY",

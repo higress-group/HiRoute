@@ -152,6 +152,7 @@ fn append_rejects_selection_only_projection_even_without_new_plans() {
                 allow_provider_model_fallback: false,
             },
             CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
         ),
         Err(CodexCatalogError::InvalidCatalog)
     );

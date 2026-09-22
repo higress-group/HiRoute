@@ -508,8 +508,10 @@ impl GatewayPublicationSnapshotV3 {
                         })
                         || profile.connector.authentication.exact() != Some(authentication)
                         || (candidate.connector_runtime != ConnectorRuntimeKind::CpaBridge
-                            && profile.connector.request_path
-                                != candidate.operational_target.request_path().unwrap_or(""))
+                            && candidate
+                                .operational_target
+                                .for_protocol_path(&profile.connector.request_path)
+                                .is_none())
                         || gateway_profile.validate(&minimum_requirements).is_err()
                     {
                         return Err(PublicationSchemaError::InvalidCandidate(candidate.local_id));

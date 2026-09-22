@@ -236,10 +236,12 @@ fn catalog_preserves_occurrences_and_ancestry_stops_at_cycles() {
     );
     let first = store.observed_catalog(&reader(true), &q, 500).unwrap();
     assert_eq!(first.contents[0].message_occurrence_id, "occurrence");
+    assert_eq!(first.contents[0].kind, "text");
     assert_eq!(first.transcript_roots, ["root"]);
     q.cursor = first.next_cursor;
     let second = store.observed_catalog(&reader(true), &q, 500).unwrap();
     assert_eq!(second.contents[0].message_occurrence_id, "again");
+    assert_eq!(second.contents[0].kind, "text");
     assert!(second.next_cursor.is_none());
     let ancestry = store
         .observed_ancestry(
@@ -253,6 +255,53 @@ fn catalog_preserves_occurrences_and_ancestry_stops_at_cycles() {
         .unwrap();
     assert_eq!(ancestry.roots.len(), 1);
     assert_eq!(ancestry.gap.as_deref(), Some("cycle"));
+}
+
+#[test]
+fn catalog_keeps_canonical_kind_but_search_excludes_internal_state() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    source(&store, b"private-signature-needle");
+    store.connection.lock().execute("INSERT INTO content_message_instances_v2(workspace_id,message_instance_id,conversation_id,request_id,direction,fork_id,message_ordinal,message_role,occurred_at_unix_nanos) VALUES(?1,'occurrence','session','request','request','fork',0,'assistant',100000000)",[WorkspaceId::DEFAULT]).unwrap();
+    index(&store);
+    assert_eq!(
+        store
+            .search_observed_text(&reader(true), &query("private-signature-needle", 10), 500)
+            .unwrap()
+            .hits
+            .len(),
+        1
+    );
+    for kind in ["provider_state", "reasoning_delta", "reasoning_finished"] {
+        store
+            .connection
+            .lock()
+            .execute(
+                "UPDATE content_instances_v2 SET content_kind=?1 WHERE content_id='content'",
+                [kind],
+            )
+            .unwrap();
+        let catalog = store
+            .observed_catalog(
+                &reader(true),
+                &ObservationCatalogQueryV2 {
+                    request_id: LogicalRequestId::parse("request").unwrap(),
+                    limit: 10,
+                    cursor: None,
+                },
+                500,
+            )
+            .unwrap();
+        assert_eq!(catalog.contents[0].kind, kind);
+        let search = store
+            .search_observed_text(&reader(true), &query("private-signature-needle", 10), 500)
+            .unwrap();
+        assert!(
+            search.hits.is_empty(),
+            "{kind} must not be a searchable conversation hit"
+        );
+        assert!(!search.index_partial);
+    }
 }
 
 #[test]

@@ -7,6 +7,7 @@ use hiroute_domain::delegation::{
     DelegationNativeUseStateV1, DelegationRuntimePort, WorkerHarnessV1,
 };
 use hiroute_domain::{CanonicalDigest, WorkspaceId};
+use hiroute_integrations::agents::codex_private_worker_catalog;
 
 use super::executor::{WorkerProfileInput, WorkerProfileSource};
 use super::profile::{CandidateWorkerProfile, ProfileInput, SessionRootUse, TaskSessionRoot};
@@ -338,6 +339,17 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             .join(run_root_name(&task.workspace_id, task, run)?);
         let admitted_at_ms =
             accepted_run_admitted_at_ms(run.deadline_ms, run.execution.duration_ms)?;
+        let codex_catalog = if installation.harness == WorkerHarnessV1::CodexCli {
+            if input.compiled_plan.model_alias().as_str() != task.plan.model_alias {
+                return Err(DelegationErrorV1::Conflict);
+            }
+            Some(
+                codex_private_worker_catalog(&input.compiled_plan)
+                    .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?,
+            )
+        } else {
+            None
+        };
         CandidateWorkerProfile::build(ProfileInput {
             harness: installation.harness,
             adapter: &installation.adapter,
@@ -347,6 +359,7 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             session_root: &session,
             workspace: &input.workspace_path,
             alias: &task.plan.model_alias,
+            codex_catalog: codex_catalog.as_deref(),
             native_effort: None,
             gateway: input.gateway,
             permit: &input.permit,

@@ -502,12 +502,25 @@ impl Resident {
         &mut self,
         secret: Zeroizing<String>,
     ) -> Result<ComputeCandidateRefV2, String> {
+        self.register_protected_input(secret, "candidate/native/")
+    }
+    pub fn register_agent_token_input(
+        &mut self,
+        secret: Zeroizing<String>,
+    ) -> Result<ComputeCandidateRefV2, String> {
+        self.register_protected_input(secret, "candidate/native/agent-token-")
+    }
+    fn register_protected_input(
+        &mut self,
+        secret: Zeroizing<String>,
+        prefix: &str,
+    ) -> Result<ComputeCandidateRefV2, String> {
         if secret.is_empty() || secret.len() > 32 * 1024 || !self.has_authority() {
             return Err("PROTECTED_INPUT_INVALID".into());
         }
         let random = crate::random_id()?;
         let candidate = ComputeCandidateRefV2 {
-            candidate_ref: format!("candidate/native/{random}"),
+            candidate_ref: format!("{prefix}{random}"),
             candidate_revision: 1,
         };
         let result = self.register_model_input_once(&candidate, &secret);

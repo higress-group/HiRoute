@@ -21,6 +21,7 @@ pub enum AgentFacetIntent<T> {
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentModelSelectionV2 {
     CodexDefault {
+        native_model_mode: CodexNativeModelModeV2,
         fixed_models: Vec<AgentFixedModelSelectionV2>,
         allowed_plan_ids: BTreeSet<AgentPlanId>,
         default_selection: AgentModelDefaultSelectionV2,
@@ -30,6 +31,13 @@ pub enum AgentModelSelectionV2 {
         fixed_models: Vec<AgentFixedModelSelectionV2>,
         preset_mappings: AgentClaudePresetMappingsV2,
     },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexNativeModelModeV2 {
+    HirouteOnly,
+    PreserveAvailable,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -125,8 +133,15 @@ impl AgentModelSelectionV2 {
         }
         match self {
             Self::CodexDefault {
-                default_selection, ..
+                native_model_mode,
+                default_selection,
+                ..
             } => match default_selection {
+                AgentModelDefaultSelectionV2::PreserveNative
+                    if *native_model_mode == CodexNativeModelModeV2::HirouteOnly =>
+                {
+                    return Err(invalid);
+                }
                 AgentModelDefaultSelectionV2::PreserveNative => {}
                 AgentModelDefaultSelectionV2::FixedModel { client_model_id }
                     if names.contains(client_model_id.as_str()) => {}
@@ -169,12 +184,36 @@ pub struct AgentSettingsSpecV2 {
     pub model: AgentFacetIntent<AgentModelSelectionV2>,
     #[serde(default)]
     pub collaboration: AgentFacetIntent<AgentCollaborationSelectionV2>,
+    /// Explicit native Codex model to select while restoring a managed connection. Present only
+    /// for a Codex model restore; the trusted adapter checks it against the original catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore_native_model: Option<String>,
+    /// Set by trusted Preview, then sealed in the successful Operation. This records the
+    /// original names whose same-account routes must survive later full-state edits.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub protected_native_model_ids: Vec<String>,
+    #[serde(default)]
+    pub access_token: AgentAccessTokenIntentV1,
+}
+
+/// Token changes belong to the model connection. A custom value is supplied separately through
+/// the protected local input channel; only its one-use slot enters the settings journal.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "intent", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AgentAccessTokenIntentV1 {
+    #[default]
+    Keep,
+    Regenerate,
+    Set {
+        input_slot: String,
+    },
 }
 
 impl AgentSettingsSpecV2 {
     /// Restore commands may keep other facets, but cannot configure or grant new access.
     pub fn is_restore_only(&self) -> bool {
-        !matches!(self.model, AgentFacetIntent::Configure { .. })
+        matches!(self.access_token, AgentAccessTokenIntentV1::Keep)
+            && !matches!(self.model, AgentFacetIntent::Configure { .. })
             && !matches!(self.collaboration, AgentFacetIntent::Configure { .. })
             && (matches!(self.model, AgentFacetIntent::Restore { .. })
                 || matches!(self.collaboration, AgentFacetIntent::Restore { .. }))

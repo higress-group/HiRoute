@@ -3,8 +3,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog, Disclosure, formatMoney, ProductPage, Toast, UiIcon, useTransientToast } from '../ui';
 import type { CorrelationKind } from './session-correlation';
-import { readableEvent, excerpt, excerptAround, groupToolEvents, summarizeToolArguments, type ReadableEvent } from './session-content';
-import { firstRealUserText } from './session-title';
+import { readableEvent, excerpt, excerptAround, groupToolEvents, contentDisplayRuns, coalesceResponseText, isPrivateContentKind, isTechnicalContentKind, summarizeToolArguments, type ReadableEvent } from './session-content';
+import { firstRealUserText, splitLeadingAgentContext } from './session-title';
 import { formatCacheHit, formatCacheHitCoverage, formatTokenCount, usageValue, type CacheHitSummary, type UsageMetric } from './usage-presentation';
 import { safeDiagnosticCode } from '../error-code';
 import { observationRead as read } from './observation-client';
@@ -13,7 +13,7 @@ type Page<T> = { next_cursor: string | null } & T;
 type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; last_request_at_ms: number; correlation_kind: CorrelationKind };
 type RoutingContext = { state: 'recorded' | 'unavailable' | 'conflicted'; display_name: string | null; name_state: 'recorded' | 'unavailable'; plan_id?: string | null; plan_revision?: string | null };
 type Request = { request_id: string; started_at_ms: number; outcome: string | null; native_turn_id: string | null; within_request_fallback: boolean | null; final_native_model: string | null; between_turn_model_change: boolean | null; previous_native_turn_id: string | null; previous_turn_model: string | null; turn_final_native_model: string | null; routing_context?: RoutingContext };
-type Content = { content_id: string; role: string; state: string; direction: string; media_type: string; message_occurrence_id: string; message_ordinal?: number; part_ordinal?: number; fork_id?: string; downstream_delivery?: string | null };
+type Content = { content_id: string; role: string; kind: string; state: string; direction: string; media_type: string; message_occurrence_id: string; message_ordinal?: number; part_ordinal?: number; fork_id?: string; downstream_delivery?: string | null };
 type Hit = { session_id: string; request_id: string; content_id: string; original_text_offset: number };
 type Ancestry = { roots: { state: string }[]; gap: string | null };
 type ContentState = 'recorded' | 'partial' | 'cleared';
@@ -33,7 +33,7 @@ function currentWindow(): ObservationQueryWindow {
   const now = Date.now();
   return { from_ms: now - 7 * 86400000, to_ms: now + 1 };
 }
-export function Sessions({ initialSession = null, initialRequest = null, language = 'zh', refreshVersion = 0, onOpenAgents }: { initialSession?: string | null; initialRequest?: string | null; language?: 'zh' | 'en'; refreshVersion?: number; onOpenAgents?: () => void }) {
+export function Sessions({ initialSession = null, initialRequest = null, language = 'zh', refreshVersion = 0, active = true, onOpenAgents }: { initialSession?: string | null; initialRequest?: string | null; language?: 'zh' | 'en'; refreshVersion?: number; active?: boolean; onOpenAgents?: () => void }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const [reload, setReload] = useState(0);
   const sessionQuery = useRef(currentWindow());
@@ -43,6 +43,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   const [sessionCursor, setSessionCursor] = useState<string | null>(null);
   const [session, setSession] = useState<string | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
+  const [readingRequests, setReadingRequests] = useState<string[]>([]);
   const [requestCursor, setRequestCursor] = useState<string | null>(null);
   const [request, setRequest] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<Hit | null>(null);
@@ -97,7 +98,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
           if (first) void timeline(first.session_id, null, first);
           else {
             timelineGeneration.current++;
-            setSession(null); setRequests([]); setRequest(null); setAnchor(null); setFactsOpen(false);
+            setSession(null); setRequests([]); setReadingRequests([]); setRequest(null); setAnchor(null); setFactsOpen(false);
           }
         }
       } else {
@@ -109,6 +110,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     finally { if (epoch === generation.current) setBusy(false); }
   }
   useEffect(() => {
+    if (!active) return;
     const target = initialTarget.current;
     const targetRequest = initialRequestTarget.current;
     initialTarget.current = null;
@@ -116,7 +118,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     if (target) void timeline(target, null, undefined, targetRequest);
     void load();
     return () => { generation.current++; };
-  }, [reload, refreshVersion]);
+  }, [reload, refreshVersion, active]);
   useEffect(() => {
     if (!searchMounted.current) { searchMounted.current = true; return; }
     const timer = window.setTimeout(() => void load(null, { keyword }), 260);
@@ -126,7 +128,8 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     const epoch = ++timelineGeneration.current; setBusy(true); setTimelineError('');
     if (!cursor) {
       timelineQuery.current = { from_ms: 0, to_ms: Date.now() + 1 };
-      setSession(id); setRequests([]); setRequest(hit?.request_id ?? exactRequest ?? null); setAnchor(hit ?? null);
+      const initialRequest = hit?.request_id ?? exactRequest ?? null;
+      setSession(id); setRequests([]); setReadingRequests(initialRequest ? [initialRequest] : []); setRequest(initialRequest); setAnchor(hit ?? null);
       setFactsOpen(false); setFacts([]); setFactsError(''); setFactCursor(null); setFactPartial(false);
       setFocusedSummary(sessions.find(item => item.session_id === id) ?? null);
     }
@@ -146,7 +149,11 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
       if (epoch !== timelineGeneration.current) return;
       if (!cursor && summaryPage?.sessions[0]) setFocusedSummary(summaryPage.sessions[0]);
       setRequests(current => cursor ? [...current, ...page.requests] : page.requests); setRequestCursor(page.next_cursor);
-      if (!cursor && !hit && !exactRequest) setRequest(page.requests[0]?.request_id ?? null);
+      if (!cursor && !hit && !exactRequest) {
+        const first = page.requests[0]?.request_id ?? null;
+        setRequest(first);
+        setReadingRequests(first ? [first] : []);
+      }
     } catch (e) { if (epoch === timelineGeneration.current) setTimelineError(errorCode(e)); }
     finally { if (epoch === timelineGeneration.current) setBusy(false); }
   }
@@ -186,12 +193,12 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
         setSessionContentStates(current => ({ ...current, [selectedSession]: 'cleared' }));
         setRequestContentStates(current => ({ ...current, ...Object.fromEntries(requests.map(item => [item.request_id, 'cleared' as const])) }));
         setRequests([]);
-        setRequest(null);
+        setRequest(null); setReadingRequests([]);
         await timeline(selectedSession);
       } else {
         setSessionContentStates(current => { const next = { ...current }; delete next[selectedSession]; return next; });
         setSession(null);
-        setRequest(null);
+        setRequest(null); setReadingRequests([]);
         setRequests([]);
         await load();
       }
@@ -205,7 +212,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     }
     finally { setBusy(false); }
   }
-  function refresh() { window.dispatchEvent(new Event('hiroute-content-invalidated')); generation.current++; timelineGeneration.current++; factGeneration.current++; setListError(''); setTimelineError(''); setSession(null); setRequest(null); setRequests([]); setFactsOpen(false); setFacts([]); setHits([]); setReload(current => current + 1); }
+  function refresh() { window.dispatchEvent(new Event('hiroute-content-invalidated')); generation.current++; timelineGeneration.current++; factGeneration.current++; setListError(''); setTimelineError(''); setSession(null); setRequest(null); setReadingRequests([]); setRequests([]); setFactsOpen(false); setFacts([]); setHits([]); setReload(current => current + 1); }
   const selectedSummary = sessions.find(item => item.session_id === session)
     ?? (focusedSummary?.session_id === session ? focusedSummary : undefined);
   const agentName = (id?: string) => !id
@@ -215,6 +222,9 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
         : text('本机 Agent', 'Local Agent');
   const emptyFirstUse = listLoaded && !busy && !listError && !keyword.trim() && !onlySwitch && sessions.length === 0;
   const selectedRequest = requests.find(item => item.request_id === request);
+  const displayedRequestIds = request ? (readingRequests.length ? readingRequests : [request]) : [];
+  const lastDisplayedIndex = requests.findIndex(item => item.request_id === displayedRequestIds.at(-1));
+  const nextRequestId = lastDisplayedIndex >= 0 ? requests[lastDisplayedIndex + 1]?.request_id : undefined;
   const attemptModels = factsRequest === request
     ? [...facts]
       .filter(fact => fact.native_model)
@@ -268,8 +278,8 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
           <header className="transcript-head"><div><h2><ContentExcerpt session={session} language={language} fallback={text('会话正文', 'Conversation')} limit={56} revision={refreshVersion + reload} onModel={model => setSessionModels(current => current[session] === model ? current : { ...current, [session]: model })} onRoute={route => setSessionRoutes(current => current[session] === route ? current : { ...current, [session]: route })} /></h2><p>{[agentName(selectedSummary?.agent_id), sessionRoutes[session], selectedSummary ? sessionTimeLabel(selectedSummary.last_request_at_ms, language) : undefined].filter(Boolean).join(' · ')}</p></div><div className="transcript-actions"><button className="btn" type="button" disabled={!request} onClick={() => factsOpen ? setFactsOpen(false) : openFacts()}><UiIcon name="activity" />{factsOpen ? text('收起运行记录', 'Hide run record') : text('运行记录', 'Run record')}</button>{!factsOpen && <button className="icon-btn" type="button" aria-label={text('清理此会话', 'Clear this session')} disabled={busy} onClick={() => { setCleanupError(''); setCleanupOpen(true); }}><UiIcon name="trash" /></button>}</div></header>
           {timelineError && <div className="callout bad session-detail-feedback" role="alert" data-error-code={timelineError}><UiIcon name="warning" /><div><strong>{text('会话详情没有刷新', 'The session details were not refreshed')}</strong><p>{requests.length ? text('已加载的请求仍然保留。', 'Previously loaded requests are still available.') : text('暂时无法读取这条会话。', 'This session is temporarily unavailable.')}</p><button className="btn" type="button" onClick={() => void timeline(session)}>{text('重试', 'Retry')}</button></div></div>}
           <Disclosure className="native-details session-model-performance" label={text('模型表现', 'Model performance')} language={language}><PlanQuality sessionId={session} language={language} compact onOpenEvidence={(targetSession, targetRequest) => void timeline(targetSession, null, undefined, targetRequest)} /></Disclosure>
-          {requests.length > 1 && <Disclosure className="native-details request-timeline" label={text(`请求记录（${requests.length}）`, `Requests (${requests.length})`)} language={language}><nav className="native-list" aria-label={text('请求时间线', 'Request timeline')}>{requests.map((item, index) => <button className={`list-row${request === item.request_id ? ' active' : ''}`} key={item.request_id} aria-current={request === item.request_id ? 'true' : undefined} onClick={() => { setRequest(item.request_id); setAnchor(null); }}><span className="row-main"><span className="row-title">{text('请求', 'Request')} {index + 1}</span><span className="row-meta">{item.routing_context?.state === 'recorded' && item.routing_context.display_name ? item.routing_context.display_name : item.final_native_model ?? text('路由未记录', 'Route not recorded')}{item.within_request_fallback === true ? text(' · 请求内回退', ' · Request fallback') : item.between_turn_model_change === true ? text(' · 跨轮切换', ' · Turn change') : ''}</span></span></button>)}{requestCursor && <button className="btn" disabled={busy} onClick={() => void timeline(session, requestCursor)}>{text('加载更多请求', 'Load more requests')}</button>}</nav></Disclosure>}
-          {request ? <RequestBody key={`${request}-${anchor?.content_id ?? ''}-${anchor?.original_text_offset ?? ''}`} request={request} summary={selectedRequest} attemptModels={attemptModels} anchor={anchor} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} /> : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
+          {requests.length > 1 && <Disclosure className="native-details request-timeline" label={text(`请求记录（${requests.length}）`, `Requests (${requests.length})`)} language={language}><nav className="native-list" aria-label={text('请求时间线', 'Request timeline')}>{requests.map((item, index) => <button className={`list-row${request === item.request_id ? ' active' : ''}`} key={item.request_id} aria-current={request === item.request_id ? 'true' : undefined} onClick={() => { setRequest(item.request_id); setReadingRequests([item.request_id]); setAnchor(null); }}><span className="row-main"><span className="row-title">{text('请求', 'Request')} {index + 1}</span><span className="row-meta">{item.routing_context?.state === 'recorded' && item.routing_context.display_name ? item.routing_context.display_name : item.final_native_model ?? text('路由未记录', 'Route not recorded')}{item.within_request_fallback === true ? text(' · 请求内回退', ' · Request fallback') : item.between_turn_model_change === true ? text(' · 跨轮切换', ' · Turn change') : ''}</span></span></button>)}{requestCursor && <button className="btn" disabled={busy} onClick={() => void timeline(session, requestCursor)}>{text('加载更多请求', 'Load more requests')}</button>}</nav></Disclosure>}
+          {displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
         </article> : <div className="empty-state session-no-selection"><div><span className="empty-icon"><UiIcon name="sessions" /></span><h3>{text('选择一个会话', 'Select a session')}</h3></div></div>}
       </section>
       {factsOpen && <RuntimeFacts language={language} summary={selectedRequest ? { outcome: selectedRequest.outcome, finalModel: selectedRequest.final_native_model, modelFallback: selectedRequest.within_request_fallback } : undefined} facts={facts} partial={factPartial} busy={factsBusy} error={factsError} contentState={selectedContentState} usage={<ObservationValue session={session} language={language} />} next={Boolean(factCursor)} onNext={() => void loadFacts(factsError ? null : factCursor)} onClose={() => setFactsOpen(false)} onClear={() => { setCleanupError(''); setCleanupOpen(true); }} />}
@@ -284,7 +294,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     </Dialog>
   </ProductPage>;
 }
-function RequestBody({ request, summary, attemptModels, anchor, language, onOpenFacts, onContentState }: { request: string; summary?: Request; attemptModels: string[]; anchor: Hit | null; language: 'zh' | 'en'; onOpenFacts(): void; onContentState(requestId: string, state: ContentState): void }) {
+function RequestBody({ request, summary, attemptModels, anchor, language, onOpenFacts, onContentState, onNextRequest, onMoreRequests }: { request: string; summary?: Request; attemptModels: string[]; anchor: Hit | null; language: 'zh' | 'en'; onOpenFacts(): void; onContentState(requestId: string, state: ContentState): void; onNextRequest?: () => void; onMoreRequests?: () => void }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const [catalog, setCatalog] = useState<Content[]>([]);
   const [events, setEvents] = useState<Record<string, ReadableEvent>>({});
@@ -334,24 +344,33 @@ function RequestBody({ request, summary, attemptModels, anchor, language, onOpen
   useEffect(() => {
     if (catalogLoaded || error) onContentState(request, contentState);
   }, [request, contentState, catalogLoaded, error, onContentState]);
-  const occurrences = groupOccurrences(catalog);
-  const assistantIndexes = occurrences.map((occurrence, index) => occurrence.role === 'assistant' ? index : -1).filter(index => index >= 0);
+  const occurrences = groupOccurrences(catalog.filter(item => !isPrivateContentKind(item.kind)));
+  const displayRuns = contentDisplayRuns(occurrences);
+  const assistantIndexes = occurrences.map((occurrence, index) => occurrence.role === 'assistant' && !occurrence.technical ? index : -1).filter(index => index >= 0);
+  const firstAssistantOccurrenceIndex = occurrences.findIndex(occurrence => occurrence.role === 'assistant');
   const firstAssistantIndex = assistantIndexes[0] ?? -1;
   const finalAssistantIndex = assistantIndexes.at(-1) ?? -1;
   const toolEvents = groupToolEvents(Object.values(events));
+  const renderOccurrence = (occurrence: (typeof occurrences)[number], index: number) => {
+    const items = occurrence.items.filter(item => item.content_id !== anchor?.content_id);
+    if (!items.length) return null;
+    return <React.Fragment key={occurrence.key}>
+      {index === finalAssistantIndex && summary?.within_request_fallback === true && <button className="switch-marker" type="button" onClick={onOpenFacts}><UiIcon name="refresh" /><strong>{attemptModels.length > 1 ? attemptModels.join(' → ') : text('记录到请求内模型回退', 'Recorded model fallback within a request')}</strong><span>{attemptModels.length > 1 ? text('记录到请求内模型回退', 'Recorded model fallback within a request') : text('查看运行记录', 'View run record')}</span><UiIcon name="chevronRight" /></button>}
+      <MessageOccurrence language={language} request={request} items={items} technical={occurrence.technical} modelLabel={index === finalAssistantIndex ? summary?.final_native_model ?? attemptModels.at(-1) : index === firstAssistantIndex && attemptModels.length > 1 ? attemptModels[0] : null} onEvent={receiveEvent} />
+    </React.Fragment>;
+  };
+  const toolBlocks = toolEvents.map(event => <div className="tool-block" key={event.logicalId}><strong>{event.name || text('工具调用', 'Tool call')}</strong><span>{event.arguments ? summarizeToolArguments(event.arguments) : event.phase === 'ready' ? text('参数已就绪，执行结果尚未取得。', 'Arguments ready; execution result not received.') : text('已请求，执行结果尚未取得。', 'Requested; execution result not received.')}</span></div>);
   return <section className="transcript-body">{error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{text('正文暂时无法读取，请重试。', 'Content is temporarily unavailable. Try again.')}</span><button className="btn" type="button" disabled={busy} onClick={() => void load(null)}>{text('重试', 'Retry')}</button></div>}
     {contentIncomplete && <div className="callout warn completeness-banner" role="status"><UiIcon name="warning" /><div><strong>{text('本次会话内容不完整', 'This session is incomplete')}</strong><p>{text('只展示 Gateway 已收到并交付的内容；运行记录仍然可用。', 'Only content received and delivered by the Gateway is shown. Run records remain available.')}</p></div></div>}
-    {anchor && <MessageOccurrence language={language} request={request} items={[{ content_id: anchor.content_id, role: text('搜索命中', 'Search hit'), state: 'complete', direction: '', media_type: '', message_occurrence_id: '' }]} anchor={{ contentId: anchor.content_id, offset: anchor.original_text_offset }} />}
-    {occurrences.map((occurrence, index) => {
-      const items = occurrence.items.filter(item => item.content_id !== anchor?.content_id);
-      if (!items.length) return null;
-      return <React.Fragment key={occurrence.key}>
-        {index === finalAssistantIndex && summary?.within_request_fallback === true && <button className="switch-marker" type="button" onClick={onOpenFacts}><UiIcon name="refresh" /><strong>{attemptModels.length > 1 ? attemptModels.join(' → ') : text('记录到请求内模型回退', 'Recorded model fallback within a request')}</strong><span>{attemptModels.length > 1 ? text('记录到请求内模型回退', 'Recorded model fallback within a request') : text('查看运行记录', 'View run record')}</span><UiIcon name="chevronRight" /></button>}
-        <MessageOccurrence language={language} request={request} items={items} modelLabel={index === finalAssistantIndex ? summary?.final_native_model ?? attemptModels.at(-1) : index === firstAssistantIndex && attemptModels.length > 1 ? attemptModels[0] : null} onEvent={receiveEvent} />
-        {index === firstAssistantIndex && toolEvents.map(event => <div className="tool-block" key={event.logicalId}><strong>{event.name || text('工具调用', 'Tool call')}</strong><span>{event.arguments ? summarizeToolArguments(event.arguments) : event.phase === 'ready' ? text('参数已就绪，执行结果尚未取得。', 'Arguments ready; execution result not received.') : text('已请求，执行结果尚未取得。', 'Requested; execution result not received.')}</span></div>)}
-      </React.Fragment>;
-    })}
+    {anchor && catalog.some(item => item.content_id === anchor.content_id && !isPrivateContentKind(item.kind)) && <MessageOccurrence language={language} request={request} items={[{ content_id: anchor.content_id, role: text('搜索命中', 'Search hit'), kind: 'text', state: 'complete', direction: '', media_type: '', message_occurrence_id: '' }]} anchor={{ contentId: anchor.content_id, offset: anchor.original_text_offset }} />}
+    {displayRuns.map(run => <React.Fragment key={run.start}>{run.technical
+      ? <Disclosure className="transcript-context" label={text(`系统与工具上下文（${run.end - run.start} 项）`, `System and tool context (${run.end - run.start})`)} language={language}>{occurrences.slice(run.start, run.end).map((occurrence, index) => renderOccurrence(occurrence, index + run.start))}</Disclosure>
+      : occurrences.slice(run.start, run.end).map((occurrence, index) => <React.Fragment key={occurrence.key}>{renderOccurrence(occurrence, index + run.start)}{index + run.start === firstAssistantOccurrenceIndex && toolBlocks}</React.Fragment>)}
+      {run.technical && firstAssistantOccurrenceIndex >= run.start && firstAssistantOccurrenceIndex < run.end && toolBlocks}
+    </React.Fragment>)}
     {cursor && <button className="btn" disabled={busy} onClick={() => void load(cursor)}>{text('继续读取', 'Load more')}</button>}
+    {!cursor && catalogLoaded && !busy && !error && onNextRequest && <button className="btn" type="button" onClick={onNextRequest}>{text('继续读取下一请求', 'Continue to next request')}</button>}
+    {!cursor && catalogLoaded && !busy && !error && onMoreRequests && <button className="btn" type="button" onClick={onMoreRequests}>{text('加载更多请求', 'Load more requests')}</button>}
     {!catalogLoaded && busy && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('正在读取正文…', 'Reading content…')}</p></div>}
     {catalogLoaded && !busy && !error && !catalog.length && <div className="callout"><UiIcon name="lock" /><span>{text('正文尚未取得、未捕获或已清理。', 'Content is unavailable, was not captured, or has been cleared.')}</span></div>}
     <div className="callout transcript-privacy"><UiIcon name="lock" /><span>{text('这里仅展示 Gateway 可见的本机会话内容，不包含 Agent 未发送的本地执行。', 'This view contains only local, Gateway-visible content and excludes agent activity that was never sent.')}</span></div>
@@ -359,9 +378,10 @@ function RequestBody({ request, summary, attemptModels, anchor, language, onOpen
   </section>;
 }
 
-function groupOccurrences(contents: Content[]): { key: string; role: string; items: Content[] }[] {
+function groupOccurrences(contents: Content[]): { key: string; role: string; technical: boolean; items: Content[] }[] {
   const grouped = new Map<string, { key: string; role: string; items: Content[] }>();
   for (const item of contents) {
+    if (isPrivateContentKind(item.kind)) continue;
     const occurrence = item.message_occurrence_id || item.content_id;
     const key = `${item.direction}\u0000${item.fork_id ?? ''}\u0000${occurrence}`;
     const group = grouped.get(key) ?? { key, role: item.role, items: [] };
@@ -371,23 +391,41 @@ function groupOccurrences(contents: Content[]): { key: string; role: string; ite
   for (const group of grouped.values()) {
     group.items.sort((left, right) => (left.part_ordinal ?? 0) - (right.part_ordinal ?? 0));
   }
-  return [...grouped.values()];
+  const runs: { key: string; role: string; technical: boolean; items: Content[] }[] = [];
+  for (const group of grouped.values()) {
+    for (const item of group.items) {
+      const technical = ['system', 'developer', 'tool_definition'].includes(item.role) || isTechnicalContentKind(item.kind);
+      const previous = runs.at(-1);
+      if (previous?.key.startsWith(`${group.key}\u0000`) && previous.technical === technical) previous.items.push(item);
+      else runs.push({ key: `${group.key}\u0000${runs.length}`, role: item.role, technical, items: [item] });
+    }
+  }
+  return runs;
 }
 
-function MessageOccurrence({ request, items, anchor, language, modelLabel, onEvent }: { onEvent?: (id: string, event: ReadableEvent) => void; request: string; items: Content[]; anchor?: { contentId: string; offset: number }; language: 'zh' | 'en'; modelLabel?: string | null }) {
+function MessageOccurrence({ request, items, anchor, language, modelLabel, technical = false, onEvent }: { onEvent?: (id: string, event: ReadableEvent) => void; request: string; items: Content[]; anchor?: { contentId: string; offset: number }; language: 'zh' | 'en'; modelLabel?: string | null; technical?: boolean }) {
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [partIncomplete, setPartIncomplete] = useState<Record<string, boolean>>({});
+  const [contextParts, setContextParts] = useState<Record<string, boolean>>({});
+  const [events, setEvents] = useState<Record<string, ReadableEvent>>({});
   const reportVisibility = useCallback((id: string, visible: boolean) => setVisibility(current => current[id] === visible ? current : { ...current, [id]: visible }), []);
   const reportIncomplete = useCallback((id: string, incomplete: boolean) => setPartIncomplete(current => current[id] === incomplete ? current : { ...current, [id]: incomplete }), []);
+  const reportContext = useCallback((id: string, contextOnly: boolean) => setContextParts(current => current[id] === contextOnly ? current : { ...current, [id]: contextOnly }), []);
+  const reportEvent = useCallback((id: string, event: ReadableEvent) => {
+    setEvents(current => JSON.stringify(current[id]) === JSON.stringify(event) ? current : { ...current, [id]: event });
+    if (event.kind === 'tool') onEvent?.(id, event);
+  }, [onEvent]);
   const role = items[0]?.role ?? '';
-  const roleLabel = role === 'assistant' ? (language === 'zh' ? 'Agent 回答' : 'Agent answer') : role === 'user' ? (language === 'zh' ? '你的问题' : 'Your question') : role;
+  const contextOnly = role === 'user' && !anchor && items.length > 0 && items.every(item => contextParts[item.content_id] === true);
+  const roleLabel = technical ? (language === 'zh' ? '工具上下文' : 'Tool context') : contextOnly ? (language === 'zh' ? 'Agent 附加上下文' : 'Agent-added context') : role === 'assistant' ? (language === 'zh' ? 'Agent 回答' : 'Agent answer') : role === 'user' ? (language === 'zh' ? '你的问题' : 'Your question') : role;
   const potential = items.some(item => !item.media_type.includes('hiroute.model-stream-event'));
-  const visible = potential || Object.values(visibility).some(Boolean);
+  const responseText = coalesceResponseText(Object.values(events));
+  const visible = potential || responseText.some(part => part.text.length > 0) || Object.values(visibility).some(Boolean);
   const incomplete = items.some(item => !['available', 'complete'].includes(item.state)) || Object.values(partIncomplete).some(Boolean);
-  return <article hidden={!visible} aria-hidden={!visible} style={visible ? undefined : { display: 'none' }} className={`message ${role === 'assistant' ? 'assistant' : role === 'user' ? 'user' : 'system'}`}><span className="message-avatar">{role === 'assistant' ? 'AI' : role === 'user' ? 'YOU' : '·'}</span><div><div className="message-role">{roleLabel}{modelLabel && <span className="badge info no-dot">{modelLabel}</span>}{incomplete && <span className="badge warn no-dot">{language === 'zh' ? '内容不完整' : 'Incomplete'}</span>}</div>{items.map(item => <MessagePart key={item.content_id} request={request} item={item} anchor={anchor?.contentId === item.content_id ? anchor.offset : undefined} language={language} onEvent={onEvent} onVisibility={reportVisibility} onIncomplete={reportIncomplete} />)}</div></article>;
+  return <article hidden={!visible} aria-hidden={!visible} style={visible ? undefined : { display: 'none' }} className={`message ${!technical && role === 'assistant' ? 'assistant' : !technical && role === 'user' && !contextOnly ? 'user' : 'system'}`}><span className="message-avatar">{technical ? '·' : role === 'assistant' ? 'AI' : role === 'user' && !contextOnly ? 'YOU' : '·'}</span><div><div className="message-role">{roleLabel}{modelLabel && <span className="badge info no-dot">{modelLabel}</span>}{incomplete && <span className="badge warn no-dot">{language === 'zh' ? '内容不完整' : 'Incomplete'}</span>}</div>{items.map(item => <MessagePart key={item.content_id} request={request} item={item} anchor={anchor?.contentId === item.content_id ? anchor.offset : undefined} language={language} onEvent={reportEvent} onVisibility={reportVisibility} onIncomplete={reportIncomplete} onContext={reportContext} />)}{responseText.map(part => <div className="message-content" key={`${part.kind}-${part.index}`}>{part.text}</div>)}</div></article>;
 }
 
-function MessagePart({ request, item, anchor, language, onEvent, onVisibility, onIncomplete }: { onEvent?: (id: string, event: ReadableEvent) => void; onVisibility(id: string, visible: boolean): void; onIncomplete(id: string, incomplete: boolean): void; request: string; item: Content; anchor?: number; language: 'zh' | 'en' }) {
+function MessagePart({ request, item, anchor, language, onEvent, onVisibility, onIncomplete, onContext }: { onEvent?: (id: string, event: ReadableEvent) => void; onVisibility(id: string, visible: boolean): void; onIncomplete(id: string, incomplete: boolean): void; onContext(id: string, contextOnly: boolean): void; request: string; item: Content; anchor?: number; language: 'zh' | 'en' }) {
   const [offset, setOffset] = useState(0); const marker = useRef<HTMLElement>(null);
   const [text, setText] = useState(''); const [cursor, setCursor] = useState<string | null>(null);
   const [state, setState] = useState(item.state); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
@@ -407,16 +445,21 @@ function MessagePart({ request, item, anchor, language, onEvent, onVisibility, o
   useEffect(() => { controller.current = new AbortController(); void load(); return () => { generation.current++; controller.current.abort(); }; }, [request, item.content_id, anchor]);
   useEffect(() => { marker.current?.scrollIntoView({ block: 'center' }); }, [text]);
   const event = readableEvent(text, item.media_type, item.direction);
-  useEffect(() => { if (event?.kind === 'tool' && onEvent) onEvent(item.content_id, event); }, [text, item.content_id, onEvent]);
+  useEffect(() => { if (event && event.kind !== 'reasoning' && onEvent) onEvent(item.content_id, event); }, [text, item.content_id, onEvent]);
   const structuredPending = item.media_type.includes('hiroute.model-stream-event') && !text && !error;
-  const hiddenEvent = Boolean((structuredPending || (event && (event.kind === 'block' || (event.kind === 'tool' && onEvent)))) && anchor === undefined && !error && !cursor);
+  const hiddenEvent = Boolean((structuredPending || (event && (event.kind === 'block' || event.kind === 'reasoning' || ((event.kind === 'tool' || event.kind === 'text' || event.kind === 'refusal') && onEvent)))) && anchor === undefined && !error && !cursor);
   useEffect(() => { onVisibility(item.content_id, !hiddenEvent); }, [hiddenEvent, item.content_id, onVisibility]);
   useEffect(() => { onIncomplete(item.content_id, state !== 'available' && state !== 'complete'); }, [item.content_id, onIncomplete, state]);
   const bytes = new TextEncoder().encode(text);
   const position = anchor === undefined ? -1 : anchor - offset;
   const marked = position >= 0 && position < bytes.length;
+  const context = item.role === 'user' && anchor === undefined && !event && !cursor && !error ? splitLeadingAgentContext(text) : { context: '', body: text };
+  useEffect(() => { onContext(item.content_id, Boolean(context.context && !context.body.trim())); }, [item.content_id, context.context, context.body, onContext]);
   if (hiddenEvent) return null;
-  const visible = marked ? <>{new TextDecoder().decode(bytes.slice(0, position))}<mark ref={marker} aria-label={language === 'zh' ? '搜索命中位置' : 'Search hit position'}>↦</mark>{new TextDecoder().decode(bytes.slice(position))}</> : event && (event.kind === 'text' || event.kind === 'reasoning' || event.kind === 'refusal') ? event.text : event?.kind === 'tool' ? `${event.name || (language === 'zh' ? '工具参数' : 'Tool arguments')} · ${event.phase === 'started' ? (language === 'zh' ? '已请求，结果尚未取得' : 'Requested; result not received') : event.phase === 'ready' ? (language === 'zh' ? '调用参数已就绪，执行结果尚未取得' : 'Call arguments ready; execution result not received') : (language === 'zh' ? '参数片段' : 'Argument fragment')}` : event?.kind === 'block' ? (language === 'zh' ? '内容开始' : 'Content started') : text;
+  let visible = marked ? <>{new TextDecoder().decode(bytes.slice(0, position))}<mark ref={marker} aria-label={language === 'zh' ? '搜索命中位置' : 'Search hit position'}>↦</mark>{new TextDecoder().decode(bytes.slice(position))}</> : event && (event.kind === 'text' || event.kind === 'reasoning' || event.kind === 'refusal') ? event.text : event?.kind === 'tool' ? `${event.name || (language === 'zh' ? '工具参数' : 'Tool arguments')} · ${event.phase === 'started' ? (language === 'zh' ? '已请求，结果尚未取得' : 'Requested; result not received') : event.phase === 'ready' ? (language === 'zh' ? '调用参数已就绪，执行结果尚未取得' : 'Call arguments ready; execution result not received') : (language === 'zh' ? '参数片段' : 'Argument fragment')}` : event?.kind === 'block' ? (language === 'zh' ? '内容开始' : 'Content started') : text;
+  if (item.role === 'user' && !marked && !event && !cursor) {
+    if (context.context) visible = <><Disclosure className="message-context" label={language === 'zh' ? 'Agent 附加上下文' : 'Agent-added context'} language={language}>{context.context}</Disclosure>{context.body}</>;
+  }
   return <>{busy && <p className="oc-meta" role="status">{language === 'zh' ? '正在读取正文…' : 'Loading content…'}</p>}{error && <div className="callout bad" role="alert" data-error-code={error}><span>{text ? (language === 'zh' ? '更多正文暂时无法读取，已加载内容仍保留。' : 'More content is temporarily unavailable. Loaded content is retained.') : (language === 'zh' ? '这段正文暂时无法读取。' : 'This content is temporarily unavailable.')}</span><button className="btn" type="button" onClick={() => void load(text ? cursor : null)}>{language === 'zh' ? '重试' : 'Retry'}</button></div>}{!event && text && item.media_type.includes('hiroute.model-stream-event') && <p className="oc-meta">{language === 'zh' ? '暂不能结构化显示，以下为已取得的原文。' : 'Structured display is unavailable; captured content follows.'}</p>}{marked && <p className="oc-meta">{language === 'zh' ? '已定位到搜索命中位置。' : 'Located the search match.'}</p>}{text && <div className="message-content">{visible}</div>}{!error && cursor && <button className="btn btn-quiet" disabled={busy} onClick={() => void load(cursor)}>{language === 'zh' ? '继续读取' : 'Load more'}</button>}</>;
 }
 
@@ -502,7 +545,7 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
 
   const groups = new Map<string, Content[]>();
   for (const content of contents) {
-    if (content.role !== 'user' || ['deleted', 'expired', 'unavailable'].includes(content.state)) continue;
+    if (content.role !== 'user' || content.kind !== 'text' || ['deleted', 'expired', 'unavailable'].includes(content.state)) continue;
     const key = `${content.direction}\u0000${content.fork_id ?? ''}\u0000${content.message_occurrence_id || content.content_id}`;
     const group = groups.get(key) ?? [];
     group.push(content);

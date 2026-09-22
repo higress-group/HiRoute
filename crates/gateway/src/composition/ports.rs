@@ -13,8 +13,8 @@ use crate::ports::{
 use crate::server::core_runtime::adapters;
 use crate::server::core_runtime::model_ir::{ContentPart, ModelIrError, ModelRequestIRV1};
 use crate::server::core_runtime::profiles::{
-    CandidateProtocolProfile, CostClassV1, ExclusionReasonCodeV1, PLANNER_INPUT_SCHEMA,
-    PlannerCandidateFactsV1, PlannerInputV1,
+    CandidateProtocolProfile, CapabilityError, ContextProjectionError, CostClassV1,
+    ExclusionReasonCodeV1, PLANNER_INPUT_SCHEMA, PlannerCandidateFactsV1, PlannerInputV1,
 };
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
@@ -295,7 +295,13 @@ fn project_candidate_facts(
                 .map_err(|_| PortError::Rejected)?,
             exclusion: None,
         }),
-        Err(adapters::ProtocolAdapterError::ClientUnrepresentable(_)) => {
+        Err(
+            adapters::ProtocolAdapterError::ClientUnrepresentable(_)
+            | adapters::ProtocolAdapterError::Capability(
+                CapabilityError::InitialInstructionsUnsupported
+                | CapabilityError::MidConversationInstructionsUnsupported,
+            ),
+        ) => {
             Ok(CandidateProjectionFacts {
                 // The request is valid, but this candidate's protocol path
                 // cannot carry it. Preserve the candidate so Planner records
@@ -304,6 +310,15 @@ fn project_candidate_facts(
                 exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
             })
         }
+        Err(adapters::ProtocolAdapterError::Context(
+            ContextProjectionError::InputTooLarge { .. }
+            | ContextProjectionError::TotalTooLarge { .. },
+        )) => Ok(CandidateProjectionFacts {
+            // A valid request may exceed one candidate's limit. Let Planner
+            // exclude that candidate rather than failing the whole input.
+            target_serialized_bytes: 1,
+            exclusion: Some(ExclusionReasonCodeV1::ContextTooLarge),
+        }),
         Err(_) => Err(PortError::Rejected),
     }
 }
@@ -787,5 +802,76 @@ mod sizing_tests {
             .encrypted_content =
             crate::server::core_runtime::model_ir::ResponsesReasoningEncryptedContentV1::Absent;
         assert!(project_candidate_facts_template(&request, &other).is_err());
+    }
+
+    #[test]
+    fn unsupported_responses_instruction_roles_exclude_messages_without_failing_planner_input() {
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Messages,
+            "glm-5.3",
+            fixed_reasoning("fixed"),
+        );
+        for input in [
+            json!([
+                {"type":"message","role":"developer","content":[{"type":"input_text","text":"bounds"}]},
+                {"type":"message","role":"user","content":[{"type":"input_text","text":"task"}]}
+            ]),
+            json!([
+                {"type":"message","role":"user","content":[{"type":"input_text","text":"task"}]},
+                {"type":"message","role":"developer","content":[{"type":"input_text","text":"late bounds"}]}
+            ]),
+        ] {
+            let request = adapters::decode_ingress_request(
+                IngressProtocol::Responses,
+                &json!({"model":"route","input":input}),
+            )
+            .unwrap();
+            let facts = project_candidate_facts(&request, &profile).unwrap();
+            assert_eq!(
+                facts.exclusion,
+                Some(ExclusionReasonCodeV1::ProtocolPathUnavailable)
+            );
+        }
+    }
+
+    #[test]
+    fn oversized_codex_instructions_and_tools_exclude_candidate_not_planner_input() {
+        let mut profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "small-context-model",
+            fixed_reasoning("fixed"),
+        );
+        profile.capability.context.max_input_tokens =
+            crate::server::core_runtime::profiles::CriticalFact::Exact(4096);
+
+        let cases = [
+            json!({
+                "model": "route",
+                "instructions": "i".repeat(5000),
+                "input": "hello",
+            }),
+            json!({
+                "model": "route",
+                "input": "hello",
+                "tools": [{
+                    "type": "function",
+                    "name": "shell",
+                    "description": "d".repeat(5000),
+                    "parameters": {"type": "object", "properties": {}},
+                }],
+            }),
+        ];
+        for body in cases {
+            let request = adapters::decode_ingress_request(IngressProtocol::Responses, &body)
+                .expect("valid Codex-shaped request");
+            let facts = project_candidate_facts(&request, &profile)
+                .expect("candidate-specific context mismatch must not fail Planner input");
+            assert_eq!(
+                facts.exclusion,
+                Some(ExclusionReasonCodeV1::ContextTooLarge)
+            );
+        }
     }
 }

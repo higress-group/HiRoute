@@ -33,7 +33,7 @@ type Props = {
   onCredentialsSaved?(): void;
   plans?: Plan[];
   onOpenPlan?(planId: string): void;
-  onCreatePlan?(): void;
+  onCreatePlan?(bindingId: string): void;
   onEditPrice?(source: ManagedSource, model: ManagedModel): void;
   onReauthorize?(sourceId: string): void;
   onRecheck?(source: ManagedSource, checkId: string, editRevision: number): Promise<'saved' | 'uncertain'>;
@@ -415,7 +415,7 @@ export function Models(props: Props) {
 
           {model && <section className="detail-section">
             <div className="detail-section-head"><h3>{text('用于这些路由', 'Used in these routes')}</h3></div>
-            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && <button className="btn" type="button" onClick={props.onCreatePlan}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
+            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && model && <button className="btn" type="button" onClick={() => props.onCreatePlan?.(model.binding_id)}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
           </section>}
 
         </div> : <div className="empty-state"><div><div className="empty-icon"><UiIcon name="models" /></div><h3>{text('选择一个模型', 'Select a model')}</h3></div></div>}

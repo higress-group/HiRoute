@@ -10,8 +10,8 @@ use hiroute_application_api::{
     AgentModelSurfaceResultV2, AgentSettingsStatusRequestV2,
 };
 use hiroute_domain::{
-    AgentAccessGrantRefV1, EffectReconciliation, ExternalEffectPort, OperationState,
-    OperationStepKind, PublicationRepositoryPort, SecretStorePort, is_agent_access_grant_effect,
+    AgentAccessGrantRefV1, OperationState, OperationStepKind, PublicationRepositoryPort,
+    SecretStorePort, is_agent_access_grant_effect,
 };
 
 enum ModelAction {
@@ -22,7 +22,7 @@ enum ModelAction {
 /// The configured Claude/Codex settings join: the applied managed-configuration intent, the
 /// active grant reference, and the installed publication the configuration was sealed against.
 pub(super) struct ConfiguredModelSettings {
-    pub(super) operation_id: OperationId,
+    pub(super) operation_id: hiroute_domain::OperationId,
     pub(super) intent: hiroute_domain::ExternalEffectIntentV1,
     pub(super) grant: AgentAccessGrantRefV1,
     pub(super) publication_digest: CanonicalDigest,
@@ -135,6 +135,7 @@ impl LocalControlAdapter {
             live_check_targets: Vec::new(),
             model_verified: false,
             current_selection: None,
+            protected_native_model_ids: Vec::new(),
             collaboration: None,
         };
         let stores = self.stores_lock().map_err(super::map_port)?;
@@ -181,12 +182,25 @@ impl LocalControlAdapter {
         status.operation_state = Some(operation.state.as_str().into());
         let (active_grant, configured_join) = match action {
             ModelAction::Configure => {
-                let file_applied = matches!(
-                    self.artifacts
-                        .observe_external(&operation, intent)
-                        .map_err(super::map_port)?,
-                    EffectReconciliation::Applied(_)
-                );
+                let file_applied = if class == SettingsAgentClass::Claude {
+                    hiroute_integrations::claude_native_configuration_is_applied(
+                        &self.artifacts,
+                        &operation.operation_id,
+                        intent,
+                    )
+                    .map_err(super::map_port)?
+                        && !self
+                            .scanner
+                            .claude_native_routing_conflict()
+                            .map_err(|_| ControlReadError::Corrupt)?
+                } else {
+                    hiroute_integrations::codex_native_configuration_is_applied(
+                        &self.artifacts,
+                        &operation.operation_id,
+                        intent,
+                    )
+                    .map_err(super::map_port)?
+                };
                 let [mutation] = operation.plan.agent_access_grants() else {
                     return Err(ControlReadError::Corrupt);
                 };
@@ -241,6 +255,7 @@ impl LocalControlAdapter {
                     else {
                         return Err(ControlReadError::Corrupt);
                     };
+                    status.protected_native_model_ids = spec.protected_native_model_ids;
                     let surfaces = match (&settings, class) {
                         (
                             hiroute_domain::AgentModelSelectionV2::CodexDefault { .. },

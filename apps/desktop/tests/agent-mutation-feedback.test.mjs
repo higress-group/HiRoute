@@ -27,5 +27,6 @@ test('a pre-admission Agent conflict tells the user no save occurred and offers 
     assert.match(agentActionErrorMessage(code, 'zh'), /本次未提交/);
     assert.match(agentActionErrorMessage(code, 'zh'), /再次保存/);
   }
-  assert.match(agentActionErrorMessage('SERVICE_UNAVAILABLE', 'en'), /Login Items/);
+  assert.match(agentActionErrorMessage('SERVICE_UNAVAILABLE', 'en'), /local service is unavailable/);
+  assert.doesNotMatch(agentActionErrorMessage('SERVICE_UNAVAILABLE', 'en'), /enabled in Login Items/);
 });

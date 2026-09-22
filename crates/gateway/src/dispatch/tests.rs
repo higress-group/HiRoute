@@ -161,14 +161,17 @@ fn unknown_unauthorized_and_unsupported_have_zero_credential_dns_or_connect_side
         br#"{"model":"unknown","input":"not decoded"}"#,
         now,
     );
-    assert_eq!(unknown.unwrap_err().code(), "AGENT_PLAN_NOT_AVAILABLE");
+    assert_eq!(unknown.unwrap_err().code(), "AGENT_MODEL_NOT_GRANTED");
     let unauthorized = runtime.authorize_bytes(
         IngressProtocol::Messages,
         Some("Bearer token"),
         br#"{"model":"private"}"#,
         now,
     );
-    assert_eq!(unauthorized.unwrap_err().code(), "AGENT_PLAN_NOT_AVAILABLE");
+    assert_eq!(
+        unauthorized.unwrap_err().code(),
+        "AGENT_PROTOCOL_UNSUPPORTED"
+    );
     let unsupported = runtime.authorize_bytes(
         IngressProtocol::Messages,
         Some("Bearer token"),
@@ -176,8 +179,8 @@ fn unknown_unauthorized_and_unsupported_have_zero_credential_dns_or_connect_side
         now,
     );
     let unsupported = unsupported.unwrap_err();
-    assert_eq!(unsupported.code(), "AGENT_PLAN_NOT_AVAILABLE");
-    assert_eq!(unsupported.status(), http::StatusCode::NOT_FOUND);
+    assert_eq!(unsupported.code(), "AGENT_PROTOCOL_UNSUPPORTED");
+    assert_eq!(unsupported.status(), http::StatusCode::UNPROCESSABLE_ENTITY);
 
     assert_eq!(credentials.0.load(Ordering::Relaxed), 0);
     assert_eq!(

@@ -149,6 +149,7 @@ fn codex_real_file_restore_reopens_and_preserves_user_edits() {
         &restore,
         &operation,
         &install,
+        None,
     )
     .unwrap();
     drop(reopened);
@@ -193,9 +194,15 @@ fn codex_created_file_is_removed_only_when_no_user_content_remains() {
                 .unwrap(),
         );
         let restore_operation = OperationId::parse("op_44444444444444444444444444444444").unwrap();
-        let effect =
-            stage_codex_restoration(&store, &restore_operation, &restore, &operation, &install)
-                .unwrap();
+        let effect = stage_codex_restoration(
+            &store,
+            &restore_operation,
+            &restore,
+            &operation,
+            &install,
+            None,
+        )
+        .unwrap();
         store.activate_artifact(&effect).unwrap();
         assert_eq!(path.exists(), add_user_content);
         if add_user_content {
@@ -303,7 +310,8 @@ fn native_owned_field_conflict_and_skill_user_edit_leave_files_unchanged() {
             &restore_operation,
             &restore,
             &operation,
-            &install
+            &install,
+            None
         )
         .unwrap_err()
         .code,

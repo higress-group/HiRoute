@@ -56,6 +56,27 @@ fn try_request_at(
     private: &Path,
     session: &TaskSessionRoot,
 ) -> Result<CandidateWorkerProfile, DelegationErrorV1> {
+    try_request_at_with_catalog(
+        harness,
+        token,
+        alias,
+        permission_policy,
+        private,
+        session,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn try_request_at_with_catalog(
+    harness: WorkerHarnessV1,
+    token: &str,
+    alias: &str,
+    permission_policy: WorkerPermissionPolicyV1,
+    private: &Path,
+    session: &TaskSessionRoot,
+    codex_catalog: Option<&[u8]>,
+) -> Result<CandidateWorkerProfile, DelegationErrorV1> {
     let permit = WorkspaceExecutionPermitV1 {
         permit_id: "p".into(),
         generation: 1,
@@ -77,6 +98,7 @@ fn try_request_at(
         session_root: session,
         workspace: Path::new("/work/a"),
         alias,
+        codex_catalog,
         native_effort: Some("high"),
         gateway: "127.0.0.1:44123".parse().unwrap(),
         permit: &permit,
@@ -92,6 +114,75 @@ fn try_request_at(
         admitted_at_ms: 10,
         token: ProtectedSecret::new(token.as_bytes().to_vec()).unwrap(),
     })
+}
+
+#[test]
+fn codex_worker_catalog_is_private_exact_and_reused_by_continue() {
+    let fixture = private_fixture();
+    let alias = "hiroute-fabuyanshou-codex-luna";
+    let session = TaskSessionRoot::prepare(
+        fixture.path(),
+        &hiroute_domain::WorkspaceId::parse("workspace").unwrap(),
+        "root",
+        "task-a",
+        WorkerHarnessV1::CodexCli,
+        SessionRootUse::New,
+    )
+    .unwrap();
+    let catalog = test_codex_catalog(alias);
+    let first = try_request_at_with_catalog(
+        WorkerHarnessV1::CodexCli,
+        "run-secret",
+        alias,
+        WorkerPermissionPolicyV1::ApproveAll,
+        &fixture.path().join("run-a"),
+        &session,
+        Some(&catalog),
+    )
+    .unwrap();
+    let path = session.path().join("worker-model-catalog.json");
+    assert_eq!(std::fs::read(&path).unwrap(), catalog);
+    let config: Value = serde_json::from_str(first.env["CODEX_CONFIG"].as_str()).unwrap();
+    assert_eq!(config["model_catalog_json"], path.to_str().unwrap());
+    let startup = std::fs::read_to_string(session.path().join("config.toml")).unwrap();
+    assert!(startup.contains(&format!(
+        "model_catalog_json = {}",
+        serde_json::to_string(path.to_str().unwrap()).unwrap()
+    )));
+    assert!(!first.env["CODEX_CONFIG"].contains("run-secret"));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    try_request_at_with_catalog(
+        WorkerHarnessV1::CodexCli,
+        "next-secret",
+        alias,
+        WorkerPermissionPolicyV1::ApproveAll,
+        &fixture.path().join("run-b"),
+        &session,
+        Some(&catalog),
+    )
+    .unwrap();
+    let mut drifted: Value = serde_json::from_slice(&catalog).unwrap();
+    drifted["models"][0]["description"] = json!("changed");
+    let drifted = serde_json::to_vec(&drifted).unwrap();
+    assert!(matches!(
+        try_request_at_with_catalog(
+            WorkerHarnessV1::CodexCli,
+            "next-secret",
+            alias,
+            WorkerPermissionPolicyV1::ApproveAll,
+            &fixture.path().join("run-c"),
+            &session,
+            Some(&drifted),
+        ),
+        Err(DelegationErrorV1::Conflict)
+    ));
 }
 
 #[test]

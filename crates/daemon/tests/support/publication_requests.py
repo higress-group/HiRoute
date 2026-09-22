@@ -45,6 +45,11 @@ def run(repository, expected_sha=None):
         product.model_settings_v2 = True
         product.model_settings_agent_id = 'agent_codex_default'
         bootstrap(product)
+        # This scenario exercises native-model retention across publication. The default
+        # HiRoute-only mode intentionally exposes only plan aliases, so opt in explicitly.
+        configure_model_settings_v2(
+            product, [product.plan_id], 'retain-native-a', product.plan_id,
+            agent_id='agent_codex_default', native_model_mode='preserve_available')
         catalog, _ = product.catalog()
         native_models = {entry['id'] for entry in catalog['data']
                          if entry['id'] == native_model}
@@ -65,7 +70,7 @@ def run(repository, expected_sha=None):
         plan_b = preview['plan_head']['reference']['plan_id']
         configure_model_settings_v2(
             product, [product.plan_id, plan_b], 'allow-b', product.plan_id,
-            agent_id='agent_codex_default')
+            agent_id='agent_codex_default', native_model_mode='preserve_available')
         catalog, before_etag = product.catalog()
         assert {entry['id'] for entry in catalog['data']} == {
             alias_a, preview['plan_head']['model_alias'], native_model}, catalog

@@ -24,7 +24,10 @@ fn responses_item_identity_cannot_alias_across_type_and_id_boundaries() {
         unit_json(&units[1])["response"]["output"][0]["id"],
         "b\u{0000}c"
     );
-    assert_eq!(units[1].terminal, Some(NativeTerminalOutcome::Unknown));
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 }
 
 #[test]
@@ -88,7 +91,10 @@ fn responses_delta_after_done_keeps_wire_but_withholds_complete() {
     .concat();
     let units = stream.feed(&events, true).unwrap();
     assert_eq!(unit_json(&units[1])["delta"], "B");
-    assert_eq!(units[2].terminal, Some(NativeTerminalOutcome::Unknown));
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 }
 
 #[test]
@@ -119,7 +125,7 @@ fn populated_added_item_must_remain_a_prefix_of_the_final_snapshot() {
         .concat();
         let units = stream.feed(&events, true).unwrap();
         assert_eq!(unit_json(&units[0])["item"]["content"][0]["text"], "A");
-        assert_eq!(units[1].terminal, Some(outcome));
+        assert_eq!(units.last().unwrap().terminal, Some(outcome));
     }
 }
 
@@ -160,7 +166,8 @@ fn populated_added_prefix_and_later_delta_can_certify_the_same_final_text() {
     .concat();
     let mut stream = projector(IngressProtocol::Responses, true);
     let units = stream.feed(&events, true).unwrap();
-    assert_eq!(units[3].terminal, Some(NativeTerminalOutcome::Complete));
+    assert_eq!(units[3].terminal, None);
+    assert_eq!(units[4].terminal, Some(NativeTerminalOutcome::Complete));
 }
 
 #[test]
@@ -190,5 +197,8 @@ fn responses_delta_item_type_mismatch_keeps_wire_without_complete() {
         unit_json(&units[1])["response"]["output"][0]["type"],
         "reasoning"
     );
-    assert_eq!(units[1].terminal, Some(NativeTerminalOutcome::Unknown));
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
 }

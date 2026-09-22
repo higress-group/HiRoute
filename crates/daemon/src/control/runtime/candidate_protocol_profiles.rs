@@ -46,7 +46,10 @@ pub(super) fn protocol_profiles(
                         .flatten()
                 })
         } else {
-            protocol_faces.first()
+            protocol_faces
+                .iter()
+                .find(|face| face.protocol == ingress)
+                .or_else(|| protocol_faces.first())
         };
         let Some(face) = face else {
             continue;

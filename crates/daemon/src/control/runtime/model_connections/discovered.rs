@@ -11,7 +11,7 @@ use hiroute_application_api::{
 };
 use hiroute_domain::{
     AuthenticationKind, BillingClass, CanonicalDigest, ConnectionOrigin,
-    GatewayAuthenticationSemanticsV1, GatewayHeaderSemanticsV1, UpstreamProtocol,
+    GatewayAuthenticationSemanticsV1, UpstreamProtocol,
 };
 use hiroute_integrations::{
     AgentDiscoveryOutcomeV1, ModelConnectionBaseKindV1, ModelConnectionProbeCancellationV1,
@@ -26,10 +26,12 @@ use super::LocalControlAdapter;
 const CLAUDE_AGENT_ID: &str = "agent_claude_default";
 const CONNECTION_OPTION_ID: &str = "zhipu.coding-plan.cn.v1";
 const ENDPOINT_PROFILE_ID: &str = "endpoint.zhipu.coding-plan.cn.v1";
-const PROTOCOL_ENDPOINT_ID: &str = "endpoint.zhipu.coding-plan.cn.v1.messages";
+const DISCOVERED_PROTOCOL_ENDPOINT_ID: &str = "endpoint.zhipu.coding-plan.cn.v1.messages";
+const ROUTING_PROTOCOL_ENDPOINT_ID: &str = "endpoint.zhipu.coding-plan.cn.v1.responses";
 const MODEL_CONFIGURATION_ID: &str = "model.zhipu.glm-5.3";
 const UPSTREAM_MODEL_ID: &str = "glm-5.3";
 const MESSAGES_ADAPTER_ID: &str = "adapter.anthropic-messages.v1";
+const RESPONSES_ADAPTER_ID: &str = "adapter.openai-responses.v1";
 
 impl LocalControlAdapter {
     pub(super) fn prepare_discovered_candidate(
@@ -233,15 +235,28 @@ impl LocalControlAdapter {
         {
             return Err(ComputeManagementControlError::RegisteredOptionUnavailable);
         }
+        let discovered_endpoint = resolved
+            .endpoint_profile
+            .protocol_endpoints
+            .iter()
+            .find(|endpoint| {
+                endpoint.protocol_endpoint_id == DISCOVERED_PROTOCOL_ENDPOINT_ID
+                    && endpoint.protocol == UpstreamProtocol::Messages
+                    && endpoint.adapter_ref == MESSAGES_ADAPTER_ID
+                    && endpoint.adapter_revision == 1
+            })
+            .ok_or(ComputeManagementControlError::RegisteredOptionUnavailable)?;
         let endpoint = resolved
             .endpoint_profile
             .protocol_endpoints
             .iter()
             .find(|endpoint| {
-                endpoint.protocol_endpoint_id == PROTOCOL_ENDPOINT_ID
-                    && endpoint.protocol == UpstreamProtocol::Messages
-                    && endpoint.adapter_ref == MESSAGES_ADAPTER_ID
+                endpoint.protocol_endpoint_id == ROUTING_PROTOCOL_ENDPOINT_ID
+                    && endpoint.protocol == UpstreamProtocol::Responses
+                    && endpoint.adapter_ref == RESPONSES_ADAPTER_ID
                     && endpoint.adapter_revision == 1
+                    && endpoint.authentication_semantics
+                        == Some(GatewayAuthenticationSemanticsV1::Bearer)
             })
             .ok_or(ComputeManagementControlError::RegisteredOptionUnavailable)?;
         let capability = catalog
@@ -255,9 +270,9 @@ impl LocalControlAdapter {
                     && capability.connector_revision == resolved.connector.revision
                     && capability.endpoint_profile_id == ENDPOINT_PROFILE_ID
                     && capability.endpoint_profile_revision == resolved.endpoint_profile.revision
-                    && capability.protocol_endpoint_id == PROTOCOL_ENDPOINT_ID
-                    && capability.upstream_protocol == UpstreamProtocol::Messages
-                    && capability.required_adapter_ref == MESSAGES_ADAPTER_ID
+                    && capability.protocol_endpoint_id == ROUTING_PROTOCOL_ENDPOINT_ID
+                    && capability.upstream_protocol == UpstreamProtocol::Responses
+                    && capability.required_adapter_ref == RESPONSES_ADAPTER_ID
                     && capability.required_adapter_revision == 1
             })
             .ok_or(ComputeManagementControlError::RegisteredOptionUnavailable)?;
@@ -270,10 +285,13 @@ impl LocalControlAdapter {
             .iter()
             .find(|value| value.model_configuration_id == MODEL_CONFIGURATION_ID)
             .ok_or(ComputeManagementControlError::Corrupt)?;
-        let registered_base_url = format!("{}{}", endpoint.base_url, endpoint.request_path)
-            .strip_suffix("/v1/messages")
-            .ok_or(ComputeManagementControlError::Corrupt)?
-            .to_owned();
+        let registered_base_url = format!(
+            "{}{}",
+            discovered_endpoint.base_url, discovered_endpoint.request_path
+        )
+        .strip_suffix("/v1/messages")
+        .ok_or(ComputeManagementControlError::Corrupt)?
+        .to_owned();
         if discovery.fact.endpoint_profile_revision != resolved.endpoint_profile.revision
             || discovery.fact.registered_base_url != registered_base_url
             || discovery.fact.configuration_revision == 0
@@ -295,14 +313,10 @@ impl LocalControlAdapter {
             base_kind: ModelConnectionBaseKindV1::ApiRoot,
             request_path_override: Some(endpoint.request_path.clone()),
             inventory_path_override: endpoint.inventory_path.clone(),
-            protocol: UpstreamProtocol::Messages,
+            protocol: UpstreamProtocol::Responses,
             protocol_profile_id: endpoint.adapter_ref.clone(),
             protocol_profile_revision: endpoint.adapter_revision,
-            protocol_header_semantics: GatewayHeaderSemanticsV1 {
-                content_type: "application/json".into(),
-                required_headers: vec![("anthropic-version".into(), "2023-06-01".into())],
-                forbidden_forward_headers: vec!["authorization".into(), "x-api-key".into()],
-            },
+            protocol_header_semantics: super::registered_endpoint_header_semantics(endpoint),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
             provenance: NativeConnectionProvenanceInputV1::Registered {
                 connection_option_id: CONNECTION_OPTION_ID.into(),

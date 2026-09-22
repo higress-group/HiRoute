@@ -25,8 +25,9 @@ use hiroute_domain::delegation::{
     DelegationTaskV1, RunEventV1, WorkspaceExecutionPermitV1,
 };
 use hiroute_domain::{
-    AgentIngressProtocolV1, CanonicalDigest, PlanExecutionRef, PlanVersionError, ProtectedSecret,
-    VersionOwnerKindV1, VersionOwnerPurposeV1, VersionOwnerRefV1, WorkspaceId,
+    AgentIngressProtocolV1, CanonicalDigest, CompiledAgentPlanV1, PlanExecutionRef,
+    PlanVersionError, ProtectedSecret, VersionOwnerKindV1, VersionOwnerPurposeV1,
+    VersionOwnerRefV1, WorkspaceId,
 };
 use hiroute_observation::LocalObservationStore;
 use hiroute_observation::managed_text::{ManagedTextRef, ManagedTextScope, ManagedTextState};
@@ -60,6 +61,8 @@ const MAX_INPUT_BYTES: usize = 256 * 1024;
 pub struct WorkerProfileInput {
     pub task: DelegationTaskV1,
     pub run: DelegationRunV1,
+    /// The already-verified frozen task version; native metadata must follow this version.
+    pub compiled_plan: CompiledAgentPlanV1,
     /// Re-read immediately before profile rendering.  The accepted run retains only the exact
     /// generation; it never carries a stale permit snapshot into a child process.
     pub permit: WorkspaceExecutionPermitV1,
@@ -397,6 +400,7 @@ impl DelegationRunExecutor {
         let profile = match profiles.build(WorkerProfileInput {
             task: task.clone(),
             run: run.clone(),
+            compiled_plan: version.compiled.clone(),
             permit,
             workspace_path: profile_workspace_path,
             gateway,

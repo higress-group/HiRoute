@@ -23,6 +23,8 @@ pub struct ObservationCatalogEntryV2 {
     pub message_ordinal: u64,
     pub part_ordinal: u64,
     pub role: String,
+    /// Canonical Gateway part type, including text, tool fields and provider state.
+    pub kind: String,
     pub direction: String,
     pub fork_id: String,
     pub media_type: String,

@@ -33,6 +33,7 @@ use hiroute_integrations::{
 use super::LocalControlAdapter;
 
 mod discovered;
+mod key_inputs;
 mod presentation;
 mod registered;
 mod saved;
@@ -440,6 +441,7 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         change: ComputeManagementChangeV2,
     ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError> {
         self.validate_subscription_save_change(&change)?;
+        self.bind_saved_key_inputs(&change)?;
         let stores = self
             .stores_lock()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;
@@ -462,6 +464,7 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             serde_json::from_value::<ComputeManagementChangeV2>(request.spec.desired_state.clone())
                 .map_err(|_| ComputeManagementControlError::Invalid)?;
         self.validate_subscription_save_change(&change)?;
+        self.bind_saved_key_inputs(&change)?;
         let stores = self
             .stores_lock()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;

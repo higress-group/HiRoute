@@ -96,7 +96,7 @@ impl ManagedLaunchProfileV1 {
 }
 
 /// The launcher's routing facts for one managed Claude connection. Every field comes from the
-/// published launch snapshot, its grant, and the current trusted installation choice; nothing
+/// succeeded settings Operation, its grant, and the current trusted installation choice; nothing
 /// here re-derives routing from user configuration at launch time.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -105,7 +105,7 @@ pub struct ManagedClaudeLaunchDescriptorV2 {
     pub connection_id: String,
     pub profile_id: String,
     pub executable: String,
-    /// Digest of the published launch snapshot this descriptor was derived from.
+    /// Digest of the settings Operation's immutable three-slot snapshot facts.
     pub snapshot_digest: CanonicalDigest,
     pub grant_generation: u64,
     pub publication_digest: CanonicalDigest,

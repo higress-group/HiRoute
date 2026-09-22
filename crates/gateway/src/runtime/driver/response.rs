@@ -539,21 +539,7 @@ pub(super) fn encode_accepted_event(
                 )
             };
             drop(bytes);
-            rendered
-                .map(|bytes| {
-                    ChargedBytes::from_exact_vec(&readiness.budget, MemoryRole::OutputQueue, bytes)
-                        .map(|bytes| AcceptedBodyFrame {
-                            output: Some(EncodedOutputUnit {
-                                bytes,
-                                provenance: SemanticProvenance::ProducesSemantic,
-                            }),
-                            end_stream,
-                            sse_sources: SseTransformSources::default(),
-                            queue_metadata: BodyMetadataOwner::default(),
-                        })
-                })
-                .transpose()
-                .map_err(safe_error)
+            queue_accepted_stream_output(readiness, rendered, end_stream)
         }
         PrecommitEvent::EndStream
             if readiness.decoder.is_none() && readiness.projector.is_none() =>
@@ -578,25 +564,7 @@ pub(super) fn encode_accepted_event(
                     .map_err(|_| Arc::from("accepted native stream ended without terminal"))?;
                 (rendered, true)
             };
-            Ok(Some(AcceptedBodyFrame {
-                output: rendered
-                    .map(|bytes| {
-                        ChargedBytes::from_exact_vec(
-                            &readiness.budget,
-                            MemoryRole::OutputQueue,
-                            bytes,
-                        )
-                        .map(|bytes| EncodedOutputUnit {
-                            bytes,
-                            provenance: SemanticProvenance::ProducesSemantic,
-                        })
-                    })
-                    .transpose()
-                    .map_err(safe_error)?,
-                end_stream: projected_terminal,
-                sse_sources: SseTransformSources::default(),
-                queue_metadata: BodyMetadataOwner::default(),
-            }))
+            queue_accepted_stream_output(readiness, rendered, projected_terminal)
         }
         PrecommitEvent::Body(_) | PrecommitEvent::EndStream => Err(Arc::from(
             "nonstream response had an unclassified transport tail",
@@ -604,6 +572,29 @@ pub(super) fn encode_accepted_event(
         PrecommitEvent::ResponseHead(_) => Ok(None),
         PrecommitEvent::SseEvent { .. } => Err(Arc::from("raw SSE bypassed decoder ownership")),
     }
+}
+
+fn queue_accepted_stream_output(
+    readiness: &mut ProductionReadiness,
+    rendered: Option<Vec<u8>>,
+    terminal: bool,
+) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
+    if let Some(bytes) = rendered.filter(|bytes| !bytes.is_empty()) {
+        push_queue_bytes(&mut readiness.prefix, &readiness.budget, bytes)?;
+        if terminal {
+            readiness.prefix_terminal_chunks = Some(readiness.prefix.len());
+        }
+        // The core drains one bounded prefix chunk before reading the next
+        // upstream event. An SSE event can exceed the accepted plan's 64 KiB
+        // transport frame even though it is within the SSE event limit.
+        return Ok(None);
+    }
+    Ok(terminal.then_some(AcceptedBodyFrame {
+        output: None,
+        end_stream: true,
+        sse_sources: SseTransformSources::default(),
+        queue_metadata: BodyMetadataOwner::default(),
+    }))
 }
 
 pub(super) fn take_accepted_prefix(
@@ -1188,7 +1179,123 @@ pub(super) fn failure_facts(failure: &AttemptFailure) -> ProviderClassificationF
 mod tests {
     use super::*;
     use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
-    use hiroute_gateway_core::runtime::body::BudgetTree;
+    use hiroute_gateway_core::runtime::body::{
+        BodyDirection, BodyPlan, BodyPlanExecutor, BudgetTree,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn accepted_codex_terminal_event_crosses_transport_frames_and_keeps_eos() {
+        let tree = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024).unwrap();
+        let budget = tree.stream(8 * 1024 * 1024).unwrap();
+        let plan = BodyPlan::PassThrough {
+            max_chunk_bytes: 64 * 1024,
+        };
+        let prefix =
+            ChargedBodyQueue::new(&budget, MemoryRole::ResponsePrefix, &plan, 256 * 1024, 64)
+                .unwrap();
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        let projector = adapters::NativeResponseProjector::new_for_attempt(
+            &profile,
+            true,
+            "alias".into(),
+            None,
+            budget.clone(),
+        )
+        .unwrap();
+        let mut readiness = ProductionReadiness {
+            response_status: StatusCode::OK,
+            content_type: "text/event-stream",
+            prefix,
+            terminal_body: None,
+            decoder: None,
+            renderer: None,
+            projector: Some(Box::new(projector)),
+            _decoder_budget: None,
+            _chat_tool_projection_budget: None,
+            budget: budget.clone(),
+            streaming: true,
+            prefix_eos_pending: false,
+            prefix_terminal_chunks: None,
+            semantic_terminal: None,
+        };
+        // CPA repeats the request's instructions and tool schema in the
+        // terminal response. This legal SSE event is larger than one 64 KiB
+        // accepted-response transport frame.
+        let terminal = json!({
+            "type":"response.completed",
+            "response":{
+                "id":"response","model":"physical","status":"completed",
+                "instructions":"x".repeat(100_000),
+                "output":[{"type":"message","id":"message","role":"assistant",
+                    "status":"completed","content":[{"type":"output_text","text":"DONE"}]}]
+            }
+        });
+        let wire = format!("event: response.completed\ndata: {terminal}\n\ndata: [DONE]\n\n");
+        let input =
+            ChargedBytes::copy_from_opaque(&budget, MemoryRole::ResponsePrefix, wire.as_bytes())
+                .unwrap();
+        let first = encode_accepted_event(
+            &mut readiness,
+            ProviderAcceptedEvent::Raw(PrecommitEvent::Body(input)),
+        )
+        .unwrap();
+        let mut accepted =
+            BodyPlanExecutor::new(BodyDirection::AcceptedResponse, plan, 1024 * 1024).unwrap();
+        let mut reconstructed = Vec::new();
+        let mut frames = 0;
+        let mut eos = 0;
+        let mut next = first;
+        let mut source_end_sent = false;
+        loop {
+            let frame = match next.take() {
+                Some(frame) => frame,
+                None => match take_accepted_prefix(&mut readiness) {
+                    Some(event) => encode_accepted_event(&mut readiness, event)
+                        .unwrap()
+                        .unwrap(),
+                    None if !source_end_sent => {
+                        source_end_sent = true;
+                        encode_accepted_event(
+                            &mut readiness,
+                            ProviderAcceptedEvent::Raw(PrecommitEvent::EndStream),
+                        )
+                        .unwrap()
+                        .unwrap()
+                    }
+                    None => break,
+                },
+            };
+            if let Some(output) = frame.output {
+                let bytes = output.bytes.bytes();
+                accepted.admit_chunk(bytes.len()).unwrap();
+                reconstructed.extend_from_slice(bytes);
+                frames += 1;
+            }
+            eos += usize::from(frame.end_stream);
+            if frame.end_stream {
+                assert_eq!(accepted.finish().unwrap(), reconstructed.len());
+            }
+        }
+        assert!(frames >= 2);
+        assert_eq!(eos, 1);
+        assert!(reconstructed.starts_with(b"event: response.completed\n"));
+        assert!(reconstructed.ends_with(b"data: [DONE]\n\n"));
+        assert!(
+            std::str::from_utf8(&reconstructed)
+                .unwrap()
+                .contains("\"model\":\"alias\"")
+        );
+        assert_eq!(
+            readiness.semantic_terminal,
+            Some(SemanticTerminalOutcome::Complete)
+        );
+    }
 
     #[test]
     fn precommit_decoder_is_bounded_by_bytes_not_transport_chunk_count() {

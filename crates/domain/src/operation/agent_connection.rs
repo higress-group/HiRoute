@@ -218,14 +218,12 @@ impl AgentConnectionEffectRoleV1 {
         self,
         subject: &AgentConnectionTransactionSubjectV1,
     ) -> Result<String, OperationValidationError> {
-        let target = effect_target(subject, self)?;
-        if self == Self::ManagedConfiguration && subject.agent_id == "agent_claude_default" {
-            return Ok(format!("{target}/launch-snapshot"));
-        }
-        Ok(target)
+        effect_target(subject, self)
     }
 
-    fn settings_payload_target_for(
+    /// The payload digest also names a settings catalog artifact, so fact capture can observe
+    /// that exact existing target before Preview without inventing a second path convention.
+    pub fn settings_payload_target_for(
         self,
         subject: &AgentConnectionTransactionSubjectV1,
         payload_digest: &CanonicalDigest,

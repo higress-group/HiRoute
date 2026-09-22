@@ -22,6 +22,9 @@ export function classifyAgentMutation(
 
 export function agentActionErrorMessage(code: string, language: 'zh' | 'en'): string {
   const zh = language === 'zh';
+  if (code === 'AGENT_TOKEN_INVALID') return zh
+    ? '令牌须为 16–128 位英文字母、数字或 . _ ~ -。当前令牌未更改。'
+    : 'Use 16–128 letters, numbers, or . _ ~ -. The current token was not changed.';
   if (['CHANGE_PREVIEW_STALE', 'REVISION_CONFLICT', 'application.error.change_preview_stale', 'application.error.revision_conflict'].includes(code)) {
     return zh
       ? '配置在保存前发生变化，本次未提交。当前选择已保留，请再次保存以重新读取最新状态。'
@@ -29,8 +32,8 @@ export function agentActionErrorMessage(code: string, language: 'zh' | 'en'): st
   }
   if (code === 'SERVICE_UNAVAILABLE' || code === 'application.error.gateway_unavailable') {
     return zh
-      ? '本机驻留服务或登录项尚未就绪，本次未提交。请确认 HiRoute 已安装并在系统登录项中启用，然后重试。'
-      : 'The local resident service or login item is not ready, so nothing was submitted. Check that HiRoute is installed and enabled in Login Items, then retry.';
+      ? '本机服务暂不可用，或旧接入的登录项清理未完成，本次未提交。请检查 HiRoute 服务；若正在恢复旧接入，也检查其登录项状态。'
+      : 'The local service is unavailable, or cleanup of a login item from an older connection is incomplete. Nothing was submitted. Check the HiRoute service, and for an older restore also check its login item.';
   }
   if (code === 'RESOURCE_NOT_FOUND' || code === 'application.error.resource_not_found') {
     return zh

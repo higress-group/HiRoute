@@ -4,10 +4,12 @@ use hiroute_application::agent_connection::{
     ClaudeModelFileAction, settings_claude_model_file_for_operation,
 };
 use hiroute_domain::{
-    AgentAccessGrantRefV1, AgentIngressProtocolV1, CanonicalDigest, ControlRepositoryPort,
-    EffectReconciliation, ExternalEffectIntentV1, NativeAgentArtifactPort, OperationId,
+    AgentAccessGrantRefV1, AgentIngressProtocolV1, ControlRepositoryPort, ExternalEffectIntentV1,
     OperationState, OperationStepKind, OwnedEffectV1, PortError, PortErrorCode, PortResult,
     SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
+};
+use hiroute_integrations::{
+    stage_claude_configuration, stage_claude_reconfiguration, stage_claude_restoration,
 };
 
 pub(super) fn is_settings_claude_model(intent: &ExternalEffectIntentV1) -> bool {
@@ -31,6 +33,7 @@ impl LocalControlAdapter {
         match &payload.change {
             ClaudeModelFileAction::Configure {
                 previous_operation,
+                change,
                 snapshot,
                 gateway_base_url,
                 trusted_hiroute_executable,
@@ -114,23 +117,41 @@ impl LocalControlAdapter {
                 } else if active.is_some() {
                     return Err(conflict("claude.settings.previous.missing"));
                 }
-                let rendered = serde_json::to_vec(&serde_json::json!({
-                    "schema": "hiroute.claude-launch-snapshot/v1",
-                    "operation_id": operation_id,
-                    "context_id": payload.context_id,
-                    "snapshot": snapshot,
-                    "grant_scope": scope,
-                    "gateway_base_url": gateway_base_url,
-                    "trusted_hiroute_executable": trusted_hiroute_executable,
-                }))
-                .map_err(|_| conflict("claude.snapshot.encode"))?;
                 drop(stores);
-                self.stage_claude_snapshot_bytes(
-                    operation_id,
-                    intent,
-                    &payload.expected_content,
-                    Some(&rendered),
-                )
+                let _ = snapshot;
+                if let Some(previous_operation) = previous_operation {
+                    let stores = self.stores_lock()?;
+                    let previous = stores
+                        .control()
+                        .load_operation(previous_operation)?
+                        .ok_or_else(|| conflict("claude.settings.previous.operation"))?;
+                    let previous_intent = previous
+                        .plan
+                        .external()
+                        .iter()
+                        .find(|candidate| {
+                            candidate.target() == intent.target()
+                                && is_settings_claude_model(candidate)
+                        })
+                        .ok_or_else(|| conflict("claude.settings.previous.effect"))?;
+                    stage_claude_reconfiguration(
+                        &self.artifacts,
+                        operation_id,
+                        intent,
+                        previous_operation,
+                        previous_intent,
+                        &payload.expected_content,
+                        change,
+                    )
+                } else {
+                    stage_claude_configuration(
+                        &self.artifacts,
+                        operation_id,
+                        intent,
+                        &payload.expected_content,
+                        change,
+                    )
+                }
             }
             ClaudeModelFileAction::Restore { original_operation } => {
                 let original = stores
@@ -156,41 +177,15 @@ impl LocalControlAdapter {
                 {
                     return Err(conflict("claude.settings.restore.context"));
                 }
-                drop(stores);
-                self.stage_claude_snapshot_bytes(
+                stage_claude_restoration(
+                    &self.artifacts,
                     operation_id,
                     intent,
-                    &payload.expected_content,
-                    None,
+                    original_operation,
+                    original_intent,
                 )
             }
         }
-    }
-
-    fn stage_claude_snapshot_bytes(
-        &self,
-        operation: &OperationId,
-        intent: &ExternalEffectIntentV1,
-        expected_content: &CanonicalDigest,
-        bytes: Option<&[u8]>,
-    ) -> PortResult<OwnedEffectV1> {
-        match self.artifacts.observe_artifact(operation, intent)? {
-            EffectReconciliation::Staged(effect) | EffectReconciliation::Applied(effect) => {
-                return Ok(effect);
-            }
-            EffectReconciliation::OwnershipLost(_) => {
-                return Err(conflict("claude.snapshot.ownership"));
-            }
-            EffectReconciliation::Missing => {}
-        }
-        let current = self.artifacts.read_native_target(intent.target())?;
-        if &CanonicalDigest::of_bytes(current.as_deref().map_or(&[], Vec::as_slice))
-            != expected_content
-        {
-            return Err(conflict("claude.snapshot.changed"));
-        }
-        self.artifacts
-            .stage_native_target(operation, intent, bytes, true)
     }
 }
 

@@ -1,8 +1,9 @@
 //! Non-secret native model file intent, bound to the original settings Operation.
 use hiroute_domain::{
     AgentConnectionControlIntentV1, AgentConnectionEffectRoleV1, AgentConnectionTransactionKindV1,
-    AgentFacetIntent, AgentSettingsSpecV2, CanonicalDigest, ExternalEffectIntentV1, OperationId,
-    OperationV1, OperationValidationError, PortError, PortErrorCode, PortResult,
+    AgentConnectionTransactionSubjectV1, AgentFacetIntent, AgentSettingsSpecV2, CanonicalDigest,
+    ExternalEffectIntentV1, OperationId, OperationV1, OperationValidationError, PortError,
+    PortErrorCode, PortResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +26,8 @@ pub enum CodexModelFileAction {
     },
     Restore {
         original_operation: OperationId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        native_model: Option<String>,
     },
 }
 
@@ -78,7 +81,35 @@ pub fn settings_codex_catalog_intent(
     if control.transaction() != AgentConnectionTransactionKindV1::Settings {
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }
-    let payload = CodexCatalogFilePayload {
+    let payload = settings_codex_catalog_payload(context_id, facts);
+    let intent = ExternalEffectIntentV1::from_agent_connection_planner(
+        control,
+        AgentConnectionEffectRoleV1::ModelCatalog,
+        facts.before_fingerprint.clone(),
+        &payload,
+        0o600,
+    )?;
+    decode_settings_codex_catalog(&intent)
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+    Ok(intent)
+}
+
+/// Resolve the same content-addressed target before sealing so an existing immutable artifact
+/// can be observed and protected like every other external effect.
+pub fn settings_codex_catalog_target(
+    subject: &AgentConnectionTransactionSubjectV1,
+    context_id: &str,
+    facts: &super::SettingsModelCatalogFacts,
+) -> Result<String, OperationValidationError> {
+    let digest = CanonicalDigest::of(&settings_codex_catalog_payload(context_id, facts))?;
+    AgentConnectionEffectRoleV1::ModelCatalog.settings_payload_target_for(subject, &digest)
+}
+
+fn settings_codex_catalog_payload(
+    context_id: &str,
+    facts: &super::SettingsModelCatalogFacts,
+) -> CodexCatalogFilePayload {
+    CodexCatalogFilePayload {
         schema: CATALOG_SCHEMA.into(),
         context_id: context_id.into(),
         source_revision: facts.source_revision.clone(),
@@ -88,17 +119,7 @@ pub fn settings_codex_catalog_intent(
         producer_content_digest: facts.producer_content_digest.clone(),
         producer_context_digest: facts.producer_context_digest.clone(),
         producer_dependency_digest: facts.producer_dependency_digest.clone(),
-    };
-    let intent = ExternalEffectIntentV1::from_agent_connection_planner(
-        control,
-        AgentConnectionEffectRoleV1::ModelCatalog,
-        None,
-        &payload,
-        0o600,
-    )?;
-    decode_settings_codex_catalog(&intent)
-        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
-    Ok(intent)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -130,7 +151,6 @@ pub fn decode_settings_codex_catalog(
     .map_err(|_| invalid())?;
     let value = intent.desired();
     if intent.effect_id() != "agent-connection-model-catalog"
-        || intent.before_fingerprint().is_some()
         || intent.desired_mode() != 0o600
         || value["transaction"] != "settings"
         || value["subject"]["agent_id"] != "agent_codex_default"
@@ -266,13 +286,8 @@ pub fn settings_codex_model_file_for_operation(
             {
                 return Err(invalid());
             }
-            // A catalog pointer exists exactly when the grant carries plan routes, and it must
-            // reference this Operation's own registered catalog artifact intent.
-            let has_plans = grant
-                .routes
-                .iter()
-                .any(|(_, route)| matches!(route, hiroute_domain::AgentModelRouteV2::Plan { .. }));
-            if has_plans != model_catalog.is_some() {
+            // Every managed Codex model selection has one filtered catalog artifact.
+            if model_catalog.is_none() {
                 return Err(invalid());
             }
             if let Some(digest) = model_catalog
@@ -286,9 +301,13 @@ pub fn settings_codex_model_file_for_operation(
         }
         (
             AgentFacetIntent::Restore { restore_point_ref },
-            CodexModelFileAction::Restore { original_operation },
+            CodexModelFileAction::Restore {
+                original_operation,
+                native_model,
+            },
         ) if original_operation != &operation.operation_id
-            && *restore_point_ref == codex_model_restore_point_ref(original_operation) => {}
+            && *restore_point_ref == codex_model_restore_point_ref(original_operation)
+            && &spec.restore_native_model == native_model => {}
         _ => return Err(invalid()),
     }
     Ok(payload)

@@ -1,6 +1,19 @@
 use super::*;
 
 #[test]
+fn codex_explicit_reasoning_reads_the_original_native_value() {
+    assert_eq!(
+        codex_explicit_reasoning_effort("model_reasoning_effort = 'high'\n").unwrap(),
+        Some("high".to_owned())
+    );
+    assert_eq!(
+        codex_explicit_reasoning_effort("model = 'native'\n").unwrap(),
+        None
+    );
+    assert!(codex_explicit_reasoning_effort("model_reasoning_effort = 42\n").is_err());
+}
+
+#[test]
 fn codex_protected_restore_record_survives_restart_and_keeps_user_changes() {
     let original = "# user's comment\nmodel = 'private-original'\ncustom = 3\n";
     let edit = configure(original, CodexSelectionTarget::Root).unwrap();
@@ -225,6 +238,30 @@ fn codex_preserve_native_restores_only_a_hiroute_route_alias() {
             Some("native-other")
         );
     }
+}
+
+#[test]
+fn stale_original_alias_can_be_repaired_with_an_explicit_native_model() {
+    let original = "model = 'hiroute-fanyi'\nuser_option = true\n";
+    let edit = configure_codex_native(
+        original,
+        &CanonicalDigest::of_bytes(original.as_bytes()),
+        CodexSelectionTarget::Root,
+        "hiroute",
+        "http://127.0.0.1:5837/v1",
+        None,
+        &AgentAccessGrantMaterial::from_csprng_entropy([4; 32]),
+    )
+    .unwrap();
+    let restore =
+        CodexNativeRestore::decode_protected(&edit.restore.encode_protected().unwrap()).unwrap();
+    let repaired =
+        restore_codex_native_with_model(&edit.rendered, &restore, Some("gpt-5.6-sol")).unwrap();
+    let parsed = repaired.parse::<DocumentMut>().unwrap();
+    assert_eq!(parsed["model"].as_str(), Some("gpt-5.6-sol"));
+    assert!(parsed.get("model_provider").is_none());
+    assert!(parsed.get("model_providers").is_none());
+    assert_eq!(parsed["user_option"].as_bool(), Some(true));
 }
 
 #[test]

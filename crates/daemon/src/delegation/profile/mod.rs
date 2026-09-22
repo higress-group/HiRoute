@@ -27,6 +27,8 @@ pub struct ProfileInput<'a> {
     pub session_root: &'a TaskSessionRoot,
     pub workspace: &'a Path,
     pub alias: &'a str,
+    /// One alias entry derived from the exact frozen Plan for this private Codex target.
+    pub codex_catalog: Option<&'a [u8]>,
     pub native_effort: Option<&'a str>,
     pub gateway: SocketAddr,
     pub permit: &'a WorkspaceExecutionPermitV1,
@@ -136,7 +138,17 @@ impl CandidateWorkerProfile {
         let mut session_meta = Map::new();
         match input.harness {
             WorkerHarnessV1::CodexCli => {
-                input.session_root.prepare_codex_provider(input.gateway)?;
+                let catalog_path = input
+                    .codex_catalog
+                    .map(|catalog| {
+                        input
+                            .session_root
+                            .prepare_codex_catalog(input.alias, catalog)
+                    })
+                    .transpose()?;
+                input
+                    .session_root
+                    .prepare_codex_provider(input.gateway, catalog_path.as_deref())?;
                 let (approval_policy, sandbox_mode) = match input.permission_policy {
                     WorkerPermissionPolicyV1::ApproveAll => ("never", "danger-full-access"),
                     WorkerPermissionPolicyV1::ApproveReads | WorkerPermissionPolicyV1::DenyAll => {
@@ -157,6 +169,9 @@ impl CandidateWorkerProfile {
                 });
                 if let Some(effort) = input.native_effort {
                     config["model_reasoning_effort"] = json!(effort);
+                }
+                if let Some(path) = catalog_path {
+                    config["model_catalog_json"] = json!(path_string(&path)?);
                 }
                 env.insert("CODEX_CONFIG".into(), Zeroizing::new(config.to_string()));
                 // codex-acp owns a per-turn AgentMode that overrides the app-server defaults.
@@ -298,6 +313,20 @@ impl CandidateWorkerProfile {
         self.require_native_mode()?;
         Ok(())
     }
+}
+
+#[cfg(test)]
+pub(crate) fn test_codex_catalog(alias: &str) -> Vec<u8> {
+    serde_json::to_vec(&json!({"models": [{
+        "slug": alias, "display_name": "Private Worker", "priority": 0,
+        "visibility": "list", "supported_in_api": true,
+        "shell_type": "shell_command", "support_verbosity": false,
+        "supported_reasoning_levels": [], "supports_parallel_tool_calls": false,
+        "model_messages": {"instructions_template": "Private test Worker"},
+        "truncation_policy": {"mode": "bytes", "limit": 10000},
+        "experimental_supported_tools": []
+    }]}))
+    .unwrap()
 }
 
 fn path_string(path: &Path) -> Result<String, DelegationErrorV1> {

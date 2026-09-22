@@ -17,6 +17,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use super::collaboration_probe as collaboration;
 #[path = "native_claude_probe_http.rs"]
 mod http;
 
@@ -29,6 +30,20 @@ pub struct ClaudeNativeIngressProbe;
 
 impl ClaudeNativeIngressProbe {
     pub fn run(executable: &Path) -> Result<ClaudeIngressEvidence, NativeIngressProbeError> {
+        Self::run_isolated(executable, None)
+    }
+
+    pub fn run_collaboration(
+        executable: &Path,
+        cli: &Path,
+    ) -> Result<ClaudeIngressEvidence, NativeIngressProbeError> {
+        Self::run_isolated(executable, Some(cli))
+    }
+
+    fn run_isolated(
+        executable: &Path,
+        cli: Option<&Path>,
+    ) -> Result<ClaudeIngressEvidence, NativeIngressProbeError> {
         let binary = super::executable::resolve(executable)
             .map_err(|_| fail("trusted executable"))?
             .ok_or_else(|| fail("executable"))?;
@@ -55,6 +70,14 @@ impl ClaudeNativeIngressProbe {
                 .map_err(|_| fail("private check directory"))?;
             private_directory(path)?;
         }
+        let (mut challenge, plugin_dir) = if let Some(cli) = cli {
+            let (challenge, plugin_dir) =
+                collaboration::CollaborationChallenge::prepare_claude(&config, &home, cli)
+                    .map_err(fail)?;
+            (Some(challenge), Some(plugin_dir))
+        } else {
+            (None, None)
+        };
 
         let helper = root_path.join("grant-helper");
         let mut helper_file = OpenOptions::new()
@@ -126,7 +149,8 @@ impl ClaudeNativeIngressProbe {
             .open(output_path)
             .map_err(|_| fail("private output"))?;
         let observer = output.try_clone().map_err(|_| fail("private output"))?;
-        let mut child = Command::new(&binary)
+        let mut command = Command::new(&binary);
+        command
             .args([
                 "--bare",
                 "--print",
@@ -138,7 +162,7 @@ impl ClaudeNativeIngressProbe {
             .arg(&settings)
             .args([
                 "--tools",
-                "",
+                if cli.is_some() { "Bash" } else { "" },
                 "--strict-mcp-config",
                 "--mcp-config",
                 "{\"mcpServers\":{}}",
@@ -147,8 +171,17 @@ impl ClaudeNativeIngressProbe {
                 "dontAsk",
                 "--output-format",
                 "json",
-                "Reply with OK only. Do not use tools.",
-            ])
+            ]);
+        if let Some(plugin_dir) = &plugin_dir {
+            command.arg("--plugin-dir").arg(plugin_dir);
+            command.args(["--allowedTools", "Bash", "--permission-mode", "dontAsk"]);
+        }
+        command.arg(if cli.is_some() {
+            "/hiroute-native-probe:hiroute-probe"
+        } else {
+            "Reply with OK only. Do not use tools."
+        });
+        let mut child = command
             .env_clear()
             .env("HOME", &home)
             .env("CLAUDE_CONFIG_DIR", &config)
@@ -175,13 +208,17 @@ impl ClaudeNativeIngressProbe {
                             return Err(fail("request bound"));
                         }
                         authenticated_message |=
-                            http::serve(&mut stream, MARKER, MODEL).map_err(fail)?;
+                            http::serve(&mut stream, MARKER, MODEL, challenge.as_mut())
+                                .map_err(fail)?;
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
                     Err(_) => return Err(fail("loopback accept")),
                 }
                 if let Some(status) = child.try_wait().map_err(|_| fail("native wait"))? {
-                    return if status.success() && authenticated_message {
+                    return if status.success()
+                        && authenticated_message
+                        && challenge.as_ref().is_none_or(|check| check.complete())
+                    {
                         Ok(())
                     } else {
                         Err(fail("authenticated native completion"))
@@ -216,6 +253,7 @@ impl ClaudeNativeIngressProbe {
             binary: before,
             observed: Instant::now(),
             observed_at: now(),
+            collaboration: cli.is_some(),
         })
     }
 }
@@ -225,9 +263,30 @@ pub struct ClaudeIngressEvidence {
     binary: CanonicalDigest,
     observed: Instant,
     observed_at: u64,
+    collaboration: bool,
 }
 
 impl ClaudeIngressEvidence {
+    pub(super) fn attach_authentication(
+        &self,
+        executable: &Path,
+        installation: &mut SupportedAgentInstallationV1,
+    ) {
+        if !self.collaboration {
+            self.attach(executable, installation);
+        }
+    }
+
+    pub(super) fn attach_collaboration(
+        &self,
+        executable: &Path,
+        installation: &mut SupportedAgentInstallationV1,
+    ) {
+        if self.collaboration {
+            self.attach(executable, installation);
+        }
+    }
+
     pub(super) fn attach(
         &self,
         executable: &Path,
@@ -260,6 +319,19 @@ impl ClaudeIngressEvidence {
         proof.reason = None;
         proof.adapter_contract = CONTRACT.into();
         proof.observed_at_unix_ms = self.observed_at;
+        if self.collaboration {
+            for proof in &mut installation.capability_evidence {
+                if matches!(
+                    proof.capability,
+                    AgentCapability::SkillLoading | AgentCapability::TrustedCliExecution
+                ) {
+                    proof.state = CapabilityState::Proven;
+                    proof.reason = None;
+                    proof.adapter_contract = CONTRACT.into();
+                    proof.observed_at_unix_ms = self.observed_at;
+                }
+            }
+        }
     }
 }
 
@@ -272,6 +344,18 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires explicitly selected Claude Code and HiRoute CLI binaries"]
+    fn real_claude_collaboration_checks_skill_and_read_only_cli_in_private_home() {
+        let claude = std::path::PathBuf::from(
+            std::env::var_os("HIROUTE_NATIVE_CLAUDE").expect("selected Claude binary"),
+        );
+        let cli = std::path::PathBuf::from(
+            std::env::var_os("HIROUTE_NATIVE_HIROUTE_CLI").expect("selected HiRoute CLI"),
+        );
+        ClaudeNativeIngressProbe::run_collaboration(&claude, &cli).unwrap();
+    }
+
+    #[test]
     fn claude_evidence_is_bound_to_the_exact_binary() {
         let root = tempfile::tempdir().unwrap();
         fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
@@ -282,6 +366,7 @@ mod tests {
             binary: binary_identity(&binary).unwrap(),
             observed: Instant::now(),
             observed_at: now(),
+            collaboration: false,
         };
         let sample = || {
             let super::super::AgentDiscoveryOutcomeV1::Supported { mut installation } =
@@ -317,6 +402,97 @@ mod tests {
         assert!(
             replaced
                 .require_action(hiroute_domain::AgentAction::ConfigureModel)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn claude_collaboration_requires_a_fresh_exact_binary_check() {
+        let root = tempfile::tempdir().unwrap();
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let binary = root.path().join("claude");
+        fs::write(&binary, b"private fixture, not executed").unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+        let sample = || {
+            let super::super::AgentDiscoveryOutcomeV1::Supported { mut installation } =
+                super::super::resolve_agent_observation(super::super::AgentScanObservationV1 {
+                    schema: super::super::AGENT_SCAN_OBSERVATION_SCHEMA_V1.into(),
+                    agent_id: "agent_claude_default".into(),
+                    kind: hiroute_domain::AgentKindV1::ClaudeCode,
+                    version: "2.1.231".into(),
+                    config: vec![],
+                })
+            else {
+                panic!("fixture installation");
+            };
+            super::super::observed_capabilities::attach_file_capabilities(
+                &mut installation,
+                &binary,
+                &root.path().join("settings.json"),
+            );
+            installation
+        };
+        let mut native_auth_only = sample();
+        let authentication = ClaudeIngressEvidence {
+            binary: binary_identity(&binary).unwrap(),
+            observed: Instant::now(),
+            observed_at: now(),
+            collaboration: false,
+        };
+        authentication.attach_authentication(&binary, &mut native_auth_only);
+        assert!(
+            native_auth_only
+                .require_action(hiroute_domain::AgentAction::ConfigureModel)
+                .is_ok()
+        );
+        assert!(
+            native_auth_only
+                .require_action(hiroute_domain::AgentAction::InstallCollaborationSkill)
+                .is_err()
+        );
+
+        let evidence = ClaudeIngressEvidence {
+            binary: binary_identity(&binary).unwrap(),
+            observed: Instant::now(),
+            observed_at: now(),
+            collaboration: true,
+        };
+        let mut checked = sample();
+        evidence.attach_collaboration(&binary, &mut checked);
+        assert!(
+            checked
+                .require_action(hiroute_domain::AgentAction::InstallCollaborationSkill)
+                .is_ok()
+        );
+        let mut model_only = sample();
+        evidence.attach_authentication(&binary, &mut model_only);
+        assert!(
+            model_only
+                .require_action(hiroute_domain::AgentAction::ConfigureModel)
+                .is_err()
+        );
+        assert!(
+            model_only
+                .require_action(hiroute_domain::AgentAction::InstallCollaborationSkill)
+                .is_err()
+        );
+
+        let mut expired = evidence.clone();
+        expired.observed = Instant::now() - Duration::from_secs(301);
+        expired.attach_collaboration(&binary, &mut model_only);
+        assert!(
+            model_only
+                .require_action(hiroute_domain::AgentAction::InstallCollaborationSkill)
+                .is_err()
+        );
+        fs::rename(&binary, root.path().join("old-claude")).unwrap();
+        fs::write(&binary, b"replacement binary, not executed").unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+        let mut replaced = sample();
+        evidence.attach_collaboration(&binary, &mut replaced);
+        assert!(
+            replaced
+                .require_action(hiroute_domain::AgentAction::InstallCollaborationSkill)
                 .is_err()
         );
     }

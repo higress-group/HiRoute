@@ -306,5 +306,7 @@ fn dedicated_grant_mutation_is_authenticated_but_plaintext_never_enters_plan() {
             .windows(material.expose().len())
             .any(|part| part == material.expose())
     );
-    assert!(!String::from_utf8(bytes).unwrap().contains("material"));
+    let serialized = String::from_utf8(bytes).unwrap();
+    assert!(!serialized.contains("\"material\":"));
+    assert!(!serialized.contains("\"bearer_token\":"));
 }

@@ -219,15 +219,18 @@ impl ObservationQueryPort for LocalObservationStore {
                     ))
                 },
             )
-            .map_err(|_| ObservationQueryError::Unavailable)?;
+            .map_err(|_| ObservationQueryError::Unavailable)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| ObservationQueryError::Corrupt)?;
+        // Reject the bounded 201st raw candidate before expensive per-session joins.
+        // Otherwise a query deadline can interrupt the first 200 summaries and mask
+        // the deterministic InvalidQuery result under concurrent read load.
+        if rows.len() > 200 {
+            return Err(ObservationQueryError::InvalidQuery);
+        }
         let mut sessions = Vec::new();
         let mut search_budget = (0usize, 0usize);
-        for (candidate, row) in rows.enumerate() {
-            if candidate >= 200 {
-                return Err(ObservationQueryError::InvalidQuery);
-            }
-            let (id, agent, correlation, started, updated, facts, content, tombstone) =
-                row.map_err(|_| ObservationQueryError::Corrupt)?;
+        for (id, agent, correlation, started, updated, facts, content, tombstone) in rows {
             if query.from_ms.is_some_and(|from| updated < from)
                 || query.to_ms.is_some_and(|to| updated > to)
                 || query.agent_id.as_ref().is_some_and(|value| value != &agent)

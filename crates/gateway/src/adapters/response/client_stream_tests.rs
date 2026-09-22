@@ -6,6 +6,33 @@ use crate::server::core_runtime::model_ir::ResponseItemStatus;
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
 #[test]
+fn responses_decoder_accepts_one_done_marker_only_after_terminal() {
+    let candidate = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let terminal = format!(
+        "event: response.completed\ndata: {}\n\n",
+        json!({"type":"response.completed","response":{
+            "id":"response","model":"physical","status":"completed","output":[]
+        }})
+    );
+    let done = b"data: [DONE]\n\n";
+    let mut decoder = NativeResponseDecoder::new(&candidate, 200, true).unwrap();
+    decoder.feed(terminal.as_bytes(), false).unwrap();
+    decoder.feed(done, true).unwrap();
+    assert!(decoder.finish().is_ok());
+
+    let mut before_terminal = NativeResponseDecoder::new(&candidate, 200, true).unwrap();
+    assert!(before_terminal.feed(done, true).is_err());
+    let mut duplicate = NativeResponseDecoder::new(&candidate, 200, true).unwrap();
+    let wire = [terminal.as_bytes(), done, done].concat();
+    assert!(duplicate.feed(&wire, true).is_err());
+}
+
+#[test]
 fn only_the_default_responses_answer_phase_is_portable_to_messages() {
     assert!(client_can_represent_message_phase(
         IngressProtocol::Messages,

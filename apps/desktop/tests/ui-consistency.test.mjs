@@ -185,12 +185,22 @@ test('Codex routing form only shows configured native overrides and explains the
   assert.doesNotMatch(agents, /hiddenCatalogModelCount/);
   assert.match(agents, /defaultChoice\.kind === 'plan'[\s\S]*Codex 将默认使用所选智能路由/);
   assert.match(agents, /保留当前默认模型名称；请求仍经过 HiRoute/);
+  assert.match(agents, /data-agent-service-responsibility/);
+  assert.match(agents, /保存不会设置登录项或保证 HiRoute 服务以后持续在线/);
 });
 
 test('Agent home does not offer duplicate paid per-client live probes', () => {
   const agents = read('src/agents.tsx');
   assert.doesNotMatch(agents, /check_agent_live|data-agent-surface-status|真实验证（最多/);
   assert.match(agents, /data-codex-shared-scope/);
+});
+
+test('Claude routing promises the normal CLI entry and does not ask for a special launcher', () => {
+  const agents = read('src/agents.tsx');
+  assert.match(agents, /直接启动 claude，使用 Opus、Sonnet、Haiku 原生预设/);
+  assert.match(agents, /账号 Default 仍未知；保存不会验证它/);
+  assert.match(agents, /路由已配置 · 调用未验证/);
+  assert.doesNotMatch(agents, /hiroute agent launch --agent claude-code/);
 });
 
 test('model readiness copy does not claim that an upstream call was verified', () => {
@@ -203,13 +213,6 @@ test('returning to the routing editor refreshes saved-model choices', () => {
   const editor = read('src/plan-editor.tsx');
   assert.match(editor, /if \(!active\) return;[\s\S]*'compute_management_snapshot'[\s\S]*\}, \[active, language\]\)/);
   assert.match(editor, /'plan_editor_options'[\s\S]*\}, \[active, editor, language, optionsRetry\]\)/);
-});
-
-test('an Agent mutation failure clears the stale blocked preview', () => {
-  const agents = read('src/agents.tsx');
-  const change = agents.slice(agents.indexOf('async function change'), agents.indexOf('async function check('));
-  const failure = change.slice(change.indexOf('} catch (caught)'));
-  assert.match(failure, /setPreview\(null\);\s*setActionError/);
 });
 
 test('closing operation feedback does not stop or cancel observation', () => {

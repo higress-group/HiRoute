@@ -499,6 +499,7 @@ fn permission_effect_hardens_only_pinned_identity_and_never_reverts_mode() {
         release_catalog: None,
         protected_inputs: Mutex::new(BTreeMap::new()),
         manual_protected_inputs: Mutex::new(BTreeMap::new()),
+        agent_token_inputs: Mutex::new(BTreeMap::new()),
         model_connections: hiroute_integrations::NativeModelConnectionServiceV1::new(
             hiroute_application::compute_management::TrustedComputeCandidateRegistry::new(),
             Arc::new(hiroute_integrations::ReqwestModelDirectoryTransportV1),

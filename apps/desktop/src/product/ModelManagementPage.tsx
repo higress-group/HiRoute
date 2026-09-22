@@ -159,7 +159,7 @@ export function ModelManagementPage({
   plans?: Plan[];
   agents?: Agent[];
   onOpenPlan?(planId: string): void;
-  onCreatePlan?(): void;
+  onCreatePlan?(bindingId: string): void;
 }) {
   const [management, setManagement] = useState<ManagementSnapshot | null>(null);
   const [focusedSource, setFocusedSource] = useState<string | null>(initialSourceId);

@@ -1357,6 +1357,15 @@
       "collected_on": "2026-09-13",
       "bytes_digest": null,
       "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-125",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/coding-plan/tool/codex",
+      "collected_on": "2026-09-20",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -2410,12 +2419,19 @@
           "protocol": "openai-chat",
           "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
           "request_path": "/chat/completions"
+        },
+        {
+          "interface_key": "zhipu-coding-cn/openai-responses",
+          "protocol": "openai-responses",
+          "base_url": "https://open.bigmodel.cn/api/v1",
+          "request_path": "/responses"
         }
       ],
       "evidence_status": "verified-primary",
       "evidence_refs": [
         "source-024",
-        "source-025"
+        "source-025",
+        "source-125"
       ],
       "disposition": [
         "catalog-representable",
@@ -3851,6 +3867,25 @@
         "source-034",
         "source-035",
         "source-036"
+      ]
+    },
+    {
+      "binding_key": "zhipu-coding-cn/glm-5-3-global/glm-5-3",
+      "product_key": "zhipu-coding-cn",
+      "model_key": "glm-5-3-global",
+      "upstream_model_id": "glm-5.3",
+      "interface_candidates": [
+        "zhipu-coding-cn/anthropic-messages",
+        "zhipu-coding-cn/openai-chat",
+        "zhipu-coding-cn/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented Coding Plan access; the plan credential and Responses request still require live qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-125"
       ]
     }
   ],
@@ -113364,6 +113399,12 @@
         },
         {
           "protocol_endpoint_id": "endpoint.zhipu.coding-plan.cn.v1.messages",
+          "authentication_semantics": {
+            "kind": "bearer"
+          }
+        },
+        {
+          "protocol_endpoint_id": "endpoint.zhipu.coding-plan.cn.v1.responses",
           "authentication_semantics": {
             "kind": "bearer"
           }

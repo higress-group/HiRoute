@@ -225,6 +225,7 @@ fn fixed_binding_reuses_exact_compiler_without_rating_or_plan() {
     )
     .unwrap();
     let settings = AgentModelSelectionV2::CodexDefault {
+        native_model_mode: hiroute_domain::CodexNativeModelModeV2::PreserveAvailable,
         fixed_models: vec![selected],
         allowed_plan_ids: Default::default(),
         default_selection: AgentModelDefaultSelectionV2::PreserveNative,
@@ -298,6 +299,7 @@ fn fixed_name_colliding_with_an_allowed_plan_alias_is_rejected_before_publicatio
     let fixed =
         compile_fixed_model_bindings(std::slice::from_ref(&selected), &facts.candidates).unwrap();
     let settings = AgentModelSelectionV2::CodexDefault {
+        native_model_mode: hiroute_domain::CodexNativeModelModeV2::PreserveAvailable,
         fixed_models: vec![selected],
         allowed_plan_ids: [AgentPlanId::parse("plan/custom").unwrap()].into(),
         default_selection: AgentModelDefaultSelectionV2::PreserveNative,

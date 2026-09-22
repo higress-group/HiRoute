@@ -243,8 +243,10 @@ pub(super) async fn materialize_attempt(
         || execution.profile_digest != expected_profile_digest
         || profile.ingress_protocol != logical.ingress
         || (execution.connector_runtime != hiroute_domain::ConnectorRuntimeKind::CpaBridge
-            && profile.connector.request_path
-                != execution.operational_target.request_path().unwrap_or(""))
+            && execution
+                .operational_target
+                .for_protocol_path(&profile.connector.request_path)
+                .is_none())
         || !execution
             .operational_target
             .validate_for(execution.connector_runtime, &execution.logical_endpoint)
@@ -310,6 +312,23 @@ pub(super) async fn materialize_attempt(
     {
         return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
     }
+    let lease_target =
+        if execution.connector_runtime == hiroute_domain::ConnectorRuntimeKind::BuiltinNative {
+            execution
+                .operational_target
+                .for_protocol_path(&profile.connector.request_path)
+                .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+        } else {
+            execution.operational_target.clone()
+        };
+    let lease_target_digest = hiroute_domain::CanonicalDigest::of(&lease_target)
+        .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let lease_logical_endpoint =
+        if execution.connector_runtime == hiroute_domain::ConnectorRuntimeKind::BuiltinNative {
+            lease_target.uri()
+        } else {
+            &execution.logical_endpoint
+        };
     let credential = if no_credential {
         None
     } else {
@@ -326,9 +345,9 @@ pub(super) async fn materialize_attempt(
                         upstream_protocol: profile.capability.upstream_protocol,
                         upstream_model_id: &execution.upstream_model_id,
                         native_transport_model: &execution.native_transport_model,
-                        logical_endpoint: &execution.logical_endpoint,
-                        operational_target: execution.operational_target.uri(),
-                        operational_target_digest: execution.operational_target_digest.as_str(),
+                        logical_endpoint: lease_logical_endpoint,
+                        operational_target: lease_target.uri(),
+                        operational_target_digest: lease_target_digest.as_str(),
                         runtime_epoch: execution.operational_target.runtime_epoch(),
                         target_epoch: execution.operational_target.target_epoch(),
                         protocol_profile_digest: expected_profile_digest,

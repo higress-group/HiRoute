@@ -56,6 +56,24 @@ function freshCodex(surface: 'codex_desktop' | 'codex_cli'): AgentSnapshot {
   };
   return snapshot;
 }
+function desktopWithFixed(): AgentSnapshot {
+  const snapshot = freshCodex('codex_desktop');
+  const settings = codexOf(snapshot).settings!;
+  settings.state = 'configured';
+  settings.current_selection = {
+    mode: 'codex_default',
+    native_model_mode: 'preserve_available',
+    fixed_models: [{ client_model_id: 'gpt-5.6-sol', candidate: { binding_id: 'binding/codex/previous', reasoning: { kind: 'profile', profile: 'high' } } }],
+    allowed_plan_ids: [],
+    default_selection: { kind: 'preserve_native' },
+  };
+  return snapshot;
+}
+function protectedCodex(): AgentSnapshot {
+  const snapshot = desktopWithFixed();
+  codexOf(snapshot).settings!.protected_native_model_ids = ['gpt-5.6-sol'];
+  return snapshot;
+}
 function splitCodexStatus(): AgentSnapshot {
   const snapshot = registered();
   const agent = codexOf(snapshot);
@@ -80,6 +98,7 @@ const control = {
   commands: [] as { command: string; payload: Record<string, unknown> }[],
   handlers: {} as Record<string, Handler>,
   mutations: 0,
+  operations: [] as { operation: { operation_id: string; state: string }; presentation: { kind: string; target: string } }[],
   refresh: () => {},
   reset: () => {},
   registered,
@@ -87,6 +106,8 @@ const control = {
   notRunnableWithRestore,
   unregisteredEndpoint,
   desktopOnly: () => freshCodex('codex_desktop'),
+  desktopWithFixed,
+  protectedCodex,
   cliOnly: () => freshCodex('codex_cli'),
   splitCodexStatus,
 };
@@ -99,7 +120,7 @@ mockIPC(async (command, payload) => {
   switch (command) {
     case 'agent_snapshot': return structuredClone(control.agents);
     case 'preview_agent_settings': {
-      return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { state: 'succeeded' } } };
+      return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } };
     }
     case 'check_agent_authentication': return true;
     case 'check_agent_live': return { accepted: true, scope: 'live', model_call: true, state: 'passed', call_count: 1, requested_call_count: 1 };
@@ -116,13 +137,14 @@ function Harness() {
     control.commands = [];
     control.handlers = {};
     control.mutations = 0;
+    control.operations = [];
     setRefresh(0);
     setGeneration(value => value + 1);
   };
   return <PresentationRoot language="zh" theme="dark" textScale={1}>
     <div className="app-window"><main className="main" style={{ marginLeft: 0 }}>
       <div role="note">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实安装。</div>
-      <Agents key={generation} language="zh" refreshVersion={refresh} mutationAllowed onMutation={() => { control.mutations += 1; }} />
+      <Agents key={generation} language="zh" refreshVersion={refresh} mutationAllowed onMutation={() => { control.mutations += 1; }} onOperation={(operation, presentation) => { control.operations.push({ operation, presentation }); }} />
     </main></div>
   </PresentationRoot>;
 }

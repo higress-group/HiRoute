@@ -762,6 +762,47 @@ def build_runtime_projection(catalog):
         "gaps": gaps,
     }
 
+def add_documented_zhipu_responses_capability(projection, catalog, data):
+    """Keep the old Messages binding while enabling qualified new Coding Plan sources."""
+    product = next(value for value in catalog["access_products"]
+        if value["product_key"] == "zhipu-coding-cn")
+    interface = next(value for value in product["interfaces"]
+        if value["interface_key"] == "zhipu-coding-cn/openai-responses")
+    binding = next(value for value in catalog["endpoint_bindings"]
+        if value["binding_key"] == "zhipu-coding-cn/glm-5-3-global/glm-5-3")
+    source = next(value for value in catalog["evidence_sources"]
+        if value["source_key"] == "source-125")
+    if (interface["protocol"] != "openai-responses"
+        or joined_request_path(interface) != ("https://open.bigmodel.cn", "/api/v1/responses")
+        or binding["product_key"] != product["product_key"]
+        or binding["upstream_model_id"] != "glm-5.3"
+        or interface["interface_key"] not in binding["interface_candidates"]
+        or binding["protocol_qualification"] != "runtime-required"
+        or source["locator"] != "https://docs.bigmodel.cn/cn/coding-plan/tool/codex"
+        or source["source_key"] not in product["evidence_refs"]
+        or source["source_key"] not in binding["evidence_refs"]):
+        raise ValueError("the documented Zhipu Coding Plan Responses binding changed")
+    model = next(value for value in data["models"]
+        if value["model_configuration_id"] == "model.zhipu.glm-5.3")
+    messages = next(value for value in data["model_endpoint_capabilities"]
+        if value["capability_id"] == "cap.zhipu.glm-5.3.coding-plan.messages")
+    if (not model["capabilities"]["tool"] or not model["capabilities"]["streaming"]
+        or messages["endpoint_profile_id"] != "endpoint.zhipu.coding-plan.cn.v1"
+        or messages["upstream_protocol"] != "messages"
+        or messages["upstream_model_id"] != binding["upstream_model_id"]):
+        raise ValueError("the preserved Zhipu model and Messages capability changed")
+    responses = copy.deepcopy(messages)
+    responses.update({
+        "capability_id": "cap.zhipu.glm-5.3.coding-plan.responses",
+        "protocol_endpoint_id": "endpoint.zhipu.coding-plan.cn.v1.responses",
+        "upstream_protocol": "responses",
+        "required_adapter_ref": "adapter.openai-responses.v1",
+        "evidence_digest": digest([product["evidence_refs"], binding["evidence_refs"],
+            source["locator"], messages["evidence_digest"]]),
+    })
+    projection["model_endpoint_capabilities"].append(responses)
+    projection["model_endpoint_capabilities"].sort(key=lambda value: value["capability_id"])
+
 def compile_candidate():
     maintenance = json.loads((HERE / "maintenance.json").read_text())
     if maintenance.get("schema") != "hiroute.native-rating-maintenance/v1":
@@ -865,6 +906,7 @@ def compile_candidate():
             "identity_note": reference["identity_note"],
             "native_render_convention": convention})
     runtime_projection = build_runtime_projection(metadata_catalog)
+    add_documented_zhipu_responses_capability(runtime_projection, metadata_catalog, data)
     native_by_id = {value["model_configuration_id"]: value for value in models}
     model_by_id = {value["model_configuration_id"]: value for value in data["models"]}
     for projected in runtime_projection["models"]:

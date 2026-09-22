@@ -1,9 +1,8 @@
-//! Host-executed resident login-item intent, bound to the original settings Operation.
+//! Historical resident login-item intent, retained for owned-item cleanup on restore.
 //!
-//! The Desktop host performs the real ServiceManagement status check and registration under
-//! the native confirmation before the Operation is sealed. This intent carries that
-//! observation as durable evidence; the daemon side records it without re-executing the
-//! action, and the host compensates a creation if the apply never commits.
+//! New settings saves do not inspect or register a macOS login item. Older settings
+//! Operations may have journaled a host-executed registration; the last restore observes
+//! its removal and the host compensates that removal if the apply never commits.
 use hiroute_application_api::{AgentLoginItemDeclarationV2, AgentLoginItemStatusV2};
 use hiroute_domain::{
     AgentConnectionControlIntentV1, AgentConnectionEffectRoleV1, AgentConnectionTransactionKindV1,

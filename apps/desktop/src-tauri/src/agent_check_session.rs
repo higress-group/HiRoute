@@ -109,9 +109,13 @@ impl AgentCheckConfirmation {
             };
         }
         if self.request.scope == AgentCheckScopeV1::Collaboration && self.english {
-            return "Check local Codex Agent-routing compatibility?\nLaunches the installed Codex adapter in a private environment and verifies isolated Skill loading plus read-only trusted CLI execution. No provider call or daily configuration change.".into();
+            return format!(
+                "Check local {agent} task delegation compatibility?\nLaunches the installed {agent} client in a private environment and verifies isolated Skill loading plus read-only trusted CLI execution. No provider call or daily configuration change."
+            );
         } else if self.request.scope == AgentCheckScopeV1::Collaboration {
-            return "检查本机 Codex Agent 路由兼容性？\n将在私有环境中启动已安装的 Codex 适配器，验证隔离 Skill 加载与只读受信 CLI 执行。不调用上游提供方，不改写日常配置。".into();
+            return format!(
+                "检查本机 {agent} 任务委派兼容性？\n将在私有环境中启动已安装的 {agent} 客户端，验证隔离 Skill 加载与只读受信 CLI 执行。不调用上游提供方，不改写日常配置。"
+            );
         }
         if self.english {
             format!(
@@ -226,9 +230,7 @@ impl Session {
         if !matches!(
             input.agent_id.as_str(),
             "agent_codex_default" | "agent_claude_default"
-        ) || (input.agent_id == "agent_claude_default"
-            && scope == AgentCheckScopeV1::Collaboration)
-        {
+        ) {
             return Err("AGENT_INPUT_INVALID".into());
         }
         if scope == AgentCheckScopeV1::Live {

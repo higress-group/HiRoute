@@ -63,7 +63,7 @@ fn rebuild(
 }
 
 #[test]
-fn claude_settings_target_is_distinct_from_native_user_configuration() {
+fn claude_settings_target_is_the_native_user_configuration() {
     let spec = spec(
         json!({"intent":"keep"}),
         json!({"intent":"configure","settings":{"trigger_mode":"explicit"}}),
@@ -76,8 +76,8 @@ fn claude_settings_target_is_distinct_from_native_user_configuration() {
     .unwrap();
     let role = AgentConnectionEffectRoleV1::ManagedConfiguration;
     let native_target = role.target_for(&subject).unwrap();
-    let snapshot_target = role.settings_target_for(&subject).unwrap();
-    assert_ne!(native_target, snapshot_target);
+    let settings_target = role.settings_target_for(&subject).unwrap();
+    assert_eq!(native_target, settings_target);
     let control = AgentConnectionControlIntentV1::from_settings_planner(
         subject,
         &spec,
@@ -93,12 +93,12 @@ fn claude_settings_target_is_distinct_from_native_user_configuration() {
         0o600,
     )
     .unwrap();
-    assert_eq!(intent.target(), snapshot_target);
+    assert_eq!(intent.target(), settings_target);
     assert!(
         ExternalEffectIntentV1::from_registered_adapter(
             intent.effect_id(),
             intent.kind(),
-            native_target,
+            format!("{native_target}/launch-snapshot"),
             None,
             intent.desired().clone(),
             intent.desired_mode(),
@@ -106,6 +106,34 @@ fn claude_settings_target_is_distinct_from_native_user_configuration() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn token_action_requires_model_configure_and_exact_protected_input_slot() {
+    let invalid = ChangeSpecV1 {
+        desired_state: json!({
+            "schema_version": {"major": 2, "minor": 0},
+            "context_id": "agent-context/test",
+            "model": {"intent": "keep"},
+            "collaboration": {"intent": "configure", "settings": {"trigger_mode": "explicit"}},
+            "access_token": {"intent": "regenerate"},
+        }),
+        ..spec(
+            json!({"intent":"keep"}),
+            json!({"intent":"configure","settings":{"trigger_mode":"explicit"}}),
+        )
+    };
+    assert!(decode_spec(&invalid).is_err());
+    let mut configured = model_spec(codex_selection());
+    configured.desired_state["access_token"] =
+        json!({"intent":"set","input_slot":"candidate/native/agent-token-one"});
+    let settings = decode_spec(&configured).unwrap();
+    assert!(matches!(
+        settings.access_token,
+        AgentAccessTokenIntentV1::Set { .. }
+    ));
+    configured.desired_state["access_token"] = json!({"intent":"set","input_slot":"../other"});
+    assert!(decode_spec(&configured).is_err());
 }
 
 #[test]
@@ -313,6 +341,7 @@ fn model_spec(settings: Value) -> ChangeSpecV1 {
 fn codex_selection() -> Value {
     json!({
         "mode":"codex_default",
+        "native_model_mode":"preserve_available",
         "fixed_models":[{"client_model_id":"Vendor/Model.V1[1m]", "candidate":{"binding_id":"binding/native"}}],
         "allowed_plan_ids":[],
         "default_selection":{"kind":"preserve_native"}

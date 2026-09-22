@@ -8,6 +8,9 @@ use hiroute_domain::{
 };
 use thiserror::Error;
 
+use super::mutation_support::{managed_binding_id, map_capabilities, map_membership};
+use super::{ComputeCandidateFactsV2, ComputeCandidateModelFactsV2, ComputeCandidateProvenanceV2};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComputeManagementEligibilityV2 {
     CatalogMatched,
@@ -77,6 +80,62 @@ pub fn compile_compute_management_source(
             )
         })
         .collect()
+}
+
+/// Compile a checked Codex subscription model for one Agent connection without adding it to the
+/// durable source or the general Plan candidate set. The caller must obtain `checked` through the
+/// retained-validation join for this exact saved source and re-intersect the result with live CPA.
+pub fn compile_connection_only_codex_model(
+    source: &ComputeManagementSourceV2,
+    checked: &ComputeCandidateFactsV2,
+    model: &ComputeCandidateModelFactsV2,
+) -> Result<ComputeManagementCompilationFactV2, ComputeManagementCompilationErrorV2> {
+    let (
+        ComputeManagementProvenanceV2::ConnectorOwned {
+            connector_id,
+            account_ref,
+        },
+        ComputeCandidateProvenanceV2::ConnectorOwned {
+            connector_id: checked_connector,
+            account_ref: checked_account,
+        },
+    ) = (&source.provenance, &checked.provenance)
+    else {
+        return Err(ComputeManagementCompilationErrorV2::AuthorizationMissing);
+    };
+    if connector_id != checked_connector
+        || account_ref != checked_account
+        || !model.selectable
+        || model.reason.is_some()
+        || model.membership != hiroute_application_api::ComputeModelMembershipV2::Catalog
+        || model.catalog_configuration_id.is_none()
+        || source
+            .models
+            .iter()
+            .any(|saved| saved.model_ref == model.model_ref)
+        || !checked.models.iter().any(|candidate| candidate == model)
+    {
+        return Err(ComputeManagementCompilationErrorV2::EligibilityMismatch);
+    }
+    let binding_id = managed_binding_id(&source.source_id, &model.model_ref)
+        .map_err(|_| ComputeManagementCompilationErrorV2::InvalidSource)?;
+    let mut connection_source = source.clone();
+    connection_source.models.push(ComputeManagedModelV2 {
+        model_ref: model.model_ref.clone(),
+        binding_id: binding_id.clone(),
+        revision: 1,
+        upstream_model_id: model.upstream_model_id.clone(),
+        display_name: model.display_name.clone(),
+        catalog_configuration_id: model.catalog_configuration_id.clone(),
+        membership: map_membership(model.membership),
+        execution_eligible: true,
+        capabilities: map_capabilities(&model.capabilities),
+        capability_evidence_digest: model.capability_evidence_digest.clone(),
+    });
+    compile_compute_management_source(&connection_source)?
+        .into_iter()
+        .find(|fact| fact.binding_id == binding_id)
+        .ok_or(ComputeManagementCompilationErrorV2::InvalidSource)
 }
 
 fn compile_model(

@@ -58,6 +58,7 @@ pub enum DiagnosticEvent {
     RouteSelected(RouteSelected),
     AttemptBegin(AttemptBegin),
     AttemptEnd(AttemptEnd),
+    UpstreamWire(UpstreamWire),
     Fallback(Fallback),
     SemanticCommit(SemanticCommit),
     RequestCancel(RequestCancel),
@@ -148,7 +149,7 @@ impl DiagnosticEvent {
             | DiagnosticEvent::RequestCancel(_)
             | DiagnosticEvent::RequestTimeout(_) => Warn,
             DiagnosticEvent::SemanticCommit(_) => Info,
-            DiagnosticEvent::ModelStage(_) => Debug,
+            DiagnosticEvent::ModelStage(_) | DiagnosticEvent::UpstreamWire(_) => Debug,
             DiagnosticEvent::ContentCaptureEnd(end) => match end.outcome {
                 CaptureOutcome::Success => Info,
                 CaptureOutcome::Abort => Warn,
@@ -212,6 +213,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::RouteSelected(_) => "route_selected",
             DiagnosticEvent::AttemptBegin(_) => "attempt_begin",
             DiagnosticEvent::AttemptEnd(_) => "attempt_end",
+            DiagnosticEvent::UpstreamWire(_) => "upstream_wire",
             DiagnosticEvent::Fallback(_) => "fallback",
             DiagnosticEvent::SemanticCommit(_) => "semantic_commit",
             DiagnosticEvent::RequestCancel(_) => "request_cancel",

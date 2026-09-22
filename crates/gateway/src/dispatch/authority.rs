@@ -95,7 +95,7 @@ impl GatewayRequestAuthority {
             (publication, grant, None)
         };
         if grant.protocol != protocol {
-            return Err(DispatchError::AgentPlanNotAvailable);
+            return Err(DispatchError::AgentPlanProtocolUnsupported);
         }
         let has_protocol_alias = grant.routes.values().any(|route| match route {
             CompiledGrantRoute::Plan { alias } => publication
@@ -167,7 +167,7 @@ impl AuthenticatedRequest {
             .grant
             .routes
             .get(served_model_id)
-            .ok_or(DispatchError::AgentPlanNotAvailable)?;
+            .ok_or(DispatchError::AgentModelNotGranted)?;
         let (execution, provenance, plan_display_name) = match route {
             CompiledGrantRoute::Plan { alias } => {
                 let alias = self
@@ -275,6 +275,8 @@ pub enum DispatchError {
     Unauthorized,
     #[error("AgentPlan is unavailable for this grant")]
     AgentPlanNotAvailable,
+    #[error("model is not granted to this agent connection")]
+    AgentModelNotGranted,
     #[error("AgentPlan does not support this ingress protocol")]
     AgentPlanProtocolUnsupported,
     #[error(transparent)]
@@ -293,7 +295,8 @@ impl DispatchError {
             Self::PublicationUnavailable => "GATEWAY_PUBLICATION_UNAVAILABLE",
             Self::Unauthorized => "GATEWAY_GRANT_UNAUTHORIZED",
             Self::AgentPlanNotAvailable => "AGENT_PLAN_NOT_AVAILABLE",
-            Self::AgentPlanProtocolUnsupported => "AGENT_PLAN_NOT_AVAILABLE",
+            Self::AgentModelNotGranted => "AGENT_MODEL_NOT_GRANTED",
+            Self::AgentPlanProtocolUnsupported => "AGENT_PROTOCOL_UNSUPPORTED",
             Self::Selector(SelectorError::LimitExceeded(_)) => "MODEL_SELECTOR_LIMIT_EXCEEDED",
             Self::Selector(_) => "MODEL_SELECTOR_INVALID",
             Self::RequestDeadlineExceeded => "REQUEST_DEADLINE_EXCEEDED",
@@ -305,9 +308,8 @@ impl DispatchError {
         match self {
             Self::PublicationUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
-            Self::AgentPlanNotAvailable | Self::AgentPlanProtocolUnsupported => {
-                StatusCode::NOT_FOUND
-            }
+            Self::AgentPlanNotAvailable | Self::AgentModelNotGranted => StatusCode::NOT_FOUND,
+            Self::AgentPlanProtocolUnsupported => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Selector(_) => StatusCode::BAD_REQUEST,
             Self::RequestDeadlineExceeded => StatusCode::REQUEST_TIMEOUT,
             Self::CorePlan(_) | Self::InvalidDeadline => StatusCode::INTERNAL_SERVER_ERROR,

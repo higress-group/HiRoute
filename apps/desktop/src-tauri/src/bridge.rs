@@ -875,7 +875,10 @@ pub fn run() {
                 fallback_at_ready: !background && !duplicate && {
                     #[cfg(target_os = "macos")]
                     {
-                        !native_observer
+                        // Pilot launches a bare Debug executable, which does not receive the
+                        // normal open-application Apple event. Present its isolated test window
+                        // at Ready so protected confirmations can use a visible main window.
+                        !native_observer || cfg!(all(feature = "desktop-pilot", debug_assertions))
                     }
                     #[cfg(not(target_os = "macos"))]
                     {

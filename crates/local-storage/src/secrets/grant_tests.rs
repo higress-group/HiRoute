@@ -2,10 +2,10 @@ use std::fs;
 
 use crate::test_tempdir as tempdir;
 use hiroute_domain::{
-    AgentAccessGrantMutationV1, AgentAccessGrantRefV1, AgentAccessGrantScopeV1,
-    AgentIngressProtocolV1, AgentModelGrantV2, AgentModelRouteV2, AgentPlanId, CanonicalDigest,
-    CompensationOutcome, EffectReconciliation, ModelAlias, OperationId, PortErrorCode,
-    SecretStorePort,
+    AgentAccessGrantMaterialActionV1, AgentAccessGrantMutationV1, AgentAccessGrantRefV1,
+    AgentAccessGrantScopeV1, AgentIngressProtocolV1, AgentModelGrantV2, AgentModelRouteV2,
+    AgentPlanId, CanonicalDigest, CompensationOutcome, EffectReconciliation, ModelAlias,
+    OperationId, PortErrorCode, ProtectedSecret, SecretStorePort,
 };
 
 use super::LocalSecretStore;
@@ -18,6 +18,10 @@ fn operation_id(value: char) -> OperationId {
 }
 
 fn scope(marker: &[u8]) -> AgentAccessGrantScopeV1 {
+    scope_for(CONNECTION_ID, marker)
+}
+
+fn scope_for(connection_id: &str, marker: &[u8]) -> AgentAccessGrantScopeV1 {
     let routes = ["hiroute/0123456789abcdef", "hiroute/fedcba9876543210"]
         .into_iter()
         .enumerate()
@@ -34,7 +38,7 @@ fn scope(marker: &[u8]) -> AgentAccessGrantScopeV1 {
         })
         .collect();
     AgentAccessGrantScopeV1::new(
-        CONNECTION_ID,
+        connection_id,
         AgentModelGrantV2::seal(AgentIngressProtocolV1::Messages, routes).unwrap(),
     )
     .unwrap()
@@ -69,7 +73,7 @@ fn apply_persists_only_aead_ciphertext_and_non_secret_effect_metadata() {
     let (_directory, store) = store();
     let mutation = ensure(scope(b"plan-grant-v1"), 0);
     let effect = store
-        .apply_agent_access_grant(&operation_id('1'), &mutation)
+        .apply_agent_access_grant(&operation_id('1'), &mutation, None)
         .unwrap();
     let staged = staged_ref(&effect, &mutation);
 
@@ -152,7 +156,7 @@ fn same_desired_scope_reuses_active_generation_and_material() {
     let desired = scope(b"same-plan-grant");
     let first_mutation = ensure(desired.clone(), 0);
     let first_effect = store
-        .apply_agent_access_grant(&operation_id('2'), &first_mutation)
+        .apply_agent_access_grant(&operation_id('2'), &first_mutation, None)
         .unwrap();
     store.activate_agent_access_grant(&first_effect).unwrap();
     let first_ref = store
@@ -163,7 +167,7 @@ fn same_desired_scope_reuses_active_generation_and_material() {
 
     let second_mutation = ensure(desired, 1);
     let second_effect = store
-        .apply_agent_access_grant(&operation_id('3'), &second_mutation)
+        .apply_agent_access_grant(&operation_id('3'), &second_mutation, None)
         .unwrap();
     let second_staged = staged_ref(&second_effect, &second_mutation);
     assert_eq!(second_staged, first_ref);
@@ -188,11 +192,11 @@ fn same_desired_scope_reuses_active_generation_and_material() {
 }
 
 #[test]
-fn scope_change_rotates_then_compensation_restores_previous_active_grant() {
+fn scope_change_preserves_token_and_compensation_restores_previous_scope() {
     let (_directory, store) = store();
     let first_mutation = ensure(scope(b"plan-grant-before"), 0);
     let first_effect = store
-        .apply_agent_access_grant(&operation_id('4'), &first_mutation)
+        .apply_agent_access_grant(&operation_id('4'), &first_mutation, None)
         .unwrap();
     store.activate_agent_access_grant(&first_effect).unwrap();
     let before = store
@@ -204,11 +208,11 @@ fn scope_change_rotates_then_compensation_restores_previous_active_grant() {
 
     let rotate = ensure(scope(b"plan-grant-after"), 1);
     let rotate_effect = store
-        .apply_agent_access_grant(&operation_id('5'), &rotate)
+        .apply_agent_access_grant(&operation_id('5'), &rotate, None)
         .unwrap();
     let staged = staged_ref(&rotate_effect, &rotate);
     assert_eq!(staged.generation(), 2);
-    assert_ne!(staged.material_sha256(), before.material_sha256());
+    assert_eq!(staged.material_sha256(), before.material_sha256());
     assert_eq!(
         store
             .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
@@ -226,6 +230,10 @@ fn scope_change_rotates_then_compensation_restores_previous_active_grant() {
     );
 
     store.activate_agent_access_grant(&rotate_effect).unwrap();
+    assert_eq!(
+        store.resolve_agent_access_grant(&staged).unwrap().expose(),
+        before_plaintext
+    );
     assert_eq!(
         store
             .resolve_agent_access_grant(&before)
@@ -259,13 +267,160 @@ fn scope_change_rotates_then_compensation_restores_previous_active_grant() {
 }
 
 #[test]
+fn custom_save_duplicate_regeneration_and_invalid_input_preserve_atomic_grant() {
+    let (_directory, store) = store();
+    let initial = ensure(scope(b"initial"), 0);
+    let initial_effect = store
+        .apply_agent_access_grant(&operation_id('a'), &initial, None)
+        .unwrap();
+    store.activate_agent_access_grant(&initial_effect).unwrap();
+    let first = store
+        .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+        .unwrap()
+        .unwrap();
+    let initial_token = store.resolve_agent_access_grant(&first).unwrap();
+
+    let invalid = ProtectedSecret::new(b"short".to_vec()).unwrap();
+    let invalid_mutation = ensure(scope(b"initial"), 1)
+        .with_material_action(AgentAccessGrantMaterialActionV1::Set {
+            input_slot: "candidate/native/agent-token-invalid".into(),
+            fingerprint: store.fingerprint(&invalid).unwrap(),
+        })
+        .unwrap();
+    assert_eq!(
+        store
+            .apply_agent_access_grant(&operation_id('b'), &invalid_mutation, Some(&invalid))
+            .unwrap_err()
+            .code,
+        PortErrorCode::InvalidData,
+    );
+    assert_eq!(
+        store
+            .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+            .unwrap(),
+        Some(first.clone())
+    );
+    assert_eq!(
+        store.resolve_agent_access_grant(&first).unwrap().expose(),
+        initial_token.expose()
+    );
+
+    let custom = ProtectedSecret::new(b"custom-unique-token-0001".to_vec()).unwrap();
+    let set = |generation| {
+        ensure(scope(b"initial"), generation)
+            .with_material_action(AgentAccessGrantMaterialActionV1::Set {
+                input_slot: "candidate/native/agent-token-custom".into(),
+                fingerprint: store.fingerprint(&custom).unwrap(),
+            })
+            .unwrap()
+    };
+    let changed = set(1);
+    let effect = store
+        .apply_agent_access_grant(&operation_id('c'), &changed, Some(&custom))
+        .unwrap();
+    store.activate_agent_access_grant(&effect).unwrap();
+    let second = store
+        .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+        .unwrap()
+        .unwrap();
+    assert_eq!(second.generation(), 2);
+    assert_eq!(
+        store.resolve_agent_access_grant(&second).unwrap().expose(),
+        custom.expose()
+    );
+    assert_ne!(second.material_sha256(), first.material_sha256());
+    assert_eq!(
+        store.resolve_agent_access_grant(&first).err().unwrap().code,
+        PortErrorCode::PermissionDenied
+    );
+
+    let duplicate = set(2);
+    let duplicate_effect = store
+        .apply_agent_access_grant(&operation_id('d'), &duplicate, Some(&custom))
+        .unwrap();
+    store
+        .activate_agent_access_grant(&duplicate_effect)
+        .unwrap();
+    let unchanged = store
+        .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+        .unwrap()
+        .unwrap();
+    assert_eq!(unchanged, second);
+
+    let regenerate = ensure(scope(b"initial"), 2)
+        .with_material_action(AgentAccessGrantMaterialActionV1::Regenerate)
+        .unwrap();
+    let generated_effect = store
+        .apply_agent_access_grant(&operation_id('e'), &regenerate, None)
+        .unwrap();
+    store
+        .activate_agent_access_grant(&generated_effect)
+        .unwrap();
+    let third = store
+        .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+        .unwrap()
+        .unwrap();
+    assert_eq!(third.generation(), 3);
+    assert_ne!(third.material_sha256(), second.material_sha256());
+    assert_eq!(
+        store
+            .resolve_agent_access_grant(&second)
+            .err()
+            .unwrap()
+            .code,
+        PortErrorCode::PermissionDenied
+    );
+}
+
+#[test]
+fn separate_agent_connections_keep_independent_tokens() {
+    let (_directory, store) = store();
+    let codex_id = "agent-connection/codex-shared-scope";
+    let claude = ensure(scope(b"claude"), 0);
+    let codex = ensure(scope_for(codex_id, b"codex"), 0);
+    let claude_effect = store
+        .apply_agent_access_grant(&operation_id('a'), &claude, None)
+        .unwrap();
+    store.activate_agent_access_grant(&claude_effect).unwrap();
+    let codex_effect = store
+        .apply_agent_access_grant(&operation_id('b'), &codex, None)
+        .unwrap();
+    store.activate_agent_access_grant(&codex_effect).unwrap();
+    let codex_before = store
+        .inspect_agent_access_grant(OWNER_SCOPE, codex_id)
+        .unwrap()
+        .unwrap();
+    let codex_token = store.resolve_agent_access_grant(&codex_before).unwrap();
+    let claude_new = ensure(scope(b"claude"), 1)
+        .with_material_action(AgentAccessGrantMaterialActionV1::Regenerate)
+        .unwrap();
+    let claude_effect = store
+        .apply_agent_access_grant(&operation_id('c'), &claude_new, None)
+        .unwrap();
+    store.activate_agent_access_grant(&claude_effect).unwrap();
+    assert_eq!(
+        store
+            .inspect_agent_access_grant(OWNER_SCOPE, codex_id)
+            .unwrap(),
+        Some(codex_before.clone())
+    );
+    assert_eq!(
+        store
+            .resolve_agent_access_grant(&codex_before)
+            .unwrap()
+            .expose(),
+        codex_token.expose()
+    );
+}
+
+#[test]
 fn staged_grant_is_recovered_after_reopen_without_becoming_active_early() {
     let (directory, store) = store();
     let root = directory.path().join("data");
     let mutation = ensure(scope(b"recovery-plan-grant"), 0);
     let operation = operation_id('6');
     let effect = store
-        .apply_agent_access_grant(&operation, &mutation)
+        .apply_agent_access_grant(&operation, &mutation, None)
         .unwrap();
     let expected = staged_ref(&effect, &mutation);
     drop(store);
@@ -309,7 +464,7 @@ fn staged_grant_compensation_removes_the_unpublished_version() {
     let mutation = ensure(scope(b"staged-rollback"), 0);
     let operation = operation_id('7');
     let effect = store
-        .apply_agent_access_grant(&operation, &mutation)
+        .apply_agent_access_grant(&operation, &mutation, None)
         .unwrap();
 
     assert_eq!(
@@ -350,7 +505,9 @@ fn prepared_material_is_bound_to_the_original_uncompensated_operation_and_scope(
             .resolve_prepared_agent_access_grant(&op, &mutation)
             .is_err()
     );
-    let effect = store.apply_agent_access_grant(&op, &mutation).unwrap();
+    let effect = store
+        .apply_agent_access_grant(&op, &mutation, None)
+        .unwrap();
     let material = store
         .resolve_prepared_agent_access_grant(&op, &mutation)
         .unwrap();

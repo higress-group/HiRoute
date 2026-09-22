@@ -20,15 +20,47 @@ pub(crate) struct CollaborationChallenge {
 
 impl CollaborationChallenge {
     pub(crate) fn prepare(home: &Path, cli: &Path) -> Result<Self, &'static str> {
+        let parent = home.join(".agents");
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&parent)
+            .map_err(|_| "private skill directory")?;
+        Self::prepare_in(&parent.join("skills"), home, cli)
+    }
+
+    pub(crate) fn prepare_claude(
+        config: &Path,
+        home: &Path,
+        cli: &Path,
+    ) -> Result<(Self, std::path::PathBuf), &'static str> {
+        let plugin = config.join("hiroute-native-probe");
+        let manifest = plugin.join(".claude-plugin");
+        for directory in [&plugin, &manifest] {
+            fs::DirBuilder::new()
+                .mode(0o700)
+                .create(directory)
+                .map_err(|_| "private Skill plugin")?;
+        }
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(manifest.join("plugin.json"))
+            .and_then(|mut file| {
+                file.write_all(br#"{"name":"hiroute-native-probe","version":"0.1.0"}"#)
+            })
+            .map_err(|_| "private Skill plugin")?;
+        Ok((Self::prepare_in(&plugin.join("skills"), home, cli)?, plugin))
+    }
+
+    fn prepare_in(skills: &Path, home: &Path, cli: &Path) -> Result<Self, &'static str> {
         let mut entropy = [0u8; 16];
         getrandom::fill(&mut entropy).map_err(|_| "challenge entropy")?;
         let suffix: String = entropy.iter().map(|byte| format!("{byte:02x}")).collect();
         let discovery = format!("hiroute-discovery-{suffix}");
         let contents = format!("hiroute-contents-{suffix}");
-        let parent = home.join(".agents");
-        let skills = parent.join("skills");
         let root = skills.join("hiroute-probe");
-        for directory in [&parent, &skills, &root] {
+        for directory in [skills, root.as_path()] {
             fs::DirBuilder::new()
                 .mode(0o700)
                 .create(directory)
@@ -133,6 +165,63 @@ impl CollaborationChallenge {
             json!([{"id":"msg_probe", "type":"message", "status":"completed", "role":"assistant", "content":[{"type":"output_text", "text":"OK", "annotations":[]}]}]),
         )
     }
+
+    pub(crate) fn reply_claude(
+        &mut self,
+        body: &Value,
+    ) -> Result<(Value, &'static str), &'static str> {
+        if !self.issued {
+            // The explicit Claude plugin expands the Skill body but omits its front matter.
+            // This private nonce is absent from the user prompt and proves Skill loading.
+            if !body.to_string().contains(&self.contents) {
+                return Err("native Skill discovery");
+            }
+            if !body["tools"]
+                .as_array()
+                .is_some_and(|tools| tools.iter().any(|tool| tool["name"] == "Bash"))
+            {
+                return Err("native read-only shell tool");
+            }
+            self.issued = true;
+            return Ok((
+                json!({"type":"tool_use", "id":"toolu_hiroute_probe", "name":"Bash",
+                "input":{"command":self.command, "timeout":10000}}),
+                "tool_use",
+            ));
+        }
+        let proved = body["messages"].as_array().is_some_and(|messages| {
+            messages.iter().any(|message| {
+                message["content"].as_array().is_some_and(|blocks| {
+                    blocks.iter().any(|block| {
+                        block["type"] == "tool_result"
+                            && block["tool_use_id"] == "toolu_hiroute_probe"
+                            && block["is_error"] != true
+                            && block["content"]
+                                .as_str()
+                                .map(str::to_owned)
+                                .or_else(|| {
+                                    block["content"].as_array().map(|parts| {
+                                        parts
+                                            .iter()
+                                            .filter_map(|part| part["text"].as_str())
+                                            .collect::<Vec<_>>()
+                                            .join("\n")
+                                    })
+                                })
+                                .is_some_and(|output| {
+                                    output.contains(&self.contents)
+                                        && output.contains(&self.expected_cli)
+                                })
+                    })
+                })
+            })
+        });
+        if !proved {
+            return Err("native Skill read and trusted CLI execution");
+        }
+        self.completed = true;
+        Ok((json!({"type":"text", "text":"OK"}), "end_turn"))
+    }
 }
 
 #[cfg(test)]
@@ -172,6 +261,38 @@ mod tests {
             assert!(!check.complete());
         }
         check.reply(&json!({"input":[{"type":"function_call_output", "call_id":"call_hiroute_probe", "output":"contents-nonce CLI-contract-output"}]})).unwrap();
+        assert!(check.complete());
+    }
+
+    #[test]
+    fn claude_collaboration_requires_discovered_skill_and_correlated_tool_result() {
+        let mut check = challenge();
+        check.expected_cli = r#"{"status":"succeeded"}"#.into();
+        assert!(
+            check
+                .reply_claude(&json!({"tools":[{"name":"Bash"}]}))
+                .is_err()
+        );
+        let (tool, stop) = check
+            .reply_claude(
+                &json!({"messages":[{"content":"contents-nonce"}], "tools":[{"name":"Bash"}]}),
+            )
+            .unwrap();
+        assert_eq!(tool["id"], "toolu_hiroute_probe");
+        assert_eq!(stop, "tool_use");
+        for (id, output) in [
+            ("wrong-tool", "contents-nonce {\"status\":\"succeeded\"}"),
+            ("toolu_hiroute_probe", "contents-nonce"),
+            ("toolu_hiroute_probe", "{\"status\":\"succeeded\"}"),
+        ] {
+            assert!(check.reply_claude(&json!({"messages":[{"content":[{"type":"tool_result", "tool_use_id":id, "content":output}]}]})).is_err());
+            assert!(!check.complete());
+        }
+        assert!(check.reply_claude(&json!({"messages":[{"content":[{"type":"tool_result", "tool_use_id":"toolu_hiroute_probe", "is_error":true, "content":"contents-nonce {\"status\":\"succeeded\"}"}]}]})).is_err());
+        assert!(!check.complete());
+        let (answer, stop) = check.reply_claude(&json!({"messages":[{"content":[{"type":"tool_result", "tool_use_id":"toolu_hiroute_probe", "content":"contents-nonce {\"status\":\"succeeded\"}"}]}]})).unwrap();
+        assert_eq!(answer["text"], "OK");
+        assert_eq!(stop, "end_turn");
         assert!(check.complete());
     }
 }

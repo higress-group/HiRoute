@@ -9,6 +9,8 @@ mod codex_catalog_source;
 mod codex_config;
 mod codex_layers;
 mod codex_sources;
+#[cfg(unix)]
+mod collaboration_probe;
 mod discovery;
 mod emulator;
 mod executable;
@@ -29,7 +31,7 @@ mod subscription_sources;
 pub use claude_native_effects::*;
 pub use codex_catalog::*;
 pub use codex_catalog_effects::*;
-pub use codex_catalog_plan::codex_plan_capability_preview;
+pub use codex_catalog_plan::{codex_plan_capability_preview, codex_private_worker_catalog};
 pub use codex_catalog_source::*;
 pub use codex_config::*;
 pub use codex_layers::*;

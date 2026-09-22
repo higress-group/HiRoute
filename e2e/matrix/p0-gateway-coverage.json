@@ -12,7 +12,7 @@
       "execution": "real_hirouted_native_provider",
       "id": "authority.live_publication",
       "source": "tools/e2e-harness/tests/p0_gateway_request_authority.rs",
-      "source_sha256": "sha256:8cfc3436d586c8bc274efd80d6f018455ce5d3ed31f9e0665c8573c62b8c9cb6",
+      "source_sha256": "sha256:e4fb25e88d1d7e53e2f8b7d5099697fff56dd60b5bb2bf2d94c020bf38623d98",
       "symbol": "production_hirouted_live_publication_control_pins_cutover_and_preserves_lkg_on_nack",
       "test_target": "p0_gateway_request_authority"
     },
@@ -29,7 +29,7 @@
       "execution": "real_hirouted_native_provider",
       "id": "authority.wire_listener",
       "source": "tools/e2e-harness/tests/p0_gateway_request_authority.rs",
-      "source_sha256": "sha256:8cfc3436d586c8bc274efd80d6f018455ce5d3ed31f9e0665c8573c62b8c9cb6",
+      "source_sha256": "sha256:e4fb25e88d1d7e53e2f8b7d5099697fff56dd60b5bb2bf2d94c020bf38623d98",
       "symbol": "production_hirouted_wire_authority_catalog_deadline_and_actual_restart",
       "test_target": "p0_gateway_request_authority"
     },
@@ -53,7 +53,7 @@
       "execution": "real_hirouted_native_provider",
       "id": "protocol.nine_native_pairs",
       "source": "tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs",
-      "source_sha256": "sha256:a9ec681781bc52347e3df3a14f0916a557c43323ca1cca812e1e68ffe57b3f92",
+      "source_sha256": "sha256:d869c60f64aff049d0a3498debc2ce1243dbf831c012e4058c5510ea0a2841d6",
       "symbol": "production_matrix::protocol_real_hirouted_executes_every_native_protocol_pair_and_rejects_before_provider",
       "test_target": "p0_gateway_protocol"
     },

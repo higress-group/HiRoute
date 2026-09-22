@@ -4,7 +4,9 @@ use crate::core::execution_plan::{
     ConfigCellGroup, ConfigCellId, ConfigGeneration, ImmutableConfig, PoolEpoch,
 };
 use crate::test_support::{plain_target, tls_target};
+use pingora_core::upstreams::peer::Peer;
 use std::sync::atomic::AtomicUsize;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 struct ActiveTask(Arc<AtomicUsize>);
 
@@ -221,6 +223,136 @@ fn connector_registry_rotates_forward_and_never_rolls_back() {
         .connector_for(&next_target, [0; 32])
         .expect("current connector");
     assert!(Arc::ptr_eq(&next, &still_next));
+}
+
+#[test]
+fn connector_registry_accepts_new_dns_addresses_without_reusing_the_old_peer() {
+    let first_address: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+    let second_address: SocketAddr = "127.0.0.2:8080".parse().unwrap();
+    let mut unresolved = plain_target(first_address, 43);
+    unresolved.authority = TransportTarget::mark_resolution_required("provider.test:8080");
+    unresolved.addresses = Arc::from([]);
+    unresolved = unresolved.with_derived_connection_fingerprint();
+    let first = unresolved
+        .clone()
+        .with_resolved_addresses(Arc::from([first_address]))
+        .unwrap();
+    let second = unresolved
+        .with_resolved_addresses(Arc::from([second_address]))
+        .unwrap();
+    assert_ne!(first.connection_fingerprint, second.connection_fingerprint);
+
+    let registry = PingoraConnectorRegistry::default();
+    let first_connector = registry.connector_for(&first, [0; 32]).unwrap();
+    let second_connector = registry.connector_for(&second, [0; 32]).unwrap();
+    assert!(Arc::ptr_eq(&first_connector, &second_connector));
+    let first_peer = build_peer(&first, first_address, [0; 32]).unwrap();
+    let second_peer = build_peer(&second, second_address, [0; 32]).unwrap();
+    assert_eq!(first_peer.group_key, second_peer.group_key);
+    assert_ne!(first_peer.reuse_hash(), second_peer.reuse_hash());
+
+    let mut incompatible = second.clone();
+    incompatible.h2_stream_window_bytes *= 2;
+    incompatible = incompatible.with_derived_connection_fingerprint();
+    assert!(registry.connector_for(&incompatible, [0; 32]).is_err());
+}
+
+#[test]
+fn peer_reuse_key_stays_stable_for_same_socket_when_other_dns_answers_change() {
+    let chosen: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+    let previous_other: SocketAddr = "127.0.0.2:8080".parse().unwrap();
+    let next_other: SocketAddr = "127.0.0.3:8080".parse().unwrap();
+    let mut unresolved = plain_target(chosen, 44);
+    unresolved.authority = TransportTarget::mark_resolution_required("provider.test:8080");
+    unresolved.addresses = Arc::from([]);
+    unresolved = unresolved.with_derived_connection_fingerprint();
+    let previous = unresolved
+        .clone()
+        .with_resolved_addresses(Arc::from([chosen, previous_other]))
+        .unwrap();
+    let next = unresolved
+        .clone()
+        .with_resolved_addresses(Arc::from([chosen, next_other]))
+        .unwrap();
+    assert_ne!(previous.connection_fingerprint, next.connection_fingerprint);
+    assert_eq!(previous.connection_reuse_key(), next.connection_reuse_key());
+
+    let previous_peer = build_peer(&previous, chosen, [0; 32]).unwrap();
+    let next_peer = build_peer(&next, chosen, [0; 32]).unwrap();
+    assert_eq!(previous_peer.group_key, next_peer.group_key);
+    assert_eq!(previous_peer.reuse_hash(), next_peer.reuse_hash());
+
+    let new_ip_only = unresolved
+        .with_resolved_addresses(Arc::from([next_other]))
+        .unwrap();
+    let different_socket_peer = build_peer(&new_ip_only, next_other, [0; 32]).unwrap();
+    assert_eq!(next_peer.group_key, different_socket_peer.group_key);
+    assert_ne!(next_peer.reuse_hash(), different_socket_peer.reuse_hash());
+}
+
+#[tokio::test]
+async fn same_selected_socket_reuses_a_real_h1_connection_after_dns_answer_change() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let chosen = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        for _ in 0..2 {
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                socket.read_exact(&mut byte).await.unwrap();
+                head.push(byte[0]);
+                assert!(head.len() < 8192);
+            }
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok",
+                )
+                .await
+                .unwrap();
+        }
+    });
+
+    let mut unresolved = plain_target(chosen, 45);
+    unresolved.authority =
+        TransportTarget::mark_resolution_required(format!("provider.test:{}", chosen.port()));
+    unresolved.addresses = Arc::from([]);
+    unresolved = unresolved.with_derived_connection_fingerprint();
+    let first = unresolved
+        .clone()
+        .with_resolved_addresses(Arc::from([chosen]))
+        .unwrap();
+    let next = unresolved
+        .with_resolved_addresses(Arc::from([
+            chosen,
+            SocketAddr::new("127.0.0.2".parse().unwrap(), chosen.port()),
+        ]))
+        .unwrap();
+    let registry = PingoraConnectorRegistry::default();
+    for (target, expected_reused) in [(&first, false), (&next, true)] {
+        let connector = registry.connector_for(target, [0; 32]).unwrap();
+        let peer = build_peer(target, chosen, [0; 32]).unwrap();
+        let (mut session, reused) =
+            tokio::time::timeout(Duration::from_secs(2), connector.get_http_session(&peer))
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(reused, expected_reused);
+        let ClientSession::H1(ref mut h1) = session else {
+            panic!("plain HTTP target must use H1");
+        };
+        let mut request = Box::new(RequestHeader::build("GET", b"/", None).unwrap());
+        request.append_header("Host", "provider.test").unwrap();
+        h1.write_request_header(request).await.unwrap();
+        h1.read_response().await.unwrap();
+        assert_eq!(h1.get_status().unwrap(), 200);
+        while h1.read_body_bytes().await.unwrap().is_some() {}
+        connector.release_http_session(session, &peer, None).await;
+    }
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 #[tokio::test]

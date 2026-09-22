@@ -6,6 +6,8 @@ use super::*;
 pub struct AgentSettingsInput {
     pub spec: AgentSettingsSpecV2,
     pub language: String,
+    #[serde(default)]
+    pub custom_token: Option<String>,
 }
 #[derive(Deserialize, Serialize)]
 pub struct AgentEntry {
@@ -65,6 +67,7 @@ fn trusted_preview_spec(requested: &AgentSettingsSpecV2, returned: &AgentSetting
     if requested.schema_version != returned.schema_version
         || requested.context_id != returned.context_id
         || requested.collaboration != returned.collaboration
+        || requested.access_token != returned.access_token
     {
         return false;
     }
@@ -73,6 +76,7 @@ fn trusted_preview_spec(requested: &AgentSettingsSpecV2, returned: &AgentSetting
             AgentFacetIntent::Configure {
                 settings:
                     AgentModelSelectionV2::CodexDefault {
+                        native_model_mode: requested_mode,
                         fixed_models: requested_fixed,
                         allowed_plan_ids: requested_plans,
                         default_selection: requested_default,
@@ -81,13 +85,15 @@ fn trusted_preview_spec(requested: &AgentSettingsSpecV2, returned: &AgentSetting
             AgentFacetIntent::Configure {
                 settings:
                     AgentModelSelectionV2::CodexDefault {
+                        native_model_mode: returned_mode,
                         fixed_models: returned_fixed,
                         allowed_plan_ids: returned_plans,
                         default_selection: returned_default,
                     },
             },
         ) => {
-            requested_plans == returned_plans
+            requested_mode == returned_mode
+                && requested_plans == returned_plans
                 && requested_default == returned_default
                 && requested_fixed
                     .iter()
@@ -107,6 +113,7 @@ pub struct AgentConfirmation {
     preview: AgentPreview,
     request: AgentSettingsApplyV2,
     intent: IntentEvidence,
+    token_candidate: Option<ComputeCandidateRefV2>,
 }
 impl AgentConfirmation {
     pub fn revision(&self) -> u64 {
@@ -131,9 +138,9 @@ impl AgentConfirmation {
             }
         } else if self.input.spec.is_restore_only() {
             if self.english() {
-                "Disable Agent routing"
+                "Disable task delegation skill"
             } else {
-                "停用 Agent 路由"
+                "停用任务委派技能"
             }
         } else if matches!(&self.input.spec.model, AgentFacetIntent::Configure { .. }) {
             if self.english() {
@@ -223,9 +230,9 @@ impl AgentConfirmation {
                 .into(),
             },
             AgentFacetIntent::Restore { .. } => if self.english() {
-                "Disable Agent routing for this Agent."
+                "Disable the task delegation skill for this Agent. Model routing stays configured."
             } else {
-                "为此 Agent 停用 Agent 路由。"
+                "停用此 Agent 的任务委派技能；模型路由保持原配置。"
             }
             .into(),
             AgentFacetIntent::Keep => String::new(),
@@ -292,21 +299,6 @@ impl AgentConfirmation {
             .filter(|part| !part.is_empty())
             .collect::<Vec<_>>()
             .join("\n\n");
-        let resident_details = if self.preview.resident_service.login_item_required {
-            if self.english() {
-                "HiRoute will be added to your login items so the local service keeps running \
-                 after this window closes or you sign out."
-            } else {
-                "HiRoute 将加入登录项，关闭窗口或退出登录后本机服务仍持续可用。"
-            }
-        } else {
-            ""
-        };
-        let details = [details, resident_details.into()]
-            .into_iter()
-            .filter(|part| !part.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n\n");
         format!("{action} · {}\n\n{details}", self.agent_name)
     }
 }
@@ -348,6 +340,52 @@ impl Session {
     pub async fn preview_agent_settings(
         &mut self,
         mut input: AgentSettingsInput,
+    ) -> Result<AgentPreparation, DesktopFailure> {
+        let candidate = if let Some(token) = input.custom_token.take() {
+            let token = zeroize::Zeroizing::new(token);
+            if !matches!(input.spec.access_token, AgentAccessTokenIntentV1::Keep)
+                || !matches!(input.spec.model, AgentFacetIntent::Configure { .. })
+                || !hiroute_domain::valid_user_agent_token(token.as_bytes())
+            {
+                return Err("AGENT_TOKEN_INVALID".into());
+            }
+            #[cfg(unix)]
+            {
+                let candidate = self.resident.register_agent_token_input(token)?;
+                input.spec.access_token = AgentAccessTokenIntentV1::Set {
+                    input_slot: candidate.candidate_ref.clone(),
+                };
+                Some(candidate)
+            }
+            #[cfg(not(unix))]
+            {
+                return Err("TRUSTED_AUTHORITY_UNAVAILABLE".into());
+            }
+        } else {
+            if matches!(
+                input.spec.access_token,
+                AgentAccessTokenIntentV1::Set { .. }
+            ) {
+                return Err("AGENT_TOKEN_INVALID".into());
+            }
+            None
+        };
+        let result = self
+            .preview_agent_settings_registered(input, candidate.clone())
+            .await;
+        #[cfg(unix)]
+        if !matches!(&result, Ok(AgentPreparation::Ready(_))) {
+            if let Some(candidate) = &candidate {
+                let _ = self.resident.release_model_input(candidate);
+            }
+        }
+        result
+    }
+
+    async fn preview_agent_settings_registered(
+        &mut self,
+        mut input: AgentSettingsInput,
+        token_candidate: Option<ComputeCandidateRefV2>,
     ) -> Result<AgentPreparation, DesktopFailure> {
         if !matches!(input.language.as_str(), "zh" | "en")
             || input.spec.schema_version != AGENT_SETTINGS_SCHEMA_V2
@@ -471,6 +509,7 @@ impl Session {
             preview,
             request,
             intent,
+            token_candidate,
         })))
     }
 
@@ -480,6 +519,10 @@ impl Session {
         accepted: bool,
     ) -> Result<AgentOutcome, DesktopFailure> {
         if !self.confirmation.finish(&context.permit, accepted)? {
+            #[cfg(unix)]
+            if let Some(candidate) = &context.token_candidate {
+                let _ = self.resident.release_model_input(candidate);
+            }
             return Ok(AgentOutcome {
                 preview: context.preview,
                 mutation: Some(MutationOutcome {
@@ -494,20 +537,21 @@ impl Session {
         } else {
             "ApplyAgentConnectionChange"
         };
-        // The first managed connection registers the resident login item inside the host
-        // before any intent is recorded: a failed establishment leaves nothing in flight, and
-        // an unapproved or failed registration reports SERVICE_UNAVAILABLE without applying.
-        // The last managed connection's restore symmetrically unregisters the item the host
-        // owns, proven by journal evidence on the backend.
-        let login_item = if !restore && context.preview.resident_service.login_item_required {
-            Some(crate::login_item::establish_resident_login_item()?)
-        } else if restore && context.preview.resident_service.login_item_removal_required {
+        // Startup is user-managed. Only a final restore of an older connection may need to
+        // release the login item that version created, as proven by the backend journal.
+        let login_item = if restore && context.preview.resident_service.login_item_removal_required
+        {
             Some(crate::login_item::remove_resident_login_item()?)
         } else {
             None
         };
         let mut request = context.request;
         request.login_item = login_item.clone();
+        let token_key = request.idempotency_key.clone();
+        if let Some(candidate) = context.token_candidate {
+            self.pending_model_inputs
+                .insert(token_key.clone(), vec![candidate]);
+        }
         let hint = SubmittedOperation {
             // The legacy plan field is empty for Agent intents; the typed intent digest carries
             // the context/facets, and exact lookup uses principal/operation/key/digest.
@@ -534,6 +578,16 @@ impl Session {
             })
             .await;
         let mutation = self.reconcile_apply_response(response).await;
+        #[cfg(unix)]
+        if self.hint.is_none()
+            || mutation
+                .as_ref()
+                .ok()
+                .and_then(|outcome| outcome.operation.as_ref())
+                .is_some_and(|operation| terminal(&operation.state))
+        {
+            let _ = self.release_pending_model_inputs(&token_key);
+        }
         if let Some(declaration) = login_item.as_ref() {
             // Only a definitively failed apply compensates: an admission rejection that never
             // started an Operation (the hint was cleared), or an Operation that rolled back.
@@ -549,8 +603,6 @@ impl Session {
                 if declaration.removes_resident_service() {
                     // The rolled-back connection still needs its owned item at the next login.
                     crate::login_item::compensate_resident_login_item_removal();
-                } else if declaration.created {
-                    crate::login_item::compensate_resident_login_item(true);
                 }
             }
         }
@@ -566,6 +618,56 @@ impl Session {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn preview_cannot_replace_the_requested_token_action() {
+        let requested: AgentSettingsSpecV2 = serde_json::from_value(json!({
+            "schema_version": {"major": 2, "minor": 0},
+            "context_id": "context/codex",
+            "access_token": {
+                "intent": "set",
+                "input_slot": "candidate/native/agent-token-exact"
+            }
+        }))
+        .unwrap();
+        assert!(trusted_preview_spec(&requested, &requested));
+        let mut changed = requested.clone();
+        changed.access_token = AgentAccessTokenIntentV1::Regenerate;
+        assert!(!trusted_preview_spec(&requested, &changed));
+    }
+
+    #[test]
+    fn preview_cannot_change_the_codex_native_model_mode() {
+        let requested: AgentSettingsSpecV2 = serde_json::from_value(json!({
+            "schema_version": {"major": 2, "minor": 0},
+            "context_id": "context/codex",
+            "model": {
+                "intent": "configure",
+                "settings": {
+                    "mode": "codex_default",
+                    "native_model_mode": "hiroute_only",
+                    "fixed_models": [],
+                    "allowed_plan_ids": ["plan/native-mode-test"],
+                    "default_selection": {"kind": "plan", "plan_id": "plan/native-mode-test"}
+                }
+            }
+        }))
+        .unwrap();
+        assert!(trusted_preview_spec(&requested, &requested));
+        let mut changed = requested.clone();
+        if let AgentFacetIntent::Configure {
+            settings:
+                AgentModelSelectionV2::CodexDefault {
+                    native_model_mode, ..
+                },
+        } = &mut changed.model
+        {
+            *native_model_mode = hiroute_domain::CodexNativeModelModeV2::PreserveAvailable;
+        } else {
+            panic!("expected Codex settings");
+        }
+        assert!(!trusted_preview_spec(&requested, &changed));
+    }
 
     #[test]
     fn collaboration_preview_decodes_the_v2_effect_shape() {

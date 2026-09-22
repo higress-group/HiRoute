@@ -156,11 +156,11 @@ fn assert_saved_source(snapshot: &ComputeManagementSnapshotV2, source_id: &str) 
     assert_eq!(source.target.scheme, "https");
     assert_eq!(source.target.authority, "open.bigmodel.cn");
     assert_eq!(source.target.port, 443);
-    assert_eq!(source.target.request_path, "/api/anthropic/v1/messages");
-    assert_eq!(source.target.upstream_protocol, UpstreamProtocol::Messages);
+    assert_eq!(source.target.request_path, "/api/v1/responses");
+    assert_eq!(source.target.upstream_protocol, UpstreamProtocol::Responses);
     assert_eq!(
         source.target.protocol_profile_id,
-        "adapter.anthropic-messages.v1"
+        "adapter.openai-responses.v1"
     );
     assert_eq!(
         source.authentication,

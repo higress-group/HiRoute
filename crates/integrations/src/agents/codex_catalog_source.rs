@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use hiroute_domain::CanonicalDigest;
+use hiroute_domain::{CanonicalDigest, CompiledAgentPlanV1};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use toml_edit::Item;
 
 use super::filesystem_config::read_system_config_bytes;
@@ -38,6 +38,7 @@ pub enum CodexCatalogMetadataSourceV1 {
     UserConfigured,
     TargetCache,
     TargetBundled,
+    HirouteGenerated,
 }
 
 /// Exact non-secret producer facts sealed between Preview and Apply. `path` is the source
@@ -301,6 +302,7 @@ pub fn sample_codex_catalog_plan(
     plans: &[hiroute_domain::CompiledAgentPlanV1],
     policy: CodexDefaultPolicy<'_>,
     baseline: &CodexCatalogBaseline,
+    retained_models: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<CodexCatalogPlan, super::CodexCatalogError> {
     use super::CodexCatalogSelection;
     let configured = match baseline {
@@ -339,13 +341,62 @@ pub fn sample_codex_catalog_plan(
     };
     let original = configured.original;
     let selection = CodexCatalogSelection::for_current_adapter(original)?;
-    let merged = selection.append_plans(plans, policy, producer.metadata_source)?;
+    let merged =
+        selection.append_plans(plans, policy, producer.metadata_source, retained_models)?;
     let bytes =
         serde_json::to_vec(&merged).map_err(|_| super::CodexCatalogError::InvalidCatalog)?;
     Ok(CodexCatalogPlan {
         selection: CodexCatalogSelection::for_current_adapter(merged)?,
         content_digest: CanonicalDigest::of_bytes(&bytes),
         producer,
+    })
+}
+
+/// A HiRoute-only selection has no native models to preserve. Its exact client directory is
+/// derived from the selected published plans, so a fresh CODEX_HOME needs no native cache or
+/// account. The observed config scope still binds Preview to Apply.
+pub fn sample_codex_hiroute_only_catalog_plan(
+    scope: &CodexConfigurationScope,
+    plans: &[CompiledAgentPlanV1],
+    explicit_model: &str,
+) -> Result<CodexCatalogPlan, super::CodexCatalogError> {
+    if plans.is_empty() || plans.len() > i32::MAX as usize {
+        return Err(super::CodexCatalogError::InvalidCatalog);
+    }
+    let models = plans
+        .iter()
+        .enumerate()
+        .map(|(index, plan)| super::codex_catalog_plan::plan_entry(plan, index as i32))
+        .collect::<Result<Vec<_>, _>>()?;
+    let catalog = json!({"models": models});
+    let selection = super::CodexCatalogSelection::for_current_adapter(catalog.clone())?;
+    if !models
+        .iter()
+        .any(|model| model["slug"].as_str() == Some(explicit_model))
+    {
+        return Err(super::CodexCatalogError::MissingDefault);
+    }
+    let bytes =
+        serde_json::to_vec(&catalog).map_err(|_| super::CodexCatalogError::InvalidCatalog)?;
+    let content_digest = CanonicalDigest::of_bytes(&bytes);
+    let observed = sample_codex_configuration(scope).map_err(catalog_source_error)?;
+    let dependency_digest = CanonicalDigest::of(&(
+        "hiroute-only-codex-catalog/v1",
+        &scope.user_file,
+        &observed.dependency_digest,
+        &content_digest,
+    ))
+    .map_err(|_| super::CodexCatalogError::InvalidCatalog)?;
+    Ok(CodexCatalogPlan {
+        selection,
+        content_digest: content_digest.clone(),
+        producer: CodexCatalogProducerFactsV1 {
+            metadata_source: CodexCatalogMetadataSourceV1::HirouteGenerated,
+            path: scope.user_file.clone(),
+            content_digest,
+            context_digest: observed.context_digest,
+            dependency_digest,
+        },
     })
 }
 

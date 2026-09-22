@@ -120,7 +120,7 @@ impl crate::LocalObservationStore {
             "SELECT EXISTS(SELECT 1 FROM content_instances_v2 c JOIN logical_requests r ON r.workspace_id=c.workspace_id AND r.request_id=c.request_id
              LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
              LEFT JOIN observation_text_index_v2 i ON i.workspace=c.workspace_id AND i.digest=c.content_blob_digest
-             WHERE c.workspace_id=?1 AND c.state='complete' AND r.started_at_ms>=?2 AND r.started_at_ms<?3 AND (?4 IS NULL OR r.session_id=?4)
+             WHERE c.workspace_id=?1 AND c.state='complete' AND c.content_kind NOT IN ('provider_state','reasoning_delta','reasoning_finished') AND r.started_at_ms>=?2 AND r.started_at_ms<?3 AND (?4 IS NULL OR r.session_id=?4)
                AND (?5 IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(?5))))
  AND (?10 IS NULL OR EXISTS(SELECT 1 FROM sessions s WHERE s.workspace_id=r.workspace_id AND s.session_id=r.session_id AND s.agent_id=?10))
  AND (?11 IS NULL OR EXISTS(SELECT 1 FROM valuation_requests_v2 v WHERE v.workspace_id=r.workspace_id AND v.request_id=r.request_id AND v.plan_id=?11))
@@ -162,7 +162,7 @@ impl crate::LocalObservationStore {
                  JOIN observation_text_blocks_v2 b ON b.workspace=i.workspace AND b.digest=i.digest
                  JOIN logical_requests r ON r.workspace_id=c.workspace_id AND r.request_id=c.request_id
                  LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
-                 WHERE c.workspace_id=?1 AND c.state='complete' AND i.state='ready' AND r.started_at_ms>=?2 AND r.started_at_ms<?3
+                 WHERE c.workspace_id=?1 AND c.state='complete' AND c.content_kind NOT IN ('provider_state','reasoning_delta','reasoning_finished') AND i.state='ready' AND r.started_at_ms>=?2 AND r.started_at_ms<?3
                    AND (?4 IS NULL OR r.session_id=?4) AND (?5 IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(?5))))
                    AND c.rowid<=?6 AND i.published<=?7 AND (c.rowid>?8 OR (c.rowid=?8 AND b.ordinal>=?9))
  AND (?10 IS NULL OR EXISTS(SELECT 1 FROM sessions s WHERE s.workspace_id=r.workspace_id AND s.session_id=r.session_id AND s.agent_id=?10))

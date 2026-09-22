@@ -189,10 +189,19 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
         None,
         None,
     );
-    let Some(execution) = execution else {
+    let Some(mut execution) = execution else {
         eprintln!("registered management routing candidate protocol facts are not materializable");
         return None;
     };
+    execution.protocol_profiles = registered_native_protocol_profiles(
+        catalog,
+        &resolved,
+        &model,
+        &capability,
+        &endpoint,
+        &reasoning,
+        &execution.protocol_profiles,
+    )?;
     let ordering_price =
         if let Some(price) = data.price_rates.iter().find(|price| {
             price.offer_ref == offer.offer_id && price.model_configuration_id == model_id
@@ -273,6 +282,99 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
         return None;
     }
     Some(candidate)
+}
+
+/// Resolve each same-protocol face from the current catalog, never from the saved target alone.
+/// The saved target remains the credential and source identity; an alternate face must belong to
+/// the same registered option, model and exact HTTPS authority, with matching authentication.
+fn registered_native_protocol_profiles(
+    catalog: &TrustedReleaseCatalog,
+    resolved: &ResolvedConnectionOptionV1,
+    model: &ModelDefinitionV1,
+    primary_capability: &ModelEndpointCapabilityV1,
+    primary_endpoint: &ProtocolEndpointV1,
+    reasoning: &ModelNativeReasoningV1,
+    primary_profiles: &[GatewayCandidateProtocolProfileV1],
+) -> Option<Vec<GatewayCandidateProtocolProfileV1>> {
+    let connector = ProtocolConnectorFacts {
+        provider_id: resolved.endpoint_profile.provider_platform_id.clone(),
+        endpoint_id: resolved.endpoint_profile.endpoint_profile_id.clone(),
+        entitlement_id: resolved.endpoint_profile.entitlement_id.clone(),
+        connector_id: resolved.connector.connector_id.clone(),
+        connector_revision: resolved.connector.revision.to_string(),
+    };
+    let mut selected = Vec::new();
+    for ingress in [
+        UpstreamProtocol::Responses,
+        UpstreamProtocol::ChatCompletions,
+        UpstreamProtocol::Messages,
+    ] {
+        let mut matches = catalog
+            .model_data()
+            .model_endpoint_capabilities
+            .iter()
+            .filter(|face| {
+                face.model_configuration_id == model.model_configuration_id
+                    && face.upstream_model_id == primary_capability.upstream_model_id
+                    && face.connector_id == resolved.connector.connector_id
+                    && face.connector_revision == resolved.connector.revision
+                    && face.endpoint_profile_id == resolved.endpoint_profile.endpoint_profile_id
+                    && face.endpoint_profile_revision == resolved.endpoint_profile.revision
+                    && face.upstream_protocol == ingress
+            })
+            .filter_map(|face| {
+                resolved
+                    .endpoint_profile
+                    .protocol_endpoints
+                    .iter()
+                    .find(|endpoint| endpoint.protocol_endpoint_id == face.protocol_endpoint_id)
+                    .filter(|endpoint| {
+                        endpoint.protocol == face.upstream_protocol
+                            && endpoint.adapter_ref == face.required_adapter_ref
+                            && endpoint.adapter_revision == face.required_adapter_revision
+                            && endpoint.base_url == primary_endpoint.base_url
+                            && native_endpoint_authentication(
+                                resolved.connector.authentication,
+                                endpoint,
+                            ) == primary_endpoint.authentication_semantics
+                    })
+                    .map(|endpoint| (face, endpoint))
+            });
+        let exact = matches.next();
+        if matches.next().is_some() {
+            return None;
+        }
+        if let Some((face, endpoint)) = exact {
+            let faces = [ProtocolFace {
+                protocol: face.upstream_protocol,
+                request_path: endpoint.request_path.clone(),
+                authentication: endpoint.authentication_semantics.clone()?,
+                required_headers: endpoint.required_headers.clone(),
+            }];
+            if let Some(profile) = protocol_profiles(
+                &connector,
+                model,
+                face,
+                reasoning,
+                &face.upstream_model_id,
+                ConnectorRuntimeKind::BuiltinNative,
+                &faces,
+            )
+            .and_then(|profiles| {
+                profiles
+                    .into_iter()
+                    .find(|profile| profile.ingress_protocol == ingress)
+            }) {
+                selected.push(profile);
+            }
+        } else if let Some(profile) = primary_profiles
+            .iter()
+            .find(|profile| profile.ingress_protocol == ingress)
+        {
+            selected.push(profile.clone());
+        }
+    }
+    (!selected.is_empty()).then_some(selected)
 }
 
 fn catalog_fact<T>(value: T) -> NativeCandidateFactValueV1<T> {

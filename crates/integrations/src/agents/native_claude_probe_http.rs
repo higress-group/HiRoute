@@ -1,4 +1,5 @@
 //! Bounded loopback Messages fixture for the explicit Claude compatibility check.
+use super::collaboration::CollaborationChallenge;
 use serde_json::json;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -8,6 +9,7 @@ pub(super) fn serve(
     stream: &mut TcpStream,
     expected_auth: &str,
     model: &str,
+    challenge: Option<&mut CollaborationChallenge>,
 ) -> Result<bool, &'static str> {
     stream
         .set_read_timeout(Some(Duration::from_millis(500)))
@@ -107,12 +109,28 @@ pub(super) fn serve(
         .map_err(|_| "response")?;
         return Ok(false);
     }
+    let (content, stop_reason) = if let Some(challenge) = challenge {
+        challenge.reply_claude(&request)?
+    } else {
+        (json!({"type":"text", "text":"OK"}), "end_turn")
+    };
+    let (start_content, delta) = if content["type"] == "tool_use" {
+        (
+            json!({"type":"tool_use", "id":content["id"], "name":content["name"], "input":{}}),
+            json!({"type":"input_json_delta", "partial_json":content["input"].to_string()}),
+        )
+    } else {
+        (
+            json!({"type":"text", "text":""}),
+            json!({"type":"text_delta", "text":"OK"}),
+        )
+    };
     let events = [
         json!({"type":"message_start","message":{"id":"msg_probe","type":"message","role":"assistant","content":[],"model":model,"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}),
-        json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
-        json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK"}}),
+        json!({"type":"content_block_start","index":0,"content_block":start_content}),
+        json!({"type":"content_block_delta","index":0,"delta":delta}),
         json!({"type":"content_block_stop","index":0}),
-        json!({"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}),
+        json!({"type":"message_delta","delta":{"stop_reason":stop_reason,"stop_sequence":null},"usage":{"output_tokens":1}}),
         json!({"type":"message_stop"}),
     ];
     let body = events

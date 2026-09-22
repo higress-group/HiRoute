@@ -40,7 +40,14 @@ fn facts() -> AgentSettingsFacts {
         login_item_removal_required: false,
         fixed_candidate_facts: Vec::new(),
         preserved_codex_models: Vec::new(),
+        preserved_codex_bindings: BTreeMap::new(),
+        required_native_model_ids: None,
+        unproven_native_model_ids: Vec::new(),
+        require_native_model_routes: false,
+        native_default_must_be_original: false,
         native_default_model: None,
+        restore_native_model_ids: None,
+        restored_native_model: None,
         native_claude_presets: None,
         collaboration_file_conflict: false,
         restore_points: BTreeMap::new(),
@@ -82,12 +89,14 @@ fn claude_default_coverage_resolves_all_three_presets_without_changing_selection
         sonnet: None,
         haiku: Some("native-haiku".into()),
     });
-    for default in ["opus", "sonnet", "haiku", "hiroute-shared"] {
+    for default in ["opus", "sonnet", "haiku", "hiroute-shared", "default"] {
         current.native_default_model = Some(default.into());
         assert_eq!(validate_model_default(&selection, &current, &grant), Ok(()));
         assert_eq!(current.native_default_model.as_deref(), Some(default));
     }
-    for default in [None, Some("uncovered-native"), Some("opus[1m]")] {
+    current.native_default_model = None;
+    assert_eq!(validate_model_default(&selection, &current, &grant), Ok(()));
+    for default in [Some("uncovered-native"), Some("opus[1m]")] {
         current.native_default_model = default.map(str::to_owned);
         assert_eq!(
             validate_model_default(&selection, &current, &grant),
@@ -156,6 +165,9 @@ fn legacy_collaboration_fields_are_rejected_and_capability_drift_still_blocks() 
                 trigger_mode: AgentCollaborationTriggerModeV2::DelegateByDefault,
             },
         },
+        restore_native_model: None,
+        protected_native_model_ids: Vec::new(),
+        access_token: hiroute_domain::AgentAccessTokenIntentV1::Keep,
     };
     assert!(
         preview_agent_settings(spec.clone(), &facts())
@@ -188,6 +200,9 @@ fn agent_settings_restore_reference_cannot_cross_context_or_facet() {
             restore_point_ref: "restore/from-other-context".into(),
         },
         collaboration: AgentFacetIntent::Keep,
+        restore_native_model: None,
+        protected_native_model_ids: Vec::new(),
+        access_token: hiroute_domain::AgentAccessTokenIntentV1::Keep,
     };
     let preview = preview_agent_settings(spec, &facts()).unwrap();
     assert!(
@@ -200,6 +215,44 @@ fn agent_settings_restore_reference_cannot_cross_context_or_facet() {
         !preview
             .changed_facets
             .contains(&AgentSettingsFacet::Collaboration)
+    );
+}
+
+#[test]
+fn codex_restore_requires_an_original_catalog_model_for_a_stale_alias() {
+    let mut facts = facts();
+    facts.ingress = AgentIngressProtocolV1::Responses;
+    facts
+        .restore_points
+        .insert("restore/owned".into(), AgentSettingsFacet::Model);
+    facts.restore_native_model_ids = Some(vec!["gpt-5.6-sol".into(), "gpt-5.6-luna".into()]);
+    facts.restored_native_model = Some("hiroute-fanyi".into());
+    let mut spec: AgentSettingsSpecV2 = serde_json::from_value(json!({
+        "schema_version": {"major": 2, "minor": 0},
+        "context_id": "agent-context/test",
+        "model": {"intent": "restore", "restore_point_ref": "restore/owned"}
+    }))
+    .unwrap();
+    let blocked = preview_agent_settings(spec.clone(), &facts).unwrap();
+    assert!(blocked.blockers.iter().any(|block| {
+        block.reason == SettingsBlockReason::RestoreNativeModelInvalid
+            && block.model_ids == ["hiroute-fanyi"]
+    }));
+    spec.restore_native_model = Some("gpt-5.6-sol".into());
+    let repaired = preview_agent_settings(spec.clone(), &facts).unwrap();
+    assert!(
+        !repaired
+            .blockers
+            .iter()
+            .any(|block| block.reason == SettingsBlockReason::RestoreNativeModelInvalid)
+    );
+    spec.restore_native_model = Some("other-account-model".into());
+    let wrong = preview_agent_settings(spec, &facts).unwrap();
+    assert!(
+        wrong
+            .blockers
+            .iter()
+            .any(|block| block.reason == SettingsBlockReason::RestoreNativeModelInvalid)
     );
 }
 
@@ -354,7 +407,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
         .unwrap()
     };
     let plan_selection = json!({
-        "mode": "codex_default", "fixed_models": [],
+        "mode": "codex_default", "native_model_mode": "hiroute_only", "fixed_models": [],
         "allowed_plan_ids": [plan_id.clone()],
         "default_selection": {"kind": "plan", "plan_id": plan_id}
     });
@@ -393,7 +446,14 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
             login_item_removal_required: false,
             fixed_candidate_facts: Vec::new(),
             preserved_codex_models: Vec::new(),
+            preserved_codex_bindings: BTreeMap::new(),
+            required_native_model_ids: None,
+            unproven_native_model_ids: Vec::new(),
+            require_native_model_routes: false,
+            native_default_must_be_original: false,
             native_default_model: None,
+            restore_native_model_ids: None,
+            restored_native_model: None,
             native_claude_presets: None,
             collaboration_file_conflict: false,
             restore_points: BTreeMap::new(),
@@ -406,6 +466,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
             capability: AgentCapability::ModelCatalog,
             reason,
         }],
+        model_ids: Vec::new(),
     };
 
     // An unavailable full-catalog source leaves the catalog underivable; the selection is
@@ -453,6 +514,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     let mut no_detected_surface = codex_facts(Some(SettingsModelCatalogFacts {
         source_revision: "be6e8eac029b183056b7e4402879f15d2c85f61b".into(),
         content_digest: CanonicalDigest::of_bytes(b"merged-catalog"),
+        before_fingerprint: None,
         producer_kind: CodexCatalogProducerKindV1::TargetCache,
         producer_path: "/target/.codex/models_cache.json".into(),
         producer_content_digest: CanonicalDigest::of_bytes(b"native-catalog"),
@@ -469,6 +531,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     let mut proven_facts = codex_facts(Some(SettingsModelCatalogFacts {
         source_revision: "be6e8eac029b183056b7e4402879f15d2c85f61b".into(),
         content_digest: CanonicalDigest::of_bytes(b"merged-catalog"),
+        before_fingerprint: None,
         producer_kind: CodexCatalogProducerKindV1::TargetCache,
         producer_path: "/target/.codex/models_cache.json".into(),
         producer_content_digest: CanonicalDigest::of_bytes(b"native-catalog"),
@@ -476,6 +539,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
         producer_dependency_digest: CanonicalDigest::of_bytes(b"catalog-dependencies"),
     }));
     let mut preserve_plan_alias = plan_selection.clone();
+    preserve_plan_alias["native_model_mode"] = json!("preserve_available");
     preserve_plan_alias["default_selection"] = json!({"kind": "preserve_native"});
     proven_facts.native_default_model = Some(plan.model_alias.as_str().into());
     let matched_alias =
@@ -518,21 +582,54 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     };
     proven_facts.fixed_candidate_facts = vec![candidate, replacement_candidate.clone()];
     proven_facts.preserved_codex_models = vec![preserved.clone()];
-    let mut replacing = plan_selection.clone();
+    proven_facts.native_default_model = Some(preserved.client_model_id.clone());
+    proven_facts.required_native_model_ids = Some(vec![
+        preserved.client_model_id.clone(),
+        "native-unselected".into(),
+    ]);
+    proven_facts.require_native_model_routes = true;
+    proven_facts.native_default_must_be_original = true;
+    let mut preserve_selection = plan_selection.clone();
+    preserve_selection["native_model_mode"] = json!("preserve_available");
+    let incomplete =
+        preview_agent_settings(spec(preserve_selection.clone()), &proven_facts).unwrap();
+    assert!(incomplete.blockers.iter().any(|block| {
+        block.reason == SettingsBlockReason::NativeModelCoverageUnavailable
+            && block.model_ids == ["native-unselected"]
+    }));
+    proven_facts.required_native_model_ids = Some(vec![preserved.client_model_id.clone()]);
+    proven_facts.native_default_model = Some(plan.model_alias.as_str().into());
+    let stale_default =
+        preview_agent_settings(spec(preserve_selection.clone()), &proven_facts).unwrap();
+    assert!(stale_default.blockers.iter().any(|block| {
+        block.reason == SettingsBlockReason::NativeDefaultInvalid
+            && block.model_ids == [plan.model_alias.as_str()]
+    }));
+    proven_facts.native_default_model = Some(preserved.client_model_id.clone());
+    let mut replacing = preserve_selection.clone();
     let mut replaced = preserved.clone();
-    replaced.candidate.binding_id = replacement_candidate.binding.binding_id;
+    replaced.candidate.binding_id = replacement_candidate.binding.binding_id.clone();
     replacing["fixed_models"] = serde_json::to_value([replaced.clone()]).unwrap();
     let replacement = preview_agent_settings(spec(replacing), &proven_facts).unwrap();
+    assert!(replacement.blockers.iter().any(|block| {
+        block.reason == SettingsBlockReason::NativeModelCoverageUnavailable
+            && block.model_ids == [preserved.client_model_id.as_str()]
+    }));
     let AgentFacetIntent::Configure {
         settings: AgentModelSelectionV2::CodexDefault { fixed_models, .. },
     } = &replacement.spec.model
     else {
         panic!("expected Codex model configuration")
     };
-    assert_eq!(fixed_models, &[replaced]);
+    assert_eq!(fixed_models, std::slice::from_ref(&replaced));
 
-    let proven = preview_agent_settings(spec(plan_selection.clone()), &proven_facts).unwrap();
+    proven_facts.unproven_native_model_ids = vec!["cache-name-without-account-proof".into()];
+    let proven = preview_agent_settings(spec(preserve_selection.clone()), &proven_facts).unwrap();
     assert!(proven.blockers.is_empty());
+    assert_eq!(
+        proven.unproven_native_model_ids,
+        ["cache-name-without-account-proof"]
+    );
     assert!(proven.model_grant.is_some());
     let AgentFacetIntent::Configure {
         settings: AgentModelSelectionV2::CodexDefault { fixed_models, .. },
@@ -540,11 +637,47 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     else {
         panic!("expected Codex model configuration")
     };
-    assert_eq!(fixed_models, &[preserved]);
+    assert_eq!(fixed_models, std::slice::from_ref(&preserved));
 
-    // Active settings are a full-state edit. The backend supplies no initial-adoption bindings,
-    // so omitting a previously selected fixed model removes it instead of resurrecting it.
+    // A later full-state edit keeps the sealed native route even when the ephemeral
+    // connection-only candidate has vanished from current discovery.
+    let prior = proven.model_grant.as_ref().unwrap();
+    let hiroute_domain::AgentModelRouteV2::Fixed { binding, .. } =
+        &prior.routes[&preserved.client_model_id]
+    else {
+        panic!("fixed route")
+    };
+    proven_facts
+        .preserved_codex_bindings
+        .insert(preserved.client_model_id.clone(), binding.as_ref().clone());
+    proven_facts.fixed_candidate_facts.clear();
+    let later = preview_agent_settings(spec(preserve_selection.clone()), &proven_facts).unwrap();
+    assert!(later.blockers.is_empty());
+    assert_eq!(
+        later.spec.protected_native_model_ids.as_slice(),
+        std::slice::from_ref(&preserved.client_model_id)
+    );
+    assert_eq!(
+        later.model_grant.unwrap().routes[&preserved.client_model_id],
+        prior.routes[&preserved.client_model_id]
+    );
+    let mut changed_binding = preserve_selection;
+    changed_binding["fixed_models"] = serde_json::to_value([replaced]).unwrap();
+    proven_facts.fixed_candidate_facts = vec![replacement_candidate];
+    let rejected = preview_agent_settings(spec(changed_binding), &proven_facts).unwrap();
+    assert!(!rejected.blockers.is_empty());
+    assert!(
+        rejected
+            .blockers
+            .iter()
+            .any(|block| { block.reason == SettingsBlockReason::ModelPlanUnavailable })
+    );
+
+    // Plan-only settings without protected native bindings remain a full-state edit.
     proven_facts.preserved_codex_models.clear();
+    proven_facts.preserved_codex_bindings.clear();
+    proven_facts.required_native_model_ids = None;
+    proven_facts.require_native_model_routes = false;
     let removed = preview_agent_settings(spec(plan_selection), &proven_facts).unwrap();
     let AgentFacetIntent::Configure {
         settings: AgentModelSelectionV2::CodexDefault { fixed_models, .. },
@@ -603,6 +736,7 @@ fn codex_model_file_journal_binds_the_catalog_to_plan_carrying_grants() {
                 "schema_version": {"major": 2, "minor": 0}, "context_id": CONTEXT,
                 "model": {"intent": "configure", "settings": {
                     "mode": "codex_default",
+                    "native_model_mode": "preserve_available",
                     "fixed_models": [], "allowed_plan_ids": plan_ids,
                     "default_selection": {"kind": "preserve_native"}
                 }}
@@ -644,6 +778,7 @@ fn codex_model_file_journal_binds_the_catalog_to_plan_carrying_grants() {
                     &SettingsModelCatalogFacts {
                         source_revision: "be6e8eac029b183056b7e4402879f15d2c85f61b".into(),
                         content_digest: digest,
+                        before_fingerprint: None,
                         producer_kind: CodexCatalogProducerKindV1::TargetCache,
                         producer_path: "/target/.codex/models_cache.json".into(),
                         producer_content_digest: CanonicalDigest::of_bytes(b"native-catalog"),
@@ -746,6 +881,7 @@ fn login_item_intent_binds_only_active_host_declarations() {
             "schema_version": {"major": 2, "minor": 0}, "context_id": CONTEXT,
             "model": {"intent": "configure", "settings": {
                 "mode": "codex_default",
+                "native_model_mode": "hiroute_only",
                 "fixed_models": [], "allowed_plan_ids": ["plan/login-item"],
                 "default_selection": {"kind": "plan", "plan_id": "plan/login-item"}
             }}

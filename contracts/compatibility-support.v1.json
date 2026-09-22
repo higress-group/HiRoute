@@ -51,7 +51,6 @@
     "hiroute.change-preview/v1",
     "hiroute.classifier-decision-test-result/v1",
     "hiroute.classifier-decision-test/v1",
-    "hiroute.claude-launch-snapshot/v1",
     "hiroute.claude-native-layers/v1",
     "hiroute.claude-native-messages/v1",
     "hiroute.client-protocol-profile/v1",

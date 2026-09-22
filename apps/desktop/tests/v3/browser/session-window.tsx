@@ -40,6 +40,7 @@ const control = {
   }),
   bumpRefresh: () => {},
   showHome: () => {},
+  showSessions: () => {},
   reset: () => {},
 };
 
@@ -99,6 +100,7 @@ function observationRead(view: string, query: Record<string, any>) {
     case 'catalog': return { contents: control.catalog[query.request_id] ?? [], transcript_roots: [], roots_partial: false, next_cursor: null };
     case 'content': return { state: 'complete', chunks: [{ text: control.texts[query.content_id] ?? '', original_byte_offset: 0 }], next_cursor: null };
     case 'facts': return { facts: [], projection_partial: false, next_cursor: null };
+    case 'plan_quality': return { samples: [], next_cursor: null };
     case 'home_value': return {
       pending_requests: 0,
       provisional_requests: 0,
@@ -151,6 +153,7 @@ function Harness() {
   const [homeVisible, setHomeVisible] = useState(false);
   control.bumpRefresh = () => setRefresh(value => value + 1);
   control.showHome = () => setHomeVisible(true);
+  control.showSessions = () => setHomeVisible(false);
   control.reset = () => {
     control.requests = {};
     control.catalog = {};
@@ -185,7 +188,8 @@ function Harness() {
       <HomeNavigation language="zh" items={[...navItems]} current="sessions" serviceLabel="仅在本机运行" serviceReady onNavigate={() => {}} onOpenSettings={() => {}} />
       <main className="main"><div>
         <p className="sr-only">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实数据。</p>
-        {homeVisible ? <Home language="zh" reads={homeReads} onAction={() => {}} /> : <Sessions key={generation} language="zh" refreshVersion={refresh} onOpenAgents={() => {}} />}
+        {homeVisible && <Home language="zh" reads={homeReads} onAction={() => {}} />}
+        <div hidden={homeVisible}><Sessions key={generation} active={!homeVisible} language="zh" refreshVersion={refresh} onOpenAgents={() => {}} /></div>
       </div></main>
     </div>
   </PresentationRoot>;

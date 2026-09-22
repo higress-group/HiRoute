@@ -205,11 +205,11 @@
     },
     {
       "id": "grant_ledger", "case_id": "grant_first_denied_alias", "source": "canonical_ledger",
-      "expected": {"events": [{"request_id": "${REQUEST_ID}", "sequence": 1, "kind": "admission_rejected", "code": "AGENT_PLAN_NOT_AVAILABLE", "alias_visibility": "uniform", "provider_connect_count": 0}], "terminal": {"request_id": "${REQUEST_ID}", "stream_id": null, "state": "acked", "ack": {"continuous_sequence": 1, "last_ordinal": 1, "root_digest": "${CANONICAL_LEDGER_ROOT_DIGEST}", "delta_parent": null}, "nack": null, "gap": null}}
+      "expected": {"events": [{"request_id": "${REQUEST_ID}", "sequence": 1, "kind": "admission_rejected", "code": "AGENT_MODEL_NOT_GRANTED", "alias_visibility": "uniform", "provider_connect_count": 0}], "terminal": {"request_id": "${REQUEST_ID}", "stream_id": null, "state": "acked", "ack": {"continuous_sequence": 1, "last_ordinal": 1, "root_digest": "${CANONICAL_LEDGER_ROOT_DIGEST}", "delta_parent": null}, "nack": null, "gap": null}}
     },
     {
       "id": "grant_client", "case_id": "grant_first_denied_alias", "source": "client_output",
-      "expected": {"status": 404, "content_type": "application/json", "transport": "http1", "body": {"schema_version": "hiroute.gateway.error/v1", "code": "AGENT_PLAN_NOT_AVAILABLE", "phase": "request_admission"}}
+      "expected": {"status": 404, "content_type": "application/json", "transport": "http1", "body": {"schema_version": "hiroute.gateway.error/v1", "code": "AGENT_MODEL_NOT_GRANTED", "phase": "request_admission"}}
     },
     {
       "id": "grant_fact", "case_id": "grant_first_denied_alias", "source": "execution_fact",
@@ -221,7 +221,7 @@
     },
     {
       "id": "grant_otel", "case_id": "grant_first_denied_alias", "source": "otel",
-      "expected": {"records": [{"request_id": "${REQUEST_ID}", "sequence": 1, "operation": "chat", "error_type": "AGENT_PLAN_NOT_AVAILABLE", "content_attribute_count": 0}], "terminal": {"request_id": "${REQUEST_ID}", "stream_id": null, "state": "acked", "ack": {"continuous_sequence": 1, "last_ordinal": 1, "root_digest": "${OTEL_ROOT_DIGEST}", "delta_parent": null}, "nack": null, "gap": null}}
+      "expected": {"records": [{"request_id": "${REQUEST_ID}", "sequence": 1, "operation": "chat", "error_type": "AGENT_MODEL_NOT_GRANTED", "content_attribute_count": 0}], "terminal": {"request_id": "${REQUEST_ID}", "stream_id": null, "state": "acked", "ack": {"continuous_sequence": 1, "last_ordinal": 1, "root_digest": "${OTEL_ROOT_DIGEST}", "delta_parent": null}, "nack": null, "gap": null}}
     },
     {
       "id": "grant_resource", "case_id": "grant_first_denied_alias", "source": "resource",

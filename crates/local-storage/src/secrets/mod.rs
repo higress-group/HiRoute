@@ -797,8 +797,9 @@ impl SecretStorePort for LocalSecretStore {
         &self,
         operation_id: &OperationId,
         mutation: &AgentAccessGrantMutationV1,
+        input: Option<&ProtectedSecret>,
     ) -> PortResult<OwnedEffectV1> {
-        grant::apply(self, operation_id, mutation)
+        grant::apply(self, operation_id, mutation, input)
     }
 
     fn observe_agent_access_grant(

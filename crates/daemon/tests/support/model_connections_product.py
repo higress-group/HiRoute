@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+from copy import deepcopy
 from pathlib import Path
 
 from publication_process import configure_model_settings_v2
@@ -291,6 +292,81 @@ def recheck_saved_native_source(product, saved, edit_revision, suffix, unknown=F
     return checked
 
 
+def edit_saved_credentials(product, upstream, saved):
+    """The Desktop path registers input and saves directly, without a model check."""
+    def snapshot_source():
+        snapshot = control(product, 'ListCompute', {})['data']
+        return snapshot, next(source for source in snapshot['sources']
+                              if source['source_id'] == saved['source_id'])
+
+    def register(label, token):
+        candidate = {'candidate_ref': 'candidate/native/key-' + label,
+                     'candidate_revision': 1}
+        product.secrets.add(token)
+        product.register_protected_frame({
+            'schema': 'hiroute.protected-input/v1',
+            'registration_id': hashlib.sha256(('key-' + label).encode()).hexdigest(),
+            **candidate, 'secret': token,
+        })
+        return candidate
+
+    def save(edits, label):
+        snapshot, source = snapshot_source()
+        change = {
+            'schema': 'hiroute.compute-management-change/v2',
+            'subject': {'kind': 'saved_source', 'source_id': saved['source_id']},
+            'expected_revisions': snapshot['revisions'],
+            'selected_model_refs': [model['model_ref'] for model in source['models']],
+            'intent': 'save_ready', 'key_edits': edits,
+        }
+        # A rejected preview must allow another attempt using the same live input.
+        stale = dict(change, expected_revisions={**snapshot['revisions'],
+                                               'target': snapshot['revisions']['target'] + 1})
+        control(product, 'PreviewComputeSave', {'change': stale},
+                expected_error='REVISION_CONFLICT')
+        preview = control(product, 'PreviewComputeSave', {'change': change})['data']
+        assert control(product, 'PreviewComputeSave', {'change': change})['data'] == preview
+        applied = control(product, 'ApplyComputeSave', {
+            'spec': preview['spec'], 'accept_digest': preview['accept_digest'],
+            'expected_revisions': preview['expected_revisions'],
+            'idempotency_key': 'key-save-' + label,
+        })
+        result = control(product, 'GetComputeSaveResult',
+                         {'operation': applied['operation']})['data']
+        assert result['disposition'] == 'saved', result
+        saved['source_revision'] = result['saved_revision']
+        _, after = snapshot_source()
+        before_models = deepcopy(source['models'])
+        after_models = deepcopy(after['models'])
+        assert len(before_models) == len(after_models), (source, after)
+        for before_model, after_model in zip(before_models, after_models):
+            before_time = before_model['presentation'].pop('evaluated_at_ms')
+            after_time = after_model['presentation'].pop('evaluated_at_ms')
+            assert after_time >= before_time, (before_time, after_time)
+        assert after_models == before_models, (source, after)
+        return after
+
+    with upstream.lock:
+        request_count = len(upstream.requests)
+    added = register('add', 'native-add-test-token')
+    source = save([{'action': 'add', 'input_candidate': added}], 'add')
+    assert len(source['keys']) == 2, source
+    first, second = source['keys']
+    replacement_token = 'native-replacement-test-token'
+    replacement = register('replace', replacement_token)
+    source = save([
+        {'action': 'replace', 'key_id': second['key_id'],
+         'expected_generation': second['generation'], 'input_candidate': replacement},
+        {'action': 'set_enabled', 'key_id': first['key_id'],
+         'expected_generation': first['generation'], 'enabled': False},
+    ], 'replace')
+    assert source['keys'][1]['generation'] == second['generation'] + 1, source
+    assert not source['keys'][0]['enabled'], source
+    with upstream.lock:
+        assert len(upstream.requests) == request_count, 'credential save performed network I/O'
+    return replacement_token
+
+
 def assert_saved_recheck_fences_before_network(product, upstream, saved):
     with upstream.lock:
         before = len(upstream.requests)
@@ -358,10 +434,10 @@ def publish_plan_and_agent(product, binding_id):
     product.model_alias = preview['plan_head']['model_alias']
     configure_model_settings_v2(
         product, [product.plan_id], 'native-product-agent',
-        agent_id='agent_codex_default')
+        agent_id='agent_codex_default', native_model_mode='preserve_available')
     catalog, _ = product.catalog()
-    assert [model['id'] for model in catalog['data']] == [
-        MODEL, product.model_alias], catalog
+    expected_models = [MODEL, product.model_alias]
+    assert [model['id'] for model in catalog['data']] == expected_models, catalog
 
 
 def gateway_request(product):
@@ -461,6 +537,12 @@ def run(repository, expected_sha=None):
         recheck_saved_native_source(product, unknown, 2, 'unknown-before', unknown=True)
         assert_saved_recheck_fences_before_network(product, upstream, saved)
         recheck_saved_native_source(product, saved, 2, 'before-restart')
+        replacement_token = edit_saved_credentials(product, upstream, saved)
+        # Rotation invalidates the original Codex credential. The user updates that native
+        # connection before enabling routing, so its catalog model retains an exact saved
+        # source/account route instead of weakening the provider-switch coverage check.
+        product.install_codex_fixture(
+            MODEL, 'medium', upstream.base_url, replacement_token)
         publish_plan_and_agent(product, saved['binding_id'])
         gateway_request(product)
         session_id, observed_model = assert_session_record(product, started_ms)
@@ -472,8 +554,9 @@ def run(repository, expected_sha=None):
             requests = list(upstream.requests)
         assert [request['path'] for request in requests] == [
             '/v1/models', '/v1/models', '/v1/responses', '/v1/models'], requests
-        assert all(request['authorization'] == 'Bearer ' + NATIVE_TOKEN
-                   for request in requests), requests
+        assert [request['authorization'] for request in requests] == [
+            'Bearer ' + token for token in
+            [NATIVE_TOKEN, NATIVE_TOKEN, replacement_token, replacement_token]], requests
         assert all(request['api_key'] is None for request in requests), requests
         print(json.dumps({
             'scenario': 'native-model-desktop-contract-to-gateway',

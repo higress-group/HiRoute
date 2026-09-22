@@ -265,11 +265,11 @@ impl TransportTarget {
         }
     }
 
-    /// Stable Pingora extension key. Pingora also hashes its native peer
-    /// fields; this key folds the full compiler-sealed digest so pool epochs,
-    /// custom trust roots, and all other compatibility inputs segregate reuse.
+    /// Stable Pingora extension key for connection-compatible target settings.
+    /// Pingora also hashes the selected socket address, so a changed DNS answer
+    /// list cannot redirect an existing connection to a newly selected IP.
     pub fn connection_reuse_key(&self) -> u64 {
-        self.connection_fingerprint
+        self.derive_pool_compatibility_fingerprint()
             .chunks_exact(8)
             .enumerate()
             .fold(0x517c_c1b7_2722_0a95_u64, |key, (index, chunk)| {
@@ -278,7 +278,15 @@ impl TransportTarget {
             })
     }
 
+    pub(crate) fn derive_pool_compatibility_fingerprint(&self) -> [u8; 32] {
+        self.derive_connection_fingerprint_for_addresses(&[])
+    }
+
     pub fn derive_connection_fingerprint(&self) -> [u8; 32] {
+        self.derive_connection_fingerprint_for_addresses(self.addresses.as_ref())
+    }
+
+    fn derive_connection_fingerprint_for_addresses(&self, addresses: &[SocketAddr]) -> [u8; 32] {
         fn update_field(hasher: &mut Sha256, bytes: &[u8]) {
             hasher.update((bytes.len() as u64).to_le_bytes());
             hasher.update(bytes);
@@ -291,8 +299,8 @@ impl TransportTarget {
             TransportScheme::Https => 1,
         }]);
         update_field(&mut hasher, self.authority.as_bytes());
-        hasher.update((self.addresses.len() as u64).to_le_bytes());
-        for address in self.addresses.iter() {
+        hasher.update((addresses.len() as u64).to_le_bytes());
+        for address in addresses {
             update_field(&mut hasher, address.to_string().as_bytes());
         }
         match &self.sni {

@@ -14,8 +14,7 @@ use hiroute_domain::{
     ActiveAgentConnectionV1, AgentAccessGrantMaterial, AgentAccessGrantRefV1,
     AgentActivationModeV1, AgentConfigDocumentV1, AgentConnectionEffectRoleV1,
     AgentConnectionTransactionSubjectV1, AgentPlanGrantV1, CanonicalDigest, ControlRepositoryPort,
-    NativeAgentArtifactPort, PublicationRecordV1, PublicationRepositoryPort, SecretStorePort,
-    WorkspaceId,
+    PublicationRecordV1, PublicationRepositoryPort, SecretStorePort, WorkspaceId,
 };
 use hiroute_integrations::AgentDiscoveryOutcomeV1;
 
@@ -331,24 +330,25 @@ impl LocalControlAdapter {
 
 impl AgentConnectionControlPort for LocalControlAdapter {
     fn check_collaboration(&self, agent_id: &str) -> Result<(), ControlReadError> {
-        if agent_id != "agent_codex_default" {
-            return Err(ControlReadError::NotFound);
-        }
         #[cfg(unix)]
         {
             // A sibling from the running installation, never a PATH-selected replacement.
             let cli = std::env::current_exe()
                 .map_err(|_| ControlReadError::Unavailable)?
                 .with_file_name("hiroute");
-            self.scanner
-                .check_codex_collaboration(&cli)
-                .map_err(|error| {
-                    eprintln!("native collaboration check: {error}");
-                    ControlReadError::Unavailable
-                })
+            let result = match agent_id {
+                "agent_codex_default" => self.scanner.check_codex_collaboration(&cli),
+                "agent_claude_default" => self.scanner.check_claude_collaboration(&cli),
+                _ => return Err(ControlReadError::NotFound),
+            };
+            result.map_err(|error| {
+                eprintln!("native collaboration check: {error}");
+                ControlReadError::Unavailable
+            })
         }
         #[cfg(not(unix))]
         {
+            let _ = agent_id;
             Err(ControlReadError::Unavailable)
         }
     }
@@ -487,13 +487,6 @@ impl AgentConnectionControlPort for LocalControlAdapter {
         let Some(join) = self.configured_model_settings_join(context_id)? else {
             return Err(ControlReadError::Denied);
         };
-        let bytes = self
-            .artifacts
-            .read_native_target(join.intent.target())
-            .map_err(super::map_port)?
-            .ok_or(ControlReadError::Denied)?;
-        let snapshot: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|_| ControlReadError::Corrupt)?;
         let payload =
             hiroute_application::agent_connection::decode_settings_claude_model_file(&join.intent)
                 .map_err(super::map_port)?;
@@ -506,49 +499,33 @@ impl AgentConnectionControlPort for LocalControlAdapter {
         else {
             return Err(ControlReadError::Corrupt);
         };
-        if payload.context_id != context_id
-            || snapshot
-                != serde_json::json!({
-                    "schema": "hiroute.claude-launch-snapshot/v1",
-                    "operation_id": join.operation_id,
-                    "context_id": context_id,
-                    "snapshot": expected_snapshot,
-                    "grant_scope": join.grant.scope(),
-                    "gateway_base_url": gateway_base_url,
-                    "trusted_hiroute_executable": trusted_hiroute_executable,
-                })
-        {
+        if payload.context_id != context_id {
             return Err(ControlReadError::Corrupt);
         }
-        let presets: hiroute_domain::AgentClaudePresetValuesV2 =
-            serde_json::from_value(snapshot["snapshot"]["presets"].clone())
-                .map_err(|_| ControlReadError::Corrupt)?;
-        let snapshot_gateway = snapshot["gateway_base_url"]
-            .as_str()
-            .and_then(|value| value.strip_suffix("/v1"))
+        let snapshot_digest =
+            CanonicalDigest::of(&expected_snapshot).map_err(|_| ControlReadError::Corrupt)?;
+        let presets = expected_snapshot.presets;
+        let snapshot_gateway = gateway_base_url
+            .strip_suffix("/v1")
             .ok_or(ControlReadError::Corrupt)?;
-        let snapshot_helper = snapshot["trusted_hiroute_executable"]
-            .as_str()
-            .ok_or(ControlReadError::Corrupt)?;
+        let snapshot_helper = trusted_hiroute_executable.as_str();
         let runtime = self
             .managed_agent_runtime
             .lock()
             .map_err(|_| ControlReadError::Unavailable)?
             .clone()
             .ok_or(ControlReadError::Unavailable)?;
-        if runtime.gateway_base_url != snapshot["gateway_base_url"]
+        if runtime.gateway_base_url != gateway_base_url
             || runtime.trusted_hiroute_executable != snapshot_helper
         {
             return Err(ControlReadError::Denied);
         }
-        let executable = snapshot["snapshot"]["executable"]
-            .as_str()
-            .ok_or(ControlReadError::Corrupt)?;
+        let executable = expected_snapshot.executable.as_str();
         let descriptor = ManagedClaudeLaunchDescriptorV2::trusted(
             request.connection_id.clone(),
             "claude-messages-v1",
             executable,
-            CanonicalDigest::of_bytes(&bytes),
+            snapshot_digest,
             join.grant.generation(),
             join.publication_digest,
             snapshot_gateway.to_owned(),
@@ -707,6 +684,7 @@ mod tests {
             release_catalog: None,
             protected_inputs: Mutex::new(BTreeMap::new()),
             manual_protected_inputs: Mutex::new(BTreeMap::new()),
+            agent_token_inputs: Mutex::new(BTreeMap::new()),
             model_connections: hiroute_integrations::NativeModelConnectionServiceV1::new(
                 hiroute_application::compute_management::TrustedComputeCandidateRegistry::new(),
                 Arc::new(hiroute_integrations::ReqwestModelDirectoryTransportV1),

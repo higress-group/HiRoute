@@ -1,7 +1,9 @@
 //! Protected original auth → native field restore across an artifact-store restart.
 use super::*;
 use hiroute_domain::{AgentConfigChangeV1, AgentConfigDocumentV1};
-use hiroute_integrations::{stage_claude_configuration, stage_claude_restoration};
+use hiroute_integrations::{
+    claude_native_configuration_is_applied, stage_claude_configuration, stage_claude_restoration,
+};
 use std::collections::BTreeMap;
 
 #[path = "native_claude_test.rs"]
@@ -78,6 +80,10 @@ fn claude_protected_restore_preserves_original_auth_and_unrelated_user_edits() {
                 value["theme"] = json!("user-theme");
                 write(&path, &serde_json::to_vec(&value).unwrap());
             }
+            assert!(
+                claude_native_configuration_is_applied(&first, &operation, &install).unwrap(),
+                "unrelated user edits must not revoke an otherwise-owned ordinary entry"
+            );
             drop(first);
             let reopened = store(root.path(), install.target(), &path);
             let restore = claude_intent(
@@ -149,6 +155,7 @@ fn claude_native_restore_rejects_owned_field_edits_and_duplicate_unknown_json() 
     modified["env"]["ANTHROPIC_MODEL"] = json!("user-model");
     let bytes = serde_json::to_vec(&modified).unwrap();
     write(&path, &bytes);
+    assert!(!claude_native_configuration_is_applied(&artifacts, &operation, &install).unwrap());
     let restore = claude_intent(
         AgentConnectionTransactionKindV1::Restore,
         artifacts

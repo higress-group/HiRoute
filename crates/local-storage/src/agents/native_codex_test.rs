@@ -66,6 +66,7 @@ fn native_codex_consumes_managed_authentication_and_restores() {
         &restore,
         &operation,
         &install,
+        None,
     )
     .unwrap();
     artifacts.activate_artifact(&staged).unwrap();

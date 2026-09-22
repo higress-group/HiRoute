@@ -1,6 +1,7 @@
 //! Claude native rendering/restoration over the same protected Operation artifact port as Codex.
 use super::filesystem_config::{
-    rebase_claude_change_bytes, render_claude_change_bytes, restore_claude_change_bytes,
+    claude_change_bytes_are_applied, rebase_claude_change_bytes, render_claude_change_bytes,
+    restore_claude_change_bytes,
 };
 use super::native_effects::replay;
 use hiroute_domain::{
@@ -9,6 +10,24 @@ use hiroute_domain::{
 };
 use zeroize::Zeroizing;
 const RECORD_LIMIT: usize = 1024 * 1024;
+
+/// The user's settings may be reformatted or gain unrelated keys after Apply. The protected
+/// restore record, not whole-file equality, determines whether our exact fields remain owned.
+pub fn claude_native_configuration_is_applied(
+    port: &dyn NativeAgentArtifactPort,
+    operation: &OperationId,
+    intent: &ExternalEffectIntentV1,
+) -> PortResult<bool> {
+    let record = port
+        .load_native_restore(operation, intent)?
+        .ok_or_else(|| error(PortErrorCode::NotFound, "claude.status.record"))?;
+    let (_, change, _) = decode_record(&record)?;
+    let Some(current) = port.read_native_target(intent.target())? else {
+        return Ok(false);
+    };
+    claude_change_bytes_are_applied(&current, &change)
+        .map_err(|_| error(PortErrorCode::Conflict, "claude.status.fields"))
+}
 
 pub fn stage_claude_configuration(
     port: &dyn NativeAgentArtifactPort,
