@@ -26,7 +26,7 @@ The entry points are installed under `~/.local/bin`. If your shell cannot find `
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The website script selects only the latest stable Linux package in the public release manifest. The existing installer verifies the target architecture, archive SHA256, closed file inventory, and every file digest; the website does not create a second installation implementation. Desktop and standalone must not manage the service in the same `HOME`.
+The installer downloads the latest stable Linux release and checks its architecture and file integrity before installation. Desktop and standalone must not manage the service in the same `HOME`.
 
 ## 2. Start the service explicitly
 
