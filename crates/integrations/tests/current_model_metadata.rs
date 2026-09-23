@@ -268,8 +268,13 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         });
 
     let mut invalid_binding = data.clone();
-    invalid_binding.metadata_catalog.endpoint_bindings[0].interface_candidates =
-        vec!["anthropic-platform/anthropic-messages".into()];
+    invalid_binding
+        .metadata_catalog
+        .endpoint_bindings
+        .iter_mut()
+        .find(|binding| binding.model_key == "gpt-6-sol")
+        .unwrap()
+        .interface_candidates = vec!["anthropic-platform/anthropic-messages".into()];
     assert_eq!(
         invalid_binding.validate_against(&registry),
         Err(ComputeContractError::CrossReference)
