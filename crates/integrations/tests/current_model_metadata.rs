@@ -102,9 +102,48 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .all(|capability| !capability.capability_id.starts_with("cap.runtime.")),
         "incomplete bindings must not become executable capabilities"
     );
-    assert_eq!(data.metadata_catalog.provider_records.len(), 103);
-    assert_eq!(data.metadata_catalog.model_records.len(), 761);
+    assert_eq!(data.metadata_catalog.provider_records.len(), 105);
+    assert_eq!(data.metadata_catalog.model_records.len(), 764);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 187);
+    for (model_key, provider_key) in [
+        ("claude-opus-5-5", "official/anthropic-api"),
+        ("gpt-6-luna", "official/openai-platform"),
+        ("gpt-6-sol", "official/openai-platform"),
+    ] {
+        assert!(
+            data.metadata_catalog
+                .canonical_models
+                .iter()
+                .any(|model| model.model_key == model_key)
+        );
+        let record = data
+            .metadata_catalog
+            .model_records
+            .iter()
+            .find(|record| {
+                record.provider_record_key == provider_key && record.upstream_model_id == model_key
+            })
+            .unwrap();
+        assert!(
+            record
+                .usable_for
+                .contains(&MetadataUsageScenarioV1::CustomApiModelPrefill)
+        );
+        let binding = data
+            .metadata_catalog
+            .endpoint_bindings
+            .iter()
+            .find(|binding| binding.model_key == model_key)
+            .unwrap();
+        assert_eq!(binding.availability.state, "conditional");
+        assert_eq!(binding.protocol_qualification, "runtime-required");
+        assert!(
+            data.data
+                .models
+                .iter()
+                .all(|model| !model.model_configuration_id.ends_with(model_key))
+        );
+    }
     // The dataset is a closed, determinate snapshot: no provider-scoped record may keep an
     // unknown capability, limit, lifecycle, rendering, or cost-hint outcome, and every
     // rule-closed field must name a rule that the same client-bundled catalog carries.
