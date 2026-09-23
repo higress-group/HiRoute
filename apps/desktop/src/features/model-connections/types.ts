@@ -168,6 +168,19 @@ export type ModelMetadataCatalog = {
   schema: string;
   as_of: string;
   source_catalog_digest: CanonicalDigest;
+  access_products: {
+    product_key: string;
+    interfaces: { interface_key: string; protocol: string; base_url: string | null; request_path: string | null }[];
+    documented_upstream_model_ids: string[];
+  }[];
+  canonical_models: { model_key: string; display_name: string }[];
+  endpoint_bindings: {
+    product_key: string;
+    model_key: string;
+    upstream_model_id: string;
+    interface_candidates: string[];
+    lifecycle: string | null;
+  }[];
   provider_records: ProviderMetadataRecord[];
   model_records: ModelMetadataRecord[];
 };

@@ -1420,6 +1420,42 @@
       "collected_on": "2026-09-23",
       "bytes_digest": null,
       "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-132",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash",
+      "collected_on": "2026-09-23",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-133",
+      "authority": "docs.z.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.z.ai/devpack/latest-model",
+      "collected_on": "2026-09-23",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-134",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/deepseek-v4-1-flash",
+      "collected_on": "2026-09-23",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-135",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/qwen-code",
+      "collected_on": "2026-09-23",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -2671,7 +2707,8 @@
       "upstream_ids": [
         "deepseek-flash",
         "deepseek-v4-flash",
-        "deepseek-v4-flash-vision-exp"
+        "deepseek-v4-flash-vision-exp",
+        "deepseek-v4.1-flash"
       ],
       "context_tokens": 1000000,
       "max_output_tokens": 384000,
@@ -2692,11 +2729,13 @@
       },
       "identity_stability": "rolling-alias",
       "lifecycle": "active",
-      "source_stability_note": "deepseek-flash currently serves V4.1 Flash; legacy V4 Flash IDs remain accepted routing aliases",
+      "source_stability_note": "deepseek-flash serves V4.1 Flash on DeepSeek direct API; deepseek-v4.1-flash is Alibaba Cloud Model Studio’s product-scoped upstream ID; legacy V4 Flash IDs remain accepted by DeepSeek",
       "evidence_refs": [
         "source-007",
         "source-008",
-        "source-010"
+        "source-010",
+        "source-134",
+        "source-135"
       ]
     },
     {
@@ -3570,6 +3609,60 @@
       ]
     },
     {
+      "binding_key": "bailian-payg-cn/deepseek-v4-1-flash/deepseek-v4-1-flash",
+      "product_key": "bailian-payg-cn",
+      "model_key": "deepseek-v4-1-flash",
+      "upstream_model_id": "deepseek-v4.1-flash",
+      "interface_candidates": [
+        "bailian-payg-cn/openai-chat",
+        "bailian-payg-cn/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-134"
+      ]
+    },
+    {
+      "binding_key": "bailian-token-personal-cn-beijing/deepseek-v4-1-flash/deepseek-v4-1-flash",
+      "product_key": "bailian-token-personal-cn-beijing",
+      "model_key": "deepseek-v4-1-flash",
+      "upstream_model_id": "deepseek-v4.1-flash",
+      "interface_candidates": [
+        "bailian-token-personal-cn-beijing/anthropic-messages",
+        "bailian-token-personal-cn-beijing/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-135"
+      ]
+    },
+    {
+      "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-1-flash/deepseek-v4-1-flash",
+      "product_key": "bailian-token-team-cn-beijing",
+      "model_key": "deepseek-v4-1-flash",
+      "upstream_model_id": "deepseek-v4.1-flash",
+      "interface_candidates": [
+        "bailian-token-team-cn-beijing/anthropic-messages",
+        "bailian-token-team-cn-beijing/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-135"
+      ]
+    },
+    {
       "binding_key": "deepseek-platform/deepseek-v4-1-flash/deepseek-flash",
       "product_key": "deepseek-platform",
       "model_key": "deepseek-v4-1-flash",
@@ -3667,6 +3760,23 @@
       ]
     },
     {
+      "binding_key": "gemini-api/gemini-3-8-flash/gemini-3-8-flash",
+      "product_key": "gemini-api",
+      "model_key": "gemini-3-8-flash",
+      "upstream_model_id": "gemini-3.8-flash",
+      "interface_candidates": [
+        "gemini-api/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-004"
+      ]
+    },
+    {
       "binding_key": "groqcloud/groq-gpt-oss-120b/openai-gpt-oss-120b",
       "product_key": "groqcloud",
       "model_key": "groq-gpt-oss-120b",
@@ -3742,6 +3852,23 @@
         "source-062",
         "source-074",
         "source-075"
+      ]
+    },
+    {
+      "binding_key": "kimi-platform-cn/kimi-k2-6/kimi-k2-6",
+      "product_key": "kimi-platform-cn",
+      "model_key": "kimi-k2-6",
+      "upstream_model_id": "kimi-k2.6",
+      "interface_candidates": [
+        "kimi-platform-cn/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-064"
       ]
     },
     {
@@ -4070,6 +4197,24 @@
       ]
     },
     {
+      "binding_key": "zai-devpack-global/glm-5-3-flash-global/glm-5-3-flash",
+      "product_key": "zai-devpack-global",
+      "model_key": "glm-5-3-flash-global",
+      "upstream_model_id": "glm-5.3-flash",
+      "interface_candidates": [
+        "zai-devpack-global/anthropic-messages",
+        "zai-devpack-global/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-133"
+      ]
+    },
+    {
       "binding_key": "zai-general-global/glm-5-3-flash-global/glm-5-3-flash",
       "product_key": "zai-general-global",
       "model_key": "glm-5-3-flash-global",
@@ -4108,6 +4253,25 @@
       ]
     },
     {
+      "binding_key": "zhipu-coding-cn/glm-5-3-flash-global/glm-5-3-flash",
+      "product_key": "zhipu-coding-cn",
+      "model_key": "glm-5-3-flash-global",
+      "upstream_model_id": "glm-5.3-flash",
+      "interface_candidates": [
+        "zhipu-coding-cn/anthropic-messages",
+        "zhipu-coding-cn/openai-chat",
+        "zhipu-coding-cn/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-132"
+      ]
+    },
+    {
       "binding_key": "zhipu-coding-cn/glm-5-3-global/glm-5-3",
       "product_key": "zhipu-coding-cn",
       "model_key": "glm-5-3-global",
@@ -4124,6 +4288,23 @@
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-125"
+      ]
+    },
+    {
+      "binding_key": "zhipu-general-cn/glm-5-3-flash-global/glm-5-3-flash",
+      "product_key": "zhipu-general-cn",
+      "model_key": "glm-5-3-flash-global",
+      "upstream_model_id": "glm-5.3-flash",
+      "interface_candidates": [
+        "zhipu-general-cn/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-132"
       ]
     }
   ],

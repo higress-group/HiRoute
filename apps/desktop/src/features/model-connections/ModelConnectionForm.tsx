@@ -37,6 +37,7 @@ import {
   metadataModelPrefill,
   metadataReasoningHint,
 } from './metadata-prefill';
+import { registeredModelCandidates, templateEndpointForProtocol } from './registered-metadata';
 import {
   blankModel,
   connectionErrorMessage,
@@ -84,6 +85,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     ?? registeredOptions[0]
     ?? null;
   const registeredLabel = registeredConnectionLabel(registeredOption, zh);
+  const registeredCandidates = useMemo(() => registeredOption
+    ? registeredModelCandidates(registeredOption, connectionOptions?.metadata_catalog)
+    : [], [registeredOption, connectionOptions]);
   const metadataProviders = useMemo(() => connectionOptions?.metadata_catalog?.provider_records.filter(provider =>
     provider.usable_for.includes('custom-api-endpoint-prefill')
     && provider.base_url_candidates.length > 0
@@ -537,17 +541,24 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               <label className="field"><span className="field-label">Base URL</span><input className="input" inputMode="url" value={draft.base_url} placeholder="https://example.com/v1" onChange={event => invalidate(current => ({ ...current, base_url: event.target.value }), true, 'connection')} /></label>
               <label className="field"><span className="field-label">{zh ? '协议' : 'Protocol'}</span><select className="select" value={draft.protocol} onChange={event => {
                 const protocol = event.target.value as UpstreamProtocol;
-                invalidate(current => ({
-                  ...current,
-                  protocol,
-                  protocol_profile_id: `profile/custom/${protocol}`,
-                  protocol_profile_revision: current.protocol_profile_revision + 1,
-                  models: current.models.map(model => {
-                    const previous = model.capabilities.native_reasoning.value;
-                    const next = previous ? reasoningValue(previous.kind, protocol, previous) : null;
-                    return { ...model, capabilities: { ...model.capabilities, native_reasoning: { value: next, basis: next ? 'user_declared' : 'unknown' } } };
-                  }),
-                }), true, 'connection');
+                invalidate(current => {
+                  const template = registeredOptions.find(option => option.connection_option_id === current.display_template_id) ?? null;
+                  const endpoint = templateEndpointForProtocol(current, template, protocol);
+                  return {
+                    ...current,
+                    base_url: endpoint?.base_url ?? current.base_url,
+                    request_path_override: endpoint?.request_path ?? current.request_path_override,
+                    inventory_path_override: endpoint ? endpoint.inventory_path ?? null : current.inventory_path_override,
+                    protocol,
+                    protocol_profile_id: `profile/custom/${protocol}`,
+                    protocol_profile_revision: current.protocol_profile_revision + 1,
+                    models: current.models.map(model => {
+                      const previous = model.capabilities.native_reasoning.value;
+                      const next = previous ? reasoningValue(previous.kind, protocol, previous) : null;
+                      return { ...model, capabilities: { ...model.capabilities, native_reasoning: { value: next, basis: next ? 'user_declared' : 'unknown' } } };
+                    }),
+                  };
+                }, true, 'connection');
               }}><option value="chat_completions">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option><option value="messages">Anthropic Messages</option></select></label>
             </> : optionsLoading
               ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{zh ? '正在读取接入方式' : 'Loading connection'}</strong><p>{zh ? '从本机可信目录确认当前支持的产品。' : 'Checking supported products in the local trusted catalog.'}</p></div></div>
@@ -562,12 +573,20 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               <p>{connectionTemplate(registeredOption.connection_option_id)?.description[language]}</p>
               <a href={connectionTemplate(registeredOption.connection_option_id)?.documentation_url} target="_blank" rel="noreferrer" onClick={event => void openDocumentation(event, connectionTemplate(registeredOption.connection_option_id)?.documentation_url)}>{zh ? '官方说明与获取 Key' : 'Official guide and API keys'}</a>
               {externalLinkError && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{zh ? '无法打开默认浏览器；当前表单内容已保留。' : 'The default browser could not be opened. Your form input is retained.'}</span></div>}
-              <ul>{Object.entries(registeredOption.known_models ?? {}).map(([id, name]) => <li key={id}>{name} · {id}</li>)}</ul>
-              <p className="field-help">{zh ? '内置目录资料，尚未进行实时调用验证。' : 'Built-in catalog information; live inference has not been verified.'}</p>
+              <ul>{registeredCandidates.map(candidate => <li key={candidate.upstream_model_id}>
+                {candidate.display_name} · {candidate.upstream_model_id}
+                {candidate.source === 'product_metadata' && <>
+                  {' · '}<span className="field-help">{zh ? '产品资料候选' : 'Product metadata candidate'}</span>{' '}
+                  <button className="btn btn-quiet" type="button" disabled={!props.mutable || draft.models.some(model => model.upstream_model_id === candidate.upstream_model_id)} onClick={() => invalidate(current => ({ ...current, models: [...current.models, blankModel(candidate.upstream_model_id, candidate.display_name)] }), false, 'connection')}>
+                    {draft.models.some(model => model.upstream_model_id === candidate.upstream_model_id) ? (zh ? '已加入' : 'Added') : (zh ? '导入模型 ID' : 'Import model ID')}
+                  </button>
+                </>}
+              </li>)}</ul>
+              <p className="field-help">{zh ? '内置模型有已资格化能力资料；产品资料候选仅复制模型 ID，账号可见性、协议与推理能力仍需检查。' : 'Built-in models have qualified capability data. Product metadata candidates only copy the model ID; account access, protocol, and inference still need checking.'}</p>
               {registeredOption.endpoints?.length && <button className="btn btn-quiet" type="button" onClick={() => {
                 const endpoint = [...registeredOption.endpoints!].sort((a, b) => a.stable_preference - b.stable_preference)[0];
                 setCustom(true);
-                invalidate(current => ({ ...current, entry_kind: 'custom_api', display_template_id: registeredOption.connection_option_id, display_name: connectionName(registeredOption.connection_option_id, language, registeredOption.display_name), base_url: endpoint.base_url, request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null, protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`, authentication: endpoint.authentication_semantics ?? { kind: 'bearer' }, models: Object.entries(registeredOption.known_models ?? {}).map(([id, name]) => blankModel(id, name)) }), true, 'connection');
+                invalidate(current => ({ ...current, entry_kind: 'custom_api', display_template_id: registeredOption.connection_option_id, display_name: connectionName(registeredOption.connection_option_id, language, registeredOption.display_name), base_url: endpoint.base_url, request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null, protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`, authentication: endpoint.authentication_semantics ?? { kind: 'bearer' }, models: [...Object.entries(registeredOption.known_models ?? {}).map(([id, name]) => blankModel(id, name)), ...current.models.filter(model => !Object.hasOwn(registeredOption.known_models ?? {}, model.upstream_model_id))] }), true, 'connection');
               }}>{zh ? '自定义此模板的连接配置' : 'Customize this template connection'}</button>}
             </section>}
             {custom && <>
