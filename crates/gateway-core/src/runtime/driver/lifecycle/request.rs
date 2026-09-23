@@ -453,7 +453,7 @@ where
         // frames in core. Its head remains uncommitted to #15 until EOS, so a
         // body filter can safely update held headers before exact framing.
         let mut buffered_logical_frames = Vec::new();
-        let request_transport_chunk_bytes = self.limits.max_request_body_bytes;
+        let request_transport_chunk_bytes = self.limits.request_transport_chunk_bytes();
 
         loop {
             // Header StopIteration remains body-driven. StopAll(Watermark)

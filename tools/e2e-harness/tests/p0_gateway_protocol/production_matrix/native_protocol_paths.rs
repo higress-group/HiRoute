@@ -438,11 +438,11 @@ fn real_glm_messages_native_path_handles_repeated_small_and_large_requests() {
                 format!("Reply with OK after reading: {}", "alpha ".repeat(13_120)),
             ),
         ] {
-            // Keep model in the first 16 KiB selector window. A map-backed JSON
-            // serializer may sort it after a large messages value instead.
+            // Model selection must work after a large messages value, as with
+            // serializers that order model after messages.
             let content_json = serde_json::to_string(&content).unwrap();
             let body = format!(
-            r#"{{"model":"{alias}","max_tokens":128,"messages":[{{"role":"user","content":{content_json}}}],"stream":false}}"#
+            r#"{{"max_tokens":128,"messages":[{{"role":"user","content":{content_json}}}],"model":"{alias}","stream":false}}"#
         )
         .into_bytes();
             let response = single_write_request(address, "/v1/messages", &body);

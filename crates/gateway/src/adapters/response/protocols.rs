@@ -53,8 +53,6 @@ impl ProtocolState {
         protocol: IngressProtocol,
         owner: ExactProviderPathV1,
         state_emission: NativeProviderStateEmission,
-        terminal_refusal_buffer: usize,
-        terminal_refusal_blocks: u32,
         tool_id_projection: Option<super::super::continuation::ToolIdProjection>,
         chat_tool_projection: Option<ChatToolProjection>,
     ) -> Self {
@@ -71,7 +69,7 @@ impl ProtocolState {
             },
             IngressProtocol::Messages => Self::Messages {
                 core: DecoderCore::new(owner, state_emission, tool_id_projection),
-                state: MessagesState::new(terminal_refusal_buffer, terminal_refusal_blocks),
+                state: MessagesState::new(),
             },
         }
     }
@@ -157,7 +155,7 @@ impl ProtocolState {
         }
     }
 
-    fn core_mut(&mut self) -> &mut DecoderCore {
+    pub(super) fn core_mut(&mut self) -> &mut DecoderCore {
         match self {
             Self::Responses { core, .. }
             | Self::Chat { core, .. }
@@ -721,10 +719,7 @@ fn append_chat_tool_arguments(
             total.checked_add(tool.wire_arguments.len())
         })
         .and_then(|total| total.checked_add(delta.len()))
-        .filter(|total| *total <= super::MAX_CANONICAL_SEMANTIC_BYTES)
-        .ok_or(ModelIrError::BufferLimit(
-            super::MAX_CANONICAL_SEMANTIC_BYTES,
-        ))?;
+        .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
     tools
         .get_mut(&native_index)
         .expect("Chat tool identity was established before its arguments")
@@ -881,6 +876,7 @@ fn decode_chat_sse(
                         output,
                     )?,
                     ToolKindV1::Custom => {
+                        core.retention.add(delta.len())?;
                         append_chat_tool_arguments(tools, native_index, delta)?;
                         core.start_tool(
                             native_index,

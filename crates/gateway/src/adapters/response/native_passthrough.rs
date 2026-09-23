@@ -31,8 +31,7 @@ mod evidence;
 #[path = "native_passthrough_state.rs"]
 mod provider_state;
 
-const MAX_NATIVE_BODY_BYTES: usize = 16 * 1024 * 1024;
-const MAX_SSE_EVENT_BYTES: usize = 256 * 1024;
+const RETAINED_SSE_CAPACITY: usize = 256 * 1024;
 const OBSERVATION_STREAM_BUDGET: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,7 +53,7 @@ pub(crate) struct NativeProjectedUnit {
 
 pub(crate) struct NativeResponseProjector {
     streaming: bool,
-    body: Vec<u8>,
+    body: super::body_buffer::BodyBuffer,
     budget: StreamBudget,
     framer: Option<SseFramer>,
     state: ProjectionState,
@@ -125,13 +124,15 @@ impl NativeResponseProjector {
             .then(|| {
                 SseFramer::new(
                     SseLimits {
-                        max_event_bytes: MAX_SSE_EVENT_BYTES,
-                        max_pending_bytes: MAX_SSE_EVENT_BYTES,
-                        max_output_event_bytes: MAX_SSE_EVENT_BYTES,
+                        max_event_bytes: usize::MAX,
+                        max_pending_bytes: usize::MAX,
+                        max_output_event_bytes: usize::MAX,
                         expansion_ratio_numerator: 2,
                         expansion_ratio_denominator: 1,
-                        expansion_slack_bytes: 4096,
-                        retained_capacity_threshold: MAX_SSE_EVENT_BYTES,
+                        // Owned ID rewrites may expand many small native IDs.
+                        // Charge their actual allocation instead of imposing a wire ratio.
+                        expansion_slack_bytes: usize::MAX,
+                        retained_capacity_threshold: RETAINED_SSE_CAPACITY,
                         eof_policy: EofPolicy::Strict,
                     },
                     budget.clone(),
@@ -143,7 +144,7 @@ impl NativeResponseProjector {
             .transpose()?;
         Ok(Self {
             streaming,
-            body: Vec::new(),
+            body: super::body_buffer::BodyBuffer::default(),
             budget: budget.clone(),
             framer,
             state: ProjectionState {
@@ -190,20 +191,12 @@ impl NativeResponseProjector {
             .into());
         }
         if !self.streaming {
-            let next = self
-                .body
-                .len()
-                .checked_add(bytes.len())
-                .ok_or(ModelIrError::BufferLimit(MAX_NATIVE_BODY_BYTES))?;
-            if next > MAX_NATIVE_BODY_BYTES {
-                return Err(ModelIrError::BufferLimit(MAX_NATIVE_BODY_BYTES).into());
-            }
-            self.body.extend_from_slice(bytes);
+            self.body.append(bytes, &self.budget)?;
             if !end_stream {
                 return Ok(Vec::new());
             }
             self.ended = true;
-            let mut value: Value = serde_json::from_slice(&self.body)
+            let mut value: Value = serde_json::from_slice(self.body.bytes())
                 .map_err(|error| ModelIrError::InvalidJson(error.to_string()))?;
             let metadata = self.state.project_nonstream(&mut value)?;
             let bytes = serde_json::to_vec(&value)

@@ -16,8 +16,6 @@ use super::{
 /// Exact bounded-delay contract for protocols that reveal refusal only in
 /// their terminal metadata. The block bound also keeps one terminal replay
 /// below the decoder's fixed event-drain window.
-pub const MAX_TERMINAL_CLASSIFIED_REFUSAL_BYTES: u64 = 16 * 1024 * 1024;
-pub const MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -129,17 +127,7 @@ pub enum NativeProviderStateEmission {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum StreamingRefusalSemantics {
-    ExactDelta,
-    TerminalClassified {
-        max_buffered_bytes: u64,
-        max_buffered_blocks: u32,
-    },
-    Unsupported,
-    Unknown,
-}
+pub use hiroute_domain::GatewayStreamingRefusalSemanticsV1 as StreamingRefusalSemantics;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -236,13 +224,7 @@ impl CandidateProtocolProfile {
                     provider_state: Fidelity::Unsupported,
                     state_affinity: StateAffinity::Unsupported,
                     stream_refusal: if upstream_protocol == IngressProtocol::Messages {
-                        StreamingRefusalSemantics::TerminalClassified {
-                            max_buffered_bytes: MAX_TERMINAL_CLASSIFIED_REFUSAL_BYTES,
-                            // Messages supplies refusal only with its terminal
-                            // stop reason, so the decoder defers a bounded
-                            // native block set until that classification.
-                            max_buffered_blocks: MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS,
-                        }
+                        StreamingRefusalSemantics::TerminalClassified
                     } else {
                         StreamingRefusalSemantics::ExactDelta
                     },
@@ -479,10 +461,8 @@ impl CandidateProtocolProfile {
                 (self.capability.upstream_protocol, response.stream_refusal),
                 (
                     IngressProtocol::Messages,
-                    StreamingRefusalSemantics::TerminalClassified {
-                        max_buffered_bytes: 1..=MAX_TERMINAL_CLASSIFIED_REFUSAL_BYTES,
-                        max_buffered_blocks: 1..=MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS
-                    }
+                    StreamingRefusalSemantics::TerminalClassified
+                        | StreamingRefusalSemantics::LegacyTerminalClassified { .. }
                 ) | (
                     IngressProtocol::Responses | IngressProtocol::ChatCompletions,
                     StreamingRefusalSemantics::ExactDelta
@@ -723,6 +703,37 @@ pub fn fixed_reasoning(profile_id: impl Into<String>) -> ReasoningProfileCapabil
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_classification_contract_contains_no_proxy_size_quota() {
+        let expected = serde_json::json!({"kind":"terminal_classified"});
+        assert_eq!(
+            serde_json::to_value(StreamingRefusalSemantics::TerminalClassified).unwrap(),
+            expected
+        );
+        assert_eq!(
+            serde_json::to_value(
+                hiroute_domain::GatewayStreamingRefusalSemanticsV1::TerminalClassified
+            )
+            .unwrap(),
+            expected
+        );
+        let obsolete = serde_json::json!({"kind":"terminal_classified","max_buffered_bytes":16777216,"max_buffered_blocks":8});
+        let recovered =
+            serde_json::from_value::<StreamingRefusalSemantics>(obsolete.clone()).unwrap();
+        assert!(matches!(
+            recovered,
+            StreamingRefusalSemantics::LegacyTerminalClassified { .. }
+        ));
+        // Recovery must preserve the original capability digest.
+        assert_eq!(serde_json::to_value(recovered).unwrap(), obsolete);
+        assert!(
+            serde_json::from_value::<StreamingRefusalSemantics>(
+                serde_json::json!({"kind":"terminal_classified","unregistered_quota":8})
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn client_profile_preserves_only_explicitly_representable_exact_owner_state() {

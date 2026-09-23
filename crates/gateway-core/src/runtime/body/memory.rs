@@ -546,6 +546,31 @@ impl ChargedBodyQueue {
         Ok(())
     }
 
+    /// A protocol prefix has no message-count quota. Grow its queue against
+    /// the request budget while ordinary bounded handoff queues keep theirs.
+    pub fn push_back_growing(
+        &mut self,
+        budget: &StreamBudget,
+        chunk: ChargedBytes,
+    ) -> Result<(), BodyError> {
+        if self.chunks.len() == self.max_chunks {
+            let capacity = self
+                .max_chunks
+                .checked_mul(2)
+                .ok_or(BodyError::BodyLimitExceeded)?;
+            let bytes = capacity
+                .checked_mul(size_of::<ChargedBytes>())
+                .ok_or(BodyError::BodyLimitExceeded)?;
+            let reservation = budget.reserve(self.role, bytes)?;
+            let mut replacement = VecDeque::with_capacity(capacity);
+            replacement.extend(self.chunks.drain(..));
+            self.chunks = replacement;
+            self.metadata_reservation = Some(reservation);
+            self.max_chunks = capacity;
+        }
+        self.push_back(chunk)
+    }
+
     pub fn pop_front(&mut self) -> Option<ChargedBytes> {
         let chunk = self.chunks.pop_front()?;
         self.visible_bytes -= chunk.bytes().len();

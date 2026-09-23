@@ -165,6 +165,8 @@ fn work_plans_production_cli_current_authority_and_metadata() {
             .env(CHILD, "1")
             .env("HOME", home.path())
             .env("PATH", "/usr/bin:/bin")
+            .env_remove("CODEX_HOME")
+            .env_remove("CLAUDE_CONFIG_DIR")
             .env_remove("ANTHROPIC_AUTH_TOKEN")
             .env_remove("ANTHROPIC_BASE_URL")
             .status()
@@ -172,7 +174,11 @@ fn work_plans_production_cli_current_authority_and_metadata() {
         assert!(status.success());
         return;
     }
-    let root = tempfile::tempdir().unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
     let runtime =
         ProductionControlRuntime::open_with_release_catalog(root.path().join("storage"), catalog())
             .unwrap();

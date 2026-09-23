@@ -215,16 +215,63 @@ pub enum GatewayNativeProviderStateEmissionV1 {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GatewayStreamingRefusalSemanticsV1 {
     ExactDelta,
-    TerminalClassified {
+    TerminalClassified,
+    /// Preserves authenticated historical digests; execution ignores both values.
+    #[doc(hidden)]
+    #[serde(rename = "terminal_classified")]
+    LegacyTerminalClassified {
         max_buffered_bytes: u64,
-        max_buffered_blocks: u32,
+        max_buffered_blocks: u64,
     },
     Unsupported,
     Unknown,
+}
+
+impl<'de> Deserialize<'de> for GatewayStreamingRefusalSemanticsV1 {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Read-only recovery of persisted capability snapshots and operation
+        // journals. Keep their canonical bytes for digest validation; current
+        // producers construct TerminalClassified without these retired quotas.
+        #[derive(Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+        enum Wire {
+            ExactDelta,
+            TerminalClassified {
+                #[serde(default, rename = "max_buffered_bytes")]
+                retired_bytes: Option<u64>,
+                #[serde(default, rename = "max_buffered_blocks")]
+                retired_blocks: Option<u64>,
+            },
+            Unsupported,
+            Unknown,
+        }
+        Ok(match Wire::deserialize(deserializer)? {
+            Wire::ExactDelta => Self::ExactDelta,
+            Wire::TerminalClassified {
+                retired_bytes,
+                retired_blocks,
+            } => match (retired_bytes, retired_blocks) {
+                (None, None) => Self::TerminalClassified,
+                (Some(max_buffered_bytes), Some(max_buffered_blocks)) => {
+                    Self::LegacyTerminalClassified {
+                        max_buffered_bytes,
+                        max_buffered_blocks,
+                    }
+                }
+                _ => {
+                    return Err(serde::de::Error::custom(
+                        "incomplete retired terminal classification descriptor",
+                    ));
+                }
+            },
+            Wire::Unsupported => Self::Unsupported,
+            Wire::Unknown => Self::Unknown,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

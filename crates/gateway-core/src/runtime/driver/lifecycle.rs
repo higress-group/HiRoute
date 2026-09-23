@@ -85,6 +85,15 @@ pub struct GatewayCoreLifecycleLimits {
     pub filter_blocking_queue: usize,
 }
 
+impl GatewayCoreLifecycleLimits {
+    fn request_transport_chunk_bytes(&self) -> usize {
+        // Opaque codec backing and its exact charged copy coexist during admission.
+        // Derive the workspace from its memory owner, not an extra frame quota.
+        self.max_request_body_bytes
+            .min((self.stream_memory_bytes / 2).max(1))
+    }
+}
+
 impl Default for GatewayCoreLifecycleLimits {
     fn default() -> Self {
         Self {
@@ -258,7 +267,7 @@ where
             RequestPreparation::Completed(reuse) => return Ok(reuse),
             RequestPreparation::Ready(request) => request,
         };
-        self.run_request(session, request_filters, request).await
+        Box::pin(self.run_request(session, request_filters, request)).await
     }
 
     /// Runs an already-authorized route through the same production execution
@@ -340,8 +349,10 @@ where
                 RequestPreparation::Completed(reuse) => return Ok(reuse),
                 RequestPreparation::Ready(request) => request,
             };
-            self.run_request(session, &mut request_filters, request)
-                .await
+            // The execution future retains large provider and filter states.
+            // Keep it on the heap so wrapper polls do not duplicate its size
+            // on the listener thread's stack during a nested TLS handshake.
+            Box::pin(self.run_request(session, &mut request_filters, request)).await
         }
         .await;
         let cleanup = request_filters

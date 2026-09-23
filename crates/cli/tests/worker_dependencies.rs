@@ -83,6 +83,8 @@ fn public_cli_discover_select_and_same_request_replay_are_self_contained() {
             .env(CHILD, "1")
             .env("HOME", home.path())
             .env("PATH", &bin)
+            .env_remove("CODEX_HOME")
+            .env_remove("CLAUDE_CONFIG_DIR")
             .env_remove("NPM_CONFIG_PREFIX")
             .env_remove("npm_config_prefix")
             .env_remove("NPM_CONFIG_CACHE")

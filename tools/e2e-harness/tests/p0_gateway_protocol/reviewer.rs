@@ -8,10 +8,9 @@ use hiroute_gateway::server::core_runtime::model_ir::{
     ResponseBlockKind,
 };
 use hiroute_gateway::server::core_runtime::profiles::{
-    CandidateProtocolProfile, ClientProtocolProfile, Fidelity,
-    MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS, NativeReasoningFieldAssignment, NativeReasoningRender,
-    NativeReasoningValue, ReasoningAccounting, ReasoningControlKind, ReasoningProfileCapability,
-    StateAffinity, StreamingRefusalSemantics, fixed_reasoning,
+    CandidateProtocolProfile, ClientProtocolProfile, Fidelity, NativeReasoningFieldAssignment,
+    NativeReasoningRender, NativeReasoningValue, ReasoningAccounting, ReasoningControlKind,
+    ReasoningProfileCapability, StateAffinity, StreamingRefusalSemantics, fixed_reasoning,
 };
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
@@ -505,17 +504,11 @@ fn protocol_reviewer_messages_terminal_refusal_is_typed_before_client_emission()
     .unwrap();
     assert!(matches!(
         exact_profile.capability.response.stream_refusal,
-        StreamingRefusalSemantics::TerminalClassified {
-            max_buffered_bytes: 1..,
-            max_buffered_blocks: 1..=8,
-        }
+        StreamingRefusalSemantics::TerminalClassified
     ));
     for semantics in [
         StreamingRefusalSemantics::Unknown,
-        StreamingRefusalSemantics::TerminalClassified {
-            max_buffered_bytes: 16 * 1024 * 1024,
-            max_buffered_blocks: MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS + 1,
-        },
+        StreamingRefusalSemantics::Unsupported,
     ] {
         let mut invalid = exact_profile.clone();
         invalid.capability.response.stream_refusal = semantics;

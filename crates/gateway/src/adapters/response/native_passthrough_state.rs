@@ -42,11 +42,14 @@ impl ProjectionState {
         match object.get("type").and_then(Value::as_str) {
             Some("content_block_start") if object["content_block"]["type"] == "thinking" => {
                 let index = u32_field(object, "index")?;
-                if self.messages_signatures.len() >= 128
-                    || self.messages_signatures.contains_key(&index)
-                {
+                if self.messages_signatures.contains_key(&index) {
                     return Err(ModelIrError::InvalidField("thinking.index").into());
                 }
+                let charge = self
+                    .budget
+                    .reserve(MemoryRole::SemanticState, 128)
+                    .map_err(|_| ModelIrError::BufferLimit(128))?;
+                self.retained.push(charge);
                 self.messages_signatures.insert(index, String::new());
                 if let Some(value) = object["content_block"]
                     .get("signature")
@@ -87,16 +90,14 @@ impl ProjectionState {
         if delta.is_empty() {
             return Ok(());
         }
-        if signature.len().saturating_add(delta.len()) > MAX_SSE_EVENT_BYTES {
-            return Err(ModelIrError::BufferLimit(MAX_SSE_EVENT_BYTES).into());
-        }
+        let bytes = delta
+            .len()
+            .checked_add(2 * std::mem::size_of::<Reservation>())
+            .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
         let charge = self
             .budget
-            .reserve(
-                MemoryRole::SemanticState,
-                delta.len() + 2 * std::mem::size_of::<Reservation>(),
-            )
-            .map_err(|_| ModelIrError::BufferLimit(MAX_SSE_EVENT_BYTES))?;
+            .reserve(MemoryRole::SemanticState, bytes)
+            .map_err(|_| ModelIrError::BufferLimit(bytes))?;
         signature.reserve_exact(delta.len());
         signature.push_str(delta);
         self.retained.push(charge);

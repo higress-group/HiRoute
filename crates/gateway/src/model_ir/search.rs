@@ -117,7 +117,7 @@ impl WebSearchCallV1 {
         }
         let item: Self = serde_json::from_value(value)
             .map_err(|_| super::ModelIrError::InvalidField("web_search_call"))?;
-        if item.id.is_empty() || item.id.len() > 256 || item.id.chars().any(char::is_control) {
+        if item.id.is_empty() || item.id.chars().any(char::is_control) {
             return Err(super::ModelIrError::InvalidField("web_search_call.id"));
         }
         Ok(item)

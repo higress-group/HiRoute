@@ -18,6 +18,25 @@ use crate::server::request_plan::IngressProtocol;
 
 static DIRECTORY_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
+#[test]
+fn model_selection_does_not_require_model_in_first_sixteen_kib() {
+    let (runtime, _, _directory) = runtime("127.0.0.1:45678".parse().unwrap());
+    let body = format!(
+        "{{\"input\":\"{}\",\"model\":\"fast\"}}",
+        "x".repeat(128 * 1024)
+    );
+    assert!(
+        runtime
+            .authorize_bytes(
+                IngressProtocol::Responses,
+                Some("Bearer token"),
+                body.as_bytes(),
+                Instant::now()
+            )
+            .is_ok()
+    );
+}
+
 struct TestDirectory(PathBuf);
 
 impl TestDirectory {

@@ -14,8 +14,6 @@ use hiroute_domain::{
 use super::{ProtocolConnectorFacts, ProtocolFace, protocol_label};
 
 const MAX_MATERIALIZED_BUDGET_PROFILES: u64 = 64;
-const MAX_TERMINAL_REFUSAL_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_TERMINAL_REFUSAL_BLOCKS: u32 = 8;
 
 pub(super) fn protocol_profiles(
     connector: &ProtocolConnectorFacts,
@@ -184,10 +182,7 @@ pub(super) fn protocol_profiles(
                         GatewayStateAffinityV1::Unsupported
                     },
                     stream_refusal: if upstream_protocol == UpstreamProtocol::Messages {
-                        GatewayStreamingRefusalSemanticsV1::TerminalClassified {
-                            max_buffered_bytes: MAX_TERMINAL_REFUSAL_BYTES,
-                            max_buffered_blocks: MAX_TERMINAL_REFUSAL_BLOCKS,
-                        }
+                        GatewayStreamingRefusalSemanticsV1::TerminalClassified
                     } else {
                         GatewayStreamingRefusalSemanticsV1::ExactDelta
                     },

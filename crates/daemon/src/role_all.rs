@@ -399,9 +399,19 @@ fn start_role_all_with_runtime(
                 return Err(error);
             }
         };
-    let trusted_hiroute = std::env::current_exe()
+    let bundled_hiroute = std::env::current_exe()
         .map_err(|error| RoleAllError::Component("Local Control", error.to_string()))?
-        .with_file_name("hiroute")
+        .with_file_name("hiroute");
+    let standalone_home = if config.released_commands_only {
+        Some(
+            hiroute_host_runtime::StandaloneLayout::from_environment()
+                .map_err(|_| RoleAllError::InvalidConfiguration)?
+                .home,
+        )
+    } else {
+        None
+    };
+    let trusted_hiroute = managed_cli_entry(&bundled_hiroute, standalone_home.as_deref())?
         .into_os_string()
         .into_string()
         .map_err(|_| RoleAllError::InvalidConfiguration)?;
@@ -530,6 +540,25 @@ fn selected_codex_auth() -> Result<PathBuf, RoleAllError> {
     Ok(root.join("auth.json"))
 }
 
+fn managed_cli_entry(
+    bundled: &std::path::Path,
+    standalone_home: Option<&std::path::Path>,
+) -> Result<PathBuf, RoleAllError> {
+    let Some(home) = standalone_home else {
+        return Ok(bundled.to_owned());
+    };
+    // Persist the installer-owned entry, whose target changes on upgrade, only
+    // after proving it identifies the CLI shipped with this running daemon.
+    let stable = home.join(".local/bin/hiroute");
+    let target = std::fs::canonicalize(&stable).map_err(|_| RoleAllError::InvalidConfiguration)?;
+    let expected =
+        std::fs::canonicalize(bundled).map_err(|_| RoleAllError::InvalidConfiguration)?;
+    if target != expected {
+        return Err(RoleAllError::InvalidConfiguration);
+    }
+    Ok(stable)
+}
+
 fn remaining(deadline: Instant, component: &'static str) -> Result<Duration, RoleAllError> {
     deadline
         .checked_duration_since(Instant::now())
@@ -577,6 +606,31 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn standalone_agent_helper_uses_verified_stable_entry_across_upgrade() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path();
+        let stable = home.join(".local/bin/hiroute");
+        std::fs::create_dir_all(stable.parent().unwrap()).unwrap();
+        let first = home.join("v1/hiroute");
+        let second = home.join("v2/hiroute");
+        for binary in [&first, &second] {
+            std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+            std::fs::write(binary, b"binary").unwrap();
+        }
+        assert!(managed_cli_entry(&first, Some(home)).is_err());
+        std::os::unix::fs::symlink(&first, &stable).unwrap();
+        let persisted = managed_cli_entry(&first, Some(home)).unwrap();
+        assert_eq!(persisted, stable);
+        assert!(managed_cli_entry(&second, Some(home)).is_err());
+        std::fs::remove_file(&stable).unwrap();
+        std::os::unix::fs::symlink(&second, &stable).unwrap();
+        std::fs::remove_file(&first).unwrap();
+        assert_eq!(managed_cli_entry(&second, Some(home)).unwrap(), persisted);
+        assert_eq!(std::fs::canonicalize(persisted).unwrap(), second);
+        assert_eq!(managed_cli_entry(&second, None).unwrap(), second);
+    }
 
     fn reserve_loopback() -> SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();

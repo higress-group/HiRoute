@@ -130,7 +130,14 @@ impl CandidateWorkerProfile {
         // This is a new child environment, never merged with std::env::vars().
         // Tool discovery is not authentication. Keep an explicit command search
         // path while leaving ambient model credentials and configuration behind.
-        env.insert("PATH".into(), Zeroizing::new(worker_path(&input)?));
+        env.insert(
+            "PATH".into(),
+            Zeroizing::new(worker_path(
+                input.harness_binary,
+                input.node_binary,
+                input.adapter,
+            )?),
+        );
         env.insert(
             "HOME".into(),
             Zeroizing::new(path_string(&private_root.join("home"))?),
@@ -347,16 +354,13 @@ fn path_string(path: &Path) -> Result<String, DelegationErrorV1> {
         .ok_or(DelegationErrorV1::InvalidArguments)
 }
 
-fn worker_path(input: &ProfileInput<'_>) -> Result<String, DelegationErrorV1> {
+fn worker_path(
+    harness: &Path,
+    node: Option<&Path>,
+    adapter: &Path,
+) -> Result<String, DelegationErrorV1> {
     let mut paths = Vec::new();
-    for executable in [
-        Some(input.harness_binary),
-        input.node_binary,
-        Some(input.adapter),
-    ]
-    .into_iter()
-    .flatten()
-    {
+    for executable in [node, Some(harness), Some(adapter)].into_iter().flatten() {
         if let Some(parent) = executable.parent() {
             paths.push(parent.to_owned());
         }

@@ -15,7 +15,8 @@ use crate::server::request_plan::{
     AuthorizedRequestPlan, IngressProtocol, RequestAuthorityReceipt,
 };
 
-const DEFAULT_SELECTOR_LIMIT: usize = 16 * 1024;
+// Selection must not depend on the byte position of the JSON model field.
+const DEFAULT_SELECTOR_LIMIT: usize = usize::MAX;
 /// Time allowed to identify the top-level model alias. This ingress bound is
 /// deliberately independent of every AgentPlan deadline: adding or removing
 /// another alias cannot change how long an incomplete selector pins the
