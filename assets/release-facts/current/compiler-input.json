@@ -3369,7 +3369,8 @@
           "display_name": "Claude Opus 5",
           "evidence_refs": [
             "source-059",
-            "source-060"
+            "source-060",
+            "source-129"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -3399,10 +3400,62 @@
               "max"
             ]
           },
-          "source_stability_note": "current-recommended-most-workloads",
+          "source_stability_note": "active-prior-version",
           "upstream_id_state": null,
           "upstream_ids": [
             "claude-opus-5"
+          ]
+        },
+        {
+          "canonical_identity": "claude-opus-5-5",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Claude Opus 5.5",
+          "evidence_refs": [
+            "source-129",
+            "source-130",
+            "source-131"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": "Message Batches API beta supports up to 300000 output tokens with output-300k-2026-03-24.",
+          "max_output_scope": "standard Claude API Messages",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "claude-opus-5-5",
+          "publisher": "Anthropic",
+          "reasoning": {
+            "default": "medium",
+            "kind": "adaptive-fixed-on",
+            "note": null,
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-platform",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "claude-opus-5-5"
           ]
         },
         {
@@ -4002,6 +4055,114 @@
           ]
         },
         {
+          "canonical_identity": "gpt-6-luna",
+          "capabilities": {
+            "computer": "supported",
+            "file": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "web": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "GPT-6 Luna",
+          "evidence_refs": [
+            "source-127"
+          ],
+          "identity_stability": "unknown",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "gpt-6-luna",
+          "publisher": "OpenAI",
+          "reasoning": {
+            "default": "medium",
+            "kind": "discrete",
+            "note": null,
+            "profiles": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-platform; snapshot permanence not documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "gpt-6-luna"
+          ]
+        },
+        {
+          "canonical_identity": "gpt-6-sol",
+          "capabilities": {
+            "computer": "supported",
+            "file": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "web": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "GPT-6 Sol",
+          "evidence_refs": [
+            "source-126"
+          ],
+          "identity_stability": "unknown",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "gpt-6-sol",
+          "publisher": "OpenAI",
+          "reasoning": {
+            "default": "medium",
+            "kind": "discrete",
+            "note": null,
+            "profiles": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-platform; snapshot permanence not documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "gpt-6-sol"
+          ]
+        },
+        {
           "canonical_identity": "grok-4-6",
           "capabilities": {
             "streaming": "supported",
@@ -4580,6 +4741,27 @@
       "endpoint_bindings": [
         {
           "availability": {
+            "condition": "Claude API documents availability to all customers; target account and wire behavior still require qualification. Adaptive thinking is always on and forced tool_choice any/tool is unsupported.",
+            "state": "conditional"
+          },
+          "binding_key": "anthropic-platform/claude-opus-5-5/claude-opus-5-5",
+          "evidence_refs": [
+            "source-129",
+            "source-130"
+          ],
+          "interface_candidates": [
+            "anthropic-platform/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-opus-5-5",
+          "product_key": "anthropic-platform",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-opus-5-5"
+        },
+        {
+          "availability": {
             "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -4898,6 +5080,48 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "mistral-small-2603"
+        },
+        {
+          "availability": {
+            "condition": "Platform API documentation lists Responses and Chat Completions; project tier and wire behavior require qualification. Built-in tools require Responses; Chat Completions function calling requires reasoning_effort=none.",
+            "state": "conditional"
+          },
+          "binding_key": "openai-platform-global/gpt-6-luna/gpt-6-luna",
+          "evidence_refs": [
+            "source-127"
+          ],
+          "interface_candidates": [
+            "openai-platform-global/openai-chat",
+            "openai-platform-global/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "gpt-6-luna",
+          "product_key": "openai-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "gpt-6-luna"
+        },
+        {
+          "availability": {
+            "condition": "Platform API documentation lists Responses and Chat Completions; project tier and wire behavior require qualification. Built-in tools require Responses; Chat Completions function calling requires reasoning_effort=none.",
+            "state": "conditional"
+          },
+          "binding_key": "openai-platform-global/gpt-6-sol/gpt-6-sol",
+          "evidence_refs": [
+            "source-126"
+          ],
+          "interface_candidates": [
+            "openai-platform-global/openai-chat",
+            "openai-platform-global/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "gpt-6-sol",
+          "product_key": "openai-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "gpt-6-sol"
         },
         {
           "availability": {
@@ -6272,6 +6496,60 @@
           "digest_state": "not-captured",
           "locator": "https://docs.bigmodel.cn/cn/coding-plan/tool/codex",
           "source_key": "source-125",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-23",
+          "digest_state": "not-captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+          "source_key": "source-126",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-23",
+          "digest_state": "not-captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "source_key": "source-127",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-23",
+          "digest_state": "not-captured",
+          "locator": "https://developers.openai.com/api/docs/pricing",
+          "source_key": "source-128",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-23",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+          "source_key": "source-129",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-23",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5",
+          "source_key": "source-130",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-23",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "source_key": "source-131",
           "source_kind": "provider-documentation"
         }
       ],
@@ -62174,6 +62452,328 @@
           "cost_hint_state": "recorded",
           "cost_hints": [
             {
+              "cacheRead": "0.2",
+              "cacheWrite1h": "8",
+              "cacheWrite5m": "5",
+              "condition": "standard Claude API; cache writes vary by TTL",
+              "currency": "USD",
+              "input": "4",
+              "output": "20",
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "Claude Opus 5.5",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/anthropic-api/claude-opus-5-5",
+          "normalized_model_matches": [
+            "claude-opus-5-5"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-129"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-130"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-131"
+            }
+          ],
+          "provider_id": "anthropic-api",
+          "provider_record_key": "official/anthropic-api",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "claude-opus-5-5",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "0.01",
+              "cacheWrite": "0.125",
+              "condition": "standard non-regional; tiered at 272000 input tokens",
+              "currency": "USD",
+              "input": "0.1",
+              "output": "0.5",
+              "tieredPricing": [
+                {
+                  "cacheRead": "0.01",
+                  "cacheWrite": "0.125",
+                  "input": "0.1",
+                  "output": "0.5",
+                  "range": [
+                    "0",
+                    "272000"
+                  ]
+                },
+                {
+                  "cacheRead": "0.02",
+                  "cacheWrite": "0.25",
+                  "input": "0.2",
+                  "output": "0.75",
+                  "range": [
+                    "272001"
+                  ]
+                }
+              ],
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "GPT-6 Luna",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/openai-platform/gpt-6-luna",
+          "normalized_model_matches": [
+            "gpt-6-luna"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-127"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-128"
+            }
+          ],
+          "provider_id": "openai-platform",
+          "provider_record_key": "official/openai-platform",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "gpt-6-luna",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "0.2",
+              "cacheWrite": "2.5",
+              "condition": "standard non-regional; tiered at 272000 input tokens",
+              "currency": "USD",
+              "input": "2",
+              "output": "10",
+              "tieredPricing": [
+                {
+                  "cacheRead": "0.2",
+                  "cacheWrite": "2.5",
+                  "input": "2",
+                  "output": "10",
+                  "range": [
+                    "0",
+                    "272000"
+                  ]
+                },
+                {
+                  "cacheRead": "0.4",
+                  "cacheWrite": "5",
+                  "input": "4",
+                  "output": "15",
+                  "range": [
+                    "272001"
+                  ]
+                }
+              ],
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "GPT-6 Sol",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/openai-platform/gpt-6-sol",
+          "normalized_model_matches": [
+            "gpt-6-sol"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-126"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-128"
+            }
+          ],
+          "provider_id": "openai-platform",
+          "provider_record_key": "official/openai-platform",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "gpt-6-sol",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
               "cacheRead": "1",
               "cacheWrite": "12.5",
               "input": "10",
@@ -93438,6 +94038,94 @@
           ],
           "default_model_ids": [],
           "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "Anthropic Claude API",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "messages"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-057"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-129"
+            }
+          ],
+          "provider_id": "anthropic-api",
+          "provider_record_key": "official/anthropic-api",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
+            "https://api.openai.com/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "OpenAI Platform API",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "partial",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions",
+            "responses"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-022"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-023"
+            }
+          ],
+          "provider_id": "openai-platform",
+          "provider_record_key": "official/openai-platform",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
+            "https://api.anthropic.com"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
           "discovery_modes": [
             "remote_models"
           ],
@@ -96089,7 +96777,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:287a35c089d5eecc396f5bfd347b59bec2045117a43df3119ae5e05d6a1a8415"
+      "source_catalog_digest": "sha256:e033e99b3126341b4a2be1ed5241cdb433cffeaee25f743c8137c596082f2bb8"
     },
     "rating_snapshot": {
       "digest": "sha256:92eb5556b5042ea0d2a3b9a918880fb1ccb3cc632c12a1b0d4cc3e52304efc7d",
