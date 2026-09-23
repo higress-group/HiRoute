@@ -220,7 +220,7 @@
       "execution": "real_hirouted_native_provider",
       "id": "replay.request_capacity",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "symbol": "real_hirouted_rejects_request_body_plan_capacity_before_provider_call",
+      "symbol": "real_hirouted_rejects_unavailable_request_workspace_before_provider_call",
       "test_target": "p0_gateway_replay"
     },
     {
@@ -301,7 +301,7 @@
       "test_target": "p0_gateway_privacy"
     }
   ],
-  "registry_digest": "sha256:061cda488951676f3f8a60b38467ba345ee519249f999cb21f75aac9ab793d62",
+  "registry_digest": "sha256:32438a229a8518a05a1f02ad0ebfa8ed031a6ddc1410120bbc3b6ed5668dad8a",
   "rows": [
     {
       "id": "publication.incompatible_or_gap",

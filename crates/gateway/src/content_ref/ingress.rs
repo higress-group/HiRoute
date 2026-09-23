@@ -6,10 +6,9 @@ use serde_json::Value;
 use crate::replay::{ReplayContentWriter, ReplayError, ReplayReader, ReplayStore};
 use crate::server::request_plan::IngressProtocol;
 
-use super::{MARKER_PREFIX, MAX_CONTENT_FIELDS};
+use super::MARKER_PREFIX;
 
 const MAX_JSON_DEPTH: usize = 128;
-const MAX_CONTROL_STRING_BYTES: usize = 8 * 1024;
 const INLINE_CONTENT_BYTES: usize = 8 * 1024;
 const STRUCTURE_RESERVATION_BYTES: usize = 128;
 
@@ -77,7 +76,6 @@ pub(crate) fn compact_ingress_document(
         replay,
         pool: None,
         inline_remaining: INLINE_CONTENT_BYTES,
-        fields: 0,
     };
     compactor.walk(document, None, 0)?;
     if let Some(pool) = compactor.pool {
@@ -91,7 +89,6 @@ struct Compactor<'a> {
     replay: &'a ReplayStore,
     pool: Option<ReplayContentWriter>,
     inline_remaining: usize,
-    fields: usize,
 }
 
 impl Compactor<'_> {
@@ -111,8 +108,6 @@ impl Compactor<'_> {
             Value::String(text) => {
                 if field.is_some_and(content_string_field) {
                     self.externalize_string(text)
-                } else if text.len() > MAX_CONTROL_STRING_BYTES {
-                    Err(ReplayError::StructureLimit)
                 } else {
                     Ok(())
                 }
@@ -225,7 +220,6 @@ impl Compactor<'_> {
         value: &mut String,
         payload_start: usize,
     ) -> Result<(), ReplayError> {
-        self.count_field()?;
         let payload = value.get(payload_start..).ok_or(ReplayError::InvalidUtf8)?;
         if payload.len() <= self.inline_remaining && !payload.contains(MARKER_PREFIX) {
             self.inline_remaining -= payload.len();
@@ -238,7 +232,6 @@ impl Compactor<'_> {
     }
 
     fn externalize_string(&mut self, value: &mut String) -> Result<(), ReplayError> {
-        self.count_field()?;
         if value.len() <= self.inline_remaining && !value.contains(MARKER_PREFIX) {
             self.inline_remaining -= value.len();
             return Ok(());
@@ -249,7 +242,6 @@ impl Compactor<'_> {
     }
 
     fn externalize_json(&mut self, value: &mut Value) -> Result<(), ReplayError> {
-        self.count_field()?;
         let reference = self.pool()?.append_json(value, false)?;
         *value = reference.json_marker();
         Ok(())
@@ -260,17 +252,6 @@ impl Compactor<'_> {
             self.pool = Some(self.replay.begin_content_pool()?);
         }
         self.pool.as_mut().ok_or(ReplayError::Integrity)
-    }
-
-    fn count_field(&mut self) -> Result<(), ReplayError> {
-        self.fields = self
-            .fields
-            .checked_add(1)
-            .ok_or(ReplayError::LengthOverflow)?;
-        if self.fields > MAX_CONTENT_FIELDS {
-            return Err(ReplayError::StructureLimit);
-        }
-        Ok(())
     }
 }
 
@@ -286,6 +267,9 @@ fn content_string_field(field: &str) -> bool {
             | "output"
             | "system"
             | "text"
+            | "thinking"
+            | "signature"
+            | "encrypted_content"
     )
 }
 
@@ -313,6 +297,85 @@ mod tests {
     use super::*;
     use hiroute_gateway_core::runtime::body::BudgetTree;
     use serde_json::json;
+
+    #[test]
+    fn long_control_strings_are_preserved_without_a_generic_length_limit() {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-long-control-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = crate::replay::ReplayManager::open(crate::replay::ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: 128,
+            record_bytes: 31,
+            orphan_ttl: std::time::Duration::from_secs(60),
+        })
+        .unwrap();
+        let original = "control 中文 ".repeat(4096);
+        for protocol in [
+            IngressProtocol::Responses,
+            IngressProtocol::Messages,
+            IngressProtocol::ChatCompletions,
+        ] {
+            let tree = BudgetTree::new(1024 * 1024, 1024 * 1024).unwrap();
+            let store = manager
+                .begin_request(tree.stream(1024 * 1024).unwrap())
+                .unwrap();
+            let mut document = json!({"model":original,"metadata":{"extension":original}});
+            let expected = document.clone();
+            compact_ingress_document(protocol, &mut document, &store).unwrap();
+            assert_eq!(document, expected);
+        }
+        drop(manager);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn long_native_reasoning_history_is_content_not_control() {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-long-reasoning-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = crate::replay::ReplayManager::open(crate::replay::ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: 128,
+            record_bytes: 31,
+            orphan_ttl: std::time::Duration::from_secs(60),
+        })
+        .unwrap();
+        for (protocol, field) in [
+            (IngressProtocol::Messages, "thinking"),
+            (IngressProtocol::Messages, "signature"),
+            (IngressProtocol::Responses, "encrypted_content"),
+        ] {
+            let tree = BudgetTree::new(1024 * 1024, 1024 * 1024).unwrap();
+            let store = manager
+                .begin_request(tree.stream(1024 * 1024).unwrap())
+                .unwrap();
+            let original = "reasoning 中文 ".repeat(1024);
+            let mut document = json!({"model":"alias", "history":[{field:original}]});
+            compact_ingress_document(protocol, &mut document, &store).unwrap();
+            let marker = document["history"][0][field].as_str().unwrap();
+            let reference = crate::content_ref::ContentRef::from_wire_marker(marker).unwrap();
+            let mut actual = String::new();
+            store
+                .reader(&reference)
+                .unwrap()
+                .read_to_string(&mut actual)
+                .unwrap();
+            assert_eq!(actual, original);
+        }
+        drop(manager);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn responses_reasoning_stays_visible_for_typed_summary_decode() {
@@ -415,9 +478,6 @@ impl StructuralScanner {
             .structure_units
             .checked_add(1)
             .ok_or(ReplayError::StructureLimit)?;
-        if self.structure_units > MAX_CONTENT_FIELDS {
-            return Err(ReplayError::StructureLimit);
-        }
         Ok(())
     }
 

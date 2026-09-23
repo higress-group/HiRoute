@@ -23,12 +23,7 @@ pub(super) fn annotations(
                         if !annotations.is_empty() {
                             if item.get("role").and_then(Value::as_str) != Some("assistant")
                                 || part.get("type").and_then(Value::as_str) != Some("output_text")
-                                || annotations.len() > 128
-                                || annotations.iter().any(|a| {
-                                    a.start_index > a.end_index
-                                        || a.title.len() > 4096
-                                        || a.url.len() > 8192
-                                })
+                                || annotations.iter().any(|a| a.start_index > a.end_index)
                             {
                                 return Err(ModelIrError::InvalidField("annotations"));
                             }
@@ -60,7 +55,7 @@ pub(super) fn item_ids(
                 let id = id
                     .as_str()
                     .ok_or(ModelIrError::InvalidField("input[].id"))?;
-                if id.is_empty() || id.len() > 256 || id.chars().any(char::is_control) {
+                if id.is_empty() || id.chars().any(char::is_control) {
                     return Err(ModelIrError::InvalidField("input[].id"));
                 }
                 ids.insert(message_index, id.to_owned());
@@ -102,7 +97,7 @@ pub(super) fn internal_chat_message_metadata(
         "internal_chat_message_metadata_passthrough",
     )?;
     let turn_id = required_string(metadata, "turn_id")?;
-    if turn_id.is_empty() || turn_id.len() > 256 || turn_id.chars().any(char::is_control) {
+    if turn_id.is_empty() || turn_id.chars().any(char::is_control) {
         return Err(ModelIrError::InvalidField(
             "internal_chat_message_metadata_passthrough.turn_id",
         ));
@@ -158,15 +153,16 @@ pub(super) fn decode(
             )?;
             for field in ["effort", "summary"] {
                 if let Some(value) = optional_string(reasoning, field)?
-                    && (value.is_empty() || value.len() > 64 || value.chars().any(char::is_control))
+                    && (value.is_empty() || value.chars().any(char::is_control))
                 {
                     return Err(ModelIrError::InvalidField(field));
                 }
             }
             let context = optional_string(reasoning, "context")?;
-            if context.as_deref().is_some_and(|value| {
-                value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
-            }) {
+            if context
+                .as_deref()
+                .is_some_and(|value| value.is_empty() || value.chars().any(char::is_control))
+            {
                 return Err(ModelIrError::InvalidField("reasoning.context"));
             }
             Ok((optional_string(reasoning, "summary")?, context))
@@ -185,17 +181,13 @@ pub(super) fn decode(
             let values = value
                 .as_array()
                 .ok_or(ModelIrError::InvalidField("include"))?;
-            if values.len() > 16 {
-                return Err(ModelIrError::InvalidField("include"));
-            }
             values
                 .iter()
                 .map(|value| {
                     let value = value
                         .as_str()
                         .ok_or(ModelIrError::InvalidField("include"))?;
-                    if value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
-                    {
+                    if value.is_empty() || value.chars().any(char::is_control) {
                         return Err(ModelIrError::InvalidField("include"));
                     }
                     Ok(value.to_owned())
@@ -206,7 +198,7 @@ pub(super) fn decode(
     let prompt_cache_key = optional_string(object, "prompt_cache_key")?;
     if prompt_cache_key
         .as_ref()
-        .is_some_and(|key| key.len() > 256 || key.chars().any(char::is_control))
+        .is_some_and(|key| key.chars().any(char::is_control))
     {
         return Err(ModelIrError::InvalidField("prompt_cache_key"));
     }
@@ -216,16 +208,13 @@ pub(super) fn decode(
             let values = value
                 .as_object()
                 .ok_or(ModelIrError::InvalidField("client_metadata"))?;
-            if values.len() > 16 {
-                return Err(ModelIrError::InvalidField("client_metadata"));
-            }
             values
                 .iter()
                 .map(|(key, value)| {
                     let value = value
                         .as_str()
                         .ok_or(ModelIrError::InvalidField("client_metadata"))?;
-                    if key.len() > 128 || value.len() > 2048 || key.chars().any(char::is_control) {
+                    if key.chars().any(char::is_control) {
                         return Err(ModelIrError::InvalidField("client_metadata"));
                     }
                     Ok((key.clone(), value.to_owned()))
@@ -256,6 +245,56 @@ pub(super) fn decode(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn native_options_and_history_preserve_values_above_former_proxy_limits() {
+        let long = "native".repeat(2048);
+        let metadata = (0..20)
+            .map(|n| (format!("{long}{n}"), json!(long)))
+            .collect::<Map<String, Value>>();
+        let document = json!({
+            "reasoning":{"effort":long,"summary":long,"context":long},
+            "prompt_cache_key":long,
+            "include":vec![long.clone();20],
+            "client_metadata":metadata
+        });
+        let options = decode(document.as_object().unwrap()).unwrap().unwrap();
+        assert_eq!(options.reasoning_summary.as_deref(), Some(long.as_str()));
+        assert_eq!(options.reasoning_context.as_deref(), Some(long.as_str()));
+        assert_eq!(options.prompt_cache_key.as_deref(), Some(long.as_str()));
+        assert_eq!(options.include.unwrap(), vec![long.clone(); 20]);
+        assert_eq!(
+            options.client_metadata.unwrap(),
+            metadata
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+                .collect()
+        );
+        let citation = json!({"type":"url_citation","start_index":0,"end_index":1,
+            "title":long,"url":format!("https://example.test/{long}")});
+        let history = json!([{"type":"message","role":"assistant","id":long,
+            "content":[{"type":"output_text","text":"a","annotations":vec![citation;129]}],
+            "internal_chat_message_metadata_passthrough":{"turn_id":long}}]);
+        assert_eq!(item_ids(Some(&history)).unwrap()[&0], long);
+        assert_eq!(
+            internal_chat_message_metadata(&history[0])
+                .unwrap()
+                .unwrap()
+                .turn_id,
+            long
+        );
+        let citations = annotations(Some(&history)).unwrap();
+        assert_eq!(citations[&0][&0].len(), 129);
+        assert_eq!(citations[&0][&0][0].title, long);
+        assert_eq!(
+            citations[&0][&0][0].url,
+            format!("https://example.test/{long}")
+        );
+        let mut malformed = history;
+        malformed[0]["content"][0]["annotations"][0]["start_index"] = json!(2);
+        assert!(annotations(Some(&malformed)).is_err());
+    }
+
     #[test]
     fn reasoning_context_roundtrips_only_on_responses_without_dropping_history_policy() {
         use super::super::super::project_candidate_request;
@@ -288,20 +327,14 @@ mod tests {
                 assert!(projection.is_err());
             }
         }
-        for invalid in [
-            json!(null),
-            json!(false),
-            json!(""),
-            json!("x".repeat(257)),
-            json!("line\nbreak"),
-        ] {
+        for invalid in [json!(null), json!(false), json!(""), json!("line\nbreak")] {
             let mut document = document.clone();
             document["reasoning"]["context"] = invalid;
             assert!(decode_ingress_request(IngressProtocol::Responses, &document).is_err());
         }
     }
     #[test]
-    fn bounded_native_responses_options_are_provider_decided_not_gateway_enumerated() {
+    fn native_responses_options_are_provider_decided_not_gateway_enumerated() {
         use super::super::super::project_candidate_request;
         use super::super::decode_ingress_request;
         use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
@@ -437,7 +470,7 @@ mod tests {
         );
         let projected = project_candidate_request(&restored, &profile).unwrap();
         assert_eq!(projected.body["input"], document["input"]);
-        for invalid in [Value::Null, json!(5), json!(""), json!("x".repeat(257))] {
+        for invalid in [Value::Null, json!(5), json!("")] {
             let mut document = document.clone();
             document["input"][0]["id"] = invalid;
             assert!(decode_ingress_request(IngressProtocol::Responses, &document).is_err());
@@ -547,7 +580,7 @@ mod tests {
     }
 
     #[test]
-    fn installed_codex_item_metadata_and_phase_remain_bounded_and_fail_closed() {
+    fn installed_codex_item_metadata_and_phase_keep_type_and_semantic_validation() {
         use super::super::decode_ingress_request;
         let valid = json!({"model":"alias","input":[{
             "type":"message","role":"assistant","phase":"commentary",
@@ -560,7 +593,6 @@ mod tests {
             json!(null),
             json!({}),
             json!({"turn_id":""}),
-            json!({"turn_id":"x".repeat(257)}),
             json!({"turn_id":"turn-1","unknown":true}),
         ] {
             let mut document = valid.clone();
@@ -947,16 +979,13 @@ mod tests {
         assert_eq!(decode(json!({}).as_object().unwrap()).unwrap(), None);
     }
     #[test]
-    fn stateful_unknown_and_unbounded_controls_fail_closed() {
+    fn stateful_unknown_and_malformed_controls_fail_closed() {
         for value in [
             json!({"store":true}),
             json!({"store":"false"}),
             json!({"include":[false]}),
             json!({"include":[""]}),
-            json!({"include":["x".repeat(257)]}),
-            json!({"include":vec!["x"; 17]}),
             json!({"client_metadata":{"nested":{}}}),
-            json!({"prompt_cache_key":"x".repeat(257)}),
         ] {
             assert!(decode(value.as_object().unwrap()).is_err());
         }

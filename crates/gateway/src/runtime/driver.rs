@@ -56,7 +56,6 @@ const MATERIALIZATION_AUTHORITY_FAILED: &str = "authority_failed";
 const RUNTIME_STATE_AUTHORITY_FAILED: &str = "runtime_state_authority_failed";
 const MATERIALIZATION_DNS_FAILED: &str = "dns_failed";
 const MATERIALIZATION_PROTOCOL_FAILED: &str = "protocol_failed";
-const MAX_RENDERED_PRECOMMIT_BYTES: usize = 256 * 1024;
 
 pub struct ProductionProvider {
     credentials: Arc<dyn ProductionCredentialResolver>,

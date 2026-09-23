@@ -14,9 +14,7 @@ use super::{DecoderCore, ProtocolAdapterError};
 pub(super) struct MessagesState {
     blocks: BTreeMap<u32, NativeBlock>,
     next_order: u32,
-    max_deferred_bytes: usize,
-    max_deferred_blocks: u32,
-    deferred_bytes: usize,
+    pub(super) retention: super::body_buffer::Retention,
     terminal_classified: bool,
 }
 
@@ -43,24 +41,23 @@ enum NativeContent {
 }
 
 impl MessagesState {
-    pub(super) fn new(max_deferred_bytes: usize, max_deferred_blocks: u32) -> Self {
+    pub(super) fn new() -> Self {
         Self {
             blocks: BTreeMap::new(),
             next_order: 0,
-            max_deferred_bytes,
-            max_deferred_blocks,
-            deferred_bytes: 0,
+            retention: super::body_buffer::Retention::new(super::body_buffer::standalone_budget()),
             terminal_classified: false,
         }
     }
 
     fn insert(&mut self, index: u32, content: NativeContent) -> Result<(), ProtocolAdapterError> {
-        if self.terminal_classified
-            || self.blocks.contains_key(&index)
-            || u32::try_from(self.blocks.len()).unwrap_or(u32::MAX) >= self.max_deferred_blocks
-        {
-            return Err(ModelIrError::BufferLimit(self.max_deferred_blocks as usize).into());
+        if self.terminal_classified || self.blocks.contains_key(&index) {
+            return Err(ModelIrError::InvalidResponseLifecycle(
+                "duplicate or late Messages block".into(),
+            )
+            .into());
         }
+        self.retention.add(256)?;
         let order = self.next_order;
         self.next_order = self.next_order.checked_add(1).ok_or_else(|| {
             ModelIrError::InvalidResponseLifecycle("Messages block order overflow".into())
@@ -77,14 +74,7 @@ impl MessagesState {
     }
 
     fn charge(&mut self, bytes: usize) -> Result<(), ProtocolAdapterError> {
-        self.deferred_bytes = self
-            .deferred_bytes
-            .checked_add(bytes)
-            .ok_or(ModelIrError::BufferLimit(self.max_deferred_bytes))?;
-        if self.deferred_bytes > self.max_deferred_bytes {
-            return Err(ModelIrError::BufferLimit(self.max_deferred_bytes).into());
-        }
-        Ok(())
+        self.retention.add(bytes)
     }
 
     fn append_text(&mut self, index: u32, text: &str) -> Result<(), ProtocolAdapterError> {
@@ -263,7 +253,6 @@ impl MessagesState {
                 }
             }
         }
-        self.deferred_bytes = 0;
         self.terminal_classified = true;
         Ok(())
     }

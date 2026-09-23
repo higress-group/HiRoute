@@ -30,8 +30,8 @@ use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 use crate::server::request_plan::IngressProtocol;
 
 use super::{
-    MATERIALIZATION_PROTOCOL_FAILED, MAX_RENDERED_PRECOMMIT_BYTES, ProductionAttemptState,
-    ProductionDecodedSse, ProductionReadiness, SemanticTerminalOutcome, label, safe_error,
+    MATERIALIZATION_PROTOCOL_FAILED, ProductionAttemptState, ProductionDecodedSse,
+    ProductionReadiness, SemanticTerminalOutcome, label, safe_error,
 };
 
 pub(super) struct PrecommitDecoderBudget {
@@ -67,9 +67,6 @@ impl PrecommitDecoderBudget {
             .raw_bytes
             .checked_add(bytes)
             .ok_or_else(|| Arc::from("native precommit decoder byte limit overflow"))?;
-        if raw_bytes > MAX_RENDERED_PRECOMMIT_BYTES {
-            return Err(Arc::from("native precommit decoder byte limit exceeded"));
-        }
         // Vec's amortized retained capacity is strictly below twice the live
         // byte length after its minimum allocation. Shadow-charge that upper
         // bound before the native decoder is allowed to copy this frame.
@@ -85,15 +82,10 @@ impl PrecommitDecoderBudget {
             // Transport chunk boundaries are arbitrary and must not become a
             // correctness limit. Grow the accounting reservation geometrically
             // so a long sequence of tiny chunks uses bounded metadata while the
-            // exact byte ceiling remains enforced.
-            let maximum_charge = MAX_RENDERED_PRECOMMIT_BYTES
-                .checked_mul(2)
-                .and_then(|bytes| bytes.checked_add(8))
-                .ok_or_else(|| Arc::from("native precommit decoder charge overflow"))?;
+            // request memory budget remains enforced.
             let next_charge = target_charge
                 .checked_next_power_of_two()
-                .unwrap_or(maximum_charge)
-                .min(maximum_charge);
+                .unwrap_or(target_charge);
             self.charges.push(
                 self.budget
                     .reserve(MemoryRole::ResponsePrefix, next_charge - self.charged_bytes)
@@ -157,6 +149,7 @@ pub(super) fn classify_precommit(
                         status.as_u16(),
                         state.streaming && status.is_success(),
                         state.chat_tool_projection.take(),
+                        state.budget.clone(),
                     )
                     .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
                 );
@@ -1116,7 +1109,8 @@ fn push_queue_bytes(
     let quantum = queue.max_chunk_bytes();
     for chunk in bytes.chunks(quantum) {
         queue
-            .push_back(
+            .push_back_growing(
+                budget,
                 ChargedBytes::copy_from_opaque(budget, MemoryRole::ResponsePrefix, chunk)
                     .map_err(safe_error)?,
             )
@@ -1180,45 +1174,5 @@ pub(super) fn failure_facts(failure: &AttemptFailure) -> ProviderClassificationF
 mod terminal_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
-    use hiroute_gateway_core::runtime::body::BudgetTree;
-
-    #[test]
-    fn precommit_decoder_is_bounded_by_bytes_not_transport_chunk_count() {
-        let budget = BudgetTree::new(4 * 1024 * 1024, 4 * 1024 * 1024)
-            .unwrap()
-            .stream(4 * 1024 * 1024)
-            .unwrap();
-        let mut decoder = PrecommitDecoderBudget::new(&budget).unwrap();
-        for _ in 0..1_000 {
-            decoder.charge_frame(128).unwrap();
-        }
-        assert!(
-            decoder.charge_frame(MAX_RENDERED_PRECOMMIT_BYTES).is_err(),
-            "the byte ceiling remains authoritative"
-        );
-    }
-
-    #[test]
-    fn connector_error_semantics_are_sealed_by_profile_not_connector_allowlist() {
-        let mut profile = CandidateProtocolProfile::exact_portable_path(
-            IngressProtocol::Responses,
-            IngressProtocol::Responses,
-            "gpt-codex",
-            fixed_reasoning("fixed"),
-        );
-        profile.connector.connector_id = "connector.cpa.codex".into();
-        assert!(connector_error_profile(&profile).is_ok());
-
-        profile.connector.request_path = "/registered/provider/responses".into();
-        assert!(
-            connector_error_profile(&profile).is_ok(),
-            "a catalog-bound exact provider path need not equal the public ingress path"
-        );
-
-        profile.connector.schema_version = "hiroute.connector-profile/v2".into();
-        assert!(connector_error_profile(&profile).is_err());
-    }
-}
+#[path = "response_budget_tests.rs"]
+mod tests;

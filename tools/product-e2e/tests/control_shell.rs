@@ -97,6 +97,8 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             runtime_root.to_str().unwrap(),
         ])
         .env("HOME", &agent_home)
+        .env_remove("CODEX_HOME")
+        .env_remove("CLAUDE_CONFIG_DIR")
         .env("PATH", agent_path)
         .env_remove("ANTHROPIC_BASE_URL")
         .env_remove("ANTHROPIC_MODEL")

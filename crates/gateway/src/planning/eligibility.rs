@@ -3,8 +3,7 @@ use crate::server::core_runtime::model_ir::{
 };
 use crate::server::core_runtime::profiles::{
     CandidateContextDemand, CandidateProtocolProfile, ContextProjectionError, ContextProjector,
-    Fidelity, MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS, MAX_TERMINAL_CLASSIFIED_REFUSAL_BYTES,
-    NativeProviderStateEmission, StateAffinity, StreamingRefusalSemantics,
+    Fidelity, NativeProviderStateEmission, StateAffinity, StreamingRefusalSemantics,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -376,10 +375,8 @@ fn valid_stream_refusal(protocol: IngressProtocol, semantics: StreamingRefusalSe
         (protocol, semantics),
         (
             IngressProtocol::Messages,
-            StreamingRefusalSemantics::TerminalClassified {
-                max_buffered_bytes: 1..=MAX_TERMINAL_CLASSIFIED_REFUSAL_BYTES,
-                max_buffered_blocks: 1..=MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS,
-            }
+            StreamingRefusalSemantics::TerminalClassified
+                | StreamingRefusalSemantics::LegacyTerminalClassified { .. }
         ) | (
             IngressProtocol::Responses | IngressProtocol::ChatCompletions,
             StreamingRefusalSemantics::ExactDelta

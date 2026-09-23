@@ -11,7 +11,6 @@ use crate::server::core_runtime::model_ir::{
 pub(crate) const MARKER_PREFIX: &str = "__hiroute_content_ref_v2_";
 const MARKER_SUFFIX: &str = "__";
 const JSON_MARKER_KEY: &str = "__hiroute_json_content_ref_v2";
-pub const MAX_CONTENT_FIELDS: usize = 16_384;
 const CONTENT_FIELD_METADATA_BYTES: usize = 192;
 
 mod ingress;
@@ -151,9 +150,6 @@ pub fn externalize_model_request(
     inline_limit: usize,
 ) -> Result<(), ReplayError> {
     let field_count = content_field_count(request)?;
-    if field_count > MAX_CONTENT_FIELDS {
-        return Err(ReplayError::StructureLimit);
-    }
     replay.charge_metadata(
         field_count
             .checked_mul(CONTENT_FIELD_METADATA_BYTES)

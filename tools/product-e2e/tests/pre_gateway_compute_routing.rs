@@ -101,6 +101,8 @@ fn production_subprocess_uses_embedded_catalog_and_ignores_storage_tampering() {
                 runtime_root.to_str().unwrap(),
             ])
             .env("HOME", &home)
+            .env_remove("CODEX_HOME")
+            .env_remove("CLAUDE_CONFIG_DIR")
             .env_remove("ANTHROPIC_AUTH_TOKEN")
             .env_remove("ANTHROPIC_BASE_URL")
             .env_remove("ANTHROPIC_MODEL")

@@ -67,6 +67,46 @@ fn production_default_retains_up_to_ten_mib() {
     assert_eq!(config.record_bytes, 16 * 1024);
 }
 
+#[cfg(unix)]
+#[test]
+fn production_default_supports_symlinked_system_temp() {
+    const CHILD: &str = "HIROUTE_REPLAY_SYMLINK_TEMP_TEST";
+    if std::env::var_os(CHILD).is_some() {
+        let manager = ReplayManager::from_environment().expect("default replay root");
+        let store = manager.begin_request(budget()).expect("request backing");
+        let mut writer = store.begin_raw().expect("writer");
+        writer.append(b"native client request").expect("append");
+        let reference = writer.seal().expect("seal");
+        assert_eq!(read_all(&store, &reference), b"native client request");
+        return;
+    }
+    let root = TestRoot::new("system-temp-link");
+    fs::create_dir_all(root.0.join("actual")).expect("temporary directory");
+    let actual = fs::canonicalize(root.0.join("actual")).expect("resolved temp");
+    let link = root.0.join("system-temp");
+    std::os::unix::fs::symlink(&actual, &link).expect("system temp alias");
+    let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args([
+            "--exact",
+            "replay::tests::production_default_supports_symlinked_system_temp",
+            "--nocapture",
+        ])
+        .env(CHILD, "1")
+        .env("TMPDIR", &link)
+        .env_remove("HIROUTE_REPLAY_ROOT")
+        .env_remove("HIROUTE_REPLAY_MEMORY_THRESHOLD")
+        .env_remove("HIROUTE_REPLAY_RECORD_BYTES")
+        .env_remove("HIROUTE_REPLAY_ORPHAN_TTL_MS")
+        .output()
+        .expect("isolated default-path check");
+    assert!(
+        output.status.success(),
+        "default replay failed with a system temp alias: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[test]
 fn small_stream_retains_charged_capacity_and_has_independent_readers() {
     let root = TestRoot::new("memory");
@@ -114,6 +154,30 @@ fn small_stream_retains_charged_capacity_and_has_independent_readers() {
     drop(store);
     drop(manager);
     assert_eq!(stream_budget.snapshot().expect("snapshot").live, 0);
+}
+
+#[test]
+fn replay_stream_and_range_counts_use_owned_memory_without_fixed_quotas() {
+    let root = TestRoot::new("metadata-counts");
+    let manager = ReplayManager::open(config(&root.0, 64 * 1024, 4 * 1024)).unwrap();
+    let stream_budget = budget();
+    let store = manager.begin_request(stream_budget.clone()).unwrap();
+    for _ in 0..9 {
+        let mut writer = store.begin_raw().unwrap();
+        writer.append(b"raw").unwrap();
+        let reference = writer.seal().unwrap();
+        assert_eq!(read_all(&store, &reference), b"raw");
+    }
+    let mut writer = store.begin_content_pool().unwrap();
+    let mut last = None;
+    for _ in 0..16_385 {
+        last = Some(writer.append(b"range").unwrap());
+    }
+    writer.seal().unwrap();
+    assert_eq!(read_all(&store, &last.unwrap()), b"range");
+    assert!(stream_budget.snapshot().unwrap().live > 16_384 * super::RANGE_METADATA_BYTES);
+    drop(store);
+    assert_eq!(stream_budget.snapshot().unwrap().live, 0);
 }
 
 #[test]
@@ -344,7 +408,7 @@ fn replay_handle_relative_rename_and_symlink_race_cannot_escape() {
 }
 
 #[test]
-fn replay_ingress_structure_gate_rejects_ten_thousand_fields_before_content_pool() {
+fn replay_ingress_structure_is_budgeted_without_a_fixed_field_count_limit() {
     let root = TestRoot::new("structure-gate");
     let manager = ReplayManager::open(config(&root.0, 128, 64)).expect("manager");
     let store = manager.begin_request(budget()).expect("store");
@@ -362,9 +426,29 @@ fn replay_ingress_structure_gate_rejects_ten_thousand_fields_before_content_pool
     writer.append(&body).expect("append raw");
     let raw = writer.seal().expect("seal raw");
 
-    let error = crate::content_ref::scan_ingress_document(store.reader(&raw).expect("raw reader"))
-        .expect_err("structure limit");
-    assert!(matches!(error, ReplayError::StructureLimit));
+    let stats = crate::content_ref::scan_ingress_document(store.reader(&raw).expect("raw reader"))
+        .expect("many fields are not a protocol error");
+    let large = manager
+        .begin_request(
+            BudgetTree::new(64 * 1024 * 1024, 64 * 1024 * 1024)
+                .unwrap()
+                .stream(64 * 1024 * 1024)
+                .unwrap(),
+        )
+        .unwrap();
+    let workspace = stats
+        .reserve_workspace(&large, raw.byte_len())
+        .expect("sufficient memory");
+    assert!(workspace.bytes() > 16_384 * 128);
+    let small = manager
+        .begin_request(
+            BudgetTree::new(1024 * 1024, 1024 * 1024)
+                .unwrap()
+                .stream(1024 * 1024)
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(stats.reserve_workspace(&small, raw.byte_len()).is_err());
     assert_eq!(
         store.snapshot().live_streams,
         1,

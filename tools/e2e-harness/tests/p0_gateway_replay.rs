@@ -462,7 +462,7 @@ fn real_hirouted_rejects_non_owner_only_replay_root() {
 }
 
 #[test]
-fn real_hirouted_rejects_request_body_plan_capacity_before_provider_call() {
+fn real_hirouted_rejects_unavailable_request_workspace_before_provider_call() {
     hiroute_e2e::p0_execution_receipt!(
         "replay.request_capacity",
         [
@@ -472,19 +472,19 @@ fn real_hirouted_rejects_request_body_plan_capacity_before_provider_call() {
     );
     let forbidden = NativeProvider::start(vec![success()]);
     let fixture = RuntimeFixture::launch_with_replay(&[&forbidden], 1, 4_096, 1_024);
-    let body = request_document("capacity boundary ".repeat(65_536));
+    let body = request_document("capacity boundary ".repeat(500_000));
     assert!(
-        body.len() > 1024 * 1024,
-        "test must exceed the frozen body plan"
+        body.len() > 8 * 1024 * 1024,
+        "parsed JSON workspace must exceed the actual stream memory budget"
     );
 
     let response = fixture.request_body(&body);
-    assert_eq!(response.status, 413);
+    assert_eq!(response.status, 503);
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
         serde_json::json!({
             "schema_version": "hiroute.gateway.error/v1",
-            "code": "REQUEST_BODY_PLAN_LIMIT_EXCEEDED",
+            "code": "REPLAY_BUDGET_UNAVAILABLE",
             "phase": "canonical_request"
         })
     );

@@ -434,6 +434,7 @@ mod tests {
         fs::write(&binary, b"#!/bin/sh\nprintf 'codex-cli 99.99.99\\n'\n").unwrap();
         fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
         let mut layout = super::super::AgentFilesystemLayoutV1::from_process(&home, root.path());
+        layout.codex_user_config = config;
         layout.codex_executable = binary;
         layout.codex_desktop_executable = None;
         let registry: ConnectorRegistryBundleV1 = serde_json::from_slice(include_bytes!(

@@ -81,8 +81,12 @@ fn fixed_effort_large_input_preserves_choice_after_content_externalization() {
 }
 
 #[test]
-fn fixed_effort_late_model_still_obeys_selector_limit() {
-    let primary = NativeProvider::start(Vec::new());
+fn fixed_effort_late_model_reaches_upstream_after_large_input() {
+    let primary = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: RESPONSES_OK,
+    }]);
     let other = NativeProvider::start(Vec::new());
     let fixture = RuntimeFixture::launch_reasoning(&[&primary, &other], true);
     let input = serde_json::to_string(&"hello".repeat(4096)).unwrap();
@@ -92,15 +96,12 @@ fn fixed_effort_late_model_still_obeys_selector_limit() {
     let response = fixture.request_body(body.as_bytes());
     assert_eq!(
         response.status,
-        400,
+        200,
         "{}",
         String::from_utf8_lossy(&response.body)
     );
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&response.body).unwrap()["code"],
-        "MODEL_SELECTOR_LIMIT_EXCEEDED"
-    );
-    assert_eq!((primary.calls(), other.calls()), (0, 0));
+    assert_eq!((primary.calls(), other.calls()), (1, 0));
+    assert_eq!(reasoning_wire_value(&primary.requests()[0]), "high");
 }
 
 #[test]

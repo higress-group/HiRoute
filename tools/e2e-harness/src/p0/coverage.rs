@@ -300,7 +300,7 @@ pub const RECEIPTS: &[FrozenReceipt] = &[
     receipt!(
         "replay.request_capacity",
         "p0_gateway_replay",
-        "real_hirouted_rejects_request_body_plan_capacity_before_provider_call",
+        "real_hirouted_rejects_unavailable_request_workspace_before_provider_call",
         "tools/e2e-harness/tests/p0_gateway_replay.rs",
         [
             "replay.request_capacity_limit",

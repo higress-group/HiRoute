@@ -31,8 +31,6 @@ use stream::{ReplayStream, ReplayStreamBuilder};
 const DEFAULT_MEMORY_THRESHOLD: usize = 10 * 1024 * 1024;
 const DEFAULT_RECORD_BYTES: usize = 16 * 1024;
 const DEFAULT_ORPHAN_TTL: Duration = Duration::from_secs(24 * 60 * 60);
-const MAX_STREAMS_PER_REQUEST: u64 = 8;
-const MAX_RANGES_PER_STREAM: usize = 16_384;
 const STREAM_METADATA_BYTES: usize = 1024;
 const RANGE_METADATA_BYTES: usize = 256;
 
@@ -46,8 +44,13 @@ pub struct ReplayConfig {
 
 impl ReplayConfig {
     pub fn production_default() -> Self {
+        // System temp directories may be aliases (for example /tmp on Linux or /var
+        // on macOS). Resolve that base, while leaving the replay leaf itself subject
+        // to SecureRoot's owner, permission, and no-symlink checks.
+        let temporary = std::env::temp_dir();
+        let temporary = std::fs::canonicalize(&temporary).unwrap_or(temporary);
         Self {
-            root: std::env::temp_dir().join("hiroute-replay"),
+            root: temporary.join("hiroute-replay"),
             memory_threshold_bytes: DEFAULT_MEMORY_THRESHOLD,
             record_bytes: DEFAULT_RECORD_BYTES,
             orphan_ttl: DEFAULT_ORPHAN_TTL,
@@ -314,9 +317,6 @@ impl ReplayStore {
             .fetch_add(1, Ordering::AcqRel)
             .checked_add(1)
             .ok_or(ReplayError::LengthOverflow)?;
-        if ordinal > MAX_STREAMS_PER_REQUEST {
-            return Err(ReplayError::StructureLimit);
-        }
         ReplayStreamBuilder::new(
             Arc::clone(&self.inner.directory),
             ordinal,
@@ -425,9 +425,6 @@ impl ReplayContentWriter {
     }
 
     fn reserve_range(&self) -> Result<(), ReplayError> {
-        if self.ranges.len() >= MAX_RANGES_PER_STREAM {
-            return Err(ReplayError::StructureLimit);
-        }
         self.store.charge_metadata(RANGE_METADATA_BYTES)
     }
 

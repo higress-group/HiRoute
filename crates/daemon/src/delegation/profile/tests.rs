@@ -2,6 +2,28 @@ use super::*;
 
 #[cfg(unix)]
 #[test]
+fn nested_cli_shebang_resolves_the_selected_node_runtime() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = private_fixture();
+    let node = fixture.path().join("node");
+    std::fs::write(&node, b"#!/bin/sh\necho selected-worker-node\n").unwrap();
+    std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let harness = fixture.path().join("native-cli");
+    std::fs::write(&harness, b"#!/usr/bin/env node\n").unwrap();
+    std::fs::set_permissions(&harness, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let path = worker_path(&harness, Some(&node), &harness).unwrap();
+    assert_eq!(std::env::split_paths(&path).next().unwrap(), fixture.path());
+    let result = std::process::Command::new(harness)
+        .env_clear()
+        .env("PATH", path)
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    assert_eq!(result.stdout, b"selected-worker-node\n");
+}
+
+#[cfg(unix)]
+#[test]
 fn isolated_worker_profiles_can_resolve_standard_tools() {
     for harness in [WorkerHarnessV1::ClaudeCode, WorkerHarnessV1::CodexCli] {
         let profile = request(harness, "private-token");

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -12,8 +13,6 @@ use crate::server::request_plan::IngressProtocol;
 
 const CAPACITY: usize = 4096;
 const IDLE_TTL: Duration = Duration::from_secs(3600);
-const MAX_PATTERN: usize = 256 * 1024;
-const MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
 /// Authorization scope for opaque provider state, never for ordinary tool IDs.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct ProviderStateScopeV1 {
@@ -127,10 +126,34 @@ fn digest(state: &str) -> [u8; 32] {
     Sha256::digest(state.as_bytes()).into()
 }
 
+// Counting writer uses the same escaping rules as the actual serializer.
+struct JsonLength(usize);
+
+impl std::io::Write for JsonLength {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self
+            .0
+            .checked_add(bytes.len())
+            .ok_or_else(|| std::io::Error::other("serialized provider state length overflow"))?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+pub(crate) fn json_string_length(value: &str) -> Result<usize, ModelIrError> {
+    let mut length = JsonLength(0);
+    serde_json::to_writer(&mut length, value).map_err(|_| ModelIrError::BufferLimit(usize::MAX))?;
+    Ok(length.0)
+}
+
 struct Pending {
     digest: [u8; 32],
     owner: ExactProviderPathV1,
     pattern: Vec<u8>,
+    charge: Arc<Reservation>,
 }
 
 #[derive(Clone)]
@@ -138,21 +161,47 @@ pub(crate) struct ActiveProviderStates {
     store: Arc<ProviderStateStore>,
     scope: ProviderStateScopeV1,
     pending: Arc<Mutex<Vec<Pending>>>,
+    budget: StreamBudget,
     downstream: IngressProtocol,
 }
 
 impl ActiveProviderStates {
+    #[cfg(test)]
     pub(crate) fn new(
         store: Arc<ProviderStateStore>,
         scope: ProviderStateScopeV1,
         downstream: IngressProtocol,
     ) -> Self {
+        let tree = hiroute_gateway_core::runtime::body::BudgetTree::new(
+            64 * 1024 * 1024,
+            64 * 1024 * 1024,
+        )
+        .unwrap();
+        Self::with_budget(
+            store,
+            scope,
+            downstream,
+            tree.stream(64 * 1024 * 1024).unwrap(),
+        )
+    }
+
+    pub(crate) fn with_budget(
+        store: Arc<ProviderStateStore>,
+        scope: ProviderStateScopeV1,
+        downstream: IngressProtocol,
+        budget: StreamBudget,
+    ) -> Self {
         Self {
             store,
             scope,
             pending: Arc::new(Mutex::new(Vec::new())),
+            budget,
             downstream,
         }
+    }
+
+    pub(crate) fn budget(&self) -> &StreamBudget {
+        &self.budget
     }
 
     pub(crate) fn record(
@@ -164,35 +213,43 @@ impl ActiveProviderStates {
             .as_str()
             .filter(|s| !s.is_empty())
             .ok_or(ModelIrError::InvalidField("encrypted_content"))?;
-        // Responses ciphertext is surfaced as a thinking signature for Messages.
-        // Bind the actual downstream representation, not the upstream field name.
-        // Quotes inside user text are escaped and cannot activate this fragment.
-        let field = match self.downstream {
-            IngressProtocol::Responses => "encrypted_content",
-            IngressProtocol::Messages => "signature",
+        let prefix: &[u8] = match self.downstream {
+            IngressProtocol::Responses => b"\"encrypted_content\":",
+            IngressProtocol::Messages => b"\"signature\":",
             _ => return Err(ModelIrError::ProviderStateNotPortable),
         };
-        let pattern = format!(
-            "\"{field}\":{}",
-            serde_json::to_string(state)
-                .map_err(|_| ModelIrError::InvalidField("encrypted_content"))?
-        )
-        .into_bytes();
-        self.record_at_acceptance(state, owner, pattern)
+        let length = json_string_length(state)?
+            .checked_add(prefix.len())
+            .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
+        self.record_pattern(state, owner, length, |pattern| {
+            pattern.extend_from_slice(prefix);
+            serde_json::to_writer(pattern, state)
+                .map_err(|_| ModelIrError::InvalidField("encrypted_content"))
+        })
     }
 
     pub(crate) fn record_at_acceptance(
         &self,
         state: &str,
         owner: &ExactProviderPathV1,
-        pattern: Vec<u8>,
+        pattern: &[u8],
     ) -> Result<(), ModelIrError> {
-        if state.is_empty() || state.len() > MAX_PATTERN || pattern.is_empty() {
+        if state.is_empty() || pattern.is_empty() {
             return Err(ModelIrError::InvalidField("provider_state"));
         }
-        if pattern.len() > MAX_PATTERN {
-            return Err(ModelIrError::BufferLimit(MAX_PATTERN));
-        }
+        self.record_pattern(state, owner, pattern.len(), |out| {
+            out.extend_from_slice(pattern);
+            Ok(())
+        })
+    }
+
+    fn record_pattern(
+        &self,
+        state: &str,
+        owner: &ExactProviderPathV1,
+        length: usize,
+        fill: impl FnOnce(&mut Vec<u8>) -> Result<(), ModelIrError>,
+    ) -> Result<(), ModelIrError> {
         let digest = digest(state);
         let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         if pending
@@ -201,16 +258,22 @@ impl ActiveProviderStates {
         {
             return Ok(());
         }
-        if pending.len() >= 128
-            || pending.iter().map(|p| p.pattern.len()).sum::<usize>() + pattern.len()
-                > MAX_PENDING_BYTES
-        {
-            return Err(ModelIrError::BufferLimit(MAX_PENDING_BYTES));
-        }
+        // Charge pattern and scanner carry/boundary copies before allocating.
+        let bytes = length
+            .checked_mul(8)
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Pending>()))
+            .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
+        let charge = self
+            .budget
+            .reserve(MemoryRole::SemanticState, bytes)
+            .map_err(|_| ModelIrError::BufferLimit(bytes))?;
+        let mut pattern = Vec::with_capacity(length);
+        fill(&mut pattern)?;
         pending.push(Pending {
             digest,
             owner: owner.clone(),
             pattern,
+            charge: Arc::new(charge),
         });
         Ok(())
     }
@@ -219,6 +282,7 @@ impl ActiveProviderStates {
         AcceptedProviderStateScanner {
             active: self.clone(),
             carry: Vec::new(),
+            carry_charge: None,
         }
     }
 }
@@ -226,6 +290,7 @@ impl ActiveProviderStates {
 pub(crate) struct AcceptedProviderStateScanner {
     active: ActiveProviderStates,
     carry: Vec<u8>,
+    carry_charge: Option<Arc<Reservation>>,
 }
 
 impl AcceptedProviderStateScanner {
@@ -240,6 +305,10 @@ impl AcceptedProviderStateScanner {
             .map(|p| p.pattern.len().saturating_sub(1))
             .max()
             .unwrap_or(0);
+        let next_charge = pending
+            .iter()
+            .max_by_key(|p| p.pattern.len())
+            .map(|p| Arc::clone(&p.charge));
         let mut boundary = self.carry.clone();
         boundary.extend_from_slice(&bytes[..bytes.len().min(keep)]);
         pending.retain(|p| {
@@ -257,6 +326,7 @@ impl AcceptedProviderStateScanner {
             let start = boundary.len().saturating_sub(keep);
             self.carry = boundary[start..].to_vec();
         }
+        self.carry_charge = next_charge;
     }
 }
 
@@ -297,6 +367,70 @@ mod tests {
     }
 
     #[test]
+    fn provider_state_admission_counts_escaping_and_deduplicates() {
+        let state = "\"\\\n\u{0000}雪".repeat(128);
+        let mut length = JsonLength(0);
+        serde_json::to_writer(&mut length, &state).unwrap();
+        assert_eq!(length.0, serde_json::to_vec(&state).unwrap().len());
+        let bytes =
+            (b"\"encrypted_content\":".len() + length.0) * 8 + std::mem::size_of::<Pending>();
+        let tree =
+            hiroute_gateway_core::runtime::body::BudgetTree::new(bytes * 2, bytes * 2).unwrap();
+        let store = Arc::new(ProviderStateStore::default());
+        let rejected = ActiveProviderStates::with_budget(
+            store.clone(),
+            scope(),
+            IngressProtocol::Responses,
+            tree.stream(bytes - 1).unwrap(),
+        );
+        assert!(matches!(
+            rejected.record(&json!(state), &owner("luna")),
+            Err(ModelIrError::BufferLimit(_))
+        ));
+        assert!(rejected.pending.lock().unwrap().is_empty());
+        let accepted = ActiveProviderStates::with_budget(
+            store,
+            scope(),
+            IngressProtocol::Responses,
+            tree.stream(bytes).unwrap(),
+        );
+        accepted.record(&json!(state), &owner("luna")).unwrap();
+        accepted.record(&json!(state), &owner("luna")).unwrap();
+        assert_eq!(accepted.pending.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn native_signature_acceptance_has_no_fixed_state_or_pending_count_limit() {
+        let store = Arc::new(ProviderStateStore::default());
+        let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Messages);
+        let now = Instant::now();
+        let large = "s".repeat(300 * 1024);
+        for index in 0..129 {
+            let state = format!("{large}{index}");
+            let closing = format!(
+                "event: content_block_stop\ndata: {{\"index\":{index},\"type\":\"content_block_stop\"}}\n\n"
+            );
+            active
+                .record_at_acceptance(&state, &owner("luna"), closing.as_bytes())
+                .unwrap();
+        }
+        assert_eq!(active.pending.lock().unwrap().len(), 129);
+        let state = format!("{large}128");
+        let replay = json!({"messages":[{"role":"assistant","content":[
+            {"type":"thinking","thinking":"","signature":state}
+        ]}]});
+        assert!(store.resolve(&scope(), &replay, now).is_err());
+        active.scanner().accept_bytes(
+            b"event: content_block_stop\ndata: {\"index\":128,\"type\":\"content_block_stop\"}\n\n",
+            now,
+        );
+        assert_eq!(
+            store.resolve(&scope(), &replay, now).unwrap(),
+            Some(owner("luna"))
+        );
+    }
+
+    #[test]
     fn fragmented_native_signature_requires_accepted_matching_block_close() {
         let store = Arc::new(ProviderStateStore::default());
         let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Messages);
@@ -306,7 +440,7 @@ mod tests {
         ]}]});
         let closing = br#"{ "index": 0, "type": "content_block_stop" }"#;
         active
-            .record_at_acceptance("combined-signature", &owner("luna"), closing.to_vec())
+            .record_at_acceptance("combined-signature", &owner("luna"), closing)
             .unwrap();
         let mut scanner = active.scanner();
         scanner.accept_bytes(br#"{"signature":"combined-signature"}"#, now);
@@ -410,10 +544,17 @@ mod tests {
             store.resolve(&scope(), &request("one"), now),
             Err(ModelIrError::ProviderStateNotPortable)
         );
-        assert!(
-            ActiveProviderStates::new(store, scope(), IngressProtocol::Responses)
-                .record(&json!("x".repeat(MAX_PATTERN)), &owner("luna"))
-                .is_err()
+        let large = "x".repeat(300 * 1024);
+        let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
+        active.record(&json!(large), &owner("luna")).unwrap();
+        let wire = serde_json::to_vec(&json!({"encrypted_content":large})).unwrap();
+        let mut scanner = active.scanner();
+        for chunk in wire.chunks(8191) {
+            scanner.accept_bytes(chunk, now);
+        }
+        assert_eq!(
+            store.resolve(&scope(), &request(&large), now).unwrap(),
+            Some(owner("luna"))
         );
     }
 

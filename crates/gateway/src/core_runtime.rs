@@ -22,7 +22,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use bytes::Bytes;
 use hiroute_gateway_core::runtime::body::{
-    BodyDirection, BodyError, BodyPlanExecutor, MemoryRole, StreamBudget,
+    BodyDirection, BodyError, BodyPlanExecutor, ChargedBytes, MemoryRole, StreamBudget,
 };
 use hiroute_gateway_core::runtime::driver::{
     BoundRequestAdmission, DecisionCandidateAuthority, GatewayCoreLifecycle,
@@ -128,7 +128,12 @@ impl ProductionGatewayRuntime {
                 ObservedProductionProvider::new(ProductionProvider::new(&ports)),
                 NoopGatewayFilterManager,
                 connector.clone(),
-                GatewayCoreLifecycleLimits::default(),
+                GatewayCoreLifecycleLimits {
+                    // Replay and retained state use the shared memory owner;
+                    // the model proxy adds no cumulative request byte quota.
+                    max_request_body_bytes: usize::MAX,
+                    ..GatewayCoreLifecycleLimits::default()
+                },
             )
             .expect("static production lifecycle limits are valid"),
         );
@@ -281,12 +286,25 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
             Ok(authenticated) => authenticated,
             Err(error) => return write_dispatch_error(session, error).await,
         };
+        let budget = match self.execution.allocate_bound_stream_budget() {
+            Ok(budget) => budget,
+            Err(_) => {
+                return write_typed_error_phase(
+                    session,
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "REPLAY_BUDGET_UNAVAILABLE",
+                    "canonical_request",
+                )
+                .await;
+            }
+        };
         let selector_deadline = authenticated.selector_deadline();
         let mut selector = ModelSelector::new(self.authority().selector_limit());
         // Retain every opaque chunk already polled while the bounded selector
         // sees only its prefix, then replay those exact Bytes into the
         // canonical decoder before polling the rest of the body.
         let mut ingress_prefix = Vec::new();
+        let mut selector_charges = Vec::new();
         let served_model_id = loop {
             match session.read_request_body_before(selector_deadline).await {
                 Err(TransportError::DeadlineExceeded) => {
@@ -295,8 +313,26 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
                 }
                 Err(error) => return Err(error),
                 Ok(Some(chunk)) => {
+                    let charge_bytes = chunk.len().checked_mul(3).and_then(|n| n.checked_add(128));
+                    let charge = charge_bytes
+                        .and_then(|n| budget.reserve(MemoryRole::ModelIrBacking, n).ok());
+                    let Some(charge) = charge else {
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "REPLAY_BUDGET_UNAVAILABLE",
+                            "model_selector",
+                        )
+                        .await;
+                    };
+                    selector_charges.push(charge);
                     let selected = selector.feed(&chunk);
-                    ingress_prefix.push(chunk);
+                    let retained =
+                        ChargedBytes::copy_from_opaque(&budget, MemoryRole::RawRequest, &chunk)
+                            .map_err(|_| {
+                                TransportError::Io("selector memory budget unavailable".into())
+                            })?;
+                    ingress_prefix.push(retained);
                     match selected {
                         Ok(Some(alias)) => break alias,
                         Ok(None) => {}
@@ -309,6 +345,8 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
                 },
             }
         };
+        drop(selector);
+        drop(selector_charges);
         let authorized = match authenticated
             .authorize_alias(&served_model_id, Instant::now())
             .map(Box::new)
@@ -324,6 +362,7 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
             declared_content_length,
             ingress_prefix,
             authorized,
+            budget,
         )
         .await
     }
@@ -337,23 +376,12 @@ impl ProductionGatewayRuntime {
         request: Box<GatewayRequestHead>,
         protocol: IngressProtocol,
         declared_content_length: Option<usize>,
-        ingress_prefix: Vec<Bytes>,
+        ingress_prefix: Vec<ChargedBytes>,
         authorized: Box<AuthorizedRequestPlan>,
+        budget: StreamBudget,
     ) -> Pin<Box<dyn Future<Output = Result<SessionReuse, TransportError>> + Send + 'a>> {
         Box::pin(async move {
             let continuation_scope = tool_continuation_scope(&authorized);
-            let budget = match self.execution.allocate_bound_stream_budget() {
-                Ok(budget) => budget,
-                Err(_) => {
-                    return write_typed_error_phase(
-                        session,
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        "REPLAY_BUDGET_UNAVAILABLE",
-                        "canonical_request",
-                    )
-                    .await;
-                }
-            };
             let Some(replay_manager) = &self.replay else {
                 return write_typed_error_phase(
                     session,
@@ -1128,10 +1156,11 @@ impl ProductionGatewayRuntime {
             let route_binding = frozen_candidates[0].binding;
             let active_continuation = adapters::ActiveResponseDelivery::new(
                 protocol,
-                crate::provider_state::ActiveProviderStates::new(
+                crate::provider_state::ActiveProviderStates::with_budget(
                     Arc::clone(&self.provider_states),
                     continuation_scope,
                     protocol,
+                    budget.clone(),
                 ),
             );
             request_observation.bind_tool_id_projection(active_continuation.tool_id_projection());
@@ -1522,7 +1551,7 @@ enum ReplayBodyError {
 
 async fn read_replay_body(
     session: &mut dyn GatewaySession,
-    ingress_prefix: Vec<Bytes>,
+    ingress_prefix: Vec<ChargedBytes>,
     declared_content_length: Option<usize>,
     authorized: &AuthorizedRequestPlan,
     replay: &ReplayStore,
@@ -1544,8 +1573,11 @@ async fn read_replay_body(
     }
     let mut body = replay.begin_raw().map_err(|_| ReplayBodyError::Replay)?;
     for chunk in ingress_prefix {
-        owner.admit_chunk(chunk.len()).map_err(map_body_error)?;
-        body.append(&chunk).map_err(|_| ReplayBodyError::Replay)?;
+        owner
+            .admit_chunk(chunk.bytes().len())
+            .map_err(map_body_error)?;
+        body.append(chunk.bytes())
+            .map_err(|_| ReplayBodyError::Replay)?;
     }
     loop {
         let chunk = session
@@ -1653,75 +1685,8 @@ async fn write_response(
 }
 
 #[cfg(test)]
-mod inbound_auth_tests {
-    use super::*;
-
-    #[test]
-    fn x_api_key_never_authenticates_and_bearer_wins_when_both_are_present() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-api-key", HeaderValue::from_static("not-an-agent-grant"));
-        assert_eq!(inbound_authorization("/v1/messages", &headers), None);
-
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Bearer agent-grant"),
-        );
-        assert_eq!(
-            inbound_authorization("/v1/messages", &headers).as_deref(),
-            Some("Bearer agent-grant")
-        );
-    }
-
-    #[test]
-    fn codex_requires_independent_grant_without_native_bearer_fallback() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Bearer native-oauth"),
-        );
-        assert!(inbound_authorization("/v1/responses", &headers).is_none());
-        headers.insert("x-hiroute-token", HeaderValue::from_static("model-grant"));
-        assert_eq!(
-            inbound_authorization("/v1/responses", &headers).as_deref(),
-            Some("Bearer model-grant")
-        );
-        assert!(inbound_authorization("/v1/messages", &headers).is_none());
-        headers.insert("x-hiroute-token", HeaderValue::from_static(""));
-        assert!(inbound_authorization("/v1/responses", &headers).is_none());
-    }
-
-    #[test]
-    fn repeated_or_combined_grant_headers_are_rejected() {
-        let mut headers = HeaderMap::new();
-        headers.append("x-hiroute-token", HeaderValue::from_static("first"));
-        headers.append("x-hiroute-token", HeaderValue::from_static("second"));
-        assert!(inbound_authorization("/v1/responses", &headers).is_none());
-        headers.insert("x-hiroute-token", HeaderValue::from_static("first,second"));
-        assert!(inbound_authorization("/v1/responses", &headers).is_none());
-        headers.remove("x-hiroute-token");
-        headers.append(AUTHORIZATION, HeaderValue::from_static("Bearer first"));
-        headers.append(AUTHORIZATION, HeaderValue::from_static("Bearer second"));
-        assert!(inbound_authorization("/v1/messages", &headers).is_none());
-    }
-
-    #[test]
-    fn worker_run_authority_retains_its_separate_bearer_channel() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Bearer hr_run_model_fixture"),
-        );
-        assert_eq!(
-            inbound_authorization("/v1/responses", &headers).as_deref(),
-            Some("Bearer hr_run_model_fixture")
-        );
-        headers.insert(
-            "x-hiroute-token",
-            HeaderValue::from_static("hr_run_model_fixture"),
-        );
-        assert!(inbound_authorization("/v1/responses", &headers).is_none());
-    }
-}
+#[path = "core_runtime/inbound_auth_tests.rs"]
+mod inbound_auth_tests;
 
 #[cfg(test)]
 #[path = "core_runtime/acceptance_tests.rs"]

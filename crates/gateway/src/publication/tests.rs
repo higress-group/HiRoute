@@ -11,6 +11,25 @@ use crate::server::request_plan::IngressProtocol;
 
 static DIRECTORY_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
+#[test]
+fn production_body_plan_admits_large_requests_without_a_proxy_byte_quota() {
+    use hiroute_gateway_core::runtime::body::{BodyDirection, BodyPlanExecutor};
+    let aggregate = super::compiler::compile(&snapshot(1, "renderer")).unwrap();
+    let plan = &aggregate.aliases["alpha"]
+        .execution
+        .request_plan
+        .logical_request
+        .body_plan;
+    let mut owner =
+        BodyPlanExecutor::new(BodyDirection::LogicalRequest, plan.clone(), usize::MAX).unwrap();
+    let bytes = 32 * 1024 * 1024;
+    owner.preflight_content_length(bytes).unwrap();
+    for _ in 0..512 {
+        owner.admit_chunk(64 * 1024).unwrap();
+    }
+    assert_eq!(owner.finish().unwrap(), bytes);
+}
+
 pub(super) struct TestDirectory(PathBuf);
 
 impl TestDirectory {

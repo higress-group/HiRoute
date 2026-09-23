@@ -19,8 +19,6 @@ use super::{
 #[path = "client_stream_tests.rs"]
 mod tests;
 
-const MAX_RENDERER_METADATA_BYTES: usize = 1024 * 1024;
-
 #[derive(Clone, Debug)]
 struct ToolState {
     logical_id: String,
@@ -57,10 +55,18 @@ pub struct IncrementalClientSseRenderer {
     responses_metadata: BTreeMap<String, Value>,
     open_messages_blocks: BTreeSet<u32>,
     pending_messages_reasoning: BTreeSet<u32>,
-    metadata_bytes: usize,
+    retention: super::body_buffer::Retention,
 }
 
 impl IncrementalClientSseRenderer {
+    pub(crate) fn with_budget(
+        mut self,
+        budget: hiroute_gateway_core::runtime::body::StreamBudget,
+    ) -> Self {
+        self.retention = super::body_buffer::Retention::new(budget);
+        self
+    }
+
     pub fn new(
         profile: ClientProtocolProfile,
         served_model_alias: impl Into<String>,
@@ -73,7 +79,7 @@ impl IncrementalClientSseRenderer {
         }
         Ok(Self {
             profile,
-            metadata_bytes: alias.len(),
+            retention: super::body_buffer::Retention::new(super::body_buffer::standalone_budget()),
             alias,
             expected_sequence: 0,
             native_sequence: 0,
@@ -829,7 +835,6 @@ impl IncrementalClientSseRenderer {
             .map(str::to_owned)
             .unwrap_or_else(|| format!("{prefix}_{index}"));
         if item_id.is_empty()
-            || item_id.len() > 256
             || item_id.chars().any(char::is_control)
             || self.item_ids.contains_key(&index)
             || self.item_ids.values().any(|current| current == &item_id)
@@ -1086,14 +1091,7 @@ impl IncrementalClientSseRenderer {
     }
 
     fn charge_metadata(&mut self, bytes: usize) -> Result<(), ProtocolAdapterError> {
-        self.metadata_bytes = self
-            .metadata_bytes
-            .checked_add(bytes)
-            .ok_or(ModelIrError::BufferLimit(MAX_RENDERER_METADATA_BYTES))?;
-        if self.metadata_bytes > MAX_RENDERER_METADATA_BYTES {
-            return Err(ModelIrError::BufferLimit(MAX_RENDERER_METADATA_BYTES).into());
-        }
-        Ok(())
+        self.retention.add(bytes)
     }
 }
 

@@ -362,6 +362,7 @@ hiroute agents check agent_codex_default \
       "intent": "configure",
       "settings": {
         "mode": "codex_default",
+        "native_model_mode": "hiroute_only",
         "fixed_models": [],
         "allowed_plan_ids": ["PLAN_ID"],
         "default_selection": {"kind": "plan", "plan_id": "PLAN_ID"}

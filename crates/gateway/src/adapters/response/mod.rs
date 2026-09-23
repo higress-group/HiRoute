@@ -1,5 +1,6 @@
 //! Stateful native response decoding and client protocol rendering.
 
+mod body_buffer;
 mod client_stream;
 mod completion;
 mod decoder;
@@ -15,6 +16,9 @@ mod wire;
 #[cfg(test)]
 #[path = "native_passthrough_tests.rs"]
 mod native_passthrough_tests;
+
+#[cfg(test)]
+mod size_tests;
 
 #[cfg(test)]
 pub(super) fn test_tool_projection() -> super::continuation::ToolIdProjection {
@@ -40,9 +44,6 @@ use crate::server::core_runtime::profiles::NativeProviderStateEmission;
 use crate::server::request_plan::IngressProtocol;
 
 use super::ProtocolAdapterError;
-
-const MAX_CANONICAL_SEMANTIC_BYTES: usize = 16 * 1024 * 1024;
-const MAX_CANONICAL_BLOCKS: u32 = 65_536;
 
 /// Responses labels its ordinary assistant answer with `final_answer`. Messages and Chat
 /// Completions have only that assistant-output channel, so the label is losslessly implicit in
@@ -111,6 +112,7 @@ struct DecoderCore {
     next_block: u32,
     next_sequence: u64,
     semantic_bytes: usize,
+    retention: body_buffer::Retention,
 }
 
 impl DecoderCore {
@@ -135,6 +137,7 @@ impl DecoderCore {
             next_block: 0,
             next_sequence: 0,
             semantic_bytes: 0,
+            retention: body_buffer::Retention::new(body_buffer::standalone_budget()),
         }
     }
 
@@ -166,9 +169,7 @@ impl DecoderCore {
             return Ok((*index, false));
         }
         let index = self.next_block;
-        if index >= MAX_CANONICAL_BLOCKS {
-            return Err(ModelIrError::BufferLimit(MAX_CANONICAL_BLOCKS as usize).into());
-        }
+        self.retention.add(256)?;
         self.next_block = self.next_block.checked_add(1).ok_or_else(|| {
             ModelIrError::InvalidResponseLifecycle("content block index overflow".into())
         })?;
@@ -197,14 +198,14 @@ impl DecoderCore {
         item_id: &str,
     ) -> Result<(), ProtocolAdapterError> {
         if item_id.is_empty()
-            || item_id.len() > 256
             || item_id.chars().any(char::is_control)
-            || self.native_item_ids.len() >= MAX_CANONICAL_BLOCKS as usize
             || self.native_item_ids.contains_key(&native_index)
             || !self.native_item_id_values.insert(item_id.into())
         {
             return Err(ModelIrError::InvalidField("response output item id").into());
         }
+        self.retention
+            .add(item_id.len().saturating_mul(2).saturating_add(128))?;
         self.native_item_ids.insert(native_index, item_id.into());
         Ok(())
     }
@@ -243,11 +244,11 @@ impl DecoderCore {
         let bytes = serde_json::to_vec(&value)
             .map_err(|error| ModelIrError::InvalidJson(error.to_string()))?
             .len();
+        self.retention.add(bytes)?;
         self.responses_encrypted_buffered_bytes = self
             .responses_encrypted_buffered_bytes
             .checked_add(bytes)
-            .filter(|next| *next <= MAX_CANONICAL_SEMANTIC_BYTES)
-            .ok_or(ModelIrError::BufferLimit(MAX_CANONICAL_SEMANTIC_BYTES))?;
+            .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
         self.responses_encrypted_fallback
             .insert(native_index, value);
         Ok(())
@@ -321,7 +322,7 @@ impl DecoderCore {
             }
             return Ok(());
         };
-        if phase.is_empty() || phase.len() > 64 || phase.chars().any(char::is_control) {
+        if phase.is_empty() || phase.chars().any(char::is_control) {
             return Err(ModelIrError::InvalidField("response output message phase").into());
         }
         if let Some(current) = self.native_message_phases.get(&native_index) {
@@ -345,14 +346,12 @@ impl DecoderCore {
             )
             .into());
         }
-        if self.native_message_phases.len() >= MAX_CANONICAL_BLOCKS as usize {
-            return Err(ModelIrError::BufferLimit(MAX_CANONICAL_BLOCKS as usize).into());
-        }
+
+        self.retention.add(phase.len())?;
         self.semantic_bytes = self
             .semantic_bytes
             .checked_add(phase.len())
-            .filter(|next| *next <= MAX_CANONICAL_SEMANTIC_BYTES)
-            .ok_or(ModelIrError::BufferLimit(MAX_CANONICAL_SEMANTIC_BYTES))?;
+            .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
         self.native_message_phases
             .insert(native_index, phase.to_owned());
         Ok(())
@@ -416,10 +415,8 @@ impl DecoderCore {
         let next = self
             .semantic_bytes
             .checked_add(added)
-            .ok_or(ModelIrError::BufferLimit(MAX_CANONICAL_SEMANTIC_BYTES))?;
-        if next > MAX_CANONICAL_SEMANTIC_BYTES {
-            return Err(ModelIrError::BufferLimit(MAX_CANONICAL_SEMANTIC_BYTES).into());
-        }
+            .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
+        self.retention.add(added)?;
         self.semantic_bytes = next;
         Ok(())
     }
@@ -743,7 +740,6 @@ impl DecoderCore {
             return Ok(());
         };
         if item_id.is_empty()
-            || item_id.len() > 256
             || item_id.chars().any(char::is_control)
             || self
                 .accumulator

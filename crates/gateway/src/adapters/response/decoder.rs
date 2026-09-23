@@ -8,9 +8,8 @@ use hiroute_gateway_core::runtime::sse::{
 
 use crate::server::core_runtime::model_ir::{ModelIrError, ModelResponseIRV1, ModelStreamEventV1};
 use crate::server::core_runtime::profiles::{
-    CandidateProtocolProfile, CapabilityError, Fidelity, MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS,
-    MAX_TERMINAL_CLASSIFIED_REFUSAL_BYTES, NativeProviderStateEmission, StateAffinity,
-    StreamingRefusalSemantics,
+    CandidateProtocolProfile, CapabilityError, Fidelity, NativeProviderStateEmission,
+    StateAffinity, StreamingRefusalSemantics,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -18,10 +17,9 @@ use super::ProtocolAdapterError;
 use super::protocols::ProtocolState;
 use crate::server::core_runtime::adapters::ChatToolProjection;
 
-const MAX_NATIVE_BODY_BYTES: usize = 16 * 1024 * 1024;
-const MAX_SSE_EVENT_BYTES: usize = 256 * 1024;
+const RETAINED_SSE_CAPACITY: usize = 256 * 1024;
 const MAX_QUEUED_EVENTS: usize = 32;
-const STREAM_MEMORY_BUDGET: usize = 64 * 1024 * 1024;
+const STREAM_MEMORY_BUDGET: usize = 256 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResponseDecodeStatus {
@@ -41,7 +39,7 @@ pub struct NativeResponseDecoder {
     protocol: IngressProtocol,
     status: u16,
     streaming: bool,
-    body: Vec<u8>,
+    body: super::body_buffer::BodyBuffer,
     state: ProtocolState,
     events: VecDeque<ModelStreamEventV1>,
     budget: StreamBudget,
@@ -64,6 +62,7 @@ impl NativeResponseDecoder {
                 profile.ingress_protocol,
             )),
             None,
+            None,
         )
     }
 
@@ -72,8 +71,16 @@ impl NativeResponseDecoder {
         status: u16,
         streaming: bool,
         chat_tool_projection: Option<ChatToolProjection>,
+        budget: StreamBudget,
     ) -> Result<Self, ProtocolAdapterError> {
-        Self::new_with_projections(profile, status, streaming, None, chat_tool_projection)
+        Self::new_with_projections(
+            profile,
+            status,
+            streaming,
+            None,
+            chat_tool_projection,
+            Some(budget),
+        )
     }
 
     /// Builds an observation-only decoder with an explicit request-bound Tool
@@ -92,6 +99,7 @@ impl NativeResponseDecoder {
             streaming,
             Some(tool_id_projection),
             chat_tool_projection,
+            None,
         )
     }
 
@@ -101,6 +109,7 @@ impl NativeResponseDecoder {
         streaming: bool,
         tool_id_projection: Option<super::super::continuation::ToolIdProjection>,
         chat_tool_projection: Option<ChatToolProjection>,
+        request_budget: Option<StreamBudget>,
     ) -> Result<Self, ProtocolAdapterError> {
         if profile.capability.upstream_protocol != profile.connector.upstream_protocol
             || !profile.connector.critical_facts_are_exact()
@@ -119,56 +128,41 @@ impl NativeResponseDecoder {
             );
         }
         let protocol = profile.capability.upstream_protocol;
-        let (terminal_refusal_buffer, terminal_refusal_blocks) = if streaming {
-            match (protocol, profile.capability.response.stream_refusal) {
+        if streaming
+            && !matches!(
+                (protocol, profile.capability.response.stream_refusal),
                 (
                     IngressProtocol::Messages,
-                    StreamingRefusalSemantics::TerminalClassified {
-                        max_buffered_bytes,
-                        max_buffered_blocks,
-                    },
-                ) => {
-                    let bytes = usize::try_from(max_buffered_bytes)
-                        .ok()
-                        .filter(|limit| {
-                            *limit > 0
-                                && *limit <= super::MAX_CANONICAL_SEMANTIC_BYTES
-                                && max_buffered_bytes <= MAX_TERMINAL_CLASSIFIED_REFUSAL_BYTES
-                        })
-                        .ok_or(CapabilityError::StreamRefusalUnsupported)?;
-                    if max_buffered_blocks == 0
-                        || max_buffered_blocks > MAX_TERMINAL_CLASSIFIED_REFUSAL_BLOCKS
-                    {
-                        return Err(CapabilityError::StreamRefusalUnsupported.into());
-                    }
-                    (bytes, max_buffered_blocks)
-                }
-                (
+                    StreamingRefusalSemantics::TerminalClassified
+                        | StreamingRefusalSemantics::LegacyTerminalClassified { .. }
+                ) | (
                     IngressProtocol::Responses | IngressProtocol::ChatCompletions,
-                    StreamingRefusalSemantics::ExactDelta,
-                ) => (0, 0),
-                _ => return Err(CapabilityError::StreamRefusalUnsupported.into()),
-            }
-        } else {
-            (0, 0)
-        };
+                    StreamingRefusalSemantics::ExactDelta
+                )
+            )
+        {
+            return Err(CapabilityError::StreamRefusalUnsupported.into());
+        }
         let owner = profile.exact_provider_path()?;
         let budget_tree = BudgetTree::new(STREAM_MEMORY_BUDGET, STREAM_MEMORY_BUDGET)
             .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?;
-        let budget = budget_tree
-            .stream(STREAM_MEMORY_BUDGET)
-            .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?;
+        let budget = match request_budget {
+            Some(budget) => budget,
+            None => budget_tree
+                .stream(STREAM_MEMORY_BUDGET)
+                .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?,
+        };
         let framer = if streaming {
             Some(
                 SseFramer::new(
                     SseLimits {
-                        max_event_bytes: MAX_SSE_EVENT_BYTES,
-                        max_pending_bytes: MAX_SSE_EVENT_BYTES,
-                        max_output_event_bytes: MAX_SSE_EVENT_BYTES,
+                        max_event_bytes: usize::MAX,
+                        max_pending_bytes: usize::MAX,
+                        max_output_event_bytes: usize::MAX,
                         expansion_ratio_numerator: 1,
                         expansion_ratio_denominator: 1,
                         expansion_slack_bytes: 0,
-                        retained_capacity_threshold: MAX_SSE_EVENT_BYTES,
+                        retained_capacity_threshold: RETAINED_SSE_CAPACITY,
                         eof_policy: EofPolicy::Strict,
                     },
                     budget.clone(),
@@ -178,20 +172,23 @@ impl NativeResponseDecoder {
         } else {
             None
         };
+        let mut state = ProtocolState::new(
+            protocol,
+            owner,
+            profile.capability.native_provider_state,
+            tool_id_projection,
+            chat_tool_projection,
+        );
+        state.core_mut().retention = super::body_buffer::Retention::new(budget.clone());
+        if let ProtocolState::Messages { state, .. } = &mut state {
+            state.retention = super::body_buffer::Retention::new(budget.clone());
+        }
         Ok(Self {
             protocol,
             status,
             streaming,
-            body: Vec::new(),
-            state: ProtocolState::new(
-                protocol,
-                owner,
-                profile.capability.native_provider_state,
-                terminal_refusal_buffer,
-                terminal_refusal_blocks,
-                tool_id_projection,
-                chat_tool_projection,
-            ),
+            body: super::body_buffer::BodyBuffer::default(),
+            state,
             events: VecDeque::new(),
             budget,
             framer,
@@ -306,18 +303,10 @@ impl NativeResponseDecoder {
     }
 
     fn feed_json(&mut self, bytes: &[u8], end_stream: bool) -> Result<(), ProtocolAdapterError> {
-        let next = self
-            .body
-            .len()
-            .checked_add(bytes.len())
-            .ok_or(ModelIrError::BufferLimit(MAX_NATIVE_BODY_BYTES))?;
-        if next > MAX_NATIVE_BODY_BYTES {
-            return Err(ModelIrError::BufferLimit(MAX_NATIVE_BODY_BYTES).into());
-        }
-        self.body.extend_from_slice(bytes);
+        self.body.append(bytes, &self.budget)?;
         if end_stream {
             self.state
-                .decode_nonstream(self.status, &self.body, &mut self.events)?;
+                .decode_nonstream(self.status, self.body.bytes(), &mut self.events)?;
         }
         Ok(())
     }

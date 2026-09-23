@@ -33,7 +33,7 @@ impl ModelSelector {
         Ok(None)
     }
 
-    pub fn finish(self) -> Result<String, SelectorError> {
+    pub fn finish(&self) -> Result<String, SelectorError> {
         if let Extract::Found(model) = extract_top_level_model(&self.bytes)? {
             return validate_model(model);
         }

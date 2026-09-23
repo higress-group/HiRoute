@@ -39,7 +39,9 @@ use crate::server::request_plan::{
     ProviderCandidateAuthority, RequestPriceBindingV1, RestBranchClassifierAuthorityV1,
 };
 
-const LOGICAL_BODY_LIMIT: usize = 1024 * 1024;
+// Replay spills; allocation is governed by the request memory budget.
+// The body plan carries no additional protocol byte limit.
+const LOGICAL_BODY_LIMIT: usize = usize::MAX;
 const FRAME_LIMIT: usize = 64 * 1024;
 const DEFAULT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(20);
 

@@ -338,6 +338,29 @@
   ],
   "subjects": [
     {
+      "subject": "terminal_classification_retired_quotas",
+      "audited_prefixes": ["hiroute.candidate-capability"],
+      "current_contracts": ["hiroute.candidate-capability/v1"],
+      "legacy_support": [
+        {
+          "contract": "hiroute.candidate-capability/v1",
+          "mode": "recovery_read_only",
+          "owner": "gateway-protocol",
+          "reason": "Recover the pre-20260922 V1 terminal_classified shape in persisted publications and operation journals. Preserve max_buffered_bytes and max_buffered_blocks only for historical canonical digest validation; execution ignores both. Current producers construct the quota-free variant. The same V1 identifier also occurs in the listed current producer and consumer paths.",
+          "removal_condition": "Remove when active publications, operation journals, LKG snapshots and supported backups contain no terminal_classified descriptors with either retired quota field.",
+          "allowed_paths": [
+            "crates/application/src/compiler/test_fixtures.rs",
+            "crates/daemon/src/control/runtime/candidate_protocol_profiles.rs",
+            "crates/domain/src/routing/gateway_execution.rs",
+            "crates/gateway/src/profiles/capability.rs",
+            "crates/gateway/src/planning/eligibility.rs",
+            "crates/gateway/src/runtime/driver/response.rs",
+            "e2e/product/golden/routing/compiled-publication.v2.json"
+          ]
+        }
+      ]
+    },
+    {
       "subject": "gateway_e2e_build_attestation",
       "audited_prefixes": [
         "hiroute.e2e.sut-build-attestation"
