@@ -80,6 +80,8 @@ pub struct CompiledAttemptPlan {
     /// grant exactly one non-secret reference before materialization.
     pub credential_refs: Arc<[CredentialRef]>,
     pub transport_target: TransportTarget,
+    /// Other immutable native targets selected by protocol profiles in this publication.
+    pub authorized_native_targets: Arc<[TransportTarget]>,
     /// Defines whether request-scoped provider authority may replace only the
     /// numeric loopback socket of the compiled target. Durable CPA
     /// publications survive daemon restarts, while the supervised CPA process
@@ -142,6 +144,14 @@ impl AttemptPlanIndex {
                 });
             }
             plan.transport_target.validate()?;
+            if !plan.authorized_native_targets.is_empty()
+                && plan.transport_target_policy != TransportTargetPolicy::Exact
+            {
+                return Err(PlanError::InvalidManagedLoopbackTarget);
+            }
+            for target in plan.authorized_native_targets.iter() {
+                target.validate()?;
+            }
             if plan.transport_target_policy == TransportTargetPolicy::ManagedLoopback
                 && !plan.transport_target.is_numeric_loopback_http()
             {

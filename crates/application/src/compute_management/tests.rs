@@ -90,6 +90,7 @@ fn native_facts(
         authentication: Some(authentication),
         models,
         native_recheck: None,
+        additional_native_endpoints: Vec::new(),
         discovery_guard: None,
         credential_binding,
         validation: None,
@@ -140,6 +141,7 @@ fn cpa_verified_facts() -> ComputeCandidateFactsV2 {
         authentication: Some(GatewayAuthenticationSemanticsV1::Bearer),
         models: vec![model("cpa", unknown())],
         native_recheck: None,
+        additional_native_endpoints: Vec::new(),
         discovery_guard: None,
         credential_binding: ComputeCredentialBindingV2::CpaOwned {
             account_ref: "account/current".to_owned(),
@@ -388,6 +390,7 @@ fn cpa_candidate_without_models_or_lease_can_be_registered_for_approval() {
         authentication: None,
         models: Vec::new(),
         native_recheck: None,
+        additional_native_endpoints: Vec::new(),
         discovery_guard: None,
         credential_binding: ComputeCredentialBindingV2::CpaPendingApproval {
             protected_source: ProtectedInputSourceDescriptorV1::DiscoveredConfig {
@@ -707,6 +710,7 @@ fn complete_management_source() -> hiroute_domain::ComputeManagementSourceV2 {
         }],
         native_recheck: None,
         credentials: Vec::new(),
+        additional_native_endpoints: Vec::new(),
         validation: None,
         last_candidate_ref: "candidate/manual".into(),
         last_candidate_revision: 2,
@@ -1233,4 +1237,33 @@ fn management_query_keeps_runtime_read_failures_visible_as_unknown() {
         hiroute_application_api::ComputeManagementRuntimeReadStateV2::Partial
     );
     assert_eq!(result.sources[0].ready_model_count, 0);
+}
+
+#[test]
+fn management_query_exposes_saved_native_inventory_path_for_editing() {
+    let mut source = complete_management_source();
+    source.native_recheck = Some(hiroute_domain::ComputeNativeRecheckDescriptorV2 {
+        display_template_id: Some("template/custom".into()),
+        inventory_path: Some("/custom/models".into()),
+        protocol_header_semantics: hiroute_domain::GatewayHeaderSemanticsV1 {
+            content_type: "application/json".into(),
+            required_headers: Vec::new(),
+            forbidden_forward_headers: Vec::new(),
+        },
+    });
+    let result = query_compute_management(
+        &OneSourceRepository(source),
+        &RuntimeFacts::default(),
+        &hiroute_domain::WorkspaceId::default(),
+        &hiroute_application_api::ComputeManagementQueryV2::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        result.sources[0].inventory_path.as_deref(),
+        Some("/custom/models")
+    );
+    assert_eq!(
+        result.sources[0].display_template_id.as_deref(),
+        Some("template/custom")
+    );
 }

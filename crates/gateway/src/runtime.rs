@@ -9,6 +9,7 @@ mod state;
 
 pub use driver::*;
 pub use state::StateAccessError;
+pub(crate) use state::native_endpoint_state_key;
 
 #[cfg(test)]
 mod tests;

@@ -377,7 +377,7 @@ impl RequestObservation {
             ExecutionFactV1::RuntimeState {
                 operation: "read_exact".into(),
                 key_scope: fields.scope.into(),
-                stable_binding_id: fields.stable_binding_id.into(),
+                stable_binding_id: self.logical_binding_for_state(fields.stable_binding_id),
                 credential_ref: fields.credential_ref.map(Into::into),
                 key_id: fields.key_id.map(Into::into),
                 expected_generation: None,
@@ -432,7 +432,7 @@ impl RequestObservation {
             ExecutionFactV1::RuntimeState {
                 operation: "compare_and_swap_exact".into(),
                 key_scope: fields.scope.into(),
-                stable_binding_id: fields.stable_binding_id.into(),
+                stable_binding_id: self.logical_binding_for_state(fields.stable_binding_id),
                 credential_ref: fields.credential_ref.map(Into::into),
                 key_id: fields.key_id.map(Into::into),
                 expected_generation: Some(expected_generation),
@@ -467,7 +467,7 @@ impl RequestObservation {
             ExecutionFactV1::RuntimeState {
                 operation: "acquire_probe_lease_exact".into(),
                 key_scope: fields.scope.into(),
-                stable_binding_id: fields.stable_binding_id.into(),
+                stable_binding_id: self.logical_binding_for_state(fields.stable_binding_id),
                 credential_ref: fields.credential_ref.map(Into::into),
                 key_id: fields.key_id.map(Into::into),
                 expected_generation: Some(expected_generation),
@@ -602,6 +602,14 @@ impl RequestObservation {
             }));
         }
         emit_server_span(self, outcome, None);
+    }
+
+    fn logical_binding_for_state(&self, state_key: &str) -> String {
+        self.lock_state()
+            .candidates
+            .get(state_key)
+            .map(|candidate| candidate.stable_binding_id.clone())
+            .unwrap_or_else(|| state_key.to_owned())
     }
 
     fn start_attempt(

@@ -92,6 +92,7 @@ fn source_local_fact(
         },
         target,
         authentication,
+        additional_native_endpoints: Vec::new(),
         capabilities: hiroute_domain::ComputeManagedCapabilitiesV2 {
             tool: user_fact(true),
             vision: user_fact(false),
@@ -216,6 +217,7 @@ fn registered_runtime_fallback_preserves_exact_provider_endpoint_and_has_no_comm
         },
         target,
         authentication: GatewayAuthenticationSemanticsV1::Bearer,
+        additional_native_endpoints: Vec::new(),
         capabilities: hiroute_domain::ComputeManagedCapabilitiesV2 {
             tool: runtime_fact(true),
             vision: runtime_fact(false),
@@ -409,18 +411,27 @@ fn cpa_profiles_prefer_same_protocol_and_messages_falls_back_to_responses() {
             request_path: "/v1/responses".into(),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
             required_headers: Vec::new(),
+            native_target: None,
+            adapter_ref: None,
+            adapter_revision: None,
         },
         ProtocolFace {
             protocol: UpstreamProtocol::ChatCompletions,
             request_path: "/v1/chat/completions".into(),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
             required_headers: Vec::new(),
+            native_target: None,
+            adapter_ref: None,
+            adapter_revision: None,
         },
         ProtocolFace {
             protocol: UpstreamProtocol::Messages,
             request_path: "/v1/messages".into(),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
             required_headers: vec![("anthropic-version".into(), "2023-06-01".into())],
+            native_target: None,
+            adapter_ref: None,
+            adapter_revision: None,
         },
     ];
     let profiles = protocol_profiles(
@@ -531,6 +542,9 @@ fn cpa_messages_only_face_is_not_dropped_by_absent_responses() {
             request_path: "/v1/messages".into(),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
             required_headers: vec![("anthropic-version".into(), "2023-06-01".into())],
+            native_target: None,
+            adapter_ref: None,
+            adapter_revision: None,
         }],
     )
     .unwrap();
@@ -649,6 +663,28 @@ fn registered_fact(
         protocol_profile_revision: endpoint.adapter_revision,
     };
     fact.authentication = endpoint.authentication_semantics.clone().unwrap();
+    fact.additional_native_endpoints = resolved
+        .endpoint_profile
+        .protocol_endpoints
+        .iter()
+        .filter(|other| other.protocol != endpoint.protocol)
+        .map(|other| hiroute_domain::ComputeNativeEndpointV3 {
+            target: hiroute_domain::ComputeManagementTargetV2 {
+                scheme: "https".into(),
+                authority: other.base_url.strip_prefix("https://").unwrap().into(),
+                port: 443,
+                request_path: other.request_path.clone(),
+                upstream_protocol: other.protocol,
+                protocol_profile_id: other.adapter_ref.clone(),
+                protocol_profile_revision: other.adapter_revision,
+            },
+            authentication: other.authentication_semantics.clone().unwrap(),
+            recheck:
+                crate::control::runtime::model_connections::registered_endpoint_recheck_descriptor(
+                    &resolved, other,
+                ),
+        })
+        .collect();
     fact.upstream_model_id = capability.upstream_model_id.clone();
     fact.catalog_configuration_id = Some(model_id.into());
     let registered = |value| hiroute_domain::ComputeManagementFactValueV2 {
@@ -687,6 +723,13 @@ fn registered_fact(
         &declaration,
     ))
     .unwrap();
+    let mut destinations =
+        std::collections::BTreeSet::from([fact.target.credential_destination().unwrap()]);
+    destinations.extend(
+        fact.additional_native_endpoints
+            .iter()
+            .map(|endpoint| endpoint.target.credential_destination().unwrap()),
+    );
     fact.credential = ComputeManagementCredentialCompilationV2::Native {
         ordered: ["credential/registered-a", "credential/registered-b"]
             .into_iter()
@@ -697,7 +740,7 @@ fn registered_fact(
                         format!("source/{}", fact.source_id),
                         "hirouted",
                         "provider-auth",
-                        [fact.target.credential_destination().unwrap()],
+                        destinations.iter().cloned(),
                         1,
                     )
                     .unwrap(),
@@ -926,6 +969,7 @@ fn registered_management_compilation_excludes_disabled_missing_keys_and_unknown_
             capability_evidence_digest: fact.capability_evidence_digest.clone(),
         }],
         native_recheck: None,
+        additional_native_endpoints: fact.additional_native_endpoints.clone(),
         credentials: ordered
             .iter()
             .enumerate()

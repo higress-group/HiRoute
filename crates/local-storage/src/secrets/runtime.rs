@@ -60,8 +60,9 @@ impl LocalSecretStore {
         if row.kind != "provider-api-key"
             || reference.subject() != "hirouted"
             || reference.purpose() != "provider-auth"
-            || reference.allowed_destinations()
-                != &BTreeSet::from([request.credential_destination_ref.clone()])
+            || !reference
+                .allowed_destinations()
+                .contains(&request.credential_destination_ref)
             || read_head(&connection, reference.credential_id())? != reference.generation()
         {
             return Err(port(

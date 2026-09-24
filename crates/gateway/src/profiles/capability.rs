@@ -109,6 +109,8 @@ pub struct CandidateProtocolProfile {
     pub decoder_revision: String,
     pub capability: CandidateCapabilityProfile,
     pub connector: ConnectorProfile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_target: Option<hiroute_domain::GatewayNativeProfileTargetV2>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -163,6 +165,7 @@ impl CandidateProtocolProfile {
             adapter_revision: "builtin-protocol-adapter/v1".into(),
             serializer_revision: "hiroute-target-json/v1".into(),
             decoder_revision: "hiroute-native-response/v1".into(),
+            native_target: None,
             capability: CandidateCapabilityProfile {
                 schema_version: "hiroute.candidate-capability/v1".into(),
                 capability_id: format!(

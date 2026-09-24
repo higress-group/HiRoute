@@ -25,6 +25,7 @@ import type {
   ComputeSavePreview,
   ModelConnectionCheckView,
   ModelConnectionDraft,
+  ModelConnectionEndpointDraft,
   ModelConnectionFormProps,
   ModelDeclaration,
   ModelMetadataRecord,
@@ -37,6 +38,7 @@ import {
   metadataModelPrefill,
   metadataReasoningHint,
 } from './metadata-prefill';
+import { registeredModelCandidates, templateEndpointForProtocol } from './registered-metadata';
 import {
   blankModel,
   connectionErrorMessage,
@@ -50,6 +52,15 @@ import {
 
 type Phase = 'editing' | 'checking' | 'saving';
 type Screen = 'connection' | 'manual' | 'models';
+
+function emptyAdditionalEndpoint(protocol: UpstreamProtocol, authentication: ModelConnectionDraft['authentication']): ModelConnectionEndpointDraft {
+  return {
+    base_url: '', base_kind: 'api_root', request_path_override: null,
+    inventory_path_override: null, protocol,
+    protocol_profile_id: `profile/custom/${protocol}`, protocol_profile_revision: 1,
+    authentication,
+  };
+}
 
 export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const { backend, language } = props;
@@ -84,6 +95,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     ?? registeredOptions[0]
     ?? null;
   const registeredLabel = registeredConnectionLabel(registeredOption, zh);
+  const registeredCandidates = useMemo(() => registeredOption
+    ? registeredModelCandidates(registeredOption, connectionOptions?.metadata_catalog)
+    : [], [registeredOption, connectionOptions]);
   const metadataProviders = useMemo(() => connectionOptions?.metadata_catalog?.provider_records.filter(provider =>
     provider.usable_for.includes('custom-api-endpoint-prefill')
     && provider.base_url_candidates.length > 0
@@ -137,9 +151,16 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       display_name: provider.display_name,
       display_template_id: null,
       base_url: provider.base_url_candidates[0],
+      base_kind: 'api_root',
+      request_path_override: null,
+      inventory_path_override: null,
       protocol,
       protocol_profile_id: `profile/custom/${protocol}`,
       protocol_profile_revision: current.protocol_profile_revision + 1,
+      authentication: protocol === 'messages'
+        ? { kind: 'api_key_header', header: 'x-api-key' }
+        : { kind: 'bearer' },
+      additional_endpoints: [],
       models: [],
     }), true, 'connection');
   }
@@ -316,7 +337,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       setError(custom ? 'MODEL_CONNECTION_FIELDS_REQUIRED' : 'MODEL_CONNECTION_OPTION_UNAVAILABLE');
       return;
     }
-    if (current.authentication.kind !== 'none' && !enteredSecret && !protectedInputRef.current) {
+    if (current.authentication.kind !== 'none' && !enteredSecret && !protectedInputRef.current && !current.existing_source_id) {
       setError('MODEL_CONNECTION_KEY_REQUIRED');
       return;
     }
@@ -537,17 +558,39 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               <label className="field"><span className="field-label">Base URL</span><input className="input" inputMode="url" value={draft.base_url} placeholder="https://example.com/v1" onChange={event => invalidate(current => ({ ...current, base_url: event.target.value }), true, 'connection')} /></label>
               <label className="field"><span className="field-label">{zh ? '协议' : 'Protocol'}</span><select className="select" value={draft.protocol} onChange={event => {
                 const protocol = event.target.value as UpstreamProtocol;
-                invalidate(current => ({
-                  ...current,
-                  protocol,
-                  protocol_profile_id: `profile/custom/${protocol}`,
-                  protocol_profile_revision: current.protocol_profile_revision + 1,
-                  models: current.models.map(model => {
-                    const previous = model.capabilities.native_reasoning.value;
-                    const next = previous ? reasoningValue(previous.kind, protocol, previous) : null;
-                    return { ...model, capabilities: { ...model.capabilities, native_reasoning: { value: next, basis: next ? 'user_declared' : 'unknown' } } };
-                  }),
-                }), true, 'connection');
+                invalidate(current => {
+                  const template = registeredOptions.find(option => option.connection_option_id === current.display_template_id) ?? null;
+                  const endpoint = templateEndpointForProtocol(current, template, protocol);
+                  const existingIndex = current.additional_endpoints.findIndex(value => value.protocol === protocol);
+                  const existing = current.additional_endpoints[existingIndex];
+                  const previousPrimary: ModelConnectionEndpointDraft = {
+                    base_url: current.base_url,
+                    base_kind: current.base_kind,
+                    request_path_override: current.request_path_override,
+                    inventory_path_override: current.inventory_path_override,
+                    protocol: current.protocol,
+                    protocol_profile_id: current.protocol_profile_id,
+                    protocol_profile_revision: current.protocol_profile_revision,
+                    authentication: current.authentication,
+                  };
+                  return {
+                    ...current,
+                    base_url: existing?.base_url ?? endpoint?.base_url ?? current.base_url,
+                    base_kind: existing?.base_kind ?? current.base_kind,
+                    request_path_override: existing?.request_path_override ?? endpoint?.request_path ?? current.request_path_override,
+                    inventory_path_override: existing?.inventory_path_override ?? (endpoint ? endpoint.inventory_path ?? null : current.inventory_path_override),
+                    authentication: existing?.authentication ?? endpoint?.authentication_semantics ?? current.authentication,
+                    protocol,
+                    protocol_profile_id: existing?.protocol_profile_id ?? `profile/custom/${protocol}`,
+                    protocol_profile_revision: (existing?.protocol_profile_revision ?? current.protocol_profile_revision) + 1,
+                    additional_endpoints: existingIndex < 0 ? current.additional_endpoints : current.additional_endpoints.map((value, index) => index === existingIndex ? previousPrimary : value),
+                    models: current.models.map(model => {
+                      const previous = model.capabilities.native_reasoning.value;
+                      const next = previous ? reasoningValue(previous.kind, protocol, previous) : null;
+                      return { ...model, capabilities: { ...model.capabilities, native_reasoning: { value: next, basis: next ? 'user_declared' : 'unknown' } } };
+                    }),
+                  };
+                }, true, 'connection');
               }}><option value="chat_completions">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option><option value="messages">Anthropic Messages</option></select></label>
             </> : optionsLoading
               ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{zh ? '正在读取接入方式' : 'Loading connection'}</strong><p>{zh ? '从本机可信目录确认当前支持的产品。' : 'Checking supported products in the local trusted catalog.'}</p></div></div>
@@ -562,12 +605,28 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               <p>{connectionTemplate(registeredOption.connection_option_id)?.description[language]}</p>
               <a href={connectionTemplate(registeredOption.connection_option_id)?.documentation_url} target="_blank" rel="noreferrer" onClick={event => void openDocumentation(event, connectionTemplate(registeredOption.connection_option_id)?.documentation_url)}>{zh ? '官方说明与获取 Key' : 'Official guide and API keys'}</a>
               {externalLinkError && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{zh ? '无法打开默认浏览器；当前表单内容已保留。' : 'The default browser could not be opened. Your form input is retained.'}</span></div>}
-              <ul>{Object.entries(registeredOption.known_models ?? {}).map(([id, name]) => <li key={id}>{name} · {id}</li>)}</ul>
-              <p className="field-help">{zh ? '内置目录资料，尚未进行实时调用验证。' : 'Built-in catalog information; live inference has not been verified.'}</p>
+              <ul>{registeredCandidates.map(candidate => <li key={candidate.upstream_model_id}>
+                {candidate.display_name} · {candidate.upstream_model_id}
+                {candidate.source === 'product_metadata' && <>
+                  {' · '}<span className="field-help">{zh ? '产品资料候选' : 'Product metadata candidate'}</span>{' '}
+                  <button className="btn btn-quiet" type="button" disabled={!props.mutable || draft.models.some(model => model.upstream_model_id === candidate.upstream_model_id)} onClick={() => invalidate(current => ({ ...current, models: [...current.models, blankModel(candidate.upstream_model_id, candidate.display_name)] }), false, 'connection')}>
+                    {draft.models.some(model => model.upstream_model_id === candidate.upstream_model_id) ? (zh ? '已加入' : 'Added') : (zh ? '导入模型 ID' : 'Import model ID')}
+                  </button>
+                </>}
+              </li>)}</ul>
+              <p className="field-help">{zh ? '内置模型有已资格化能力资料；产品资料候选仅复制模型 ID，账号可见性、协议与推理能力仍需检查。' : 'Built-in models have qualified capability data. Product metadata candidates only copy the model ID; account access, protocol, and inference still need checking.'}</p>
               {registeredOption.endpoints?.length && <button className="btn btn-quiet" type="button" onClick={() => {
                 const endpoint = [...registeredOption.endpoints!].sort((a, b) => a.stable_preference - b.stable_preference)[0];
                 setCustom(true);
-                invalidate(current => ({ ...current, entry_kind: 'custom_api', display_template_id: registeredOption.connection_option_id, display_name: connectionName(registeredOption.connection_option_id, language, registeredOption.display_name), base_url: endpoint.base_url, request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null, protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`, authentication: endpoint.authentication_semantics ?? { kind: 'bearer' }, models: Object.entries(registeredOption.known_models ?? {}).map(([id, name]) => blankModel(id, name)) }), true, 'connection');
+                const otherProtocols = new Set<UpstreamProtocol>();
+                const additional_endpoints = [...(registeredOption.endpoints ?? [])]
+                  .sort((a, b) => a.stable_preference - b.stable_preference)
+                  .filter(other => other.protocol !== endpoint.protocol && !otherProtocols.has(other.protocol) && Boolean(otherProtocols.add(other.protocol)))
+                  .map(other => ({ base_url: other.base_url, base_kind: 'api_root' as const,
+                    request_path_override: other.request_path, inventory_path_override: other.inventory_path ?? null,
+                    protocol: other.protocol, protocol_profile_id: `profile/custom/${other.protocol}`,
+                    protocol_profile_revision: 1, authentication: other.authentication_semantics ?? { kind: 'bearer' as const } }));
+                invalidate(current => ({ ...current, entry_kind: 'custom_api', display_template_id: registeredOption.connection_option_id, display_name: connectionName(registeredOption.connection_option_id, language, registeredOption.display_name), base_url: endpoint.base_url, request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null, protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`, authentication: endpoint.authentication_semantics ?? { kind: 'bearer' }, additional_endpoints, models: [...Object.entries(registeredOption.known_models ?? {}).map(([id, name]) => blankModel(id, name)), ...current.models.filter(model => !Object.hasOwn(registeredOption.known_models ?? {}, model.upstream_model_id))] }), true, 'connection');
               }}>{zh ? '自定义此模板的连接配置' : 'Customize this template connection'}</button>}
             </section>}
             {custom && <>
@@ -575,6 +634,28 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               <label className="field"><span className="field-label">{zh ? '模型目录路径（可选）' : 'Model directory path (optional)'}</span><input className="input" placeholder="/v1/models" value={draft.inventory_path_override ?? ''} onChange={event => invalidate(current => ({ ...current, inventory_path_override: event.target.value || null }), true, 'connection')} /></label>
               <label className="field"><span className="field-label">{zh ? '认证方式' : 'Authentication'}</span><select className="select" value={draft.authentication.kind} onChange={event => invalidate(current => ({ ...current, authentication: event.target.value === 'api_key_header' ? { kind: 'api_key_header', header: 'x-api-key' } : event.target.value === 'none' ? { kind: 'none' } : { kind: 'bearer' } }), true, 'connection')}><option value="none">{zh ? '无认证' : 'None'}</option><option value="bearer">Bearer Token</option><option value="api_key_header">{zh ? '自定义 Header' : 'Custom header'}</option></select></label>
               {draft.authentication.kind === 'api_key_header' && <label className="field"><span className="field-label">Header</span><input className="input" value={draft.authentication.header} onChange={event => invalidate(current => ({ ...current, authentication: { kind: 'api_key_header', header: event.target.value } }), true, 'connection')} /></label>}
+              <div className="connection-fields" aria-label={zh ? '其他协议端点' : 'Additional protocol endpoints'}>
+                {draft.additional_endpoints.map((endpoint, index) => {
+                  const updateEndpoint = (change: Partial<ModelConnectionEndpointDraft>) => invalidate(current => ({
+                    ...current,
+                    additional_endpoints: current.additional_endpoints.map((value, position) => position === index ? { ...value, ...change } : value),
+                  }), true, 'connection');
+                  return <section key={`${index}-${endpoint.protocol}`} className="connection-fields">
+                    <div className="detail-section-head"><strong>{zh ? '端点' : 'Endpoint'} {index + 2}</strong><button className="btn btn-quiet" type="button" onClick={() => invalidate(current => ({ ...current, additional_endpoints: current.additional_endpoints.filter((_, position) => position !== index) }), true, 'connection')}>{zh ? '移除' : 'Remove'}</button></div>
+                    <label className="field"><span className="field-label">{zh ? '协议' : 'Protocol'}</span><select className="select" value={endpoint.protocol} onChange={event => { const protocol = event.target.value as UpstreamProtocol; updateEndpoint({ protocol, protocol_profile_id: `profile/custom/${protocol}`, protocol_profile_revision: endpoint.protocol_profile_revision + 1 }); }}><option value="chat_completions">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option><option value="messages">Anthropic Messages</option></select></label>
+                    <label className="field"><span className="field-label">Base URL</span><input className="input" inputMode="url" value={endpoint.base_url} onChange={event => updateEndpoint({ base_url: event.target.value })} /></label>
+                    <label className="field"><span className="field-label">{zh ? '请求路径' : 'Request path'}</span><input className="input" value={endpoint.request_path_override ?? ''} onChange={event => updateEndpoint({ request_path_override: event.target.value || null })} /></label>
+                    <label className="field"><span className="field-label">{zh ? '认证方式' : 'Authentication'}</span><select className="select" value={endpoint.authentication.kind} onChange={event => updateEndpoint({ authentication: event.target.value === 'api_key_header' ? { kind: 'api_key_header', header: 'x-api-key' } : event.target.value === 'none' ? { kind: 'none' } : { kind: 'bearer' } })}><option value="none">{zh ? '无认证' : 'None'}</option><option value="bearer">Bearer Token</option><option value="api_key_header">{zh ? '自定义 Header' : 'Custom header'}</option></select></label>
+                    {endpoint.authentication.kind === 'api_key_header' && <label className="field"><span className="field-label">Header</span><input className="input" value={endpoint.authentication.header} onChange={event => updateEndpoint({ authentication: { kind: 'api_key_header', header: event.target.value } })} /></label>}
+                  </section>;
+                })}
+                {draft.additional_endpoints.length < 2 && <button className="btn btn-quiet" type="button" onClick={() => {
+                  const used = new Set([draft.protocol, ...draft.additional_endpoints.map(endpoint => endpoint.protocol)]);
+                  const protocol = (['responses', 'messages', 'chat_completions'] as UpstreamProtocol[]).find(value => !used.has(value));
+                  if (protocol) invalidate(current => ({ ...current, additional_endpoints: [...current.additional_endpoints, emptyAdditionalEndpoint(protocol, current.authentication)] }), true, 'connection');
+                }}>{zh ? '添加协议端点' : 'Add protocol endpoint'}</button>}
+                <p className="field-help">{zh ? '这些端点与上方端点共用同一个 API Key；修改端点无需重新输入已保存的 Key。' : 'All endpoints share one API key. Editing endpoints does not require re-entering a saved key.'}</p>
+              </div>
             </>}
             {draft.authentication.kind !== 'none' && <label className="field"><span className="field-label">API Key</span><input className="input" disabled={!custom && (optionsLoading || !registeredOption)} data-autofocus={!custom || undefined} ref={password} type="password" autoComplete="off" spellCheck={false} placeholder={protectedInputRef.current ? '••••••••••••••••' : undefined} onChange={() => invalidate(current => ({ ...current, candidate_ref: null }), true, 'connection')} /></label>}
             {!custom && <p className="field-help">{zh ? '检查连接配置；提供目录时读取模型，不发送推理请求。' : 'Checks connection settings and reads the model directory when available, without inference requests.'}</p>}

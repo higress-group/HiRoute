@@ -76,6 +76,19 @@ pub struct NativeUserModelDeclarationV1 {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct NativeUserModelEndpointV1 {
+    pub base_url: String,
+    pub base_kind: NativeModelConnectionBaseKindV1,
+    pub request_path_override: Option<String>,
+    pub inventory_path_override: Option<String>,
+    pub protocol: UpstreamProtocol,
+    pub protocol_profile_id: String,
+    pub protocol_profile_revision: u64,
+    pub authentication: GatewayAuthenticationSemanticsV1,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct NativeUserModelConnectionDraftV1 {
     /// Display only; does not confer provider, capability, billing or credential authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -86,6 +99,8 @@ pub struct NativeUserModelConnectionDraftV1 {
     pub lineage_ref: String,
     pub display_name: String,
     pub existing_source_id: Option<String>,
+    #[serde(default)]
+    pub expected_source_revision: Option<u64>,
     pub edit_revision: u64,
     pub check_id: String,
     pub base_url: String,
@@ -96,6 +111,8 @@ pub struct NativeUserModelConnectionDraftV1 {
     pub protocol_profile_id: String,
     pub protocol_profile_revision: u64,
     pub authentication: GatewayAuthenticationSemanticsV1,
+    #[serde(default)]
+    pub additional_endpoints: Vec<NativeUserModelEndpointV1>,
     pub configuration_revision: u64,
     pub models: Vec<NativeUserModelDeclarationV1>,
 }

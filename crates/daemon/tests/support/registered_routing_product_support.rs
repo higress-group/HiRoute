@@ -166,17 +166,11 @@ pub async fn publish(
         candidate.credential_destination_ref,
         Some(target.credential_destination().unwrap())
     );
-    for (ingress, path, capability_id, required_headers) in [
-        (
-            UpstreamProtocol::Responses,
-            "/api/v1/responses",
-            "cap.zhipu.glm-5.3.coding-plan.responses",
-            Vec::new(),
-        ),
+    for (ingress, path, required_headers) in [
+        (UpstreamProtocol::Responses, "/api/v1/responses", Vec::new()),
         (
             UpstreamProtocol::Messages,
             "/api/anthropic/v1/messages",
-            "cap.zhipu.glm-5.3.coding-plan.messages",
             vec![("anthropic-version".into(), "2023-06-01".into())],
         ),
     ] {
@@ -186,7 +180,7 @@ pub async fn publish(
             .find(|profile| profile.ingress_protocol == ingress)
             .unwrap();
         assert_eq!(profile.capability.upstream_protocol, ingress);
-        assert_eq!(profile.capability.capability_id, capability_id);
+        assert_eq!(profile.capability.capability_id, candidate.capability_id);
         assert_eq!(profile.capability.native_model, "glm-5.3");
         assert_eq!(profile.connector.request_path, path);
         assert_eq!(

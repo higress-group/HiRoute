@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::runtime::native_endpoint_state_key;
 use crate::server::core_runtime::profiles::{PlannerInputV1, PlannerOutputV1};
 
 use super::super::schema::{CandidateDecisionFactV1, ExecutionFactV1};
@@ -164,32 +165,36 @@ impl RequestObservation {
                 None,
             );
             if let Some(candidate) = candidate {
-                candidates.insert(
-                    evaluation.stable_binding_id.clone(),
-                    CandidateObservation {
-                        candidate_id: candidate.candidate_id.clone(),
-                        stable_binding_id: evaluation.stable_binding_id.clone(),
-                        declared_order: evaluation.declared_order,
-                        profile_digest: candidate.profile_digest.clone(),
-                        provider_name: candidate.protocol_profile.connector.provider_id.clone(),
-                        request_model: candidate.protocol_profile.capability.native_model.clone(),
-                        upstream_protocol: schema_name(
-                            &candidate.protocol_profile.capability.upstream_protocol,
-                        ),
-                        model_configuration_id: candidate
-                            .protocol_profile
-                            .capability
-                            .model_configuration_id
-                            .clone(),
-                        adapter_revision: candidate.protocol_profile.adapter_revision.clone(),
-                        effective_cost_micros: evaluation.effective_cost_micros,
-                        cost_class: schema_name(&evaluation.cost_class),
-                        protocol_profile: Some(std::sync::Arc::new(
-                            candidate.protocol_profile.clone(),
-                        )),
-                        streaming: input.request.stream,
-                    },
-                );
+                let observed = CandidateObservation {
+                    candidate_id: candidate.candidate_id.clone(),
+                    stable_binding_id: evaluation.stable_binding_id.clone(),
+                    declared_order: evaluation.declared_order,
+                    profile_digest: candidate.profile_digest.clone(),
+                    provider_name: candidate.protocol_profile.connector.provider_id.clone(),
+                    request_model: candidate.protocol_profile.capability.native_model.clone(),
+                    upstream_protocol: schema_name(
+                        &candidate.protocol_profile.capability.upstream_protocol,
+                    ),
+                    model_configuration_id: candidate
+                        .protocol_profile
+                        .capability
+                        .model_configuration_id
+                        .clone(),
+                    adapter_revision: candidate.protocol_profile.adapter_revision.clone(),
+                    effective_cost_micros: evaluation.effective_cost_micros,
+                    cost_class: schema_name(&evaluation.cost_class),
+                    protocol_profile: Some(std::sync::Arc::new(candidate.protocol_profile.clone())),
+                    streaming: input.request.stream,
+                };
+                if candidate.protocol_profile.native_target.is_some()
+                    && let Some(key) = native_endpoint_state_key(
+                        &evaluation.stable_binding_id,
+                        &candidate.profile_digest,
+                    )
+                {
+                    candidates.insert(key, observed.clone());
+                }
+                candidates.insert(evaluation.stable_binding_id.clone(), observed);
             }
         }
         self.lock_state().candidates = candidates;

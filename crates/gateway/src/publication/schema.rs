@@ -467,11 +467,6 @@ impl GatewayPublicationSnapshotV3 {
                     return Err(PublicationSchemaError::InvalidCandidate(candidate.local_id));
                 }
                 let mut profile_ingress = std::collections::BTreeSet::new();
-                let authentication = candidate
-                    .protocol_profiles
-                    .first()
-                    .and_then(|profile| profile.connector.authentication.exact())
-                    .ok_or(PublicationSchemaError::InvalidCandidate(candidate.local_id))?;
                 for profile in &candidate.protocol_profiles {
                     let gateway_profile: CandidateProtocolProfile = serde_json::to_value(profile)
                         .ok()
@@ -506,12 +501,25 @@ impl GatewayPublicationSnapshotV3 {
                             pricing.model_configuration_id
                                 != profile.capability.model_configuration_id
                         })
-                        || profile.connector.authentication.exact() != Some(authentication)
+                        || profile.connector.authentication.exact().is_none()
+                        || (candidate.connector_runtime == ConnectorRuntimeKind::CpaBridge
+                            && profile.native_target.is_some())
                         || (candidate.connector_runtime != ConnectorRuntimeKind::CpaBridge
-                            && candidate
-                                .operational_target
-                                .for_protocol_path(&profile.connector.request_path)
-                                .is_none())
+                            && profile.native_target.as_ref().map_or_else(
+                                || {
+                                    candidate
+                                        .operational_target
+                                        .for_protocol_path(&profile.connector.request_path)
+                                        .is_none()
+                                },
+                                |target| {
+                                    !target.validate_for(profile)
+                                        || !target.operational_target.validate_for(
+                                            ConnectorRuntimeKind::BuiltinNative,
+                                            target.operational_target.uri(),
+                                        )
+                                },
+                            ))
                         || gateway_profile.validate(&minimum_requirements).is_err()
                     {
                         return Err(PublicationSchemaError::InvalidCandidate(candidate.local_id));

@@ -153,6 +153,22 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
         eprintln!("registered management routing candidate has an invalid credential destination");
         return None;
     };
+    let mut destinations = std::collections::BTreeSet::from([destination.clone()]);
+    for saved in &fact.additional_native_endpoints {
+        if !resolved
+            .endpoint_profile
+            .protocol_endpoints
+            .iter()
+            .any(|endpoint| {
+                crate::control::runtime::model_connections::registered_endpoint_matches_saved_extra(
+                    saved, &resolved, endpoint,
+                )
+            })
+        {
+            return None;
+        }
+        destinations.insert(saved.target.credential_destination().ok()?);
+    }
     let ComputeManagementCredentialCompilationV2::Native { ordered } = &fact.credential else {
         return None;
     };
@@ -170,8 +186,7 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
                     || credential_ref.subject() != "hirouted"
                     || credential_ref.purpose() != "provider-auth"
                     || credential_ref.generation() == 0
-                    || credential_ref.allowed_destinations()
-                        != &std::collections::BTreeSet::from([destination.clone()])
+                    || credential_ref.allowed_destinations() != &destinations
                 {
                     return None;
                 }
@@ -194,13 +209,12 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
         return None;
     };
     execution.protocol_profiles = registered_native_protocol_profiles(
-        catalog,
+        fact,
         &resolved,
         &model,
         &capability,
         &endpoint,
         &reasoning,
-        &execution.protocol_profiles,
     )?;
     let ordering_price =
         if let Some(price) = data.price_rates.iter().find(|price| {
@@ -284,17 +298,15 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
     Some(candidate)
 }
 
-/// Resolve each same-protocol face from the current catalog, never from the saved target alone.
-/// The saved target remains the credential and source identity; an alternate face must belong to
-/// the same registered option, model and exact HTTPS authority, with matching authentication.
+/// Each saved endpoint is individually checked against the current option above. Model-level
+/// catalog capability qualifies the shared model facts, not each protocol endpoint.
 fn registered_native_protocol_profiles(
-    catalog: &TrustedReleaseCatalog,
+    fact: &ComputeManagementCompilationFactV2,
     resolved: &ResolvedConnectionOptionV1,
     model: &ModelDefinitionV1,
     primary_capability: &ModelEndpointCapabilityV1,
     primary_endpoint: &ProtocolEndpointV1,
     reasoning: &ModelNativeReasoningV1,
-    primary_profiles: &[GatewayCandidateProtocolProfileV1],
 ) -> Option<Vec<GatewayCandidateProtocolProfileV1>> {
     let connector = ProtocolConnectorFacts {
         provider_id: resolved.endpoint_profile.provider_platform_id.clone(),
@@ -303,78 +315,58 @@ fn registered_native_protocol_profiles(
         connector_id: resolved.connector.connector_id.clone(),
         connector_revision: resolved.connector.revision.to_string(),
     };
-    let mut selected = Vec::new();
-    for ingress in [
-        UpstreamProtocol::Responses,
-        UpstreamProtocol::ChatCompletions,
-        UpstreamProtocol::Messages,
-    ] {
-        let mut matches = catalog
-            .model_data()
-            .model_endpoint_capabilities
+    let primary_target = GatewayOperationalTargetV1::RegisteredHttps {
+        uri: format!(
+            "{}{}",
+            primary_endpoint.base_url, primary_endpoint.request_path
+        ),
+    };
+    let mut faces = vec![ProtocolFace {
+        protocol: primary_endpoint.protocol,
+        request_path: primary_endpoint.request_path.clone(),
+        authentication: primary_endpoint.authentication_semantics.clone()?,
+        required_headers: primary_endpoint.required_headers.clone(),
+        native_target: Some(GatewayNativeProfileTargetV2 {
+            operational_target: primary_target,
+            credential_destination_ref: fact.target.credential_destination().ok()?,
+        }),
+        adapter_ref: Some(primary_endpoint.adapter_ref.clone()),
+        adapter_revision: Some(primary_endpoint.adapter_revision),
+    }];
+    for saved in &fact.additional_native_endpoints {
+        let endpoint = resolved
+            .endpoint_profile
+            .protocol_endpoints
             .iter()
-            .filter(|face| {
-                face.model_configuration_id == model.model_configuration_id
-                    && face.upstream_model_id == primary_capability.upstream_model_id
-                    && face.connector_id == resolved.connector.connector_id
-                    && face.connector_revision == resolved.connector.revision
-                    && face.endpoint_profile_id == resolved.endpoint_profile.endpoint_profile_id
-                    && face.endpoint_profile_revision == resolved.endpoint_profile.revision
-                    && face.upstream_protocol == ingress
-            })
-            .filter_map(|face| {
-                resolved
-                    .endpoint_profile
-                    .protocol_endpoints
-                    .iter()
-                    .find(|endpoint| endpoint.protocol_endpoint_id == face.protocol_endpoint_id)
-                    .filter(|endpoint| {
-                        endpoint.protocol == face.upstream_protocol
-                            && endpoint.adapter_ref == face.required_adapter_ref
-                            && endpoint.adapter_revision == face.required_adapter_revision
-                            && endpoint.base_url == primary_endpoint.base_url
-                            && native_endpoint_authentication(
-                                resolved.connector.authentication,
-                                endpoint,
-                            ) == primary_endpoint.authentication_semantics
-                    })
-                    .map(|endpoint| (face, endpoint))
-            });
-        let exact = matches.next();
-        if matches.next().is_some() {
-            return None;
-        }
-        if let Some((face, endpoint)) = exact {
-            let faces = [ProtocolFace {
-                protocol: face.upstream_protocol,
-                request_path: endpoint.request_path.clone(),
-                authentication: endpoint.authentication_semantics.clone()?,
-                required_headers: endpoint.required_headers.clone(),
-            }];
-            if let Some(profile) = protocol_profiles(
-                &connector,
-                model,
-                face,
-                reasoning,
-                &face.upstream_model_id,
-                ConnectorRuntimeKind::BuiltinNative,
-                &faces,
-            )
-            .and_then(|profiles| {
-                profiles
-                    .into_iter()
-                    .find(|profile| profile.ingress_protocol == ingress)
-            }) {
-                selected.push(profile);
-            }
-        } else if let Some(profile) = primary_profiles
-            .iter()
-            .find(|profile| profile.ingress_protocol == ingress)
-        {
-            selected.push(profile.clone());
-        }
+            .find(|endpoint| {
+                crate::control::runtime::model_connections::registered_endpoint_matches_saved_extra(
+                    saved, resolved, endpoint,
+                )
+            })?;
+        faces.push(ProtocolFace {
+            protocol: endpoint.protocol,
+            request_path: endpoint.request_path.clone(),
+            authentication: endpoint.authentication_semantics.clone()?,
+            required_headers: endpoint.required_headers.clone(),
+            native_target: Some(GatewayNativeProfileTargetV2 {
+                operational_target: GatewayOperationalTargetV1::RegisteredHttps {
+                    uri: format!("{}{}", endpoint.base_url, endpoint.request_path),
+                },
+                credential_destination_ref: saved.target.credential_destination().ok()?,
+            }),
+            adapter_ref: Some(endpoint.adapter_ref.clone()),
+            adapter_revision: Some(endpoint.adapter_revision),
+        });
     }
-    (!selected.is_empty()).then_some(selected)
+    protocol_profiles(
+        &connector,
+        model,
+        primary_capability,
+        reasoning,
+        &fact.upstream_model_id,
+        ConnectorRuntimeKind::BuiltinNative,
+        &faces,
+    )
 }
 
 fn catalog_fact<T>(value: T) -> NativeCandidateFactValueV1<T> {

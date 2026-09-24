@@ -390,6 +390,7 @@ impl BootstrapPublicationBuilder {
                     "bootstrap-credential-{local_binding_id}"
                 ))?]),
                 transport_target,
+                authorized_native_targets: Arc::from([]),
                 transport_target_policy: TransportTargetPolicy::Exact,
                 timeouts: AttemptTimeouts {
                     request_write: Duration::from_secs(30),

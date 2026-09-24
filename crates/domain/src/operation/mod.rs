@@ -272,6 +272,7 @@ pub struct OperationStepV1 {
 pub enum SecretMutationKind {
     Upsert,
     Delete,
+    Rebind,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -392,6 +393,8 @@ pub struct SecretMutationV1 {
     input_slot: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fingerprint: Option<CanonicalDigest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    new_allowed_destinations: Option<BTreeSet<String>>,
 }
 
 impl SecretMutationV1 {
@@ -410,6 +413,7 @@ impl SecretMutationV1 {
             fingerprint_algorithm: SecretFingerprintAlgorithm::HmacSha256V1,
             input_slot: Some(input_slot),
             fingerprint,
+            new_allowed_destinations: None,
         })
     }
 
@@ -424,6 +428,39 @@ impl SecretMutationV1 {
             fingerprint_algorithm: SecretFingerprintAlgorithm::HmacSha256V1,
             input_slot: None,
             fingerprint: None,
+            new_allowed_destinations: None,
+        })
+    }
+
+    /// Re-encrypts the same protected Key for an edited exact endpoint set inside SecretStore.
+    /// The old reference is the read authority; the new set is never accepted from the wire.
+    pub fn rebind(
+        credential: CredentialRefV1,
+        new_allowed_destinations: BTreeSet<String>,
+        fingerprint: CanonicalDigest,
+    ) -> Result<Self, OperationValidationError> {
+        if new_allowed_destinations == *credential.allowed_destinations() {
+            return Err(OperationValidationError::InvalidCredentialRef);
+        }
+        CredentialRefV1::new(
+            credential.credential_id(),
+            credential.owner_scope(),
+            credential.subject(),
+            credential.purpose(),
+            new_allowed_destinations.iter().cloned(),
+            credential
+                .generation()
+                .checked_add(1)
+                .ok_or(OperationValidationError::InvalidCredentialRef)?,
+        )?;
+        Ok(Self {
+            kind: SecretMutationKind::Rebind,
+            expected_generation: credential.generation(),
+            credential,
+            fingerprint_algorithm: SecretFingerprintAlgorithm::HmacSha256V1,
+            input_slot: None,
+            fingerprint: Some(fingerprint),
+            new_allowed_destinations: Some(new_allowed_destinations),
         })
     }
 
@@ -449,6 +486,10 @@ impl SecretMutationV1 {
 
     pub fn fingerprint(&self) -> Option<&CanonicalDigest> {
         self.fingerprint.as_ref()
+    }
+
+    pub fn new_allowed_destinations(&self) -> Option<&BTreeSet<String>> {
+        self.new_allowed_destinations.as_ref()
     }
 
     pub fn bind_fingerprint(&mut self, fingerprint: CanonicalDigest) {

@@ -167,33 +167,32 @@ impl<T: AttemptTransport> AttemptExchange<T> {
         let timeouts = plan.timeouts;
         let precommit_event_capacity = plan.precommit_event_capacity;
         let target = match resolved_target {
-            Some(target) if plan.transport_target.requires_resolution() => {
-                let expected = plan
-                    .transport_target
-                    .clone()
-                    .with_resolved_addresses(Arc::clone(&target.addresses))
-                    .map_err(|error| AttemptError::InvalidTarget(error.to_string().into()))?;
-                if !resolved_target_is_authorized(&expected, &target, plan.transport_target_policy)
-                {
+            Some(target) => {
+                let authorized = std::iter::once(&plan.transport_target)
+                    .chain(plan.authorized_native_targets.iter())
+                    .any(|expected| {
+                        let resolved_expected = if expected.requires_resolution() {
+                            expected
+                                .clone()
+                                .with_resolved_addresses(Arc::clone(&target.addresses))
+                                .ok()
+                        } else {
+                            Some(expected.clone())
+                        };
+                        resolved_expected.is_some_and(|expected| {
+                            resolved_target_is_authorized(
+                                &expected,
+                                &target,
+                                plan.transport_target_policy,
+                            )
+                        })
+                    });
+                if !authorized {
                     return Err(AttemptError::InvalidTarget(
-                        "resolved target changed immutable transport authority".into(),
+                        "resolved target does not match compiled target".into(),
                     ));
                 }
                 AttemptTargetOwner::Dynamic(target)
-            }
-            Some(target)
-                if resolved_target_is_authorized(
-                    &plan.transport_target,
-                    &target,
-                    plan.transport_target_policy,
-                ) =>
-            {
-                AttemptTargetOwner::Dynamic(target)
-            }
-            Some(_) => {
-                return Err(AttemptError::InvalidTarget(
-                    "resolved target does not match compiled target".into(),
-                ));
             }
             None => AttemptTargetOwner::Compiled(Arc::clone(&plan)),
         };

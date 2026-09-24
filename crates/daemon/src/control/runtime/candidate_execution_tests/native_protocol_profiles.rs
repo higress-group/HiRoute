@@ -1,6 +1,91 @@
 use super::*;
 
 #[test]
+fn source_local_profiles_keep_independent_authorities_and_reject_mismatched_destinations() {
+    let mut fact = source_local_fact(GatewayAuthenticationSemanticsV1::None);
+    let mut messages_target = fact.target.clone();
+    messages_target.authority = "127.0.0.2".into();
+    messages_target.port = 8_124;
+    messages_target.request_path = "/apps/anthropic/v1/messages".into();
+    messages_target.upstream_protocol = UpstreamProtocol::Messages;
+    messages_target.protocol_profile_id = "profile/messages".into();
+    fact.additional_native_endpoints
+        .push(hiroute_domain::ComputeNativeEndpointV3 {
+            target: messages_target.clone(),
+            authentication: GatewayAuthenticationSemanticsV1::None,
+            recheck: None,
+        });
+
+    let candidate = materialize_management_candidate(&fact, None).unwrap();
+    for (protocol, authority, destination) in [
+        (
+            UpstreamProtocol::Responses,
+            "127.0.0.1:8123",
+            fact.target.credential_destination().unwrap(),
+        ),
+        (
+            UpstreamProtocol::Messages,
+            "127.0.0.2:8124",
+            messages_target.credential_destination().unwrap(),
+        ),
+    ] {
+        let profile = candidate
+            .protocol_profiles
+            .iter()
+            .find(|profile| profile.ingress_protocol == protocol)
+            .unwrap();
+        let target = profile.native_target.as_ref().unwrap();
+        assert!(target.operational_target.uri().contains(authority));
+        assert_eq!(target.credential_destination_ref, destination);
+        assert!(target.validate_for(profile));
+        let mut mismatched = target.clone();
+        mismatched.credential_destination_ref = "source/other-destination".into();
+        assert!(!mismatched.validate_for(profile));
+    }
+}
+
+#[test]
+fn source_local_ipv6_profiles_keep_exact_destinations() {
+    let mut fact = source_local_fact(GatewayAuthenticationSemanticsV1::None);
+    fact.target.authority = "::1".into();
+    let mut messages_target = fact.target.clone();
+    messages_target.port = 8_124;
+    messages_target.request_path = "/v1/messages".into();
+    messages_target.upstream_protocol = UpstreamProtocol::Messages;
+    messages_target.protocol_profile_id = "profile/messages".into();
+    fact.additional_native_endpoints
+        .push(hiroute_domain::ComputeNativeEndpointV3 {
+            target: messages_target.clone(),
+            authentication: GatewayAuthenticationSemanticsV1::None,
+            recheck: None,
+        });
+
+    let candidate = materialize_management_candidate(&fact, None).unwrap();
+    for (protocol, authority, destination) in [
+        (
+            UpstreamProtocol::Responses,
+            "[::1]:8123",
+            fact.target.credential_destination().unwrap(),
+        ),
+        (
+            UpstreamProtocol::Messages,
+            "[::1]:8124",
+            messages_target.credential_destination().unwrap(),
+        ),
+    ] {
+        let profile = candidate
+            .protocol_profiles
+            .iter()
+            .find(|profile| profile.ingress_protocol == protocol)
+            .unwrap();
+        let native_target = profile.native_target.as_ref().unwrap();
+        assert!(native_target.operational_target.uri().contains(authority));
+        assert_eq!(native_target.credential_destination_ref, destination);
+        assert!(native_target.validate_for(profile));
+    }
+}
+
+#[test]
 fn source_local_messages_target_keeps_responses_conversion_on_the_same_path() {
     let mut fact = source_local_fact(GatewayAuthenticationSemanticsV1::None);
     fact.target.upstream_protocol = UpstreamProtocol::Messages;
@@ -38,17 +123,11 @@ fn registered_zhipu_model_uses_one_source_credential_for_its_exact_protocol_face
         candidate.credential_destination_ref,
         Some(fact.target.credential_destination().unwrap())
     );
-    for (ingress, path, capability_id, headers) in [
-        (
-            UpstreamProtocol::Responses,
-            "/api/v1/responses",
-            "cap.zhipu.glm-5.3.coding-plan.responses",
-            Vec::new(),
-        ),
+    for (ingress, path, headers) in [
+        (UpstreamProtocol::Responses, "/api/v1/responses", Vec::new()),
         (
             UpstreamProtocol::Messages,
             "/api/anthropic/v1/messages",
-            "cap.zhipu.glm-5.3.coding-plan.messages",
             vec![("anthropic-version".to_owned(), "2023-06-01".to_owned())],
         ),
     ] {
@@ -58,7 +137,10 @@ fn registered_zhipu_model_uses_one_source_credential_for_its_exact_protocol_face
             .find(|profile| profile.ingress_protocol == ingress)
             .unwrap();
         assert_eq!(profile.capability.upstream_protocol, ingress);
-        assert_eq!(profile.capability.capability_id, capability_id);
+        assert_eq!(
+            profile.capability.capability_id,
+            candidate.capability.capability_id
+        );
         assert_eq!(profile.capability.native_model, "glm-5.3");
         assert_eq!(profile.connector.request_path, path);
         assert_eq!(
@@ -118,6 +200,9 @@ fn native_messages_only_preserves_explicit_responses_conversion() {
         request_path: endpoint.request_path.clone(),
         authentication: GatewayAuthenticationSemanticsV1::Bearer,
         required_headers: endpoint.required_headers.clone(),
+        native_target: None,
+        adapter_ref: None,
+        adapter_revision: None,
     }];
     let profiles = protocol_profiles(
         &connector,

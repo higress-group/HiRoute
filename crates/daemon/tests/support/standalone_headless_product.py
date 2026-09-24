@@ -716,6 +716,7 @@ def run(repository):
 
         stage = 'observation-facts-and-usage'
         deadline = time.monotonic() + 30
+        last_receipt_facts = {}
         while True:
             sessions = product.cli('sessions', 'list', '--include-unlinked', '--limit', '50')['data']
             if sessions['sessions']:
@@ -728,6 +729,8 @@ def run(repository):
                                 'sessions', 'receipt', candidate_receipt_id)['data']
                             facts = [event['fact']
                                      for event in candidate_receipt['ordered_facts']]
+                            last_receipt_facts[candidate_receipt_id] = [
+                                fact['kind'] for fact in facts]
                             route = next((fact for fact in facts
                                           if fact['kind'] == 'route_decision'), None)
                             usage = next((fact for fact in facts
@@ -743,7 +746,10 @@ def run(repository):
                         break
                 if observed is not None:
                     break
-            assert time.monotonic() < deadline, sessions
+            assert time.monotonic() < deadline, {
+                'sessions': sessions, 'receipt_fact_kinds': last_receipt_facts,
+                'observation_status': product.cli('sessions', 'status')['data'],
+            }
             time.sleep(.1)
         detail, receipt_id, receipt, usage = observed
         session_id = detail['summary']['session_id']

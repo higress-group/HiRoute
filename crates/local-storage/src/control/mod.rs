@@ -1,6 +1,6 @@
 use hiroute_diagnostics::publication::{PublicationStage, measure};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -1752,6 +1752,7 @@ struct DurableSecretMutation {
     fingerprint_algorithm: SecretFingerprintAlgorithm,
     input_slot: Option<String>,
     fingerprint: Option<CanonicalDigest>,
+    new_allowed_destinations: Option<BTreeSet<String>>,
 }
 
 #[derive(Deserialize)]
@@ -1881,6 +1882,29 @@ fn decode_operation(
                                     SecretMutationV1::delete(
                                         mutation.credential,
                                         mutation.expected_generation,
+                                    )
+                                }
+                                SecretMutationKind::Rebind => {
+                                    if mutation.input_slot.is_some() {
+                                        return Err(port(
+                                            PortErrorCode::Corrupt,
+                                            "control.operation.secret_rebind_slot",
+                                        ));
+                                    }
+                                    SecretMutationV1::rebind(
+                                        mutation.credential,
+                                        mutation.new_allowed_destinations.ok_or_else(|| {
+                                            port(
+                                                PortErrorCode::Corrupt,
+                                                "control.operation.secret_rebind_destinations",
+                                            )
+                                        })?,
+                                        mutation.fingerprint.ok_or_else(|| {
+                                            port(
+                                                PortErrorCode::Corrupt,
+                                                "control.operation.secret_rebind_fingerprint",
+                                            )
+                                        })?,
                                     )
                                 }
                             }

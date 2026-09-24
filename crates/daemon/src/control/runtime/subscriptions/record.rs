@@ -164,6 +164,7 @@ impl StoredSubscriptionValidationV1 {
                 .map(ComputeCandidateModelFactsV2::from)
                 .collect(),
             native_recheck: None,
+            additional_native_endpoints: Vec::new(),
             discovery_guard: None,
             credential_binding: ComputeCredentialBindingV2::CpaOwned {
                 account_ref: self.account_ref.clone(),

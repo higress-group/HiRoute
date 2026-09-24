@@ -73,10 +73,9 @@ pub(super) fn validate_management_plan(
         .iter()
         .map(|credential| (credential.key_id.as_str(), credential))
         .collect::<BTreeMap<_, _>>();
-    let destination = mutation
+    let destinations = mutation
         .desired()
-        .target
-        .credential_destination()
+        .native_destinations()
         .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
 
     let mut secret_by_id = BTreeMap::new();
@@ -98,6 +97,8 @@ pub(super) fn validate_management_plan(
             (Some(before), Some(after)) => {
                 before.credential.generation() != after.credential.generation()
                     || before.fingerprint != after.fingerprint
+                    || before.credential.allowed_destinations()
+                        != after.credential.allowed_destinations()
             }
             (None, Some(_)) | (Some(_), None) => true,
             (None, None) => false,
@@ -117,7 +118,7 @@ pub(super) fn validate_management_plan(
             (None, Some(after)) => {
                 validate_management_upsert(
                     mutation.source_id(),
-                    &destination,
+                    &destinations,
                     0,
                     after,
                     secret_by_id.get(key_id).copied(),
@@ -125,15 +126,39 @@ pub(super) fn validate_management_plan(
             }
             (Some(before), Some(after))
                 if before.credential.generation() != after.credential.generation()
-                    || before.fingerprint != after.fingerprint =>
+                    || before.fingerprint != after.fingerprint
+                    || before.credential.allowed_destinations()
+                        != after.credential.allowed_destinations() =>
             {
-                validate_management_upsert(
-                    mutation.source_id(),
-                    &destination,
-                    before.credential.generation(),
-                    after,
-                    secret_by_id.get(key_id).copied(),
-                )?;
+                if before.fingerprint == after.fingerprint
+                    && before.credential.allowed_destinations()
+                        != after.credential.allowed_destinations()
+                {
+                    let secret = secret_by_id
+                        .get(key_id)
+                        .copied()
+                        .ok_or(OperationValidationError::UnregisteredEffectPlan)?;
+                    if secret.kind() != SecretMutationKind::Rebind
+                        || secret.credential() != &before.credential
+                        || secret.expected_generation() != before.credential.generation()
+                        || secret.new_allowed_destinations() != Some(&destinations)
+                        || secret.fingerprint() != Some(&before.fingerprint)
+                        || secret.input_slot().is_some()
+                        || after.credential.generation()
+                            != before.credential.generation().saturating_add(1)
+                        || after.credential.allowed_destinations() != &destinations
+                    {
+                        return Err(OperationValidationError::UnregisteredEffectPlan);
+                    }
+                } else {
+                    validate_management_upsert(
+                        mutation.source_id(),
+                        &destinations,
+                        before.credential.generation(),
+                        after,
+                        secret_by_id.get(key_id).copied(),
+                    )?;
+                }
             }
             (Some(before), None) => {
                 let secret = secret_by_id
@@ -168,7 +193,7 @@ pub(super) fn validate_management_plan(
 
 fn validate_management_upsert(
     source_id: &str,
-    destination: &str,
+    destinations: &BTreeSet<String>,
     expected_generation: u64,
     desired: &crate::ComputeManagedCredentialV2,
     secret: Option<&SecretMutationV1>,
@@ -184,7 +209,8 @@ fn validate_management_upsert(
         || reference.owner_scope() != format!("source/{source_id}")
         || reference.subject() != "hirouted"
         || reference.purpose() != "provider-auth"
-        || reference.allowed_destinations() != &BTreeSet::from([destination.to_owned()])
+        || reference.allowed_destinations() != destinations
+        || secret.new_allowed_destinations().is_some()
         || reference.generation() != expected_generation
     {
         return Err(OperationValidationError::UnregisteredEffectPlan);

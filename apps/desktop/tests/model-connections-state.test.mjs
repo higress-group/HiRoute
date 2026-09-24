@@ -9,6 +9,7 @@ import {
   modelCanBeSelected,
   modelSaveCompleted,
   saveEligibility,
+  savedSourceConnectionFields,
   selectedModelRefsForSave,
 } from '../src/features/model-connections/state.ts';
 
@@ -57,6 +58,49 @@ test('native user check maps UI provenance to the exact public wire draft', () =
   assert.equal('entry_kind' in wire, false);
   assert.equal('provenance' in wire, false);
   assert.equal('qualification' in wire, false);
+});
+
+test('native check preserves every endpoint and the saved-source edit revision', () => {
+  const draft = {
+    entry_kind: 'custom_api', provenance: { kind: 'user_configured', configuration_revision: 2 },
+    qualification: { free_access: null, evidence_ref: null }, models: [],
+    existing_source_id: 'source/a', expected_source_revision: 7,
+    base_url: 'https://open.example.test/v1', protocol: 'responses',
+    authentication: { kind: 'bearer' },
+    additional_endpoints: [{ base_url: 'https://messages.example.test', base_kind: 'api_root',
+      request_path_override: '/v1/messages', inventory_path_override: null,
+      protocol: 'messages', protocol_profile_id: 'profile/custom/messages',
+      protocol_profile_revision: 1, authentication: { kind: 'api_key_header', header: 'x-api-key' } }],
+  };
+  const wire = buildCheckDraft(draft);
+  assert.equal(wire.expected_source_revision, 7);
+  assert.deepEqual(wire.additional_endpoints, draft.additional_endpoints);
+  assert.equal('entry_kind' in wire, false);
+});
+
+test('saved source edit restores exact endpoint settings and IPv6 URLs', () => {
+  const target = (authority, port, protocol, profile, revision, path) => ({
+    scheme: 'http', authority, port, request_path: path,
+    upstream_protocol: protocol, protocol_profile_id: profile, protocol_profile_revision: revision,
+  });
+  const fields = savedSourceConnectionFields({
+    display_template_id: 'template/custom', inventory_path: '/custom/models',
+    target: target('::1', 8123, 'responses', 'profile/custom/responses', 3, '/v1/responses'),
+    authentication: { kind: 'bearer' },
+    additional_native_endpoints: [{
+      target: target('::1', 8124, 'messages', 'profile/custom/messages', 4, '/v1/messages'),
+      authentication: { kind: 'api_key_header', header: 'x-api-key' },
+      recheck: { inventory_path: '/anthropic/models' },
+    }],
+  });
+  assert.equal(fields.base_url, 'http://[::1]:8123');
+  assert.equal(fields.display_template_id, 'template/custom');
+  assert.equal(fields.inventory_path_override, '/custom/models');
+  assert.equal(fields.protocol_profile_id, 'profile/custom/responses');
+  assert.equal(fields.protocol_profile_revision, 3);
+  assert.equal(fields.additional_endpoints[0].base_url, 'http://[::1]:8124');
+  assert.equal(fields.additional_endpoints[0].inventory_path_override, '/anthropic/models');
+  assert.equal(fields.additional_endpoints[0].protocol_profile_revision, 4);
 });
 
 function resultWith({ factState, reachability, authentication }) {

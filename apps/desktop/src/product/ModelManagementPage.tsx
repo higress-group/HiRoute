@@ -2,7 +2,8 @@ import { requestEditorReplacement } from '../ui/discard-guard';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ModelConnectionForm } from '../features/model-connections/ModelConnectionForm';
-import { checkMatches, clientIdempotencyKey, modelSaveCompleted } from '../features/model-connections/state';
+import { blankModel } from '../features/model-connections/form-support';
+import { checkMatches, clientIdempotencyKey, modelSaveCompleted, savedSourceConnectionFields } from '../features/model-connections/state';
 import type {
   ComputeCandidateView,
   ComputeConnectionApplyRequest,
@@ -114,6 +115,7 @@ export function newModelConnectionDraft(kind: 'known' | 'custom' | 'free' = 'cus
     lineage_ref: `lineage/native/${crypto.randomUUID()}`,
     display_name: '',
     existing_source_id: null,
+    expected_source_revision: null,
     edit_revision: 1,
     check_id: '',
     base_url: '',
@@ -124,6 +126,7 @@ export function newModelConnectionDraft(kind: 'known' | 'custom' | 'free' = 'cus
     protocol_profile_id: 'profile/custom/chat_completions',
     protocol_profile_revision: 1,
     authentication: { kind: 'bearer' },
+    additional_endpoints: [],
     provenance: { kind: 'user_configured', configuration_revision: 1 },
     qualification: { free_access: null, evidence_ref: null },
     models: [],
@@ -819,18 +822,19 @@ export function ModelManagementPage({
 
   function reconnectSource(source: ManagedSource) {
     if (!trustedAuthority || source.provenance !== 'user_configured') return;
-    const host = source.target.authority.includes(':') && !source.target.authority.startsWith('[')
-      ? `[${source.target.authority}]`
-      : source.target.authority;
     const draft = newModelConnectionDraft('custom');
     initialDraft.current = {
       ...draft,
       display_name: source.display_name,
-      base_url: `${source.target.scheme}://${host}:${source.target.port}`,
-      request_path_override: source.target.request_path,
-      protocol: source.target.upstream_protocol as ModelConnectionDraft['protocol'],
-      protocol_profile_id: `profile/custom/${source.target.upstream_protocol}`,
-      authentication: source.authentication,
+      existing_source_id: source.source_id,
+      expected_source_revision: source.revision,
+      ...savedSourceConnectionFields(source),
+      models: source.models.map(model => ({
+        client_id: crypto.randomUUID(), upstream_model_id: model.upstream_model_id,
+        display_name: model.display_name, catalog_configuration_id: null,
+        membership: 'user_declared' as const,
+        capabilities: model.capabilities ?? blankModel(model.upstream_model_id, model.display_name).capabilities,
+      })),
     };
     setReconnectingFrom(source.source_id);
     setAdding(true);

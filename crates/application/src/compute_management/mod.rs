@@ -14,8 +14,8 @@ use hiroute_application_api::{
     ComputeValidationRefV2, OperationReferenceV1,
 };
 use hiroute_domain::{
-    CanonicalDigest, GatewayAuthenticationSemanticsV1, NativeReasoningCapabilityV1, PortError,
-    PortErrorCode, PortResult,
+    CanonicalDigest, ComputeNativeEndpointV3, GatewayAuthenticationSemanticsV1,
+    NativeReasoningCapabilityV1, PortError, PortErrorCode, PortResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -254,6 +254,7 @@ pub struct ComputeCandidateFactsV2 {
     /// Safe server-owned context to persist with a newly saved native source. Never projected in
     /// `ComputeCandidateViewV2` or the management snapshot.
     pub native_recheck: Option<hiroute_domain::ComputeNativeRecheckDescriptorV2>,
+    pub additional_native_endpoints: Vec<ComputeNativeEndpointV3>,
     /// Present only for a candidate prepared from an exact discovered configuration. The public
     /// candidate projection and durable save spec cannot observe or reconstruct this guard.
     pub discovery_guard: Option<ComputeDiscoveryEvidenceGuardV1>,
@@ -299,6 +300,12 @@ impl ComputeCandidateFactsV2 {
                 .is_some_and(|descriptor| descriptor.validate().is_err())
             || self.trusted_lineage_digest.is_some() && self.existing_source_id.is_none()
             || self.native_recheck.is_some() && self.producer != ComputeCandidateProducerV2::Native
+            || !self.additional_native_endpoints.is_empty()
+                && self.producer != ComputeCandidateProducerV2::Native
+            || self
+                .additional_native_endpoints
+                .iter()
+                .any(|endpoint| endpoint.validate().is_err())
         {
             return Err(invalid());
         }
@@ -370,6 +377,19 @@ impl ComputeCandidateFactsV2 {
     }
 
     fn validate_native_shape(&self) -> PortResult<()> {
+        let mut protocols = std::collections::BTreeSet::new();
+        if let Some(target) = &self.target {
+            protocols.insert(target.upstream_protocol);
+        }
+        if self.additional_native_endpoints.iter().any(|endpoint| {
+            !protocols.insert(endpoint.target.upstream_protocol)
+                || self.authentication.as_ref().is_none_or(|authentication| {
+                    (*authentication == GatewayAuthenticationSemanticsV1::None)
+                        != (endpoint.authentication == GatewayAuthenticationSemanticsV1::None)
+                })
+        }) {
+            return Err(invalid_candidate_facts());
+        }
         let valid_provenance = match &self.provenance {
             ComputeCandidateProvenanceV2::Registered {
                 connection_option_id,

@@ -42,20 +42,25 @@ class RustFileSizeTests(unittest.TestCase):
         run("git", "add", "legacy.rs", cwd=repository)
         run("git", "commit", "-qm", "candidate", cwd=repository)
 
-    def test_existing_hard_limit_violation_may_shrink_without_blocking(self):
+    def test_existing_oversized_file_may_shrink_without_blocking(self):
         repository, base = self.repository(1200)
         self.commit_lines(repository, 1150)
         result = run("bash", str(CHECK), "--base", base, cwd=repository)
-        self.assertIn("retains baseline size", result.stderr)
+        self.assertIn("existing oversized file", result.stderr)
 
-    def test_existing_hard_limit_violation_cannot_grow(self):
+    def test_existing_oversized_file_growth_is_a_responsibility_warning(self):
         repository, base = self.repository(1200)
         self.commit_lines(repository, 1201)
-        result = run(
-            "bash", str(CHECK), "--base", base, cwd=repository, check=False
-        )
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("error: legacy.rs has 1201 lines", result.stderr)
+        result = run("bash", str(CHECK), "--base", base, cwd=repository)
+        self.assertIn("existing oversized file", result.stderr)
+        self.assertIn("base: 1200", result.stderr)
+
+    def test_existing_file_crossing_threshold_is_a_responsibility_warning(self):
+        repository, base = self.repository(1099)
+        self.commit_lines(repository, 1103)
+        result = run("bash", str(CHECK), "--base", base, cwd=repository)
+        self.assertIn("existing oversized file", result.stderr)
+        self.assertIn("base: 1099", result.stderr)
 
     def test_new_hard_limit_violation_is_rejected(self):
         repository, base = self.repository(1)

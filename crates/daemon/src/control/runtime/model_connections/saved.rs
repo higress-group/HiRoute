@@ -255,6 +255,7 @@ fn saved_user_draft(
         protocol_profile_revision: source.target.protocol_profile_revision,
         protocol_header_semantics: descriptor.protocol_header_semantics.clone(),
         authentication: source.authentication.clone(),
+        additional_native_endpoints: source.additional_native_endpoints.clone(),
         provenance: NativeConnectionProvenanceInputV1::UserConfigured {
             configuration_revision: *configuration_revision,
         },
@@ -556,6 +557,7 @@ mod tests {
                 inventory_path: draft.inventory_path_override.clone(),
                 protocol_header_semantics: draft.protocol_header_semantics.clone(),
             }),
+            additional_native_endpoints: Vec::new(),
             credentials: Vec::new(),
             validation: None,
             last_candidate_ref: "candidate/native/bailian-saved".into(),
@@ -679,6 +681,7 @@ mod tests {
                     forbidden_forward_headers: vec!["authorization".into()],
                 },
             }),
+            additional_native_endpoints: Vec::new(),
             credentials: Vec::new(),
             validation: None,
             last_candidate_ref: "candidate/native/custom-saved".into(),

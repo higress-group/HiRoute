@@ -391,6 +391,19 @@ impl SecretStorePort for LocalSecretStore {
                 }
                 None
             }
+            SecretMutationKind::Rebind => {
+                if input.is_some()
+                    || mutation.input_slot().is_some()
+                    || mutation.fingerprint().is_none()
+                    || mutation.new_allowed_destinations().is_none()
+                {
+                    return Err(port(
+                        PortErrorCode::InvalidData,
+                        "secret.apply.rebind_input",
+                    ));
+                }
+                mutation.fingerprint().cloned()
+            }
         };
         let credential = mutation.credential();
         let mut connection = self.connection.borrow_mut();
@@ -427,6 +440,21 @@ impl SecretStorePort for LocalSecretStore {
             // AEAD-open + HMAC verification precedes snapshotting or any durable write.
             self.authenticate_row(row)?;
         }
+        if mutation.kind() == SecretMutationKind::Rebind {
+            let row = before
+                .as_ref()
+                .ok_or_else(|| port(PortErrorCode::NotFound, "secret.apply.rebind_missing"))?;
+            if mutation
+                .fingerprint()
+                .is_none_or(|expected| row.fingerprint != expected.as_str())
+                || mutation.new_allowed_destinations() == Some(credential.allowed_destinations())
+            {
+                return Err(port(
+                    PortErrorCode::Conflict,
+                    "secret.apply.rebind_fingerprint",
+                ));
+            }
+        }
         if absence
             .as_ref()
             .is_some_and(|marker| marker.owner_scope != credential.owner_scope())
@@ -440,7 +468,10 @@ impl SecretStorePort for LocalSecretStore {
         let after_generation = current_generation
             .checked_add(1)
             .ok_or_else(|| port(PortErrorCode::Conflict, "secret.apply.generation_overflow"))?;
-        let allowed = destinations_json(credential.allowed_destinations())?;
+        let after_destinations = mutation
+            .new_allowed_destinations()
+            .unwrap_or(credential.allowed_destinations());
+        let allowed = destinations_json(after_destinations)?;
         let (ciphertext, nonce) = match (mutation.kind(), input) {
             (SecretMutationKind::Upsert, Some(input)) => {
                 let encrypted =
@@ -448,6 +479,24 @@ impl SecretStorePort for LocalSecretStore {
                 (Some(encrypted.0), Some(encrypted.1))
             }
             (SecretMutationKind::Delete, None) => (None, None),
+            (SecretMutationKind::Rebind, None) => {
+                let row = before
+                    .as_ref()
+                    .ok_or_else(|| port(PortErrorCode::NotFound, "secret.apply.rebind_missing"))?;
+                let secret = self.authenticate_row(row)?;
+                let rebound = CredentialRefV1::new(
+                    credential.credential_id(),
+                    credential.owner_scope(),
+                    credential.subject(),
+                    credential.purpose(),
+                    after_destinations.iter().cloned(),
+                    current_generation,
+                )
+                .map_err(|_| port(PortErrorCode::InvalidData, "secret.apply.rebind_reference"))?;
+                let encrypted =
+                    self.encrypt(&rebound, "provider-api-key", after_generation, &secret)?;
+                (Some(encrypted.0), Some(encrypted.1))
+            }
             _ => return Err(port(PortErrorCode::InvalidData, "secret.apply.input")),
         };
         transaction
@@ -479,7 +528,7 @@ impl SecretStorePort for LocalSecretStore {
                     before.as_ref().map(|row| row.fingerprint.as_str()),
                     current_generation,
                     before.as_ref().map(|row| row.owner_operation_id.as_str()),
-                    i64::from(mutation.kind() == SecretMutationKind::Upsert),
+                    i64::from(mutation.kind() != SecretMutationKind::Delete),
                     fingerprint.as_ref().map(CanonicalDigest::as_str),
                     after_generation,
                     credential.owner_scope(),
@@ -509,7 +558,7 @@ impl SecretStorePort for LocalSecretStore {
                 .as_ref()
                 .and_then(|row| CanonicalDigest::parse(&row.fingerprint).ok()),
             fingerprint,
-            mutation.kind() == SecretMutationKind::Upsert,
+            mutation.kind() != SecretMutationKind::Delete,
             after_generation,
         ))
     }
@@ -533,7 +582,7 @@ impl SecretStorePort for LocalSecretStore {
         }
         if record.owner_scope != mutation.credential().owner_scope()
             || record.after_generation != mutation.expected_generation() + 1
-            || record.after_exists != (mutation.kind() == SecretMutationKind::Upsert)
+            || record.after_exists != (mutation.kind() != SecretMutationKind::Delete)
         {
             return Ok(EffectReconciliation::OwnershipLost(
                 record.effect(operation_id)?,
@@ -1996,6 +2045,57 @@ mod tests {
                 .unwrap()
                 .code,
             PortErrorCode::Conflict
+        );
+    }
+
+    #[test]
+    fn rebind_reencrypts_existing_key_without_new_input_and_revokes_removed_destination() {
+        let (_directory, store) = store();
+        let secret = ProtectedSecret::new(b"shared-key".to_vec()).unwrap();
+        let initial = mutation(&store, &secret, 0);
+        let effect = store
+            .apply_secret(&operation_id('a'), &initial, Some(&secret))
+            .unwrap();
+        store.activate_secret(&effect).unwrap();
+        let before = reference(1);
+        let destinations = BTreeSet::from(["provider-api-next".to_owned()]);
+        let rebind = SecretMutationV1::rebind(
+            before.clone(),
+            destinations.clone(),
+            store.fingerprint(&secret).unwrap(),
+        )
+        .unwrap();
+        let effect = store
+            .apply_secret(&operation_id('b'), &rebind, None)
+            .unwrap();
+        assert!(matches!(
+            store.observe_secret(&operation_id('b'), &rebind).unwrap(),
+            EffectReconciliation::Staged(_)
+        ));
+        store.activate_secret(&effect).unwrap();
+        let after = CredentialRefV1::new(
+            "credential-a",
+            "connection-a",
+            "hirouted",
+            "provider-auth",
+            destinations,
+            2,
+        )
+        .unwrap();
+        let subject =
+            VerifiedSecretSubjectV1::from_authenticated_transport("hirouted", "connection-a")
+                .unwrap();
+        assert_eq!(
+            store
+                .resolve_secret(&subject, &after, "provider-auth", "provider-api-next", 2)
+                .unwrap()
+                .expose(),
+            secret.expose()
+        );
+        assert!(
+            store
+                .resolve_secret(&subject, &before, "provider-auth", "provider-api", 1)
+                .is_err()
         );
     }
 

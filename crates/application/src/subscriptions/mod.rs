@@ -230,6 +230,7 @@ pub fn verified_subscription_candidate(
         authentication: Some(authentication),
         models: validation.inventory,
         native_recheck: None,
+        additional_native_endpoints: Vec::new(),
         discovery_guard: None,
         credential_binding: ComputeCredentialBindingV2::CpaOwned {
             account_ref: validation.account_ref,

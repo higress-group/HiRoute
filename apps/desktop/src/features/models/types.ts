@@ -12,6 +12,7 @@ export type ManagedModel = {
   display_name: string;
   catalog_configuration_id?: string;
   membership: 'catalog' | 'observed' | 'user_declared';
+  capabilities?: import('../model-connections/types').ModelDeclaration['capabilities'];
   native_reasoning?: unknown;
   presentation?: {
     billing_class: 'free' | 'subscription' | 'paid' | 'unknown';
@@ -44,6 +45,7 @@ export type ManagedSource = {
   display_name: string;
   provenance: Provenance;
   display_template_id?: string | null;
+  inventory_path?: string | null;
   connection_identity?: {
     access_kind: 'api' | 'subscription' | 'unknown';
     connection_option_id: string | null;
@@ -62,6 +64,11 @@ export type ManagedSource = {
     | { kind: 'api_key_header'; header: string }
     | { kind: 'bearer' }
     | { kind: 'none' };
+  additional_native_endpoints?: {
+    target: ManagedSource['target'];
+    authentication: ManagedSource['authentication'];
+    recheck?: { inventory_path: string | null } | null;
+  }[];
   state: MaterializationState;
   models: ManagedModel[];
   keys: ManagedKey[];
