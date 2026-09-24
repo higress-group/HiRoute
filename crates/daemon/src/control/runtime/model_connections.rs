@@ -21,7 +21,8 @@ use hiroute_application_api::{
 use hiroute_domain::{
     ComputeManagementRepositoryPort, ComputeNativeRecheckDescriptorV2, ControlRepositoryPort,
     GatewayAuthenticationSemanticsV1, GatewayHeaderSemanticsV1, OperationId, OperationState,
-    PortError, PortErrorCode, ProtectedSecret, ProtocolEndpointV1, UpstreamProtocol, WorkspaceId,
+    PortError, PortErrorCode, ProtectedSecret, ProtocolEndpointV1, SecretStorePort,
+    UpstreamProtocol, VerifiedSecretSubjectV1, WorkspaceId,
 };
 use hiroute_integrations::{
     ModelConnectionBaseKindV1, ModelConnectionProbeCancellationV1, NativeCandidateFactBasisV1,
@@ -47,11 +48,52 @@ pub(super) fn registered_source_matches_current_option(
     {
         return false;
     }
-    resolved
+    let primary_matches = resolved
         .endpoint_profile
         .protocol_endpoints
         .iter()
-        .any(|endpoint| registered_endpoint_matches_source(source, resolved, endpoint))
+        .any(|endpoint| registered_endpoint_matches_source(source, resolved, endpoint));
+    primary_matches
+        && source.additional_native_endpoints.iter().all(|saved| {
+            resolved
+                .endpoint_profile
+                .protocol_endpoints
+                .iter()
+                .any(|endpoint| registered_endpoint_matches_saved_extra(saved, resolved, endpoint))
+        })
+}
+
+pub(super) fn registered_endpoint_matches_saved_extra(
+    saved: &hiroute_domain::ComputeNativeEndpointV3,
+    resolved: &hiroute_domain::ResolvedConnectionOptionV1,
+    endpoint: &ProtocolEndpointV1,
+) -> bool {
+    native_registered_authentication(resolved.connector.authentication, endpoint)
+        == Some(saved.authentication.clone())
+        && saved.recheck == registered_endpoint_recheck_descriptor(resolved, endpoint)
+        && saved.target.scheme == "https"
+        && saved.target.port == 443
+        && endpoint.base_url.strip_prefix("https://") == Some(saved.target.authority.as_str())
+        && endpoint.request_path == saved.target.request_path
+        && endpoint.protocol == saved.target.upstream_protocol
+        && endpoint.adapter_ref == saved.target.protocol_profile_id
+        && endpoint.adapter_revision == saved.target.protocol_profile_revision
+}
+
+fn native_registered_authentication(
+    connector: hiroute_domain::AuthenticationKind,
+    endpoint: &ProtocolEndpointV1,
+) -> Option<GatewayAuthenticationSemanticsV1> {
+    let authentication = endpoint.authentication_semantics.clone()?;
+    match (connector, &authentication) {
+        (hiroute_domain::AuthenticationKind::None, GatewayAuthenticationSemanticsV1::None)
+        | (
+            hiroute_domain::AuthenticationKind::ProviderApiKey,
+            GatewayAuthenticationSemanticsV1::Bearer
+            | GatewayAuthenticationSemanticsV1::ApiKeyHeader { .. },
+        ) => Some(authentication),
+        _ => None,
+    }
 }
 
 pub(super) fn registered_endpoint_header_semantics(
@@ -195,7 +237,62 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         }
 
         let checked = (|| {
+            let expected_source_revision = request.draft.expected_source_revision;
             let mut draft = trusted_draft(request.draft, self.release_catalog.as_ref())?;
+            let saved_key = if let Some(source_id) = draft.existing_source_id.as_deref() {
+                let expected_revision =
+                    expected_source_revision.ok_or(ComputeManagementControlError::Invalid)?;
+                let stores = self
+                    .stores_lock()
+                    .map_err(|_| ComputeManagementControlError::Unavailable)?;
+                let source = stores
+                    .control()
+                    .compute_management_source(source_id)
+                    .map_err(map_port)?
+                    .ok_or(ComputeManagementControlError::NotFound)?;
+                if source.revision != expected_revision
+                    || !matches!(
+                        source.provenance,
+                        hiroute_domain::ComputeManagementProvenanceV2::UserConfigured { .. }
+                    )
+                {
+                    return Err(ComputeManagementControlError::Conflict);
+                }
+                draft.trusted_lineage_digest = Some(source.lineage_digest.clone());
+                if request.input_candidate.is_some()
+                    || draft.authentication == GatewayAuthenticationSemanticsV1::None
+                {
+                    None
+                } else if let Some(key) = source.enabled_credentials().next() {
+                    let subject = VerifiedSecretSubjectV1::from_authenticated_transport(
+                        "hirouted",
+                        format!("source/{}", source.source_id),
+                    )
+                    .map_err(|_| ComputeManagementControlError::Corrupt)?;
+                    let destination = source
+                        .target
+                        .credential_destination()
+                        .map_err(|_| ComputeManagementControlError::Corrupt)?;
+                    let secret = stores
+                        .secrets()
+                        .resolve_secret(
+                            &subject,
+                            &key.credential,
+                            "provider-auth",
+                            &destination,
+                            key.credential.generation(),
+                        )
+                        .map_err(map_port)?;
+                    Some((key.key_id.clone(), key.credential.generation(), secret))
+                } else {
+                    None
+                }
+            } else {
+                if expected_source_revision.is_some() {
+                    return Err(ComputeManagementControlError::Invalid);
+                }
+                None
+            };
             let secret = match (&draft.authentication, request.input_candidate) {
                 (GatewayAuthenticationSemanticsV1::None, None) => None,
                 (GatewayAuthenticationSemanticsV1::None, Some(_)) => {
@@ -247,7 +344,16 @@ impl ComputeManagementControlPort for LocalControlAdapter {
                         .ok_or(ComputeManagementControlError::Invalid)?,
                     secret,
                 },
-                (_, None) => NativeModelConnectionCredentialV1::PendingInput,
+                (_, None) => match saved_key.as_ref() {
+                    Some((credential_id, expected_generation, secret)) => {
+                        NativeModelConnectionCredentialV1::Saved {
+                            credential_id: credential_id.clone(),
+                            expected_generation: *expected_generation,
+                            secret,
+                        }
+                    }
+                    None => NativeModelConnectionCredentialV1::PendingInput,
+                },
             };
             self.model_connections
                 .check(draft, credential, &cancellation)
@@ -578,15 +684,56 @@ fn trusted_draft(
     {
         return Err(ComputeManagementControlError::Invalid);
     }
-    let header_semantics = GatewayHeaderSemanticsV1 {
-        content_type: "application/json".into(),
-        required_headers: if draft.protocol == UpstreamProtocol::Messages {
-            vec![("anthropic-version".into(), "2023-06-01".into())]
-        } else {
-            Vec::new()
-        },
-        forbidden_forward_headers: vec!["authorization".into(), "x-api-key".into()],
-    };
+    let header_semantics = custom_endpoint_headers(draft.protocol);
+    let additional_native_endpoints = draft
+        .additional_endpoints
+        .iter()
+        .map(|endpoint| {
+            let headers = custom_endpoint_headers(endpoint.protocol);
+            let normalized = hiroute_integrations::normalize_model_connection_target(
+                hiroute_integrations::ModelConnectionTargetInputV1 {
+                    base_url: &endpoint.base_url,
+                    base_kind: match endpoint.base_kind {
+                        NativeModelConnectionBaseKindV1::ApiRoot => {
+                            ModelConnectionBaseKindV1::ApiRoot
+                        }
+                        NativeModelConnectionBaseKindV1::NativeMessagesBase => {
+                            ModelConnectionBaseKindV1::NativeMessagesBase
+                        }
+                        NativeModelConnectionBaseKindV1::NativeResponsesBase => {
+                            ModelConnectionBaseKindV1::NativeResponsesBase
+                        }
+                    },
+                    protocol: endpoint.protocol,
+                    request_path_override: endpoint.request_path_override.as_deref(),
+                    inventory_path_override: endpoint.inventory_path_override.as_deref(),
+                    protocol_profile_id: &endpoint.protocol_profile_id,
+                    protocol_profile_revision: endpoint.protocol_profile_revision,
+                    protocol_header_semantics: &headers,
+                    authentication: &endpoint.authentication,
+                },
+            )
+            .map_err(|_| ComputeManagementControlError::Invalid)?;
+            let target = normalized.candidate_target;
+            Ok(hiroute_domain::ComputeNativeEndpointV3 {
+                target: hiroute_domain::ComputeManagementTargetV2 {
+                    scheme: target.scheme,
+                    authority: target.authority,
+                    port: target.port,
+                    request_path: target.request_path,
+                    upstream_protocol: target.upstream_protocol,
+                    protocol_profile_id: target.protocol_profile_id,
+                    protocol_profile_revision: target.protocol_profile_revision,
+                },
+                authentication: endpoint.authentication.clone(),
+                recheck: Some(ComputeNativeRecheckDescriptorV2 {
+                    display_template_id: None,
+                    inventory_path: normalized.inventory_path,
+                    protocol_header_semantics: headers,
+                }),
+            })
+        })
+        .collect::<Result<Vec<_>, ComputeManagementControlError>>()?;
     Ok(NativeModelConnectionDraftV1 {
         display_template_id: draft.display_template_id,
         inference_model_id: draft.inference_model_id,
@@ -614,6 +761,7 @@ fn trusted_draft(
         protocol_profile_revision: draft.protocol_profile_revision,
         protocol_header_semantics: header_semantics,
         authentication: draft.authentication,
+        additional_native_endpoints,
         provenance: NativeConnectionProvenanceInputV1::UserConfigured {
             configuration_revision: draft.configuration_revision,
         },
@@ -624,6 +772,18 @@ fn trusted_draft(
         runtime_fallback_denied_model_ids: runtime_fallback_denied_model_ids(catalog),
         models: draft.models.into_iter().map(user_model).collect(),
     })
+}
+
+fn custom_endpoint_headers(protocol: UpstreamProtocol) -> GatewayHeaderSemanticsV1 {
+    GatewayHeaderSemanticsV1 {
+        content_type: "application/json".into(),
+        required_headers: if protocol == UpstreamProtocol::Messages {
+            vec![("anthropic-version".into(), "2023-06-01".into())]
+        } else {
+            Vec::new()
+        },
+        forbidden_forward_headers: vec!["authorization".into(), "x-api-key".into()],
+    }
 }
 
 fn user_model(

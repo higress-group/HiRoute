@@ -73,6 +73,7 @@ fn source(authentication: GatewayAuthenticationSemanticsV1) -> ComputeManagement
             capability_evidence_digest: CanonicalDigest::of_bytes(b"capabilities"),
         }],
         native_recheck: None,
+        additional_native_endpoints: Vec::new(),
         credentials,
         validation: None,
         last_candidate_ref: "candidate/a".into(),
@@ -98,6 +99,60 @@ fn ready_authentication_requires_an_enabled_key_but_none_does_not() {
     );
     missing.state = MaterializationState::NeedsCredential;
     assert_eq!(missing.validate(), Ok(()));
+}
+
+#[test]
+fn one_native_source_shares_one_key_across_distinct_protocol_endpoints() {
+    let mut value = source(GatewayAuthenticationSemanticsV1::Bearer);
+    let messages = ComputeNativeEndpointV3 {
+        target: ComputeManagementTargetV2 {
+            scheme: "https".into(),
+            authority: "messages.example.test".into(),
+            port: 443,
+            request_path: "/v1/messages".into(),
+            upstream_protocol: UpstreamProtocol::Messages,
+            protocol_profile_id: "profile/messages".into(),
+            protocol_profile_revision: 1,
+        },
+        authentication: GatewayAuthenticationSemanticsV1::ApiKeyHeader {
+            header: "x-api-key".into(),
+        },
+        recheck: None,
+    };
+    let messages_destination = messages.target.credential_destination().unwrap();
+    value.additional_native_endpoints.push(messages.clone());
+    assert_eq!(
+        value.validate(),
+        Err(ComputeManagementErrorV2::InvalidCredential)
+    );
+    let destinations = value.native_destinations().unwrap();
+    value.credentials[0].credential = CredentialRefV1::new(
+        "credential/source-a/key-a",
+        "source/source-a",
+        "hirouted",
+        "provider-auth",
+        destinations,
+        1,
+    )
+    .unwrap();
+    assert_eq!(value.validate(), Ok(()));
+    assert!(
+        value.credentials[0]
+            .credential
+            .allowed_destinations()
+            .contains(&messages_destination)
+    );
+    value.additional_native_endpoints.push(messages);
+    assert_eq!(
+        value.validate(),
+        Err(ComputeManagementErrorV2::DuplicateIdentity)
+    );
+    value.additional_native_endpoints.pop();
+    value.additional_native_endpoints[0].authentication = GatewayAuthenticationSemanticsV1::None;
+    assert_eq!(
+        value.validate(),
+        Err(ComputeManagementErrorV2::InvalidCredential)
+    );
 }
 
 #[test]

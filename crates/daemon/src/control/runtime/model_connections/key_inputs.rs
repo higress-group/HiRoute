@@ -129,6 +129,7 @@ impl LocalControlAdapter {
                     authentication: Some(source.authentication.clone()),
                     models: Vec::new(),
                     native_recheck: None,
+                    additional_native_endpoints: source.additional_native_endpoints.clone(),
                     discovery_guard: None,
                     credential_binding: ComputeCredentialBindingV2::NativeProtected {
                         descriptor: ProtectedInputSourceDescriptorV1::ManualInput,

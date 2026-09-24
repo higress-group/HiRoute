@@ -12,9 +12,9 @@ use hiroute_domain::{
     AuthenticationKind, BillingClass, CanonicalDigest, CapabilityFactsV1,
     ComputeProjectionExpectationV1, ConnectorRuntimeKind, CredentialPoolV1,
     GatewayAuthenticationSemanticsV1, GatewayCandidateProtocolProfileV1,
-    GatewayOperationalTargetV1, InventoryDisposition, ModelDefinitionV1, ModelEndpointCapabilityV1,
-    ModelNativeReasoningV1, PoolCredentialV1, ProtocolEndpointV1, ResolvedConnectionOptionV1,
-    SourceBindingV1, UpstreamProtocol,
+    GatewayNativeProfileTargetV2, GatewayOperationalTargetV1, InventoryDisposition,
+    ModelDefinitionV1, ModelEndpointCapabilityV1, ModelNativeReasoningV1, PoolCredentialV1,
+    ProtocolEndpointV1, ResolvedConnectionOptionV1, SourceBindingV1, UpstreamProtocol,
 };
 use hiroute_integrations::{CpaRegisteredSourceV1, TrustedReleaseCatalog};
 
@@ -52,6 +52,9 @@ struct ProtocolFace {
     request_path: String,
     authentication: GatewayAuthenticationSemanticsV1,
     required_headers: Vec<(String, String)>,
+    native_target: Option<GatewayNativeProfileTargetV2>,
+    adapter_ref: Option<String>,
+    adapter_revision: Option<u64>,
 }
 
 /// Joins client-bundled catalog facts, durable pool order, and (only for CPA) the live managed target.
@@ -99,6 +102,9 @@ pub(super) fn materialize_candidate_execution(
                         protocol_endpoint,
                     )?,
                     required_headers: protocol_endpoint.required_headers.clone(),
+                    native_target: None,
+                    adapter_ref: None,
+                    adapter_revision: None,
                 }],
             ),
             ConnectorRuntimeKind::CpaBridge => {
@@ -148,6 +154,9 @@ pub(super) fn materialize_candidate_execution(
                         } else {
                             Vec::new()
                         },
+                        native_target: None,
+                        adapter_ref: None,
+                        adapter_revision: None,
                     });
                 }
                 (
@@ -277,6 +286,15 @@ pub(super) fn materialize_management_candidate(
                 .resolve_connection_option(connection_option_id)
                 .ok()?;
             if resolved.connector.runtime_kind != ConnectorRuntimeKind::BuiltinNative {
+                return None;
+            }
+            if fact.additional_native_endpoints.iter().any(|saved| {
+                !resolved.endpoint_profile.protocol_endpoints.iter().any(|endpoint| {
+                    crate::control::runtime::model_connections::registered_endpoint_matches_saved_extra(
+                        saved, &resolved, endpoint,
+                    )
+                })
+            }) {
                 return None;
             }
             Some(resolved)
@@ -439,12 +457,42 @@ pub(super) fn materialize_management_candidate(
         capability: fact.native_reasoning.clone(),
         native_render_convention: None,
     };
-    let protocol_faces = [ProtocolFace {
+    let mut protocol_faces = vec![ProtocolFace {
         protocol: protocol_endpoint.protocol,
         request_path: protocol_endpoint.request_path.clone(),
         authentication: fact.authentication.clone(),
         required_headers: protocol_endpoint.required_headers.clone(),
+        native_target: Some(GatewayNativeProfileTargetV2 {
+            operational_target: operational_target.clone(),
+            credential_destination_ref: fact.target.credential_destination().ok()?,
+        }),
+        adapter_ref: Some(fact.target.protocol_profile_id.clone()),
+        adapter_revision: Some(fact.target.protocol_profile_revision),
     }];
+    for endpoint in &fact.additional_native_endpoints {
+        let target = &endpoint.target;
+        let base = format!("{}://{}", target.scheme, target_authority(target)?);
+        let uri = format!("{}{}", base, target.request_path);
+        let operational_target = if registered.is_some() {
+            GatewayOperationalTargetV1::RegisteredHttps { uri }
+        } else {
+            GatewayOperationalTargetV1::UserConfiguredNative { uri }
+        };
+        protocol_faces.push(ProtocolFace {
+            protocol: target.upstream_protocol,
+            request_path: target.request_path.clone(),
+            authentication: endpoint.authentication.clone(),
+            required_headers: endpoint.recheck.as_ref().map_or_else(Vec::new, |value| {
+                value.protocol_header_semantics.required_headers.clone()
+            }),
+            native_target: Some(GatewayNativeProfileTargetV2 {
+                operational_target,
+                credential_destination_ref: target.credential_destination().ok()?,
+            }),
+            adapter_ref: Some(target.protocol_profile_id.clone()),
+            adapter_revision: Some(target.protocol_profile_revision),
+        });
+    }
     let protocol_profiles = protocol_profiles(
         &connector,
         &model,

@@ -292,6 +292,9 @@ where
                     return Err(ChangePreparationError::UnexpectedSecretInput);
                 }
             }
+            hiroute_domain::SecretMutationKind::Rebind => {
+                return Err(ChangePreparationError::UnexpectedSecretInput);
+            }
         }
     }
     desired.finalize_credential_pool()?;
@@ -346,6 +349,7 @@ where
             mutation: match mutation.kind() {
                 hiroute_domain::SecretMutationKind::Upsert => "upsert",
                 hiroute_domain::SecretMutationKind::Delete => "delete",
+                hiroute_domain::SecretMutationKind::Rebind => "rebind",
             },
             fingerprint: mutation.fingerprint(),
             source: (mutation.kind() == hiroute_domain::SecretMutationKind::Upsert).then(|| {
@@ -539,6 +543,7 @@ fn preview_effects(desired: &RegisteredEffectPlan, control_target: &str) -> Vec<
             action: match secret.kind() {
                 hiroute_domain::SecretMutationKind::Upsert => "upsert",
                 hiroute_domain::SecretMutationKind::Delete => "delete",
+                hiroute_domain::SecretMutationKind::Rebind => "rebind",
             }
             .to_owned(),
             target: secret.credential().credential_id().to_owned(),

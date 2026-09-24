@@ -135,6 +135,7 @@ fn management_source(source_id: &str, binding_id: &str) -> ComputeManagementSour
             capability_evidence_digest: CanonicalDigest::of_bytes(b"management-capabilities"),
         }],
         native_recheck: None,
+        additional_native_endpoints: Vec::new(),
         credentials: Vec::new(),
         validation: None,
         last_candidate_ref: "candidate.management".into(),

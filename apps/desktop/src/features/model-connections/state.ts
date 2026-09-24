@@ -8,6 +8,36 @@ import type {
   ModelConnectionCheckView,
   RevisionSet,
 } from './types';
+import type { ManagedSource } from '../models/types';
+
+export function savedSourceConnectionFields(source: ManagedSource) {
+  const baseUrl = (target: ManagedSource['target']) => {
+    const host = target.authority.includes(':') && !target.authority.startsWith('[')
+      ? `[${target.authority}]`
+      : target.authority;
+    return `${target.scheme}://${host}:${target.port}`;
+  };
+  return {
+    display_template_id: source.display_template_id ?? null,
+    base_url: baseUrl(source.target),
+    request_path_override: source.target.request_path,
+    inventory_path_override: source.inventory_path ?? null,
+    protocol: source.target.upstream_protocol as ModelConnectionDraft['protocol'],
+    protocol_profile_id: source.target.protocol_profile_id,
+    protocol_profile_revision: source.target.protocol_profile_revision,
+    authentication: source.authentication,
+    additional_endpoints: (source.additional_native_endpoints ?? []).map(endpoint => ({
+      base_url: baseUrl(endpoint.target),
+      base_kind: 'api_root' as const,
+      request_path_override: endpoint.target.request_path,
+      inventory_path_override: endpoint.recheck?.inventory_path ?? null,
+      protocol: endpoint.target.upstream_protocol as ModelConnectionDraft['protocol'],
+      protocol_profile_id: endpoint.target.protocol_profile_id,
+      protocol_profile_revision: endpoint.target.protocol_profile_revision,
+      authentication: endpoint.authentication,
+    })),
+  };
+}
 
 export function buildCheckDraft(draft: ModelConnectionDraft): ModelConnectionDraftInput {
   if (draft.provenance.kind !== 'user_configured') {

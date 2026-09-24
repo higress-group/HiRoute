@@ -15,7 +15,7 @@ use crate::{
     RevisionSetV1, UpstreamProtocol, WorkspaceId,
 };
 
-pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2: &str = "hiroute.compute-management-source/v2";
+pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2: &str = "hiroute.compute-management-source/v3";
 pub const COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V2: &str = "hiroute.compute-management-mutation/v2";
 pub const COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2: &str = "hiroute.compute-management-change/v2";
 
@@ -263,18 +263,43 @@ impl ComputeManagedCredentialV2 {
     fn validate_for(
         &self,
         source_id: &str,
-        destination: &str,
+        destinations: &BTreeSet<String>,
     ) -> Result<(), ComputeManagementErrorV2> {
         validate_identifier(&self.key_id)?;
         if self.key_id != self.credential.credential_id()
             || self.credential.owner_scope() != format!("source/{source_id}")
             || self.credential.subject() != "hirouted"
             || self.credential.purpose() != "provider-auth"
-            || self.credential.allowed_destinations() != &BTreeSet::from([destination.to_owned()])
+            || self.credential.allowed_destinations() != destinations
             || self.credential.generation() == 0
             || !valid_digest(&self.fingerprint)
         {
             return Err(ComputeManagementErrorV2::InvalidCredential);
+        }
+        Ok(())
+    }
+}
+
+/// A second or third exact protocol endpoint for a Native source. The existing source target is
+/// its first endpoint; CPA sources never have these records.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeNativeEndpointV3 {
+    pub target: ComputeManagementTargetV2,
+    pub authentication: GatewayAuthenticationSemanticsV1,
+    pub recheck: Option<ComputeNativeRecheckDescriptorV2>,
+}
+
+impl ComputeNativeEndpointV3 {
+    pub fn validate(&self) -> Result<(), ComputeManagementErrorV2> {
+        self.target.validate()?;
+        validate_authentication(&self.authentication)?;
+        if self
+            .recheck
+            .as_ref()
+            .is_some_and(|value| value.validate().is_err())
+        {
+            return Err(ComputeManagementErrorV2::InvalidTarget);
         }
         Ok(())
     }
@@ -391,6 +416,8 @@ pub struct ComputeManagementSourceV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_recheck: Option<ComputeNativeRecheckDescriptorV2>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_native_endpoints: Vec<ComputeNativeEndpointV3>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub credentials: Vec<ComputeManagedCredentialV2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation: Option<ComputeManagementValidationV2>,
@@ -413,6 +440,21 @@ impl ComputeManagementSourceV2 {
         self.provenance.validate()?;
         self.target.validate()?;
         validate_authentication(&self.authentication)?;
+        if self.provenance.is_connector_owned() && !self.additional_native_endpoints.is_empty() {
+            return Err(ComputeManagementErrorV2::InvalidTarget);
+        }
+        let mut protocols = BTreeSet::from([self.target.upstream_protocol]);
+        for endpoint in &self.additional_native_endpoints {
+            endpoint.validate()?;
+            if !protocols.insert(endpoint.target.upstream_protocol) {
+                return Err(ComputeManagementErrorV2::DuplicateIdentity);
+            }
+            if (self.authentication == GatewayAuthenticationSemanticsV1::None)
+                != (endpoint.authentication == GatewayAuthenticationSemanticsV1::None)
+            {
+                return Err(ComputeManagementErrorV2::InvalidCredential);
+            }
+        }
         if self
             .native_recheck
             .as_ref()
@@ -434,11 +476,11 @@ impl ComputeManagementSourceV2 {
             }
         }
 
-        let destination = self.target.credential_destination()?;
+        let destinations = self.native_destinations()?;
         let mut key_ids = BTreeSet::new();
         let mut fingerprints = BTreeSet::new();
         for (index, credential) in self.credentials.iter().enumerate() {
-            credential.validate_for(&self.source_id, &destination)?;
+            credential.validate_for(&self.source_id, &destinations)?;
             if credential.ordinal as usize != index
                 || !key_ids.insert(&credential.key_id)
                 || !fingerprints.insert(credential.fingerprint.as_str())
@@ -450,14 +492,12 @@ impl ComputeManagementSourceV2 {
         let native = self.provenance.is_native();
         let connector_owned = self.provenance.is_connector_owned();
         let requires_native_key = native
-            && matches!(
-                self.authentication,
-                GatewayAuthenticationSemanticsV1::Bearer
-                    | GatewayAuthenticationSemanticsV1::ApiKeyHeader { .. }
-            );
+            && (self.authentication != GatewayAuthenticationSemanticsV1::None
+                || self.additional_native_endpoints.iter().any(|endpoint| {
+                    endpoint.authentication != GatewayAuthenticationSemanticsV1::None
+                }));
         if connector_owned && !self.credentials.is_empty()
-            || matches!(self.authentication, GatewayAuthenticationSemanticsV1::None)
-                && !self.credentials.is_empty()
+            || !requires_native_key && native && !self.credentials.is_empty()
             || native != self.validation.is_none()
             || self
                 .validation
@@ -484,6 +524,14 @@ impl ComputeManagementSourceV2 {
             return Err(ComputeManagementErrorV2::InvalidState);
         }
         Ok(())
+    }
+
+    pub fn native_destinations(&self) -> Result<BTreeSet<String>, ComputeManagementErrorV2> {
+        let mut destinations = BTreeSet::from([self.target.credential_destination()?]);
+        for endpoint in &self.additional_native_endpoints {
+            destinations.insert(endpoint.target.credential_destination()?);
+        }
+        Ok(destinations)
     }
 
     pub fn digest(&self) -> Result<CanonicalDigest, ComputeManagementErrorV2> {

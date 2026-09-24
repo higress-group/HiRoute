@@ -318,6 +318,9 @@ impl LocalControlAdapter {
             protocol_profile_revision: endpoint.adapter_revision,
             protocol_header_semantics: super::registered_endpoint_header_semantics(endpoint),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
+            additional_native_endpoints: super::registered::registered_additional_endpoints(
+                &resolved, endpoint,
+            )?,
             provenance: NativeConnectionProvenanceInputV1::Registered {
                 connection_option_id: CONNECTION_OPTION_ID.into(),
                 registry_version: catalog.registry().registry_version.clone(),

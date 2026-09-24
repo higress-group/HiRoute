@@ -229,21 +229,25 @@ impl CompiledGatewayPublicationEnvelope {
                 &self.config_cells_handle,
                 FilterValidationScope::Attempt,
             )?;
-            let fingerprint = plan.transport_target.connection_epoch_fingerprint();
-            match reuse_fingerprints.insert(plan.transport_target.reuse_class, fingerprint) {
-                Some(existing) if existing.pool_epoch != plan.transport_target.pool_epoch => {
-                    return Err(InstallError::InconsistentPoolEpoch {
-                        reuse_class: plan.transport_target.reuse_class,
-                        first: existing.pool_epoch,
-                        second: plan.transport_target.pool_epoch,
-                    });
+            for target in
+                std::iter::once(&plan.transport_target).chain(plan.authorized_native_targets.iter())
+            {
+                let fingerprint = target.connection_epoch_fingerprint();
+                match reuse_fingerprints.insert(target.reuse_class, fingerprint) {
+                    Some(existing) if existing.pool_epoch != target.pool_epoch => {
+                        return Err(InstallError::InconsistentPoolEpoch {
+                            reuse_class: target.reuse_class,
+                            first: existing.pool_epoch,
+                            second: target.pool_epoch,
+                        });
+                    }
+                    Some(existing) if existing != fingerprint => {
+                        return Err(InstallError::InconsistentConnectionFingerprint(
+                            target.reuse_class,
+                        ));
+                    }
+                    _ => {}
                 }
-                Some(existing) if existing != fingerprint => {
-                    return Err(InstallError::InconsistentConnectionFingerprint(
-                        plan.transport_target.reuse_class,
-                    ));
-                }
-                _ => {}
             }
         }
 

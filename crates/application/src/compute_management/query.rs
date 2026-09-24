@@ -255,6 +255,7 @@ fn project_source<T: ComputeRuntimeStateStoreV1>(
                         ComputeModelMembershipV2::UserDeclared
                     }
                 },
+                capabilities: model.capabilities.clone(),
                 native_reasoning: model.capabilities.native_reasoning.value.clone(),
                 presentation: ComputeModelPresentationV1 {
                     billing_class: model_fact
@@ -291,6 +292,10 @@ fn project_source<T: ComputeRuntimeStateStoreV1>(
             .native_recheck
             .as_ref()
             .and_then(|descriptor| descriptor.display_template_id.clone()),
+        inventory_path: source
+            .native_recheck
+            .as_ref()
+            .and_then(|descriptor| descriptor.inventory_path.clone()),
         source_id: source.source_id.clone(),
         revision: source.revision,
         display_name: source.display_name.clone(),
@@ -309,6 +314,7 @@ fn project_source<T: ComputeRuntimeStateStoreV1>(
             protocol_profile_revision: source.target.protocol_profile_revision,
         },
         authentication: source.authentication.clone(),
+        additional_native_endpoints: source.additional_native_endpoints.clone(),
         state: source.state,
         models,
         keys,

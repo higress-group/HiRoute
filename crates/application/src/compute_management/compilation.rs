@@ -3,8 +3,8 @@
 use hiroute_domain::{
     ComputeCredentialSelectionV2, ComputeManagedCapabilitiesV2, ComputeManagedModelV2,
     ComputeManagementFactBasisV2, ComputeManagementMembershipV2, ComputeManagementProvenanceV2,
-    ComputeManagementSourceV2, ComputeManagementTargetV2, GatewayAuthenticationSemanticsV1,
-    MaterializationState, NativeReasoningCapabilityV1,
+    ComputeManagementSourceV2, ComputeManagementTargetV2, ComputeNativeEndpointV3,
+    GatewayAuthenticationSemanticsV1, MaterializationState, NativeReasoningCapabilityV1,
 };
 use thiserror::Error;
 
@@ -51,6 +51,7 @@ pub struct ComputeManagementCompilationFactV2 {
     pub provenance: ComputeManagementProvenanceV2,
     pub target: ComputeManagementTargetV2,
     pub authentication: GatewayAuthenticationSemanticsV1,
+    pub additional_native_endpoints: Vec<ComputeNativeEndpointV3>,
     pub capabilities: ComputeManagedCapabilitiesV2,
     pub capability_evidence_digest: hiroute_domain::CanonicalDigest,
     pub native_reasoning: NativeReasoningCapabilityV1,
@@ -231,6 +232,7 @@ fn compile_model(
         provenance: source.provenance.clone(),
         target: source.target.clone(),
         authentication: source.authentication.clone(),
+        additional_native_endpoints: source.additional_native_endpoints.clone(),
         capabilities: capabilities.clone(),
         capability_evidence_digest: model.capability_evidence_digest.clone(),
         native_reasoning,

@@ -8,6 +8,14 @@ use crate::ports::{
     RuntimeStateError, RuntimeStateKey, RuntimeStateStore, ScopeError,
 };
 
+pub(crate) fn native_endpoint_state_key(
+    stable_binding_id: &str,
+    profile_digest: &str,
+) -> Option<String> {
+    let digest = profile_digest.strip_prefix("sha256:")?.get(..32)?;
+    Some(format!("{stable_binding_id}/{digest}"))
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct RuntimeCooldownPolicy {
     pub credential_quota: Duration,

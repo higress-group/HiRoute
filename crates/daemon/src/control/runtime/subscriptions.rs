@@ -963,6 +963,7 @@ fn pending_candidate(
         authentication: None,
         models: Vec::new(),
         native_recheck: None,
+        additional_native_endpoints: Vec::new(),
         discovery_guard: None,
         credential_binding: ComputeCredentialBindingV2::CpaPendingApproval {
             protected_source: source.descriptor().clone(),

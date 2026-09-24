@@ -173,11 +173,49 @@ pub(crate) fn compile(
             h2_stream_window_bytes: FRAME_LIMIT as u32,
             h2_connection_window_bytes: (FRAME_LIMIT * 4) as u32,
             h2_max_concurrent_streams: 16,
-            reuse_class: TransportReuseClassId(u64::from(candidate.local_id)),
+            reuse_class: TransportReuseClassId(u64::from(candidate.local_id) << 2),
             pool_epoch: PoolEpoch(snapshot.publication_revision),
             connection_fingerprint: [0; 32],
         }
         .with_derived_connection_fingerprint();
+        let mut authorized_native_targets = Vec::new();
+        for profile in &candidate.protocol_profiles {
+            let Some(native) = &profile.native_target else {
+                continue;
+            };
+            if native.operational_target.uri() == candidate.operational_target.uri() {
+                continue;
+            }
+            let endpoint = parse_endpoint(native.operational_target.uri())?;
+            let mut alternate = target.clone();
+            alternate.scheme = endpoint.scheme;
+            alternate.authority = if endpoint.resolution_required {
+                TransportTarget::mark_resolution_required(&endpoint.authority)
+            } else {
+                endpoint.authority
+            };
+            alternate.addresses = endpoint.addresses;
+            alternate.sni = endpoint.sni;
+            alternate.alpn = endpoint.alpn;
+            let alternate_authority = alternate
+                .unresolved_authority()
+                .unwrap_or(&alternate.authority);
+            let same_transport = std::iter::once(&target)
+                .chain(authorized_native_targets.iter())
+                .any(|current| {
+                    current.scheme == alternate.scheme
+                        && current.unresolved_authority().unwrap_or(&current.authority)
+                            == alternate_authority
+                });
+            if !same_transport {
+                alternate.reuse_class = TransportReuseClassId(
+                    (u64::from(candidate.local_id) << 2)
+                        | (authorized_native_targets.len() as u64 + 1),
+                );
+                alternate.connection_fingerprint = alternate.derive_connection_fingerprint();
+                authorized_native_targets.push(alternate);
+            }
+        }
         attempts.insert(
             binding,
             Arc::new(CompiledAttemptPlan {
@@ -192,6 +230,7 @@ pub(crate) fn compile(
                     .collect::<Result<Vec<_>, _>>()?
                     .into(),
                 transport_target: target,
+                authorized_native_targets: authorized_native_targets.into(),
                 transport_target_policy: match candidate.operational_target {
                     GatewayOperationalTargetV1::RegisteredHttps { .. }
                     | GatewayOperationalTargetV1::UserConfiguredNative { .. } => {
@@ -223,7 +262,11 @@ pub(crate) fn compile(
     let attempt_index = AttemptPlanIndex::new(plan_revision, attempts)?;
     let connection_epoch_fingerprints = attempt_index
         .plans()
-        .map(|(_, plan)| plan.transport_target.connection_epoch_fingerprint())
+        .flat_map(|(_, plan)| {
+            std::iter::once(&plan.transport_target)
+                .chain(plan.authorized_native_targets.iter())
+                .map(TransportTarget::connection_epoch_fingerprint)
+        })
         .collect::<Vec<_>>()
         .into();
     let local_accepted = Arc::new(CompiledAcceptedResponsePlan {

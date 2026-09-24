@@ -65,6 +65,7 @@ test('switching a Token Plan template to Anthropic selects its documented endpoi
     request_path_override: chat.request_path,
     inventory_path_override: chat.inventory_path ?? null,
     protocol: chat.protocol,
+    authentication: chat.authentication_semantics,
   };
   const selected = templateEndpointForProtocol(draft, tokenPlan, 'messages');
   assert.equal(`${selected.base_url}${selected.request_path}`,
@@ -72,4 +73,22 @@ test('switching a Token Plan template to Anthropic selects its documented endpoi
   assert.equal(templateEndpointForProtocol({ ...draft, request_path_override: '/custom/messages' }, tokenPlan, 'messages'), null);
   assert.equal(templateEndpointForProtocol(draft, tokenPlan, 'responses')?.request_path,
     '/compatible-mode/v1/responses');
+  assert.equal(templateEndpointForProtocol({ ...draft, authentication: { kind: 'none' } }, tokenPlan, 'messages'), null);
+});
+
+test('Kimi protocol switch carries the endpoint authentication semantics', () => {
+  const kimi = option('kimi.code.cn.v1');
+  const chat = kimi.endpoints.find(endpoint => endpoint.protocol === 'chat_completions');
+  const messages = kimi.endpoints.find(endpoint => endpoint.protocol === 'messages');
+  assert.ok(chat && messages);
+  const draft = {
+    display_template_id: kimi.connection_option_id,
+    base_url: chat.base_url,
+    request_path_override: chat.request_path,
+    inventory_path_override: chat.inventory_path ?? null,
+    protocol: chat.protocol,
+    authentication: chat.authentication_semantics,
+  };
+  const selected = templateEndpointForProtocol(draft, kimi, 'messages');
+  assert.deepEqual(selected?.authentication_semantics, { kind: 'api_key_header', header: 'x-api-key' });
 });

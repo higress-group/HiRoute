@@ -94,6 +94,14 @@ impl LocalControlAdapter {
             .authentication_semantics
             .clone()
             .ok_or(ComputeManagementControlError::RegisteredOptionUnavailable)?;
+        let additional_native_endpoints = if let Some(source) = source {
+            if !super::registered_source_matches_current_option(source, &resolved) {
+                return Err(ComputeManagementControlError::RegisteredSourceMismatch);
+            }
+            source.additional_native_endpoints.clone()
+        } else {
+            registered_additional_endpoints(&resolved, endpoint)?
+        };
         let model_data = catalog.model_data();
         let native_reasoning = catalog.native_reasoning();
         let mut models = model_data
@@ -166,6 +174,7 @@ impl LocalControlAdapter {
             protocol_profile_revision: endpoint.adapter_revision,
             protocol_header_semantics: super::registered_endpoint_header_semantics(endpoint),
             authentication,
+            additional_native_endpoints,
             provenance: NativeConnectionProvenanceInputV1::Registered {
                 connection_option_id: request.connection_option_id.clone(),
                 registry_version: catalog.registry().registry_version.clone(),
@@ -203,7 +212,7 @@ impl LocalControlAdapter {
         if source.revision != expected_revision {
             return Err(ComputeManagementControlError::Conflict);
         }
-        let expected_target = self.validate_registered_source_identity(&source, draft)?;
+        self.validate_registered_source_identity(&source, draft)?;
         let NativeConnectionProvenanceInputV1::Registered {
             connection_option_id,
             ..
@@ -216,12 +225,10 @@ impl LocalControlAdapter {
             "connection_option_id": connection_option_id,
         });
         let lineage = CanonicalDigest::of(&(
-            "hiroute.compute-management-lineage/v2",
+            "hiroute.compute-management-lineage/v3",
             ComputeCandidateProducerV2::Native,
             &draft.lineage_ref,
             stable_provenance,
-            &Some(&expected_target),
-            &Some(&draft.authentication),
         ))
         .map_err(|_| ComputeManagementControlError::Corrupt)?;
         if source.lineage_digest != lineage {
@@ -272,6 +279,7 @@ impl LocalControlAdapter {
             || source.target.protocol_profile_id != expected_target.protocol_profile_id
             || source.target.protocol_profile_revision != expected_target.protocol_profile_revision
             || source.authentication != draft.authentication
+            || source.additional_native_endpoints != draft.additional_native_endpoints
             || source.native_recheck.as_ref()
                 != Some(&hiroute_domain::ComputeNativeRecheckDescriptorV2 {
                     display_template_id: None,
@@ -283,6 +291,54 @@ impl LocalControlAdapter {
         }
         Ok(expected_target.clone())
     }
+}
+
+pub(super) fn registered_additional_endpoints(
+    resolved: &ResolvedConnectionOptionV1,
+    primary: &ProtocolEndpointV1,
+) -> Result<Vec<hiroute_domain::ComputeNativeEndpointV3>, ComputeManagementControlError> {
+    let mut endpoints = resolved
+        .endpoint_profile
+        .protocol_endpoints
+        .iter()
+        .filter(|other| other.protocol != primary.protocol)
+        .collect::<Vec<_>>();
+    endpoints.sort_by_key(|other| other.stable_preference);
+    endpoints
+        .into_iter()
+        .map(|other| {
+            let authentication = other
+                .authentication_semantics
+                .clone()
+                .ok_or(ComputeManagementControlError::RegisteredOptionUnavailable)?;
+            let normalized = normalize_model_connection_target(ModelConnectionTargetInputV1 {
+                base_url: &other.base_url,
+                base_kind: ModelConnectionBaseKindV1::ApiRoot,
+                protocol: other.protocol,
+                request_path_override: Some(&other.request_path),
+                inventory_path_override: other.inventory_path.as_deref(),
+                protocol_profile_id: &other.adapter_ref,
+                protocol_profile_revision: other.adapter_revision,
+                protocol_header_semantics: &super::registered_endpoint_header_semantics(other),
+                authentication: &authentication,
+            })
+            .map_err(|_| ComputeManagementControlError::RegisteredOptionUnavailable)?;
+            let target = normalized.candidate_target;
+            Ok(hiroute_domain::ComputeNativeEndpointV3 {
+                target: hiroute_domain::ComputeManagementTargetV2 {
+                    scheme: target.scheme,
+                    authority: target.authority,
+                    port: target.port,
+                    request_path: target.request_path,
+                    upstream_protocol: target.upstream_protocol,
+                    protocol_profile_id: target.protocol_profile_id,
+                    protocol_profile_revision: target.protocol_profile_revision,
+                },
+                authentication,
+                recheck: super::registered_endpoint_recheck_descriptor(resolved, other),
+            })
+        })
+        .collect()
 }
 
 fn select_registered_endpoint<'a>(
@@ -385,11 +441,11 @@ mod tests {
         let metadata = listed.metadata_catalog.as_ref().unwrap();
         // Connection clients receive the complete verified catalog. Inference provenance and
         // rule explanations must not disappear at the transport boundary.
-        assert_eq!(metadata.provider_records.len(), 103);
-        assert_eq!(metadata.model_records.len(), 761);
+        assert_eq!(metadata.provider_records.len(), 105);
+        assert_eq!(metadata.model_records.len(), 764);
         assert_eq!(metadata.inference_rules.len(), 187);
-        assert_eq!(metadata.evidence_sources.len(), 125);
-        assert_eq!(metadata.endpoint_bindings.len(), 25);
+        assert_eq!(metadata.evidence_sources.len(), 135);
+        assert_eq!(metadata.endpoint_bindings.len(), 36);
         assert!(
             metadata
                 .model_records

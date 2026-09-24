@@ -50,12 +50,10 @@ pub(super) fn candidate_lineage_digest(
         }),
     };
     CanonicalDigest::of(&(
-        "hiroute.compute-management-lineage/v2",
+        "hiroute.compute-management-lineage/v3",
         facts.producer,
         &facts.lineage_ref,
         stable_provenance,
-        &facts.target,
-        &facts.authentication,
     ))
     .map_err(|_| ComputeManagementPlanningErrorV2::InvalidCandidate)
 }
@@ -132,17 +130,21 @@ pub(super) fn select_candidate_models(
                 .filter(|candidate| candidate_model_can_be_saved(facts, candidate, intent))
                 .ok_or(ComputeManagementPlanningErrorV2::ModelNotSelectable)?;
             let before = current.and_then(|source| {
-                source
-                    .models
-                    .iter()
-                    .find(|model| model.model_ref == candidate.model_ref)
+                source.models.iter().find(|model| {
+                    model.model_ref == candidate.model_ref
+                        || (facts.producer == ComputeCandidateProducerV2::Native
+                            && model.upstream_model_id == candidate.upstream_model_id)
+                })
             });
             let binding_id = match before {
                 Some(model) => model.binding_id.clone(),
                 None => managed_binding_id(source_id, &candidate.model_ref)?,
             };
             let mut desired = ComputeManagedModelV2 {
-                model_ref: candidate.model_ref.clone(),
+                model_ref: before.map_or_else(
+                    || candidate.model_ref.clone(),
+                    |model| model.model_ref.clone(),
+                ),
                 binding_id,
                 revision: before.map_or(1, |model| model.revision),
                 upstream_model_id: candidate.upstream_model_id.clone(),
@@ -319,14 +321,14 @@ pub(super) fn management_state(
     intent: ComputeManagementIntentV2,
     provenance: &ComputeManagementProvenanceV2,
     authentication: &GatewayAuthenticationSemanticsV1,
+    additional_native_endpoints: &[hiroute_domain::ComputeNativeEndpointV3],
     credentials: &[ComputeManagedCredentialV2],
 ) -> Result<MaterializationState, ComputeManagementPlanningErrorV2> {
     let needs_native_key = provenance.is_native()
-        && matches!(
-            authentication,
-            GatewayAuthenticationSemanticsV1::Bearer
-                | GatewayAuthenticationSemanticsV1::ApiKeyHeader { .. }
-        );
+        && (*authentication != GatewayAuthenticationSemanticsV1::None
+            || additional_native_endpoints
+                .iter()
+                .any(|endpoint| endpoint.authentication != GatewayAuthenticationSemanticsV1::None));
     match intent {
         ComputeManagementIntentV2::SaveDisabled if needs_native_key && credentials.is_empty() => {
             Ok(MaterializationState::NeedsCredential)

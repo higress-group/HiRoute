@@ -4,7 +4,7 @@ type RegisteredEndpoint = NonNullable<ComputeConnectionOption['endpoints']>[numb
 
 /** Follow another endpoint only while the draft still uses the template defaults. */
 export function templateEndpointForProtocol(
-  draft: Pick<ModelConnectionDraft, 'display_template_id' | 'base_url' | 'request_path_override' | 'inventory_path_override' | 'protocol'>,
+  draft: Pick<ModelConnectionDraft, 'display_template_id' | 'base_url' | 'request_path_override' | 'inventory_path_override' | 'protocol' | 'authentication'>,
   option: ComputeConnectionOption | null,
   protocol: UpstreamProtocol,
 ): RegisteredEndpoint | null {
@@ -13,7 +13,8 @@ export function templateEndpointForProtocol(
   const current = endpoints.find(endpoint => endpoint.protocol === draft.protocol
     && endpoint.base_url === draft.base_url
     && endpoint.request_path === draft.request_path_override
-    && (endpoint.inventory_path ?? null) === draft.inventory_path_override);
+    && (endpoint.inventory_path ?? null) === draft.inventory_path_override
+    && JSON.stringify(endpoint.authentication_semantics) === JSON.stringify(draft.authentication));
   if (!current) return null;
   return [...endpoints].filter(endpoint => endpoint.protocol === protocol)
     .sort((a, b) => a.stable_preference - b.stable_preference)[0] ?? null;

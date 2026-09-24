@@ -104,6 +104,7 @@ fn draft(
         trusted_lineage_digest: None,
         display_name: "Controlled API".into(),
         existing_source_id: None,
+        additional_native_endpoints: Vec::new(),
         edit_revision: 7,
         check_id: "check/native/7".into(),
         base_url,

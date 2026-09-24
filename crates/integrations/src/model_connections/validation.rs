@@ -23,6 +23,13 @@ pub(super) fn validate_draft(
         || draft.trusted_lineage_digest.is_some() && draft.existing_source_id.is_none()
         || !bounded_text(&draft.display_name, 256)
         || draft.base_url.len() > 2_048
+        || draft.additional_native_endpoints.len() > 2
+        || draft.additional_native_endpoints.iter().any(|endpoint| {
+            endpoint.validate().is_err()
+                || endpoint.target.upstream_protocol == draft.protocol
+                || (endpoint.authentication == GatewayAuthenticationSemanticsV1::None)
+                    != (draft.authentication == GatewayAuthenticationSemanticsV1::None)
+        })
         || draft.edit_revision == 0
         || !bounded_text(&draft.check_id, 256)
         || !bounded_text(&draft.protocol_profile_id, 256)

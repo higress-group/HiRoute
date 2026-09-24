@@ -187,11 +187,13 @@ where
             &mut secret_mutations,
             &mut discovery_guards,
         )?;
+        self.rebind_unchanged_keys(current.as_ref(), &mut desired, &mut secret_mutations)?;
         normalize_key_order(&mut desired.credentials);
         desired.state = management_state(
             change.intent,
             &desired.provenance,
             &desired.authentication,
+            &desired.additional_native_endpoints,
             &desired.credentials,
         )?;
         desired
@@ -437,6 +439,7 @@ where
             state: MaterializationState::Disabled,
             models,
             native_recheck: candidate.native_recheck.clone(),
+            additional_native_endpoints: candidate.additional_native_endpoints.clone(),
             credentials: current
                 .map(|source| source.credentials.clone())
                 .unwrap_or_default(),
@@ -503,10 +506,12 @@ where
     ) -> Result<(), ComputeManagementPlanningErrorV2> {
         if !edits.is_empty()
             && (!desired.provenance.is_native()
-                || matches!(
+                || (matches!(
                     desired.authentication,
                     GatewayAuthenticationSemanticsV1::None
-                ))
+                ) && desired.additional_native_endpoints.iter().all(|endpoint| {
+                    endpoint.authentication == GatewayAuthenticationSemanticsV1::None
+                })))
         {
             return Err(ComputeManagementPlanningErrorV2::InvalidKeyEdit);
         }
@@ -634,6 +639,7 @@ where
         if facts.producer != ComputeCandidateProducerV2::Native
             || candidate_lineage_digest(&facts)? != *lineage_digest
             || facts.authentication.as_ref() != Some(&desired.authentication)
+            || facts.additional_native_endpoints != desired.additional_native_endpoints
             || facts.target.as_ref().is_none_or(|target| {
                 target.scheme != desired.target.scheme
                     || target.authority != desired.target.authority
@@ -672,16 +678,15 @@ where
                 evidence_digest: guard.evidence_digest.clone(),
             });
         }
-        let destination = desired
-            .target
-            .credential_destination()
+        let destinations = desired
+            .native_destinations()
             .map_err(|_| ComputeManagementPlanningErrorV2::InvalidCandidate)?;
         let reference = CredentialRefV1::new(
             key_id,
             format!("source/{}", desired.source_id),
             "hirouted",
             "provider-auth",
-            [destination.clone()],
+            destinations.iter().cloned(),
             expected_generation,
         )
         .map_err(|_| ComputeManagementPlanningErrorV2::InvalidKeyEdit)?;
@@ -702,7 +707,7 @@ where
             format!("source/{}", desired.source_id),
             "hirouted",
             "provider-auth",
-            [destination],
+            destinations,
             expected_generation
                 .checked_add(1)
                 .ok_or(ComputeManagementPlanningErrorV2::InvalidKeyEdit)?,
@@ -722,6 +727,68 @@ where
             },
             mutation,
         ))
+    }
+
+    fn rebind_unchanged_keys(
+        &self,
+        current: Option<&ComputeManagementSourceV2>,
+        desired: &mut ComputeManagementSourceV2,
+        secret_mutations: &mut Vec<SecretMutationV1>,
+    ) -> Result<(), ComputeManagementPlanningErrorV2> {
+        let Some(current) = current else {
+            return Ok(());
+        };
+        let destinations = desired
+            .native_destinations()
+            .map_err(|_| ComputeManagementPlanningErrorV2::InvalidCandidate)?;
+        if current
+            .native_destinations()
+            .map_err(|_| ComputeManagementPlanningErrorV2::InvalidCandidate)?
+            == destinations
+        {
+            return Ok(());
+        }
+        let touched = secret_mutations
+            .iter()
+            .map(|mutation| mutation.credential().credential_id().to_owned())
+            .collect::<BTreeSet<_>>();
+        for credential in &mut desired.credentials {
+            if touched.contains(credential.key_id.as_str()) {
+                continue;
+            }
+            let Some(before) = current
+                .credentials
+                .iter()
+                .find(|entry| entry.key_id == credential.key_id)
+            else {
+                return Err(ComputeManagementPlanningErrorV2::CredentialConflict);
+            };
+            if self.secrets.generation(&before.credential)? != before.credential.generation() {
+                return Err(ComputeManagementPlanningErrorV2::CredentialConflict);
+            }
+            let next_generation = before
+                .credential
+                .generation()
+                .checked_add(1)
+                .ok_or(ComputeManagementPlanningErrorV2::InvalidKeyEdit)?;
+            let mutation = SecretMutationV1::rebind(
+                before.credential.clone(),
+                destinations.clone(),
+                before.fingerprint.clone(),
+            )
+            .map_err(|_| ComputeManagementPlanningErrorV2::InvalidKeyEdit)?;
+            credential.credential = CredentialRefV1::new(
+                &credential.key_id,
+                format!("source/{}", desired.source_id),
+                "hirouted",
+                "provider-auth",
+                destinations.iter().cloned(),
+                next_generation,
+            )
+            .map_err(|_| ComputeManagementPlanningErrorV2::InvalidKeyEdit)?;
+            secret_mutations.push(mutation);
+        }
+        Ok(())
     }
 }
 

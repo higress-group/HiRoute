@@ -243,6 +243,7 @@ fn fixture_protocol_profile(
     let selected_reasoning_profile_id = reasoning_profiles[0].profile_id.clone();
     let exact = GatewayFidelityV1::Exact;
     GatewayCandidateProtocolProfileV1 {
+        native_target: None,
         schema_version: "hiroute.candidate-protocol-profile/v1".into(),
         path_id: format!("fixture-{ingress:?}-to-responses").to_ascii_lowercase(),
         ingress_protocol: ingress,

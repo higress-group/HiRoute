@@ -11,6 +11,17 @@ export type Authentication =
   | { kind: 'bearer' }
   | { kind: 'api_key_header'; header: string };
 
+export type ModelConnectionEndpointDraft = {
+  base_url: string;
+  base_kind: BaseKind;
+  request_path_override: string | null;
+  inventory_path_override: string | null;
+  protocol: UpstreamProtocol;
+  protocol_profile_id: string;
+  protocol_profile_revision: number;
+  authentication: Authentication;
+};
+
 export type NativeReasoning =
   | { kind: 'unknown' }
   | { kind: 'fixed'; profile: string }
@@ -44,6 +55,7 @@ export type ModelConnectionDraft = {
   lineage_ref: string;
   display_name: string;
   existing_source_id: string | null;
+  expected_source_revision?: number | null;
   edit_revision: number;
   check_id: string;
   base_url: string;
@@ -54,6 +66,7 @@ export type ModelConnectionDraft = {
   protocol_profile_id: string;
   protocol_profile_revision: number;
   authentication: Authentication;
+  additional_endpoints: ModelConnectionEndpointDraft[];
   provenance:
     | { kind: 'registered'; connection_option_id: string; registry_version: string; catalog_digest: CanonicalDigest }
     | { kind: 'user_configured'; configuration_revision: number };

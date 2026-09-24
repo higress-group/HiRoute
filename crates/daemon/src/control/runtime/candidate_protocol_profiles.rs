@@ -88,6 +88,7 @@ pub(super) fn protocol_profiles(
         };
         profiles.push(GatewayCandidateProtocolProfileV1 {
             schema_version: "hiroute.candidate-protocol-profile/v1".into(),
+            native_target: face.native_target.clone(),
             path_id: format!(
                 "{}-to-{}-{}",
                 protocol_label(ingress),
@@ -97,7 +98,11 @@ pub(super) fn protocol_profiles(
             ingress_protocol: ingress,
             adapter_revision: format!(
                 "{}@{}",
-                capability.required_adapter_ref, capability.required_adapter_revision
+                face.adapter_ref
+                    .as_deref()
+                    .unwrap_or(&capability.required_adapter_ref),
+                face.adapter_revision
+                    .unwrap_or(capability.required_adapter_revision)
             ),
             serializer_revision: "hiroute-target-json/v1".into(),
             decoder_revision: "hiroute-native-response/v1".into(),

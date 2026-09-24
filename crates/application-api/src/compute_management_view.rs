@@ -1,8 +1,9 @@
 //! Safe Local Control views for saved compute management state.
 
 use hiroute_domain::{
-    BillingClass, GatewayAuthenticationSemanticsV1, MaterializationState,
-    NativeReasoningCapabilityV1, PriceValuationKindV1, RevisionSetV1,
+    BillingClass, ComputeManagedCapabilitiesV2, ComputeNativeEndpointV3,
+    GatewayAuthenticationSemanticsV1, MaterializationState, NativeReasoningCapabilityV1,
+    PriceValuationKindV1, RevisionSetV1,
 };
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +59,7 @@ pub struct ComputeManagedModelViewV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog_configuration_id: Option<String>,
     pub membership: ComputeModelMembershipV2,
+    pub capabilities: ComputeManagedCapabilitiesV2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_reasoning: Option<NativeReasoningCapabilityV1>,
     pub presentation: ComputeModelPresentationV1,
@@ -151,6 +153,9 @@ pub struct ComputeManagedSourceViewV2 {
     /// Display only; does not confer provider, capability, billing or credential authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_template_id: Option<String>,
+    /// Non-secret directory path used to restore the source edit form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inventory_path: Option<String>,
     pub source_id: String,
     pub revision: u64,
     pub display_name: String,
@@ -158,6 +163,8 @@ pub struct ComputeManagedSourceViewV2 {
     pub connection_identity: ComputeConnectionIdentityV1,
     pub target: ComputeCandidateTargetV2,
     pub authentication: GatewayAuthenticationSemanticsV1,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_native_endpoints: Vec<ComputeNativeEndpointV3>,
     pub state: MaterializationState,
     pub models: Vec<ComputeManagedModelViewV2>,
     pub keys: Vec<ComputeManagedKeyViewV2>,

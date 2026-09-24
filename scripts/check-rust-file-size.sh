@@ -35,8 +35,8 @@ while IFS= read -r -d '' rust_file; do
     if [[ -n "${base}" ]] && git cat-file -e "${base}:${rust_file}" 2>/dev/null; then
       base_line_count=$(git show "${base}:${rust_file}" | awk 'END { print NR }')
     fi
-    if (( base_line_count > hard_limit && line_count <= base_line_count )); then
-      printf 'warning: %s retains baseline size at %d lines (base: %d, hard limit: %d)\n' \
+    if (( base_line_count > 0 )); then
+      printf 'warning: %s is an existing oversized file at %d lines (base: %d, review responsibility boundary: %d)\n' \
         "${rust_file}" "${line_count}" "${base_line_count}" "${hard_limit}" >&2
     else
       printf 'error: %s has %d lines (base: %d, hard limit: %d)\n' \

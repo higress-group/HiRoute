@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{ConnectorRuntimeKind, ExactNativeReasoningV1, UpstreamProtocol};
+use crate::{
+    ComputeManagementTargetV2, ConnectorRuntimeKind, ExactNativeReasoningV1, UpstreamProtocol,
+};
 
 use super::materialized::{AttemptOwnedCandidateV1, CompiledPlanError};
 
@@ -472,6 +474,67 @@ pub struct GatewayCandidateProtocolProfileV1 {
     pub decoder_revision: String,
     pub capability: GatewayCandidateCapabilityProfileV1,
     pub connector: GatewayConnectorProfileV1,
+    /// Exact native target selected with this protocol face. CPA retains its managed target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_target: Option<GatewayNativeProfileTargetV2>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GatewayNativeProfileTargetV2 {
+    pub operational_target: GatewayOperationalTargetV1,
+    pub credential_destination_ref: String,
+}
+
+impl GatewayNativeProfileTargetV2 {
+    pub fn validate_for(&self, profile: &GatewayCandidateProtocolProfileV1) -> bool {
+        let Some((scheme, rest)) = self.operational_target.uri().split_once("://") else {
+            return false;
+        };
+        let Some((host_port, path)) = rest.split_once('/') else {
+            return false;
+        };
+        let (authority, port) = if host_port.starts_with('[') {
+            let Some(end) = host_port.find(']') else {
+                return false;
+            };
+            let host = &host_port[1..end];
+            let suffix = &host_port[end + 1..];
+            let port = if suffix.is_empty() {
+                None
+            } else {
+                suffix
+                    .strip_prefix(':')
+                    .and_then(|value| value.parse::<u16>().ok())
+            };
+            if !suffix.is_empty() && port.is_none() {
+                return false;
+            }
+            (host, port)
+        } else if let Some((host, raw_port)) = host_port.rsplit_once(':') {
+            (host, raw_port.parse::<u16>().ok())
+        } else {
+            (host_port, None)
+        };
+        let Some((adapter, raw_revision)) = profile.adapter_revision.rsplit_once('@') else {
+            return false;
+        };
+        let Some(revision) = raw_revision.parse::<u64>().ok() else {
+            return false;
+        };
+        let target = ComputeManagementTargetV2 {
+            scheme: scheme.to_owned(),
+            authority: authority.to_owned(),
+            port: port.unwrap_or(if scheme == "https" { 443 } else { 80 }),
+            request_path: format!("/{path}"),
+            upstream_protocol: profile.capability.upstream_protocol,
+            protocol_profile_id: adapter.to_owned(),
+            protocol_profile_revision: revision,
+        };
+        self.operational_target.request_path() == Some(profile.connector.request_path.as_str())
+            && target.credential_destination().ok().as_deref()
+                == Some(self.credential_destination_ref.as_str())
+    }
 }
 
 impl GatewayCandidateProtocolProfileV1 {
@@ -509,7 +572,8 @@ impl GatewayCandidateProtocolProfileV1 {
                 && !matches!(
                     &candidate.operational_target,
                     GatewayOperationalTargetV1::RegisteredHttps { .. }
-                ))
+                )
+                && self.native_target.is_none())
             || self.capability.capability_id.trim().is_empty()
             || self
                 .capability
@@ -527,14 +591,26 @@ impl GatewayCandidateProtocolProfileV1 {
                 && !matches!(
                     &candidate.operational_target,
                     GatewayOperationalTargetV1::RegisteredHttps { .. }
-                ))
+                )
+                && self.native_target.is_none())
             || self.connector.connector_id != candidate.connector_id
             || self.connector.connector_revision != candidate.connector_revision.to_string()
             || (candidate.connector_runtime != ConnectorRuntimeKind::CpaBridge
+                && self.native_target.as_ref().is_some_and(|target| {
+                    !target.validate_for(self)
+                        || !target.operational_target.validate_for(
+                            ConnectorRuntimeKind::BuiltinNative,
+                            target.operational_target.uri(),
+                        )
+                }))
+            || (candidate.connector_runtime != ConnectorRuntimeKind::CpaBridge
+                && self.native_target.is_none()
                 && candidate
                     .operational_target
                     .for_protocol_path(&self.connector.request_path)
                     .is_none())
+            || (candidate.connector_runtime == ConnectorRuntimeKind::CpaBridge
+                && self.native_target.is_some())
             || self.capability.native_provider_state
                 == GatewayNativeProviderStateEmissionV1::Unknown
             || self.capability.native_streaming.exact().is_none()

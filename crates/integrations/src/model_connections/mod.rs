@@ -145,6 +145,8 @@ pub struct NativeModelConnectionDraftV1 {
     /// Exact non-secret header semantics resolved from the trusted protocol profile.
     pub protocol_header_semantics: GatewayHeaderSemanticsV1,
     pub authentication: GatewayAuthenticationSemanticsV1,
+    /// Additional exact endpoints from the trusted draft; only the first endpoint is probed.
+    pub additional_native_endpoints: Vec<hiroute_domain::ComputeNativeEndpointV3>,
     pub provenance: NativeConnectionProvenanceInputV1,
     pub qualification: NativeConnectionQualificationV1,
     /// Provider-returned IDs that the bundled metadata identifies as non-text or internal-only.
@@ -386,6 +388,7 @@ where
                 inventory_path: target.inventory_path,
                 protocol_header_semantics: draft.protocol_header_semantics,
             }),
+            additional_native_endpoints: draft.additional_native_endpoints,
             discovery_guard: Some(ComputeDiscoveryEvidenceGuardV1 {
                 evidence_digest: discovery_evidence,
             }),
@@ -571,6 +574,7 @@ where
             authentication: Some(draft.authentication),
             models,
             native_recheck,
+            additional_native_endpoints: draft.additional_native_endpoints.clone(),
             discovery_guard: None,
             credential_binding: binding,
             validation: None,
@@ -650,6 +654,7 @@ struct InputDigest<'a> {
     protocol_profile_revision: u64,
     protocol_header_semantics: &'a GatewayHeaderSemanticsV1,
     authentication: &'a GatewayAuthenticationSemanticsV1,
+    additional_native_endpoints: &'a [hiroute_domain::ComputeNativeEndpointV3],
     provenance: &'a NativeConnectionProvenanceInputV1,
     qualification: &'a NativeConnectionQualificationV1,
     models: &'a [NativeModelDeclarationV1],
@@ -682,6 +687,7 @@ fn input_digest(
         protocol_profile_revision: draft.protocol_profile_revision,
         protocol_header_semantics: &draft.protocol_header_semantics,
         authentication: &draft.authentication,
+        additional_native_endpoints: &draft.additional_native_endpoints,
         provenance: &draft.provenance,
         qualification: &draft.qualification,
         models: &draft.models,

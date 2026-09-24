@@ -242,6 +242,7 @@ fn candidate(candidate_ref: &str, input_slot: &str) -> ComputeCandidateFactsV2 {
         authentication: Some(GatewayAuthenticationSemanticsV1::ApiKeyHeader {
             header: "x-api-key".into(),
         }),
+        additional_native_endpoints: Vec::new(),
         models: ["one", "two"]
             .into_iter()
             .map(|suffix| ComputeCandidateModelFactsV2 {
@@ -567,6 +568,152 @@ fn populate_saved_source(
     assert!(!encoded.contains("native_recheck"));
 
     final_source.native_recheck.clone()
+}
+
+#[test]
+fn editing_source_adds_endpoint_without_reentering_or_copying_the_saved_key() {
+    let directory = tempdir().unwrap();
+    let workspace = WorkspaceId::default();
+    let stores = LocalStorageSet::open_for_daemon_startup(directory.path()).unwrap();
+    let registry = TrustedComputeCandidateRegistry::new();
+    let first = candidate("candidate/endpoint-first", "slot/primary");
+    registry.register_compute_candidate(first.clone()).unwrap();
+    let input = ProtectedInput;
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    coordinator.reconcile_startup_and_open().unwrap();
+    let initial = hiroute_domain::ComputeManagementRepositoryPort::compute_management_snapshot(
+        stores.control(),
+        &workspace,
+    )
+    .unwrap();
+    let preview = planner
+        .preview(ComputeManagementChangeV2 {
+            schema: "hiroute.compute-management-change/v2".into(),
+            subject: ComputeManagementSubjectV2::Candidate {
+                candidate: first.candidate,
+            },
+            expected_revisions: initial.revisions,
+            selected_model_refs: first
+                .models
+                .iter()
+                .map(|model| model.model_ref.clone())
+                .collect(),
+            intent: ComputeManagementIntentV2::SaveReady,
+            key_edits: Vec::new(),
+            validation: None,
+        })
+        .unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &workspace,
+        preview,
+        "endpoint-first-save",
+    );
+
+    let saved = hiroute_domain::ComputeManagementRepositoryPort::compute_management_snapshot(
+        stores.control(),
+        &workspace,
+    )
+    .unwrap();
+    let source = &saved.sources[0];
+    let original_binding_ids = source
+        .models
+        .iter()
+        .map(|model| model.binding_id.clone())
+        .collect::<Vec<_>>();
+    let original_key_id = source.credentials[0].key_id.clone();
+    let mut edited = candidate("candidate/endpoint-edit", "slot/unused");
+    edited.existing_source_id = Some(source.source_id.clone());
+    edited.trusted_lineage_digest = Some(source.lineage_digest.clone());
+    edited.credential_binding = ComputeCredentialBindingV2::NativeSaved {
+        credential_id: original_key_id.clone(),
+        expected_generation: 1,
+    };
+    let mut messages = source.target.clone();
+    messages.authority = "messages.example.test".into();
+    messages.request_path = "/apps/anthropic/v1/messages".into();
+    messages.upstream_protocol = UpstreamProtocol::Messages;
+    messages.protocol_profile_id = "profile/messages".into();
+    edited
+        .additional_native_endpoints
+        .push(hiroute_domain::ComputeNativeEndpointV3 {
+            target: messages.clone(),
+            authentication: GatewayAuthenticationSemanticsV1::ApiKeyHeader {
+                header: "x-api-key".into(),
+            },
+            recheck: None,
+        });
+    registry.register_compute_candidate(edited.clone()).unwrap();
+    let preview = planner
+        .preview(ComputeManagementChangeV2 {
+            schema: "hiroute.compute-management-change/v2".into(),
+            subject: ComputeManagementSubjectV2::Candidate {
+                candidate: edited.candidate,
+            },
+            expected_revisions: saved.revisions,
+            selected_model_refs: edited
+                .models
+                .iter()
+                .map(|model| model.model_ref.clone())
+                .collect(),
+            intent: ComputeManagementIntentV2::SaveReady,
+            key_edits: Vec::new(),
+            validation: None,
+        })
+        .unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &workspace,
+        preview,
+        "endpoint-edit-save",
+    );
+
+    let after = hiroute_domain::ComputeManagementRepositoryPort::compute_management_snapshot(
+        stores.control(),
+        &workspace,
+    )
+    .unwrap();
+    let updated = &after.sources[0];
+    assert_eq!(updated.source_id, source.source_id);
+    assert_eq!(
+        updated
+            .models
+            .iter()
+            .map(|model| model.binding_id.clone())
+            .collect::<Vec<_>>(),
+        original_binding_ids
+    );
+    assert_eq!(updated.credentials.len(), 1);
+    assert_eq!(updated.credentials[0].key_id, original_key_id);
+    assert_eq!(updated.credentials[0].credential.generation(), 2);
+    assert!(
+        updated.credentials[0]
+            .credential
+            .allowed_destinations()
+            .contains(&messages.credential_destination().unwrap())
+    );
+    assert_eq!(
+        stores
+            .secrets()
+            .generation(&updated.credentials[0].credential)
+            .unwrap(),
+        2
+    );
 }
 
 #[test]

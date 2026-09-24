@@ -24,6 +24,7 @@ use crate::attempt_outcome::{AttemptFailure, RawAttemptFailure, classify_failure
 use crate::ports::{
     CredentialLeaseRequest, ExecutionScope, RuntimeStateEntry, RuntimeStateKey, RuntimeStateStore,
 };
+use crate::runtime::native_endpoint_state_key;
 use crate::server::composition::{
     PortError, ProductionPorts, RuntimeStateStore as ProductionStore,
 };
@@ -246,6 +247,7 @@ pub(super) async fn materialize_attempt(
         || execution.profile_digest != expected_profile_digest
         || profile.ingress_protocol != logical.ingress
         || (execution.connector_runtime != hiroute_domain::ConnectorRuntimeKind::CpaBridge
+            && profile.native_target.is_none()
             && execution
                 .operational_target
                 .for_protocol_path(&profile.connector.request_path)
@@ -292,7 +294,16 @@ pub(super) async fn materialize_attempt(
     )
     .map_err(safe_error)?;
     let decoder_budget = PrecommitDecoderBudget::new(context.budget)?;
-    let binding_key = RuntimeStateKey::binding(stable_target);
+    let lease_target = lease_target::for_request(&execution, profile)?;
+    let lease_target_digest = hiroute_domain::CanonicalDigest::of(&lease_target)
+        .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let endpoint_state_key = if profile.native_target.is_some() {
+        native_endpoint_state_key(stable_target, expected_profile_digest)
+            .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+    } else {
+        stable_target.to_owned()
+    };
+    let binding_key = RuntimeStateKey::binding(endpoint_state_key.clone());
     let binding_permit =
         acquire_target_permit_status(provider.state.as_ref(), &binding_key, &scope)
             .await
@@ -316,9 +327,12 @@ pub(super) async fn materialize_attempt(
     {
         return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
     }
-    let lease_target = lease_target::for_request(&execution, &profile.connector.request_path)?;
-    let lease_target_digest = hiroute_domain::CanonicalDigest::of(&lease_target)
-        .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let credential_destination_ref = profile
+        .native_target
+        .as_ref()
+        .map_or(execution.credential_destination_ref.as_str(), |target| {
+            target.credential_destination_ref.as_str()
+        });
     let lease_logical_endpoint =
         if execution.connector_runtime == hiroute_domain::ConnectorRuntimeKind::BuiltinNative {
             lease_target.uri()
@@ -334,7 +348,7 @@ pub(super) async fn materialize_attempt(
                     CredentialLeaseRequest {
                         stable_binding_id: stable_target,
                         credential_ref: context.credential_ref().as_str(),
-                        credential_destination_ref: &execution.credential_destination_ref,
+                        credential_destination_ref,
                         excluded_key_ids: &[],
                         connector_runtime: execution.connector_runtime,
                         connector_id: &profile.connector.connector_id,
@@ -344,8 +358,8 @@ pub(super) async fn materialize_attempt(
                         logical_endpoint: lease_logical_endpoint,
                         operational_target: lease_target.uri(),
                         operational_target_digest: lease_target_digest.as_str(),
-                        runtime_epoch: execution.operational_target.runtime_epoch(),
-                        target_epoch: execution.operational_target.target_epoch(),
+                        runtime_epoch: lease_target.runtime_epoch(),
+                        target_epoch: lease_target.target_epoch(),
                         protocol_profile_digest: expected_profile_digest,
                         request_path: &profile.connector.request_path,
                         authentication,
@@ -363,7 +377,7 @@ pub(super) async fn materialize_attempt(
             return Err(Arc::from(MATERIALIZATION_AUTHORITY_FAILED));
         }
         let credential_key = RuntimeStateKey::credential(
-            stable_target,
+            endpoint_state_key.clone(),
             credential.credential_ref(),
             credential.key_id(),
             credential.generation(),
@@ -412,7 +426,8 @@ pub(super) async fn materialize_attempt(
             if execution.connector_runtime == hiroute_domain::ConnectorRuntimeKind::CpaBridge {
                 return Err(Arc::from(MATERIALIZATION_AUTHORITY_FAILED));
             }
-            resolve_target(provider, plan.transport_target.clone(), &scope).await?
+            let target = transport_target_for_profile(plan, &lease_target)?;
+            resolve_target(provider, target, &scope).await?
         }
     };
     validate_attempt_permits(provider.state.as_ref(), permits.borrowed(), &scope)
@@ -807,6 +822,37 @@ pub(crate) async fn resolve_target(
     target
         .with_resolved_addresses(addresses.into())
         .map_err(|_| Arc::from(MATERIALIZATION_DNS_FAILED))
+}
+
+fn transport_target_for_profile(
+    plan: &CompiledAttemptPlan,
+    operational: &hiroute_domain::GatewayOperationalTargetV1,
+) -> Result<TransportTarget, Arc<str>> {
+    let uri = operational
+        .uri()
+        .parse::<http::Uri>()
+        .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let scheme = match uri.scheme_str() {
+        Some("http") => TransportScheme::Http,
+        Some("https") => TransportScheme::Https,
+        _ => return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED)),
+    };
+    let authority = uri
+        .authority()
+        .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let mut matching = std::iter::once(&plan.transport_target)
+        .chain(plan.authorized_native_targets.iter())
+        .filter(|target| {
+            target.scheme == scheme
+                && target.unresolved_authority().unwrap_or(&target.authority) == authority.as_str()
+        });
+    let exact = matching
+        .next()
+        .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    if matching.next().is_some() {
+        return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
+    }
+    Ok(exact.clone())
 }
 
 fn dns_lookup_target(authority: &str, scheme: TransportScheme) -> Result<(String, u16), Arc<str>> {
