@@ -5,10 +5,10 @@ import type {
   TriState,
   UpstreamProtocol,
 } from './types';
-import { clientOperationId } from './state';
 import { Disclosure } from '../../ui/Disclosure';
 
 export { safeConnectionErrorCode } from './copy';
+export { blankModel } from './state';
 
 export function connectionErrorMessage(code: string, zh: boolean): string {
   if (['REVISION_CONFLICT', 'CHANGE_PREVIEW_STALE', 'application.error.revision_conflict', 'application.error.change_preview_stale'].includes(code)) return zh ? '配置在保存前发生变化，尚未提交。输入已保留，请再次保存。' : 'Configuration changed before submission. Your input is preserved; save again.';
@@ -109,24 +109,6 @@ export function reasoningValue(
     minimum_tokens: previous?.kind === kind ? previous.minimum_tokens : 1,
     maximum_tokens: previous?.kind === kind ? previous.maximum_tokens : 1,
     step_tokens: previous?.kind === kind ? previous.step_tokens : 1,
-  };
-}
-
-export function blankModel(upstreamModelId = '', displayName = upstreamModelId): ModelDeclaration {
-  return {
-    client_id: clientOperationId('model'),
-    upstream_model_id: upstreamModelId,
-    display_name: displayName,
-    catalog_configuration_id: null,
-    membership: 'user_declared',
-    capabilities: {
-      tool: { value: null, basis: 'unknown' },
-      vision: { value: null, basis: 'unknown' },
-      streaming: { value: null, basis: 'unknown' },
-      context_tokens: { value: null, basis: 'unknown' },
-      max_output_tokens: { value: null, basis: 'unknown' },
-      native_reasoning: { value: null, basis: 'unknown' },
-    },
   };
 }
 

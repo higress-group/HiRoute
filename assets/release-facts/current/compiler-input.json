@@ -654,7 +654,7 @@
         "revision": 1,
         "service_offering_id": "official-api",
         "usage_scope": "account",
-        "verification_evidence": "sha256:84ab7edfb1e14d067ec8d77f618e0a1f69fcb5f9c556b326069fc3c3e15c8a80"
+        "verification_evidence": "sha256:5347ff67047358ae14b3f8b126de759d5958df2c3f686915b820183d88d0ec2d"
       },
       {
         "connector_id": "connector.google-gemini.p0",
@@ -1103,7 +1103,7 @@
           }
         ],
         "inventory_strategy": "bundled_catalog",
-        "verification_evidence": "sha256:a59d2385310bbcc357077c5d89d4c1497eb85971aae29b659b5ea6ec1af66722",
+        "verification_evidence": "sha256:986bc15e6f82b3865467573c0c6df3d566f544b7e173ee73588befa0898655d1",
         "last_verified_at": 1789862400
       },
       {
@@ -1649,7 +1649,7 @@
           "connector_revision": 1,
           "endpoint_profile_id": "endpoint.zhipu.coding-plan.cn.v1",
           "endpoint_profile_revision": 1,
-          "evidence_digest": "sha256:9d1c3bd35942ce2ce5b97e582378bd581d45b54beff14a4cf68c6d82796d1dde",
+          "evidence_digest": "sha256:d618a894b4403464be1176d2a047bbffea5032806bb97bc773a532c8b48fca91",
           "model_configuration_id": "model.zhipu.glm-5.3",
           "protocol_endpoint_id": "endpoint.zhipu.coding-plan.cn.v1.responses",
           "required_adapter_ref": "adapter.openai-responses.v1",
@@ -2211,11 +2211,33 @@
             "needs-runtime-qualification",
             "offer-only-until-price-contract-converges"
           ],
-          "documented_upstream_model_ids": [],
+          "documented_upstream_model_ids": [
+            "deepseek-v3.2",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-0731",
+            "deepseek-v4-pro",
+            "deepseek-v4-pro-0813",
+            "deepseek-v4.1-flash",
+            "glm-5",
+            "glm-5.1",
+            "glm-5.2",
+            "glm-5.3",
+            "kimi-k2.6",
+            "kimi-k2.7-code",
+            "kimi-k3",
+            "qwen3.6-flash",
+            "qwen3.6-plus",
+            "qwen3.7-max",
+            "qwen3.7-plus",
+            "qwen3.8-flash",
+            "qwen3.8-max"
+          ],
           "evidence_refs": [
             "source-038",
             "source-039",
-            "source-040"
+            "source-040",
+            "source-138",
+            "source-139"
           ],
           "interfaces": [
             {
@@ -2252,17 +2274,30 @@
           "restriction": "Regional key and model eligibility apply"
         },
         {
-          "billing": "rolling-7-day-credits",
+          "billing": "monthly-credits",
           "credential": "bearer sk-sp",
           "disposition": [
             "catalog-representable",
             "needs-runtime-qualification",
             "offer-only-until-price-contract-converges"
           ],
-          "documented_upstream_model_ids": [],
+          "documented_upstream_model_ids": [
+            "deepseek-v4-flash-0731",
+            "deepseek-v4-pro",
+            "deepseek-v4-pro-0813",
+            "deepseek-v4.1-flash",
+            "glm-5.2",
+            "glm-5.3",
+            "qwen3.6-flash",
+            "qwen3.7-max",
+            "qwen3.7-plus",
+            "qwen3.8-flash",
+            "qwen3.8-max"
+          ],
           "evidence_refs": [
             "source-044",
-            "source-045"
+            "source-045",
+            "source-136"
           ],
           "interfaces": [
             {
@@ -2287,9 +2322,10 @@
           "product_kind": "credit-subscription",
           "provider": "Alibaba Cloud Model Studio",
           "quota_facts": [
-            "Lite: 2500 Credits/7d",
-            "Standard: 10000 Credits/7d",
-            "Pro: 40000 Credits/7d"
+            "Lite: 11500 Credits/month",
+            "Essential: 25500 Credits/month",
+            "Standard: 45000 Credits/month",
+            "Pro: 180000 Credits/month"
           ],
           "region_scope": "China, Beijing only",
           "restriction": "Personal plan; Credits and eligibility are not PAYG tokens"
@@ -2302,9 +2338,31 @@
             "needs-runtime-qualification",
             "offer-only-until-price-contract-converges"
           ],
-          "documented_upstream_model_ids": [],
+          "documented_upstream_model_ids": [
+            "MiniMax-M2.5",
+            "deepseek-v3.2",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-0731",
+            "deepseek-v4-pro",
+            "deepseek-v4-pro-0813",
+            "deepseek-v4.1-flash",
+            "glm-5",
+            "glm-5.1",
+            "glm-5.2",
+            "glm-5.3",
+            "kimi-k2.5",
+            "kimi-k2.6",
+            "kimi-k2.7-code",
+            "qwen3.6-flash",
+            "qwen3.6-plus",
+            "qwen3.7-max",
+            "qwen3.7-plus",
+            "qwen3.8-flash",
+            "qwen3.8-max"
+          ],
           "evidence_refs": [
-            "source-044"
+            "source-044",
+            "source-137"
           ],
           "interfaces": [
             {
@@ -2429,14 +2487,15 @@
             "offer-only-until-price-contract-converges"
           ],
           "documented_upstream_model_ids": [
-            "deepseek-v4-flash",
+            "deepseek-flash",
             "deepseek-v4-pro"
           ],
           "evidence_refs": [
             "source-007",
             "source-008",
             "source-009",
-            "source-010"
+            "source-010",
+            "source-144"
           ],
           "interfaces": [
             {
@@ -2626,10 +2685,16 @@
             "catalog-representable",
             "needs-runtime-qualification"
           ],
-          "documented_upstream_model_ids": [],
+          "documented_upstream_model_ids": [
+            "kimi-k2.6",
+            "kimi-k2.7-code",
+            "kimi-k2.7-code-highspeed",
+            "kimi-k3"
+          ],
           "evidence_refs": [
             "source-063",
-            "source-064"
+            "source-064",
+            "source-142"
           ],
           "interfaces": [
             {
@@ -2659,11 +2724,13 @@
           ],
           "documented_upstream_model_ids": [
             "kimi-k2.6",
-            "kimi-k2.7",
+            "kimi-k2.7-code",
+            "kimi-k2.7-code-highspeed",
             "kimi-k3"
           ],
           "evidence_refs": [
-            "source-062"
+            "source-062",
+            "source-143"
           ],
           "interfaces": [
             {
@@ -3236,11 +3303,15 @@
             "needs-runtime-qualification",
             "offer-only-until-price-contract-converges"
           ],
-          "documented_upstream_model_ids": [],
+          "documented_upstream_model_ids": [
+            "glm-5.3",
+            "glm-5.3-flash"
+          ],
           "evidence_refs": [
             "source-024",
             "source-025",
-            "source-125"
+            "source-125",
+            "source-141"
           ],
           "interfaces": [
             {
@@ -3283,10 +3354,14 @@
             "catalog-representable",
             "needs-runtime-qualification"
           ],
-          "documented_upstream_model_ids": [],
+          "documented_upstream_model_ids": [
+            "glm-5.3",
+            "glm-5.3-flash"
+          ],
           "evidence_refs": [
             "source-026",
-            "source-027"
+            "source-027",
+            "source-140"
           ],
           "interfaces": [
             {
@@ -6755,6 +6830,87 @@
           "digest_state": "not-captured",
           "locator": "https://help.aliyun.com/zh/model-studio/qwen-code",
           "source_key": "source-135",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+          "source_key": "source-136",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-team-overview",
+          "source_key": "source-137",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/text-generation-model",
+          "source_key": "source-138",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/model-pricing",
+          "source_key": "source-139",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.bigmodel.cn",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+          "source_key": "source-140",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.bigmodel.cn",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://docs.bigmodel.cn/cn/coding-plan/overview",
+          "source_key": "source-141",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.kimi.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://platform.kimi.com/docs/models",
+          "source_key": "source-142",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.kimi.ai",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://platform.kimi.ai/docs/models",
+          "source_key": "source-143",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "api-docs.deepseek.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-25",
+          "digest_state": "not-captured",
+          "locator": "https://api-docs.deepseek.com/updates/",
+          "source_key": "source-144",
           "source_kind": "provider-documentation"
         }
       ],
@@ -96982,7 +97138,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:61ac794e04817b22fe7b9941867161c1bbdc096f7093ba92ee0589adde64ed5e"
+      "source_catalog_digest": "sha256:268c1e399789e74eaa88caa2db22aa9c5b5285f3f4d1f0cd4aaabe182698d22a"
     },
     "rating_snapshot": {
       "digest": "sha256:92eb5556b5042ea0d2a3b9a918880fb1ccb3cc632c12a1b0d4cc3e52304efc7d",

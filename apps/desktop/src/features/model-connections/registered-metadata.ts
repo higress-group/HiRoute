@@ -1,4 +1,4 @@
-import type { ComputeConnectionOption, ModelConnectionDraft, ModelMetadataCatalog, UpstreamProtocol } from './types';
+import type { ComputeConnectionOption, ModelConnectionDraft, ModelMetadataCatalog, ProviderMetadataRecord, UpstreamProtocol } from './types';
 
 type RegisteredEndpoint = NonNullable<ComputeConnectionOption['endpoints']>[number];
 
@@ -25,6 +25,23 @@ export type RegisteredModelCandidate = {
   display_name: string;
   source: 'built_in' | 'product_metadata';
 };
+
+/** Product priority belongs to the connection picker, not the generated registry. */
+export function sortRegisteredOptions(options: ComputeConnectionOption[]): ComputeConnectionOption[] {
+  const rank = (id: string): number => id === 'bailian.token-plan.cn.v1' ? 0
+    : id === 'bailian.coding-plan.cn.v1' ? 1
+      : id === 'bailian.payg.cn.v1' ? 2
+        : id.startsWith('bailian.') ? 3 : 4;
+  return [...options].sort((left, right) => rank(left.connection_option_id) - rank(right.connection_option_id));
+}
+
+export function sortMetadataProviders(providers: ProviderMetadataRecord[]): ProviderMetadataRecord[] {
+  const rank = (key: string): number => key === 'hermes-agent/alibaba-token-plan-cn' ? 0
+    : key === 'hermes-agent/alibaba-coding-plan-cn' ? 1
+      : key === 'hermes-agent/alibaba-cn' ? 2
+        : key.startsWith('hermes-agent/alibaba-') ? 3 : 4;
+  return [...providers].sort((left, right) => rank(left.provider_record_key) - rank(right.provider_record_key));
+}
 
 const metadataProtocol: Record<UpstreamProtocol, string> = {
   chat_completions: 'openai-chat',
@@ -91,6 +108,34 @@ export function registeredModelCandidates(
     }
   }
   return [...candidates.values()].sort(compareCandidates);
+}
+
+/** Reuse a registered product's exact endpoint scope when a custom API prefill selects it. */
+export function metadataProviderOption(
+  provider: ProviderMetadataRecord,
+  options: ComputeConnectionOption[],
+): ComputeConnectionOption | null {
+  return options.find(option => option.endpoints?.some(endpoint =>
+    provider.base_url_candidates.some(base => target(endpoint.base_url, endpoint.request_path)
+      .startsWith(`${base.replace(/\/+$/, '')}/`))
+    && provider.protocol_candidates.includes(endpoint.protocol))) ?? null;
+}
+
+export function metadataProviderCandidates(
+  provider: ProviderMetadataRecord,
+  catalog: ModelMetadataCatalog,
+  options: ComputeConnectionOption[],
+): RegisteredModelCandidate[] {
+  const option = metadataProviderOption(provider, options);
+  if (option) return registeredModelCandidates(option, catalog);
+  return catalog.model_records
+    .filter(model => model.provider_record_key === provider.provider_record_key
+      && model.usable_for.includes('custom-api-model-prefill')
+      && model.execution_fit.state === 'native_text_representable'
+      && model.lifecycle !== 'deprecated' && model.lifecycle !== 'retired')
+    .map(model => ({ upstream_model_id: model.upstream_model_id,
+      display_name: model.display_name, source: 'product_metadata' as const }))
+    .sort(compareCandidates);
 }
 
 function compareCandidates(left: RegisteredModelCandidate, right: RegisteredModelCandidate): number {

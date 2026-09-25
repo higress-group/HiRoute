@@ -1456,6 +1456,87 @@
       "collected_on": "2026-09-23",
       "bytes_digest": null,
       "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-136",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-137",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/token-plan-team-overview",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-138",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/text-generation-model",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-139",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-140",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-141",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/coding-plan/overview",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-142",
+      "authority": "platform.kimi.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.kimi.com/docs/models",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-143",
+      "authority": "platform.kimi.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.kimi.ai/docs/models",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-144",
+      "authority": "api-docs.deepseek.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://api-docs.deepseek.com/updates/",
+      "collected_on": "2026-09-25",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -1599,12 +1680,35 @@
       "evidence_refs": [
         "source-038",
         "source-039",
-        "source-040"
+        "source-040",
+        "source-138",
+        "source-139"
       ],
       "disposition": [
         "catalog-representable",
         "needs-runtime-qualification",
         "offer-only-until-price-contract-converges"
+      ],
+      "documented_upstream_model_ids": [
+        "deepseek-v3.2",
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-0731",
+        "deepseek-v4-pro",
+        "deepseek-v4-pro-0813",
+        "deepseek-v4.1-flash",
+        "glm-5",
+        "glm-5.1",
+        "glm-5.2",
+        "glm-5.3",
+        "kimi-k2.6",
+        "kimi-k2.7-code",
+        "kimi-k3",
+        "qwen3.6-flash",
+        "qwen3.6-plus",
+        "qwen3.7-max",
+        "qwen3.7-plus",
+        "qwen3.8-flash",
+        "qwen3.8-max"
       ]
     },
     {
@@ -1613,7 +1717,7 @@
       "product": "Token Plan Personal",
       "product_kind": "credit-subscription",
       "region_scope": "China, Beijing only",
-      "billing": "rolling-7-day-credits",
+      "billing": "monthly-credits",
       "restriction": "Personal plan; Credits and eligibility are not PAYG tokens",
       "credential": "bearer sk-sp",
       "interfaces": [
@@ -1631,19 +1735,34 @@
         }
       ],
       "quota_facts": [
-        "Lite: 2500 Credits/7d",
-        "Standard: 10000 Credits/7d",
-        "Pro: 40000 Credits/7d"
+        "Lite: 11500 Credits/month",
+        "Essential: 25500 Credits/month",
+        "Standard: 45000 Credits/month",
+        "Pro: 180000 Credits/month"
       ],
       "evidence_status": "verified-primary",
       "evidence_refs": [
         "source-044",
-        "source-045"
+        "source-045",
+        "source-136"
       ],
       "disposition": [
         "catalog-representable",
         "needs-runtime-qualification",
         "offer-only-until-price-contract-converges"
+      ],
+      "documented_upstream_model_ids": [
+        "deepseek-v4-flash-0731",
+        "deepseek-v4-pro",
+        "deepseek-v4-pro-0813",
+        "deepseek-v4.1-flash",
+        "glm-5.2",
+        "glm-5.3",
+        "qwen3.6-flash",
+        "qwen3.7-max",
+        "qwen3.7-plus",
+        "qwen3.8-flash",
+        "qwen3.8-max"
       ]
     },
     {
@@ -1674,12 +1793,35 @@
       ],
       "evidence_status": "verified-primary",
       "evidence_refs": [
-        "source-044"
+        "source-044",
+        "source-137"
       ],
       "disposition": [
         "catalog-representable",
         "needs-runtime-qualification",
         "offer-only-until-price-contract-converges"
+      ],
+      "documented_upstream_model_ids": [
+        "MiniMax-M2.5",
+        "deepseek-v3.2",
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-0731",
+        "deepseek-v4-pro",
+        "deepseek-v4-pro-0813",
+        "deepseek-v4.1-flash",
+        "glm-5",
+        "glm-5.1",
+        "glm-5.2",
+        "glm-5.3",
+        "kimi-k2.5",
+        "kimi-k2.6",
+        "kimi-k2.7-code",
+        "qwen3.6-flash",
+        "qwen3.6-plus",
+        "qwen3.7-max",
+        "qwen3.7-plus",
+        "qwen3.8-flash",
+        "qwen3.8-max"
       ]
     },
     {
@@ -1789,7 +1931,7 @@
         }
       ],
       "documented_upstream_model_ids": [
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "deepseek-v4-pro"
       ],
       "evidence_status": "verified-primary",
@@ -1797,7 +1939,8 @@
         "source-007",
         "source-008",
         "source-009",
-        "source-010"
+        "source-010",
+        "source-144"
       ],
       "disposition": [
         "catalog-representable",
@@ -1958,11 +2101,18 @@
       "evidence_status": "verified-primary",
       "evidence_refs": [
         "source-063",
-        "source-064"
+        "source-064",
+        "source-142"
       ],
       "disposition": [
         "catalog-representable",
         "needs-runtime-qualification"
+      ],
+      "documented_upstream_model_ids": [
+        "kimi-k2.6",
+        "kimi-k2.7-code",
+        "kimi-k2.7-code-highspeed",
+        "kimi-k3"
       ]
     },
     {
@@ -1984,12 +2134,14 @@
       ],
       "documented_upstream_model_ids": [
         "kimi-k2.6",
-        "kimi-k2.7",
+        "kimi-k2.7-code",
+        "kimi-k2.7-code-highspeed",
         "kimi-k3"
       ],
       "evidence_status": "verified-primary",
       "evidence_refs": [
-        "source-062"
+        "source-062",
+        "source-143"
       ],
       "disposition": [
         "catalog-representable",
@@ -2521,12 +2673,17 @@
       "evidence_refs": [
         "source-024",
         "source-025",
-        "source-125"
+        "source-125",
+        "source-141"
       ],
       "disposition": [
         "catalog-representable",
         "needs-runtime-qualification",
         "offer-only-until-price-contract-converges"
+      ],
+      "documented_upstream_model_ids": [
+        "glm-5.3",
+        "glm-5.3-flash"
       ]
     },
     {
@@ -2549,11 +2706,16 @@
       "evidence_status": "verified-primary",
       "evidence_refs": [
         "source-026",
-        "source-027"
+        "source-027",
+        "source-140"
       ],
       "disposition": [
         "catalog-representable",
         "needs-runtime-qualification"
+      ],
+      "documented_upstream_model_ids": [
+        "glm-5.3",
+        "glm-5.3-flash"
       ]
     }
   ],
