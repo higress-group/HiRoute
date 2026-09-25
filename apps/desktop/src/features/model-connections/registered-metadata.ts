@@ -43,6 +43,18 @@ export function sortMetadataProviders(providers: ProviderMetadataRecord[]): Prov
   return [...providers].sort((left, right) => rank(left.provider_record_key) - rank(right.provider_record_key));
 }
 
+/** Offer every built-in product even when no provider record carries prefill evidence. */
+export function customApiPrefillOptions(options: ComputeConnectionOption[], providers: ProviderMetadataRecord[]) {
+  return [
+    ...sortRegisteredOptions(options).map(option => ({
+      kind: 'template' as const, key: `template:${option.connection_option_id}`, option,
+    })),
+    ...sortMetadataProviders(providers).map(provider => ({
+      kind: 'provider' as const, key: `provider:${provider.provider_record_key}`, provider,
+    })),
+  ];
+}
+
 const metadataProtocol: Record<UpstreamProtocol, string> = {
   chat_completions: 'openai-chat',
   messages: 'anthropic-messages',
