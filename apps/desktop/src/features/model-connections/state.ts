@@ -4,6 +4,7 @@ import type {
   ComputeManagementChange,
   ComputeSaveResult,
   ModelConnectionDraft,
+  ModelDeclaration,
   ModelConnectionDraftInput,
   ModelConnectionCheckView,
   RevisionSet,
@@ -154,4 +155,32 @@ export function clientIdempotencyKey(prefix: string): string {
     byte => byte.toString(16).padStart(2, '0'),
   ).join('');
   return `${safePrefix}:${entropy}`.slice(0, 64);
+}
+
+export function blankModel(upstreamModelId = '', displayName = upstreamModelId): ModelDeclaration {
+  return {
+    client_id: clientOperationId('model'),
+    upstream_model_id: upstreamModelId,
+    display_name: displayName,
+    catalog_configuration_id: null,
+    membership: 'user_declared',
+    capabilities: {
+      tool: { value: null, basis: 'unknown' },
+      vision: { value: null, basis: 'unknown' },
+      streaming: { value: null, basis: 'unknown' },
+      context_tokens: { value: null, basis: 'unknown' },
+      max_output_tokens: { value: null, basis: 'unknown' },
+      native_reasoning: { value: null, basis: 'unknown' },
+    },
+  };
+}
+
+/** Include the full template catalog while preserving explicit model edits. */
+export function withRegisteredModels(
+  models: ModelDeclaration[],
+  candidates: ReadonlyArray<Pick<ModelDeclaration, 'upstream_model_id' | 'display_name'>>,
+): ModelDeclaration[] {
+  const ids = new Set(models.map(model => model.upstream_model_id.trim()));
+  return [...models, ...candidates.filter(candidate => !ids.has(candidate.upstream_model_id))
+    .map(candidate => blankModel(candidate.upstream_model_id, candidate.display_name))];
 }

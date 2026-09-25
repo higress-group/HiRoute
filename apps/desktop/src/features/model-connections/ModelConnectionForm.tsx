@@ -8,6 +8,8 @@ import { UiIcon } from '../../ui/UiIcon';
 import { confirmDiscard, useDiscardGuard } from '../../ui/discard-guard';
 import { saveFailureDefinitelyPreAdmission } from '../subscriptions/model';
 import {
+  blankModel,
+  withRegisteredModels,
   buildCheckDraft,
   buildSaveChange,
   checkMatches,
@@ -28,19 +30,13 @@ import type {
   ModelConnectionEndpointDraft,
   ModelConnectionFormProps,
   ModelDeclaration,
-  ModelMetadataRecord,
   ProviderMetadataRecord,
   UpstreamProtocol,
 } from './types';
 import { checkFailureCode, modelAvailabilityMessage } from './copy';
+import { metadataModelPrefill } from './metadata-prefill';
+import { metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortMetadataProviders, sortRegisteredOptions, templateEndpointForProtocol } from './registered-metadata';
 import {
-  metadataCostHint,
-  metadataModelPrefill,
-  metadataReasoningHint,
-} from './metadata-prefill';
-import { registeredModelCandidates, templateEndpointForProtocol } from './registered-metadata';
-import {
-  blankModel,
   connectionErrorMessage,
   ManualModelEditor,
   manualModelError,
@@ -78,7 +74,6 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [registeredOptionId, setRegisteredOptionId] = useState('');
   const [metadataProviderKey, setMetadataProviderKey] = useState('');
-  const [metadataModelKey, setMetadataModelKey] = useState('');
   const password = useRef<HTMLInputElement>(null);
   const errorFeedback = useRef<HTMLDivElement>(null);
   const draftRef = useRef(draft);
@@ -88,9 +83,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const aliveRef = useRef(true);
   const saveCompletedRef = useRef(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(props.initialDraft) || Boolean(protectedInputRef.current);
-  const registeredOptions = useMemo(() => connectionOptions?.options.filter(option =>
+  const registeredOptions = useMemo(() => sortRegisteredOptions(connectionOptions?.options.filter(option =>
     option.origin !== 'agent_subscription' && (!free || option.billing_class === 'free')
-  ) ?? [], [connectionOptions, free]);
+  ) ?? []), [connectionOptions, free]);
   const registeredOption = registeredOptions.find(option => option.connection_option_id === registeredOptionId)
     ?? registeredOptions[0]
     ?? null;
@@ -98,18 +93,15 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const registeredCandidates = useMemo(() => registeredOption
     ? registeredModelCandidates(registeredOption, connectionOptions?.metadata_catalog)
     : [], [registeredOption, connectionOptions]);
-  const metadataProviders = useMemo(() => connectionOptions?.metadata_catalog?.provider_records.filter(provider =>
+  const metadataProviders = useMemo(() => sortMetadataProviders(connectionOptions?.metadata_catalog?.provider_records.filter(provider =>
     provider.usable_for.includes('custom-api-endpoint-prefill')
     && provider.base_url_candidates.length > 0
     && provider.protocol_candidates.length > 0
-  ) ?? [], [connectionOptions]);
+  ) ?? []), [connectionOptions]);
   const metadataProvider = metadataProviders.find(provider => provider.provider_record_key === metadataProviderKey) ?? null;
-  const metadataModels = useMemo(() => connectionOptions?.metadata_catalog?.model_records.filter(model =>
-    model.provider_record_key === metadataProviderKey
-    && model.usable_for.includes('custom-api-model-prefill')
-    && model.execution_fit.state === 'native_text_representable'
-  ) ?? [], [connectionOptions, metadataProviderKey]);
-  const metadataModel = metadataModels.find(model => model.model_record_key === metadataModelKey) ?? null;
+  const metadataCandidates = useMemo(() => metadataProvider && connectionOptions?.metadata_catalog
+    ? metadataProviderCandidates(metadataProvider, connectionOptions.metadata_catalog, registeredOptions)
+    : [], [metadataProvider, connectionOptions, registeredOptions]);
   useDiscardGuard('models', () => dirty && !saveCompletedRef.current, language, confirmReplacement);
 
   const releaseProtectedInput = useCallback(() => {
@@ -125,7 +117,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       const options = await backend.listConnectionOptions();
       if (!aliveRef.current) return;
       setConnectionOptions(options);
-      const executable = options.options.filter(option => option.origin !== 'agent_subscription' && (!free || option.billing_class === 'free'));
+      const executable = sortRegisteredOptions(options.options.filter(option => option.origin !== 'agent_subscription' && (!free || option.billing_class === 'free')));
       setRegisteredOptionId(current => executable.some(option => option.connection_option_id === current)
         ? current
         : executable[0]?.connection_option_id ?? '');
@@ -141,40 +133,49 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
 
   function selectMetadataProvider(provider: ProviderMetadataRecord | null) {
     setMetadataProviderKey(provider?.provider_record_key ?? '');
-    setMetadataModelKey('');
     if (!provider) return;
-    const protocol = provider.protocol_candidates.includes(draftRef.current.protocol)
-      ? draftRef.current.protocol
-      : provider.protocol_candidates[0];
+    const catalog = connectionOptions?.metadata_catalog;
+    const option = catalog ? metadataProviderOption(provider, registeredOptions) : null;
+    const endpoint = option?.endpoints?.find(value => provider.base_url_candidates.some(base =>
+      `${value.base_url.replace(/\/+$/, '')}/${value.request_path.replace(/^\/+/, '')}`
+        .startsWith(`${base.replace(/\/+$/, '')}/`))
+      && provider.protocol_candidates.includes(value.protocol));
+    const protocol = endpoint?.protocol ?? (provider.protocol_candidates.includes(draftRef.current.protocol)
+      ? draftRef.current.protocol : provider.protocol_candidates[0]);
+    const candidates = catalog ? metadataProviderCandidates(provider, catalog, registeredOptions) : [];
+    const records = new Map(catalog?.model_records.filter(model =>
+      model.provider_record_key === provider.provider_record_key
+      && model.usable_for.includes('custom-api-model-prefill')
+      && model.execution_fit.state === 'native_text_representable')
+      .map(model => [model.upstream_model_id, model] as const) ?? []);
+    const otherProtocols = new Set<UpstreamProtocol>();
+    const additional_endpoints = (option?.endpoints ?? [])
+      .filter(value => value.protocol !== protocol && !otherProtocols.has(value.protocol) && Boolean(otherProtocols.add(value.protocol)))
+      .map(value => ({ base_url: value.base_url, base_kind: 'api_root' as const,
+        request_path_override: value.request_path, inventory_path_override: value.inventory_path ?? null,
+        protocol: value.protocol, protocol_profile_id: `profile/custom/${value.protocol}`,
+        protocol_profile_revision: 1, authentication: value.authentication_semantics ?? { kind: 'bearer' as const } }));
     invalidate(current => ({
       ...current,
       display_name: provider.display_name,
       display_template_id: null,
-      base_url: provider.base_url_candidates[0],
+      base_url: endpoint?.base_url ?? provider.base_url_candidates[0],
       base_kind: 'api_root',
-      request_path_override: null,
-      inventory_path_override: null,
+      request_path_override: endpoint?.request_path ?? null,
+      inventory_path_override: endpoint?.inventory_path ?? null,
       protocol,
       protocol_profile_id: `profile/custom/${protocol}`,
       protocol_profile_revision: current.protocol_profile_revision + 1,
-      authentication: protocol === 'messages'
+      authentication: endpoint?.authentication_semantics ?? (protocol === 'messages'
         ? { kind: 'api_key_header', header: 'x-api-key' }
-        : { kind: 'bearer' },
-      additional_endpoints: [],
-      models: [],
+        : { kind: 'bearer' }),
+      additional_endpoints,
+      models: candidates.map(candidate => {
+        const record = records.get(candidate.upstream_model_id);
+        return record ? metadataModelPrefill(record, clientOperationId('model'))
+          : blankModel(candidate.upstream_model_id, candidate.display_name);
+      }),
     }), true, 'connection');
-  }
-
-  function selectMetadataModel(model: ModelMetadataRecord | null) {
-    setMetadataModelKey(model?.model_record_key ?? '');
-    if (!model) {
-      invalidate(current => ({ ...current, models: [] }), false, 'connection');
-      return;
-    }
-    invalidate(current => ({
-      ...current,
-      models: [...current.models.filter(value => value.upstream_model_id !== model.upstream_model_id), metadataModelPrefill(model, clientOperationId('model'))],
-    }), false, 'connection');
   }
 
   useEffect(() => { draftRef.current = draft; }, [draft]);
@@ -326,7 +327,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       return;
     }
     setError('');
-    const base = draftRef.current;
+    const base = !custom && !saveAfterCheck
+      ? { ...draftRef.current, models: withRegisteredModels(draftRef.current.models, registeredCandidates) }
+      : draftRef.current;
     const current = { ...base, inference_model_id: inferenceModelId, models: inferenceModelId && !base.models.some(model => model.upstream_model_id === inferenceModelId) ? [...base.models, blankModel(inferenceModelId)] : base.models };
     const passwordElement = password.current;
     const enteredSecret = passwordElement?.value ?? '';
@@ -543,16 +546,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
                   <option value="">{zh ? '不使用预填' : 'No prefill'}</option>
                   {metadataProviders.map(provider => <option key={provider.provider_record_key} value={provider.provider_record_key}>{provider.display_name}</option>)}
                 </select></label>
-                {metadataProvider && <label className="field"><span className="field-label">{zh ? '模型元数据预填（可选）' : 'Model metadata prefill (optional)'}</span><select className="select" value={metadataModelKey} onChange={event => selectMetadataModel(metadataModels.find(model => model.model_record_key === event.target.value) ?? null)}>
-                  <option value="">{zh ? '不预填模型' : 'No model prefill'}</option>
-                  {metadataModels.map(model => <option key={model.model_record_key} value={model.model_record_key}>{model.display_name} · {model.upstream_model_id}</option>)}
-                </select></label>}
-                <p className="field-help">{zh
-                  ? `来自客户端内置的 ${connectionOptions?.metadata_catalog?.as_of ?? ''} 当前元数据快照；选择即表示把已知字段复制到草稿。未知字段保持空白，凭据不会从元数据推断。`
-                  : `From the client-bundled ${connectionOptions?.metadata_catalog?.as_of ?? ''} current metadata snapshot. Selecting copies known fields into this draft; unknown fields stay blank and credentials are never inferred.`}</p>
-                {metadataModel?.usable_for.includes('lifecycle-warning') && metadataModel.lifecycle !== 'active' && metadataModel.lifecycle !== 'unknown' && <div className="callout warn"><UiIcon name="warning" /><span>{zh ? `生命周期：${metadataModel.lifecycle}` : `Lifecycle: ${metadataModel.lifecycle}`}{metadataModel.replacement_upstream_ids.length ? ` · ${zh ? '替代项' : 'Replacements'}: ${metadataModel.replacement_upstream_ids.join(', ')}` : ''}</span></div>}
-                {metadataModel && metadataReasoningHint(metadataModel, zh) && <p className="field-help">{metadataReasoningHint(metadataModel, zh)}</p>}
-                {metadataModel && metadataCostHint(metadataModel, zh) && <p className="field-help">{metadataCostHint(metadataModel, zh)}</p>}
+                {metadataProvider && <p className="field-help">{zh
+                  ? `已收录 ${metadataCandidates.length} 个模型，检查接入后统一选择；未知能力保持空白，凭据不会从资料推断。`
+                  : `${metadataCandidates.length} models in this catalog. Choose after checking the connection; unknown capabilities remain blank and credentials are never inferred.`}</p>}
               </div>}
               <label className="field"><span className="field-label">{zh ? '接入名称' : 'Connection name'}</span><input className="input" data-autofocus value={draft.display_name} placeholder={zh ? '例如：团队模型服务' : 'e.g. Team models'} onChange={event => invalidate(current => ({ ...current, display_name: event.target.value }), false, 'connection')} /></label>
               <label className="field"><span className="field-label">Base URL</span><input className="input" inputMode="url" value={draft.base_url} placeholder="https://example.com/v1" onChange={event => invalidate(current => ({ ...current, base_url: event.target.value }), true, 'connection')} /></label>
@@ -605,16 +601,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               <p>{connectionTemplate(registeredOption.connection_option_id)?.description[language]}</p>
               <a href={connectionTemplate(registeredOption.connection_option_id)?.documentation_url} target="_blank" rel="noreferrer" onClick={event => void openDocumentation(event, connectionTemplate(registeredOption.connection_option_id)?.documentation_url)}>{zh ? '官方说明与获取 Key' : 'Official guide and API keys'}</a>
               {externalLinkError && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{zh ? '无法打开默认浏览器；当前表单内容已保留。' : 'The default browser could not be opened. Your form input is retained.'}</span></div>}
-              <ul>{registeredCandidates.map(candidate => <li key={candidate.upstream_model_id}>
-                {candidate.display_name} · {candidate.upstream_model_id}
-                {candidate.source === 'product_metadata' && <>
-                  {' · '}<span className="field-help">{zh ? '产品资料候选' : 'Product metadata candidate'}</span>{' '}
-                  <button className="btn btn-quiet" type="button" disabled={!props.mutable || draft.models.some(model => model.upstream_model_id === candidate.upstream_model_id)} onClick={() => invalidate(current => ({ ...current, models: [...current.models, blankModel(candidate.upstream_model_id, candidate.display_name)] }), false, 'connection')}>
-                    {draft.models.some(model => model.upstream_model_id === candidate.upstream_model_id) ? (zh ? '已加入' : 'Added') : (zh ? '导入模型 ID' : 'Import model ID')}
-                  </button>
-                </>}
-              </li>)}</ul>
-              <p className="field-help">{zh ? '内置模型有已资格化能力资料；产品资料候选仅复制模型 ID，账号可见性、协议与推理能力仍需检查。' : 'Built-in models have qualified capability data. Product metadata candidates only copy the model ID; account access, protocol, and inference still need checking.'}</p>
+              <p className="field-help">{zh
+                ? `已收录 ${registeredCandidates.length} 个模型，填写 Key 后统一选择。具体可用范围取决于账号和套餐。`
+                : `${registeredCandidates.length} models in this catalog. Enter your key, then choose models. Availability depends on your account and plan.`}</p>
               {registeredOption.endpoints?.length && <button className="btn btn-quiet" type="button" onClick={() => {
                 const endpoint = [...registeredOption.endpoints!].sort((a, b) => a.stable_preference - b.stable_preference)[0];
                 setCustom(true);
@@ -626,7 +615,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
                     request_path_override: other.request_path, inventory_path_override: other.inventory_path ?? null,
                     protocol: other.protocol, protocol_profile_id: `profile/custom/${other.protocol}`,
                     protocol_profile_revision: 1, authentication: other.authentication_semantics ?? { kind: 'bearer' as const } }));
-                invalidate(current => ({ ...current, entry_kind: 'custom_api', display_template_id: registeredOption.connection_option_id, display_name: connectionName(registeredOption.connection_option_id, language, registeredOption.display_name), base_url: endpoint.base_url, request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null, protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`, authentication: endpoint.authentication_semantics ?? { kind: 'bearer' }, additional_endpoints, models: [...Object.entries(registeredOption.known_models ?? {}).map(([id, name]) => blankModel(id, name)), ...current.models.filter(model => !Object.hasOwn(registeredOption.known_models ?? {}, model.upstream_model_id))] }), true, 'connection');
+                invalidate(current => ({ ...current, entry_kind: 'custom_api', display_template_id: registeredOption.connection_option_id, display_name: connectionName(registeredOption.connection_option_id, language, registeredOption.display_name), base_url: endpoint.base_url, request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null, protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`, authentication: endpoint.authentication_semantics ?? { kind: 'bearer' }, additional_endpoints, models: withRegisteredModels(current.models, registeredCandidates) }), true, 'connection');
               }}>{zh ? '自定义此模板的连接配置' : 'Customize this template connection'}</button>}
             </section>}
             {custom && <>
