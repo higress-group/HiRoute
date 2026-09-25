@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortMetadataProviders, sortRegisteredOptions, templateEndpointForProtocol } from '../src/features/model-connections/registered-metadata.ts';
+import { customApiPrefillOptions, metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortMetadataProviders, sortRegisteredOptions, templateEndpointForProtocol } from '../src/features/model-connections/registered-metadata.ts';
 
 const bundle = JSON.parse(readFileSync(new URL('../../../assets/release-facts/current/bundle/model-data.json', import.meta.url)));
 const registry = JSON.parse(readFileSync(new URL('../../../assets/release-facts/current/bundle/connector-registry.json', import.meta.url)));
@@ -163,6 +163,24 @@ test('Bailian Token Plan is first among custom API metadata prefills', () => {
     'hermes-agent/alibaba-coding-plan-cn',
     'hermes-agent/alibaba-cn',
   ]);
+});
+
+test('direct custom API prefill offers every built-in product with its scoped model catalog', () => {
+  const options = registry.connection_options.filter(value => value.origin !== 'agent_subscription')
+    .map(value => option(value.connection_option_id));
+  const providers = bundle.metadata_catalog.provider_records.filter(value =>
+    value.usable_for.includes('custom-api-endpoint-prefill')
+    && value.base_url_candidates.length > 0 && value.protocol_candidates.length > 0);
+  const prefills = customApiPrefillOptions(options, providers);
+  const templates = prefills.filter(value => value.kind === 'template');
+  assert.equal(templates.length, options.length);
+  assert.deepEqual(new Set(templates.map(value => value.option.connection_option_id)),
+    new Set(options.map(value => value.connection_option_id)));
+  assert.equal(templates[0].option.connection_option_id, 'bailian.token-plan.cn.v1');
+  assert.deepEqual(registeredModelCandidates(templates[0].option, bundle.metadata_catalog)
+    .map(value => value.upstream_model_id).sort(), [...teamTokenModels].sort());
+  assert.deepEqual(prefills.filter(value => value.kind === 'provider').map(value => value.provider.provider_record_key),
+    sortMetadataProviders(providers).map(value => value.provider_record_key));
 });
 
 test('priority providers expose their current scoped model IDs', () => {

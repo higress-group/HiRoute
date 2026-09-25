@@ -35,7 +35,7 @@ import type {
 } from './types';
 import { checkFailureCode, modelAvailabilityMessage } from './copy';
 import { metadataModelPrefill } from './metadata-prefill';
-import { metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortMetadataProviders, sortRegisteredOptions, templateEndpointForProtocol } from './registered-metadata';
+import { customApiPrefillOptions, metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortMetadataProviders, sortRegisteredOptions, templateEndpointForProtocol } from './registered-metadata';
 import {
   connectionErrorMessage,
   ManualModelEditor,
@@ -73,7 +73,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const [connectionOptions, setConnectionOptions] = useState<ComputeConnectionOptions | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [registeredOptionId, setRegisteredOptionId] = useState('');
-  const [metadataProviderKey, setMetadataProviderKey] = useState('');
+  const [metadataPrefillKey, setMetadataPrefillKey] = useState('');
   const password = useRef<HTMLInputElement>(null);
   const errorFeedback = useRef<HTMLDivElement>(null);
   const draftRef = useRef(draft);
@@ -98,10 +98,13 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     && provider.base_url_candidates.length > 0
     && provider.protocol_candidates.length > 0
   ) ?? []), [connectionOptions]);
-  const metadataProvider = metadataProviders.find(provider => provider.provider_record_key === metadataProviderKey) ?? null;
-  const metadataCandidates = useMemo(() => metadataProvider && connectionOptions?.metadata_catalog
-    ? metadataProviderCandidates(metadataProvider, connectionOptions.metadata_catalog, registeredOptions)
-    : [], [metadataProvider, connectionOptions, registeredOptions]);
+  const metadataPrefills = useMemo(() => customApiPrefillOptions(registeredOptions, metadataProviders), [registeredOptions, metadataProviders]);
+  const selectedPrefill = metadataPrefills.find(prefill => prefill.key === metadataPrefillKey) ?? null;
+  const metadataCandidates = useMemo(() => selectedPrefill?.kind === 'template'
+    ? registeredModelCandidates(selectedPrefill.option, connectionOptions?.metadata_catalog)
+    : selectedPrefill?.kind === 'provider' && connectionOptions?.metadata_catalog
+      ? metadataProviderCandidates(selectedPrefill.provider, connectionOptions.metadata_catalog, registeredOptions)
+      : [], [selectedPrefill, connectionOptions, registeredOptions]);
   useDiscardGuard('models', () => dirty && !saveCompletedRef.current, language, confirmReplacement);
 
   const releaseProtectedInput = useCallback(() => {
@@ -132,7 +135,6 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   }, [backend, custom, free]);
 
   function selectMetadataProvider(provider: ProviderMetadataRecord | null) {
-    setMetadataProviderKey(provider?.provider_record_key ?? '');
     if (!provider) return;
     const catalog = connectionOptions?.metadata_catalog;
     const option = catalog ? metadataProviderOption(provider, registeredOptions) : null;
@@ -176,6 +178,39 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           : blankModel(candidate.upstream_model_id, candidate.display_name);
       }),
     }), true, 'connection');
+  }
+
+  function selectRegisteredTemplate(option: ComputeConnectionOptions['options'][number], keepExistingModels = false) {
+    const endpoint = [...(option.endpoints ?? [])].sort((a, b) => a.stable_preference - b.stable_preference)[0];
+    if (!endpoint) return;
+    const candidates = registeredModelCandidates(option, connectionOptions?.metadata_catalog);
+    const otherProtocols = new Set<UpstreamProtocol>();
+    const additional_endpoints = [...(option.endpoints ?? [])]
+      .sort((a, b) => a.stable_preference - b.stable_preference)
+      .filter(other => other.protocol !== endpoint.protocol && !otherProtocols.has(other.protocol) && Boolean(otherProtocols.add(other.protocol)))
+      .map(other => ({ base_url: other.base_url, base_kind: 'api_root' as const,
+        request_path_override: other.request_path, inventory_path_override: other.inventory_path ?? null,
+        protocol: other.protocol, protocol_profile_id: `profile/custom/${other.protocol}`,
+        protocol_profile_revision: 1, authentication: other.authentication_semantics ?? { kind: 'bearer' as const } }));
+    setCustom(true);
+    setMetadataPrefillKey(`template:${option.connection_option_id}`);
+    invalidate(current => ({ ...current,
+      entry_kind: 'custom_api', display_template_id: option.connection_option_id,
+      display_name: connectionName(option.connection_option_id, language, option.display_name),
+      base_url: endpoint.base_url, base_kind: 'api_root',
+      request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null,
+      protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`,
+      protocol_profile_revision: current.protocol_profile_revision + 1,
+      authentication: endpoint.authentication_semantics ?? { kind: 'bearer' },
+      additional_endpoints, models: withRegisteredModels(keepExistingModels ? current.models : [], candidates),
+    }), true, 'connection');
+  }
+
+  function selectMetadataPrefill(key: string) {
+    setMetadataPrefillKey(key);
+    const prefill = metadataPrefills.find(value => value.key === key);
+    if (prefill?.kind === 'template') selectRegisteredTemplate(prefill.option);
+    else if (prefill?.kind === 'provider') selectMetadataProvider(prefill.provider);
   }
 
   useEffect(() => { draftRef.current = draft; }, [draft]);
@@ -541,12 +576,17 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
             {!custom && !free && <button className="btn btn-quiet" type="button" onClick={() => { setCustom(true); invalidate(current => ({ ...current, entry_kind: 'custom_api' }), true, 'connection'); }}>{zh ? '自定义 API' : 'Custom API'}</button>}
             {custom ? <>
               <ProviderIcon optionId={draft.display_template_id} language={language} />
-              {!optionsLoading && metadataProviders.length > 0 && <div className="connection-fields metadata-prefill-fields">
-                <label className="field"><span className="field-label">{zh ? '供应商元数据预填（可选）' : 'Provider metadata prefill (optional)'}</span><select className="select" value={metadataProviderKey} onChange={event => selectMetadataProvider(metadataProviders.find(provider => provider.provider_record_key === event.target.value) ?? null)}>
+              {!optionsLoading && metadataPrefills.length > 0 && <div className="connection-fields metadata-prefill-fields">
+                <label className="field"><span className="field-label">{zh ? '接入资料预填（可选）' : 'Connection prefill (optional)'}</span><select className="select" value={metadataPrefillKey} onChange={event => selectMetadataPrefill(event.target.value)}>
                   <option value="">{zh ? '不使用预填' : 'No prefill'}</option>
-                  {metadataProviders.map(provider => <option key={provider.provider_record_key} value={provider.provider_record_key}>{provider.display_name}</option>)}
+                  <optgroup label={zh ? '内置接入' : 'Built-in connections'}>
+                    {metadataPrefills.filter(prefill => prefill.kind === 'template').map(prefill => <option key={prefill.key} value={prefill.key}>{connectionName(prefill.option.connection_option_id, language, prefill.option.display_name)}</option>)}
+                  </optgroup>
+                  {metadataProviders.length > 0 && <optgroup label={zh ? '供应商资料记录' : 'Provider metadata records'}>
+                    {metadataPrefills.filter(prefill => prefill.kind === 'provider').map(prefill => <option key={prefill.key} value={prefill.key}>{prefill.provider.display_name}</option>)}
+                  </optgroup>}
                 </select></label>
-                {metadataProvider && <p className="field-help">{zh
+                {selectedPrefill && <p className="field-help">{zh
                   ? `已收录 ${metadataCandidates.length} 个模型，检查接入后统一选择；未知能力保持空白，凭据不会从资料推断。`
                   : `${metadataCandidates.length} models in this catalog. Choose after checking the connection; unknown capabilities remain blank and credentials are never inferred.`}</p>}
               </div>}
@@ -604,19 +644,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
               <p className="field-help">{zh
                 ? `已收录 ${registeredCandidates.length} 个模型，填写 Key 后统一选择。具体可用范围取决于账号和套餐。`
                 : `${registeredCandidates.length} models in this catalog. Enter your key, then choose models. Availability depends on your account and plan.`}</p>
-              {registeredOption.endpoints?.length && <button className="btn btn-quiet" type="button" onClick={() => {
-                const endpoint = [...registeredOption.endpoints!].sort((a, b) => a.stable_preference - b.stable_preference)[0];
-                setCustom(true);
-                const otherProtocols = new Set<UpstreamProtocol>();
-                const additional_endpoints = [...(registeredOption.endpoints ?? [])]
-                  .sort((a, b) => a.stable_preference - b.stable_preference)
-                  .filter(other => other.protocol !== endpoint.protocol && !otherProtocols.has(other.protocol) && Boolean(otherProtocols.add(other.protocol)))
-                  .map(other => ({ base_url: other.base_url, base_kind: 'api_root' as const,
-                    request_path_override: other.request_path, inventory_path_override: other.inventory_path ?? null,
-                    protocol: other.protocol, protocol_profile_id: `profile/custom/${other.protocol}`,
-                    protocol_profile_revision: 1, authentication: other.authentication_semantics ?? { kind: 'bearer' as const } }));
-                invalidate(current => ({ ...current, entry_kind: 'custom_api', display_template_id: registeredOption.connection_option_id, display_name: connectionName(registeredOption.connection_option_id, language, registeredOption.display_name), base_url: endpoint.base_url, request_path_override: endpoint.request_path, inventory_path_override: endpoint.inventory_path ?? null, protocol: endpoint.protocol, protocol_profile_id: `profile/custom/${endpoint.protocol}`, authentication: endpoint.authentication_semantics ?? { kind: 'bearer' }, additional_endpoints, models: withRegisteredModels(current.models, registeredCandidates) }), true, 'connection');
-              }}>{zh ? '自定义此模板的连接配置' : 'Customize this template connection'}</button>}
+              {registeredOption.endpoints?.length && <button className="btn btn-quiet" type="button" onClick={() => selectRegisteredTemplate(registeredOption, true)}>{zh ? '自定义此模板的连接配置' : 'Customize this template connection'}</button>}
             </section>}
             {custom && <>
               <label className="field"><span className="field-label">{zh ? '请求路径（可选覆盖）' : 'Request path (optional override)'}</span><input className="input" value={draft.request_path_override ?? ''} onChange={event => invalidate(current => ({ ...current, request_path_override: event.target.value || null }), true, 'connection')} /></label>
