@@ -444,8 +444,20 @@ mod tests {
         assert_eq!(metadata.provider_records.len(), 105);
         assert_eq!(metadata.model_records.len(), 764);
         assert_eq!(metadata.inference_rules.len(), 187);
-        assert_eq!(metadata.evidence_sources.len(), 135);
+        assert_eq!(metadata.evidence_sources.len(), 144);
         assert_eq!(metadata.endpoint_bindings.len(), 36);
+        let token_plan_team = metadata
+            .access_products
+            .iter()
+            .find(|product| product.product_key == "bailian-token-team-cn-beijing")
+            .unwrap();
+        assert_eq!(token_plan_team.documented_upstream_model_ids.len(), 20);
+        assert!(
+            token_plan_team
+                .documented_upstream_model_ids
+                .iter()
+                .any(|id| id == "deepseek-v4.1-flash")
+        );
         assert!(
             metadata
                 .model_records
