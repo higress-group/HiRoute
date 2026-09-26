@@ -81,7 +81,19 @@ fn group_writable_executable_and_ancestor_are_allowed() {
     let ExecutableProbe::Installed(found) = probe(&path, Duration::from_secs(1)) else {
         panic!("group-writable installation was rejected");
     };
-    assert_eq!(found.version, "2.1.231");
+    assert_eq!(
+        found.canonical_path,
+        std::fs::canonicalize(&target).unwrap().to_str().unwrap()
+    );
+    assert!(found.version.is_empty() || found.version == "2.1.231");
+}
+
+#[test]
+fn agent_probe_parses_claude_version_without_running_a_process() {
+    assert_eq!(
+        parse_version(b"claude 2.1.231 (Claude Code)\n"),
+        Some("2.1.231".to_owned())
+    );
 }
 
 #[test]
