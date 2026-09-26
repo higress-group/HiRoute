@@ -275,7 +275,7 @@ fn master_authored_v2_plan_is_recovered_from_durable_compiler_v1_publication() {
             "purpose": "Persist the actual authoring compiler output before aggregate convergence",
             "mode": "fixed_model",
             "candidates": [{"binding_id": binding_id}],
-            "smart": {"economy": [], "primary": [], "primary_fallback": false, "classifier": {"kind":"local_rules"}, "complex_keywords": []},
+            "smart": {"economy": [], "primary": [], "primary_fallback": false, "reselect_on_user_message": false, "classifier": {"kind":"local_rules"}, "complex_keywords": []},
             "free": {"candidates": [], "primary": [], "primary_fallback": false},
             "delegation_enabled": false,
             "requirements": {},

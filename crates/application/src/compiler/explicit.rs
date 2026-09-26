@@ -72,6 +72,7 @@ pub fn compile_agent_plan_v2(
             economy,
             primary,
             primary_fallback,
+            reselect_on_user_message,
             classifier,
             complex_keywords,
         } => {
@@ -81,6 +82,7 @@ pub fn compile_agent_plan_v2(
             }
             (
                 RequestOwnedRouteV1::Classified {
+                    reselect_on_user_message: *reselect_on_user_message,
                     classifier: ComplexityClassifierV1::with_mode(
                         complex_keywords.clone(),
                         classifier.clone(),

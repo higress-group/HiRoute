@@ -395,6 +395,56 @@ fn gateway_adapter_projects_context_hold_reasons_without_loss() {
 }
 
 #[test]
+fn gateway_adapter_projects_previous_success_fallback_without_loss() {
+    let mut route = complete_execution_facts().remove(0);
+    route["reason_ledger"] = json!([{
+        "ordinal": 0,
+        "code": "PREVIOUS_SUCCESS_FALLBACK",
+        "group_id": "primary"
+    }]);
+    let payload = execution_payload(route.clone(), 1, false);
+    let projected = project_execution_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
+    assert_eq!(serde_json::to_value(projected).unwrap()["fact"], route);
+
+    let mut candidate = complete_execution_facts().remove(1);
+    candidate["ranking_reasons"] = json!(["PREVIOUS_SUCCESS_FALLBACK"]);
+    let payload = execution_payload(candidate.clone(), 2, false);
+    let projected = project_execution_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
+    assert_eq!(serde_json::to_value(projected).unwrap()["fact"], candidate);
+}
+
+#[test]
+fn gateway_adapter_requires_plan_identity_for_branch_assessment() {
+    let fact = json!({
+        "kind": "branch_assessment_recorded",
+        "segment_id": "segment-main",
+        "plan_id": "plan/coding",
+        "plan_revision": 7,
+        "model_configuration_id": "model-config-main",
+        "profile_digest": DIGEST,
+        "trigger_request_id": "request-main",
+        "target_from_turn_id": "turn-main",
+        "target_through_turn_id": "turn-main",
+        "target_from_ordinal": 1,
+        "target_through_ordinal": 1,
+        "assessed_at_ms": 1,
+        "score": 0.5,
+        "partial": false,
+        "reason": null
+    });
+    let payload = execution_payload(fact.clone(), 3, false);
+    let projected = project_execution_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
+    assert_eq!(serde_json::to_value(projected).unwrap()["fact"], fact);
+
+    let mut before_planner = payload;
+    before_planner["agent_plan_id"] = Value::Null;
+    assert_eq!(
+        project_execution_payload(&serde_json::to_vec(&before_planner).unwrap()),
+        Err(GatewayProjectionError::InvalidOutput)
+    );
+}
+
+#[test]
 fn gateway_adapter_content_event_and_rich_feedback_round_trip_without_loss() {
     let mut sequence = 1;
     for direction in ["request_input", "response_delivered"] {

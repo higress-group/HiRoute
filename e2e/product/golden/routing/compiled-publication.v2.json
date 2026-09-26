@@ -4664,7 +4664,7 @@
           "purpose": "Routine coding with a quality-protected economy path"
         },
         "agent_plan_revision": 3,
-        "materialized_route_digest": "sha256:c8a6d09ad95b084c54dd4195cfac00328448560cbdf6d5c1fae42a7cafa12247",
+        "materialized_route_digest": "sha256:eabfece41ee6d5013ca9b1e737e5208339a0a34878dadc57e2e5aa8005976a1f",
         "materialized": {
           "fact_refs": {
             "connector_registry_version": "registry.v1",
@@ -4683,6 +4683,7 @@
           },
           "request_owned": {
             "strategy": "classified",
+            "reselect_on_user_message": false,
             "classifier": {
               "revision": "hiroute-complexity-v1",
               "mode": {
@@ -6474,7 +6475,7 @@
           }
         }
       },
-      "digest": "sha256:8e03c1dbe57fb6b9719b07a2d719fb78f0d77374edc4e91371584a7313d84d2c"
+      "digest": "sha256:c2d487e768b82411a0e9f6b5669948f19bdf7ef6677d9f5d8a56fa3de757cb1a"
     }
   ],
   "aliases": [
@@ -10694,6 +10695,7 @@
         "plan_display_name": "Daily saving",
         "request_owned": {
           "strategy": "classified",
+          "reselect_on_user_message": false,
           "classifier": {
             "revision": "hiroute-complexity-v1",
             "mode": {

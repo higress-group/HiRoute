@@ -19,7 +19,7 @@ export function decisionDocsData(language: 'zh' | 'en', now = Date.now()) {
       mode: 'smart_saving', delegation_enabled: false, requirements: {},
       limits: { maximum_attempts: 3, request_timeout_ms: 60000, attempt_timeout_ms: 30000 },
       strategy: { mode: 'smart_saving', economy: [{ binding_id: models[0].model_configuration_id }],
-        primary: [{ binding_id: models[1].model_configuration_id }], primary_fallback: false, complex_keywords: [],
+        primary: [{ binding_id: models[1].model_configuration_id }], primary_fallback: false, reselect_on_user_message: false, complex_keywords: [],
         classifier: { kind: 'rest', endpoint: 'http://127.0.0.1:8080/v1/decisions', timeout_ms: 3000 } },
     },
   };

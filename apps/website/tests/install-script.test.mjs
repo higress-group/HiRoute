@@ -52,7 +52,15 @@ test('generated installer selects the immutable stable manifest and does not sta
 
 test('generated installer fails closed when no stable package exists for the host', () => {
   const script = generateLinuxInstallScript({ schema: manifest.schema, releases: [] });
-  const result = spawnSync('/bin/sh', [], { input: script, encoding: 'utf8' });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /No stable HiRoute package is published/);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hiroute-install-script-'));
+  try {
+    fs.writeFileSync(path.join(root, 'uname'), '#!/bin/sh\n[ "${1:-}" = "-s" ] && echo Linux || echo x86_64\n', { mode: 0o755 });
+    const result = spawnSync('/bin/sh', [], {
+      input: script, encoding: 'utf8', env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /No stable HiRoute package is published/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

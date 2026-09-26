@@ -201,6 +201,7 @@ fn serialize_responses(
                     namespace,
                     name,
                     arguments,
+                    raw_arguments,
                 } => {
                     flush_responses_message(
                         &mut input,
@@ -210,7 +211,10 @@ fn serialize_responses(
                         &mut message_content,
                     )?;
                     let native_arguments = match tool_kind {
-                        ToolKindV1::Function => compact_json(arguments)?,
+                        ToolKindV1::Function => match raw_arguments {
+                            Some(raw) => raw.wire_value(),
+                            None => compact_json(arguments)?,
+                        },
                         ToolKindV1::Custom => arguments
                             .wire_value()
                             .as_str()
@@ -304,6 +308,14 @@ fn serialize_responses(
                         responses_reasoning_native_fields,
                     );
                     item["type"] = json!("reasoning");
+                    if let Some(thinking) = state.messages_thinking.as_deref()
+                        && !thinking.is_empty()
+                    {
+                        item["summary"] = json!([{
+                            "type": "summary_text",
+                            "text": thinking.wire_value(),
+                        }]);
+                    }
                     item["encrypted_content"] = state.value.wire_value();
                     input.push(with_responses_item_fields(
                         request,
@@ -473,17 +485,23 @@ fn serialize_chat(
                     namespace,
                     name,
                     arguments,
+                    raw_arguments,
                 } => {
                     let emitted_name =
                         tool_projection.emitted_for(*tool_kind, namespace.as_deref(), name)?;
                     let identity = tool_projection
                         .resolve_emitted(emitted_name)
                         .expect("emitted name came from this projection");
-                    let chat_arguments = ChatToolProjection::chat_arguments(identity, arguments)?;
+                    let chat_arguments = if let Some(raw) = raw_arguments {
+                        raw.wire_value()
+                    } else {
+                        let parsed = ChatToolProjection::chat_arguments(identity, arguments)?;
+                        compact_json(&parsed)?
+                    };
                     tool_calls.push(json!({
                         "id": native_tool_id(request, profile, logical_id)?,
                         "type": "function",
-                        "function": {"name": emitted_name, "arguments": compact_json(&chat_arguments)?},
+                        "function": {"name": emitted_name, "arguments": chat_arguments},
                     }));
                 }
                 ContentPart::ToolResult {
@@ -631,6 +649,7 @@ fn serialize_messages(
                     namespace,
                     name,
                     arguments,
+                    raw_arguments,
                 } => {
                     if *tool_kind != ToolKindV1::Function {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(
@@ -638,6 +657,11 @@ fn serialize_messages(
                         ));
                     }
                     reject_namespace(namespace, IngressProtocol::Messages)?;
+                    if raw_arguments.is_some() {
+                        return Err(ProtocolAdapterError::ClientUnrepresentable(
+                            "Messages tool input requires valid JSON".into(),
+                        ));
+                    }
                     content.push(json!({
                         "type": "tool_use",
                         "id": native_tool_id(request, profile, logical_id)?,
@@ -668,6 +692,23 @@ fn serialize_messages(
                 }
                 ContentPart::ProviderState { state } => {
                     ensure_state_owner(state, profile)?;
+                    if request.ingress_protocol == IngressProtocol::Messages
+                        && state.owner.upstream_protocol == IngressProtocol::Responses
+                        && state.kind == "encrypted_content"
+                        && (state.value.as_str().is_some_and(|value| !value.is_empty())
+                            || state.value.content_ref().is_some())
+                    {
+                        // Preserve the original Messages thinking text and
+                        // Responses signature together when another Messages
+                        // provider is tried. The provider decides whether it
+                        // can accept that opaque signature.
+                        content.push(json!({
+                            "type": "thinking",
+                            "thinking": state.messages_thinking.as_deref().unwrap_or("").wire_value(),
+                            "signature": state.value.wire_value(),
+                        }));
+                        continue;
+                    }
                     if !matches!(state.kind.as_str(), "thinking" | "redacted_thinking")
                         || (state.value.content_ref().is_none()
                             && state.value.get("type").and_then(Value::as_str)
@@ -1010,9 +1051,9 @@ fn render_image_url(source: &ImageSource) -> String {
 
 fn ensure_state_owner(
     state: &OpaqueProviderState,
-    profile: &CandidateProtocolProfile,
+    _profile: &CandidateProtocolProfile,
 ) -> Result<(), ProtocolAdapterError> {
-    if state.owner == profile.exact_provider_path()? {
+    if state.owner.is_complete() {
         Ok(())
     } else {
         Err(ModelIrError::ProviderStateNotPortable.into())

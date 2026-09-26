@@ -85,6 +85,31 @@ fn real_hirouted_replays_threshold_below_and_above_for_two_fallbacks() {
             after.saturating_sub(before)
         );
     }
+    drop(fixture);
+    drop((first, second, third));
+
+    // The production ingress must not turn a valid long context into a
+    // Replay memory-budget rejection before the Provider sees it.
+    let large_provider = NativeProvider::start(vec![success()]);
+    let fixture = RuntimeFixture::launch_with_replay(&[&large_provider], 1, 4_096, 1_024);
+    let large_text = "x".repeat(4_600_000);
+    let body = request_document(large_text.clone());
+    assert!(body.len() > 4 * 1024 * 1024);
+    let response = fixture.request_body_with_timeout(&body, Duration::from_secs(20));
+    assert_eq!(
+        response.status,
+        200,
+        "body={}",
+        String::from_utf8_lossy(&response.body)
+    );
+    let requests = large_provider.requests();
+    assert_eq!(requests.len(), 1);
+    let projected: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
+    let forwarded = projected["input"][0]["content"][0]["text"]
+        .as_str()
+        .expect("forwarded text");
+    assert!(forwarded == large_text, "4.6 MB text changed in projection");
+    wait_replay_empty(&fixture.replay_root);
 }
 
 #[test]

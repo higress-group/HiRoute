@@ -90,7 +90,7 @@ fn protocol_request_matrix_preserves_shared_content_and_exact_status_semantics()
 }
 
 #[test]
-fn protocol_context_and_capability_boundaries_fail_before_connect() {
+fn protocol_context_estimates_are_advisory_but_capability_boundaries_fail_before_connect() {
     let mut request = decode_ingress_request(
         IngressProtocol::Responses,
         &request_fixture(IngressProtocol::Responses),
@@ -117,9 +117,10 @@ fn protocol_context_and_capability_boundaries_fail_before_connect() {
     profile.capability.context.max_input_tokens = CriticalFact::Exact(input_n - 1);
     assert_eq!(
         project_candidate_request(&request, &profile)
-            .unwrap_err()
-            .code(),
-        "CONTEXT_TOO_LARGE"
+            .unwrap()
+            .context
+            .target_serialized_input_upper_bound,
+        input_n
     );
 
     profile.capability.context.max_input_tokens = CriticalFact::Exact(input_n);
@@ -128,9 +129,10 @@ fn protocol_context_and_capability_boundaries_fail_before_connect() {
     profile.capability.context.max_total_tokens = CriticalFact::Exact(Some(total_n - 1));
     assert_eq!(
         project_candidate_request(&request, &profile)
-            .unwrap_err()
-            .code(),
-        "CONTEXT_TOO_LARGE"
+            .unwrap()
+            .context
+            .required_total,
+        total_n
     );
 
     let mut max_low = request.clone();

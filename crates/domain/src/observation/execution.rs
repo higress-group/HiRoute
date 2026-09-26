@@ -316,8 +316,10 @@ pub struct GroupPlanV1 {
 pub enum LedgerReasonCodeV1 {
     ContextHoldApplied,
     ContextHoldInvalidated,
+    PreviousSuccessFallback,
     SmartSavingSimple,
     SmartSavingComplex,
+    ProviderStateOwnerContinuation,
     FreeFirstNoClassification,
     CustomNoClassification,
     GroupExhaustedFallback,
@@ -471,7 +473,6 @@ pub enum ExclusionReasonCodeV1 {
     ToolRoundtripUnsupported,
     ReasoningProfileMismatch,
     ContextLimitUnknown,
-    ContextTooLarge,
     MaxOutputUnsupported,
     StreamFeatureUnsupported,
     ProviderStateAffinityMismatch,
@@ -489,6 +490,7 @@ pub enum ExclusionReasonCodeV1 {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RankingReasonCodeV1 {
     ContextModelHold,
+    PreviousSuccessFallback,
     PublishedManualOrder,
     QualityFirst,
     LowestApiEquivalentCost,

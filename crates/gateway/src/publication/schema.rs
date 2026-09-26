@@ -90,6 +90,7 @@ pub struct AliasComplexityClassifierV1 {
 pub enum AliasRequestOwnedRouteV1 {
     Classified {
         classifier: AliasComplexityClassifierV1,
+        reselect_on_user_message: bool,
         simple_groups: Vec<AliasGroupIdV1>,
         complex_groups: Vec<AliasGroupIdV1>,
     },

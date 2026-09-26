@@ -68,6 +68,7 @@ impl PlanVersionV1 {
         let (mode, strategy) = match &materialized.request_owned {
             RequestOwnedRouteV1::Classified {
                 classifier,
+                reselect_on_user_message,
                 simple_groups,
                 ..
             } => (
@@ -76,6 +77,7 @@ impl PlanVersionV1 {
                     economy: group(MaterializedGroupId::Economy)?,
                     primary: group(MaterializedGroupId::Primary)?,
                     primary_fallback: simple_groups.contains(&MaterializedGroupId::Primary),
+                    reselect_on_user_message: *reselect_on_user_message,
                     classifier: classifier.mode.clone(),
                     complex_keywords: classifier.user_keywords.clone(),
                 },

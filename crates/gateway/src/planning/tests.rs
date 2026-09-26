@@ -7,7 +7,8 @@ use crate::server::core_runtime::model_ir::{
     RequestedReasoningControl, ToolChoice, ToolKindV1, ToolOutput, ToolResultStatusV1,
 };
 use crate::server::core_runtime::profiles::{
-    CandidateProtocolProfile, CriticalFact, fixed_reasoning,
+    CandidateProtocolProfile, CriticalFact, Fidelity, NativeProviderStateEmission, StateAffinity,
+    fixed_reasoning,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -83,6 +84,30 @@ fn candidate(
     candidate
 }
 
+fn stateful_messages_candidate(id: &str) -> PlannerCandidateFactsV1 {
+    let mut facts = candidate(
+        id,
+        IngressProtocol::Messages,
+        Some(50),
+        Some(20),
+        CostClassV1::Paid,
+    );
+    facts.protocol_profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Messages,
+        IngressProtocol::Messages,
+        format!("native-{id}"),
+        fixed_reasoning("fixed"),
+    );
+    facts.protocol_profile.capability.native_provider_state =
+        NativeProviderStateEmission::ExactOwnerAffine;
+    facts.protocol_profile.capability.request.provider_state = Fidelity::Exact;
+    facts.protocol_profile.capability.request.state_affinity = StateAffinity::ExactOwner;
+    facts.protocol_profile.capability.response.provider_state = Fidelity::Exact;
+    facts.protocol_profile.capability.response.state_affinity = StateAffinity::ExactOwner;
+    refresh_profile(&mut facts);
+    facts
+}
+
 fn limits() -> RequestOwnedLimitsV1 {
     RequestOwnedLimitsV1 {
         max_candidate_bindings: 6,
@@ -144,6 +169,7 @@ fn input(
         classification_decision: classified.as_ref().map(|(decision, _)| decision.clone()),
         classification_facts: classified.map(|(_, facts)| facts),
         context_hold: None,
+        previous_success_candidate_id: None,
         policy,
         candidates,
     }
@@ -539,6 +565,7 @@ fn planner_smart_saving_ranks_only_inside_materialized_groups() {
             simple_group_id: "economy".into(),
             simple_fallback_group_ids: vec!["primary".into()],
             complex_group_id: "primary".into(),
+            reselect_on_user_message: false,
         },
         vec![
             MaterializedModelGroupV1 {
@@ -681,6 +708,7 @@ fn context_hold_applies_only_inside_the_current_branch() {
             simple_group_id: "simple-group".into(),
             simple_fallback_group_ids: Vec::new(),
             complex_group_id: "complex-group".into(),
+            reselect_on_user_message: false,
         },
         vec![
             MaterializedModelGroupV1 {
@@ -759,6 +787,345 @@ fn context_hold_applies_only_inside_the_current_branch() {
 }
 
 #[test]
+fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback() {
+    let luna = stateful_messages_candidate("luna");
+    let glm = stateful_messages_candidate("glm");
+    let smart = policy(
+        MaterializedRouteV1::SmartSaving {
+            simple_group_id: "simple-group".into(),
+            simple_fallback_group_ids: Vec::new(),
+            complex_group_id: "complex-group".into(),
+            reselect_on_user_message: false,
+        },
+        vec![
+            MaterializedModelGroupV1 {
+                group_id: "simple-group".into(),
+                policy: GroupPolicyV1::Manual,
+                candidate_ids: vec!["luna".into()],
+            },
+            MaterializedModelGroupV1 {
+                group_id: "complex-group".into(),
+                policy: GroupPolicyV1::Manual,
+                candidate_ids: vec!["glm".into()],
+            },
+        ],
+        Some(strategy()),
+        StaticCostPolicyV1::BudgetedPaid,
+    );
+    let mut simple_request = request(IngressProtocol::Messages, "Reply briefly");
+    simple_request.messages.insert(
+        0,
+        CanonicalMessage {
+            role: MessageRole::Assistant,
+            content: vec![ContentPart::ProviderState {
+                state: Box::new(OpaqueProviderState {
+                    owner: glm.protocol_profile.exact_provider_path().unwrap(),
+                    block_index: Some(0),
+                    kind: "signed_thinking".into(),
+                    value: json!({"signature":"opaque"}),
+                    messages_thinking: None,
+                }),
+            }],
+            name: None,
+        },
+    );
+    let mut planning = input(
+        simple_request.clone(),
+        smart.clone(),
+        vec![luna.clone(), glm.clone()],
+    );
+    planning.previous_success_candidate_id = Some("glm".into());
+    let output = Planner.plan(&planning).unwrap();
+    assert_eq!(output.branch, PlannedBranchV1::SmartSavingSimple);
+    assert_eq!(output.ledger.ordered_candidates[0].candidate_id, "luna");
+    assert_eq!(output.ledger.ordered_candidates[1].candidate_id, "glm");
+    assert!(output.reason_ledger.iter().any(|reason| {
+        reason.code == LedgerReasonCodeV1::PreviousSuccessFallback
+            && reason.group_id.as_deref() == Some("complex-group")
+    }));
+    assert!(
+        !output
+            .reason_ledger
+            .iter()
+            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
+    );
+
+    let mut no_state = simple_request.clone();
+    no_state.messages.remove(0);
+    let mut no_state_input = input(no_state, smart.clone(), vec![luna.clone(), glm.clone()]);
+    no_state_input.previous_success_candidate_id = Some("glm".into());
+    let normal = Planner.plan(&no_state_input).unwrap();
+    assert_eq!(normal.ledger.ordered_candidates[0].candidate_id, "luna");
+    assert_eq!(normal.ledger.ordered_candidates[1].candidate_id, "glm");
+    assert!(
+        !normal
+            .reason_ledger
+            .iter()
+            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
+    );
+
+    let mut complex_request = request(
+        IngressProtocol::Messages,
+        "Implement an architecture design for this component",
+    );
+    complex_request.messages.insert(
+        0,
+        CanonicalMessage {
+            role: MessageRole::Assistant,
+            content: vec![ContentPart::ProviderState {
+                state: Box::new(OpaqueProviderState {
+                    owner: luna.protocol_profile.exact_provider_path().unwrap(),
+                    block_index: Some(0),
+                    kind: "signed_thinking".into(),
+                    value: json!({"signature":"opaque"}),
+                    messages_thinking: None,
+                }),
+            }],
+            name: None,
+        },
+    );
+    let mut reverse_input = input(
+        complex_request,
+        smart.clone(),
+        vec![luna.clone(), glm.clone()],
+    );
+    reverse_input.previous_success_candidate_id = Some("luna".into());
+    let reverse = Planner.plan(&reverse_input).unwrap();
+    assert_eq!(reverse.branch, PlannedBranchV1::SmartSavingComplex);
+    assert_eq!(reverse.ledger.ordered_candidates[0].candidate_id, "glm");
+    assert_eq!(reverse.ledger.ordered_candidates[1].candidate_id, "luna");
+    assert!(reverse.reason_ledger.iter().any(|reason| {
+        reason.code == LedgerReasonCodeV1::PreviousSuccessFallback
+            && reason.group_id.as_deref() == Some("simple-group")
+    }));
+    assert!(
+        reverse
+            .reason_ledger
+            .iter()
+            .any(|reason| { reason.code == LedgerReasonCodeV1::ComplexNoDowngrade })
+    );
+
+    let mut unavailable_glm = glm.clone();
+    unavailable_glm.statically_enabled = false;
+    let mut no_primary = input(
+        request(
+            IngressProtocol::Messages,
+            "Implement an architecture design for this component",
+        ),
+        smart.clone(),
+        vec![luna.clone(), unavailable_glm.clone()],
+    );
+    no_primary.previous_success_candidate_id = Some("luna".into());
+    let unavailable_complex = Planner.plan(&no_primary).unwrap();
+    assert_eq!(
+        unavailable_complex.branch,
+        PlannedBranchV1::SmartSavingComplex
+    );
+    assert!(unavailable_complex.ledger.ordered_candidates.is_empty());
+    assert!(
+        !unavailable_complex
+            .reason_ledger
+            .iter()
+            .any(|reason| { reason.code == LedgerReasonCodeV1::PreviousSuccessFallback })
+    );
+
+    let unavailable = Planner
+        .plan(&input(
+            simple_request.clone(),
+            smart.clone(),
+            vec![luna.clone(), unavailable_glm],
+        ))
+        .unwrap();
+    assert_eq!(
+        unavailable.ledger.ordered_candidates[0].candidate_id,
+        "luna"
+    );
+    assert!(
+        !unavailable
+            .reason_ledger
+            .iter()
+            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
+    );
+
+    let mut conflicting = simple_request;
+    conflicting.messages[0]
+        .content
+        .push(ContentPart::ProviderState {
+            state: Box::new(OpaqueProviderState {
+                owner: luna.protocol_profile.exact_provider_path().unwrap(),
+                block_index: Some(1),
+                kind: "signed_thinking".into(),
+                value: json!({"signature":"other"}),
+                messages_thinking: None,
+            }),
+        });
+    let conflict = Planner
+        .plan(&input(conflicting, smart, vec![luna, glm]))
+        .unwrap();
+    assert_eq!(conflict.ledger.ordered_candidates[0].candidate_id, "luna");
+    assert!(
+        !conflict
+            .reason_ledger
+            .iter()
+            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
+    );
+}
+
+#[test]
+fn smart_saving_uses_owner_group_when_selected_group_cannot_serialize() {
+    let mut luna = stateful_messages_candidate("luna");
+    let glm = stateful_messages_candidate("glm");
+    luna.request_projection_exclusion = Some(ExclusionReasonCodeV1::OpaqueStateUnportable);
+    let smart = policy(
+        MaterializedRouteV1::SmartSaving {
+            simple_group_id: "simple-group".into(),
+            simple_fallback_group_ids: Vec::new(),
+            complex_group_id: "complex-group".into(),
+            reselect_on_user_message: false,
+        },
+        vec![
+            MaterializedModelGroupV1 {
+                group_id: "simple-group".into(),
+                policy: GroupPolicyV1::Manual,
+                candidate_ids: vec!["luna".into()],
+            },
+            MaterializedModelGroupV1 {
+                group_id: "complex-group".into(),
+                policy: GroupPolicyV1::Manual,
+                candidate_ids: vec!["glm".into()],
+            },
+        ],
+        Some(strategy()),
+        StaticCostPolicyV1::BudgetedPaid,
+    );
+    let mut state_request = request(IngressProtocol::Messages, "Reply briefly");
+    state_request.messages.insert(
+        0,
+        CanonicalMessage {
+            role: MessageRole::Assistant,
+            content: vec![ContentPart::ProviderState {
+                state: Box::new(OpaqueProviderState {
+                    owner: glm.protocol_profile.exact_provider_path().unwrap(),
+                    block_index: Some(0),
+                    kind: "thinking".into(),
+                    value: json!({"type":"thinking","thinking":"note","signature":"opaque"}),
+                    messages_thinking: None,
+                }),
+            }],
+            name: None,
+        },
+    );
+    let output = Planner
+        .plan(&input(state_request, smart, vec![luna, glm]))
+        .unwrap();
+    assert_eq!(output.ledger.ordered_candidates[0].candidate_id, "glm");
+    assert!(
+        output
+            .reason_ledger
+            .iter()
+            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
+    );
+}
+
+#[test]
+fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capability() {
+    let luna = stateful_messages_candidate("luna");
+    let mut glm = stateful_messages_candidate("glm");
+    glm.protocol_profile.capability.request.image_url = Fidelity::Unsupported;
+    refresh_profile(&mut glm);
+    let smart = policy(
+        MaterializedRouteV1::SmartSaving {
+            simple_group_id: "simple-group".into(),
+            simple_fallback_group_ids: Vec::new(),
+            complex_group_id: "complex-group".into(),
+            reselect_on_user_message: false,
+        },
+        vec![
+            MaterializedModelGroupV1 {
+                group_id: "simple-group".into(),
+                policy: GroupPolicyV1::Manual,
+                candidate_ids: vec!["luna".into()],
+            },
+            MaterializedModelGroupV1 {
+                group_id: "complex-group".into(),
+                policy: GroupPolicyV1::Manual,
+                candidate_ids: vec!["glm".into()],
+            },
+        ],
+        Some(strategy()),
+        StaticCostPolicyV1::BudgetedPaid,
+    );
+    let mut complex_request = request(
+        IngressProtocol::Messages,
+        "Implement an architecture design for this component",
+    );
+    complex_request.messages.insert(
+        0,
+        CanonicalMessage {
+            role: MessageRole::Assistant,
+            content: vec![ContentPart::ProviderState {
+                state: Box::new(OpaqueProviderState {
+                    owner: luna.protocol_profile.exact_provider_path().unwrap(),
+                    block_index: Some(0),
+                    kind: "signed_thinking".into(),
+                    value: json!({"signature":"opaque"}),
+                    messages_thinking: None,
+                }),
+            }],
+            name: None,
+        },
+    );
+    complex_request.messages[1]
+        .content
+        .push(ContentPart::Image {
+            source: ImageSource::Url {
+                url: "https://image.invalid/diagram.png".into(),
+            },
+        });
+
+    let output = Planner
+        .plan(&input(
+            complex_request.clone(),
+            smart.clone(),
+            vec![luna.clone(), glm.clone()],
+        ))
+        .unwrap();
+    assert_eq!(output.branch, PlannedBranchV1::SmartSavingComplex);
+    assert_eq!(
+        evaluate_candidate(&complex_request, &glm, smart.cost_policy, &smart.limits).unwrap_err(),
+        ExclusionReasonCodeV1::VisionUnsupported
+    );
+    assert_eq!(output.ledger.ordered_candidates[0].candidate_id, "luna");
+    assert!(output.reason_ledger.iter().any(|reason| {
+        reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation
+            && reason.group_id.as_deref() == Some("simple-group")
+    }));
+
+    let mut without_state_request = complex_request.clone();
+    without_state_request.messages.remove(0);
+    let without_state = Planner
+        .plan(&input(
+            without_state_request,
+            smart.clone(),
+            vec![luna.clone(), glm.clone()],
+        ))
+        .unwrap();
+    assert!(without_state.ledger.ordered_candidates.is_empty());
+
+    let mut incapable_owner = luna;
+    incapable_owner
+        .protocol_profile
+        .capability
+        .request
+        .image_url = Fidelity::Unsupported;
+    refresh_profile(&mut incapable_owner);
+    let no_eligible_owner = Planner
+        .plan(&input(complex_request, smart, vec![incapable_owner, glm]))
+        .unwrap();
+    assert!(no_eligible_owner.ledger.ordered_candidates.is_empty());
+}
+
+#[test]
 fn external_classification_drives_existing_smart_groups_without_rule_score() {
     let strategy = ComplexityV1::compile_with_classifier(
         Vec::<(String, String)>::new(),
@@ -775,6 +1142,7 @@ fn external_classification_drives_existing_smart_groups_without_rule_score() {
             simple_group_id: "simple-group".into(),
             simple_fallback_group_ids: Vec::new(),
             complex_group_id: "complex-group".into(),
+            reselect_on_user_message: false,
         },
         vec![
             MaterializedModelGroupV1 {
@@ -1105,7 +1473,7 @@ fn planner_freezes_candidates_beyond_the_runtime_binding_cap() {
 }
 
 #[test]
-fn planner_context_and_reasoning_n_n_plus_one_are_exact() {
+fn planner_context_estimate_is_advisory_but_reasoning_remains_exact() {
     let mut at_n = candidate(
         "at-n",
         IngressProtocol::Responses,
@@ -1141,9 +1509,15 @@ fn planner_context_and_reasoning_n_n_plus_one_are_exact() {
         ))
         .unwrap();
     assert!(evaluation(&output, "at-n").eligible);
-    assert_eq!(
-        evaluation(&output, "at-n-plus-one").first_exclusion,
-        Some(ExclusionReasonCodeV1::ContextTooLarge)
+    let estimated_over_limit = evaluation(&output, "at-n-plus-one");
+    assert!(estimated_over_limit.eligible);
+    assert!(
+        estimated_over_limit
+            .context
+            .as_ref()
+            .unwrap()
+            .required_total
+            > 356
     );
     assert_eq!(
         evaluation(&output, "wrong-reasoning").first_exclusion,
@@ -1215,6 +1589,7 @@ fn planner_opaque_state_affinity_and_cost_are_after_streaming() {
         block_index: None,
         kind: "previous_response_id".into(),
         value: json!("response-1"),
+        messages_thinking: None,
     }];
     facts.protocol_profile.capability.native_streaming = CriticalFact::Unknown;
     refresh_profile(&mut facts);

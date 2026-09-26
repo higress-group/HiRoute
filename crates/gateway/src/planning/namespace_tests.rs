@@ -90,14 +90,33 @@ fn planner_hard_gate_order_is_stable_and_fail_closed() {
     refresh_profile(&mut facts);
     let output = Planner
         .plan(&input(
+            rich_request.clone(),
+            custom_policy(&["candidate"], StaticCostPolicyV1::BudgetedPaid),
+            vec![facts.clone()],
+        ))
+        .unwrap();
+    assert_eq!(
+        evaluation(&output, "candidate").first_exclusion,
+        Some(ExclusionReasonCodeV1::StreamFeatureUnsupported)
+    );
+
+    facts.protocol_profile.capability.native_streaming = CriticalFact::Exact(true);
+    refresh_profile(&mut facts);
+    let output = Planner
+        .plan(&input(
             rich_request,
             custom_policy(&["candidate"], StaticCostPolicyV1::BudgetedPaid),
             vec![facts],
         ))
         .unwrap();
-    assert_eq!(
-        evaluation(&output, "candidate").first_exclusion,
-        Some(ExclusionReasonCodeV1::ContextTooLarge)
+    assert!(evaluation(&output, "candidate").eligible);
+    assert!(
+        evaluation(&output, "candidate")
+            .context
+            .as_ref()
+            .unwrap()
+            .target_serialized_input_upper_bound
+            > 1
     );
 }
 

@@ -259,7 +259,7 @@ def bootstrap(product):
         selection['reasoning'] = {'kind': 'profile', 'profile': 'low'}
     product.editor = {'schema': 'hiroute.plan-editor/v2', 'display_name': '\u65e5\u5e38\u7f16\u7801',
                       'purpose': 'Production recovery', 'mode': 'fixed_model', 'candidates': [selection],
-                      'smart': {'economy': [], 'primary': [], 'primary_fallback': False, 'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
+                      'smart': {'economy': [], 'primary': [], 'primary_fallback': False, 'reselect_on_user_message': False, 'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
                       'free': {'candidates': [], 'primary': [], 'primary_fallback': False},
                       'delegation_enabled': False,
                       'requirements': {}, 'limits': {'maximum_attempts': 1, 'request_timeout_ms': 30000, 'attempt_timeout_ms': 30000}}

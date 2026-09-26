@@ -129,12 +129,12 @@ fn one_registered_native_source_uses_matching_messages_and_responses_provider_pa
     );
     assert_eq!(
         unsupported.status,
-        500,
+        400,
         "{}",
         String::from_utf8_lossy(&unsupported.body)
     );
     let error: Value = serde_json::from_slice(&unsupported.body).unwrap();
-    assert_eq!(error["code"], "PLANNER_INPUT_UNAVAILABLE");
+    assert_eq!(error["code"], "CLIENT_PROTOCOL_UNREPRESENTABLE");
     assert_eq!(error["phase"], "planner");
     assert_eq!(
         provider_accept_error_kind(&provider),

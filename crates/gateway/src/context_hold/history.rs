@@ -1,8 +1,11 @@
+use std::io::{Read, Write};
+
 use hmac::{Hmac, Mac};
 use serde_json::Value;
 use sha2::Sha256;
 
-use crate::content_ref::{ContentValueExt, JsonValueExt};
+use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt};
+use crate::replay::{ReplayStore, write_canonical_json};
 use crate::server::core_runtime::model_ir::{
     CanonicalMessage, ContentPart, ImageSource, InstructionRole, MessageRole, ModelRequestIRV1,
     OpaqueProviderState, ResponsesReasoningEncryptedContentV1, ResponsesToolOrderEntryV1,
@@ -12,11 +15,12 @@ use crate::server::core_runtime::model_ir::{
 
 type HmacSha256 = Hmac<Sha256>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct HistoryEvidence<'a> {
     pub(crate) instruction_digest: [u8; 32],
     request: &'a ModelRequestIRV1,
     key: &'a [u8; 32],
+    replay: Option<&'a ReplayStore>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -35,7 +39,7 @@ impl HistoryEvidence<'_> {
     /// Hashes the requested stored prefix and the complete visible history in
     /// one streaming pass. No per-message digest array survives the call.
     pub(crate) fn measure(&self, prefix_count: Option<usize>) -> Option<HistoryDigests> {
-        let mut history = Encoder::new(self.key, b"visible-history/v1/messages")?;
+        let mut history = Encoder::new(self.key, b"visible-history/v1/messages", self.replay)?;
         let mut prefix_digest = match prefix_count {
             Some(0) => Some(history.snapshot()?),
             _ => None,
@@ -66,11 +70,20 @@ impl HistoryEvidence<'_> {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn visible_history<'a>(
     request: &'a ModelRequestIRV1,
     key: &'a [u8; 32],
 ) -> Option<HistoryEvidence<'a>> {
-    let mut instructions = Encoder::new(key, b"visible-history/v1/instructions")?;
+    visible_history_with_replay(request, key, None)
+}
+
+pub(crate) fn visible_history_with_replay<'a>(
+    request: &'a ModelRequestIRV1,
+    key: &'a [u8; 32],
+    replay: Option<&'a ReplayStore>,
+) -> Option<HistoryEvidence<'a>> {
+    let mut instructions = Encoder::new(key, b"visible-history/v1/instructions", replay)?;
     instructions.usize(request.instructions.len());
     for instruction in &request.instructions {
         instructions.tag(match instruction.role {
@@ -188,30 +201,34 @@ pub(crate) fn visible_history<'a>(
         instruction_digest,
         request,
         key,
+        replay,
     })
 }
 
-struct Encoder {
+struct Encoder<'a> {
     mac: HmacSha256,
-    content_ref_seen: bool,
+    replay: Option<&'a ReplayStore>,
+    valid: bool,
 }
 
-impl Encoder {
-    fn new(key: &[u8; 32], domain: &[u8]) -> Option<Self> {
+impl<'a> Encoder<'a> {
+    fn new(key: &[u8; 32], domain: &[u8], replay: Option<&'a ReplayStore>) -> Option<Self> {
         let mut mac = HmacSha256::new_from_slice(key).ok()?;
         frame(&mut mac, b"domain", domain);
         Some(Self {
             mac,
-            content_ref_seen: false,
+            replay,
+            valid: true,
         })
     }
 
     fn finish(self) -> Option<[u8; 32]> {
-        (!self.content_ref_seen).then(|| self.mac.finalize().into_bytes().into())
+        self.valid.then(|| self.mac.finalize().into_bytes().into())
     }
 
     fn snapshot(&self) -> Option<[u8; 32]> {
-        (!self.content_ref_seen).then(|| self.mac.clone().finalize().into_bytes().into())
+        self.valid
+            .then(|| self.mac.clone().finalize().into_bytes().into())
     }
 
     fn tag(&mut self, value: &[u8]) {
@@ -223,10 +240,10 @@ impl Encoder {
     }
 
     fn string(&mut self, value: &str) {
-        if value.content_ref().is_some() {
-            self.content_ref_seen = true;
+        self.tag(b"utf8");
+        if let Some(reference) = value.content_ref() {
+            self.valid &= self.hash_reference(&reference).is_some();
         } else {
-            self.tag(b"utf8");
             self.bytes(value.as_bytes());
         }
     }
@@ -264,37 +281,37 @@ impl Encoder {
     }
 
     fn json(&mut self, value: &Value) -> Option<()> {
-        if value.content_ref().is_some() {
-            self.content_ref_seen = true;
-            return Some(());
+        self.tag(b"json");
+        if let Some(reference) = value.content_ref() {
+            return self.hash_reference(&reference);
         }
-        match value {
-            Value::Null => self.tag(b"null"),
-            Value::Bool(value) => self.bool(*value),
-            Value::Number(value) => {
-                self.tag(b"number");
-                self.bytes(value.to_string().as_bytes());
-            }
-            Value::String(value) => self.string(value),
-            Value::Array(values) => {
-                self.tag(b"array");
-                self.usize(values.len());
-                for value in values {
-                    self.json(value)?;
-                }
-            }
-            Value::Object(values) => {
-                self.tag(b"object");
-                self.usize(values.len());
-                let mut keys = values.keys().collect::<Vec<_>>();
-                keys.sort_unstable();
-                for key in keys {
-                    self.bytes(key.as_bytes());
-                    self.json(&values[key])?;
-                }
-            }
+        let mut counter = ByteCounter(0);
+        if contains_content_ref(value) {
+            write_canonical_json_with_replay(&mut counter, value, self.replay?)?;
+        } else {
+            write_canonical_json(&mut counter, value).ok()?;
+        }
+        frame_header(&mut self.mac, b"bytes", counter.0);
+        if contains_content_ref(value) {
+            write_canonical_json_with_replay(&mut MacWriter(&mut self.mac), value, self.replay?)?;
+        } else {
+            write_canonical_json(&mut MacWriter(&mut self.mac), value).ok()?;
         }
         Some(())
+    }
+
+    fn hash_reference(&mut self, reference: &ContentRef) -> Option<()> {
+        let mut reader = self.replay?.reader(reference).ok()?;
+        frame_header(&mut self.mac, b"bytes", reference.byte_len());
+        let mut buffer = [0_u8; 16 * 1024];
+        loop {
+            let size = reader.read(&mut buffer).ok()?;
+            if size == 0 {
+                break;
+            }
+            self.mac.update(&buffer[..size]);
+        }
+        reader.verify_terminal().ok()
     }
 
     fn parts(&mut self, parts: &[ContentPart]) -> Option<()> {
@@ -324,6 +341,7 @@ impl Encoder {
                     namespace,
                     name,
                     arguments,
+                    raw_arguments,
                 } => {
                     self.tag(b"tool-call");
                     self.tag(match tool_kind {
@@ -333,7 +351,12 @@ impl Encoder {
                     self.bytes(logical_id.as_bytes());
                     self.optional_string(namespace.as_deref());
                     self.string(name);
-                    self.json(arguments)?;
+                    if let Some(raw) = raw_arguments {
+                        self.tag(b"raw-arguments");
+                        self.string(raw);
+                    } else {
+                        self.json(arguments)?;
+                    }
                 }
                 ContentPart::ToolResult {
                     logical_id,
@@ -413,7 +436,16 @@ impl Encoder {
         match request.responses_reasoning_history.get(&message_index) {
             Some(history) => {
                 self.tag(b"responses-reasoning-history");
-                self.json(&Value::Object(history.native_fields.clone()))?;
+                // Native fields may each be Replay-backed (notably a long
+                // Responses summary). Hash the sorted fields individually so
+                // the request-local JSON markers never stand in for content.
+                self.usize(history.native_fields.len());
+                let mut keys = history.native_fields.keys().collect::<Vec<_>>();
+                keys.sort_unstable();
+                for key in keys {
+                    self.bytes(key.as_bytes());
+                    self.json(&history.native_fields[key])?;
+                }
                 self.tag(match history.encrypted_content {
                     ResponsesReasoningEncryptedContentV1::Opaque => b"opaque",
                     ResponsesReasoningEncryptedContentV1::Absent => b"absent",
@@ -521,15 +553,148 @@ impl Encoder {
             None => self.tag(b"no-block"),
         }
         self.bytes(state.kind.as_bytes());
+        self.optional_string(state.messages_thinking.as_deref());
         self.json(&state.value)
     }
 }
 
 fn frame(mac: &mut HmacSha256, kind: &[u8], value: &[u8]) {
+    frame_header(mac, kind, value.len() as u64);
+    mac.update(value);
+}
+
+fn frame_header(mac: &mut HmacSha256, kind: &[u8], length: u64) {
     mac.update(&(kind.len() as u64).to_be_bytes());
     mac.update(kind);
-    mac.update(&(value.len() as u64).to_be_bytes());
-    mac.update(value);
+    mac.update(&length.to_be_bytes());
+}
+
+fn contains_content_ref(value: &Value) -> bool {
+    if value.content_ref().is_some() {
+        return true;
+    }
+    match value {
+        Value::String(value) => value.content_ref().is_some(),
+        Value::Array(values) => values.iter().any(contains_content_ref),
+        Value::Object(values) => values.values().any(contains_content_ref),
+        _ => false,
+    }
+}
+
+fn write_canonical_json_with_replay(
+    writer: &mut impl Write,
+    value: &Value,
+    replay: &ReplayStore,
+) -> Option<()> {
+    if let Some(reference) = value.content_ref() {
+        let mut reader = replay.reader(&reference).ok()?;
+        std::io::copy(&mut reader, writer).ok()?;
+        reader.verify_terminal().ok()?;
+        return Some(());
+    }
+    match value {
+        Value::String(value) if value.content_ref().is_some() => {
+            let reference = value.content_ref()?;
+            let mut reader = replay.reader(&reference).ok()?;
+            writer.write_all(b"\"").ok()?;
+            let mut buffer = [0_u8; 16 * 1024];
+            loop {
+                let count = reader.read(&mut buffer).ok()?;
+                if count == 0 {
+                    break;
+                }
+                let mut start = 0;
+                for (index, &byte) in buffer[..count].iter().enumerate() {
+                    let escape = match byte {
+                        b'"' => Some(b"\\\"".as_slice()),
+                        b'\\' => Some(b"\\\\".as_slice()),
+                        b'\x08' => Some(b"\\b".as_slice()),
+                        b'\x0c' => Some(b"\\f".as_slice()),
+                        b'\n' => Some(b"\\n".as_slice()),
+                        b'\r' => Some(b"\\r".as_slice()),
+                        b'\t' => Some(b"\\t".as_slice()),
+                        0x00..=0x1f => None,
+                        _ => continue,
+                    };
+                    writer.write_all(&buffer[start..index]).ok()?;
+                    if let Some(escape) = escape {
+                        writer.write_all(escape).ok()?;
+                    } else {
+                        const HEX: &[u8; 16] = b"0123456789abcdef";
+                        writer
+                            .write_all(&[
+                                b'\\',
+                                b'u',
+                                b'0',
+                                b'0',
+                                HEX[(byte >> 4) as usize],
+                                HEX[(byte & 0xf) as usize],
+                            ])
+                            .ok()?;
+                    }
+                    start = index + 1;
+                }
+                writer.write_all(&buffer[start..count]).ok()?;
+            }
+            reader.verify_terminal().ok()?;
+            writer.write_all(b"\"").ok()?;
+        }
+        Value::Array(values) => {
+            writer.write_all(b"[").ok()?;
+            for (index, value) in values.iter().enumerate() {
+                if index > 0 {
+                    writer.write_all(b",").ok()?;
+                }
+                write_canonical_json_with_replay(writer, value, replay)?;
+            }
+            writer.write_all(b"]").ok()?;
+        }
+        Value::Object(values) => {
+            writer.write_all(b"{").ok()?;
+            let mut keys = values.keys().collect::<Vec<_>>();
+            keys.sort_unstable();
+            for (index, key) in keys.into_iter().enumerate() {
+                if index > 0 {
+                    writer.write_all(b",").ok()?;
+                }
+                serde_json::to_writer(&mut *writer, key).ok()?;
+                writer.write_all(b":").ok()?;
+                write_canonical_json_with_replay(writer, &values[key], replay)?;
+            }
+            writer.write_all(b"}").ok()?;
+        }
+        _ => write_canonical_json(writer, value).ok()?,
+    }
+    Some(())
+}
+
+struct ByteCounter(u64);
+
+impl Write for ByteCounter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self
+            .0
+            .checked_add(bytes.len() as u64)
+            .ok_or_else(|| std::io::Error::other("JSON length overflow"))?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+struct MacWriter<'a>(&'a mut HmacSha256);
+
+impl Write for MacWriter<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -616,6 +781,355 @@ mod tests {
     }
 
     #[test]
+    fn signed_messages_summary_changes_history_even_with_the_same_ciphertext() {
+        use crate::replay::{ReplayConfig, ReplayManager};
+        use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
+        use hiroute_gateway_core::runtime::body::BudgetTree;
+
+        let owner = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Messages,
+            IngressProtocol::Responses,
+            "luna",
+            fixed_reasoning("fixed"),
+        )
+        .exact_provider_path()
+        .unwrap();
+        let make_request = |summary: String| {
+            let mut value = request(vec![
+                CanonicalMessage {
+                    role: MessageRole::Assistant,
+                    content: vec![ContentPart::ProviderState {
+                        state: Box::new(OpaqueProviderState {
+                            owner: owner.clone(),
+                            block_index: Some(0),
+                            kind: "encrypted_content".into(),
+                            value: serde_json::json!("same-signature"),
+                            messages_thinking: Some(summary),
+                        }),
+                    }],
+                    name: None,
+                },
+                text(MessageRole::User, "continue"),
+            ]);
+            value.ingress_protocol = IngressProtocol::Messages;
+            value
+        };
+        let key = [33; 32];
+        let original = "long summary 中文 ".repeat(1000);
+        let changed = original.replace("中文", "更新");
+        let original_request = make_request(original.clone());
+        let changed_request = make_request(changed.clone());
+        let original_history = visible_history(&original_request, &key).unwrap();
+        let changed_history = visible_history(&changed_request, &key).unwrap();
+        assert_ne!(
+            original_history.complete_digest(),
+            changed_history.complete_digest()
+        );
+
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-signed-history-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = ReplayManager::open(ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: 128,
+            record_bytes: 31,
+            orphan_ttl: std::time::Duration::from_secs(60),
+        })
+        .unwrap();
+        let tree = BudgetTree::new(1024 * 1024, 1024 * 1024).unwrap();
+        let store = manager
+            .begin_request(tree.stream(1024 * 1024).unwrap())
+            .unwrap();
+        let original_ref = make_request(
+            store
+                .store_content(original.as_bytes())
+                .unwrap()
+                .wire_marker(),
+        );
+        let changed_ref = make_request(
+            store
+                .store_content(changed.as_bytes())
+                .unwrap()
+                .wire_marker(),
+        );
+        assert_eq!(
+            visible_history_with_replay(&original_ref, &key, Some(&store))
+                .unwrap()
+                .complete_digest(),
+            original_history.complete_digest()
+        );
+        assert_eq!(
+            visible_history_with_replay(&changed_ref, &key, Some(&store))
+                .unwrap()
+                .complete_digest(),
+            changed_history.complete_digest()
+        );
+        assert!(
+            visible_history(&original_ref, &key)
+                .unwrap()
+                .measure(None)
+                .is_none()
+        );
+        drop((store, manager));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn replay_content_keeps_long_codex_instruction_tools_and_message_prefix_equivalent() {
+        use crate::replay::{ReplayConfig, ReplayManager};
+        use crate::server::core_runtime::model_ir::{CanonicalInstruction, CanonicalTool};
+        use hiroute_gateway_core::runtime::body::BudgetTree;
+
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-history-replay-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = ReplayManager::open(ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: 128,
+            record_bytes: 31,
+            orphan_ttl: std::time::Duration::from_secs(60),
+        })
+        .unwrap();
+        let tree = BudgetTree::new(4 * 1024 * 1024, 4 * 1024 * 1024).unwrap();
+        let first_store = manager
+            .begin_request(tree.stream(1024 * 1024).unwrap())
+            .unwrap();
+        let second_store = manager
+            .begin_request(tree.stream(1024 * 1024).unwrap())
+            .unwrap();
+        // Distinct request-local stream ordinals must not become the digest.
+        second_store
+            .store_content(b"unrelated prior range")
+            .unwrap();
+        let instruction = "system prompt 中文 ".repeat(2_000);
+        let first_user = "first user content ".repeat(1_000);
+        let schema = serde_json::json!({"type":"object","properties":{"query":{"type":"string"}}});
+        let reordered_schema =
+            serde_json::json!({"properties":{"query":{"type":"string"}},"type":"object"});
+        let make_request = |store: &crate::replay::ReplayStore, appended: bool| {
+            let mut request = request(vec![text(
+                MessageRole::User,
+                store
+                    .store_content(first_user.as_bytes())
+                    .unwrap()
+                    .wire_marker(),
+            )]);
+            if appended {
+                request.messages.extend([
+                    text(MessageRole::Assistant, "first answer"),
+                    text(MessageRole::User, "new question"),
+                ]);
+            }
+            request.instructions.push(CanonicalInstruction {
+                role: InstructionRole::System,
+                content: vec![ContentPart::Text {
+                    text: store
+                        .store_content(instruction.as_bytes())
+                        .unwrap()
+                        .wire_marker(),
+                }],
+            });
+            let mut pool = store.begin_content_pool().unwrap();
+            let schema_ref = pool
+                .append_json(if appended { &reordered_schema } else { &schema }, true)
+                .unwrap();
+            pool.seal().unwrap();
+            request.tools.push(CanonicalTool {
+                kind: ToolKindV1::Function,
+                name: "lookup".into(),
+                description: None,
+                input_schema: Some(schema_ref.json_marker()),
+                strict: None,
+                format: None,
+            });
+            request
+        };
+        let first = make_request(&first_store, false);
+        let continued = make_request(&second_store, true);
+        let key = [20; 32];
+        let first_history = visible_history_with_replay(&first, &key, Some(&first_store)).unwrap();
+        let continued_history =
+            visible_history_with_replay(&continued, &key, Some(&second_store)).unwrap();
+        assert_eq!(
+            first_history.instruction_digest,
+            continued_history.instruction_digest
+        );
+        assert_eq!(
+            continued_history.digest_at(first.messages.len()),
+            Some(first_history.complete_digest())
+        );
+        let mut inline = first.clone();
+        inline.messages[0] = text(MessageRole::User, first_user.clone());
+        inline.instructions[0].content = vec![ContentPart::Text {
+            text: instruction.clone(),
+        }];
+        inline.tools[0].input_schema = Some(reordered_schema);
+        let inline_history = visible_history(&inline, &key).unwrap();
+        assert_eq!(
+            inline_history.instruction_digest,
+            first_history.instruction_digest
+        );
+        assert_eq!(
+            inline_history.complete_digest(),
+            first_history.complete_digest()
+        );
+        assert!(
+            visible_history_with_replay(&continued, &key, None).is_none(),
+            "a bare request-local locator cannot establish continuity"
+        );
+
+        let mut changed = continued.clone();
+        changed.messages[0] = text(MessageRole::User, "replaced first message");
+        let changed_history =
+            visible_history_with_replay(&changed, &key, Some(&second_store)).unwrap();
+        assert_ne!(
+            changed_history.digest_at(first.messages.len()),
+            Some(first_history.complete_digest())
+        );
+        drop((first_store, second_store, manager));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn nested_native_state_ref_hashes_like_the_same_inline_json() {
+        use crate::replay::{ReplayConfig, ReplayManager};
+        use hiroute_gateway_core::runtime::body::BudgetTree;
+
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-history-escaped-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = ReplayManager::open(ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: 128,
+            record_bytes: 31,
+            orphan_ttl: std::time::Duration::from_secs(60),
+        })
+        .unwrap();
+        let tree = BudgetTree::new(1024 * 1024, 1024 * 1024).unwrap();
+        let store = manager
+            .begin_request(tree.stream(1024 * 1024).unwrap())
+            .unwrap();
+        let original = "opaque \"user\\ text\n中文";
+        let marker = store
+            .store_content(original.as_bytes())
+            .unwrap()
+            .wire_marker();
+        let externalized = serde_json::json!({"thinking": marker});
+        let inline = serde_json::json!({"thinking": original});
+        let key = [21; 32];
+        let mut replay_hash = Encoder::new(&key, b"json-string", Some(&store)).unwrap();
+        replay_hash.json(&externalized).unwrap();
+        let mut inline_hash = Encoder::new(&key, b"json-string", None).unwrap();
+        inline_hash.json(&inline).unwrap();
+        assert_eq!(replay_hash.finish(), inline_hash.finish());
+        drop((store, manager));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn compacted_responses_tool_arguments_and_long_reasoning_keep_prefix() {
+        use crate::content_ref::{
+            compact_ingress_document_with_markers, parse_ingress_document, scan_ingress_document,
+        };
+        use crate::replay::{ReplayConfig, ReplayManager};
+        use crate::server::core_runtime::adapters::decode_ingress_request;
+        use hiroute_gateway_core::runtime::body::BudgetTree;
+
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-history-responses-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = ReplayManager::open(ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: 128,
+            record_bytes: 31,
+            orphan_ttl: std::time::Duration::from_secs(60),
+        })
+        .unwrap();
+        let tree = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024).unwrap();
+        let first_store = manager
+            .begin_request(tree.stream(4 * 1024 * 1024).unwrap())
+            .unwrap();
+        let second_store = manager
+            .begin_request(tree.stream(4 * 1024 * 1024).unwrap())
+            .unwrap();
+        let argument_text = "tool argument 中文 ".repeat(700);
+        let encoded = serde_json::to_string(&argument_text).unwrap();
+        let first_arguments = format!("{{\"b\": {encoded}, \"a\": 1}}");
+        let second_arguments = format!("{{\"a\":1,\"b\":{encoded}}}");
+        let summary = "reasoning summary \"\\\n🙂 ".repeat(700);
+        let make_request = |store: &ReplayStore, arguments: String, appended: bool| {
+            let mut input = vec![
+                serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":"first"}]}),
+                serde_json::json!({"type":"function_call","call_id":"call-1","name":"lookup","arguments":arguments}),
+                serde_json::json!({"type":"reasoning","summary":[{"type":"summary_text","text":summary}]}),
+            ];
+            if appended {
+                input.push(serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":"follow up"}]}));
+            }
+            let body = serde_json::to_vec(&serde_json::json!({"model":"agent/test","input":input}))
+                .unwrap();
+            let mut writer = store.begin_raw().unwrap();
+            writer.append(&body).unwrap();
+            let raw = writer.seal().unwrap();
+            let stats = scan_ingress_document(store.reader(&raw).unwrap()).unwrap();
+            let (mut document, mut workspace) =
+                parse_ingress_document(IngressProtocol::Responses, store, &raw, stats).unwrap();
+            compact_ingress_document_with_markers(
+                IngressProtocol::Responses,
+                &mut document,
+                store,
+                workspace.generated_markers(),
+            )
+            .unwrap();
+            assert!(
+                document["input"][1]["arguments"]
+                    .as_str()
+                    .and_then(ContentValueExt::content_ref)
+                    .is_some()
+            );
+            assert!(
+                document["input"][2]["summary"][0]["text"]
+                    .as_str()
+                    .and_then(ContentValueExt::content_ref)
+                    .is_some()
+            );
+            decode_ingress_request(IngressProtocol::Responses, &document).unwrap()
+        };
+        let first = make_request(&first_store, first_arguments, false);
+        let continued = make_request(&second_store, second_arguments, true);
+        let key = [22; 32];
+        let first_history = visible_history_with_replay(&first, &key, Some(&first_store)).unwrap();
+        let continued_history =
+            visible_history_with_replay(&continued, &key, Some(&second_store)).unwrap();
+        assert_eq!(
+            continued_history.digest_at(first.messages.len()),
+            Some(first_history.complete_digest())
+        );
+        drop((first_store, second_store, manager));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn canonical_json_sorts_object_keys_and_instruction_change_rebuilds() {
         let key = [9; 32];
         let tool_message = |arguments| CanonicalMessage {
@@ -626,6 +1140,7 @@ mod tests {
                 namespace: None,
                 name: "tool".into(),
                 arguments,
+                raw_arguments: None,
             }],
             name: None,
         };

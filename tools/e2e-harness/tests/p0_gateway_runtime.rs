@@ -1237,15 +1237,27 @@ fn real_listener_context_hold_boundary_seals_unknown_and_scores_the_previous_mod
         "role": "user",
         "content": [{"type": "input_text", "text": "look up the record"}],
     });
-    let send = |instructions: Option<&str>| {
-        let mut body = serde_json::json!({
+    let send = |rebuilt_history: bool| {
+        let input = if rebuilt_history {
+            vec![
+                serde_json::json!({
+                    "type":"message","role":"user",
+                    "content":[{"type":"input_text","text":"A rebuilt earlier context"}]
+                }),
+                serde_json::json!({
+                    "type":"message","role":"assistant",
+                    "content":[{"type":"output_text","text":"ack"}]
+                }),
+                user.clone(),
+            ]
+        } else {
+            vec![user.clone()]
+        };
+        let body = serde_json::json!({
             "model": "runtime-model",
-            "input": [user.clone()],
+            "input": input,
             "stream": false,
         });
-        if let Some(instructions) = instructions {
-            body["instructions"] = serde_json::Value::String(instructions.into());
-        }
         request(
             fixture.address,
             "POST",
@@ -1255,14 +1267,14 @@ fn real_listener_context_hold_boundary_seals_unknown_and_scores_the_previous_mod
         )
     };
 
-    let first = send(None);
+    let first = send(false);
     assert_eq!(
         first.status,
         200,
         "{}",
         String::from_utf8_lossy(&first.body)
     );
-    let second = send(Some("Use the updated retained execution context."));
+    let second = send(true);
     assert_eq!(
         second.status,
         200,
@@ -1272,7 +1284,7 @@ fn real_listener_context_hold_boundary_seals_unknown_and_scores_the_previous_mod
     assert_eq!(
         (simple.calls(), complex.calls(), classifier.calls()),
         (1, 1, 2),
-        "an instruction-digest boundary must use the newly selected business branch"
+        "a rebuilt message history must use the newly selected business branch"
     );
 
     let classifier_requests = classifier.requests();

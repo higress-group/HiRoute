@@ -38,6 +38,7 @@ pub enum MaterializedGroupId {
 pub enum RequestOwnedRouteV1 {
     Classified {
         classifier: ComplexityClassifierV1,
+        reselect_on_user_message: bool,
         simple_groups: Vec<MaterializedGroupId>,
         complex_groups: Vec<MaterializedGroupId>,
     },
@@ -481,6 +482,7 @@ fn validate_request_groups(
             classifier,
             simple_groups,
             complex_groups,
+            ..
         } => {
             classifier
                 .validate()

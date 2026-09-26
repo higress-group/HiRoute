@@ -490,7 +490,12 @@ where
             return Err(TransactionError::IdempotencyKeyReused);
         }
 
-        validate_feature_gate(&request.spec.desired_state)?;
+        // Routing changes have already passed their strict draft/content/lifecycle planner.
+        // A REST classifier endpoint is a typed, validated routing field, not an arbitrary
+        // effect URL from the generic setup command.
+        if request.spec.command_id != "routing.apply" {
+            validate_feature_gate(&request.spec.desired_state)?;
+        }
         let current = self.control.current_revisions(workspace)?;
         compare_revisions(&request.expected_revisions, &current)
             .map_err(TransactionError::RevisionConflict)?;

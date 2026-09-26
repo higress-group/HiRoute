@@ -114,6 +114,7 @@ pub(crate) fn materialize_agent_plan(
             (
                 RequestOwnedRouteV1::Classified {
                     classifier,
+                    reselect_on_user_message: false,
                     simple_groups: vec![MaterializedGroupId::Economy, MaterializedGroupId::Primary],
                     complex_groups: vec![MaterializedGroupId::Primary],
                 },

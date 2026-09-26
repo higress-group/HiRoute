@@ -16,6 +16,8 @@ Create or edit a plan under Smart routing, then choose How to use models:
 
 Candidates must satisfy the request's text, image, tool, and context requirements. Once response delivery begins, HiRoute does not silently switch models within that response.
 
+Maximum wait per request includes retries and streaming output and defaults to 1 hour for new plans. A slow response is interrupted if it has not finished by then; request writing, waiting for the first response byte, and response-stream idleness each default to 10 minutes. Edit the total wait in Smart routing for an existing plan. Existing plans keep their saved wait. This does not change the model's own maximum output length.
+
 ## Configure Smart saving
 
 1. Add models suited to routine, bounded work to the Economy group.

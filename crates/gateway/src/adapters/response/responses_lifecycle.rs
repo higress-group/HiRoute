@@ -385,11 +385,33 @@ fn finish_reasoning_item(
         )
         .into());
     }
+    let content = array_field(item, "content", true)?;
+    if summary.is_empty() && content.len() > 1 {
+        return Err(ModelIrError::UnsupportedField(
+            "response reasoning with multiple content parts".into(),
+        )
+        .into());
+    }
     if let Some(part) = summary.first() {
         let part = checked_object(part)?;
         if required_str(part, "type")? != "summary_text" {
             return Err(unsupported(
                 "Responses reasoning summary",
+                required_str(part, "type")?,
+            ));
+        }
+        core.finish_reasoning_with_status(
+            native_index,
+            required_str(part, "text")?,
+            status,
+            output,
+        )?;
+    } else if let Some(part) = content.first() {
+        let part = checked_object(part)?;
+        allow(part, &["type", "text"])?;
+        if required_str(part, "type")? != "reasoning_text" {
+            return Err(unsupported(
+                "Responses reasoning content",
                 required_str(part, "type")?,
             ));
         }

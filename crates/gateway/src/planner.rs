@@ -28,7 +28,7 @@ pub use planning::{
 
 use planning::{
     EligibleForRanking, canonical_digest, evaluate_candidate, has_exact_reasoning_profile,
-    rank_group,
+    rank_group, state_owners,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -37,7 +37,7 @@ pub struct Planner;
 impl Planner {
     pub fn plan(&self, input: &PlannerInputV1) -> Result<PlannerOutputV1, PlannerError> {
         validate_input(input)?;
-        let (branch, complexity, complexity_facts, group_ids, mut reason_ledger) =
+        let (branch, complexity, complexity_facts, mut group_ids, mut reason_ledger) =
             select_groups(input)?;
         // Deliberately digest only content-free planning facts. A Routing
         // Receipt may retain this value without creating a Prompt hash.
@@ -54,6 +54,14 @@ impl Planner {
             .iter()
             .map(|group| (group.group_id.as_str(), group))
             .collect::<BTreeMap<_, _>>();
+
+        apply_provider_state_owner_continuation(
+            input,
+            &candidate_by_id,
+            &group_by_id,
+            &mut group_ids,
+            &mut reason_ledger,
+        )?;
 
         let mut seen = BTreeSet::new();
         let mut evaluations = Vec::new();
@@ -99,18 +107,7 @@ impl Planner {
                 }
             }
 
-            let guard_anchor_score = match &group.policy {
-                GroupPolicyV1::CheapestWithRatingGuard {
-                    quality_anchor_ref, ..
-                } => {
-                    let anchor = candidate_by_id[quality_anchor_ref.as_str()];
-                    anchor
-                        .overall_score_tenths
-                        .filter(|_| has_exact_reasoning_profile(anchor))
-                }
-                GroupPolicyV1::Manual | GroupPolicyV1::QualityFirst => None,
-            };
-            let ranked = rank_group(group, eligible, guard_anchor_score);
+            let ranked = rank_group(group, eligible, guard_anchor_score(group, &candidate_by_id));
             for (candidate, declared_order, reason) in ranked.exclusions {
                 group_evaluations[usize::try_from(declared_order)
                     .map_err(|_| PlannerError::ArithmeticOverflow)?] = Some(excluded_evaluation(
@@ -181,6 +178,14 @@ impl Planner {
             &mut frozen,
             &mut reason_ledger,
         )?;
+        apply_previous_success_fallback(
+            input,
+            &candidate_by_id,
+            &mut groups,
+            &mut evaluations,
+            &mut frozen,
+            &mut reason_ledger,
+        )?;
 
         for (ordinal, entry) in reason_ledger.iter_mut().enumerate() {
             entry.ordinal = u32::try_from(ordinal).map_err(|_| PlannerError::ArithmeticOverflow)?;
@@ -223,6 +228,7 @@ struct PlanningFactsDigestProjection<'a> {
     branch_decision: Option<&'a BranchDecisionV1>,
     structural_facts: Option<&'a SanitizedStructuralFactsV1>,
     context_hold: Option<&'a HoldPreferenceV1>,
+    previous_success_candidate_id: Option<&'a str>,
     candidates: Vec<&'a PlannerCandidateFactsV1>,
 }
 
@@ -240,8 +246,157 @@ fn planning_facts_digest(
         branch_decision,
         structural_facts,
         context_hold: input.context_hold.as_ref(),
+        previous_success_candidate_id: input.previous_success_candidate_id.as_deref(),
         candidates,
     })
+}
+
+fn guard_anchor_score(
+    group: &MaterializedModelGroupV1,
+    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
+) -> Option<i32> {
+    match &group.policy {
+        GroupPolicyV1::CheapestWithRatingGuard {
+            quality_anchor_ref, ..
+        } => {
+            let anchor = candidate_by_id[quality_anchor_ref.as_str()];
+            anchor
+                .overall_score_tenths
+                .filter(|_| has_exact_reasoning_profile(anchor))
+        }
+        GroupPolicyV1::Manual | GroupPolicyV1::QualityFirst => None,
+    }
+}
+
+fn group_has_eligible_state_owner(
+    input: &PlannerInputV1,
+    group: &MaterializedModelGroupV1,
+    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
+    owner: &crate::server::core_runtime::model_ir::ExactProviderPathV1,
+) -> Result<bool, PlannerError> {
+    let mut eligible = Vec::new();
+    for (index, candidate_id) in group.candidate_ids.iter().enumerate() {
+        let candidate = candidate_by_id[candidate_id.as_str()];
+        if candidate
+            .protocol_profile
+            .exact_provider_path()
+            .ok()
+            .as_ref()
+            != Some(owner)
+        {
+            continue;
+        }
+        if let Ok(projection) = evaluate_candidate(
+            &input.request,
+            candidate,
+            input.policy.cost_policy,
+            &input.policy.limits,
+        ) {
+            eligible.push(EligibleForRanking {
+                candidate,
+                projection,
+                declared_order: u32::try_from(index)
+                    .map_err(|_| PlannerError::ArithmeticOverflow)?,
+            });
+        }
+    }
+    Ok(
+        !rank_group(group, eligible, guard_anchor_score(group, candidate_by_id))
+            .ordered
+            .is_empty(),
+    )
+}
+
+fn group_has_eligible_candidate(
+    input: &PlannerInputV1,
+    group: &MaterializedModelGroupV1,
+    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
+) -> Result<bool, PlannerError> {
+    let mut eligible = Vec::new();
+    for (index, candidate_id) in group.candidate_ids.iter().enumerate() {
+        let candidate = candidate_by_id[candidate_id.as_str()];
+        if let Ok(projection) = evaluate_candidate(
+            &input.request,
+            candidate,
+            input.policy.cost_policy,
+            &input.policy.limits,
+        ) {
+            eligible.push(EligibleForRanking {
+                candidate,
+                projection,
+                declared_order: u32::try_from(index)
+                    .map_err(|_| PlannerError::ArithmeticOverflow)?,
+            });
+        }
+    }
+    Ok(
+        !rank_group(group, eligible, guard_anchor_score(group, candidate_by_id))
+            .ordered
+            .is_empty(),
+    )
+}
+
+fn apply_provider_state_owner_continuation(
+    input: &PlannerInputV1,
+    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
+    group_by_id: &BTreeMap<&str, &MaterializedModelGroupV1>,
+    group_ids: &mut Vec<String>,
+    reason_ledger: &mut Vec<ReasonLedgerEntryV1>,
+) -> Result<(), PlannerError> {
+    let MaterializedRouteV1::SmartSaving {
+        simple_group_id,
+        simple_fallback_group_ids,
+        complex_group_id,
+        ..
+    } = &input.policy.route
+    else {
+        return Ok(());
+    };
+    let mut owners = state_owners(&input.request);
+    let Some(owner) = owners.next() else {
+        return Ok(());
+    };
+    if owners.any(|other| other != owner) {
+        return Ok(());
+    }
+    for group_id in group_ids.iter() {
+        if group_has_eligible_candidate(input, group_by_id[group_id.as_str()], candidate_by_id)? {
+            return Ok(());
+        }
+    }
+
+    let alternatives = if group_ids.first() == Some(simple_group_id) {
+        vec![complex_group_id.clone()]
+    } else {
+        std::iter::once(simple_group_id.clone())
+            .chain(simple_fallback_group_ids.iter().cloned())
+            .collect()
+    };
+    let mut continuation = Vec::new();
+    for group_id in alternatives {
+        if group_has_eligible_state_owner(
+            input,
+            group_by_id[group_id.as_str()],
+            candidate_by_id,
+            owner,
+        )? {
+            continuation.push(group_id);
+        }
+    }
+    if !continuation.is_empty() {
+        reason_ledger.retain(|entry| {
+            !matches!(
+                entry.code,
+                LedgerReasonCodeV1::GroupExhaustedFallback | LedgerReasonCodeV1::ComplexNoDowngrade
+            )
+        });
+        reason_ledger.push(reason(
+            LedgerReasonCodeV1::ProviderStateOwnerContinuation,
+            continuation.first().cloned(),
+        ));
+        *group_ids = continuation;
+    }
+    Ok(())
 }
 
 fn apply_context_hold(
@@ -359,6 +514,143 @@ fn apply_context_hold(
     Ok(())
 }
 
+fn apply_previous_success_fallback(
+    input: &PlannerInputV1,
+    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
+    groups: &mut Vec<GroupPlanV1>,
+    evaluations: &mut Vec<CandidateEvaluationV1>,
+    frozen: &mut Vec<FrozenCandidateV1>,
+    reason_ledger: &mut Vec<ReasonLedgerEntryV1>,
+) -> Result<(), PlannerError> {
+    if !matches!(input.policy.route, MaterializedRouteV1::SmartSaving { .. }) || frozen.is_empty() {
+        return Ok(());
+    }
+    let Some(previous_id) = input.previous_success_candidate_id.as_deref() else {
+        return Ok(());
+    };
+    if frozen
+        .first()
+        .is_some_and(|candidate| candidate.candidate_id == previous_id)
+    {
+        return Ok(());
+    }
+    if let Some(index) = frozen
+        .iter()
+        .position(|candidate| candidate.candidate_id == previous_id)
+    {
+        let mut candidate = frozen.remove(index);
+        candidate
+            .ranking_reasons
+            .push(RankingReasonCodeV1::PreviousSuccessFallback);
+        let group_id = candidate.group_id.clone();
+        frozen.insert(usize::from(!frozen.is_empty()), candidate);
+        reason_ledger.push(reason(
+            LedgerReasonCodeV1::PreviousSuccessFallback,
+            Some(group_id),
+        ));
+    } else {
+        // A candidate excluded from the selected groups cannot be revived by
+        // a prior success. Only an exact, currently eligible plan member may
+        // extend the frozen chain for this request.
+        if evaluations
+            .iter()
+            .any(|entry| entry.candidate_id == previous_id)
+        {
+            return Ok(());
+        }
+        let Some(candidate) = candidate_by_id.get(previous_id).copied() else {
+            return Ok(());
+        };
+        let mut matches = input
+            .policy
+            .groups
+            .iter()
+            .filter(|group| group.candidate_ids.iter().any(|id| id == previous_id));
+        let Some(group) = matches.next() else {
+            return Ok(());
+        };
+        if matches.next().is_some() {
+            return Ok(());
+        }
+        let declared_order = u32::try_from(
+            group
+                .candidate_ids
+                .iter()
+                .position(|id| id == previous_id)
+                .ok_or(PlannerError::InvalidPolicy(
+                    "previous candidate is not in its group",
+                ))?,
+        )
+        .map_err(|_| PlannerError::ArithmeticOverflow)?;
+        let Ok(projection) = evaluate_candidate(
+            &input.request,
+            candidate,
+            input.policy.cost_policy,
+            &input.policy.limits,
+        ) else {
+            return Ok(());
+        };
+        if rank_group(
+            group,
+            vec![EligibleForRanking {
+                candidate,
+                projection: projection.clone(),
+                declared_order,
+            }],
+            guard_anchor_score(group, candidate_by_id),
+        )
+        .ordered
+        .is_empty()
+        {
+            return Ok(());
+        }
+        evaluations.push(CandidateEvaluationV1 {
+            candidate_id: candidate.candidate_id.clone(),
+            stable_binding_id: candidate.stable_binding_id.clone(),
+            group_id: group.group_id.clone(),
+            declared_order,
+            profile_digest: candidate.profile_digest.clone(),
+            eligible: true,
+            first_exclusion: None,
+            reasoning_profile_id: Some(projection.reasoning_profile_id.clone()),
+            context: Some(projection.context.clone()),
+            overall_score_tenths: candidate.overall_score_tenths,
+            effective_cost_micros: projection.effective_cost_micros,
+            cost_class: candidate.cost_class,
+        });
+        frozen.insert(
+            usize::from(!frozen.is_empty()),
+            FrozenCandidateV1 {
+                ordinal: 0,
+                candidate_id: candidate.candidate_id.clone(),
+                stable_binding_id: candidate.stable_binding_id.clone(),
+                group_id: group.group_id.clone(),
+                profile_digest: candidate.profile_digest.clone(),
+                upstream_protocol: candidate.protocol_profile.capability.upstream_protocol,
+                reasoning_profile_id: projection.reasoning_profile_id,
+                context: projection.context,
+                overall_score_tenths: candidate.overall_score_tenths,
+                effective_cost_micros: projection.effective_cost_micros,
+                cost_class: candidate.cost_class,
+                ranking_reasons: vec![RankingReasonCodeV1::PreviousSuccessFallback],
+            },
+        );
+        groups.push(GroupPlanV1 {
+            ordinal: u32::try_from(groups.len()).map_err(|_| PlannerError::ArithmeticOverflow)?,
+            group_id: group.group_id.clone(),
+            ranked_candidate_ids: vec![candidate.candidate_id.clone()],
+        });
+        reason_ledger.push(reason(
+            LedgerReasonCodeV1::PreviousSuccessFallback,
+            Some(group.group_id.clone()),
+        ));
+    }
+    for (ordinal, candidate) in frozen.iter_mut().enumerate() {
+        candidate.ordinal = u32::try_from(ordinal).map_err(|_| PlannerError::ArithmeticOverflow)?;
+    }
+    Ok(())
+}
+
 fn validate_input(input: &PlannerInputV1) -> Result<(), PlannerError> {
     if input.schema_version != PLANNER_INPUT_SCHEMA
         || input.request.schema_version
@@ -430,6 +722,7 @@ fn validate_input(input: &PlannerInputV1) -> Result<(), PlannerError> {
             simple_group_id,
             simple_fallback_group_ids,
             complex_group_id,
+            ..
         } => {
             let strategy =
                 policy
@@ -576,6 +869,15 @@ fn validate_input(input: &PlannerInputV1) -> Result<(), PlannerError> {
             "candidate facts must exactly match materialized group references",
         ));
     }
+    if input
+        .previous_success_candidate_id
+        .as_ref()
+        .is_some_and(|id| !candidate_ids.contains(id.as_str()))
+    {
+        return Err(PlannerError::InvalidPolicy(
+            "previous success is not a published candidate",
+        ));
+    }
     if let MaterializedRouteV1::FreeFirst {
         free_group_id,
         candidate_mode,
@@ -691,6 +993,7 @@ fn select_groups(input: &PlannerInputV1) -> Result<GroupSelection, PlannerError>
             simple_group_id,
             simple_fallback_group_ids,
             complex_group_id,
+            ..
         } => {
             let strategy = input
                 .policy

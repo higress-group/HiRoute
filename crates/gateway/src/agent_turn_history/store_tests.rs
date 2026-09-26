@@ -99,6 +99,7 @@ fn tool_call(id: &str, name: &str) -> CanonicalMessage {
             namespace: Some("functions".into()),
             name: name.into(),
             arguments: json!({"must_not_be_projected": "secret detail"}),
+            raw_arguments: None,
         }],
         name: None,
     }
@@ -148,7 +149,7 @@ fn new_turn(begin: AgentTurnBegin) -> (AgentTurnTicket, AgentTurnHistorySnapshot
     match begin {
         AgentTurnBegin::NewTurn {
             ticket, history, ..
-        } => (ticket, history),
+        } => (ticket, *history),
         AgentTurnBegin::Continuation { .. } => panic!("expected a new turn"),
     }
 }
@@ -174,6 +175,127 @@ fn close_turn(
         )
         .unwrap()
         .unwrap()
+}
+
+#[test]
+fn appended_users_keep_distinct_history_when_reselection_is_off() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
+    let key = store.scope_key("workspace", "follow-ups").unwrap();
+    let now = Instant::now();
+    let first_message = text(MessageRole::User, "first");
+    let (first, first_history) = new_turn(
+        store
+            .begin(
+                key.clone(),
+                plan(1),
+                &request(vec![first_message.clone()]),
+                &replay,
+                now,
+            )
+            .unwrap(),
+    );
+    drop(first_history);
+    store
+        .commit_decision(&first, decision("smart_saving_simple"))
+        .unwrap();
+    accepted_output::text_output(&store, &first, "first answer");
+    store
+        .finish_request(
+            &first,
+            "r1".into(),
+            AgentTurnStatus::Completed,
+            vec![execution(
+                "model-a",
+                "profile-a",
+                "smart_saving_simple",
+                "r1",
+            )],
+            true,
+            now,
+        )
+        .unwrap();
+
+    let second_message = text(MessageRole::User, "second");
+    let messages = vec![
+        first_message.clone(),
+        text(MessageRole::Assistant, "first answer"),
+        second_message.clone(),
+    ];
+    let AgentTurnBegin::NewTurn {
+        ticket: second,
+        inherited_decision: Some(second_decision),
+        history,
+        ..
+    } = store
+        .begin_with_context(
+            key.clone(),
+            plan(1),
+            &request(messages.clone()),
+            &replay,
+            TurnDecisionInputs {
+                message_history_continues: true,
+                reselect_on_user_message: false,
+            },
+            now + Duration::from_secs(1),
+        )
+        .unwrap()
+    else {
+        panic!("a follow-up must begin a new round with an inherited decision")
+    };
+    assert_ne!(first.agent_turn_id, second.agent_turn_id);
+    assert!(history.visible_conversation.is_empty());
+    assert_eq!(second_decision.branch_id, "smart_saving_simple");
+    store.commit_decision(&second, second_decision).unwrap();
+    accepted_output::text_output(&store, &second, "second answer");
+    store
+        .finish_request(
+            &second,
+            "r2".into(),
+            AgentTurnStatus::Completed,
+            vec![execution(
+                "model-a",
+                "profile-a",
+                "smart_saving_simple",
+                "r2",
+            )],
+            true,
+            now + Duration::from_secs(1),
+        )
+        .unwrap();
+
+    let mut third_messages = messages;
+    third_messages.push(text(MessageRole::Assistant, "second answer"));
+    third_messages.push(text(MessageRole::User, "third"));
+    let AgentTurnBegin::NewTurn {
+        ticket: third,
+        inherited_decision: None,
+        history,
+        ..
+    } = store
+        .begin_with_context(
+            key,
+            plan(1),
+            &request(third_messages),
+            &replay,
+            TurnDecisionInputs {
+                message_history_continues: true,
+                reselect_on_user_message: true,
+            },
+            now + Duration::from_secs(2),
+        )
+        .unwrap()
+    else {
+        panic!("an enabled follow-up must ask for a new classification")
+    };
+    assert_ne!(second.agent_turn_id, third.agent_turn_id);
+    assert_eq!(history.visible_conversation.len(), 2);
+    let serialized = serde_json::to_string(&history.visible_conversation).unwrap();
+    assert!(serialized.contains("first answer"));
+    assert!(serialized.contains("second answer"));
+    assert!(serialized.contains("\"text\":\"first\""));
+    assert!(serialized.contains("\"text\":\"second\""));
+    assert_eq!(history.assessment_from, Some(0));
 }
 
 #[test]
@@ -525,9 +647,9 @@ fn rebuilt_context_does_not_attribute_shifted_old_result_to_reused_id() {
                 plan(1),
                 &request(rebuilt),
                 &replay,
-                ContextDecisionFacts {
-                    history_continues: false,
-                    has_hold_preference: false,
+                TurnDecisionInputs {
+                    message_history_continues: false,
+                    reselect_on_user_message: true,
                 },
                 now,
             )
@@ -595,9 +717,9 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
             plan(1),
             &request(rebuilt_messages.clone()),
             &replay,
-            ContextDecisionFacts {
-                history_continues: false,
-                has_hold_preference: false,
+            TurnDecisionInputs {
+                message_history_continues: false,
+                reselect_on_user_message: true,
             },
             now + Duration::from_secs(1),
         )
@@ -606,6 +728,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
         ticket,
         history,
         completed,
+        ..
     } = boundary
     else {
         panic!("missing ContextHold preference must start a decision round")
@@ -636,9 +759,9 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
             plan(1),
             &request(rebuilt_messages),
             &replay,
-            ContextDecisionFacts {
-                history_continues: true,
-                has_hold_preference: false,
+            TurnDecisionInputs {
+                message_history_continues: true,
+                reselect_on_user_message: true,
             },
             now + Duration::from_secs(2),
         )
@@ -647,6 +770,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
         ticket: retry_ticket,
         history: retry_history,
         completed: retry_completed,
+        ..
     } = retry
     else {
         panic!("a cancelled empty decision round must be replaceable")
@@ -664,7 +788,7 @@ fn context_boundary_reclassifies_same_user_and_preserves_unknown_execution() {
 }
 
 #[test]
-fn missing_hold_preference_is_a_decision_boundary_even_when_history_continues() {
+fn missing_candidate_preference_does_not_reselect_when_messages_continue() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
     let key = store.scope_key("workspace", "missing-hold").unwrap();
@@ -696,15 +820,20 @@ fn missing_hold_preference_is_a_decision_boundary_even_when_history_continues() 
         )
         .unwrap();
 
+    let follow_up = request(vec![
+        text(MessageRole::User, "Continue this task"),
+        text(MessageRole::Assistant, "work in progress"),
+        text(MessageRole::User, "Now handle a harder follow-up"),
+    ]);
     let boundary = store
         .begin_with_context(
             key,
             plan(1),
-            &input,
+            &follow_up,
             &replay,
-            ContextDecisionFacts {
-                history_continues: true,
-                has_hold_preference: false,
+            TurnDecisionInputs {
+                message_history_continues: true,
+                reselect_on_user_message: false,
             },
             now + Duration::from_secs(1),
         )
@@ -713,15 +842,15 @@ fn missing_hold_preference_is_a_decision_boundary_even_when_history_continues() 
         ticket,
         history,
         completed,
+        inherited_decision: Some(inherited_decision),
+        ..
     } = boundary
     else {
-        panic!("hint=None must not inherit the active decision")
+        panic!("a missing candidate hint must not force cross-branch reselection")
     };
-    assert_eq!(completed.unwrap().status, AgentTurnStatus::Unknown);
-    assert_eq!(
-        history.visible_conversation[0].status,
-        AgentTurnStatus::Unknown
-    );
+    assert_eq!(inherited_decision.branch_id, "smart_saving_simple");
+    assert_eq!(completed.unwrap().status, AgentTurnStatus::Interrupted);
+    assert!(history.visible_conversation.is_empty());
     drop(history);
     store.abort(&ticket);
 }

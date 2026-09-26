@@ -20,6 +20,7 @@ use crate::server::request_plan::IngressProtocol;
 
 use super::super::continuation::{
     ToolIdProjection, project_delivered_tool_id, record_provider_state,
+    record_provider_state_at_acceptance,
 };
 use super::super::{ChatToolIdentity, ChatToolProjection, ProtocolAdapterError};
 
@@ -695,6 +696,16 @@ impl ProjectionState {
                     && self.authority.records_state()
                 {
                     record_provider_state(signature, &self.owner)?;
+                }
+                if block.get("type").and_then(Value::as_str) == Some("redacted_thinking")
+                    && let Some(data) = block.get("data").and_then(Value::as_str)
+                    && !data.is_empty()
+                    && self.authority.records_state()
+                {
+                    let serialized = serde_json::to_string(data)
+                        .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
+                    let pattern = format!("\"data\":{serialized}");
+                    record_provider_state_at_acceptance(data, &self.owner, pattern.as_bytes())?;
                 }
             }
         }

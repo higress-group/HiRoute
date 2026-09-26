@@ -105,8 +105,11 @@ pub(crate) struct HoldTicket {
     entry_token: u64,
     cycle: u64,
     value_version: u64,
-    pub(crate) history_continues: bool,
+    pub(crate) message_history_continues: bool,
     pub(crate) hint: Option<HoldPreferenceV1>,
+    /// Last fully delivered candidate in this exact route scope, even when
+    /// rebuilt history invalidates the stronger continuity hint.
+    pub(crate) previous_success: Option<HoldPreferenceV1>,
 }
 
 #[derive(Clone, Debug)]
@@ -248,9 +251,10 @@ impl ContextHoldStore {
                 }
                 (entry.cycle, entry.value_version)
             };
-            let continues = snapshot.instruction_digest == history.instruction_digest
-                && measured.message_count >= snapshot.message_count
+            let message_history_continues = measured.message_count >= snapshot.message_count
                 && measured.prefix_digest == Some(snapshot.history_digest);
+            let continues = snapshot.instruction_digest == history.instruction_digest
+                && message_history_continues;
             let checkpoint_revision = snapshot.checkpoint_revision.checked_add(1)?;
             let cycle = if continues {
                 current_cycle
@@ -263,8 +267,9 @@ impl ContextHoldStore {
                 current_value_version.checked_add(1)?
             };
             let access_order = inner.allocate_access_order()?;
-            let (hint, removed_dynamic) = {
+            let (hint, previous_success, removed_dynamic) = {
                 let entry = inner.entries.get_mut(&key)?;
+                let previous_success = entry.preference.clone();
                 let hint = continues.then(|| entry.preference.clone()).flatten();
                 let removed_dynamic = if continues {
                     0
@@ -277,7 +282,7 @@ impl ContextHoldStore {
                 entry.instruction_digest = history.instruction_digest;
                 entry.message_count = measured.message_count;
                 entry.history_digest = measured.complete_digest;
-                (hint, removed_dynamic)
+                (hint, previous_success, removed_dynamic)
             };
             inner.dynamic_bytes = inner.dynamic_bytes.saturating_sub(removed_dynamic);
             inner.touch(&key, now, access_order);
@@ -286,8 +291,9 @@ impl ContextHoldStore {
                 entry_token: snapshot.entry_token,
                 cycle,
                 value_version,
-                history_continues: continues,
+                message_history_continues,
                 hint,
+                previous_success,
             });
         }
 
@@ -330,8 +336,9 @@ impl ContextHoldStore {
             entry_token,
             cycle: 1,
             value_version: 0,
-            history_continues: false,
+            message_history_continues: false,
             hint: None,
+            previous_success: None,
         })
     }
 

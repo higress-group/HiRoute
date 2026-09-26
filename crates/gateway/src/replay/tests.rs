@@ -61,9 +61,9 @@ fn read_all(store: &ReplayStore, reference: &crate::content_ref::ContentRef) -> 
 }
 
 #[test]
-fn production_default_retains_up_to_ten_mib() {
+fn production_default_spills_before_large_ingress_decode() {
     let config = ReplayConfig::production_default();
-    assert_eq!(config.memory_threshold_bytes, 10 * 1024 * 1024);
+    assert_eq!(config.memory_threshold_bytes, 1024 * 1024);
     assert_eq!(config.record_bytes, 16 * 1024);
 }
 
@@ -437,7 +437,7 @@ fn replay_ingress_structure_is_budgeted_without_a_fixed_field_count_limit() {
         )
         .unwrap();
     let workspace = stats
-        .reserve_workspace(&large, raw.byte_len())
+        .reserve_streaming_workspace(&large)
         .expect("sufficient memory");
     assert!(workspace.bytes() > 16_384 * 128);
     let small = manager
@@ -448,7 +448,7 @@ fn replay_ingress_structure_is_budgeted_without_a_fixed_field_count_limit() {
                 .unwrap(),
         )
         .unwrap();
-    assert!(stats.reserve_workspace(&small, raw.byte_len()).is_err());
+    assert!(stats.reserve_streaming_workspace(&small).is_err());
     assert_eq!(
         store.snapshot().live_streams,
         1,
@@ -483,25 +483,24 @@ fn replay_ingress_decode_workspace_is_charged_to_the_shared_budget_and_released(
     let stats =
         crate::content_ref::scan_ingress_document(store.reader(&raw).expect("raw scanner reader"))
             .expect("scan ingress structure");
-    let workspace = stats
-        .reserve_workspace(&store, raw.byte_len())
-        .expect("reserve decode workspace");
+    let (mut document, mut workspace) = crate::content_ref::parse_ingress_document(
+        crate::server::request_plan::IngressProtocol::Responses,
+        &store,
+        &raw,
+        stats,
+    )
+    .expect("streaming ingress decode");
     let charged = stream_budget.snapshot().expect("charged snapshot");
     assert!(
-        charged.role_live[MemoryRole::ModelIrBacking as usize] >= body.len() * 2,
-        "the full Value/copy transient must be charged before serde allocation"
+        charged.role_peak[MemoryRole::ModelIrBacking as usize] >= stats.max_string_bytes,
+        "serde's largest-string scratch must be charged during decode"
     );
 
-    let mut document: serde_json::Value = {
-        let mut reader = store.reader(&raw).expect("raw decode reader");
-        let document = serde_json::from_reader(&mut reader).expect("decode JSON");
-        reader.verify_terminal().expect("raw terminal");
-        document
-    };
-    crate::content_ref::compact_ingress_document(
+    crate::content_ref::compact_ingress_document_with_markers(
         crate::server::request_plan::IngressProtocol::Responses,
         &mut document,
         &store,
+        workspace.generated_markers(),
     )
     .expect("compact large ingress field");
     let content = crate::content_ref::ContentRef::from_wire_marker(

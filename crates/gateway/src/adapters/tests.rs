@@ -39,6 +39,325 @@ fn exact_state_profile(
 use hiroute_gateway_core::runtime::body::BudgetTree;
 
 #[test]
+fn native_tool_history_keeps_model_generated_non_json_arguments() {
+    let raw = "{\"status\":\"paused\"<tool_call>";
+    for ingress in [IngressProtocol::Responses, IngressProtocol::ChatCompletions] {
+        let body = match ingress {
+            IngressProtocol::Responses => json!({
+                "model":"alias",
+                "input":[
+                    {"type":"function_call","call_id":"call-1","name":"update_goal","arguments":raw},
+                    {"type":"function_call_output","call_id":"call-1","output":"invalid arguments"},
+                    {"type":"message","role":"user","content":[
+                        {"type":"input_text","text":"Continue without that tool"}
+                    ]}
+                ]
+            }),
+            IngressProtocol::ChatCompletions => json!({
+                "model":"alias",
+                "messages":[
+                    {"role":"assistant","tool_calls":[{"id":"call-1","type":"function",
+                        "function":{"name":"update_goal","arguments":raw}}]},
+                    {"role":"tool","tool_call_id":"call-1","content":"invalid arguments"},
+                    {"role":"user","content":"Continue without that tool"}
+                ]
+            }),
+            IngressProtocol::Messages => unreachable!(),
+        };
+        let mut request = decode_ingress_request(ingress, &body).expect("native tool history");
+        request.tools.push(CanonicalTool {
+            kind: ToolKindV1::Function,
+            name: "update_goal".into(),
+            description: None,
+            input_schema: Some(json!({"type":"object"})),
+            strict: None,
+            format: None,
+        });
+        assert!(matches!(
+            &request.messages[0].content[0],
+            ContentPart::ToolCall { arguments, raw_arguments: Some(actual), .. }
+                if arguments.is_null() && actual == raw
+        ));
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            ingress,
+            ingress,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        let projected = project_candidate_request(&request, &profile)
+            .expect("native protocol preserves the model's argument string");
+        match ingress {
+            IngressProtocol::Responses => assert_eq!(projected.body["input"][0]["arguments"], raw),
+            IngressProtocol::ChatCompletions => assert_eq!(
+                projected.body["messages"][0]["tool_calls"][0]["function"]["arguments"],
+                raw
+            ),
+            IngressProtocol::Messages => unreachable!(),
+        }
+    }
+}
+
+#[test]
+fn malformed_tool_arguments_above_inline_limit_replay_exactly() {
+    let raw = format!("{{\"status\":\"paused\"{}", "<tool_call>".repeat(1400));
+    let mut request = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({
+            "model":"alias",
+            "input":[{"type":"function_call","call_id":"call-1",
+                "name":"update_goal","arguments":raw}]
+        }),
+    )
+    .expect("native model output can contain incomplete JSON");
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-raw-tool-replay-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    let manager = ReplayManager::open(ReplayConfig {
+        root: root.clone(),
+        memory_threshold_bytes: 128,
+        record_bytes: 31,
+        orphan_ttl: std::time::Duration::from_secs(60),
+    })
+    .expect("replay manager");
+    let budget = BudgetTree::new(4 * 1024 * 1024, 4 * 1024 * 1024)
+        .expect("budget tree")
+        .stream(4 * 1024 * 1024)
+        .expect("stream budget");
+    let store = manager.begin_request(budget.clone()).expect("replay store");
+    externalize_model_request(&mut request, &store, 16).expect("externalize raw arguments");
+    assert!(matches!(
+        &request.messages[0].content[0],
+        ContentPart::ToolCall { raw_arguments: Some(value), .. }
+            if crate::content_ref::ContentValueExt::content_ref(value.as_str()).is_some()
+    ));
+    let profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let template =
+        project_candidate_request_template(&request, &profile).expect("bounded native template");
+    store
+        .prevalidate(&model_content_refs(&request))
+        .expect("replay ref");
+    let mut reader = sequential_attempt_body(template, store.clone(), &budget, 127)
+        .expect("sequential native body");
+    let mut bytes = Vec::new();
+    while let Some(chunk) = reader.next_chunk().expect("replay chunk") {
+        bytes.extend_from_slice(chunk.bytes());
+    }
+    let body: serde_json::Value = serde_json::from_slice(&bytes).expect("native JSON body");
+    assert_eq!(body["input"][0]["arguments"], raw);
+    drop((reader, store, manager));
+    fs_err_remove_dir(&root);
+}
+
+#[test]
+fn messages_ingress_accepts_claude_compaction_after_tool_roundtrip() {
+    let owner = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages)
+        .exact_provider_path()
+        .unwrap();
+    let body = json!({
+        "model": "alias",
+        "max_tokens": 1024,
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "high"},
+        "context_management": {
+            "edits": [{"type": "clear_thinking_20251015", "keep": "all"}]
+        },
+        "messages": [
+            {"role": "user", "content": "run a tool"},
+            {"role": "assistant", "content": [
+                {"type": "thinking", "thinking": "plan", "signature": "opaque-state"},
+                {"type": "tool_use", "id": "tool-1", "name": "Bash",
+                 "input": {"command": "pwd"}}
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tool-1", "content": "workdir"}
+            ]},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "tool-2", "name": "Bash",
+                 "input": {"command": "printf stage-2"},
+                 "cache_control": {"type": "ephemeral"}}
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tool-2", "content": "stage-2"}
+            ]}
+        ]
+    });
+    let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
+    let request = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &body,
+        &IngressRequestBindings {
+            provider_state_owner: Some(owner),
+        },
+    )
+    .expect("Claude compaction request should retain tool semantics");
+    assert_eq!(request.messages.len(), 5);
+    assert!(matches!(
+        &request.messages[3].content[0],
+        ContentPart::ToolCall { logical_id, name, .. }
+            if logical_id == "tool-2" && name == "Bash"
+    ));
+    let projected = project_candidate_request(&request, &profile).unwrap();
+    assert_eq!(projected.body["messages"][3]["content"][0]["id"], "tool-2");
+    assert!(
+        projected.body["messages"][3]["content"][0]
+            .get("cache_control")
+            .is_none()
+    );
+
+    let mut unsupported = body;
+    unsupported["messages"][3]["content"][0]["cache_control"]["type"] = json!("persistent");
+    let error = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &unsupported,
+        &IngressRequestBindings {
+            provider_state_owner: profile.exact_provider_path().ok(),
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(error, ModelIrError::UnsupportedValue(_)));
+}
+
+#[test]
+fn messages_signed_thinking_crosses_provider_without_mutation_but_not_protocol() {
+    let mut origin = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
+    origin.capability.native_model = "origin-glm".into();
+    let mut target = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
+    target.capability.native_model = "target-luna".into();
+    let request = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &json!({
+            "model":"alias", "max_tokens":128,
+            "messages":[{"role":"assistant","content":[
+                {"type":"thinking","thinking":"signed notes","signature":"opaque-glm"}
+            ]},{"role":"user","content":"continue"}]
+        }),
+        &IngressRequestBindings {
+            provider_state_owner: Some(origin.exact_provider_path().unwrap()),
+        },
+    )
+    .unwrap();
+    let projected = project_candidate_request(&request, &target).unwrap();
+    assert_eq!(
+        projected.body["messages"][0]["content"][0],
+        json!({"type":"thinking","thinking":"signed notes","signature":"opaque-glm"})
+    );
+
+    let responses = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
+    assert!(matches!(
+        project_candidate_request(&request, &responses),
+        Err(ProtocolAdapterError::ClientUnrepresentable(_))
+    ));
+}
+
+#[test]
+fn responses_ciphertext_in_messages_wrapper_can_try_another_messages_provider() {
+    let mut original = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
+    original.capability.native_model = "luna".into();
+    let mut switched = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
+    switched.capability.native_model = "glm".into();
+    let request = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &json!({
+            "model":"alias", "max_tokens":128,
+            "messages":[
+                {"role":"assistant","content":[
+                    {"type":"thinking","thinking":"compressed context summary","signature":"opaque-luna"}
+                ]},
+                {"role":"user","content":"continue"}
+            ]
+        }),
+        &IngressRequestBindings {
+            provider_state_owner: original.exact_provider_path().ok(),
+        },
+    )
+    .unwrap();
+    let switched_body = project_candidate_request(&request, &switched).unwrap().body;
+    assert_eq!(
+        switched_body["messages"][0]["content"][0],
+        json!({"type":"thinking","thinking":"compressed context summary","signature":"opaque-luna"})
+    );
+    let original_body = project_candidate_request(&request, &original).unwrap().body;
+    assert_eq!(
+        original_body["input"][0]["encrypted_content"],
+        "opaque-luna"
+    );
+    assert_eq!(
+        original_body["input"][0]["summary"][0]["text"],
+        "compressed context summary"
+    );
+}
+
+#[test]
+fn long_responses_ciphertext_rebuilds_the_same_messages_wrapper_after_externalization() {
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-messages-wrapper-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    let manager = ReplayManager::open(ReplayConfig {
+        root: root.clone(),
+        memory_threshold_bytes: 128,
+        record_bytes: 31,
+        orphan_ttl: std::time::Duration::from_secs(60),
+    })
+    .unwrap();
+    let budget =
+        hiroute_gateway_core::runtime::body::BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024)
+            .unwrap()
+            .stream(4 * 1024 * 1024)
+            .unwrap();
+    let replay = manager.begin_request(budget.clone()).unwrap();
+    let origin = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
+    let target = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
+    let signature = "ciphertext-🙂".repeat(1000);
+    let thinking = "compacted summary 🙂".repeat(1000);
+    let mut request = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &json!({"model":"alias","max_tokens":128,"messages":[
+            {"role":"assistant","content":[
+                {"type":"thinking","thinking":thinking,"signature":signature}
+            ]},
+            {"role":"user","content":"continue"}
+        ]}),
+        &IngressRequestBindings {
+            provider_state_owner: origin.exact_provider_path().ok(),
+        },
+    )
+    .unwrap();
+    externalize_model_request(&mut request, &replay, 8 * 1024).unwrap();
+    let template = project_candidate_request_template(&request, &target).unwrap();
+    replay.prevalidate(&model_content_refs(&request)).unwrap();
+    let mut reader = sequential_attempt_body(template, replay.clone(), &budget, 257).unwrap();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = reader.next_chunk().unwrap() {
+        bytes.extend_from_slice(chunk.bytes());
+    }
+    let projected: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(projected["messages"][0]["content"][0]["thinking"], thinking);
+    assert_eq!(
+        projected["messages"][0]["content"][0]["signature"],
+        signature
+    );
+    reader.release();
+    drop(replay);
+    drop(manager);
+    fs_err_remove_dir(&root);
+}
+
+#[test]
 fn protocol_ingress_rejects_every_unmodeled_field() {
     let error = decode_ingress_request(
         IngressProtocol::Responses,
@@ -570,7 +889,7 @@ data: {"type":"response.completed","response":{"id":"r","model":"physical","stat
 }
 
 #[test]
-fn messages_thinking_signature_replays_as_responses_reasoning_item_in_order() {
+fn messages_thinking_and_signature_replay_as_responses_reasoning_in_order() {
     let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
     let owner = profile.exact_provider_path().unwrap();
     let request = decode_ingress_request_with_bindings(
@@ -582,7 +901,7 @@ fn messages_thinking_signature_replays_as_responses_reasoning_item_in_order() {
                 "role":"assistant",
                 "content":[
                     {"type":"text","text":"before"},
-                    {"type":"thinking","thinking":"not replayed","signature":"opaque-replay"},
+                    {"type":"thinking","thinking":"summary text","signature":"opaque-replay"},
                     {"type":"text","text":"after"}
                 ]
             }]
@@ -597,10 +916,130 @@ fn messages_thinking_signature_replays_as_responses_reasoning_item_in_order() {
         projected.body["input"],
         json!([
             {"type":"message","role":"assistant","content":[{"type":"output_text","text":"before"}]},
-            {"type":"reasoning","summary":[],"content":null,"encrypted_content":"opaque-replay"},
+            {"type":"reasoning","summary":[{"type":"summary_text","text":"summary text"}],"content":null,"encrypted_content":"opaque-replay"},
             {"type":"message","role":"assistant","content":[{"type":"output_text","text":"after"}]}
         ])
     );
+}
+
+#[test]
+fn responses_state_wrapper_preserves_plaintext_and_rejects_malformed_thinking() {
+    let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
+    let valid = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &json!({
+            "model":"alias",
+            "max_tokens":128,
+            "messages":[{"role":"assistant","content":[
+                {"type":"thinking","thinking":"preserve me","signature":"opaque-replay"}
+            ]}]
+        }),
+        &IngressRequestBindings {
+            provider_state_owner: profile.exact_provider_path().ok(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        project_candidate_request(&valid, &profile).unwrap().body["input"][0]["summary"][0]["text"],
+        "preserve me"
+    );
+    let error = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &json!({"model":"alias","max_tokens":128,"messages":[{
+            "role":"assistant","content":[
+                {"type":"thinking","thinking":42,"signature":"opaque-replay"}
+            ]
+        }]}),
+        &IngressRequestBindings {
+            provider_state_owner: profile.exact_provider_path().ok(),
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(error, ModelIrError::InvalidField("thinking")));
+}
+
+#[test]
+fn long_native_continuation_bytes_reach_upstream_after_ingress_compaction() {
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-native-state-replay-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    let manager = ReplayManager::open(ReplayConfig {
+        root: root.clone(),
+        memory_threshold_bytes: 128,
+        record_bytes: 31,
+        orphan_ttl: std::time::Duration::from_secs(60),
+    })
+    .expect("replay manager");
+    let tree = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024).expect("budget tree");
+    let opaque = "encrypted-state-中🙂".repeat(1_000);
+    let summary = "summary-\\\"\n中".repeat(1_000);
+    let thinking = "thinking-\\\"\n中".repeat(1_000);
+    for protocol in [IngressProtocol::Responses, IngressProtocol::Messages] {
+        let budget = tree.stream(4 * 1024 * 1024).expect("stream budget");
+        let store = manager.begin_request(budget.clone()).expect("replay store");
+        let profile = exact_state_profile(protocol, protocol);
+        let owner = profile.exact_provider_path().expect("state owner");
+        let mut document = match protocol {
+            IngressProtocol::Responses => json!({
+                "model":"alias",
+                "input":[
+                    {"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]},
+                    {"type":"reasoning","summary":[{"type":"summary_text","text":summary}],"encrypted_content":opaque}
+                ]
+            }),
+            IngressProtocol::Messages => json!({
+                "model":"alias", "max_tokens":128,
+                "messages":[{"role":"assistant","content":[
+                    {"type":"thinking","thinking":thinking,"signature":opaque}
+                ]}]
+            }),
+            IngressProtocol::ChatCompletions => unreachable!(),
+        };
+        compact_ingress_document(protocol, &mut document, &store).expect("compact ingress");
+        let mut request = decode_ingress_request_with_bindings(
+            protocol,
+            &document,
+            &IngressRequestBindings {
+                provider_state_owner: Some(owner),
+            },
+        )
+        .expect("decode native state");
+        externalize_model_request(&mut request, &store, 8 * 1024)
+            .expect("externalize complete native state");
+        let template = project_candidate_request_template(&request, &profile)
+            .expect("native request template");
+        store
+            .prevalidate(&model_content_refs(&request))
+            .expect("validate replay refs");
+        let mut reader = sequential_attempt_body(template, store.clone(), &budget, 257)
+            .expect("upstream body reader");
+        let mut bytes = Vec::new();
+        while let Some(chunk) = reader.next_chunk().expect("body chunk") {
+            bytes.extend_from_slice(chunk.bytes());
+        }
+        let projected: serde_json::Value = serde_json::from_slice(&bytes).expect("upstream JSON");
+        match protocol {
+            IngressProtocol::Responses => {
+                assert_eq!(projected["input"][1]["encrypted_content"], opaque);
+                assert_eq!(projected["input"][1]["summary"][0]["text"], summary);
+            }
+            IngressProtocol::Messages => {
+                assert_eq!(projected["messages"][0]["content"][0]["signature"], opaque);
+                assert_eq!(projected["messages"][0]["content"][0]["thinking"], thinking);
+            }
+            IngressProtocol::ChatCompletions => unreachable!(),
+        }
+        reader.release();
+        drop(store);
+        assert_eq!(budget.snapshot().expect("released replay").live, 0);
+    }
+    drop(manager);
+    fs_err_remove_dir(&root);
 }
 
 #[test]

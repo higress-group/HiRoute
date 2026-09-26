@@ -1,8 +1,8 @@
 {
   "schema_version": "hiroute.planner-complexity-golden/v1",
   "strategy_digest": "sha256:52538aba36f48b47ae2de6cdb7060e84138c7d3093ae9908e05021f26d0bf5da",
-  "planner_input_digest": "sha256:fb43642d52e5a5cd960b9399d2aadd196bcd7034f535750611bae8dbfe9b5436",
-  "planner_output_digest": "sha256:d307b125d55628b67427375785ee5db9c7b782fd3d7f80ce9af3b9bf091bb0c6",
+  "planner_input_digest": "sha256:dcebf5538f03436ae61c6c1ff64514d0e34ca6b75b851f8c1ddc712826631a69",
+  "planner_output_digest": "sha256:c1b6a79b65cc1a440af6dac32c9150496b4285a4b84b3c01f003c54862d7127b",
   "cases": [
     {
       "id": "readme-responses",

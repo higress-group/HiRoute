@@ -630,6 +630,7 @@ def run(repository):
             'mode': 'fixed_model',
             'candidates': [{'binding_id': binding_id}],
             'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+                      'reselect_on_user_message': False,
                       'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
             'free': {'candidates': [], 'primary': [], 'primary_fallback': False},
             'delegation_enabled': False,

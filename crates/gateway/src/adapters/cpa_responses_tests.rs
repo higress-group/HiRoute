@@ -192,9 +192,10 @@ fn assert_replay_to_owner(input: Vec<Value>) {
         } else {
             other.connector.entitlement_id = "different-account".into();
         }
+        let projected = project_candidate_request(&request, &other).unwrap();
         assert_eq!(
-            project_candidate_request(&request, &other).unwrap_err(),
-            ProtocolAdapterError::ModelIr(ModelIrError::ProviderStateNotPortable),
+            projected.body["input"][0]["encrypted_content"],
+            "synthetic-final-state"
         );
     }
 }

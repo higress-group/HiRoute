@@ -83,21 +83,55 @@ fn append_and_repeat_keep_while_rebuild_clears() {
     let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
     let now = Instant::now();
     let first = begin(&store, 1, 9, &[1], now).unwrap();
-    assert!(!first.history_continues);
+    assert!(!first.message_history_continues);
+    assert!(first.previous_success.is_none());
     assert_eq!(
         store.complete(&first, preference("a"), now),
         HoldCompleteOutcome::Applied
     );
 
     let appended = begin(&store, 1, 9, &[1, 2], now + Duration::from_secs(1)).unwrap();
-    assert!(appended.history_continues);
+    assert!(appended.message_history_continues);
     assert_eq!(appended.hint.as_ref().unwrap().candidate_id, "a");
+    assert_eq!(
+        appended.previous_success.as_ref().unwrap().candidate_id,
+        "a"
+    );
     let repeated = begin(&store, 1, 9, &[1, 2], now + Duration::from_secs(2)).unwrap();
-    assert!(repeated.history_continues);
+    assert!(repeated.message_history_continues);
     assert_eq!(repeated.hint.as_ref().unwrap().candidate_id, "a");
-    let rebuilt = begin(&store, 1, 9, &[1, 3], now + Duration::from_secs(3)).unwrap();
-    assert!(!rebuilt.history_continues);
+    let changed_instructions = begin(&store, 1, 10, &[1, 2], now + Duration::from_secs(3)).unwrap();
+    assert!(changed_instructions.message_history_continues);
+    assert!(changed_instructions.hint.is_none());
+    assert_eq!(
+        changed_instructions.previous_success.unwrap().candidate_id,
+        "a"
+    );
+    let rebuilt = begin(&store, 1, 10, &[1, 3], now + Duration::from_secs(4)).unwrap();
+    assert!(!rebuilt.message_history_continues);
     assert!(rebuilt.hint.is_none());
+    assert!(rebuilt.previous_success.is_none());
+}
+
+#[test]
+fn rebuilt_history_exposes_only_prior_complete_delivery_for_fallback() {
+    let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
+    let now = Instant::now();
+    let first = begin(&store, 1, 9, &[1], now).unwrap();
+    let without_success = begin(&store, 1, 9, &[2], now + Duration::from_secs(1)).unwrap();
+    assert!(without_success.previous_success.is_none());
+    assert_eq!(
+        store.complete(&without_success, preference("luna"), now),
+        HoldCompleteOutcome::Applied
+    );
+    let compacted = begin(&store, 1, 9, &[3], now + Duration::from_secs(2)).unwrap();
+    assert!(!compacted.message_history_continues);
+    assert!(compacted.hint.is_none());
+    assert_eq!(compacted.previous_success.unwrap().candidate_id, "luna");
+    assert_eq!(
+        store.complete(&first, preference("stale"), now),
+        HoldCompleteOutcome::Stale
+    );
 }
 
 #[test]

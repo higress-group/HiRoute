@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
+use hiroute_gateway_core::core::execution_plan::ResolvedTargetBindingId;
 use hiroute_gateway_core::core::filter::LocalReply;
 use hiroute_gateway_core::runtime::attempt::{
     AcceptBlockedReason, AttemptId, Disposition, PublishedDisposition,
@@ -32,6 +33,7 @@ pub struct ProductionDecisionSession {
     credential_index: usize,
     overall_deadline: Instant,
     hold: Option<(Arc<ContextHoldStore>, HoldCompletion)>,
+    switch_fallback: Option<ResolvedTargetBindingId>,
     temporary_block_seen: bool,
     probe_busy_seen: bool,
     earliest_retry_at: Option<Instant>,
@@ -129,6 +131,11 @@ impl DecisionSessionPort for ProductionDecisionSession {
     ) -> Result<Disposition, Arc<str>> {
         self.upstream_attempted |= selected.attempt_id.0 != 0;
         if facts.retryability != RetryabilityFact::Retryable {
+            if facts.error_class.is_some() && self.can_switch_fallback(selected) {
+                self.ensure_selected_matches_cursor(selected)?;
+                self.advance_candidate();
+                return Ok(Disposition::Continue);
+            }
             return Ok(if facts.error_class.is_some() {
                 Disposition::Terminate
             } else {
@@ -191,6 +198,11 @@ impl DecisionSessionPort for ProductionDecisionSession {
             .as_ref()
             .is_none_or(|provider| provider.retryability != RetryabilityFact::Retryable)
         {
+            if failure.request_committed && self.can_switch_fallback(selected) {
+                self.ensure_selected_matches_cursor(selected)?;
+                self.advance_candidate();
+                return Ok(Disposition::Continue);
+            }
             return Ok(Disposition::Terminate);
         }
         self.ensure_selected_matches_cursor(selected)?;
@@ -284,6 +296,18 @@ impl SelectionPublicationPort<ProductionRouteContext> for ProductionSelection {
             return Err(Arc::from("authorized candidate order is inconsistent"));
         }
         let route_context = request.route_context;
+        if route_context.switch_fallback.is_some_and(|fallback| {
+            candidates
+                .first()
+                .is_none_or(|first| first.binding == fallback)
+                || candidates
+                    .get(1)
+                    .is_none_or(|second| second.binding != fallback)
+        }) {
+            return Err(Arc::from(
+                "switch fallback is outside the frozen second candidate",
+            ));
+        }
         Ok(ProductionDecisionSession {
             request_id: request.request_id,
             route_decision_id: RouteDecisionId(request.request_id.0),
@@ -294,6 +318,7 @@ impl SelectionPublicationPort<ProductionRouteContext> for ProductionSelection {
             hold: route_context
                 .hold_completion
                 .map(|completion| (route_context.context_holds, completion)),
+            switch_fallback: route_context.switch_fallback,
             temporary_block_seen: false,
             probe_busy_seen: false,
             earliest_retry_at: None,
@@ -304,6 +329,20 @@ impl SelectionPublicationPort<ProductionRouteContext> for ProductionSelection {
 }
 
 impl ProductionDecisionSession {
+    fn can_switch_fallback(&self, selected: &SelectedGatewayAttempt) -> bool {
+        selected.attempt_id.0 != 0
+            && self.candidate_index == 0
+            && self.switch_fallback.is_some_and(|fallback| {
+                self.candidates
+                    .get(1)
+                    .is_some_and(|candidate| candidate.binding == fallback)
+            })
+            && self
+                .candidates
+                .first()
+                .is_some_and(|candidate| candidate.binding == selected.binding)
+    }
+
     fn ensure_selected_matches_cursor(
         &self,
         selected: &SelectedGatewayAttempt,
@@ -405,6 +444,7 @@ mod tests {
             credential_index: 0,
             overall_deadline: now + Duration::from_secs(10),
             hold: None,
+            switch_fallback: None,
             temporary_block_seen: false,
             probe_busy_seen: false,
             earliest_retry_at: None,
@@ -468,6 +508,7 @@ mod tests {
             credential_index: 0,
             overall_deadline: now + Duration::from_secs(1),
             hold: None,
+            switch_fallback: None,
             temporary_block_seen: false,
             probe_busy_seen: false,
             earliest_retry_at: None,
@@ -511,6 +552,72 @@ mod tests {
     }
 
     #[test]
+    fn switched_candidate_precommit_400_falls_back_to_previous_once() {
+        let now = Instant::now();
+        let realtime_facts = RealtimeRoutingFacts::default();
+        let mut session = session(
+            now,
+            vec![candidate(1, &["new-key"]), candidate(2, &["original-key"])],
+        );
+        session.switch_fallback = Some(ResolvedTargetBindingId::new(PlanRevision(1), 2));
+        let mut selected = session
+            .select_next(selection_request(now, 1, 2, &realtime_facts))
+            .unwrap()
+            .unwrap();
+        // The core promotes the candidate after pre-exchange materialization.
+        selected.attempt_id = AttemptId(1);
+        let rejected = ProviderClassificationFacts {
+            error_class: Some(ObservationLabel::new("permanent_client").unwrap()),
+            retryability: RetryabilityFact::NonRetryable,
+            http_status: Some(StatusCode::BAD_REQUEST),
+            ..ProviderClassificationFacts::default()
+        };
+        assert_eq!(
+            session
+                .decide(
+                    &selected,
+                    &rejected,
+                    &AttemptTransportFacts {
+                        started_at: now,
+                        connect_elapsed: None,
+                        request_write_elapsed: None,
+                        upstream_ttfb: None,
+                        last_upstream_progress_at: None,
+                        local_read_suppressed: Duration::ZERO,
+                        upstream_body_bytes: 0,
+                        timeout: None,
+                    }
+                )
+                .unwrap(),
+            Disposition::Continue
+        );
+        let original = session
+            .select_next(selection_request(now, 2, 1, &realtime_facts))
+            .unwrap()
+            .unwrap();
+        assert_eq!(original.binding.local_id(), 2);
+        assert_eq!(
+            session
+                .decide(
+                    &original,
+                    &rejected,
+                    &AttemptTransportFacts {
+                        started_at: now,
+                        connect_elapsed: None,
+                        request_write_elapsed: None,
+                        upstream_ttfb: None,
+                        last_upstream_progress_at: None,
+                        local_read_suppressed: Duration::ZERO,
+                        upstream_body_bytes: 0,
+                        timeout: None,
+                    }
+                )
+                .unwrap(),
+            Disposition::Terminate
+        );
+    }
+
+    #[test]
     fn unknown_or_nonretryable_materialization_never_advances_selection() {
         let now = Instant::now();
         let selected = SelectedGatewayAttempt {
@@ -534,6 +641,7 @@ mod tests {
             credential_index: 0,
             overall_deadline: now + Duration::from_secs(1),
             hold: None,
+            switch_fallback: None,
             temporary_block_seen: false,
             probe_busy_seen: false,
             earliest_retry_at: None,
@@ -568,6 +676,55 @@ mod tests {
             assert_eq!(session.candidate_index, 0);
             assert_eq!(session.credential_index, 0);
         }
+    }
+
+    #[test]
+    fn switched_provisional_nonretryable_failure_does_not_call_previous_model() {
+        let now = Instant::now();
+        let realtime_facts = RealtimeRoutingFacts::default();
+        let mut session = session(
+            now,
+            vec![candidate(1, &["new-key"]), candidate(2, &["original-key"])],
+        );
+        session.switch_fallback = Some(ResolvedTargetBindingId::new(PlanRevision(1), 2));
+        let selected = session
+            .select_next(selection_request(now, 1, 2, &realtime_facts))
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected.attempt_id, AttemptId(0));
+
+        let mut failure = materialization_failure(now, "materialization_fail_closed", None);
+        failure.provider.as_mut().unwrap().retryability = RetryabilityFact::NonRetryable;
+        assert_eq!(
+            session.decide_failure(&selected, &failure).unwrap(),
+            Disposition::Terminate
+        );
+        assert_eq!(session.candidate_index, 0);
+    }
+
+    #[test]
+    fn switched_promoted_preexchange_failure_does_not_call_previous_model() {
+        let now = Instant::now();
+        let realtime_facts = RealtimeRoutingFacts::default();
+        let mut session = session(
+            now,
+            vec![candidate(1, &["new-key"]), candidate(2, &["original-key"])],
+        );
+        session.switch_fallback = Some(ResolvedTargetBindingId::new(PlanRevision(1), 2));
+        let mut selected = session
+            .select_next(selection_request(now, 1, 2, &realtime_facts))
+            .unwrap()
+            .unwrap();
+        selected.attempt_id = AttemptId(1);
+
+        let mut failure = materialization_failure(now, "preexchange_filter_failure", None);
+        failure.provider.as_mut().unwrap().retryability = RetryabilityFact::NonRetryable;
+        assert!(!failure.request_committed);
+        assert_eq!(
+            session.decide_failure(&selected, &failure).unwrap(),
+            Disposition::Terminate
+        );
+        assert_eq!(session.candidate_index, 0);
     }
 
     #[test]

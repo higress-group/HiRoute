@@ -92,6 +92,7 @@ fn smart_fallback_off_keeps_primary_exclusively_for_complex_requests() {
         economy: vec![selection("economy-b"), selection("economy-a")],
         primary: vec![selection("primary-b"), selection("primary-a")],
         primary_fallback: false,
+        reselect_on_user_message: false,
         classifier: ComplexityClassifierModeV1::LocalRules,
         complex_keywords: vec!["complex".into()],
     };
@@ -117,6 +118,7 @@ fn smart_rest_classifier_is_preserved_in_the_materialized_route() {
         economy: vec![selection("economy-a")],
         primary: vec![selection("primary-a")],
         primary_fallback: false,
+        reselect_on_user_message: false,
         classifier: ComplexityClassifierModeV1::Rest {
             endpoint: "https://classifier.example/v1/branch".into(),
             timeout_ms: hiroute_domain::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS,
@@ -138,6 +140,42 @@ fn smart_rest_classifier_is_preserved_in_the_materialized_route() {
         ComplexityClassifierModeV1::Rest { endpoint, .. }
             if endpoint == "https://classifier.example/v1/branch"
     ));
+}
+
+#[test]
+fn follow_up_reselection_is_published_and_changes_route_digest() {
+    let mut desired = desired();
+    desired.mode = PlanEditorMode::SmartSaving;
+    desired.strategy = AgentPlanStrategyV2::SmartSaving {
+        economy: vec![selection("economy-a")],
+        primary: vec![selection("primary-a")],
+        primary_fallback: false,
+        reselect_on_user_message: false,
+        classifier: ComplexityClassifierModeV1::LocalRules,
+        complex_keywords: Vec::new(),
+    };
+    let before = compile(&desired, &compilation_facts()).unwrap();
+    let AgentPlanStrategyV2::SmartSaving {
+        reselect_on_user_message,
+        ..
+    } = &mut desired.strategy
+    else {
+        unreachable!()
+    };
+    *reselect_on_user_message = true;
+    let after = compile(&desired, &compilation_facts()).unwrap();
+    assert_ne!(
+        before.body.materialized_route_digest,
+        after.body.materialized_route_digest
+    );
+    assert!(matches!(
+        after.body.materialized.request_owned,
+        RequestOwnedRouteV1::Classified {
+            reselect_on_user_message: true,
+            ..
+        }
+    ));
+    PlanVersionV1::new(WorkspaceId::default(), desired, after).unwrap();
 }
 
 #[test]

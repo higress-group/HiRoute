@@ -26,9 +26,12 @@ mod stream;
 mod windows_acl;
 
 pub use stream::ReplayReader;
+pub(crate) use stream::write_canonical_json;
 use stream::{ReplayStream, ReplayStreamBuilder};
 
-const DEFAULT_MEMORY_THRESHOLD: usize = 10 * 1024 * 1024;
+// Spill before a single large JSON string and serde's decode scratch can
+// compete for the same 8 MiB request memory budget.
+const DEFAULT_MEMORY_THRESHOLD: usize = 1024 * 1024;
 const DEFAULT_RECORD_BYTES: usize = 16 * 1024;
 const DEFAULT_ORPHAN_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const STREAM_METADATA_BYTES: usize = 1024;

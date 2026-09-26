@@ -351,6 +351,7 @@ fn custom_input(
         classification_decision: None,
         classification_facts: None,
         context_hold: None,
+        previous_success_candidate_id: None,
         policy,
         candidates,
     }
@@ -422,9 +423,14 @@ fn planner_frozen_ledger_covers_capability_context_reasoning_and_bytes() {
         ),
         "Planner input and output digests must be resealed together"
     );
-    assert_eq!(
-        expected.ledger.evaluations[1].first_exclusion,
-        Some(ExclusionReasonCodeV1::ContextTooLarge)
+    assert!(expected.ledger.evaluations[1].eligible);
+    assert!(
+        expected.ledger.evaluations[1]
+            .context
+            .as_ref()
+            .unwrap()
+            .required_total
+            > 356
     );
     assert_eq!(
         expected.ledger.evaluations[2].first_exclusion,

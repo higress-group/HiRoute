@@ -11,10 +11,10 @@ use crate::ports::{
     ProbeLeaseOutcome, RuntimeStateEntry, RuntimeStateKey,
 };
 use crate::server::core_runtime::adapters;
-use crate::server::core_runtime::model_ir::{ContentPart, ModelIrError, ModelRequestIRV1};
+use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use crate::server::core_runtime::profiles::{
-    CandidateProtocolProfile, CapabilityError, ContextProjectionError, CostClassV1,
-    ExclusionReasonCodeV1, PLANNER_INPUT_SCHEMA, PlannerCandidateFactsV1, PlannerInputV1,
+    CandidateProtocolProfile, CapabilityError, CostClassV1, ExclusionReasonCodeV1,
+    PLANNER_INPUT_SCHEMA, PlannerCandidateFactsV1, PlannerInputV1,
 };
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
@@ -237,6 +237,7 @@ fn build_planner_input(
         classification_decision: None,
         classification_facts: None,
         context_hold: None,
+        previous_success_candidate_id: None,
         policy,
         candidates: facts,
     })
@@ -310,14 +311,17 @@ fn project_candidate_facts(
                 exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
             })
         }
-        Err(adapters::ProtocolAdapterError::Context(
-            ContextProjectionError::InputTooLarge { .. }
-            | ContextProjectionError::TotalTooLarge { .. },
+        Err(adapters::ProtocolAdapterError::Capability(
+            CapabilityError::ProviderStateUnsupported
+            | CapabilityError::StateAffinityUnsupported
+            | CapabilityError::NativeProviderStateUnrepresentable,
         )) => Ok(CandidateProjectionFacts {
-            // A valid request may exceed one candidate's limit. Let Planner
-            // exclude that candidate rather than failing the whole input.
             target_serialized_bytes: 1,
-            exclusion: Some(ExclusionReasonCodeV1::ContextTooLarge),
+            exclusion: Some(ExclusionReasonCodeV1::OpaqueStateUnportable),
+        }),
+        Err(adapters::ProtocolAdapterError::Capability(_)) => Ok(CandidateProjectionFacts {
+            target_serialized_bytes: 1,
+            exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
         }),
         Err(_) => Err(PortError::Rejected),
     }
@@ -327,48 +331,7 @@ fn project_candidate_facts_template(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
 ) -> Result<adapters::PreparedNativeTemplate, adapters::ProtocolAdapterError> {
-    match adapters::project_candidate_request_template(request, profile) {
-        Ok(projected) => Ok(projected),
-        Err(
-            error @ adapters::ProtocolAdapterError::ModelIr(ModelIrError::ProviderStateNotPortable),
-        ) => {
-            let exact_owner = profile.exact_provider_path()?;
-            // Size opaque state without changing Planner's original owner facts.
-            let mut sizing_request = request.clone();
-            let mut mismatched = false;
-            for owner in sizing_request
-                .provider_state
-                .iter_mut()
-                .map(|state| &mut state.owner)
-                .chain(
-                    sizing_request
-                        .instructions
-                        .iter_mut()
-                        .flat_map(|instruction| instruction.content.iter_mut())
-                        .chain(
-                            sizing_request
-                                .messages
-                                .iter_mut()
-                                .flat_map(|message| message.content.iter_mut()),
-                        )
-                        .filter_map(|part| match part {
-                            ContentPart::ProviderState { state } => Some(&mut state.owner),
-                            _ => None,
-                        }),
-                )
-            {
-                if *owner != exact_owner {
-                    mismatched = true;
-                    *owner = exact_owner.clone();
-                }
-            }
-            if !mismatched {
-                return Err(error);
-            }
-            adapters::project_candidate_request_template(&sizing_request, profile)
-        }
-        Err(error) => Err(error),
-    }
+    adapters::project_candidate_request_template(request, profile)
 }
 
 impl RuntimePublicationFeed for GatewayPublicationInstaller {
@@ -759,7 +722,7 @@ mod sizing_tests {
     use serde_json::json;
 
     #[test]
-    fn non_owner_sizing_preserves_request_and_rejects_unrelated_errors() {
+    fn cross_owner_sizing_preserves_request_and_rejects_unrelated_errors() {
         let mut owner = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
             IngressProtocol::Responses,
@@ -783,7 +746,7 @@ mod sizing_tests {
         let before = serde_json::to_value(&request).unwrap();
         assert!(project_candidate_facts_template(&request, &other).is_ok());
         assert_eq!(serde_json::to_value(&request).unwrap(), before);
-        assert!(adapters::project_candidate_request_template(&request, &other).is_err());
+        assert!(adapters::project_candidate_request_template(&request, &other).is_ok());
         request
             .responses_reasoning_history
             .get_mut(&0)
@@ -791,6 +754,55 @@ mod sizing_tests {
             .encrypted_content =
             crate::server::core_runtime::model_ir::ResponsesReasoningEncryptedContentV1::Absent;
         assert!(project_candidate_facts_template(&request, &other).is_err());
+    }
+
+    #[test]
+    fn opaque_responses_state_excludes_messages_candidate_without_blocking_owner() {
+        let mut owner = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "luna",
+            fixed_reasoning("fixed"),
+        );
+        owner.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        owner.capability.request.provider_state = Fidelity::Exact;
+        owner.capability.request.state_affinity = StateAffinity::ExactOwner;
+        owner.capability.response.provider_state = Fidelity::Exact;
+        owner.capability.response.state_affinity = StateAffinity::ExactOwner;
+        let messages = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Messages,
+            "glm-5.3",
+            fixed_reasoning("fixed"),
+        );
+        let request = adapters::decode_ingress_request_with_bindings(
+            IngressProtocol::Responses,
+            &json!({
+                "model": "route",
+                "input": [
+                    {"type": "reasoning", "summary": [], "encrypted_content": "opaque-state"},
+                    {"type": "message", "role": "user", "content": [
+                        {"type": "input_text", "text": "compact this conversation"}
+                    ]}
+                ]
+            }),
+            &adapters::IngressRequestBindings {
+                provider_state_owner: Some(owner.exact_provider_path().unwrap()),
+            },
+        )
+        .unwrap();
+
+        let excluded = project_candidate_facts(&request, &messages).unwrap();
+        assert_eq!(
+            excluded.exclusion,
+            Some(ExclusionReasonCodeV1::OpaqueStateUnportable)
+        );
+        assert!(
+            project_candidate_facts(&request, &owner)
+                .unwrap()
+                .exclusion
+                .is_none()
+        );
     }
 
     #[test]
@@ -825,7 +837,7 @@ mod sizing_tests {
     }
 
     #[test]
-    fn oversized_codex_instructions_and_tools_exclude_candidate_not_planner_input() {
+    fn conservative_context_estimate_does_not_exclude_codex_instructions_or_tools() {
         let mut profile = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
             IngressProtocol::Responses,
@@ -856,11 +868,9 @@ mod sizing_tests {
             let request = adapters::decode_ingress_request(IngressProtocol::Responses, &body)
                 .expect("valid Codex-shaped request");
             let facts = project_candidate_facts(&request, &profile)
-                .expect("candidate-specific context mismatch must not fail Planner input");
-            assert_eq!(
-                facts.exclusion,
-                Some(ExclusionReasonCodeV1::ContextTooLarge)
-            );
+                .expect("local token estimate must not reject a valid request");
+            assert_eq!(facts.exclusion, None);
+            assert!(facts.target_serialized_bytes > 4096);
         }
     }
 }

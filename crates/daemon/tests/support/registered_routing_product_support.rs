@@ -52,7 +52,7 @@ pub async fn publish(
             "purpose": "Use a saved registered model without legacy projection",
             "mode": "fixed_model",
             "candidates": [{"binding_id": model.binding_id}],
-            "smart": {"economy": [], "primary": [], "primary_fallback": false, "classifier": {"kind":"local_rules"}, "complex_keywords": []},
+            "smart": {"economy": [], "primary": [], "primary_fallback": false, "reselect_on_user_message": false, "classifier": {"kind":"local_rules"}, "complex_keywords": []},
             "free": {"candidates": [], "primary": [], "primary_fallback": false},
             "delegation_enabled": false,
             "requirements": {"tool": true, "streaming": true, "minimum_context_tokens": 4096, "minimum_output_tokens": 1024},

@@ -1896,8 +1896,8 @@
         },
         {
           "capabilities": {
-            "context_tokens": 131072,
-            "max_output_tokens": 8192,
+            "context_tokens": 1000000,
+            "max_output_tokens": 131072,
             "streaming": true,
             "tool": true,
             "vision": false
@@ -97141,8 +97141,8 @@
       "source_catalog_digest": "sha256:268c1e399789e74eaa88caa2db22aa9c5b5285f3f4d1f0cd4aaabe182698d22a"
     },
     "rating_snapshot": {
-      "digest": "sha256:92eb5556b5042ea0d2a3b9a918880fb1ccb3cc632c12a1b0d4cc3e52304efc7d",
-      "model_catalog_digest": "sha256:45745a5f1a3ad55f170c1dca0410905a428db0dd56f3c856e680699a94f39283",
+      "digest": "sha256:6e742e9ba3c0940bf0adea6cf2d340bde8fe8b1ff3d3460e721af5a6f211796e",
+      "model_catalog_digest": "sha256:e796713d7fe81527ec9b070698d40112b8bc02637a1b3e895ce22fe320f6f4df",
       "models": [
         {
           "capability": {

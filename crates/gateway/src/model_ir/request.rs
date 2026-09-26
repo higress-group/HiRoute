@@ -280,6 +280,10 @@ pub enum ContentPart {
         namespace: Option<ContentValue>,
         name: ContentValue,
         arguments: Value,
+        /// Native Responses/Chat can carry model-generated, non-JSON argument text.
+        /// When present, this is the sole argument value; `arguments` is null.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        raw_arguments: Option<ContentValue>,
     },
     ToolResult {
         logical_id: String,
@@ -424,6 +428,10 @@ pub struct OpaqueProviderState {
     pub block_index: Option<u32>,
     pub kind: String,
     pub value: Value,
+    /// Plain thinking text that accompanied a Responses ciphertext in a
+    /// Messages wrapper. Kept separately so both native wires remain exact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages_thinking: Option<ContentValue>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

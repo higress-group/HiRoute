@@ -25,11 +25,13 @@ pub(super) fn validate_execution(
                     economy,
                     primary,
                     primary_fallback,
+                    reselect_on_user_message,
                     classifier: classifier_mode,
                     complex_keywords,
                 },
                 RequestOwnedRouteV1::Classified {
                     classifier,
+                    reselect_on_user_message: materialized_reselect,
                     simple_groups,
                     complex_groups,
                 },
@@ -40,6 +42,7 @@ pub(super) fn validate_execution(
                     vec![G::Economy]
                 };
                 if simple_groups != &expected
+                    || reselect_on_user_message != materialized_reselect
                     || complex_groups != &[G::Primary]
                     || classifier
                         != &crate::ComplexityClassifierV1::with_mode(

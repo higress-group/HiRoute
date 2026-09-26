@@ -54,10 +54,11 @@ fn definitions() -> Value {
             "economy",
             "primary",
             "primary_fallback",
+            "reselect_on_user_message",
             "classifier",
             "complex_keywords",
         ],
-        json!({"economy":reference("candidates"),"primary":reference("candidates"),"primary_fallback":{"type":"boolean"},"classifier":classifier,"complex_keywords":{"type":"array","maxItems":64,"items":{"type":"string","maxLength":64}}}),
+        json!({"economy":reference("candidates"),"primary":reference("candidates"),"primary_fallback":{"type":"boolean"},"reselect_on_user_message":{"type":"boolean"},"classifier":classifier,"complex_keywords":{"type":"array","maxItems":64,"items":{"type":"string","maxLength":64}}}),
     );
     let free = object(
         &["candidates", "primary", "primary_fallback"],

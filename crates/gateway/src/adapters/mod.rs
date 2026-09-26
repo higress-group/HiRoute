@@ -54,6 +54,9 @@ impl ProtocolAdapterError {
             Self::ModelIr(ModelIrError::ResponsesPreviousResponseIdUnsupported) => {
                 "RESPONSES_PREVIOUS_RESPONSE_ID_UNSUPPORTED"
             }
+            Self::ModelIr(ModelIrError::ResponsesConversationUnsupported) => {
+                "RESPONSES_CONVERSATION_UNSUPPORTED"
+            }
             Self::ModelIr(_) => "PROTOCOL_SEMANTICS_UNSUPPORTED",
             Self::Capability(CapabilityError::ProtocolPathUnavailable) => {
                 "PROTOCOL_PATH_UNAVAILABLE"
@@ -65,8 +68,6 @@ impl ProtocolAdapterError {
             Self::Capability(_) => "PROTOCOL_CAPABILITY_UNSUPPORTED",
             Self::Context(ContextProjectionError::UnknownLimit(_))
             | Self::Context(ContextProjectionError::UnknownEstimator) => "CONTEXT_LIMIT_UNKNOWN",
-            Self::Context(ContextProjectionError::InputTooLarge { .. })
-            | Self::Context(ContextProjectionError::TotalTooLarge { .. }) => "CONTEXT_TOO_LARGE",
             Self::Context(ContextProjectionError::ArithmeticOverflow) => "CONTEXT_LIMIT_UNKNOWN",
             Self::Serialization(_) => "PROTOCOL_SERIALIZATION_FAILED",
             Self::ClientUnrepresentable(_) => "CLIENT_PROTOCOL_UNREPRESENTABLE",

@@ -33,6 +33,7 @@ pub struct SmartEditorV2 {
     pub economy: Vec<CandidateSelectionV1>,
     pub primary: Vec<CandidateSelectionV1>,
     pub primary_fallback: bool,
+    pub reselect_on_user_message: bool,
     pub classifier: ComplexityClassifierModeV1,
     pub complex_keywords: Vec<String>,
 }
@@ -131,6 +132,7 @@ impl PlanEditorStateV2 {
                 economy: self.smart.economy.clone(),
                 primary: self.smart.primary.clone(),
                 primary_fallback: self.smart.primary_fallback,
+                reselect_on_user_message: self.smart.reselect_on_user_message,
                 classifier: self.smart.classifier.clone(),
                 complex_keywords: self.smart.complex_keywords.clone(),
             },
@@ -184,6 +186,7 @@ pub enum AgentPlanStrategyV2 {
         economy: Vec<CandidateSelectionV1>,
         primary: Vec<CandidateSelectionV1>,
         primary_fallback: bool,
+        reselect_on_user_message: bool,
         classifier: ComplexityClassifierModeV1,
         complex_keywords: Vec<String>,
     },

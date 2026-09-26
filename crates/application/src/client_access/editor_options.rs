@@ -310,6 +310,7 @@ mod tests {
                 economy: Vec::new(),
                 primary: Vec::new(),
                 primary_fallback: false,
+                reselect_on_user_message: false,
                 classifier: ComplexityClassifierModeV1::LocalRules,
                 complex_keywords: Vec::new(),
             },

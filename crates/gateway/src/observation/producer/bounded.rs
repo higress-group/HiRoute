@@ -29,7 +29,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-const RECORD_ACCOUNTING_BYTES: usize = 128;
+pub(super) const RECORD_ACCOUNTING_BYTES: usize = 128;
 const MAX_PENDING_LOSS_RANGES: usize = 16;
 const LOSS_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const GAP_RETRY_INITIAL_BACKOFF: Duration = Duration::from_millis(1);
