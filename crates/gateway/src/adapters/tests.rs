@@ -39,6 +39,75 @@ fn exact_state_profile(
 use hiroute_gateway_core::runtime::body::BudgetTree;
 
 #[test]
+fn messages_ingress_accepts_claude_compaction_after_tool_roundtrip() {
+    let owner = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages)
+        .exact_provider_path()
+        .unwrap();
+    let body = json!({
+        "model": "alias",
+        "max_tokens": 1024,
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "high"},
+        "context_management": {
+            "edits": [{"type": "clear_thinking_20251015", "keep": "all"}]
+        },
+        "messages": [
+            {"role": "user", "content": "run a tool"},
+            {"role": "assistant", "content": [
+                {"type": "thinking", "thinking": "plan", "signature": "opaque-state"},
+                {"type": "tool_use", "id": "tool-1", "name": "Bash",
+                 "input": {"command": "pwd"}}
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tool-1", "content": "workdir"}
+            ]},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "tool-2", "name": "Bash",
+                 "input": {"command": "printf stage-2"},
+                 "cache_control": {"type": "ephemeral"}}
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tool-2", "content": "stage-2"}
+            ]}
+        ]
+    });
+    let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
+    let request = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &body,
+        &IngressRequestBindings {
+            provider_state_owner: Some(owner),
+        },
+    )
+    .expect("Claude compaction request should retain tool semantics");
+    assert_eq!(request.messages.len(), 5);
+    assert!(matches!(
+        &request.messages[3].content[0],
+        ContentPart::ToolCall { logical_id, name, .. }
+            if logical_id == "tool-2" && name == "Bash"
+    ));
+    let projected = project_candidate_request(&request, &profile).unwrap();
+    assert_eq!(projected.body["messages"][3]["content"][0]["id"], "tool-2");
+    assert!(
+        projected.body["messages"][3]["content"][0]
+            .get("cache_control")
+            .is_none()
+    );
+
+    let mut unsupported = body;
+    unsupported["messages"][3]["content"][0]["cache_control"]["type"] = json!("persistent");
+    let error = decode_ingress_request_with_bindings(
+        IngressProtocol::Messages,
+        &unsupported,
+        &IngressRequestBindings {
+            provider_state_owner: profile.exact_provider_path().ok(),
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(error, ModelIrError::UnsupportedValue(_)));
+}
+
+#[test]
 fn protocol_ingress_rejects_every_unmodeled_field() {
     let error = decode_ingress_request(
         IngressProtocol::Responses,

@@ -621,9 +621,10 @@ fn decode_messages_content(
         "tool_use" => {
             ensure_keys(
                 object,
-                &["type", "id", "name", "input"],
+                &["type", "id", "name", "input", "cache_control"],
                 "messages tool_use",
             )?;
+            validate_messages_cache_control(object.get("cache_control"))?;
             Ok(ContentPart::ToolCall {
                 logical_id: required_string(object, "id")?,
                 tool_kind: ToolKindV1::Function,
