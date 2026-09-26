@@ -146,6 +146,7 @@ def publish_plan(product, binding_id, protocol):
         'purpose': 'Exercise native usage through the product Gateway',
         'mode': 'fixed_model', 'candidates': [{'binding_id': binding_id}],
         'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+                  'reselect_on_user_message': False,
                   'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
         'free': {'candidates': [], 'primary': [], 'primary_fallback': False},
         'delegation_enabled': False, 'requirements': {},

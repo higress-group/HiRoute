@@ -43,7 +43,7 @@ use crate::server::request_plan::{
 // The body plan carries no additional protocol byte limit.
 const LOGICAL_BODY_LIMIT: usize = usize::MAX;
 const FRAME_LIMIT: usize = 64 * 1024;
-const DEFAULT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(20);
+const DEFAULT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Clone, Debug)]
 pub(crate) struct CompiledAlias {
@@ -521,8 +521,12 @@ fn compile_execution(
     let primary = candidates[0];
     let logical = Arc::new(CompiledLogicalRequestPlan {
         filters: Arc::new([]),
-        body_plan: BodyPlan::BufferedTransform {
-            max_body_bytes: LOGICAL_BODY_LIMIT,
+        // The production ingress already sealed the complete raw request in
+        // Replay and decoded its canonical IR. Core only consumes that raw
+        // stream to verify framing; buffering it again defeats disk spill.
+        body_plan: BodyPlan::StreamingReplay {
+            max_chunk_bytes: FRAME_LIMIT,
+            max_replay_bytes: LOGICAL_BODY_LIMIT,
         },
         config_cell_ids: Arc::new([]),
         chunk_capacity: 64,
@@ -758,6 +762,7 @@ fn compile_routing(
     let (route, complexity, cost_policy) = match &routing.request_owned {
         AliasRequestOwnedRouteV1::Classified {
             classifier,
+            reselect_on_user_message,
             simple_groups,
             complex_groups,
         } => {
@@ -795,6 +800,7 @@ fn compile_routing(
                     simple_group_id,
                     simple_fallback_group_ids: simple.into_iter().skip(1).collect(),
                     complex_group_id,
+                    reselect_on_user_message: *reselect_on_user_message,
                 },
                 Some(
                     ComplexityV1::compile_with_classifier(

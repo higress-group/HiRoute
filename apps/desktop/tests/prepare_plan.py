@@ -141,7 +141,7 @@ try:
  before_plan_decodes=diagnostic_decode_count(ROOT) if BENCHMARK else 0
  editor={'schema':'hiroute.plan-editor/v2','display_name':'Desktop acceptance A','purpose':'Desktop isolated reversible rename','mode':'fixed_model',
          'candidates':[{'binding_id':binding['binding_id']}], 'delegation_enabled':False,
-         'smart':{'economy':[],'primary':[],'primary_fallback':False,'classifier':{'kind':'local_rules'},'complex_keywords':[]},
+         'smart':{'economy':[],'primary':[],'primary_fallback':False,'reselect_on_user_message':False,'classifier':{'kind':'local_rules'},'complex_keywords':[]},
          'free':{'candidates':[],'primary':[],'primary_fallback':False},'requirements':{},
          'limits':{'maximum_attempts':1,'request_timeout_ms':30000,'attempt_timeout_ms':30000}}
  durations_ms=[]

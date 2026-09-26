@@ -537,6 +537,7 @@ fn responses_chat_tools_snapshot(
                 agent_plan_id: "responses-chat-tools-plan".into(),
                 plan_display_name: Some("Responses Chat tools".into()),
                 request_owned: AliasRequestOwnedRouteV1::Classified {
+                    reselect_on_user_message: false,
                     classifier: AliasComplexityClassifierV1 {
                         revision: "responses-chat-tools-complexity/v1".into(),
                         mode: hiroute_domain::ComplexityClassifierModeV1::LocalRules,

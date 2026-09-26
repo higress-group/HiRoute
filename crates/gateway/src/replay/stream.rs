@@ -775,8 +775,8 @@ impl Write for ReplayRangeSink<'_> {
     }
 }
 
-fn write_canonical_json(
-    writer: &mut ReplayRangeSink<'_>,
+pub(crate) fn write_canonical_json(
+    writer: &mut impl Write,
     value: &serde_json::Value,
 ) -> std::io::Result<()> {
     match value {

@@ -220,6 +220,7 @@ impl RequestObservation {
                     namespace,
                     name,
                     arguments,
+                    raw_arguments,
                     ..
                 } => {
                     self.append_inline(
@@ -253,14 +254,26 @@ impl RequestObservation {
                         name,
                     )?;
                     part_ordinal = part_ordinal.saturating_add(1);
-                    self.append_json(
-                        replay,
-                        message_ordinal,
-                        part_ordinal,
-                        role,
-                        "tool_call_arguments",
-                        arguments,
-                    )?;
+                    if let Some(raw) = raw_arguments {
+                        self.append_value(
+                            replay,
+                            message_ordinal,
+                            part_ordinal,
+                            role,
+                            "tool_call_arguments",
+                            "text/plain; charset=utf-8",
+                            raw,
+                        )?;
+                    } else {
+                        self.append_json(
+                            replay,
+                            message_ordinal,
+                            part_ordinal,
+                            role,
+                            "tool_call_arguments",
+                            arguments,
+                        )?;
+                    }
                 }
                 ContentPart::ToolResult {
                     logical_id,

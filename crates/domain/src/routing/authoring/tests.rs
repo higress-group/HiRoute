@@ -4,7 +4,7 @@ fn editor() -> PlanEditorStateV2 {
     serde_json::from_value(serde_json::json!({
         "schema": PLAN_EDITOR_SCHEMA_V2, "display_name": "代码整理", "purpose": "整理代码",
         "mode": "fixed_model", "candidates": [{"binding_id":"binding/a"}],
-        "smart": {"economy":[],"primary":[],"primary_fallback":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
+        "smart": {"economy":[],"primary":[],"primary_fallback":false,"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
         "free": {"candidates":[],"primary":[],"primary_fallback":false},
         "delegation_enabled": false,
         "requirements":{}, "limits":{"maximum_attempts":6,"request_timeout_ms":60000,"attempt_timeout_ms":30000}
@@ -71,6 +71,7 @@ fn smart_and_free_fallback_are_explicit_and_disabled_groups_are_parked() {
 fn smart_rest_classifier_survives_editor_to_authoring_projection() {
     let mut draft = editor();
     draft.mode = PlanEditorMode::SmartSaving;
+    draft.smart.reselect_on_user_message = true;
     draft.smart.economy = draft.candidates.clone();
     draft.smart.primary = draft.candidates.clone();
     draft.smart.classifier = ComplexityClassifierModeV1::Rest {
@@ -82,10 +83,18 @@ fn smart_rest_classifier_survives_editor_to_authoring_projection() {
         }),
     };
     let effective = draft.effective().unwrap();
+    assert!(
+        effective
+            .editor(None)
+            .unwrap()
+            .smart
+            .reselect_on_user_message
+    );
     assert!(matches!(
         effective.strategy,
         AgentPlanStrategyV2::SmartSaving {
             classifier: ComplexityClassifierModeV1::Rest { endpoint, .. },
+            reselect_on_user_message: true,
             ..
         } if endpoint == "https://classifier.example/v1/branch"
     ));

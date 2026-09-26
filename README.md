@@ -30,8 +30,9 @@ sources, reusable routing plans, agent connections, bounded failover, and execut
 into one system, available through a Desktop application or a headless CLI and daemon.
 
 It is not a proxy that swaps models on every tool call. HiRoute keeps a selected branch stable
-through an execution stage, then chooses again at a natural boundary—such as new user input or
-the context rebuild that follows compaction. This preserves reusable prefixes within a stage
+through an execution stage. Smart saving plans keep the current model for ordinary follow-ups by
+default; an operator can enable re-selection on each follow-up. A context rebuild after compaction
+can also start a new decision. This preserves reusable prefixes within a stage
 and makes model switching friendly to provider KV caches.
 
 ## Why HiRoute
@@ -95,9 +96,10 @@ real product components. It demonstrates the UI states and is not a model benchm
 
 ![Jev decision flow: one request selects the next branch and optionally assesses the prior stage](decision-extensions/assets/jev-decision-en.svg)
 
-A routing execution round begins with one branch decision. Ordinary tool continuations keep
-that decision while the current context remains reusable. HiRoute decides again when a new user
-request changes the work, or when a long session compacts and rebuilds its context. The routing
+A routing execution round begins with a branch decision or inherits the previous one for a new
+user message. Ordinary tool continuations stay in the current round while the context remains
+reusable. With follow-up re-selection enabled, a new user message asks for another decision.
+HiRoute also decides again when a long session rebuilds its context. The routing
 engine determines whether a decision can be inherited; clients do not need to emit a separate
 compaction event. A provider or model failure can still use the plan's bounded fallback inside
 the round; fallback is distinct from a new classification decision.

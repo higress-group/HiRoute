@@ -1,6 +1,7 @@
 //! Process-local provenance for native ciphertext actually accepted downstream.
 //! The store retains only a digest and exact owner; it never rewrites ciphertext.
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -8,7 +9,12 @@ use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget}
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::server::core_runtime::model_ir::{ExactProviderPathV1, ModelIrError};
+use crate::content_ref::ContentRef;
+use crate::replay::ReplayStore;
+
+use crate::server::core_runtime::model_ir::{
+    ContentPart, ExactProviderPathV1, ModelIrError, ModelRequestIRV1,
+};
 use crate::server::request_plan::IngressProtocol;
 
 const CAPACITY: usize = 4096;
@@ -31,6 +37,74 @@ pub(crate) struct ProviderStateStore(Mutex<BTreeMap<Key, Entry>>);
 struct Entry {
     owner: Option<ExactProviderPathV1>,
     expires: Instant,
+}
+
+#[derive(Default, Debug, PartialEq)]
+pub(crate) struct ResolvedProviderStates {
+    owners: BTreeMap<[u8; 32], ExactProviderPathV1>,
+}
+
+impl ResolvedProviderStates {
+    pub(crate) fn decode_owner(&self, ingress: IngressProtocol) -> Option<&ExactProviderPathV1> {
+        self.owners
+            .values()
+            .find(|owner| owner.upstream_protocol == ingress)
+            .or_else(|| self.owners.values().next())
+    }
+
+    pub(crate) fn owner_for(&self, value: &str) -> Option<&ExactProviderPathV1> {
+        self.owners.get(&digest(value))
+    }
+
+    pub(crate) fn bind_request(&self, request: &mut ModelRequestIRV1) -> Result<(), ModelIrError> {
+        if self.owners.is_empty() {
+            return Ok(());
+        }
+        for state in request
+            .messages
+            .iter_mut()
+            .flat_map(|message| message.content.iter_mut())
+            .filter_map(|part| match part {
+                ContentPart::ProviderState { state } => Some(state),
+                _ => None,
+            })
+        {
+            let value = match state.kind.as_str() {
+                "encrypted_content" => state.value.as_str(),
+                "thinking" => state.value.get("signature").and_then(Value::as_str),
+                "redacted_thinking" => state.value.get("data").and_then(Value::as_str),
+                _ => None,
+            };
+            let Some(value) = value else {
+                continue;
+            };
+            let owner = self
+                .owner_for(value)
+                .ok_or(ModelIrError::ProviderStateOwnershipRequired)?;
+            if owner.upstream_protocol != request.ingress_protocol
+                && !(request.ingress_protocol == IngressProtocol::Messages
+                    && owner.upstream_protocol == IngressProtocol::Responses)
+            {
+                return Err(ModelIrError::ProviderStateNotPortable);
+            }
+            state.owner = owner.clone();
+            if request.ingress_protocol == IngressProtocol::Messages
+                && owner.upstream_protocol == IngressProtocol::Responses
+                && state.kind == "thinking"
+            {
+                let thinking = state
+                    .value
+                    .get("thinking")
+                    .and_then(Value::as_str)
+                    .ok_or(ModelIrError::InvalidField("thinking"))?
+                    .to_owned();
+                state.kind = "encrypted_content".into();
+                state.messages_thinking = Some(thinking);
+                state.value = Value::String(value.to_owned());
+            }
+        }
+        Ok(())
+    }
 }
 
 impl ProviderStateStore {
@@ -61,16 +135,23 @@ impl ProviderStateStore {
         );
     }
 
-    pub(crate) fn resolve(
+    #[cfg(test)]
+    fn resolve(
         &self,
         scope: &ProviderStateScopeV1,
         document: &Value,
         now: Instant,
-    ) -> Result<Option<ExactProviderPathV1>, ModelIrError> {
-        let mut entries = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        entries.retain(|_, entry| entry.expires > now);
-        let mut owner = None;
-        let mut resolved_keys = Vec::new();
+    ) -> Result<ResolvedProviderStates, ModelIrError> {
+        self.resolve_with_replay(scope, document, None, now)
+    }
+
+    pub(crate) fn resolve_with_replay(
+        &self,
+        scope: &ProviderStateScopeV1,
+        document: &Value,
+        replay: Option<&ReplayStore>,
+        now: Instant,
+    ) -> Result<ResolvedProviderStates, ModelIrError> {
         let states = document
             .get("input")
             .and_then(Value::as_array)
@@ -87,9 +168,18 @@ impl ProviderStateStore {
                     .filter(|message| message["role"] == "assistant")
                     .filter_map(|message| message.get("content").and_then(Value::as_array))
                     .flatten()
-                    .filter(|block| block["type"] == "thinking")
-                    .map(|block| block.get("signature")),
+                    .filter(|block| {
+                        matches!(
+                            block["type"].as_str(),
+                            Some("thinking" | "redacted_thinking")
+                        )
+                    })
+                    .map(|block| match block["type"].as_str() {
+                        Some("thinking") => block.get("signature"),
+                        _ => block.get("data"),
+                    }),
             );
+        let mut requested = Vec::new();
         for value in states {
             let state = match value {
                 None | Some(Value::Null) => continue,
@@ -97,7 +187,42 @@ impl ProviderStateStore {
                 Some(Value::String(state)) => state,
                 Some(_) => return Err(ModelIrError::InvalidField("encrypted_content")),
             };
-            let key = (scope.clone(), digest(state));
+            let state_digest = match ContentRef::from_wire_marker(state) {
+                Some(reference)
+                    if replay.is_some_and(|replay| replay.has_reference(&reference)) =>
+                {
+                    let mut reader = replay
+                        .expect("checked above")
+                        .reader(&reference)
+                        .map_err(|_| ModelIrError::ProviderStateOwnershipRequired)?;
+                    let mut hash = Sha256::new();
+                    let mut buffer = [0_u8; 16 * 1024];
+                    loop {
+                        let size = reader
+                            .read(&mut buffer)
+                            .map_err(|_| ModelIrError::ProviderStateOwnershipRequired)?;
+                        if size == 0 {
+                            break;
+                        }
+                        hash.update(&buffer[..size]);
+                    }
+                    reader
+                        .verify_terminal()
+                        .map_err(|_| ModelIrError::ProviderStateOwnershipRequired)?;
+                    hash.finalize().into()
+                }
+                _ => digest(state),
+            };
+            requested.push((digest(state), state_digest));
+        }
+        // Replay may be disk-backed. Never read it while holding the shared
+        // provenance lock; only the exact lookup and renew need serialization.
+        let mut entries = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        entries.retain(|_, entry| entry.expires > now);
+        let mut resolved = ResolvedProviderStates::default();
+        let mut resolved_keys = Vec::new();
+        for (decode_digest, state_digest) in requested {
+            let key = (scope.clone(), state_digest);
             let entry = entries
                 .get(&key)
                 .ok_or(ModelIrError::ProviderStateOwnershipRequired)?;
@@ -105,10 +230,9 @@ impl ProviderStateStore {
                 .owner
                 .as_ref()
                 .ok_or(ModelIrError::ProviderStateNotPortable)?;
-            if owner.as_ref().is_some_and(|current| current != next) {
-                return Err(ModelIrError::ProviderStateNotPortable);
-            }
-            owner = Some(next.clone());
+            // Decode sees the compact request-local marker, while ownership
+            // was recorded for the original bytes accepted downstream.
+            resolved.owners.insert(decode_digest, next.clone());
             resolved_keys.push(key);
         }
         // Renew only after the entire replay passes ownership validation.
@@ -118,7 +242,7 @@ impl ProviderStateStore {
                 .expect("resolved entry remains locked")
                 .expires = now + IDLE_TTL;
         }
-        Ok(owner)
+        Ok(resolved)
     }
 }
 
@@ -333,7 +457,10 @@ impl AcceptedProviderStateScanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
+    use crate::server::core_runtime::profiles::{
+        CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, StateAffinity,
+        fixed_reasoning,
+    };
     use crate::server::request_plan::IngressProtocol;
     use serde_json::json;
 
@@ -364,6 +491,54 @@ mod tests {
 
     fn request(state: &str) -> Value {
         json!({"input":[{"type":"reasoning","encrypted_content":state}]})
+    }
+
+    #[test]
+    fn replay_backed_ciphertext_resolves_against_the_original_accepted_bytes() {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-state-replay-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = crate::replay::ReplayManager::open(crate::replay::ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: 1024 * 1024,
+            record_bytes: 16 * 1024,
+            orphan_ttl: Duration::from_secs(60),
+        })
+        .unwrap();
+        let budget =
+            hiroute_gateway_core::runtime::body::BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024)
+                .unwrap()
+                .stream(8 * 1024 * 1024)
+                .unwrap();
+        let replay = manager.begin_request(budget.clone()).unwrap();
+        let ciphertext = "opaque".repeat(750_000);
+        let state_store = Arc::new(ProviderStateStore::default());
+        let now = Instant::now();
+        let active =
+            ActiveProviderStates::new(state_store.clone(), scope(), IngressProtocol::Responses);
+        active.record(&json!(ciphertext), &owner("luna")).unwrap();
+        active.scanner().accept_bytes(
+            json!({"encrypted_content":ciphertext})
+                .to_string()
+                .as_bytes(),
+            now,
+        );
+        let marker = replay
+            .store_content(ciphertext.as_bytes())
+            .unwrap()
+            .wire_marker();
+        let resolved = state_store
+            .resolve_with_replay(&scope(), &request(&marker), Some(&replay), now)
+            .unwrap();
+        assert_eq!(resolved.owner_for(&marker), Some(&owner("luna")));
+        assert!(budget.snapshot().unwrap().peak <= 8 * 1024 * 1024);
+        drop((active, resolved, replay, manager));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -425,8 +600,11 @@ mod tests {
             now,
         );
         assert_eq!(
-            store.resolve(&scope(), &replay, now).unwrap(),
-            Some(owner("luna"))
+            store
+                .resolve(&scope(), &replay, now)
+                .unwrap()
+                .owner_for(&state),
+            Some(&owner("luna"))
         );
     }
 
@@ -450,8 +628,11 @@ mod tests {
             scanner.accept_bytes(part, now);
         }
         assert_eq!(
-            store.resolve(&scope(), &replay, now).unwrap(),
-            Some(owner("luna"))
+            store
+                .resolve(&scope(), &replay, now)
+                .unwrap()
+                .owner_for("combined-signature"),
+            Some(&owner("luna"))
         );
     }
 
@@ -476,8 +657,11 @@ mod tests {
             scanner.accept_bytes(part, now);
         }
         assert_eq!(
-            store.resolve(&scope(), &replay, now).unwrap(),
-            Some(owner("luna"))
+            store
+                .resolve(&scope(), &replay, now)
+                .unwrap()
+                .owner_for("luna-state"),
+            Some(&owner("luna"))
         );
         let mut foreign = scope();
         foreign.grant_generation += 1;
@@ -503,8 +687,11 @@ mod tests {
             scanner.accept_bytes(byte, now);
         }
         assert_eq!(
-            store.resolve(&scope(), &request(state), now).unwrap(),
-            Some(owner("luna"))
+            store
+                .resolve(&scope(), &request(state), now)
+                .unwrap()
+                .owner_for(state),
+            Some(&owner("luna"))
         );
         let mut foreign = scope();
         foreign.grant_generation += 1;
@@ -518,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_owners_and_conflicting_producers_do_not_gain_authority() {
+    fn mixed_verified_owners_are_distinct_and_conflicting_producers_do_not_gain_authority() {
         let store = Arc::new(ProviderStateStore::default());
         let now = Instant::now();
         for (value, model) in [("one", "luna"), ("two", "terra")] {
@@ -531,10 +718,32 @@ mod tests {
             );
         }
         let mixed = json!({"input":[{"type":"reasoning","encrypted_content":"one"},{"type":"reasoning","encrypted_content":"two"}]});
-        assert_eq!(
-            store.resolve(&scope(), &mixed, now),
-            Err(ModelIrError::ProviderStateNotPortable)
-        );
+        let resolved = store.resolve(&scope(), &mixed, now).unwrap();
+        assert_eq!(resolved.owner_for("one"), Some(&owner("luna")));
+        assert_eq!(resolved.owner_for("two"), Some(&owner("terra")));
+        let mut decoded = crate::server::core_runtime::adapters::decode_ingress_request_with_bindings(
+            IngressProtocol::Responses,
+            &json!({"model":"route","input":[
+                {"type":"reasoning","summary":[],"encrypted_content":"one"},
+                {"type":"reasoning","summary":[],"encrypted_content":"two"},
+                {"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
+            ]}),
+            &crate::server::core_runtime::adapters::IngressRequestBindings {
+                provider_state_owner: resolved.decode_owner(IngressProtocol::Responses).cloned(),
+            },
+        )
+        .unwrap();
+        resolved.bind_request(&mut decoded).unwrap();
+        let owners = decoded
+            .messages
+            .iter()
+            .flat_map(|message| &message.content)
+            .filter_map(|part| match part {
+                ContentPart::ProviderState { state } => Some(state.owner.native_model.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(owners, vec!["luna", "terra"]);
         let active = ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
         active.record(&json!("one"), &owner("terra")).unwrap();
         active
@@ -553,8 +762,88 @@ mod tests {
             scanner.accept_bytes(chunk, now);
         }
         assert_eq!(
-            store.resolve(&scope(), &request(&large), now).unwrap(),
-            Some(owner("luna"))
+            store
+                .resolve(&scope(), &request(&large), now)
+                .unwrap()
+                .owner_for(&large),
+            Some(&owner("luna"))
+        );
+    }
+
+    #[test]
+    fn mixed_messages_and_responses_signatures_keep_each_original_protocol() {
+        let store = Arc::new(ProviderStateStore::default());
+        let now = Instant::now();
+        let messages_owner = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Messages,
+            IngressProtocol::Messages,
+            "glm",
+            fixed_reasoning("fixed"),
+        )
+        .exact_provider_path()
+        .unwrap();
+        for (signature, source) in [
+            ("responses-state", owner("luna")),
+            ("messages-state", messages_owner.clone()),
+        ] {
+            let active =
+                ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Messages);
+            active.record(&json!(signature), &source).unwrap();
+            active
+                .scanner()
+                .accept_bytes(json!({"signature":signature}).to_string().as_bytes(), now);
+        }
+        let document = json!({"model":"route","max_tokens":128,"messages":[
+            {"role":"assistant","content":[
+                {"type":"thinking","thinking":"luna summary","signature":"responses-state"},
+                {"type":"thinking","thinking":"model notes","signature":"messages-state"}
+            ]},
+            {"role":"user","content":"continue"}
+        ]});
+        let resolved = store.resolve(&scope(), &document, now).unwrap();
+        let mut decoded =
+            crate::server::core_runtime::adapters::decode_ingress_request_with_bindings(
+                IngressProtocol::Messages,
+                &document,
+                &crate::server::core_runtime::adapters::IngressRequestBindings {
+                    provider_state_owner: resolved.decode_owner(IngressProtocol::Messages).cloned(),
+                },
+            )
+            .unwrap();
+        resolved.bind_request(&mut decoded).unwrap();
+        let states = decoded.messages[0]
+            .content
+            .iter()
+            .filter_map(|part| match part {
+                ContentPart::ProviderState { state } => Some(state),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(states[0].owner, owner("luna"));
+        assert_eq!(states[0].kind, "encrypted_content");
+        assert_eq!(states[0].messages_thinking.as_deref(), Some("luna summary"));
+        assert_eq!(states[1].owner, messages_owner);
+        assert_eq!(states[1].kind, "thinking");
+        let mut target = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Messages,
+            IngressProtocol::Messages,
+            "new-glm",
+            fixed_reasoning("fixed"),
+        );
+        target.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        target.capability.request.provider_state = Fidelity::Exact;
+        target.capability.request.state_affinity = StateAffinity::ExactOwner;
+        target.capability.response.provider_state = Fidelity::Exact;
+        target.capability.response.state_affinity = StateAffinity::ExactOwner;
+        let projected =
+            crate::server::core_runtime::adapters::project_candidate_request(&decoded, &target)
+                .unwrap();
+        assert_eq!(
+            projected.body["messages"][0]["content"],
+            json!([
+                {"type":"thinking","thinking":"luna summary","signature":"responses-state"},
+                {"type":"thinking","thinking":"model notes","signature":"messages-state"}
+            ])
         );
     }
 
@@ -575,8 +864,9 @@ mod tests {
                         &request("state"),
                         now + Duration::from_secs(minutes * 60)
                     )
-                    .unwrap(),
-                Some(owner("luna")),
+                    .unwrap()
+                    .owner_for("state"),
+                Some(&owner("luna"))
             );
         }
         assert_eq!(
@@ -593,20 +883,17 @@ mod tests {
     fn invalid_replay_never_renews_a_valid_prefix() {
         for invalid in [
             json!({"type":"reasoning","encrypted_content":"unknown"}),
-            json!({"type":"reasoning","encrypted_content":"terra-state"}),
             json!({"type":"reasoning","encrypted_content":42}),
         ] {
             let store = Arc::new(ProviderStateStore::default());
             let now = Instant::now();
-            for (state, model) in [("state", "luna"), ("terra-state", "terra")] {
-                let active =
-                    ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
-                active.record(&json!(state), &owner(model)).unwrap();
-                active.scanner().accept_bytes(
-                    json!({"encrypted_content":state}).to_string().as_bytes(),
-                    now,
-                );
-            }
+            let active =
+                ActiveProviderStates::new(store.clone(), scope(), IngressProtocol::Responses);
+            active.record(&json!("state"), &owner("luna")).unwrap();
+            active.scanner().accept_bytes(
+                json!({"encrypted_content":"state"}).to_string().as_bytes(),
+                now,
+            );
             let replay =
                 json!({"input":[{"type":"reasoning","encrypted_content":"state"}, invalid]});
             assert!(
@@ -631,7 +918,10 @@ mod tests {
             json!({"type":"reasoning","summary":[],"encrypted_content":""}),
         ] {
             let document = json!({"input":[item]});
-            assert_eq!(store.resolve(&scope(), &document, now).unwrap(), None);
+            assert_eq!(
+                store.resolve(&scope(), &document, now).unwrap(),
+                ResolvedProviderStates::default()
+            );
         }
         assert_eq!(
             store.resolve(

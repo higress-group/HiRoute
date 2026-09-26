@@ -55,7 +55,7 @@ mod tests {
             serde_json::from_value(serde_json::json!({
             "schema":"hiroute.plan-draft/v1","workspace_id":"personal/default","draft_id":id,"revision":1,
             "editor":{"schema":"hiroute.plan-editor/v2","display_name":"Draft","purpose":"","mode":"fixed_model","candidates":[],
-            "smart":{"economy":[],"primary":[],"primary_fallback":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
+            "smart":{"economy":[],"primary":[],"primary_fallback":false,"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
             "free":{"candidates":[],"primary":[],"primary_fallback":false},"delegation_enabled":false,"requirements":{},
             "limits":{"maximum_attempts":1,"request_timeout_ms":1000,"attempt_timeout_ms":1000}}
         })).unwrap()

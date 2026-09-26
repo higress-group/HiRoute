@@ -763,7 +763,7 @@ def build_runtime_projection(catalog):
     }
 
 def add_documented_zhipu_responses_capability(projection, catalog, data):
-    """Keep the old Messages binding while enabling qualified new Coding Plan sources."""
+    """Project the current GLM-5.3 facts onto its Coding Plan runtime entry."""
     product = next(value for value in catalog["access_products"]
         if value["product_key"] == "zhipu-coding-cn")
     interface = next(value for value in product["interfaces"]
@@ -784,13 +784,19 @@ def add_documented_zhipu_responses_capability(projection, catalog, data):
         raise ValueError("the documented Zhipu Coding Plan Responses binding changed")
     model = next(value for value in data["models"]
         if value["model_configuration_id"] == "model.zhipu.glm-5.3")
+    current_model = next(value for value in catalog["models"]
+        if value["model_key"] == binding["model_key"])
     messages = next(value for value in data["model_endpoint_capabilities"]
         if value["capability_id"] == "cap.zhipu.glm-5.3.coding-plan.messages")
     if (not model["capabilities"]["tool"] or not model["capabilities"]["streaming"]
         or messages["endpoint_profile_id"] != "endpoint.zhipu.coding-plan.cn.v1"
         or messages["upstream_protocol"] != "messages"
-        or messages["upstream_model_id"] != binding["upstream_model_id"]):
+        or messages["upstream_model_id"] != binding["upstream_model_id"]
+        or not isinstance(current_model["context_tokens"], int)
+        or not isinstance(current_model["max_output_tokens"], int)):
         raise ValueError("the preserved Zhipu model and Messages capability changed")
+    model["capabilities"]["context_tokens"] = current_model["context_tokens"]
+    model["capabilities"]["max_output_tokens"] = current_model["max_output_tokens"]
     responses = copy.deepcopy(messages)
     responses.update({
         "capability_id": "cap.zhipu.glm-5.3.coding-plan.responses",

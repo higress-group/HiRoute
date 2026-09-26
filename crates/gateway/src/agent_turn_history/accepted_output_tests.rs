@@ -161,9 +161,9 @@ fn accepted_text_survives_client_rewrite_and_history_rebuild_without_terminal_du
                 plan(1),
                 &input,
                 &replay,
-                ContextDecisionFacts {
-                    history_continues: false,
-                    has_hold_preference: false,
+                TurnDecisionInputs {
+                    message_history_continues: false,
+                    reselect_on_user_message: true,
                 },
                 now,
             )
@@ -222,9 +222,9 @@ fn interrupted_output_is_preserved_and_late_events_cannot_touch_the_next_request
                 plan(1),
                 &request(vec![text(MessageRole::User, "second")]),
                 &replay,
-                ContextDecisionFacts {
-                    history_continues: false,
-                    has_hold_preference: false,
+                TurnDecisionInputs {
+                    message_history_continues: false,
+                    reselect_on_user_message: true,
                 },
                 now,
             )
@@ -271,9 +271,9 @@ fn dropped_request_marks_its_accepted_prefix_partial_and_rejects_queued_events()
                 plan(1),
                 &request(vec![text(MessageRole::User, "next")]),
                 &replay,
-                ContextDecisionFacts {
-                    history_continues: false,
-                    has_hold_preference: false,
+                TurnDecisionInputs {
+                    message_history_continues: false,
+                    reselect_on_user_message: true,
                 },
                 now,
             )
@@ -331,9 +331,9 @@ fn retry_of_finalized_request_retains_original_user_and_both_accepted_answers() 
                 plan(1),
                 &request(vec![text(MessageRole::User, "new question")]),
                 &replay,
-                ContextDecisionFacts {
-                    history_continues: false,
-                    has_hold_preference: false,
+                TurnDecisionInputs {
+                    message_history_continues: false,
+                    reselect_on_user_message: true,
                 },
                 now,
             )

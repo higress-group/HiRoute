@@ -734,6 +734,7 @@ mod tests {
                 block_index: Some(0),
                 kind: "encrypted_content".into(),
                 value: json!("provider-hidden-secret"),
+                messages_thinking: None,
             }),
         };
         assert_eq!(canonical_response_content_kind(&event), None);

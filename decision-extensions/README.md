@@ -15,15 +15,15 @@ All screenshots here use synthetic data rendered with real product components; [
 ## When a decision takes effect
 
 ```text
-No inheritable decision OR appended user input OR no ContextHold preference
+No inheritable decision OR no ContextHold preference OR enabled follow-up re-selection
   → choose branch + optionally assess the prior stage
   → model request(s) inherit while ContextHold remains valid
   → the next decision boundary seals this routing execution round
 ```
 
-HiRoute decides again whenever no valid decision can be inherited, a real user message is appended to history that ContextHold proved continuous, or ContextHold no longer supplies a preferred candidate. It does not ask the service to detect compaction and does not require the latest user text to change. A replay or tool continuation with a valid hold and decision reuses the frozen branch. A failed model candidate can still trigger the plan's existing failover within a round; that is an execution fallback, not a new classification. HiRoute records a different executed branch when accepted output came entirely from that fallback branch. Mixed-model output is not attributed as the competence of one model.
+HiRoute decides again whenever no valid decision can be inherited or ContextHold no longer supplies a preferred candidate. A real user message appended to proven continuous history asks for a new decision only when the plan's follow-up re-selection setting is enabled; new plans default to disabled. An appended user always starts a new execution round, even when the branch is inherited. HiRoute does not ask the service to detect compaction and does not require the latest user text to change. A replay or tool continuation with a valid hold and decision stays in the current round. A failed model candidate can still trigger the plan's existing failover within a round; that is an execution fallback, not a new classification. HiRoute records a different executed branch when accepted output came entirely from that fallback branch. Mixed-model output is not attributed as the competence of one model.
 
-A routing execution round is one decision plus the model requests that inherit it; one user task can span several rounds. A stage can span several rounds when the plan revision, selected and executed branch, actual model configuration, and effective profile remain the same. Credential rotation alone does not create a new stage. Internal model identities stay in HiRoute; the decision service sees branch meanings and observed round activity, not a model ID on every step.
+A routing execution round starts on a decision or an appended real user message and includes subsequent inherited model requests; one user task can span several rounds. A stage can span several rounds when the plan revision, selected and executed branch, actual model configuration, and effective profile remain the same. Credential rotation alone does not create a new stage. Internal model identities stay in HiRoute; the decision service sees branch meanings and observed round activity, not a model ID on every step.
 
 ## What each side owns
 

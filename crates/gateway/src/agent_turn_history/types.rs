@@ -128,9 +128,9 @@ pub(crate) struct AgentTurnTicket {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ContextDecisionFacts {
-    pub(crate) history_continues: bool,
-    pub(crate) has_hold_preference: bool,
+pub(crate) struct TurnDecisionInputs {
+    pub(crate) message_history_continues: bool,
+    pub(crate) reselect_on_user_message: bool,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -140,8 +140,9 @@ pub(crate) struct AgentTurnHistoryKey(pub(super) [u8; 32]);
 pub(crate) enum AgentTurnBegin {
     NewTurn {
         ticket: AgentTurnTicket,
-        history: AgentTurnHistorySnapshot,
+        history: Box<AgentTurnHistorySnapshot>,
         completed: Option<Box<CompletedAgentTurn>>,
+        inherited_decision: Option<BranchDecisionV1>,
     },
     Continuation {
         ticket: AgentTurnTicket,

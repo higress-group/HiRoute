@@ -55,7 +55,7 @@ fn pre_gateway_compute_routing_dtos_are_strict_and_desktop_round_trip_exactly() 
                 "purpose": "personal",
                 "mode": "fixed_model",
                 "candidates": [{"binding_id": "binding.fixture"}],
-                "smart": {"economy": [], "primary": [], "primary_fallback": false, "classifier": {"kind":"local_rules"}, "complex_keywords": []},
+                "smart": {"economy": [], "primary": [], "primary_fallback": false, "reselect_on_user_message": false, "classifier": {"kind":"local_rules"}, "complex_keywords": []},
                 "free": {"candidates": [], "primary": [], "primary_fallback": false},
                 "delegation_enabled": false,
                 "requirements": {

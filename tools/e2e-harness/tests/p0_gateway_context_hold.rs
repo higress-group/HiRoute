@@ -548,6 +548,44 @@ fn real_hirouted_holds_the_successful_fallback_and_releases_it_on_rebuild() {
 }
 
 #[test]
+fn real_hirouted_reverts_a_failed_branch_switch_to_the_last_completed_model() {
+    let simple = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 400,
+        error_kind: None,
+        body: PROTOCOL_ERROR,
+    }]);
+    let complex = NativeProvider::start(vec![complete(), complete()]);
+    let fixture = RuntimeFixture::launch_classified(&[&simple, &complex], 2);
+
+    assert_eq!(
+        send(
+            &fixture,
+            "switch-fallback",
+            vec![message("user", "complex-route design the component")],
+        )
+        .status,
+        200
+    );
+    assert_eq!((simple.calls(), complex.calls()), (0, 1));
+
+    let switched = send(
+        &fixture,
+        "switch-fallback",
+        vec![
+            message("user", "complex-route design the component"),
+            message("assistant", "ok"),
+            message("user", "rename one label"),
+        ],
+    );
+    assert_eq!(switched.status, 200);
+    assert_eq!(
+        (simple.calls(), complex.calls()),
+        (1, 2),
+        "the selected model's 400 must precede one precommit recovery on the last completed model"
+    );
+}
+
+#[test]
 fn real_hirouted_rejects_opaque_previous_response_id_before_provider_io() {
     hiroute_e2e::p0_execution_receipt!(
         "protocol.previous_response_id",

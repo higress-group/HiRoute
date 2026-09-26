@@ -12,6 +12,8 @@ pub enum ModelIrError {
     UnsupportedValue(String),
     #[error("Responses previous_response_id continuation is unsupported")]
     ResponsesPreviousResponseIdUnsupported,
+    #[error("Responses server-stored conversation continuation is unsupported")]
+    ResponsesConversationUnsupported,
     #[error("Tool arguments are not complete JSON: {0}")]
     InvalidToolArguments(String),
     #[error("Tool call identity is missing: {0}")]

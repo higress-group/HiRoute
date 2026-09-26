@@ -157,6 +157,7 @@ pub enum MaterializedRouteV1 {
         simple_group_id: String,
         simple_fallback_group_ids: Vec<String>,
         complex_group_id: String,
+        reselect_on_user_message: bool,
     },
     FreeFirst {
         free_group_id: String,
@@ -288,6 +289,8 @@ pub struct PlannerInputV1 {
     pub classification_facts: Option<SanitizedStructuralFactsV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_hold: Option<HoldPreferenceV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_success_candidate_id: Option<String>,
     pub policy: CompiledPlannerPolicyV1,
     pub candidates: Vec<PlannerCandidateFactsV1>,
 }
@@ -325,7 +328,6 @@ pub enum ExclusionReasonCodeV1 {
     ToolRoundtripUnsupported,
     ReasoningProfileMismatch,
     ContextLimitUnknown,
-    ContextTooLarge,
     MaxOutputUnsupported,
     StreamFeatureUnsupported,
     ProviderStateAffinityMismatch,
@@ -343,6 +345,7 @@ pub enum ExclusionReasonCodeV1 {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RankingReasonCodeV1 {
     ContextModelHold,
+    PreviousSuccessFallback,
     PublishedManualOrder,
     QualityFirst,
     LowestApiEquivalentCost,
@@ -356,8 +359,10 @@ pub enum RankingReasonCodeV1 {
 pub enum LedgerReasonCodeV1 {
     ContextHoldApplied,
     ContextHoldInvalidated,
+    PreviousSuccessFallback,
     SmartSavingSimple,
     SmartSavingComplex,
+    ProviderStateOwnerContinuation,
     FreeFirstNoClassification,
     CustomNoClassification,
     GroupExhaustedFallback,

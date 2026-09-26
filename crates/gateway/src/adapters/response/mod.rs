@@ -1340,6 +1340,7 @@ impl DecoderCore {
                     block_index,
                     kind,
                     value,
+                    messages_thinking: None,
                 }),
             },
             output,

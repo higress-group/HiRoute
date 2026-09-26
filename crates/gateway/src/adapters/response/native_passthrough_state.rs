@@ -40,6 +40,15 @@ impl ProjectionState {
             return Ok(());
         }
         match object.get("type").and_then(Value::as_str) {
+            Some("content_block_start")
+                if object["content_block"]["type"] == "redacted_thinking" =>
+            {
+                let data = object["content_block"]["data"]
+                    .as_str()
+                    .filter(|data| !data.is_empty())
+                    .ok_or(ModelIrError::InvalidField("redacted_thinking.data"))?;
+                record_provider_state_at_acceptance(data, &self.owner, raw_event)?;
+            }
             Some("content_block_start") if object["content_block"]["type"] == "thinking" => {
                 let index = u32_field(object, "index")?;
                 if self.messages_signatures.contains_key(&index) {

@@ -473,7 +473,7 @@ fn run_production_path(root: &Path) {
                         "attempt_timeout_ms": 30000
                     },
                     "mode": "fixed_model", "candidates":[{"binding_id": preview.projection.binding.binding_id.clone()}],
-                    "smart":{"economy":[],"primary":[],"primary_fallback":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
+                    "smart":{"economy":[],"primary":[],"primary_fallback":false,"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
                     "free":{"candidates":[],"primary":[],"primary_fallback":false},
                     "delegation_enabled": false
                 }

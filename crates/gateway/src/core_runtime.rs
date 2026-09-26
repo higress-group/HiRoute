@@ -41,8 +41,8 @@ use crate::agent_turn_history::{
     AgentTurnStatus, AgentTurnTicket, PlanSnapshot,
 };
 use crate::content_ref::{
-    ContentRef, compact_ingress_document, externalize_model_request, model_content_refs,
-    scan_ingress_document,
+    ContentRef, compact_ingress_document_with_markers, externalize_model_request,
+    model_content_refs, parse_ingress_document, scan_ingress_document,
 };
 use crate::context_hold::{ContextHoldStore, ContextRequest, HoldCompletion, begin_context};
 use crate::provider_state::ProviderStateScopeV1;
@@ -476,9 +476,18 @@ impl ProductionGatewayRuntime {
                     .await;
                 }
             };
-            let ingress_workspace =
-                match ingress_stats.reserve_workspace(&replay, raw_body.byte_len()) {
-                    Ok(reservation) => reservation,
+            let (mut document, mut ingress_workspace) =
+                match parse_ingress_document(protocol, &replay, &raw_body, ingress_stats) {
+                    Ok(parsed) => parsed,
+                    Err(ReplayError::InvalidJson) => {
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::BAD_REQUEST,
+                            "PROTOCOL_DOCUMENT_INVALID",
+                            "canonical_request",
+                        )
+                        .await;
+                    }
                     Err(_) => {
                         return write_typed_error_phase(
                             session,
@@ -489,23 +498,6 @@ impl ProductionGatewayRuntime {
                         .await;
                     }
                 };
-            let mut document = match replay.reader(&raw_body).and_then(|mut reader| {
-                let document =
-                    serde_json::from_reader(&mut reader).map_err(|_| ReplayError::Integrity)?;
-                reader.verify_terminal()?;
-                Ok(document)
-            }) {
-                Ok(document) => document,
-                Err(_) => {
-                    return write_typed_error_phase(
-                        session,
-                        StatusCode::BAD_REQUEST,
-                        "PROTOCOL_DOCUMENT_INVALID",
-                        "canonical_request",
-                    )
-                    .await;
-                }
-            };
             // Resolve controls before either ingress or canonical JSON becomes a content reference.
             let fixed_reasoning = match PublicationPlannerInputAuthority::bind_request_reasoning(
                 &document,
@@ -547,14 +539,16 @@ impl ProductionGatewayRuntime {
             } else {
                 None
             };
-            let provider_state_owner = if protocol == IngressProtocol::Responses
+            let (provider_state_owner, verified_states) = if protocol == IngressProtocol::Responses
                 || (protocol == IngressProtocol::Messages && native_messages_owner.is_none())
             {
-                match self
-                    .provider_states
-                    .resolve(&continuation_scope, &document, Instant::now())
-                {
-                    Ok(owner) => owner,
+                match self.provider_states.resolve_with_replay(
+                    &continuation_scope,
+                    &document,
+                    Some(&replay),
+                    Instant::now(),
+                ) {
+                    Ok(states) => (states.decode_owner(protocol).cloned(), states),
                     Err(error) => {
                         let code = if error == model_ir::ModelIrError::ProviderStateNotPortable {
                             "PROVIDER_STATE_CONTINUATION_CONFLICT"
@@ -576,7 +570,10 @@ impl ProductionGatewayRuntime {
                 } else {
                     provider_state_owner(&authorized, protocol)
                 } {
-                    Ok(owner) => owner,
+                    Ok(owner) => (
+                        owner,
+                        crate::provider_state::ResolvedProviderStates::default(),
+                    ),
                     Err(_) => {
                         return write_typed_error_phase(
                             session,
@@ -588,12 +585,20 @@ impl ProductionGatewayRuntime {
                     }
                 }
             };
-            if let Err(error) = compact_ingress_document(protocol, &mut document, &replay) {
+            if let Err(error) = compact_ingress_document_with_markers(
+                protocol,
+                &mut document,
+                &replay,
+                ingress_workspace.generated_markers(),
+            ) {
                 let (status, code) = match error {
                     ReplayError::StructureLimit => (
                         StatusCode::PAYLOAD_TOO_LARGE,
                         "REQUEST_STRUCTURE_LIMIT_EXCEEDED",
                     ),
+                    ReplayError::InvalidJson => {
+                        (StatusCode::BAD_REQUEST, "PROTOCOL_DOCUMENT_INVALID")
+                    }
                     _ => (StatusCode::SERVICE_UNAVAILABLE, "CONTENT_REF_UNAVAILABLE"),
                 };
                 return write_typed_error_phase(session, status, code, "canonical_request").await;
@@ -620,6 +625,20 @@ impl ProductionGatewayRuntime {
                     .await;
                 }
             };
+            if let Err(error) = verified_states.bind_request(&mut canonical_request) {
+                let code = if error == model_ir::ModelIrError::ProviderStateNotPortable {
+                    "PROVIDER_STATE_CONTINUATION_CONFLICT"
+                } else {
+                    "PROVIDER_STATE_CONTINUATION_UNAVAILABLE"
+                };
+                return write_typed_error_phase(
+                    session,
+                    StatusCode::BAD_REQUEST,
+                    code,
+                    "continuation_authority",
+                )
+                .await;
+            }
             let parse_elapsed = parse_started.elapsed();
             let (identity, hold_ticket) = begin_context(
                 &self.context_holds,
@@ -630,11 +649,13 @@ impl ProductionGatewayRuntime {
                     headers: &request.headers,
                     document: &document,
                     request: &canonical_request,
+                    replay: &replay,
                 },
                 Instant::now(),
             );
             let hold_ticket = hold_ticket.map(Box::new);
             drop(document);
+            drop(ingress_workspace);
             if canonical_request.web_search.is_some() && !authorized.web_search_allowed() {
                 return write_typed_error_phase(
                     session,
@@ -737,13 +758,17 @@ impl ProductionGatewayRuntime {
                         .await;
                     }
                 };
-                let context_decision = crate::agent_turn_history::ContextDecisionFacts {
-                    history_continues: hold_ticket
+                let decision_inputs = crate::agent_turn_history::TurnDecisionInputs {
+                    message_history_continues: hold_ticket
                         .as_ref()
-                        .is_some_and(|ticket| ticket.history_continues),
-                    has_hold_preference: hold_ticket
-                        .as_ref()
-                        .is_some_and(|ticket| ticket.hint.is_some()),
+                        .is_some_and(|ticket| ticket.message_history_continues),
+                    reselect_on_user_message: match &authorized.planner_policy().route {
+                        profiles::MaterializedRouteV1::SmartSaving {
+                            reselect_on_user_message,
+                            ..
+                        } => *reselect_on_user_message,
+                        _ => false,
+                    },
                 };
                 let turn_begin = self.agent_turn_history.begin_with_context(
                     turn_key,
@@ -753,7 +778,7 @@ impl ProductionGatewayRuntime {
                     },
                     &canonical_request,
                     &replay,
-                    context_decision,
+                    decision_inputs,
                     Instant::now(),
                 );
                 let (turn_ticket, turn_history, completed_turn) = match turn_begin {
@@ -761,7 +786,17 @@ impl ProductionGatewayRuntime {
                         ticket,
                         history,
                         completed,
-                    }) => (ticket, history, completed),
+                        inherited_decision,
+                    }) => {
+                        if let Some(decision) = inherited_decision {
+                            correlated_branch =
+                                Some(Box::new(profiles::CorrelatedBranchDecisionV1 {
+                                    kind: profiles::ContinuationKindV1::TaskRoot,
+                                    decision,
+                                }));
+                        }
+                        (ticket, history, completed)
+                    }
                     Ok(AgentTurnBegin::Continuation { ticket, decision }) => {
                         let kind = if canonical_request.messages.iter().any(|message| {
                             message.content.iter().any(|part| {
@@ -778,13 +813,13 @@ impl ProductionGatewayRuntime {
                         }));
                         (
                             ticket,
-                            crate::agent_turn_history::AgentTurnHistorySnapshot {
+                            Box::new(crate::agent_turn_history::AgentTurnHistorySnapshot {
                                 visible_conversation: Vec::new(),
                                 history_partial: true,
                                 assessment_from: None,
                                 assessment_target: None,
                                 _pin: None,
-                            },
+                            }),
                             None,
                         )
                     }
@@ -945,6 +980,22 @@ impl ProductionGatewayRuntime {
             };
             planner_input.context_hold =
                 hold_ticket.as_ref().and_then(|ticket| ticket.hint.clone());
+            if let Some(previous) = hold_ticket
+                .as_ref()
+                .and_then(|ticket| ticket.previous_success.as_ref())
+            {
+                let mut matches = planner_input.candidates.iter().filter(|candidate| {
+                    candidate.candidate_id == previous.candidate_id
+                        && candidate.stable_binding_id == previous.stable_binding_id
+                        && candidate.profile_digest == previous.profile_digest
+                });
+                if let Some(candidate) = matches.next()
+                    && matches.next().is_none()
+                {
+                    planner_input.previous_success_candidate_id =
+                        Some(candidate.candidate_id.clone());
+                }
+            }
             planner_input.correlated_branch = correlated_branch.map(|decision| *decision);
             if let Some(outcome) = classification_outcome {
                 planner_input.classification_decision = Some(outcome.decision);
@@ -1139,8 +1190,23 @@ impl ProductionGatewayRuntime {
                 );
             }
             drop(fact_by_id);
+            let switch_fallback = planner_input
+                .previous_success_candidate_id
+                .as_deref()
+                .filter(|id| {
+                    planner_output
+                        .ledger
+                        .ordered_candidates
+                        .first()
+                        .is_some_and(|first| first.candidate_id != *id)
+                        && planner_output
+                            .ledger
+                            .ordered_candidates
+                            .get(1)
+                            .is_some_and(|second| second.candidate_id == *id)
+                })
+                .and_then(|_| frozen_candidates.get(1).map(|candidate| candidate.binding));
             let canonical_request = Box::new(planner_input.request);
-            drop(ingress_workspace);
             let mut replay_references = model_content_refs(&canonical_request);
             replay_references.push(raw_body.clone());
             if replay.prevalidate(&replay_references).is_err() {
@@ -1181,6 +1247,7 @@ impl ProductionGatewayRuntime {
             let route_context = ProductionRouteContext {
                 ingress: protocol,
                 context_holds: Arc::clone(&self.context_holds),
+                switch_fallback,
                 hold_completion: hold_ticket.map(|ticket| HoldCompletion {
                     ticket: *ticket,
                     candidates: hold_candidates.into(),
@@ -1331,7 +1398,7 @@ mod no_eligible_tests {
         assert_eq!(
             no_eligible_response(&[
                 excluded(Reason::ToolInterfaceUnsupported),
-                excluded(Reason::ContextTooLarge),
+                excluded(Reason::ContextLimitUnknown),
             ]),
             (StatusCode::BAD_GATEWAY, "NO_ELIGIBLE_CANDIDATE")
         );

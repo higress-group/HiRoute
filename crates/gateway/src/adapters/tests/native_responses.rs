@@ -33,6 +33,32 @@ fn responses_previous_response_id_has_an_explicit_http_boundary() {
 }
 
 #[test]
+fn responses_conversation_never_borrows_reasoning_ciphertext_owner() {
+    let origin = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+    for input in [
+        json!("continue"),
+        json!([
+            {"type":"reasoning","summary":[],"encrypted_content":"luna-state"},
+            {"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
+        ]),
+    ] {
+        let error = decode_ingress_request_with_bindings(
+            IngressProtocol::Responses,
+            &json!({"model":"alias","input":input,"conversation":"conversation-1"}),
+            &IngressRequestBindings {
+                provider_state_owner: origin.exact_provider_path().ok(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error, ModelIrError::ResponsesConversationUnsupported);
+        assert_eq!(
+            ProtocolAdapterError::from(error).code(),
+            "RESPONSES_CONVERSATION_UNSUPPORTED"
+        );
+    }
+}
+
+#[test]
 fn responses_to_messages_keeps_top_level_instructions_and_tool_history_but_rejects_mid_roles() {
     let profile = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Responses,

@@ -240,18 +240,11 @@ fn context_gate(
         Some(1..) => {}
         Some(0) | None => return Err(ExclusionReasonCodeV1::MaxOutputUnsupported),
     }
-    if limits.max_input_tokens.exact().is_none()
-        || limits.max_total_tokens.exact().is_none()
-        || limits.estimator.exact().is_none()
-    {
+    if limits.estimator.exact().is_none() {
         return Err(ExclusionReasonCodeV1::ContextLimitUnknown);
     }
     ContextProjector::project_serialized_len(candidate.target_serialized_bytes, limits, reasoning)
         .map_err(|error| match error {
-            ContextProjectionError::InputTooLarge { .. }
-            | ContextProjectionError::TotalTooLarge { .. } => {
-                ExclusionReasonCodeV1::ContextTooLarge
-            }
             ContextProjectionError::UnknownLimit(_)
             | ContextProjectionError::UnknownEstimator
             | ContextProjectionError::ArithmeticOverflow => {
@@ -296,9 +289,6 @@ fn state_gate(
     requirements: &RequestCapabilityRequirementsV1,
     profile: &CandidateProtocolProfile,
 ) -> Result<(), ExclusionReasonCodeV1> {
-    let exact_owner = profile
-        .exact_provider_path()
-        .map_err(|_| ExclusionReasonCodeV1::ProviderStateAffinityMismatch)?;
     let request_profile = &profile.capability.request;
     let response_profile = &profile.capability.response;
     if requirements.provider_state
@@ -307,7 +297,7 @@ fn state_gate(
     {
         return Err(ExclusionReasonCodeV1::OpaqueStateUnportable);
     }
-    if state_owners(request).any(|owner| owner != &exact_owner) {
+    if state_owners(request).any(|owner| !owner.is_complete()) {
         return Err(ExclusionReasonCodeV1::ProviderStateAffinityMismatch);
     }
     match profile.capability.native_provider_state {
@@ -384,7 +374,9 @@ fn valid_stream_refusal(protocol: IngressProtocol, semantics: StreamingRefusalSe
     )
 }
 
-fn state_owners(request: &ModelRequestIRV1) -> impl Iterator<Item = &ExactProviderPathV1> {
+pub(crate) fn state_owners(
+    request: &ModelRequestIRV1,
+) -> impl Iterator<Item = &ExactProviderPathV1> {
     request
         .provider_state
         .iter()

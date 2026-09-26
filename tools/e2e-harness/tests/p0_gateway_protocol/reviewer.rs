@@ -307,7 +307,7 @@ fn protocol_reviewer_reasoning_catalog_renders_fixed_toggle_discrete_and_budget_
 }
 
 #[test]
-fn protocol_reviewer_exact_owner_is_required_for_provider_state_and_tool_continuation() {
+fn protocol_reviewer_provider_state_requires_source_binding_and_allows_lossless_switch() {
     let mut profile = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Responses,
         IngressProtocol::Responses,
@@ -318,8 +318,10 @@ fn protocol_reviewer_exact_owner_is_required_for_provider_state_and_tool_continu
     profile.capability.request.state_affinity = StateAffinity::ExactOwner;
     let body = json!({
         "model":"agent/research",
-        "input":"continue",
-        "conversation":"conv_previous"
+        "input":[
+            {"type":"reasoning","id":"rs_previous","summary":[],"encrypted_content":"opaque"},
+            {"type":"message","role":"user","content":"continue"}
+        ]
     });
     assert_eq!(
         decode_ingress_request(IngressProtocol::Responses, &body).unwrap_err(),
@@ -335,16 +337,30 @@ fn protocol_reviewer_exact_owner_is_required_for_provider_state_and_tool_continu
     )
     .unwrap();
     assert_eq!(
-        project_candidate_request(&request, &profile).unwrap().body["conversation"],
-        "conv_previous"
+        project_candidate_request(&request, &profile).unwrap().body["input"][0]["encrypted_content"],
+        "opaque"
     );
     let mut other = profile.clone();
     other.connector.endpoint_id = "other-endpoint".into();
     assert_eq!(
-        project_candidate_request(&request, &other)
-            .unwrap_err()
-            .code(),
-        "PROTOCOL_SEMANTICS_UNSUPPORTED"
+        project_candidate_request(&request, &other).unwrap().body["input"][0]["encrypted_content"],
+        "opaque"
+    );
+    let conversation = json!({
+        "model":"agent/research",
+        "input":"continue",
+        "conversation":"conv_previous"
+    });
+    assert_eq!(
+        decode_ingress_request_with_bindings(
+            IngressProtocol::Responses,
+            &conversation,
+            &IngressRequestBindings {
+                provider_state_owner: Some(owner),
+            },
+        )
+        .unwrap_err(),
+        ModelIrError::ResponsesConversationUnsupported
     );
 }
 
@@ -675,6 +691,7 @@ fn protocol_reviewer_provider_state_never_advances_the_commit_boundary() {
                 block_index: Some(0),
                 kind: "encrypted_content".into(),
                 value: json!("opaque"),
+                messages_thinking: None,
             }),
         },
     );

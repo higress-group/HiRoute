@@ -203,6 +203,7 @@ fn codex_worker_catalog_is_private_exact_and_reused_by_continue() {
         "model_catalog_json = {}",
         serde_json::to_string(path.to_str().unwrap()).unwrap()
     )));
+    assert!(startup.contains("supports_websockets = false\n"));
     assert!(!first.env["CODEX_CONFIG"].contains("run-secret"));
     #[cfg(unix)]
     {
@@ -289,6 +290,10 @@ fn managed_codex_profile_routes_only_through_run_env_without_embedding_secret_in
     assert_eq!(
         config["model_providers"]["hiroute"]["env_key"],
         "HIROUTE_RUN_TOKEN"
+    );
+    assert_eq!(
+        config["model_providers"]["hiroute"]["supports_websockets"],
+        false
     );
     assert!(!profile.env["CODEX_CONFIG"].contains("run-secret-a"));
     assert_eq!(profile.env["HIROUTE_RUN_TOKEN"].as_str(), "run-secret-a");

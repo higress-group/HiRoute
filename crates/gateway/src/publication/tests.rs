@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use hiroute_gateway_core::core::execution_plan::ResolvedTargetBindingId;
 use hiroute_gateway_core::core::publication::InstallError;
@@ -10,6 +11,35 @@ use crate::server::dispatch::GatewayRequestAuthority;
 use crate::server::request_plan::IngressProtocol;
 
 static DIRECTORY_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
+
+#[test]
+fn published_attempt_phases_default_to_ten_minutes() {
+    let aggregate = super::compiler::compile(&snapshot(1, "renderer")).unwrap();
+    #[cfg(feature = "e2e-test-control")]
+    let override_timeout = crate::server::test_control::attempt_timeout_override();
+    #[cfg(not(feature = "e2e-test-control"))]
+    let override_timeout: Option<Duration> = None;
+    let plans = aggregate
+        .envelope
+        .attempt_plan_index_handle
+        .plans()
+        .collect::<Vec<_>>();
+    assert_eq!(plans.len(), 2);
+    for (_, plan) in plans {
+        assert_eq!(
+            plan.timeouts.request_write,
+            override_timeout.unwrap_or(Duration::from_secs(10 * 60))
+        );
+        assert_eq!(
+            plan.timeouts.first_byte,
+            override_timeout.unwrap_or(Duration::from_secs(10 * 60))
+        );
+        assert_eq!(
+            plan.timeouts.stream_idle,
+            override_timeout.unwrap_or(Duration::from_secs(10 * 60))
+        );
+    }
+}
 
 #[test]
 fn production_body_plan_admits_large_requests_without_a_proxy_byte_quota() {
@@ -22,6 +52,10 @@ fn production_body_plan_admits_large_requests_without_a_proxy_byte_quota() {
         .body_plan;
     let mut owner =
         BodyPlanExecutor::new(BodyDirection::LogicalRequest, plan.clone(), usize::MAX).unwrap();
+    assert!(
+        !owner.is_buffered_transform(),
+        "sealed ingress must not be buffered again inside Gateway core"
+    );
     let bytes = 32 * 1024 * 1024;
     owner.preflight_content_length(bytes).unwrap();
     for _ in 0..512 {
@@ -125,6 +159,7 @@ fn rest_classifier_snapshot() -> GatewayPublicationSnapshotV3 {
                 agent_plan_id: "legacy/smart".into(),
                 plan_display_name: Some("Smart".into()),
                 request_owned: AliasRequestOwnedRouteV1::Classified {
+                    reselect_on_user_message: false,
                     classifier: AliasComplexityClassifierV1 {
                         revision: "classifier/v1".into(),
                         mode: hiroute_domain::ComplexityClassifierModeV1::Rest {

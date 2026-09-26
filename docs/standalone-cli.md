@@ -323,6 +323,7 @@ model is a valid minimal plan:
       "candidates": [{"binding_id": "BINDING_FROM_ROUTING_OPTIONS"}],
       "smart": {
         "economy": [], "primary": [], "primary_fallback": false,
+        "reselect_on_user_message": false,
         "classifier": {"kind": "local_rules"}, "complex_keywords": []
       },
       "free": {"candidates": [], "primary": [], "primary_fallback": false},

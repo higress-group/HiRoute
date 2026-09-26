@@ -320,7 +320,7 @@ fn request_content_refs(
     }
     for history in request.responses_reasoning_history.values() {
         for value in history.native_fields.values() {
-            collect_json_ref(value, ReplacementEncoding::RawJson, &mut refs);
+            collect_nested_json_refs(value, &mut refs);
         }
     }
     for tool in &request.tools {
@@ -347,7 +347,7 @@ fn request_content_refs(
         }
     }
     for state in &request.provider_state {
-        collect_json_ref(&state.value, ReplacementEncoding::RawJson, &mut refs);
+        collect_nested_json_refs(&state.value, &mut refs);
     }
     refs
 }
@@ -368,8 +368,13 @@ fn collect_part_refs(
         ContentPart::ToolCall {
             tool_kind,
             arguments,
+            raw_arguments,
             ..
         } => {
+            if let Some(raw) = raw_arguments {
+                collect_string_ref(Some(raw), refs);
+                return;
+            }
             collect_json_ref(
                 arguments,
                 match (tool_kind, target) {
@@ -394,7 +399,8 @@ fn collect_part_refs(
             ..
         } => collect_json_ref(value, ReplacementEncoding::JsonString, refs),
         ContentPart::ProviderState { state } => {
-            collect_json_ref(&state.value, ReplacementEncoding::RawJson, refs);
+            collect_nested_json_refs(&state.value, refs);
+            collect_string_ref(state.messages_thinking.as_deref(), refs);
         }
     }
 }
@@ -415,6 +421,27 @@ fn collect_json_ref(
 ) {
     if let Some(content) = value.content_ref() {
         refs.push(RequestedReplacement { content, encoding });
+    }
+}
+
+fn collect_nested_json_refs(value: &serde_json::Value, refs: &mut Vec<RequestedReplacement>) {
+    if value.content_ref().is_some() {
+        collect_json_ref(value, ReplacementEncoding::RawJson, refs);
+        return;
+    }
+    match value {
+        serde_json::Value::String(value) => collect_string_ref(Some(value), refs),
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_nested_json_refs(value, refs);
+            }
+        }
+        serde_json::Value::Object(values) => {
+            for value in values.values() {
+                collect_nested_json_refs(value, refs);
+            }
+        }
+        _ => {}
     }
 }
 

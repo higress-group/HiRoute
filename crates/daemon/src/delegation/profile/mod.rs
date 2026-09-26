@@ -171,7 +171,8 @@ impl CandidateWorkerProfile {
                     "sandbox_mode":sandbox_mode,
                     "model_providers":{"hiroute":{
                         "name":"HiRoute managed run", "base_url":format!("{origin}/v1"),
-                        "wire_api":"responses", "env_key":"HIROUTE_RUN_TOKEN", "requires_openai_auth":false
+                        "wire_api":"responses", "supports_websockets":false,
+                        "env_key":"HIROUTE_RUN_TOKEN", "requires_openai_auth":false
                     }},
                     "features":{"multi_agent":false,"shell_tool":projected_tools.contains(&WorkerToolV1::Shell)},
                     "web_search": if network == WorkerNetworkV1::Allowed { "live" } else { "disabled" },

@@ -206,7 +206,7 @@ fn decode_responses(
         Some(_) => return Err(ModelIrError::InvalidField("input")),
         None => return Err(ModelIrError::InvalidField("input")),
     }
-    let provider_state = decode_responses_state(object, state_owner)?;
+    let provider_state = decode_responses_state(object)?;
     let tools = decode_responses_tools(object.get("tools"), &additional_tools)?;
     let tool_choice = decode_tool_choice(IngressProtocol::Responses, object.get("tool_choice"))?;
     validate_responses_named_choice(&tools, &tool_choice)?;
@@ -395,6 +395,7 @@ fn decode_chat_message(
                 block_index: None,
                 kind: "reasoning_content".into(),
                 value: reasoning.clone(),
+                messages_thinking: None,
             }),
         });
     }
@@ -418,12 +419,15 @@ fn decode_chat_message(
                 &["name", "arguments"],
                 "chat function",
             )?;
+            let (arguments, raw_arguments) =
+                parse_tool_arguments(required_string(function, "arguments")?);
             content.push(ContentPart::ToolCall {
                 logical_id: required_string(call, "id")?,
                 tool_kind: ToolKindV1::Function,
                 namespace: None,
                 name: required_string(function, "name")?,
-                arguments: parse_json_string(required_string(function, "arguments")?, "arguments")?,
+                arguments,
+                raw_arguments,
             });
         }
     }
@@ -634,6 +638,7 @@ fn decode_messages_content(
                     .get("input")
                     .cloned()
                     .ok_or(ModelIrError::InvalidField("input"))?,
+                raw_arguments: None,
             })
         }
         "tool_result" => {
@@ -679,12 +684,17 @@ fn decode_messages_content(
                 if signature.is_empty() {
                     return Err(ModelIrError::InvalidField("thinking signature"));
                 }
+                let thinking = object
+                    .get("thinking")
+                    .and_then(Value::as_str)
+                    .ok_or(ModelIrError::InvalidField("thinking"))?;
                 Ok(ContentPart::ProviderState {
                     state: Box::new(OpaqueProviderState {
                         owner,
                         block_index: None,
                         kind: "encrypted_content".into(),
                         value: Value::String(signature),
+                        messages_thinking: Some(thinking.to_owned()),
                     }),
                 })
             } else {
@@ -694,6 +704,7 @@ fn decode_messages_content(
                         block_index: None,
                         kind: required_string(object, "type")?,
                         value: value.clone(),
+                        messages_thinking: None,
                     }),
                 })
             }
@@ -959,9 +970,7 @@ fn decode_tool_choice(
 
 fn decode_responses_state(
     object: &Map<String, Value>,
-    state_owner: Option<&ExactProviderPathV1>,
 ) -> Result<Vec<OpaqueProviderState>, ModelIrError> {
-    let mut state = Vec::new();
     if let Some(value) = object.get("previous_response_id") {
         match value {
             Value::Null => {}
@@ -977,14 +986,11 @@ fn decode_responses_state(
         if !value.is_string() && !value.is_object() {
             return Err(ModelIrError::InvalidField("conversation"));
         }
-        state.push(OpaqueProviderState {
-            owner: require_state_owner(state_owner)?,
-            block_index: None,
-            kind: "conversation".into(),
-            value: value.clone(),
-        });
+        // Reasoning ciphertext provenance does not prove the owner of this
+        // separate server-side handle. There is no independent handle binding.
+        return Err(ModelIrError::ResponsesConversationUnsupported);
     }
-    Ok(state)
+    Ok(Vec::new())
 }
 
 fn require_state_owner(
@@ -1034,11 +1040,14 @@ fn decode_tool_output(value: &Value) -> ToolOutput {
     }
 }
 
-fn parse_json_string(value: String, field: &'static str) -> Result<Value, ModelIrError> {
+fn parse_tool_arguments(value: String) -> (Value, Option<String>) {
     if let Some(reference) = ContentRef::from_wire_marker(&value) {
-        return Ok(reference.json_marker());
+        return (reference.json_marker(), None);
     }
-    serde_json::from_str(&value).map_err(|_| ModelIrError::InvalidField(field))
+    match serde_json::from_str(&value) {
+        Ok(parsed) => (parsed, None),
+        Err(_) => (Value::Null, Some(value)),
+    }
 }
 
 fn decode_role(value: &str) -> Result<MessageRole, ModelIrError> {

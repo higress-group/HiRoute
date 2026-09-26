@@ -127,6 +127,10 @@ pub(super) fn snapshot(
         );
         (
             AliasRequestOwnedRouteV1::Classified {
+                // These classified-route fixtures explicitly exercise branch
+                // changes on a new user turn; the product authoring default
+                // remains false.
+                reselect_on_user_message: true,
                 classifier: AliasComplexityClassifierV1 {
                     revision: "runtime-complexity/v1".into(),
                     mode: if let Some(endpoint) = classifier_endpoint {

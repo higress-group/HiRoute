@@ -419,12 +419,16 @@
             },
             "primary_fallback": {
               "type": "boolean"
+            },
+            "reselect_on_user_message": {
+              "type": "boolean"
             }
           },
           "required": [
             "economy",
             "primary",
             "primary_fallback",
+            "reselect_on_user_message",
             "classifier",
             "complex_keywords"
           ],

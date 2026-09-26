@@ -15,7 +15,11 @@ const CONTENT_FIELD_METADATA_BYTES: usize = 192;
 
 mod ingress;
 
-pub(crate) use ingress::{compact_ingress_document, scan_ingress_document};
+#[cfg(test)]
+pub(crate) use ingress::compact_ingress_document;
+pub(crate) use ingress::{
+    compact_ingress_document_with_markers, parse_ingress_document, scan_ingress_document,
+};
 
 /// Stable, path-free locator for one range in the request's replay owner. It
 /// deliberately carries no content digest, key, file name, or runtime session
@@ -181,7 +185,9 @@ pub fn externalize_model_request(
     }
     for history in request.responses_reasoning_history.values_mut() {
         for value in history.native_fields.values_mut() {
-            externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
+            if !contains_replay_string_ref(value, replay) {
+                externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
+            }
         }
     }
     // Tool kind/name/namespace values are request-scoped identity keys. Keep
@@ -219,13 +225,15 @@ pub fn externalize_model_request(
         externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
     }
     for state in &mut request.provider_state {
-        externalize_json(
-            &mut state.value,
-            replay,
-            &mut pool,
-            &mut inline_remaining,
-            false,
-        )?;
+        if !contains_replay_string_ref(&state.value, replay) {
+            externalize_json(
+                &mut state.value,
+                replay,
+                &mut pool,
+                &mut inline_remaining,
+                false,
+            )?;
+        }
     }
     if let Some(pool) = pool {
         pool.seal()?;
@@ -250,7 +258,7 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
     }
     for history in request.responses_reasoning_history.values() {
         for value in history.native_fields.values() {
-            collect_json_content_ref(value, &mut refs);
+            collect_nested_content_refs(value, &mut refs);
         }
     }
     for tool in &request.tools {
@@ -284,7 +292,7 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
         collect_json_content_ref(value, &mut refs);
     }
     for state in &request.provider_state {
-        collect_json_content_ref(&state.value, &mut refs);
+        collect_nested_content_refs(&state.value, &mut refs);
     }
     refs
 }
@@ -355,9 +363,10 @@ fn part_field_count(parts: &[ContentPart]) -> Result<usize, ReplayError> {
             .checked_add(match part {
                 ContentPart::ToolCall { namespace, .. } => 2 + usize::from(namespace.is_some()),
                 ContentPart::ToolResult { .. } => 1,
-                ContentPart::Text { .. }
-                | ContentPart::Image { .. }
-                | ContentPart::ProviderState { .. } => 1,
+                ContentPart::ProviderState { state } => {
+                    1 + usize::from(state.messages_thinking.is_some())
+                }
+                ContentPart::Text { .. } | ContentPart::Image { .. } => 1,
             })
             .ok_or(ReplayError::LengthOverflow)
     })
@@ -373,7 +382,17 @@ fn collect_part_content_refs(parts: &[ContentPart], refs: &mut Vec<ContentRef>) 
             ContentPart::Image {
                 source: ImageSource::Base64 { data, .. },
             } => collect_string_content_ref(data, refs),
-            ContentPart::ToolCall { arguments, .. } => collect_json_content_ref(arguments, refs),
+            ContentPart::ToolCall {
+                arguments,
+                raw_arguments,
+                ..
+            } => {
+                if let Some(raw) = raw_arguments {
+                    collect_string_content_ref(raw, refs);
+                } else {
+                    collect_json_content_ref(arguments, refs);
+                }
+            }
             ContentPart::ToolResult {
                 output: ToolOutput::Text(value),
                 ..
@@ -383,7 +402,10 @@ fn collect_part_content_refs(parts: &[ContentPart], refs: &mut Vec<ContentRef>) 
                 ..
             } => collect_json_content_ref(value, refs),
             ContentPart::ProviderState { state } => {
-                collect_json_content_ref(&state.value, refs);
+                collect_nested_content_refs(&state.value, refs);
+                if let Some(thinking) = &state.messages_thinking {
+                    collect_string_content_ref(thinking, refs);
+                }
             }
         }
     }
@@ -398,6 +420,42 @@ fn collect_string_content_ref(value: &str, refs: &mut Vec<ContentRef>) {
 fn collect_json_content_ref(value: &Value, refs: &mut Vec<ContentRef>) {
     if let Some(content) = value.content_ref() {
         refs.push(content);
+    }
+}
+
+fn collect_nested_content_refs(value: &Value, refs: &mut Vec<ContentRef>) {
+    if let Some(content) = value.content_ref() {
+        refs.push(content);
+        return;
+    }
+    match value {
+        Value::String(value) => collect_string_content_ref(value, refs),
+        Value::Array(values) => {
+            for value in values {
+                collect_nested_content_refs(value, refs);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values() {
+                collect_nested_content_refs(value, refs);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn contains_replay_string_ref(value: &Value, replay: &ReplayStore) -> bool {
+    match value {
+        Value::String(value) => ContentRef::from_wire_marker(value)
+            .as_ref()
+            .is_some_and(|reference| replay.has_reference(reference)),
+        Value::Array(values) => values
+            .iter()
+            .any(|value| contains_replay_string_ref(value, replay)),
+        Value::Object(values) => values
+            .values()
+            .any(|value| contains_replay_string_ref(value, replay)),
+        _ => false,
     }
 }
 
@@ -416,9 +474,14 @@ fn externalize_parts(
             ContentPart::Image {
                 source: ImageSource::Base64 { data, .. },
             } => externalize_value(data, replay, pool, inline_remaining)?,
-            ContentPart::ToolCall { arguments, .. } => {
-                externalize_json(arguments, replay, pool, inline_remaining, false)?
-            }
+            ContentPart::ToolCall {
+                arguments,
+                raw_arguments,
+                ..
+            } => match raw_arguments {
+                Some(raw) => externalize_value(raw, replay, pool, inline_remaining)?,
+                None => externalize_json(arguments, replay, pool, inline_remaining, false)?,
+            },
             ContentPart::ToolResult {
                 output: ToolOutput::Text(value),
                 ..
@@ -428,7 +491,14 @@ fn externalize_parts(
                 ..
             } => externalize_json(value, replay, pool, inline_remaining, true)?,
             ContentPart::ProviderState { state } => {
-                externalize_json(&mut state.value, replay, pool, inline_remaining, false)?;
+                // A native opaque block can already contain Replay-backed
+                // leaves. The sequential template expands them directly.
+                if !contains_replay_string_ref(&state.value, replay) {
+                    externalize_json(&mut state.value, replay, pool, inline_remaining, false)?;
+                }
+                if let Some(thinking) = &mut state.messages_thinking {
+                    externalize_value(thinking, replay, pool, inline_remaining)?;
+                }
             }
         }
     }

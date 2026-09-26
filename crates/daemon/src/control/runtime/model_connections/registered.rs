@@ -441,6 +441,10 @@ mod tests {
         let metadata = listed.metadata_catalog.as_ref().unwrap();
         // Connection clients receive the complete verified catalog. Inference provenance and
         // rule explanations must not disappear at the transport boundary.
+        assert_eq!(
+            metadata,
+            &catalog.current_release_model_data().metadata_catalog
+        );
         assert_eq!(metadata.provider_records.len(), 105);
         assert_eq!(metadata.model_records.len(), 764);
         assert_eq!(metadata.inference_rules.len(), 187);

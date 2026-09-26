@@ -7,7 +7,7 @@ fn change() -> PlanContentChangeV2 {
         editor: serde_json::from_value(serde_json::json!({
             "schema": PLAN_EDITOR_SCHEMA_V2, "display_name": "日常编码", "purpose": "辅助日常编码",
             "mode":"fixed_model", "candidates":[{"binding_id":"binding/free-b"}],
-            "smart":{"economy":[],"primary":[],"primary_fallback":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
+            "smart":{"economy":[],"primary":[],"primary_fallback":false,"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
             "free":{"candidates":[],"primary":[],"primary_fallback":false},
             "delegation_enabled": false,
             "requirements":{},"limits":{"maximum_attempts":6,"request_timeout_ms":60000,"attempt_timeout_ms":30000}

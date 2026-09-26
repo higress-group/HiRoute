@@ -51,7 +51,8 @@ pub(super) fn decode_responses_input(
                 ],
                 "responses function_call",
             )?;
-            let arguments = parse_json_string(required_string(object, "arguments")?, "arguments")?;
+            let (arguments, raw_arguments) =
+                parse_tool_arguments(required_string(object, "arguments")?);
             messages.push(CanonicalMessage {
                 role: MessageRole::Assistant,
                 content: vec![ContentPart::ToolCall {
@@ -60,6 +61,7 @@ pub(super) fn decode_responses_input(
                     namespace: optional_string(object, "namespace")?,
                     name: required_string(object, "name")?,
                     arguments,
+                    raw_arguments,
                 }],
                 name: None,
             });
@@ -121,6 +123,7 @@ pub(super) fn decode_responses_input(
                     namespace: optional_string(object, "namespace")?,
                     name: required_string(object, "name")?,
                     arguments: Value::String(required_string(object, "input")?),
+                    raw_arguments: None,
                 }],
                 name: None,
             });
@@ -172,6 +175,7 @@ pub(super) fn decode_responses_input(
                         block_index: None,
                         kind: "encrypted_content".into(),
                         value: Value::String(encrypted),
+                        messages_thinking: None,
                     }),
                 }]
             } else {

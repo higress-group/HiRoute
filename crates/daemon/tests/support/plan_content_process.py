@@ -127,6 +127,53 @@ def draft_scenario(repository):
         product.close()
 
 
+def rest_classifier_endpoint_scenario(repository):
+    product = Product(repository)
+    try:
+        # Exercise publication without changing an unrelated Agent's native settings.
+        product.collaboration_only = True
+        bootstrap(product)
+        endpoint = 'http://127.0.0.1:63787/v1/decisions'
+        selection = product.editor['candidates'][0]
+        editor = dict(product.editor, mode='smart_saving', candidates=[], smart={
+            'economy': [selection], 'primary': [selection], 'primary_fallback': False,
+            'reselect_on_user_message': False,
+            'classifier': {'kind': 'rest', 'endpoint': endpoint, 'timeout_ms': 3000},
+            'complex_keywords': [],
+        })
+        draft = {'schema': 'hiroute.plan-draft/v1', 'workspace_id': 'personal/default',
+                 'draft_id': 'draft/rest-classifier', 'revision': 1,
+                 'plan_id': product.plan_id, 'base_head_revision': 1, 'editor': editor}
+        draft_change = {'schema': 'hiroute.plan-draft-change/v1',
+                        'workspace_id': 'personal/default', 'draft_id': draft['draft_id'],
+                        'expected_revision': None, 'action': {'kind': 'save', 'draft': draft}}
+        draft_preview = product.preview('routing preview', {'change': draft_change})
+        saved, _, _ = product.apply('routing apply', 'ApplyAgentPlanChange', draft_preview,
+                                    {'change': draft_change}, 'rest-classifier-draft')
+        assert saved['data']['state'] == 'succeeded', saved
+        change = {'schema': 'hiroute.plan-content-change/v2',
+                  'target': {'intent': 'update', 'plan_id': product.plan_id,
+                             'expected_head_revision': 1},
+                  'editor': editor,
+                  'consumed_draft': {'draft_id': draft['draft_id'], 'revision': 1}}
+        preview = product.preview('routing preview', {'change': change})
+        published, _, _ = product.apply('routing apply', 'ApplyAgentPlanChange', preview,
+                                        {'change': change}, 'rest-classifier-publish')
+        assert published['data']['state'] == 'succeeded', published
+        plans = product.cli('routing list')[1]['data']['plans']
+        plan = next(plan for plan in plans if plan['agent_plan_id'] == product.plan_id)
+        assert plan['desired']['strategy']['classifier']['endpoint'] == endpoint, plan
+        product.stop()
+        product.start()
+        plans = product.cli('routing list')[1]['data']['plans']
+        plan = next(plan for plan in plans if plan['agent_plan_id'] == product.plan_id)
+        assert plan['desired']['strategy']['classifier']['endpoint'] == endpoint, plan
+        print(json.dumps({'scenario': 'typed-rest-classifier-draft-publication-restart',
+                          'state': 'green', 'cli_exit': 0}), flush=True)
+    finally:
+        product.close()
+
+
 def reject_legacy_writes(repository):
     product = Product(repository)
     try:
@@ -201,5 +248,6 @@ if __name__ == '__main__':
         scenario(sys.argv[1], boundary)
 
     draft_scenario(sys.argv[1])
+    rest_classifier_endpoint_scenario(sys.argv[1])
 
     reject_legacy_writes(sys.argv[1])

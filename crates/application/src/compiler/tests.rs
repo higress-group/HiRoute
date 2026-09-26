@@ -52,12 +52,14 @@ fn compiler_smart_saving_materializes_two_deterministic_branches() {
     ));
     let RequestOwnedRouteV1::Classified {
         classifier,
+        reselect_on_user_message,
         simple_groups,
         complex_groups,
     } = &result.materialized.request_owned
     else {
         panic!("smart-saving request phase");
     };
+    assert!(!reselect_on_user_message);
     assert_eq!(
         simple_groups,
         &[MaterializedGroupId::Economy, MaterializedGroupId::Primary]

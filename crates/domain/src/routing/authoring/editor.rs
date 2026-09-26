@@ -17,6 +17,7 @@ impl AgentPlanAuthoringV2 {
                 economy: vec![],
                 primary: vec![],
                 primary_fallback: false,
+                reselect_on_user_message: false,
                 classifier: ComplexityClassifierModeV1::LocalRules,
                 complex_keywords: vec![],
             },
@@ -38,6 +39,7 @@ impl AgentPlanAuthoringV2 {
                 economy,
                 primary,
                 primary_fallback,
+                reselect_on_user_message,
                 classifier,
                 complex_keywords,
             } => {
@@ -45,6 +47,7 @@ impl AgentPlanAuthoringV2 {
                     economy: economy.clone(),
                     primary: primary.clone(),
                     primary_fallback: *primary_fallback,
+                    reselect_on_user_message: *reselect_on_user_message,
                     classifier: classifier.clone(),
                     complex_keywords: complex_keywords.clone(),
                 };

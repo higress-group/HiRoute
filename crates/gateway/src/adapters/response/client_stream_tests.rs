@@ -33,6 +33,42 @@ fn responses_decoder_accepts_one_done_marker_only_after_terminal() {
 }
 
 #[test]
+fn responses_plain_reasoning_content_survives_empty_summary_in_terminal_snapshot() {
+    let candidate = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let reasoning = json!({
+        "type":"reasoning", "id":"reasoning", "status":"completed",
+        "summary":[], "content":[{"type":"reasoning_text","text":"think"}]
+    });
+    let wire = [
+        ("response.output_item.added", json!({"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"reasoning","status":"in_progress","summary":[],"content":[]}})),
+        ("response.reasoning_text.delta", json!({"type":"response.reasoning_text.delta","item_id":"reasoning","output_index":0,"content_index":0,"delta":"think"})),
+        ("response.reasoning_text.done", json!({"type":"response.reasoning_text.done","item_id":"reasoning","output_index":0,"content_index":0,"text":"think"})),
+        ("response.output_item.done", json!({"type":"response.output_item.done","output_index":0,"item":reasoning.clone()})),
+        ("response.completed", json!({"type":"response.completed","response":{"id":"response","model":"physical","status":"completed","output":[reasoning]}})),
+    ]
+    .into_iter()
+    .flat_map(|(event, data)| {
+        RenderedSseEvent {
+            event: Some(event.into()),
+            data,
+        }
+        .wire_bytes()
+        .unwrap()
+    })
+    .collect::<Vec<_>>();
+    let mut decoder = NativeResponseDecoder::new(&candidate, 200, true).unwrap();
+    decoder.feed(&wire, false).unwrap();
+    decoder.take_events();
+    decoder.feed(b"data: [DONE]\n\n", true).unwrap();
+    assert!(decoder.finish().is_ok());
+}
+
+#[test]
 fn only_the_default_responses_answer_phase_is_portable_to_messages() {
     assert!(client_can_represent_message_phase(
         IngressProtocol::Messages,

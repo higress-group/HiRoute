@@ -236,7 +236,7 @@ impl TaskSessionRoot {
             ))
         })?;
         let contents = format!(
-            "model_provider = \"hiroute\"\n{catalog_setting}[model_providers.hiroute]\nname = \"HiRoute managed run\"\nbase_url = \"http://{gateway}/v1\"\nwire_api = \"responses\"\nenv_key = \"HIROUTE_RUN_TOKEN\"\nrequires_openai_auth = false\n"
+            "model_provider = \"hiroute\"\n{catalog_setting}[model_providers.hiroute]\nname = \"HiRoute managed run\"\nbase_url = \"http://{gateway}/v1\"\nwire_api = \"responses\"\nsupports_websockets = false\nenv_key = \"HIROUTE_RUN_TOKEN\"\nrequires_openai_auth = false\n"
         );
         let path = self.path.join("config.toml");
         let mut options = fs::OpenOptions::new();

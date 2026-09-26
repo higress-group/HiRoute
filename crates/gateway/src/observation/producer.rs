@@ -22,7 +22,7 @@ mod feedback;
 pub(super) use bounded::ObservationProducerIdentity;
 use bounded::{
     ByteBoundedObservationProducer, ObservationLossReason, ObservationLossWatermark,
-    ObservationSequenceStamp,
+    ObservationSequenceStamp, RECORD_ACCOUNTING_BYTES,
 };
 pub use bounded::{ObservationAck, ObservationNack, ObservationRecord, ObservationRecordSink};
 pub use feedback::accounted_acknowledgement;
@@ -63,9 +63,16 @@ impl ChannelProducer {
             channel,
             nacks: std::sync::atomic::AtomicU64::new(0),
         });
+        let queue_events = if matches!(channel, ObservationChannel::Content) {
+            // Each streamed delta already reserves at least the record overhead
+            // against this channel's byte budget. A second, fixed 256-event cap
+            // discarded ordinary long replies before that budget was reached.
+            (queue_bytes / RECORD_ACCOUNTING_BYTES).max(1)
+        } else {
+            DEFAULT_QUEUE_EVENTS
+        };
         let inner =
-            ByteBoundedObservationProducer::new(identity, queue_bytes, DEFAULT_QUEUE_EVENTS, sink)
-                .ok();
+            ByteBoundedObservationProducer::new(identity, queue_bytes, queue_events, sink).ok();
         Self {
             component,
             revision,

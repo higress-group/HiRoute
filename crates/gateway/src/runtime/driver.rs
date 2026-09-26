@@ -4,7 +4,8 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use hiroute_gateway_core::core::execution_plan::{
-    AcceptedResponseExecutionBinding, AttemptExecutionBinding, ConfigEventSnapshot, TransportTarget,
+    AcceptedResponseExecutionBinding, AttemptExecutionBinding, ConfigEventSnapshot,
+    ResolvedTargetBindingId, TransportTarget,
 };
 use hiroute_gateway_core::core::filter::LocalReply;
 use hiroute_gateway_core::runtime::attempt::{
@@ -81,6 +82,7 @@ pub struct ProductionLogicalRequest {
 pub struct ProductionRouteContext {
     pub(crate) ingress: IngressProtocol,
     pub(crate) context_holds: Arc<ContextHoldStore>,
+    pub(crate) switch_fallback: Option<ResolvedTargetBindingId>,
     pub(crate) hold_completion: Option<HoldCompletion>,
 }
 

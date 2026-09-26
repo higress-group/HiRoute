@@ -13,7 +13,7 @@ use super::projection::project_user;
 use super::{
     AcceptedExecution, AgentTurnBegin, AgentTurnHistoryError, AgentTurnHistoryKey,
     AgentTurnHistorySnapshot, AgentTurnStatus, AgentTurnTicket, AssessmentTarget,
-    CompletedAgentTurn, ContextDecisionFacts, ExecutionAttribution, PlanSnapshot, VisibleAgentTurn,
+    CompletedAgentTurn, ExecutionAttribution, PlanSnapshot, TurnDecisionInputs, VisibleAgentTurn,
     VisibleContentPart,
 };
 use crate::replay::ReplayStore;
@@ -200,9 +200,9 @@ impl AgentTurnHistoryStore {
             plan,
             request,
             replay,
-            ContextDecisionFacts {
-                history_continues: true,
-                has_hold_preference: true,
+            TurnDecisionInputs {
+                message_history_continues: true,
+                reselect_on_user_message: true,
             },
             now,
         )
@@ -214,7 +214,7 @@ impl AgentTurnHistoryStore {
         plan: PlanSnapshot,
         request: &ModelRequestIRV1,
         replay: &ReplayStore,
-        context: ContextDecisionFacts,
+        decision_inputs: TurnDecisionInputs,
         now: Instant,
     ) -> Result<AgentTurnBegin, AgentTurnHistoryError> {
         let analyzed = analyze_request(request, replay)?;
@@ -302,14 +302,15 @@ impl AgentTurnHistoryStore {
             };
             return Ok(AgentTurnBegin::NewTurn {
                 ticket,
-                history: AgentTurnHistorySnapshot {
+                history: Box::new(AgentTurnHistorySnapshot {
                     visible_conversation: Vec::new(),
                     history_partial: missing_history,
                     assessment_from: None,
                     assessment_target: None,
                     _pin: None,
-                },
+                }),
                 completed: None,
+                inherited_decision: None,
             });
         }
 
@@ -317,13 +318,19 @@ impl AgentTurnHistoryStore {
             .entries
             .get(&key)
             .ok_or(AgentTurnHistoryError::Integrity)?;
-        let appended_user =
-            context.history_continues && latest.user_index > entry.checkpoint.active_user_index;
+        let appended_user = decision_inputs.message_history_continues
+            && latest.user_index > entry.checkpoint.active_user_index;
         let inheritable_decision = entry.active.decision.is_some() && entry.active.plan == plan;
-        let needs_decision = !inheritable_decision || appended_user || !context.has_hold_preference;
+        let needs_decision = !inheritable_decision
+            || !decision_inputs.message_history_continues
+            || (appended_user && decision_inputs.reselect_on_user_message);
+        let starts_new_turn = appended_user || needs_decision;
+        let inherited_decision = (!needs_decision)
+            .then(|| entry.active.decision.clone())
+            .flatten();
 
         let request_token = inner.allocate_request_token()?;
-        if !needs_decision {
+        if !starts_new_turn {
             let (decision, ticket, old_bytes, new_bytes) = {
                 let entry = inner
                     .entries
@@ -406,7 +413,7 @@ impl AgentTurnHistoryStore {
                 .entries
                 .get_mut(&key)
                 .ok_or(AgentTurnHistoryError::Integrity)?;
-            if context.history_continues {
+            if decision_inputs.message_history_continues {
                 output::apply_tool_results(
                     &mut entry.active,
                     &analyzed.tool_results,
@@ -504,6 +511,20 @@ impl AgentTurnHistoryStore {
             self.abort_locked(&mut inner, &ticket);
             return Err(AgentTurnHistoryError::Resource);
         }
+        if let Some(inherited_decision) = inherited_decision {
+            return Ok(AgentTurnBegin::NewTurn {
+                ticket,
+                history: Box::new(AgentTurnHistorySnapshot {
+                    visible_conversation: Vec::new(),
+                    history_partial: true,
+                    assessment_from: None,
+                    assessment_target: None,
+                    _pin: None,
+                }),
+                completed: completed.map(Box::new),
+                inherited_decision: Some(inherited_decision),
+            });
+        }
         let pin = {
             let entry = inner
                 .entries
@@ -528,8 +549,9 @@ impl AgentTurnHistoryStore {
         };
         Ok(AgentTurnBegin::NewTurn {
             ticket,
-            history,
+            history: Box::new(history),
             completed: completed.map(Box::new),
+            inherited_decision: None,
         })
     }
 

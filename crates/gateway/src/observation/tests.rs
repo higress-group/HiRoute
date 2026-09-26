@@ -231,6 +231,74 @@ impl ObservationRecordSink for RejectingSink {
     }
 }
 
+/// A normal streamed answer can produce more than 256 small content deltas while
+/// the storage worker is busy. The content queue must absorb that burst without
+/// losing an ordinal and making every subsequent chunk fail validation.
+#[test]
+fn content_channel_keeps_a_long_stream_contiguous_during_sink_backpressure() {
+    use std::sync::Condvar;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    struct GatedContentSink {
+        gate: Arc<(Mutex<bool>, Condvar)>,
+        delivered: AtomicUsize,
+        gaps: AtomicUsize,
+    }
+
+    impl ObservationRecordSink for GatedContentSink {
+        fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack> {
+            let (lock, wake) = &*self.gate;
+            let released = lock.lock().unwrap_or_else(|error| error.into_inner());
+            let _released = wake
+                .wait_while(released, |released| !*released)
+                .unwrap_or_else(|error| error.into_inner());
+            if record.is_gap_heartbeat() {
+                self.gaps.fetch_add(1, Ordering::Relaxed);
+            } else {
+                self.delivered.fetch_add(1, Ordering::Relaxed);
+            }
+            Ok(accounted_acknowledgement(record))
+        }
+    }
+
+    const DELTAS: usize = 600;
+    let sink = Arc::new(GatedContentSink {
+        gate: Arc::new((Mutex::new(false), Condvar::new())),
+        delivered: AtomicUsize::new(0),
+        gaps: AtomicUsize::new(0),
+    });
+    let discard = GatewayObservationSinks::discard();
+    let gateway = GatewayObservation::with_sinks_and_policy(
+        true,
+        4 * 1024 * 1024,
+        GatewayObservationSinks {
+            lifecycle: discard.lifecycle,
+            execution_fact: discard.execution_fact,
+            conversation_content: sink.clone(),
+            run_relation: discard.run_relation,
+            otel: discard.otel,
+        },
+        OtelContentPolicy::Disabled,
+    );
+
+    for ordinal in 0..DELTAS {
+        gateway.channels.content.publish(|_, sequence, _| {
+            json!({"schema_version":"hiroute.observation.test/v1","sequence":sequence,"ordinal":ordinal})
+        });
+    }
+    let (lock, wake) = &*sink.gate;
+    *lock.lock().unwrap_or_else(|error| error.into_inner()) = true;
+    wake.notify_all();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while sink.delivered.load(Ordering::Relaxed) < DELTAS && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(sink.delivered.load(Ordering::Relaxed), DELTAS);
+    assert_eq!(sink.gaps.load(Ordering::Relaxed), 0);
+}
+
 #[test]
 fn channel_loss_and_sink_nack_are_projected_without_record_payloads() {
     use hiroute_diagnostics::event::ProcessRole;

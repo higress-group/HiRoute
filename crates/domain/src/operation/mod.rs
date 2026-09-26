@@ -914,7 +914,9 @@ fn validate_registered_plan(
     external: &[ExternalEffectIntentV1],
 ) -> Result<(), OperationValidationError> {
     if spec.schema_version.major != crate::CHANGE_SPEC_SCHEMA_V1.major
-        || contains_disabled_or_url(&spec.desired_state)
+        // Routing content has its own exact, typed validator. A REST classifier
+        // endpoint is legitimate there and must survive durable reconstruction.
+        || (spec.command_id != "routing.apply" && contains_disabled_or_url(&spec.desired_state))
         || spec
             .resource_id
             .as_deref()

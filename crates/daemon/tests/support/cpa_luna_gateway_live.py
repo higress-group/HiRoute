@@ -110,6 +110,7 @@ def publish_luna_plan(product, binding_id):
         'candidates': [{'binding_id': binding_id,
                         'reasoning': {'kind': 'profile', 'profile': 'low'}}],
         'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+                  'reselect_on_user_message': False,
                   'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
         'free': {'candidates': [], 'primary': [], 'primary_fallback': False},
         'delegation_enabled': False, 'requirements': {},

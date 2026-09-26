@@ -63,27 +63,18 @@ impl ContextProjector {
         Self::project_serialized_len(serialized_bytes, limits, reasoning)
     }
 
-    /// Projects an adapter-materialized target byte count without retaining
-    /// or copying request content in the planner input. The adapter revision
-    /// and complete capability profile are covered by the candidate profile
-    /// digest, so this remains a deterministic candidate-specific fact.
+    /// Records an advisory upper-bound estimate without retaining request
+    /// content in the planner input. Byte estimates cannot prove a provider's
+    /// actual token count, so they must not reject an otherwise valid request.
     pub fn project_serialized_len(
         serialized_bytes: u64,
         limits: &ContextLimits,
         reasoning: &ReasoningProfileCapability,
     ) -> Result<CandidateContextDemand, ContextProjectionError> {
-        let max_input = *limits
-            .max_input_tokens
-            .exact()
-            .ok_or(ContextProjectionError::UnknownLimit("max_input"))?;
         let max_output = *limits
             .max_output_tokens
             .exact()
             .ok_or(ContextProjectionError::UnknownLimit("max_output"))?;
-        let max_total = limits
-            .max_total_tokens
-            .exact()
-            .ok_or(ContextProjectionError::UnknownLimit("max_total"))?;
         let estimator = limits
             .estimator
             .exact()
@@ -91,12 +82,6 @@ impl ContextProjector {
         let serialized_bytes_usize = usize::try_from(serialized_bytes)
             .map_err(|_| ContextProjectionError::ArithmeticOverflow)?;
         let input = estimator.estimate(serialized_bytes_usize)?;
-        if input > max_input {
-            return Err(ContextProjectionError::InputTooLarge {
-                required: input,
-                limit: max_input,
-            });
-        }
         let reasoning_reservation = match reasoning.accounting {
             ReasoningAccounting::WithinOutputCap => 0,
             ReasoningAccounting::Additive => reasoning.additional_reservation_tokens,
@@ -105,14 +90,6 @@ impl ContextProjector {
             .checked_add(max_output)
             .and_then(|value| value.checked_add(reasoning_reservation))
             .ok_or(ContextProjectionError::ArithmeticOverflow)?;
-        if let Some(max_total) = *max_total
-            && required_total > max_total
-        {
-            return Err(ContextProjectionError::TotalTooLarge {
-                required: required_total,
-                limit: max_total,
-            });
-        }
         Ok(CandidateContextDemand {
             target_serialized_bytes: serialized_bytes_usize,
             target_serialized_input_upper_bound: input,
@@ -130,10 +107,6 @@ pub enum ContextProjectionError {
     UnknownLimit(&'static str),
     #[error("candidate token estimator is unknown")]
     UnknownEstimator,
-    #[error("target serialized input requires {required} tokens but limit is {limit}")]
-    InputTooLarge { required: u64, limit: u64 },
-    #[error("candidate total requires {required} tokens but limit is {limit}")]
-    TotalTooLarge { required: u64, limit: u64 },
     #[error("context projection overflowed")]
     ArithmeticOverflow,
 }

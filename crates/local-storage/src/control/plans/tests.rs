@@ -7,7 +7,7 @@ fn draft() -> PlanDraftV1 {
         "schema": PLAN_DRAFT_SCHEMA_V1, "workspace_id": WorkspaceId::DEFAULT,
         "draft_id":"draft/a", "revision":1,
         "editor": {"schema":PLAN_EDITOR_SCHEMA_V2,"display_name":"", "purpose":"",
-          "mode":"fixed_model","candidates":[],"smart":{"economy":[],"primary":[],"primary_fallback":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
+          "mode":"fixed_model","candidates":[],"smart":{"economy":[],"primary":[],"primary_fallback":false,"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
           "free":{"candidates":[],"primary":[],"primary_fallback":false},"delegation_enabled":false,
           "requirements":{},"limits":{"maximum_attempts":6,"request_timeout_ms":60000,"attempt_timeout_ms":30000}}
     })).unwrap()
