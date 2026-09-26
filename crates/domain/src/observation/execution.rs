@@ -316,6 +316,7 @@ pub struct GroupPlanV1 {
 pub enum LedgerReasonCodeV1 {
     ContextHoldApplied,
     ContextHoldInvalidated,
+    PreviousSuccessFallback,
     SmartSavingSimple,
     SmartSavingComplex,
     ProviderStateOwnerContinuation,
@@ -489,6 +490,7 @@ pub enum ExclusionReasonCodeV1 {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RankingReasonCodeV1 {
     ContextModelHold,
+    PreviousSuccessFallback,
     PublishedManualOrder,
     QualityFirst,
     LowestApiEquivalentCost,

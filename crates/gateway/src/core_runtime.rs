@@ -914,9 +914,6 @@ impl ProductionGatewayRuntime {
                             )
                             .await;
                         }
-                        if let Some(assessment) = &result.assessment {
-                            request_observation.branch_assessment_recorded(assessment);
-                        }
                         Some(result)
                     }
                     Err(classification::ClassificationError::Deadline) => {
@@ -997,9 +994,11 @@ impl ProductionGatewayRuntime {
                 }
             }
             planner_input.correlated_branch = correlated_branch.map(|decision| *decision);
+            let mut assessment = None;
             if let Some(outcome) = classification_outcome {
                 planner_input.classification_decision = Some(outcome.decision);
                 planner_input.classification_facts = Some(outcome.facts);
+                assessment = outcome.assessment;
             }
             // The Planner is invoked exactly once for this request. Everything
             // below consumes its frozen output; no runtime fallback path may
@@ -1019,6 +1018,10 @@ impl ProductionGatewayRuntime {
             };
             request_observation.record_plan_stage(plan_started.elapsed());
             request_observation.record_planner(&planner_input, &planner_output);
+            // The planner establishes the trusted Plan identity used by every execution fact.
+            if let Some(assessment) = &assessment {
+                request_observation.branch_assessment_recorded(assessment);
+            }
             if !matches!(planner_output.outcome, profiles::PlannerOutcomeV1::Ready)
                 || planner_output.ledger.ordered_candidates.is_empty()
             {

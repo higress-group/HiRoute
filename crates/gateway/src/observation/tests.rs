@@ -231,22 +231,22 @@ impl ObservationRecordSink for RejectingSink {
     }
 }
 
-/// A normal streamed answer can produce more than 256 small content deltas while
-/// the storage worker is busy. The content queue must absorb that burst without
-/// losing an ordinal and making every subsequent chunk fail validation.
+/// A normal streamed answer can produce more than 256 small content deltas or
+/// execution facts while the storage worker is busy. The byte budget, not a
+/// second fixed event cap, must determine whether these small records fit.
 #[test]
-fn content_channel_keeps_a_long_stream_contiguous_during_sink_backpressure() {
+fn observation_channels_keep_small_bursts_contiguous_during_sink_backpressure() {
     use std::sync::Condvar;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
 
-    struct GatedContentSink {
+    struct GatedSink {
         gate: Arc<(Mutex<bool>, Condvar)>,
         delivered: AtomicUsize,
         gaps: AtomicUsize,
     }
 
-    impl ObservationRecordSink for GatedContentSink {
+    impl ObservationRecordSink for GatedSink {
         fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack> {
             let (lock, wake) = &*self.gate;
             let released = lock.lock().unwrap_or_else(|error| error.into_inner());
@@ -262,41 +262,57 @@ fn content_channel_keeps_a_long_stream_contiguous_during_sink_backpressure() {
         }
     }
 
-    const DELTAS: usize = 600;
-    let sink = Arc::new(GatedContentSink {
-        gate: Arc::new((Mutex::new(false), Condvar::new())),
-        delivered: AtomicUsize::new(0),
-        gaps: AtomicUsize::new(0),
-    });
-    let discard = GatewayObservationSinks::discard();
-    let gateway = GatewayObservation::with_sinks_and_policy(
-        true,
-        4 * 1024 * 1024,
-        GatewayObservationSinks {
+    const RECORDS: usize = 600;
+    for channel in [ObservationChannel::Content, ObservationChannel::Facts] {
+        let sink = Arc::new(GatedSink {
+            gate: Arc::new((Mutex::new(false), Condvar::new())),
+            delivered: AtomicUsize::new(0),
+            gaps: AtomicUsize::new(0),
+        });
+        let discard = GatewayObservationSinks::discard();
+        let mut sinks = GatewayObservationSinks {
             lifecycle: discard.lifecycle,
             execution_fact: discard.execution_fact,
-            conversation_content: sink.clone(),
+            conversation_content: discard.conversation_content,
             run_relation: discard.run_relation,
             otel: discard.otel,
-        },
-        OtelContentPolicy::Disabled,
-    );
+        };
+        let selected = match channel {
+            ObservationChannel::Content => &mut sinks.conversation_content,
+            ObservationChannel::Facts => &mut sinks.execution_fact,
+            _ => unreachable!(),
+        };
+        *selected = sink.clone();
+        let gateway = GatewayObservation::with_sinks_and_policy(
+            true,
+            4 * 1024 * 1024,
+            sinks,
+            OtelContentPolicy::Disabled,
+        );
 
-    for ordinal in 0..DELTAS {
-        gateway.channels.content.publish(|_, sequence, _| {
-            json!({"schema_version":"hiroute.observation.test/v1","sequence":sequence,"ordinal":ordinal})
-        });
-    }
-    let (lock, wake) = &*sink.gate;
-    *lock.lock().unwrap_or_else(|error| error.into_inner()) = true;
-    wake.notify_all();
+        for ordinal in 0..RECORDS {
+            let publish = |_, sequence, _| json!({"schema_version":"hiroute.observation.test/v1","sequence":sequence,"ordinal":ordinal});
+            match channel {
+                ObservationChannel::Content => gateway.channels.content.publish(publish),
+                ObservationChannel::Facts => gateway.channels.execution.publish(publish),
+                _ => unreachable!(),
+            }
+        }
+        let (lock, wake) = &*sink.gate;
+        *lock.lock().unwrap_or_else(|error| error.into_inner()) = true;
+        wake.notify_all();
 
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while sink.delivered.load(Ordering::Relaxed) < DELTAS && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(10));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while sink.delivered.load(Ordering::Relaxed) < RECORDS && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            sink.delivered.load(Ordering::Relaxed),
+            RECORDS,
+            "{channel:?}"
+        );
+        assert_eq!(sink.gaps.load(Ordering::Relaxed), 0, "{channel:?}");
     }
-    assert_eq!(sink.delivered.load(Ordering::Relaxed), DELTAS);
-    assert_eq!(sink.gaps.load(Ordering::Relaxed), 0);
 }
 
 #[test]

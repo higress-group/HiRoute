@@ -29,7 +29,6 @@ pub use feedback::accounted_acknowledgement;
 use feedback::receiver_unavailable_nack;
 
 const DEFAULT_QUEUE_BYTES: usize = 512 * 1024;
-const DEFAULT_QUEUE_EVENTS: usize = 256;
 const MAX_QUEUE_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)]
@@ -63,14 +62,11 @@ impl ChannelProducer {
             channel,
             nacks: std::sync::atomic::AtomicU64::new(0),
         });
-        let queue_events = if matches!(channel, ObservationChannel::Content) {
-            // Each streamed delta already reserves at least the record overhead
-            // against this channel's byte budget. A second, fixed 256-event cap
-            // discarded ordinary long replies before that budget was reached.
-            (queue_bytes / RECORD_ACCOUNTING_BYTES).max(1)
-        } else {
-            DEFAULT_QUEUE_EVENTS
-        };
+        // Every record reserves at least the accounting overhead against this
+        // channel's byte budget. A second fixed event cap discarded small
+        // execution facts before the byte budget was reached, making later
+        // request receipts incomplete even though the sink was healthy.
+        let queue_events = (queue_bytes / RECORD_ACCOUNTING_BYTES).max(1);
         let inner =
             ByteBoundedObservationProducer::new(identity, queue_bytes, queue_events, sink).ok();
         Self {
