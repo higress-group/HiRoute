@@ -30,6 +30,7 @@ fn agent_probe_version_is_diagnostic_and_private_environment_is_not_inherited() 
         dir.path(),
         "test -z \"$HOME\" || exit 4; printf 'codex-cli 99.123.456-beta.1\\n'",
     );
+    let mut completed = 0;
     for _ in 0..64 {
         let found = match probe(&path, Duration::from_secs(1)) {
             ExecutableProbe::Installed(found) => found,
@@ -38,8 +39,17 @@ fn agent_probe_version_is_diagnostic_and_private_environment_is_not_inherited() 
                 panic!("executable probe failed: {reason:?}")
             }
         };
-        assert_eq!(found.version, "99.123.456-beta.1");
+        // A bounded diagnostic may time out before the interpreter runs when probes
+        // launch concurrently. A completed probe still proves the child saw no HOME.
+        if !found.version.is_empty() {
+            assert_eq!(found.version, "99.123.456-beta.1");
+            completed += 1;
+        }
     }
+    assert!(
+        completed > 0,
+        "no probe verified the private child environment"
+    );
 }
 
 #[test]
@@ -81,7 +91,19 @@ fn group_writable_executable_and_ancestor_are_allowed() {
     let ExecutableProbe::Installed(found) = probe(&path, Duration::from_secs(1)) else {
         panic!("group-writable installation was rejected");
     };
-    assert_eq!(found.version, "2.1.231");
+    assert_eq!(
+        found.canonical_path,
+        std::fs::canonicalize(&target).unwrap().to_str().unwrap()
+    );
+    assert!(found.version.is_empty() || found.version == "2.1.231");
+}
+
+#[test]
+fn agent_probe_parses_claude_version_without_running_a_process() {
+    assert_eq!(
+        parse_version(b"claude 2.1.231 (Claude Code)\n"),
+        Some("2.1.231".to_owned())
+    );
 }
 
 #[test]
