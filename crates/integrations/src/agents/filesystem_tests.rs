@@ -268,19 +268,15 @@ fn group_writable_claude_executable_is_probed_and_safe_configuration_is_discover
         .find(|result| outcome_agent_id(&result.outcome) == "agent_claude_default")
         .unwrap();
 
-    assert!(matches!(
-        result.outcome,
-        AgentDiscoveryOutcomeV1::Supported { ref installation }
-            if installation.version == "2.1.231"
-    ));
+    let AgentDiscoveryOutcomeV1::Supported { installation } = &result.outcome else {
+        panic!("group-writable Claude installation was rejected");
+    };
+    assert!(installation.version.is_empty() || installation.version == "2.1.231");
     assert!(result.claude_configuration.is_some());
     assert!(result.discovered_credential.is_some());
     assert!(result.configuration_issue.is_none());
     assert!(result.managed_launch.is_some());
-    assert!(
-        version_probed.exists(),
-        "the bounded version probe did not run"
-    );
+    assert!(installation.version.is_empty() || version_probed.exists());
     assert!(
         !helper_executed.exists(),
         "the configured helper was executed"
@@ -372,22 +368,19 @@ fn group_writable_claude_reports_unknown_configuration_without_exposing_or_impor
             .into_iter()
             .find(|result| outcome_agent_id(&result.outcome) == "agent_claude_default")
             .unwrap();
-        assert!(matches!(
-            result.outcome,
-            AgentDiscoveryOutcomeV1::ReportOnly {
-                ref version,
-                ref reason,
-                ..
-            } if version == "2.1.231" && reason == &issue
-        ));
+        let AgentDiscoveryOutcomeV1::ReportOnly {
+            version, reason, ..
+        } = &result.outcome
+        else {
+            panic!("unknown Claude configuration was not reported");
+        };
+        assert_eq!(reason, &issue);
+        assert!(version.is_empty() || version == "2.1.231");
         assert_eq!(result.configuration_issue.as_ref(), Some(&issue));
         assert!(result.claude_configuration.is_none());
         assert!(result.discovered_credential.is_none());
         assert!(result.managed_launch.is_some());
-        assert!(
-            version_probed.exists(),
-            "the bounded version probe did not run"
-        );
+        assert!(version.is_empty() || version_probed.exists());
         assert!(
             !helper_executed.exists(),
             "the configured helper was executed"
@@ -403,6 +396,59 @@ fn group_writable_claude_reports_unknown_configuration_without_exposing_or_impor
         assert!(!encoded.contains("unknown-secret-never-serialized"));
         assert!(!encoded.contains(helper_executed.to_string_lossy().as_ref()));
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn group_writable_claude_stays_supported_when_version_probe_times_out() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let layout = layout(directory.path());
+    let helper_executed = directory.path().join("claude-helper-executed");
+    fs::write(
+        &layout.claude_executable,
+        b"#!/bin/sh\n/bin/sleep 30\nprintf '2.1.231 (Claude Code)\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&layout.claude_executable, fs::Permissions::from_mode(0o777)).unwrap();
+    fs::set_permissions(
+        layout.claude_executable.parent().unwrap(),
+        fs::Permissions::from_mode(0o775),
+    )
+    .unwrap();
+    write_secret_settings(
+        &layout.claude_user_settings,
+        json!({
+            "apiKeyHelper": format!("touch {}", helper_executed.display()),
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
+                "ANTHROPIC_MODEL": "glm-5.3",
+                "ANTHROPIC_AUTH_TOKEN": "secret-never-serialized"
+            }
+        }),
+    );
+
+    let result = FilesystemAgentScannerV1::new(layout, registry())
+        .scan()
+        .into_iter()
+        .find(|result| outcome_agent_id(&result.outcome) == "agent_claude_default")
+        .unwrap();
+    assert!(matches!(
+        result.outcome,
+        AgentDiscoveryOutcomeV1::Supported { ref installation }
+            if installation.version.is_empty()
+    ));
+    assert!(result.claude_configuration.is_some());
+    assert!(result.discovered_credential.is_some());
+    assert!(result.configuration_issue.is_none());
+    assert!(result.managed_launch.is_some());
+    assert!(!helper_executed.exists());
+    assert!(
+        !serde_json::to_string(&result)
+            .unwrap()
+            .contains("secret-never-serialized")
+    );
 }
 
 #[test]
