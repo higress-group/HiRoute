@@ -1,5 +1,19 @@
 # HiRoute Jev 决策器
 
+## 决策日志
+
+CLI 默认以 INFO 级别向 stderr 输出 JSON 事件，可重定向到文件或由容器收集。
+`service_started` 记录实际模式、模型、阈值及资源限制。每次请求生成 `decision_id`，
+通过响应头 `X-Jev-Decision-Id` 返回，关联开始、完成、取消或异常事件。
+这个 ID 属于决策服务，HiRoute 当前尚未持久化该响应头。
+
+结果包含上游原始选择、rules 概率、归一化能力分及其有效性、阈值判断、最终分支、
+规则原因、历史裁剪与评估边界、排队及总耗时、HTTP 状态和失败阶段。
+规则原因为 `auto_choice`、`complexity_threshold`、`competence_guard` 或 `economy_eligible`。
+缺失能力分仍沿用当前“不阻止省钱分支”的规则，日志会明确记录缺失。
+这里记录的是规则依据，不是模型生成的推理过程；不记录正文、凭证或上游原始响应。
+以库方式运行时，需要将 `jev_decider` logger 启用为 INFO。
+
 [English](README.md) · [决策机制](../../README.zh-CN.md) · [API 与 OpenAPI](../../api/README.zh-CN.md)
 
 这是可以自行部署的官方参考扩展：接收 HiRoute 的五字段决策请求，通过一次 OpenRouter `typesafe/jev-1.13` Decisions 调用，返回分支选择与可选的上一执行阶段胜任度评分。它是独立受信服务，HiRoute 负责执行、路由执行轮次边界、评分归属和持久化，服务负责策略、提示词与模型上下文裁剪。部署后，可见对话投影会发往 OpenRouter/TypeSafe。

@@ -124,6 +124,24 @@ To implement a different strategy, keep the HTTP validation and response contrac
 
 ## Offline tests
 
+### Decision logs
+
+The CLI emits JSON events to stderr at INFO level. Redirect stderr to a file or use
+container logs. `service_started` records effective mode, model, thresholds and limits.
+Each decision has a generated `decision_id`, returned in `X-Jev-Decision-Id`, linking
+`decision_started` to `decision_completed`, `decision_cancelled` or `decision_failed`.
+This ID is local to the decider; HiRoute does not currently persist it.
+
+Results include upstream choice, rules probabilities, normalized competence and its
+validity, threshold pass/fail flags, final branch and rule reason (`auto_choice`,
+`complexity_threshold`, `competence_guard`, or `economy_eligible`). History size,
+assessment/trimming boundaries, queue and total duration, HTTP status and failure phase
+are also recorded. Missing competence retains the existing non-blocking behavior.
+These explain the rule, not model-generated reasoning. Request text, credentials and
+raw upstream bodies are not logged. Embedded hosts must enable `jev_decider` at INFO.
+
+### Running tests
+
 The suite starts the real HTTP handler and a controlled upstream server. It does not read a real key or access the network:
 
 ```sh

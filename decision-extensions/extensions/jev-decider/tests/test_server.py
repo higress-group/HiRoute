@@ -149,6 +149,63 @@ class DeciderHttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await response.json(), {"branch_id": "smart_saving_simple"})
         self.assertEqual(set(self.calls[0]["questions"]), {"branch"})
 
+    async def test_logs_explain_rule_override_and_correlate_response(self) -> None:
+        self.answer = {"answers": {
+            "complexity": {"type": "choice", "choice": "smart_saving_complex",
+                           "probabilities": {"smart_saving_simple": 0.1, "smart_saving_complex": 0.9}},
+        }}
+        client = await self.client(self.settings("rules", simple_threshold=0))
+        with self.assertLogs("jev_decider", level="INFO") as captured:
+            response = await client.post("/v1/decisions", json=input_body())
+            self.assertEqual((await response.json())["branch_id"], "smart_saving_simple")
+        events = [json.loads(record.getMessage()) for record in captured.records]
+        self.assertEqual([event["event"] for event in events], ["decision_started", "decision_completed"])
+        result = events[-1]
+        self.assertEqual(result["decision_id"], response.headers["X-Jev-Decision-Id"])
+        self.assertEqual(events[0]["decision_id"], result["decision_id"])
+        self.assertEqual(result["upstream_choice"], "smart_saving_complex")
+        self.assertEqual(result["branch_id"], "smart_saving_simple")
+        self.assertEqual(result["simple_threshold"], 0)
+        self.assertEqual(result["reason"], "economy_eligible")
+        self.assertEqual(result["competence_status"], "missing")
+        self.assertGreaterEqual(result["duration_ms"], result["queue_ms"])
+        self.assertNotIn("Fix the typo", " ".join(captured.output))
+        self.assertNotIn("secret", " ".join(captured.output))
+
+    async def test_logs_guard_trim_and_failures(self) -> None:
+        self.answer = {"answers": {
+            "complexity": {"type": "choice", "choice": "smart_saving_simple",
+                           "probabilities": {"smart_saving_simple": 0.95, "smart_saving_complex": 0.05}},
+            "competence": {"type": "score", "score": 0.2},
+        }}
+        client = await self.client(self.settings("rules", max_state_tokens=900))
+        with self.assertLogs("jev_decider", level="INFO") as captured:
+            response = await client.post("/v1/decisions", json=input_body([turn("x" * 400), turn("recent")], 0))
+            self.assertEqual(response.status, 200)
+        result = json.loads(captured.records[-1].getMessage())
+        self.assertEqual(result["reason"], "competence_guard")
+        self.assertEqual(result["competence"], 0.1)
+        self.assertTrue(result["target_trimmed"])
+        self.assertLess(result["retained_turns"], result["input_turns"])
+        self.upstream_status = 429
+        with self.assertLogs("jev_decider", level="INFO") as captured:
+            response = await client.post("/v1/decisions", json=input_body())
+        result = json.loads(captured.records[-1].getMessage())
+        self.assertEqual(response.status, 502)
+        self.assertEqual(result["upstream_status"], 429)
+        self.assertEqual(result["error"], "upstream_rejected")
+        self.assertEqual(result["phase"], "upstream")
+
+    async def test_timeout_logs_terminal_event(self) -> None:
+        self.upstream_delay = 0.1
+        client = await self.client(self.settings(request_timeout_seconds=0.02))
+        with self.assertLogs("jev_decider", level="INFO") as captured:
+            response = await client.post("/v1/decisions", json=input_body())
+        result = json.loads(captured.records[-1].getMessage())
+        self.assertEqual(response.status, 504)
+        self.assertEqual(result["error"], "upstream_timeout")
+        self.assertEqual(result["event"], "decision_completed")
+
     async def test_openapi_route_is_served_without_legacy_aliases(self) -> None:
         document = json.loads(
             (Path(__file__).resolve().parents[3] / "api/decision.openapi.json").read_text()
