@@ -8,7 +8,7 @@
 
 <p align="center">
   <strong>Route agents by task. Route models by stage.</strong><br>
-  A local-first routing and coordination engine for long-running agent work.
+  A local-first routing and coordination engine for long-horizon agent tasks.
 </p>
 
 <p align="center">
