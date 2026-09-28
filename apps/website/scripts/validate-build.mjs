@@ -20,6 +20,15 @@ const required = [
 for (const relative of required) {
   if (!fs.existsSync(path.join(dist, relative))) throw new Error(`missing website output: ${relative}`);
 }
+for (const [page, language] of [['index.html', 'zh-CN'], ['en/index.html', 'en']]) {
+  const html = fs.readFileSync(path.join(dist, page), 'utf8');
+  const performance = html.match(/<section\b[^>]*id="performance"[^>]*>[\s\S]*?<\/section>/)?.[0];
+  if (!performance?.includes(`src="/decision-assets/quality-native-${language}.png"`)) {
+    throw new Error(`missing localized native Desktop screenshot: ${page}`);
+  }
+  const disclaimer = language === 'en' ? 'not a model benchmark' : '非模型评测';
+  if (!performance.includes(disclaimer)) throw new Error(`missing screenshot disclaimer: ${page}`);
+}
 const htmlFiles = [];
 for (const entry of fs.readdirSync(dist, { recursive: true, withFileTypes: true })) {
   if (entry.isFile() && entry.name.endsWith('.html')) htmlFiles.push(path.join(entry.parentPath, entry.name));

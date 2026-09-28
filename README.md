@@ -85,12 +85,12 @@ Continue with [model routing](https://hiroute.ai/en/docs/model-routing/),
 ## See routing performance
 
 <p align="center">
-  <img src="decision-extensions/assets/quality-en.png" alt="HiRoute runtime performance showing rated, unrated, and partial model stages" width="100%">
+  <img src="decision-extensions/assets/quality-native-en.png" alt="HiRoute Desktop session showing two model-stage assessments and user feedback" width="100%">
 </p>
 
-The performance view follows the models selected by the active routing-plan revision; users do
-not need to enter internal model IDs. The screenshot uses realistic synthetic data rendered by
-real product components. It demonstrates the UI states and is not a model benchmark.
+Review model performance within a task, alongside execution records and user feedback, to inform
+the next model choice and task delegation. This is an actual Desktop screenshot with illustrative
+data, not a model benchmark.
 
 ## How routing works
 

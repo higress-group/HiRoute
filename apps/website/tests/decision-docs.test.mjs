@@ -25,3 +25,17 @@ test('prepared OpenAPI is byte-identical to the one repository contract', () => 
   const parsed = JSON.parse(prepared);
   assert(parsed.paths['/v1/decisions']);
 });
+
+test('native homepage screenshots are distinct, correctly sized and copied unchanged', () => {
+  const captures = ['en', 'zh-CN'].map(language => {
+    const name = `quality-native-${language}.png`;
+    const source = fs.readFileSync(new URL(`../../../decision-extensions/assets/${name}`, import.meta.url));
+    const prepared = fs.readFileSync(new URL(`../public/decision-assets/${name}`, import.meta.url));
+    assert.deepEqual(prepared, source);
+    assert.equal(source.subarray(1, 4).toString(), 'PNG');
+    assert.equal(source.readUInt32BE(16), 1200);
+    assert.equal(source.readUInt32BE(20), 813);
+    return source;
+  });
+  assert.notDeepEqual(captures[0], captures[1]);
+});
