@@ -1,0 +1,4 @@
+{
+  "simple": "Use the economy model group for work with explicit requirements and a bounded change that can follow existing repository patterns: routine feature increments, ordinary bug fixes, configuration updates, tests and documentation. Multiple files, a need for regression tests, or the word fix alone do not make work complex. Judge the work still required in this routing round, not the reputation or total size of the project.",
+  "complex": "Use the primary model group when the work requires discovering an unknown root cause, choosing between materially different designs, changing core architecture, or resolving intricate concurrency, state-consistency or algorithmic interactions. Judge the reasoning and uncertainty actually required, not keywords alone. A clear request can still require complex work; do not assume an undocumented solution or capability."
+}

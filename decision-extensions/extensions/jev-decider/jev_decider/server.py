@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -9,7 +10,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -176,6 +177,8 @@ class Settings:
     competence_floor: float
     inbound_header_name: str | None
     inbound_header_value: str | None
+    branch_criteria: dict[str, str] = field(default_factory=lambda: load_policy(None))
+    policy_configured: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -238,7 +241,38 @@ class Settings:
             competence_floor=competence_floor,
             inbound_header_name=header_name,
             inbound_header_value=header_value,
+            branch_criteria=load_policy(os.getenv("JEV_POLICY_FILE")),
+            policy_configured="JEV_POLICY_FILE" in os.environ,
         )
+
+
+def load_policy(filename: str | None) -> dict[str, str]:
+    path = Path(filename) if filename is not None else Path(__file__).with_name("policy.default.json")
+    if not path.is_absolute():
+        raise RuntimeError("JEV_POLICY_FILE must be an absolute path")
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(4097)
+    except OSError as error:
+        raise RuntimeError("JEV_POLICY_FILE cannot be read") from error
+    if len(data) > 4096:
+        raise RuntimeError("JEV_POLICY_FILE must be at most 4096 bytes")
+    try:
+        data.decode("utf-8")
+        value = strict_json(data)
+        if not isinstance(value, dict) or set(value) != {"simple", "complex"}:
+            raise ProtocolError("invalid policy fields")
+        if any(not isinstance(text, str) or not text.strip() for text in value.values()):
+            raise ProtocolError("invalid policy descriptions")
+        # Validate escaped Unicode too, before a request attempts UTF-8 encoding.
+        _encoded(value)
+    except (ProtocolError, UnicodeError) as error:
+        raise RuntimeError("JEV_POLICY_FILE requires UTF-8 JSON with nonempty simple and complex strings") from error
+    return {SIMPLE_BRANCH: value["simple"], COMPLEX_BRANCH: value["complex"]}
+
+
+def criteria_hash(branches: dict[str, str]) -> str:
+    return hashlib.sha256(json.dumps(branches, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def _finite_env(name: str, default: float) -> float:
@@ -475,6 +509,14 @@ async def decide(request: web.Request) -> web.Response:
         async with asyncio.timeout(settings.request_timeout_seconds):
             trace["phase"] = "validation"
             incoming = validate_hiroute_request(strict_json(await request.read()))
+            criteria_source = "request"
+            if set(incoming["branches"]) == {SIMPLE_BRANCH, COMPLEX_BRANCH}:
+                incoming = {**incoming, "branches": settings.branch_criteria}
+                criteria_source = "policy" if settings.policy_configured else "default"
+            elif settings.policy_configured:
+                raise ProtocolError("configured policy requires the two smart-saving branches")
+            trace.update(criteria_source=criteria_source,
+                         criteria_sha256=criteria_hash(incoming["branches"]))
             state, target_trimmed = prepare_state(incoming, settings.max_state_tokens)
             trace.update(
                 input_turns=len(incoming["visible_conversation"]),
@@ -545,7 +587,9 @@ async def _client(app: web.Application) -> None:
               request_timeout_seconds=settings.request_timeout_seconds,
               max_state_tokens=settings.max_state_tokens, max_concurrency=settings.max_concurrency,
               simple_threshold=settings.simple_threshold if settings.mode == "rules" else None,
-              competence_floor=settings.competence_floor if settings.mode == "rules" else None)
+              competence_floor=settings.competence_floor if settings.mode == "rules" else None,
+              criteria_source="policy" if settings.policy_configured else "default",
+              criteria_sha256=criteria_hash(settings.branch_criteria))
     app[CLIENT] = ClientSession(
         timeout=ClientTimeout(total=settings.request_timeout_seconds),
         trust_env=True,

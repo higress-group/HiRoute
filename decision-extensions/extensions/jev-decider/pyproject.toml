@@ -14,3 +14,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["jev_decider*"]
+
+[tool.setuptools.package-data]
+jev_decider = ["policy.default.json"]

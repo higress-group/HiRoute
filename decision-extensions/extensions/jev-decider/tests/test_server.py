@@ -11,26 +11,34 @@ from unittest.mock import patch
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from jev_decider.server import Settings, create_app
+from jev_decider.server import Settings, create_app, criteria_hash, load_policy
 
 
 BRANCHES = {
     "smart_saving_simple": "Use the economy model group for a clear, well-scoped task.",
     "smart_saving_complex": "Use the primary model group for a complex task.",
 }
+POLICY = {"smart_saving_simple": "Bounded changes following existing patterns.",
+          "smart_saving_complex": "Uncertain root causes and architectural tradeoffs."}
 
 
 class SettingsTests(unittest.TestCase):
-    def load(self, timeout: str) -> Settings:
+    def load(self, timeout: str, policy: bytes | None = None) -> Settings:
         with tempfile.TemporaryDirectory() as directory:
             key_file = os.path.join(directory, "key")
             with open(key_file, "w", encoding="utf-8") as file:
                 file.write("test-key")
+            extra = {}
+            if policy is not None:
+                policy_file = Path(directory) / "policy.json"
+                policy_file.write_bytes(policy)
+                extra["JEV_POLICY_FILE"] = str(policy_file)
             with patch.dict(
                 os.environ,
                 {
                     "OPENROUTER_API_KEY_FILE": key_file,
                     "JEV_REQUEST_TIMEOUT_SECONDS": timeout,
+                    **extra,
                 },
                 clear=True,
             ):
@@ -42,6 +50,36 @@ class SettingsTests(unittest.TestCase):
     def test_configured_timeout_remains_bounded(self) -> None:
         with self.assertRaisesRegex(RuntimeError, r"\(0, 3600\]"):
             self.load("3600.1")
+
+    def test_builtin_policy_is_default_and_can_be_overridden_from_env(self) -> None:
+        default = self.load("1")
+        self.assertFalse(default.policy_configured)
+        example = Path(__file__).resolve().parents[1] / "jev_decider/policy.default.json"
+        result = self.load("1", example.read_bytes())
+        self.assertTrue(result.policy_configured)
+        self.assertEqual(default.branch_criteria, result.branch_criteria)
+        self.assertEqual(set(result.branch_criteria), set(BRANCHES))
+        self.assertIn("existing repository patterns", result.branch_criteria["smart_saving_simple"])
+
+    def test_policy_rejects_invalid_files_without_fallback(self) -> None:
+        for value in (b"{}", b"[]", b"null", b"not json", b"\xff",
+                      b'{"simple":"a","complex":"b","extra":"c"}',
+                      b'{"simple":"a","simple":"b","complex":"c"}',
+                      b'{"simple":" ","complex":"b"}',
+                      b'{"simple":3,"complex":"b"}',
+                      b'{"simple":"a","complex":null}',
+                      b'{"simple":"\\ud800","complex":"b"}',
+                      '{"simple":"a","complex":"b"}'.encode("utf-16"),
+                      b" " * 4097):
+            with self.subTest(value=value[:50]), self.assertRaisesRegex(RuntimeError, "JEV_POLICY_FILE"):
+                self.load("1", value)
+        for name in ("", "relative.json", "/nonexistent/hiroute-test-policy.json"):
+            with self.subTest(name=name), self.assertRaisesRegex(RuntimeError, "JEV_POLICY_FILE"):
+                load_policy(name)
+
+    def test_policy_hash_is_key_order_independent(self) -> None:
+        self.assertEqual(criteria_hash(POLICY), criteria_hash(dict(reversed(list(POLICY.items())))))
+        self.assertNotEqual(criteria_hash(POLICY), criteria_hash(BRANCHES))
 
 
 def input_body(history: list[dict] | None = None, assessment_from: int | None = None) -> dict:
@@ -119,6 +157,8 @@ class DeciderHttpTests(unittest.IsolatedAsyncioTestCase):
             inbound_header_value=None,
         )
         values.update(changes)
+        if "branch_criteria" in changes:
+            values["policy_configured"] = True
         return Settings(**values)
 
     async def client(self, settings: Settings) -> TestClient:
@@ -149,6 +189,83 @@ class DeciderHttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await response.json(), {"branch_id": "smart_saving_simple"})
         self.assertEqual(set(self.calls[0]["questions"]), {"branch"})
 
+    async def test_custom_policy_replaces_state_and_choice_for_both_modes(self) -> None:
+        for mode, question in (("auto", "branch"), ("rules", "complexity")):
+            with self.subTest(mode=mode):
+                self.answer = {"answers": {
+                    question: {"type": "choice", "choice": "smart_saving_simple",
+                               "probabilities": {"smart_saving_simple": 0.9, "smart_saving_complex": 0.1}},
+                }}
+                client = await self.client(self.settings(mode, branch_criteria=POLICY))
+                body = input_body()
+                with self.assertLogs("jev_decider", level="INFO") as captured:
+                    response = await client.post("/v1/decisions", json=body)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(await response.json(), {"branch_id": "smart_saving_simple"})
+                self.assertEqual(self.calls[-1]["state"]["branches"], POLICY)
+                self.assertEqual(self.calls[-1]["questions"][question]["criteria"], POLICY)
+                self.assertEqual(body["branches"], BRANCHES)
+                event = json.loads(captured.records[-1].getMessage())
+                self.assertEqual(event["criteria_source"], "policy")
+                self.assertEqual(event["criteria_sha256"], criteria_hash(POLICY))
+                self.assertNotIn(POLICY["smart_saving_simple"], " ".join(captured.output))
+
+    async def test_custom_policy_does_not_override_low_competence(self) -> None:
+        self.answer = {"answers": {
+            "complexity": {"type": "choice", "choice": "smart_saving_simple",
+                           "probabilities": {"smart_saving_simple": 0.99, "smart_saving_complex": 0.01}},
+            "competence": {"type": "score", "score": 0.2},
+        }}
+        client = await self.client(self.settings("rules", branch_criteria=POLICY))
+        response = await client.post("/v1/decisions", json=input_body([turn("previous")], 0))
+        self.assertEqual(response.status, 200)
+        self.assertEqual((await response.json())["branch_id"], "smart_saving_complex")
+        from jev_decider.server import COMPETENCE_CRITERIA
+        self.assertEqual(self.calls[0]["questions"]["competence"]["criteria"], COMPETENCE_CRITERIA)
+
+    async def test_custom_policy_rejects_other_branches_before_upstream(self) -> None:
+        client = await self.client(self.settings(branch_criteria=POLICY))
+        body = input_body()
+        body["branches"] = {**BRANCHES, "third": "another option"}
+        response = await client.post("/v1/decisions", json=body)
+        self.assertEqual(response.status, 400)
+        self.assertEqual(len(self.calls), 0)
+
+    async def test_custom_policy_counts_toward_context_budget(self) -> None:
+        # The same input fits without an override. Added definitions, not the
+        # original request, must be what causes the bounded-context rejection.
+        baseline = await self.client(self.settings(max_state_tokens=2000))
+        response = await baseline.post("/v1/decisions", json=input_body())
+        self.assertEqual(response.status, 200)
+        self.calls.clear()
+        client = await self.client(self.settings("rules", max_state_tokens=2000,
+                                                 branch_criteria={**POLICY, "smart_saving_simple": "x" * 2100}))
+        response = await client.post("/v1/decisions", json=input_body())
+        self.assertEqual(response.status, 413)
+        self.assertEqual(len(self.calls), 0)
+
+    async def test_without_policy_uses_builtin_definitions_and_logs_hash(self) -> None:
+        client = await self.client(self.settings())
+        with self.assertLogs("jev_decider", level="INFO") as captured:
+            response = await client.post("/v1/decisions", json=input_body())
+        self.assertEqual(response.status, 200)
+        expected = load_policy(None)
+        self.assertNotEqual(expected, BRANCHES)
+        self.assertEqual(self.calls[0]["state"]["branches"], expected)
+        self.assertEqual(self.calls[0]["questions"]["branch"]["criteria"], expected)
+        event = json.loads(captured.records[-1].getMessage())
+        self.assertEqual(event["criteria_source"], "default")
+        self.assertEqual(event["criteria_sha256"], criteria_hash(expected))
+
+    async def test_generic_auto_branches_keep_request_definitions_without_override(self) -> None:
+        client = await self.client(self.settings())
+        body = input_body()
+        body["branches"] = {**BRANCHES, "third": "Another allowed branch"}
+        response = await client.post("/v1/decisions", json=body)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.calls[0]["state"]["branches"], body["branches"])
+        self.assertEqual(self.calls[0]["questions"]["branch"]["criteria"], body["branches"])
+
     async def test_logs_explain_rule_override_and_correlate_response(self) -> None:
         self.answer = {"answers": {
             "complexity": {"type": "choice", "choice": "smart_saving_complex",
@@ -178,7 +295,7 @@ class DeciderHttpTests(unittest.IsolatedAsyncioTestCase):
                            "probabilities": {"smart_saving_simple": 0.95, "smart_saving_complex": 0.05}},
             "competence": {"type": "score", "score": 0.2},
         }}
-        client = await self.client(self.settings("rules", max_state_tokens=900))
+        client = await self.client(self.settings("rules", max_state_tokens=900, branch_criteria=BRANCHES))
         with self.assertLogs("jev_decider", level="INFO") as captured:
             response = await client.post("/v1/decisions", json=input_body([turn("x" * 400), turn("recent")], 0))
             self.assertEqual(response.status, 200)
@@ -309,7 +426,7 @@ class DeciderHttpTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_trimming_removes_whole_old_turns_and_marks_target_partial(self) -> None:
         history = [turn("old-" + "x" * 400), turn("recent")]
-        client = await self.client(self.settings(max_state_tokens=900))
+        client = await self.client(self.settings(max_state_tokens=900, branch_criteria=BRANCHES))
         response = await client.post("/v1/decisions", json=input_body(history, 0))
         body = await response.json()
         self.assertEqual(response.status, 200, body)
@@ -396,7 +513,7 @@ class DeciderHttpTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_trimmed_non_target_history_marks_state_partial_not_assessment(self) -> None:
         history = [turn("old-" + "x" * 500), turn("target")]
-        client = await self.client(self.settings(max_state_tokens=1000))
+        client = await self.client(self.settings(max_state_tokens=1000, branch_criteria=BRANCHES))
         response = await client.post("/v1/decisions", json=input_body(history, 1))
         body = await response.json()
         self.assertEqual(response.status, 200, body)

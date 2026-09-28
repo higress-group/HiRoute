@@ -72,6 +72,7 @@ The container build command runs from the repository root. Existing deployments 
 | `OPENROUTER_API_KEY_FILE` | required | Absolute path to a UTF-8 file; its value is sent only as the OpenRouter Bearer credential |
 | `JEV_MODE` | `auto` | Exactly `auto` or `rules` |
 | `JEV_MODEL` | `typesafe/jev-1.13` | OpenRouter Decisions model |
+| `JEV_POLICY_FILE` | Bundled criteria | Optional absolute path to custom criteria JSON; loaded at startup, restart after edits |
 | `OPENROUTER_DECISIONS_URL` | `https://openrouter.ai/api/alpha/decisions` | Override only for a controlled gateway/test upstream |
 | `JEV_REQUEST_TIMEOUT_SECONDS` | `2.8` | Whole request budget, including validation, context preparation, queueing and the upstream call; must be in `(0, 3600]`; set it slightly below the matching HiRoute plan's `timeout_ms` and keep the default for a 3000 ms plan |
 | `JEV_MAX_STATE_TOKENS` | `24000` | Conservative state budget described below |
@@ -84,6 +85,32 @@ The container build command runs from the repository root. Existing deployments 
 Outbound OpenRouter calls honor the deployment's standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables (including their lowercase forms). The service keeps one client connection pool, so later decisions can reuse an established route. Containers must receive any intended proxy variables explicitly; if none are set, the service connects directly. This is standard client routing, not a HiRoute proxy configuration layer.
 
 If inbound authentication is enabled, store the full header value in a HiRoute Secret and configure the matching `auth_header`. For example, the Secret may contain `Bearer ...`; HiRoute does not prepend a scheme.
+
+### Define simple and complex work
+
+Smart-saving decisions use the bundled [policy.default.json](jev_decider/policy.default.json)
+without requiring an environment variable or a copied file. To customize it, copy and
+edit the file, then set `JEV_POLICY_FILE=/absolute/path/policy.json`. The UTF-8 JSON file must be at most
+4096 bytes and contain exactly two nonempty strings, `simple` and `complex`.
+Describe work appropriate for your economy and primary models, optionally with
+a few general examples, not a desired answer for a specific benchmark.
+
+The policy is shared by all plans using this service instance; it is not a Desktop
+plan field. Both auto and rules use the bundled or custom definitions for the two
+smart-saving branches, replacing descriptions in upstream state and Choice criteria.
+An explicit custom policy accepts only those two branches. Without an override, auto
+still uses request descriptions for other branch sets. The allowed branch set is
+never expanded. Invalid files prevent startup instead of reverting to defaults. Changes
+require a restart; there is no hot reload, policy DSL, or new session store.
+Effective descriptions count toward the context budget. Rules thresholds and
+competence scoring are unchanged: broader simple criteria cannot bypass the
+low-competence guard.
+
+Startup logs include the effective smart-saving criteria hash.
+Decision logs include the effective `criteria_source` (default/policy/request) and
+`criteria_sha256`, never the descriptions themselves. Freeze criteria and use
+independent tasks to calibrate thresholds; neither the definitions nor Jev's
+probabilities establish the economy model's actual success rate.
 
 ## Context and privacy boundary
 
