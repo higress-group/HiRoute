@@ -434,8 +434,6 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .hero h1{font-size:clamp(36px,4vw,55px);letter-spacing:-1.4px}
 .hero .intro{max-width:470px;line-height:1.85}
 .journey-art{position:relative;min-width:0;padding:28px 30px 20px;border-radius:24px;background:radial-gradient(ellipse at top right,#e5e5ff,transparent 65%),#f0f2f9;border:1px solid #dde1ee;box-shadow:0 20px 65px #2735780c}
-.journey-heading{display:flex;align-items:center;gap:10px;font-size:12px;color:#56618a}
-.journey-heading img{width:23px;height:23px}
 .journey-goal{padding:25px 0 24px}
 .journey-goal>span{display:block;font-size:10px;color:#6d7690;letter-spacing:1px;margin-bottom:8px}
 .journey-goal strong{font-size:22px;line-height:1.5}
