@@ -80,11 +80,11 @@ hiroute system status --output json
 ## 查看真实产品中的运行表现
 
 <p align="center">
-  <img src="decision-extensions/assets/quality-zh-CN.png" alt="HiRoute 运行表现，展示已评分、未评分和部分证据阶段" width="100%">
+  <img src="decision-extensions/assets/quality-native-zh-CN.png" alt="HiRoute Desktop 会话，展示两个模型阶段的评分与用户反馈" width="100%">
 </p>
 
-运行表现会自动展示当前路由计划生效版本中的模型，用户无需填写内部模型 ID。截图由真实产品组件
-配合贴近实际的模拟数据生成，用于说明界面状态，不代表模型能力评测。
+查看模型在具体任务中的阶段评分，结合执行记录与用户反馈，为下一次模型选择和任务委派提供依据。
+截图来自真实 Desktop 界面，使用演示数据，不代表模型能力评测。
 
 ## 路由机制
 
