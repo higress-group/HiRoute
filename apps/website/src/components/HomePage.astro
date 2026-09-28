@@ -60,9 +60,9 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
   </div></section>
 
   <section class="section wrap" id="performance">
-    <div class="section-title"><div><div class="eyebrow section-label">{t('为下一次决策保留证据', 'Evidence for the next decision')}</div><h2>{t('不只知道选了谁，', 'See more than who was chosen.')}<br>{t('也看得见做得怎样。', 'See how the work went.')}</h2></div><p>{t('查看当前计划所选模型一段时间内的阶段胜任度，无需输入内部模型 ID。', 'Review stage competence over time for models selected by the current plan—without typing internal model IDs.')}</p></div>
-    <figure class="product-shot"><img src={`/decision-assets/quality-${en ? 'en' : 'zh-CN'}.png`} alt={t('HiRoute 运行表现界面，包含阶段评分、未评分和部分历史', 'HiRoute runtime performance with stage scores, unrated work, and partial history')} loading="lazy"></figure>
-    <p class="caption">{t('真实产品组件 · 演示数据，非模型评测。保留未评分、部分历史和评分尚未覆盖最新轮次等实际状态。', 'Real product components · Illustrative data, not a model benchmark. Unrated, partial, and not-yet-covered turns remain explicit.')}</p>
+    <div class="section-title"><div><div class="eyebrow section-label">{t('为下一次决策保留证据', 'Evidence for the next decision')}</div><h2>{t('不只知道选了谁，', 'See more than who was chosen.')}<br>{t('也看得见做得怎样。', 'See how the work went.')}</h2></div><p>{t('查看模型在具体任务中的阶段评分，结合执行记录与用户反馈，为下一次模型选择和任务委派提供依据。', 'Review model performance within a task, alongside execution records and user feedback, to inform the next model choice and task delegation.')}</p></div>
+    <figure class="product-shot"><img src={`/decision-assets/quality-native-${en ? 'en' : 'zh-CN'}.png`} alt={t('HiRoute Desktop 会话页面，展示同一任务的两段模型评分与用户复查反馈', 'HiRoute Desktop session showing two model-stage assessments and the user’s follow-up feedback for one task')} width="1200" height="813" loading="lazy"></figure>
+    <p class="caption">{t('真实 Desktop 界面 · 演示数据，非模型评测。', 'Actual Desktop interface · Illustrative data, not a model benchmark.')}</p>
     <div class="proof-bottom"><article><h3>{t('分数始终带着范围', 'A score keeps its scope')}</h3><p>{t('评分属于具体计划、版本、模型和执行阶段；旧评分不会假装覆盖新增轮次。', 'A score belongs to a plan, revision, model, and execution stage; new turns are not silently covered by an older assessment.')}</p></article><article><h3>{t('证据可以帮助细分计划', 'Evidence can refine work plans')}</h3><p>{t('主 Agent 可查询高低分任务，结合证据判断是否需要建立更聚焦的工作场景。', 'A main agent can query high- and low-scoring tasks, inspect evidence, and propose a narrower work plan.')}</p></article></div>
 
   </section>
