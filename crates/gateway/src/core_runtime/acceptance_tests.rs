@@ -12,6 +12,26 @@ use super::*;
 use crate::provider_state::ProviderStateScopeV1;
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
+#[test]
+fn cancelled_accepted_attempt_is_not_reported_as_transport_failure_or_success() {
+    assert_eq!(
+        classify_request_observation_outcome(true, false, true),
+        "cancelled"
+    );
+    assert_eq!(
+        classify_request_observation_outcome(true, false, false),
+        "postcommit_transport_failed"
+    );
+    assert_eq!(
+        classify_request_observation_outcome(true, true, true),
+        "cancelled"
+    );
+    assert_eq!(
+        classify_request_observation_outcome(false, false, false),
+        "failed"
+    );
+}
+
 struct FailSecondBodyWrite {
     writes: usize,
     accepted: Vec<Bytes>,

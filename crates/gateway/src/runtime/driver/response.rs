@@ -185,6 +185,29 @@ pub(super) fn classify_precommit(
                 if let Some(error) = outcome.failure {
                     return classify_model_error(state, error, status, true);
                 }
+                if !state.native_output && outcome.terminal && outcome.semantic {
+                    // Chat/Messages have already supplied their native terminal.
+                    // Validate this fragment's tail before publishing the
+                    // translated terminal, then close the downstream stream
+                    // with the last queued output rather than waiting for the
+                    // upstream transport to close as a separate event.
+                    if finish_native_stream_on_terminal(&mut state.decoder).is_err() {
+                        return classify_state_failure(
+                            state,
+                            RawAttemptFailure::Protocol,
+                            StatusCode::BAD_GATEWAY,
+                        );
+                    }
+                    let terminal_chunks = state.prefix.as_ref().map_or(0, ChargedBodyQueue::len);
+                    if terminal_chunks == 0 {
+                        return classify_state_failure(
+                            state,
+                            RawAttemptFailure::Protocol,
+                            StatusCode::BAD_GATEWAY,
+                        );
+                    }
+                    state.prefix_terminal_chunks = Some(terminal_chunks);
+                }
                 if outcome.semantic {
                     return Ok(PrecommitClassification::classified(
                         ClassifiedAttemptResult {
@@ -526,10 +549,7 @@ pub(super) fn encode_accepted_event(
             let (rendered, end_stream) = if readiness.projector.is_some() {
                 project_native_chunk_readiness(readiness, bytes.bytes(), false)?
             } else {
-                (
-                    decode_stream_chunk_readiness(readiness, bytes.bytes(), false)?,
-                    false,
-                )
+                decode_stream_chunk_readiness(readiness, bytes.bytes(), false)?
             };
             drop(bytes);
             queue_accepted_stream_output(readiness, rendered, end_stream)
@@ -548,7 +568,7 @@ pub(super) fn encode_accepted_event(
             let (rendered, projected_terminal) = if readiness.projector.is_some() {
                 project_native_chunk_readiness(readiness, &[], true)?
             } else {
-                let rendered = decode_stream_chunk_readiness(readiness, &[], true)?;
+                let (rendered, _) = decode_stream_chunk_readiness(readiness, &[], true)?;
                 readiness
                     .decoder
                     .take()
@@ -1020,7 +1040,7 @@ fn decode_stream_chunk_readiness(
     readiness: &mut ProductionReadiness,
     bytes: &[u8],
     end_stream: bool,
-) -> Result<Option<Vec<u8>>, Arc<str>> {
+) -> Result<(Option<Vec<u8>>, bool), Arc<str>> {
     let decoder = readiness
         .decoder
         .as_mut()
@@ -1054,7 +1074,33 @@ fn decode_stream_chunk_readiness(
             .resume()
             .map_err(|_| Arc::from("accepted native stream drain failed"))?;
     }
-    Ok((!output.is_empty()).then_some(output))
+    let terminal = status == adapters::ResponseDecodeStatus::Terminal;
+    if terminal && !end_stream {
+        finish_native_stream_on_terminal(&mut readiness.decoder)?;
+    }
+    Ok(((!output.is_empty()).then_some(output), terminal))
+}
+
+fn finish_native_stream_on_terminal(
+    decoder: &mut Option<adapters::NativeResponseDecoder>,
+) -> Result<(), Arc<str>> {
+    let active = decoder
+        .as_mut()
+        .ok_or_else(|| Arc::from("native stream decoder is unavailable"))?;
+    if active
+        .feed(&[], true)
+        .map_err(|_| Arc::from("native stream has a malformed terminal tail"))?
+        != adapters::ResponseDecodeStatus::Terminal
+        || !active.take_events().is_empty()
+    {
+        return Err(Arc::from("native stream has events after terminal"));
+    }
+    decoder
+        .take()
+        .expect("terminal decoder is present")
+        .finish()
+        .map_err(|_| Arc::from("native stream terminal is incomplete"))?;
+    Ok(())
 }
 
 fn semantic_terminal_for_response(response: &ModelResponseIRV1) -> Option<SemanticTerminalOutcome> {

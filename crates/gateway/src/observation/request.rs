@@ -104,6 +104,7 @@ pub(super) struct RequestObservationState {
     pub(super) published_disposition: Option<Disposition>,
     pub(super) accepted_wire_usage_recorded: bool,
     pub(super) accepted_attempt_finished: bool,
+    pub(super) accepted_attempt_cancelled: bool,
     pub(super) response_capture: Option<CanonicalCaptureHandle>,
     pub(super) tool_id_projection: Option<ToolIdProjection>,
     pub(super) response_part_ordinal: u32,
@@ -746,6 +747,10 @@ impl RequestObservation {
         self.lock_state().accepted_attempt.is_some()
     }
 
+    pub fn accepted_attempt_cancelled(&self) -> bool {
+        self.lock_state().accepted_attempt_cancelled
+    }
+
     pub fn accepted_attempt_identity(&self) -> Option<(String, String, String)> {
         self.lock_state().accepted_attempt.as_ref().map(|attempt| {
             (
@@ -892,6 +897,7 @@ fn duration_micros(duration: Duration) -> u64 {
 fn request_outcome(outcome: &str) -> Option<RequestOutcome> {
     match outcome {
         "accepted" => Some(RequestOutcome::Completed),
+        "cancelled" => Some(RequestOutcome::Cancelled),
         "failed" | "gateway_error" | "postcommit_transport_failed" => Some(RequestOutcome::Failed),
         _ => None,
     }
