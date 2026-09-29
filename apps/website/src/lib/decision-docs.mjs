@@ -28,6 +28,7 @@ const maps = {
     'README.md': '/en/docs/jev-decider/', 'README.zh-CN.md': '/docs/jev-decider/',
     '../../README.md': '/en/docs/decision-extensions/', '../../README.zh-CN.md': '/docs/decision-extensions/',
     '../../api/README.md': '/en/docs/decision-api/', '../../api/README.zh-CN.md': '/docs/decision-api/',
+    'jev_decider/policy.default.json': '/api/jev-policy.default.json',
   },
 };
 

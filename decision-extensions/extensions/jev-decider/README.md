@@ -72,6 +72,7 @@ The container build command runs from the repository root. Existing deployments 
 | `OPENROUTER_API_KEY_FILE` | required | Absolute path to a UTF-8 file; its value is sent only as the OpenRouter Bearer credential |
 | `JEV_MODE` | `auto` | Exactly `auto` or `rules` |
 | `JEV_MODEL` | `typesafe/jev-1.13` | OpenRouter Decisions model |
+| `JEV_POLICY_FILE` | Bundled criteria | Optional absolute path to custom criteria JSON; loaded at startup, restart after edits |
 | `OPENROUTER_DECISIONS_URL` | `https://openrouter.ai/api/alpha/decisions` | Override only for a controlled gateway/test upstream |
 | `JEV_REQUEST_TIMEOUT_SECONDS` | `2.8` | Whole request budget, including validation, context preparation, queueing and the upstream call; must be in `(0, 3600]`; set it slightly below the matching HiRoute plan's `timeout_ms` and keep the default for a 3000 ms plan |
 | `JEV_MAX_STATE_TOKENS` | `24000` | Conservative state budget described below |
@@ -84,6 +85,32 @@ The container build command runs from the repository root. Existing deployments 
 Outbound OpenRouter calls honor the deployment's standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables (including their lowercase forms). The service keeps one client connection pool, so later decisions can reuse an established route. Containers must receive any intended proxy variables explicitly; if none are set, the service connects directly. This is standard client routing, not a HiRoute proxy configuration layer.
 
 If inbound authentication is enabled, store the full header value in a HiRoute Secret and configure the matching `auth_header`. For example, the Secret may contain `Bearer ...`; HiRoute does not prepend a scheme.
+
+### Define simple and complex work
+
+Smart-saving decisions use the bundled [policy.default.json](jev_decider/policy.default.json)
+without requiring an environment variable or a copied file. To customize it, copy and
+edit the file, then set `JEV_POLICY_FILE=/absolute/path/policy.json`. The UTF-8 JSON file must be at most
+4096 bytes and contain exactly two nonempty strings, `simple` and `complex`.
+Describe work appropriate for your economy and primary models, optionally with
+a few general examples, not a desired answer for a specific benchmark.
+
+The policy is shared by all plans using this service instance; it is not a Desktop
+plan field. Both auto and rules use the bundled or custom definitions for the two
+smart-saving branches, replacing descriptions in upstream state and Choice criteria.
+An explicit custom policy accepts only those two branches. Without an override, auto
+still uses request descriptions for other branch sets. The allowed branch set is
+never expanded. Invalid files prevent startup instead of reverting to defaults. Changes
+require a restart; there is no hot reload, policy DSL, or new session store.
+Effective descriptions count toward the context budget. Rules thresholds and
+competence scoring are unchanged: broader simple criteria cannot bypass the
+low-competence guard.
+
+Startup logs include the effective smart-saving criteria hash.
+Decision logs include the effective `criteria_source` (default/policy/request) and
+`criteria_sha256`, never the descriptions themselves. Freeze criteria and use
+independent tasks to calibrate thresholds; neither the definitions nor Jev's
+probabilities establish the economy model's actual success rate.
 
 ## Context and privacy boundary
 
@@ -123,6 +150,24 @@ It returns:
 To implement a different strategy, keep the HTTP validation and response contract, then replace `questions()` and `decision_response()` in `jev_decider/server.py`. Do not add vendor fields to the HiRoute request or make a second scoring call: use the five protocol fields as state and return one allowed branch with an optional competence assessment.
 
 ## Offline tests
+
+### Decision logs
+
+The CLI emits JSON events to stderr at INFO level. Redirect stderr to a file or use
+container logs. `service_started` records effective mode, model, thresholds and limits.
+Each decision has a generated `decision_id`, returned in `X-Jev-Decision-Id`, linking
+`decision_started` to `decision_completed`, `decision_cancelled` or `decision_failed`.
+This ID is local to the decider; HiRoute does not currently persist it.
+
+Results include upstream choice, rules probabilities, normalized competence and its
+validity, threshold pass/fail flags, final branch and rule reason (`auto_choice`,
+`complexity_threshold`, `competence_guard`, or `economy_eligible`). History size,
+assessment/trimming boundaries, queue and total duration, HTTP status and failure phase
+are also recorded. Missing competence retains the existing non-blocking behavior.
+These explain the rule, not model-generated reasoning. Request text, credentials and
+raw upstream bodies are not logged. Embedded hosts must enable `jev_decider` at INFO.
+
+### Running tests
 
 The suite starts the real HTTP handler and a controlled upstream server. It does not read a real key or access the network:
 

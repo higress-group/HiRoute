@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
+import logging
 import math
 import os
+import time
+import uuid
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -19,6 +23,14 @@ DEFAULT_MODEL = "typesafe/jev-1.13"
 DEFAULT_UPSTREAM = "https://openrouter.ai/api/alpha/decisions"
 MAX_UPSTREAM_RESPONSE_BYTES = 64 * 1024
 MAX_REQUEST_TIMEOUT_SECONDS = 3600.0
+LOGGER = logging.getLogger("jev_decider")
+
+
+def log_event(event: str, **fields: Any) -> None:
+    LOGGER.info(json.dumps({"timestamp_ms": time.time_ns() // 1_000_000,
+                            "event": event, **fields}, ensure_ascii=False))
+
+
 FORBIDDEN_INBOUND_HEADERS = {
     "host",
     "content-length",
@@ -165,6 +177,8 @@ class Settings:
     competence_floor: float
     inbound_header_name: str | None
     inbound_header_value: str | None
+    branch_criteria: dict[str, str] = field(default_factory=lambda: load_policy(None))
+    policy_configured: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -227,7 +241,38 @@ class Settings:
             competence_floor=competence_floor,
             inbound_header_name=header_name,
             inbound_header_value=header_value,
+            branch_criteria=load_policy(os.getenv("JEV_POLICY_FILE")),
+            policy_configured="JEV_POLICY_FILE" in os.environ,
         )
+
+
+def load_policy(filename: str | None) -> dict[str, str]:
+    path = Path(filename) if filename is not None else Path(__file__).with_name("policy.default.json")
+    if not path.is_absolute():
+        raise RuntimeError("JEV_POLICY_FILE must be an absolute path")
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(4097)
+    except OSError as error:
+        raise RuntimeError("JEV_POLICY_FILE cannot be read") from error
+    if len(data) > 4096:
+        raise RuntimeError("JEV_POLICY_FILE must be at most 4096 bytes")
+    try:
+        data.decode("utf-8")
+        value = strict_json(data)
+        if not isinstance(value, dict) or set(value) != {"simple", "complex"}:
+            raise ProtocolError("invalid policy fields")
+        if any(not isinstance(text, str) or not text.strip() for text in value.values()):
+            raise ProtocolError("invalid policy descriptions")
+        # Validate escaped Unicode too, before a request attempts UTF-8 encoding.
+        _encoded(value)
+    except (ProtocolError, UnicodeError) as error:
+        raise RuntimeError("JEV_POLICY_FILE requires UTF-8 JSON with nonempty simple and complex strings") from error
+    return {SIMPLE_BRANCH: value["simple"], COMPLEX_BRANCH: value["complex"]}
+
+
+def criteria_hash(branches: dict[str, str]) -> str:
+    return hashlib.sha256(json.dumps(branches, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def _finite_env(name: str, default: float) -> float:
@@ -383,14 +428,17 @@ def decision_response(
     request: dict[str, Any],
     upstream: Any,
     target_trimmed: bool,
+    trace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    trace = trace if trace is not None else {}
     if not isinstance(upstream, dict) or not isinstance(upstream.get("answers"), dict):
         raise ProtocolError("upstream response has no answers")
     answers = upstream["answers"]
     if settings.mode == "auto":
         branch, _ = _choice(answers.get("branch"), request["branches"], probabilities=False)
+        trace.update(upstream_choice=branch, reason="auto_choice")
     else:
-        _, distribution = _choice(
+        selected, distribution = _choice(
             answers.get("complexity"), request["branches"], probabilities=True
         )
         competence = _competence(answers.get("competence"))
@@ -400,6 +448,22 @@ def decision_response(
             and (competence is None or competence >= settings.competence_floor)
             else COMPLEX_BRANCH
         )
+        opportunity = distribution[SIMPLE_BRANCH] >= settings.simple_threshold
+        guard = competence is None or competence >= settings.competence_floor
+        trace.update(
+            upstream_choice=selected, probabilities=distribution,
+            simple_threshold=settings.simple_threshold,
+            competence_floor=settings.competence_floor,
+            simplicity_passed=opportunity, competence_passed=guard,
+            reason=("complexity_threshold" if not opportunity else
+                    "competence_guard" if not guard else "economy_eligible"),
+        )
+    trace.update(
+        competence=_competence(answers.get("competence")),
+        competence_status=("missing" if "competence" not in answers else
+                           "invalid" if _competence(answers["competence"]) is None else "valid"),
+        branch_id=branch,
+    )
     response: dict[str, Any] = {"branch_id": branch}
     if request["assessment_from"] is not None:
         score = _competence(answers.get("competence"))
@@ -425,16 +489,41 @@ async def _bounded_response(response: Any) -> bytes:
 
 
 async def decide(request: web.Request) -> web.Response:
+    decision_id = uuid.uuid4().hex
+    started = time.monotonic()
+    trace: dict[str, Any] = {"decision_id": decision_id, "phase": "authentication"}
     settings: Settings = request.app[SETTINGS]
+    log_event("decision_started", decision_id=decision_id, mode=settings.mode, model=settings.model)
+
+    def finish(body: dict[str, Any], status: int = 200) -> web.Response:
+        log_event("decision_completed", **trace, status=status,
+                  error=body.get("error"), duration_ms=round((time.monotonic() - started) * 1000, 2))
+        return web.json_response(body, status=status, headers={"X-Jev-Decision-Id": decision_id})
+
     if settings.inbound_header_name is not None:
         supplied = request.headers.get(settings.inbound_header_name, "")
         if not hmac.compare_digest(supplied, settings.inbound_header_value or ""):
-            return web.json_response({"error": "unauthorized"}, status=401)
+            return finish({"error": "unauthorized"}, status=401)
     upstream_started = False
     try:
         async with asyncio.timeout(settings.request_timeout_seconds):
+            trace["phase"] = "validation"
             incoming = validate_hiroute_request(strict_json(await request.read()))
+            criteria_source = "request"
+            if set(incoming["branches"]) == {SIMPLE_BRANCH, COMPLEX_BRANCH}:
+                incoming = {**incoming, "branches": settings.branch_criteria}
+                criteria_source = "policy" if settings.policy_configured else "default"
+            elif settings.policy_configured:
+                raise ProtocolError("configured policy requires the two smart-saving branches")
+            trace.update(criteria_source=criteria_source,
+                         criteria_sha256=criteria_hash(incoming["branches"]))
             state, target_trimmed = prepare_state(incoming, settings.max_state_tokens)
+            trace.update(
+                input_turns=len(incoming["visible_conversation"]),
+                retained_turns=len(state["visible_conversation"]),
+                state_bytes=len(_encoded(state)), history_partial=state["history_partial"],
+                assessment_from=state["assessment_from"], target_trimmed=target_trimmed,
+            )
             body = {
                 "model": settings.model,
                 "state": state,
@@ -446,7 +535,10 @@ async def decide(request: web.Request) -> web.Response:
             }
             session: ClientSession = request.app[CLIENT]
             upstream_started = True
+            trace["phase"] = "queue"
+            queued = time.monotonic()
             async with request.app[CONCURRENCY]:
+                trace.update(queue_ms=round((time.monotonic() - queued) * 1000, 2), phase="upstream")
                 async with session.post(
                     settings.upstream_url,
                     json=body,
@@ -457,28 +549,47 @@ async def decide(request: web.Request) -> web.Response:
                     },
                     allow_redirects=False,
                 ) as upstream_response:
+                    trace["upstream_status"] = upstream_response.status
                     if upstream_response.status != 200:
-                        return web.json_response(
+                        return finish(
                             {"error": "upstream_rejected", "upstream_status": upstream_response.status},
                             status=502,
                         )
                     upstream = strict_json(await _bounded_response(upstream_response))
-            return web.json_response(decision_response(settings, state, upstream, target_trimmed))
+            trace["phase"] = "decision"
+            result = decision_response(settings, state, upstream, target_trimmed, trace)
+            return finish(result)
     except ProtocolError as error:
+        trace["validation_error"] = str(error)
         if upstream_started:
-            return web.json_response({"error": "upstream_invalid"}, status=502)
-        return web.json_response(
+            return finish({"error": "upstream_invalid"}, status=502)
+        return finish(
             {"error": str(error)},
             status=413 if "context budget" in str(error) else 400,
         )
     except asyncio.TimeoutError:
-        return web.json_response({"error": "upstream_timeout"}, status=504)
+        return finish({"error": "upstream_timeout"}, status=504)
     except ClientError:
-        return web.json_response({"error": "upstream_invalid"}, status=502)
+        return finish({"error": "upstream_invalid"}, status=502)
+    except asyncio.CancelledError:
+        log_event("decision_cancelled", **trace,
+                  duration_ms=round((time.monotonic() - started) * 1000, 2))
+        raise
+    except Exception as error:
+        log_event("decision_failed", **trace, error_type=type(error).__name__,
+                  duration_ms=round((time.monotonic() - started) * 1000, 2))
+        raise
 
 
 async def _client(app: web.Application) -> None:
     settings: Settings = app[SETTINGS]
+    log_event("service_started", mode=settings.mode, model=settings.model,
+              request_timeout_seconds=settings.request_timeout_seconds,
+              max_state_tokens=settings.max_state_tokens, max_concurrency=settings.max_concurrency,
+              simple_threshold=settings.simple_threshold if settings.mode == "rules" else None,
+              competence_floor=settings.competence_floor if settings.mode == "rules" else None,
+              criteria_source="policy" if settings.policy_configured else "default",
+              criteria_sha256=criteria_hash(settings.branch_criteria))
     app[CLIENT] = ClientSession(
         timeout=ClientTimeout(total=settings.request_timeout_seconds),
         trust_env=True,
@@ -506,6 +617,7 @@ def create_app(settings: Settings | None = None) -> web.Application:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     web.run_app(
         create_app(),
         host=os.getenv("HOST", "127.0.0.1"),
