@@ -22,21 +22,21 @@ pub(super) fn send(
     let messages =
         serde_json::json!([{"role":"user","content":"Call hiroute_probe with value ok."}]);
     let parameters = serde_json::json!({"type":"object","properties":{"value":{"type":"string","enum":["ok"]}},"required":["value"],"additionalProperties":false});
+    // Let the user instruction elicit the call. Forced tool_choice is rejected by some
+    // providers in their default thinking mode; leave that mode unchanged and allow
+    // enough output for a short reasoning prelude before the tool call.
     let body = match target.candidate_target.upstream_protocol {
         UpstreamProtocol::Responses => {
-            serde_json::json!({"model":model,"input":messages,"max_output_tokens":256,"stream":false,
-                "tools":[{"type":"function","name":"hiroute_probe","parameters":parameters}],
-                "tool_choice":{"type":"function","name":"hiroute_probe"}})
+            serde_json::json!({"model":model,"input":messages,"max_output_tokens":4096,"stream":false,
+                "tools":[{"type":"function","name":"hiroute_probe","parameters":parameters}]})
         }
         UpstreamProtocol::ChatCompletions => {
-            serde_json::json!({"model":model,"messages":messages,"max_tokens":256,"stream":false,
-                "tools":[{"type":"function","function":{"name":"hiroute_probe","parameters":parameters}}],
-                "tool_choice":{"type":"function","function":{"name":"hiroute_probe"}}})
+            serde_json::json!({"model":model,"messages":messages,"max_tokens":4096,"stream":false,
+                "tools":[{"type":"function","function":{"name":"hiroute_probe","parameters":parameters}}]})
         }
         UpstreamProtocol::Messages => {
-            serde_json::json!({"model":model,"messages":messages,"max_tokens":256,"stream":false,
-                "tools":[{"name":"hiroute_probe","input_schema":parameters}],
-                "tool_choice":{"type":"tool","name":"hiroute_probe"}})
+            serde_json::json!({"model":model,"messages":messages,"max_tokens":4096,"stream":false,
+                "tools":[{"name":"hiroute_probe","input_schema":parameters}]})
         }
     };
     let mut request = client

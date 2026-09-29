@@ -107,7 +107,24 @@ fn explicit_inference_verifies_tool_call_for_one_model_without_directory_probe()
             serde_json::from_str(requests[0].split("\r\n\r\n").nth(1).unwrap()).unwrap();
         assert_eq!(body["model"], "manual-model");
         assert_eq!(body["tools"].as_array().unwrap().len(), 1);
-        assert!(body.get("tool_choice").is_some());
+        assert!(
+            body.get("tool_choice").is_none(),
+            "thinking providers reject forced tool selection"
+        );
+        let messages = if protocol == UpstreamProtocol::Responses {
+            &body["input"]
+        } else {
+            &body["messages"]
+        };
+        assert_eq!(messages.as_array().unwrap().len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+        assert!(
+            messages[0]["content"]
+                .as_str()
+                .unwrap()
+                .contains("hiroute_probe")
+        );
+        assert!(body.get("enable_thinking").is_none());
     }
 }
 
