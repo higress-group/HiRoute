@@ -5,6 +5,22 @@ use std::time::{Duration, Instant};
 
 const OUTPUT_LIMIT: usize = 64 * 1024;
 
+/// Probe the selected native engine for subscription model discovery, not admission.
+/// Reuses the bounded `--version` probe; never guesses a release or reads model caches.
+pub fn codex_subscription_client_version(path: &Path) -> Option<String> {
+    match executable_probe(path) {
+        ExecutableProbe::Installed(observation) if !observation.version.is_empty() => {
+            // Codex models-manager sends only MAJOR.MINOR.PATCH, including alpha builds.
+            observation
+                .version
+                .split(['-', '+'])
+                .next()
+                .map(str::to_owned)
+        }
+        _ => None,
+    }
+}
+
 pub(super) struct ExecutableObservationV1 {
     pub version: String,
     pub canonical_path: String,

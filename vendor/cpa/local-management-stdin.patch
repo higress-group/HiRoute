@@ -33,8 +33,8 @@
 +		password = localPassword
 +	}
  
- 	// Core application variables.
- 	var err error
+ 	if discoverGateways || discoverJSON {
+ 		cfgInclude, cfgExclude := cmd.LoadDiscoveryScanFilters(configPath)
 @@ -752,6 +766,11 @@
  			managementasset.StartAutoUpdater(context.Background(), configFilePath)
  			misc.StartAntigravityVersionUpdater(context.Background())
@@ -102,7 +102,7 @@
 +package management
 +
 +import (
-+	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 +	"golang.org/x/crypto/bcrypt"
 +	"net/http"
 +	"strings"
@@ -135,5 +135,273 @@
 +	handler.SetLocalPassword(strings.Repeat("n", 40))
 +	if ok, _, _ := handler.AuthenticateManagementKey("127.0.0.2", true, machine); ok {
 +		t.Fatal("old instance credential accepted")
++	}
++}
+--- /dev/null
++++ b/internal/runtime/executor/codex_models.go
+@@ -0,0 +1,105 @@
++package executor
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"strings"
++	"time"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
++	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++)
++
++// DiscoverModels uses the same account, proxy and TLS transport as Codex requests.
++// The remote list controls membership; bundled metadata only enriches matching IDs.
++func (e *CodexExecutor) DiscoverModels(ctx context.Context, auth *cliproxyauth.Auth, known []*registry.ModelInfo) ([]*registry.ModelInfo, error) {
++	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
++	defer cancel()
++	token, _ := codexCreds(auth)
++	if strings.TrimSpace(token) == "" {
++		return nil, fmt.Errorf("codex model discovery: missing access token")
++	}
++	version, _ := auth.Metadata["hiroute_client_version"].(string)
++	version = strings.TrimSpace(version)
++	if version == "" || len(version) > 128 || strings.ContainsAny(version, "\r\n\x00") {
++		return nil, fmt.Errorf("codex model discovery: local client version unavailable")
++	}
++	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://chatgpt.com/backend-api/codex/models?client_version="+url.QueryEscape(version), nil)
++	if err != nil {
++		return nil, err
++	}
++	applyCodexHeadersFromSources(req, auth, token, false, e.cfg, nil)
++	client := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 5*time.Second)
++	// Never forward subscription credentials to a redirect target.
++	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
++	resp, err := client.Do(req)
++	if err != nil {
++		return nil, fmt.Errorf("codex model discovery: transport failed")
++	}
++	defer resp.Body.Close()
++	if resp.StatusCode != http.StatusOK {
++		return nil, fmt.Errorf("codex model discovery: HTTP %d", resp.StatusCode)
++	}
++	const limit = 16 << 20
++	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
++	if err != nil || len(body) > limit {
++		return nil, fmt.Errorf("codex model discovery: unreadable or oversized catalog")
++	}
++	var catalog struct {
++		Models []struct {
++			Slug             string   `json:"slug"`
++			DisplayName      string   `json:"display_name"`
++			Description      string   `json:"description"`
++			ContextWindow    int      `json:"context_window"`
++			MaxContextWindow int      `json:"max_context_window"`
++			InputModalities  []string `json:"input_modalities"`
++			Reasoning        []struct {
++				Effort string `json:"effort"`
++			} `json:"supported_reasoning_levels"`
++		} `json:"models"`
++	}
++	if json.Unmarshal(body, &catalog) != nil || catalog.Models == nil {
++		return nil, fmt.Errorf("codex model discovery: invalid catalog")
++	}
++	byID := make(map[string]*registry.ModelInfo, len(known))
++	for _, m := range known {
++		if m != nil {
++			byID[m.ID] = m
++		}
++	}
++	models := make([]*registry.ModelInfo, 0, len(catalog.Models))
++	seen := make(map[string]bool)
++	for _, remote := range catalog.Models {
++		id := strings.TrimSpace(remote.Slug)
++		if id == "" || seen[id] {
++			return nil, fmt.Errorf("codex model discovery: invalid or duplicate model ID")
++		}
++		seen[id] = true
++		m := registry.ModelInfo{ID: id, Object: "model", OwnedBy: "openai", Type: "codex"}
++		if base := byID[id]; base != nil {
++			m = *base
++		}
++		m.DisplayName, m.Description = remote.DisplayName, remote.Description
++		m.ContextLength, m.MaxContextLength = remote.ContextWindow, remote.MaxContextWindow
++		if m.ContextLength == 0 {
++			m.ContextLength = m.MaxContextLength
++		}
++		m.SupportedInputModalities = remote.InputModalities
++		m.Thinking = nil
++		if len(remote.Reasoning) > 0 {
++			m.Thinking = &registry.ThinkingSupport{}
++			for _, level := range remote.Reasoning {
++				if level.Effort != "" {
++					m.Thinking.Levels = append(m.Thinking.Levels, level.Effort)
++				}
++			}
++		}
++		models = append(models, &m)
++	}
++	return models, nil
++}
+--- /dev/null
++++ b/internal/runtime/executor/codex_models_test.go
+@@ -0,0 +1,56 @@
++package executor
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++
++	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++)
++
++type discoveryRoundTrip func(*http.Request) (*http.Response, error)
++
++func (f discoveryRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
++
++func TestCodexModelDiscoveryFailureBounds(t *testing.T) {
++	a := &cliproxyauth.Auth{Metadata: map[string]any{"access_token": "secret", "hiroute_client_version": "0.999.0"}}
++	for _, tc := range []struct {
++		name     string
++		status   int
++		body     string
++		redirect bool
++	}{
++		{"redirect", 302, "", true},
++		{"oversized", 200, strings.Repeat("x", (16<<20)+1), false},
++		{"duplicate", 200, `{"models":[{"slug":"m"},{"slug":"m"}]}`, false},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			calls := 0
++			ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryRoundTrip(func(r *http.Request) (*http.Response, error) {
++				calls++
++				h := make(http.Header)
++				if tc.redirect {
++					h.Set("Location", "https://example.com/stolen")
++				}
++				return &http.Response{StatusCode: tc.status, Header: h, Body: io.NopCloser(strings.NewReader(tc.body)), Request: r}, nil
++			}))
++			_, err := NewCodexExecutor(nil).DiscoverModels(ctx, a, nil)
++			if err == nil || calls != 1 || strings.Contains(err.Error(), "secret") {
++				t.Fatalf("unsafe failure handling: calls=%d err=%v", calls, err)
++			}
++		})
++	}
++}
++
++func TestCodexModelDiscoveryRequiresObservedVersion(t *testing.T) {
++	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryRoundTrip(func(r *http.Request) (*http.Response, error) {
++		t.Fatal("must not query with an invented version")
++		return nil, nil
++	}))
++	_, err := NewCodexExecutor(nil).DiscoverModels(ctx, &cliproxyauth.Auth{Metadata: map[string]any{"access_token": "secret"}}, nil)
++	if err == nil || !strings.Contains(err.Error(), "local client version unavailable") {
++		t.Fatalf("missing version: %v", err)
++	}
++}
+--- a/sdk/cliproxy/service_models.go
++++ b/sdk/cliproxy/service_models.go
+@@ -9,8 +9,10 @@
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/modelconfig"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+ 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
++	log "github.com/sirupsen/logrus"
+ )
+ 
+ // registerModelsForAuth (re)binds provider models in the global registry using the core auth ID as client identifier.
+@@ -149,6 +151,22 @@
+ 		default:
+ 			models = registry.GetCodexProModels()
+ 		}
++		if token, _ := a.Metadata["access_token"].(string); strings.TrimSpace(token) != "" {
++			discovered, err := executor.NewCodexExecutor(s.cfg).DiscoverModels(ctx, a, models)
++			if err != nil {
++				log.Warnf("Codex model discovery failed; retaining registered catalog: %v", err)
++				return
++			}
++			// An auth removed or replaced during the bounded request must not reappear.
++			if s.coreManager != nil {
++				current, ok := s.coreManager.GetByID(a.ID)
++				if !ok || current.Disabled || current.Generation != a.Generation || current.RegistrationEpoch != a.RegistrationEpoch {
++					return
++				}
++			}
++			models = discovered
++			log.Infof("Codex account model discovery completed: %d models", len(models))
++		}
+ 		models = applyExcludedModels(models, excluded)
+ 	case "kimi", "kimi-ai", "kimi.ai", "kimi.com":
+ 		models = registry.GetKimiModels()
+--- /dev/null
++++ b/sdk/cliproxy/service_codex_discovery_test.go
+@@ -0,0 +1,62 @@
++package cliproxy
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++
++	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
++)
++
++type discoveryTransport func(*http.Request) (*http.Response, error)
++
++func (f discoveryTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
++
++func TestCodexDiscoveryRegistration(t *testing.T) {
++	s := &Service{cfg: &config.Config{}}
++	s.cfg.ForceModelPrefix = true
++	a := &coreauth.Auth{ID: "discovery-account", Provider: "codex", Prefix: "subscription", Metadata: map[string]any{"access_token": "test-token", "account_id": "test-account", "hiroute_client_version": "0.999.0"}, Attributes: map[string]string{"excluded_models": "excluded"}}
++	defer GlobalModelRegistry().UnregisterClient(a.ID)
++	status, body := 200, `{"models":[{"slug":"future-model-not-in-bundle","display_name":"Future","context_window":123456,"input_modalities":["text","image"],"supported_reasoning_levels":[{"effort":"max"}]},{"slug":"excluded"}]}`
++	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
++		if r.URL.String() != "https://chatgpt.com/backend-api/codex/models?client_version=0.999.0" || r.Header.Get("Authorization") != "Bearer test-token" || r.Header.Get("ChatGPT-Account-ID") != "test-account" {
++			t.Fatal("wrong discovery request")
++		}
++		if _, ok := r.Context().Deadline(); !ok {
++			t.Fatal("missing deadline")
++		}
++		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
++	}))
++	s.registerModelsForAuth(ctx, a)
++	check := func() {
++		t.Helper()
++		models := GlobalModelRegistry().GetModelsForClient(a.ID)
++		if len(models) != 1 || models[0].ID != "subscription/future-model-not-in-bundle" || models[0].ContextLength != 123456 || models[0].Thinking.Levels[0] != "max" {
++			t.Fatalf("unexpected registered models: %+v", models)
++		}
++	}
++	check()
++	for _, failure := range []struct {
++		status int
++		body   string
++	}{{401, `secret upstream error`}, {200, `{broken`}, {200, `{}`}, {200, `{"models":[{"slug":""}]}`}} {
++		status, body = failure.status, failure.body
++		s.registerModelsForAuth(ctx, a)
++		check()
++	}
++	status, body = 200, `{"models":[]}`
++	s.registerModelsForAuth(ctx, a)
++	if len(GlobalModelRegistry().GetModelsForClient(a.ID)) != 0 {
++		t.Fatal("empty authoritative list did not remove models")
++	}
++	status, body = 200, `{"models":[{"slug":"other-account-model"}]}`
++	a.ID, a.Prefix = "other-account", "other"
++	defer GlobalModelRegistry().UnregisterClient(a.ID)
++	s.registerModelsForAuth(ctx, a)
++	if len(GlobalModelRegistry().GetModelsForClient("discovery-account")) != 0 {
++		t.Fatal("cross-account catalog leakage")
 +	}
 +}

@@ -14,7 +14,11 @@ pub(super) fn codex_desktop_engine() -> Option<std::path::PathBuf> {
     let bundle_identifier = NSString::from_str("com.openai.codex");
     let bundle =
         NSWorkspace::sharedWorkspace().URLForApplicationWithBundleIdentifier(&bundle_identifier)?;
-    Some(bundle.to_file_path()?.join("Contents/Resources/codex"))
+    Some(
+        bundle
+            .to_file_path()?
+            .join("Contents/Resources/codex-cli/bin/codex"),
+    )
 }
 
 /// Opens this process's own confirmed .app bundle so the operating system delivers the

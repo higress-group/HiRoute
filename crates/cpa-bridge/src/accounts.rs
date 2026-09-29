@@ -201,6 +201,7 @@ pub(crate) trait CpaControlPlane: Send + Sync {
         timeout: Duration,
     ) -> Result<(), AccountDiscoveryError>;
 
+    #[allow(clippy::too_many_arguments)]
     fn discover_and_pin(
         &self,
         address: SocketAddr,
@@ -209,6 +210,7 @@ pub(crate) trait CpaControlPlane: Send + Sync {
         secrets: &InstanceSecrets,
         expected_version: &str,
         timeout: Duration,
+        refresh_models: bool,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError>;
 }
 

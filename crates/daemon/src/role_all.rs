@@ -501,7 +501,14 @@ fn start_cpa(
         instance_id: "hiroute-codex".into(),
         state_root: config.storage_root.join("cpa/state"),
         auth_dir: config.storage_root.join("cpa/auth"),
-        borrowed_codex_auth: Some(BorrowedCodexAuthSpec::new(selected_codex_auth()?)),
+        borrowed_codex_auth: Some(
+            BorrowedCodexAuthSpec::new(selected_codex_auth()?).with_executable(
+                config
+                    .codex_desktop_engine
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from("codex")),
+            ),
+        ),
         bindings: vec![CpaProfileBinding {
             account_kind: CpaAccountKind::Codex,
             connector_id: "connector.cpa.codex".into(),

@@ -197,6 +197,7 @@ impl CpaControlPlane for FakeControl {
         secrets: &InstanceSecrets,
         expected_version: &str,
         timeout: Duration,
+        _refresh_models: bool,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         self.discoveries.fetch_add(1, Ordering::SeqCst);
         self.probe_ready(address, secrets, expected_version, timeout)?;

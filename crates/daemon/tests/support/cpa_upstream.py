@@ -13,7 +13,7 @@ import threading
 import time
 from urllib.parse import parse_qs, urlparse
 
-VERSION = '7.2.140-hiroute.2'
+VERSION = '8.0.4-hiroute.1'
 controls = Path(__file__).resolve().parent
 model_override = controls / 'model-id'
 MODEL = (model_override.read_text().strip()

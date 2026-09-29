@@ -43,6 +43,35 @@ fn flat_value(auth_dir: &Path) -> Value {
     serde_json::from_slice(&fs::read(auth_dir.join(MANAGED_FILE_NAME)).unwrap()).unwrap()
 }
 
+#[cfg(unix)]
+#[test]
+fn selected_engine_version_is_carried_to_cpa_and_refreshed_on_reacquire() {
+    use std::os::unix::fs::PermissionsExt;
+    let (temp, auth_dir, source) = setup();
+    let executable = temp.path().join("selected-codex");
+    let spec = BorrowedCodexAuthSpec::new(&source).with_executable(executable.clone());
+    for (version, expected) in [("0.158.0-alpha.2.1", "0.158.0"), ("0.999.1", "0.999.1")] {
+        fs::write(
+            &executable,
+            format!("#!/bin/sh\nprintf 'codex-cli {version}\\n'\n"),
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let lease = ManagedAuthLease::acquire(&auth_dir, Some(&spec)).unwrap();
+        assert_eq!(flat_value(&auth_dir)["hiroute_client_version"], expected);
+        drop(lease);
+    }
+}
+
+#[test]
+fn missing_engine_does_not_invent_a_client_version() {
+    let (temp, auth_dir, source) = setup();
+    let spec =
+        BorrowedCodexAuthSpec::new(&source).with_executable(temp.path().join("missing-codex"));
+    let _lease = ManagedAuthLease::acquire(&auth_dir, Some(&spec)).unwrap();
+    assert!(flat_value(&auth_dir)["hiroute_client_version"].is_null());
+}
+
 #[test]
 fn evidence_scan_is_read_only_and_redacts_the_source() {
     let temp = tempfile::tempdir().unwrap();

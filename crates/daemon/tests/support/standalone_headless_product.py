@@ -342,7 +342,7 @@ for line in sys.stdin:
             '--version', '0.1.0-headless-product', '--revision', self.sha,
             '--hiroute', str(candidate_hiroute),
             '--hirouted', str(candidate_hirouted),
-            '--cpa-binary', str(cpa), '--cpa-version', '7.2.140-hiroute.2',
+            '--cpa-binary', str(cpa), '--cpa-version', '8.0.4-hiroute.1',
             '--cpa-license', str(license_path),
             '--notices', str(package_source / 'notices'), '--output', str(self.package),
         ], cwd=self.repo, env=self.env, capture_output=True, timeout=90)
