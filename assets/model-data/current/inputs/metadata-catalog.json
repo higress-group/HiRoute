@@ -1372,7 +1372,7 @@
       "authority": "developers.openai.com",
       "source_kind": "provider-documentation",
       "locator": "https://developers.openai.com/api/docs/models/gpt-6-sol",
-      "collected_on": "2026-09-23",
+      "collected_on": "2026-09-29",
       "bytes_digest": null,
       "digest_state": "not-captured"
     },
@@ -47448,6 +47448,87 @@
       "source_locations": [
         {
           "source_key": "source-088"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "cost_hint_state": "not-recorded"
+    },
+    {
+      "model_record_key": "hermes-agent/openai-codex/gpt-6-sol",
+      "provider_record_key": "hermes-agent/openai-codex",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-126"
+        }
+      ],
+      "provider_id": "openai-codex",
+      "upstream_model_id": "gpt-6-sol",
+      "display_name": "GPT-6 Sol",
+      "context_tokens": {
+        "state": "known",
+        "value": 1050000
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 128000
+      },
+      "input_modalities": [
+        "image",
+        "text"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [
+          "high",
+          "low",
+          "max",
+          "medium",
+          "none",
+          "xhigh"
+        ],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [],
+      "normalized_model_matches": [
+        "gpt-6-sol"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "complete"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "reasoning-rendering-hint",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [],
+      "source_locations": [
+        {
+          "source_key": "source-126"
         }
       ],
       "execution_fit": {

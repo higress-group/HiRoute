@@ -43,6 +43,11 @@ impl ManagedCpaRuntime {
             return Ok(());
         }
 
+        let previous_auth_generation = inner
+            .live
+            .as_ref()
+            .and_then(|live| live.auth_lease.as_ref())
+            .and_then(|lease| lease.codex_generation());
         let refreshed = inner
             .live
             .as_mut()
@@ -57,11 +62,11 @@ impl ManagedCpaRuntime {
                     && identity.account_digest == expected.account_digest
             })
         });
-        if current.is_some_and(|identity| identity.generation == expected.generation) {
+        if current.is_some_and(|identity| Some(identity.generation) == previous_auth_generation) {
             return Ok(());
         }
         if let Some(current) = current
-            && current.generation > expected.generation
+            && previous_auth_generation.is_some_and(|previous| current.generation > previous)
             && let Some(account) = inner.live.as_mut().and_then(|live| {
                 live.accounts.iter_mut().find(|account| {
                     account.account_kind == crate::CpaAccountKind::Codex
@@ -69,7 +74,11 @@ impl ManagedCpaRuntime {
                 })
             })
         {
-            account.generation = current.generation;
+            account.generation = account
+                .generation
+                .checked_add(1)
+                .ok_or(CpaLifecycleError::InvalidAccountState)?
+                .max(current.generation);
             self.epochs.advance_target();
             if let Ok(layout) = self.prepare_layout()
                 && let Some(live) = inner.live.as_ref()

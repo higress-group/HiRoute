@@ -76,6 +76,12 @@ pub(crate) struct ManagedAuthLease {
 }
 
 impl ManagedAuthLease {
+    pub(crate) fn codex_generation(&self) -> Option<u64> {
+        self.codex
+            .as_ref()
+            .and_then(|lease| lease.observed_generation)
+    }
+
     #[cfg(test)]
     pub(crate) fn acquire(
         auth_dir: &Path,
@@ -124,6 +130,7 @@ struct BorrowedCodexLease {
     _source_lock: File,
     flat_path: PathBuf,
     state_path: PathBuf,
+    observed_generation: Option<u64>,
 }
 
 impl BorrowedCodexLease {
@@ -149,6 +156,7 @@ impl BorrowedCodexLease {
             _source_lock: source_lock,
             flat_path: auth_dir.join(MANAGED_FILE_NAME),
             state_path: auth_dir.join(STATE_FILE_NAME),
+            observed_generation: None,
         };
         lease.refresh_expected(expected, None)?;
         Ok(lease)
@@ -237,6 +245,7 @@ impl BorrowedCodexLease {
             refresh_token_present: false,
         };
         save_state(&self.state_path, &state)?;
+        self.observed_generation = Some(generation);
         Ok(ManagedAccountIdentity {
             account_kind: CpaAccountKind::Codex,
             stock_file_name: MANAGED_FILE_NAME.to_owned(),

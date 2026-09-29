@@ -3,9 +3,9 @@
   "source_bundle": "assets/model-data/current/rating-seed.json",
   "source_bytes_digest": "sha256:2f3b02526a9263e756c3a94e4d74336aca36724abd984fbec4a0a89833619b9f",
   "metadata_catalog": "assets/model-data/current/inputs/metadata-catalog.json",
-  "metadata_catalog_bytes_digest": "sha256:4361cf9e4c8e4bf37b3ce89bc94aaf11f71adc1a35af4688d628e8ca31a68ba3",
+  "metadata_catalog_bytes_digest": "sha256:c95adb6384c58b0b398f2176ce647bd7e1bb41fa1d00163082fe60425e517810",
   "client_discovery_runs": "assets/model-data/current/inputs/client-discovery-runs.json",
-  "client_discovery_runs_bytes_digest": "sha256:c0d60bbd8f104c72e5028dd2ec27e925c12bb28b0e2bf61e9d8cd1bff911498e",
+  "client_discovery_runs_bytes_digest": "sha256:e8e1c6c87f32a97039f5a9fcb2154d71108bc50cfe7251104c019fb4c3be10b3",
   "snapshot_version": "hiroute-20260913/current-1",
   "method_revision": "preserved-explicit-native/v1",
   "evidence": {
@@ -563,6 +563,75 @@
             "region_id": "global",
             "model_configuration_ids": [
               "model.openai.gpt-6-astra"
+            ],
+            "billing_class": "subscription",
+            "evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "model": {
+        "model_configuration_id": "model.openai.gpt-6-sol",
+        "revision": 1,
+        "display_name": "GPT-6 Sol",
+        "publisher_id": "publisher.openai",
+        "capabilities": {
+          "tool": true,
+          "vision": true,
+          "streaming": true,
+          "context_tokens": 1050000,
+          "max_output_tokens": 128000
+        }
+      },
+      "native_capability": {
+        "kind": "discrete",
+        "parameter": "reasoning_effort",
+        "profiles": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-6-sol"
+      ],
+      "collected_on": "2026-09-29",
+      "identity_note": "Official model ID gpt-6-sol. The client-bundled Codex subscription Responses projection is gated by the current account's observed CPA inventory; the official model facts establish 1,050,000/128,000 limits, text/image input, tools, streaming, and reasoning.effort none..max, not account availability.",
+      "rating_method": "Unknown: no comparable measurement on the retained legacy scale. No new normalization.",
+      "catalog_intent": {
+        "endpoint_capabilities": [
+          {
+            "capability_id": "cap.openai.gpt-6-sol.codex.responses",
+            "revision": 1,
+            "model_configuration_id": "model.openai.gpt-6-sol",
+            "connector_id": "connector.cpa.codex",
+            "connector_revision": 1,
+            "endpoint_profile_id": "endpoint.cpa.codex",
+            "endpoint_profile_revision": 1,
+            "protocol_endpoint_id": "endpoint.cpa.codex.responses",
+            "upstream_protocol": "responses",
+            "upstream_model_id": "gpt-6-sol",
+            "required_adapter_ref": "adapter.openai-responses.v1",
+            "required_adapter_revision": 1,
+            "evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "offers": [
+          {
+            "offer_id": "offer.codex.subscription",
+            "revision": 1,
+            "endpoint_profile_id": "endpoint.cpa.codex",
+            "endpoint_profile_revision": 1,
+            "service_offering_id": "codex-subscription",
+            "entitlement_id": "codex-subscription",
+            "usage_scope": "account",
+            "region_id": "global",
+            "model_configuration_ids": [
+              "model.openai.gpt-6-sol"
             ],
             "billing_class": "subscription",
             "evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"

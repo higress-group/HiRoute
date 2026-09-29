@@ -104,6 +104,10 @@ impl ManagedCpaRuntime {
         let layout = self.prepare_layout()?;
         let source_management = inner.source_management.clone();
         let live = inner.live.as_mut().ok_or(CpaLifecycleError::NotStarted)?;
+        let previous_auth_generation = live
+            .auth_lease
+            .as_ref()
+            .and_then(|lease| lease.codex_generation());
         let managed_identities = match live
             .auth_lease
             .as_mut()
@@ -117,6 +121,10 @@ impl ManagedCpaRuntime {
                 return Err(error);
             }
         };
+        let current_auth_generation = managed_identities
+            .iter()
+            .find(|identity| identity.account_kind == crate::CpaAccountKind::Codex)
+            .map(|identity| identity.generation);
         let mut discovered = match self.control.discover_and_pin(
             live.address,
             &layout.auth_dir,
@@ -151,7 +159,9 @@ impl ManagedCpaRuntime {
             }
         };
         subscriptions::apply_management_projection(&mut live.accounts, &source_management);
-        if account_epoch_facts(&live.accounts) != before {
+        if account_epoch_facts(&live.accounts) != before
+            || current_auth_generation != previous_auth_generation
+        {
             self.epochs.advance_target();
         }
         save_account_state(&layout.accounts_path, &live.accounts)?;

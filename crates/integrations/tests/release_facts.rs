@@ -110,6 +110,44 @@ fn current_catalog_reconciles_observed_models_without_cross_provider_matching() 
 }
 
 #[test]
+fn current_codex_subscription_catalog_qualifies_sol_only_on_its_exact_account_inventory() {
+    let catalog = current_catalog();
+    let models = catalog
+        .reconcile_observed_inventory(
+            "endpoint.cpa.codex",
+            [ObservedModelV1 {
+                upstream_model_id: "gpt-6-sol".into(),
+                metadata: Default::default(),
+            }],
+        )
+        .unwrap();
+    assert_eq!(models.len(), 1);
+    assert_eq!(
+        models[0].disposition,
+        hiroute_domain::InventoryDisposition::CatalogMatched
+    );
+    assert_eq!(
+        models[0].model_configuration_id.as_deref(),
+        Some("model.openai.gpt-6-sol")
+    );
+    assert_eq!(
+        catalog
+            .native_reasoning()
+            .iter()
+            .find(|value| value.model_configuration_id == "model.openai.gpt-6-sol")
+            .map(|value| &value.capability),
+        Some(&hiroute_domain::NativeReasoningCapabilityV1::Discrete {
+            parameter: "reasoning_effort".into(),
+            profiles: ["none", "low", "medium", "high", "xhigh", "max"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            default_profile: None,
+        })
+    );
+}
+
+#[test]
 fn current_metadata_bounds_the_unknown_text_fallback_without_inventing_identity() {
     let catalog = current_catalog();
     assert!(catalog.runtime_fallback_allows_observed_text("provider-new-text-model"));

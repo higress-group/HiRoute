@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
   "as_of": "2026-09-29",
-  "catalog_digest_compared": "sha256:66e54c00529a0647b456f9c4550d1b82b4a1197a65aa01f8f2d79f49f72d79b4",
+  "catalog_digest_compared": "sha256:898e6881766822b97a9364bcb6308f8062b3cd5fca0f15b4d8834be6864d4588",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -11,24 +11,24 @@
     "determinate_outcome_closure_script": ".agents/skills/model-metadata-maintainer/scripts/close_model_metadata.py"
   },
   "materialization": {
-    "model_metadata_record_count": 764,
+    "model_metadata_record_count": 765,
     "provider_metadata_record_count": 105,
     "scenario_eligible_record_counts": {
       "adapter-planning": 4,
-      "context-limit-prefill": 760,
+      "context-limit-prefill": 761,
       "cost-hint-display": 232,
       "credential-setup-hint": 105,
       "custom-api-endpoint-prefill": 85,
-      "custom-api-model-prefill": 764,
-      "lifecycle-warning": 764,
-      "model-directory": 764,
+      "custom-api-model-prefill": 765,
+      "lifecycle-warning": 765,
+      "model-directory": 765,
       "model-discovery-setup": 102,
-      "output-limit-prefill": 733,
+      "output-limit-prefill": 734,
       "provider-directory": 105,
-      "reasoning-capability-prefill": 760,
-      "reasoning-rendering-hint": 364,
-      "request-limit-prefill": 736,
-      "vision-capability-prefill": 762
+      "reasoning-capability-prefill": 761,
+      "reasoning-rendering-hint": 365,
+      "request-limit-prefill": 737,
+      "vision-capability-prefill": 763
     },
     "unique_upstream_model_id_count": 399
   },

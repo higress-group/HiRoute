@@ -93,8 +93,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
     ))
     .unwrap();
     data.validate_against(&registry).unwrap();
-    assert_eq!(data.data.models.len(), 19);
-    assert_eq!(data.rating_snapshot.records.len(), 46);
+    assert_eq!(data.data.models.len(), 20);
+    assert_eq!(data.rating_snapshot.records.len(), 52);
     assert!(
         data.data
             .model_endpoint_capabilities
@@ -103,7 +103,7 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         "incomplete bindings must not become executable capabilities"
     );
     assert_eq!(data.metadata_catalog.provider_records.len(), 105);
-    assert_eq!(data.metadata_catalog.model_records.len(), 764);
+    assert_eq!(data.metadata_catalog.model_records.len(), 765);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 188);
     for product_key in [
         "bailian-token-personal-cn-beijing",
@@ -194,12 +194,21 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .unwrap();
         assert_eq!(binding.availability.state, "conditional");
         assert_eq!(binding.protocol_qualification, "runtime-required");
-        assert!(
-            data.data
-                .models
-                .iter()
-                .all(|model| !model.model_configuration_id.ends_with(model_key))
-        );
+        if model_key == "gpt-6-sol" {
+            assert!(
+                data.data
+                    .models
+                    .iter()
+                    .any(|model| model.model_configuration_id == "model.openai.gpt-6-sol")
+            );
+        } else {
+            assert!(
+                data.data
+                    .models
+                    .iter()
+                    .all(|model| !model.model_configuration_id.ends_with(model_key))
+            );
+        }
     }
     // The dataset is a closed, determinate snapshot: no provider-scoped record may keep an
     // unknown capability, limit, lifecycle, rendering, or cost-hint outcome, and every

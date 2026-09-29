@@ -1569,6 +1569,21 @@
           "upstream_protocol": "responses"
         },
         {
+          "capability_id": "cap.openai.gpt-6-sol.codex.responses",
+          "connector_id": "connector.cpa.codex",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.codex",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:6c37ff172f3d45f35557c29b1badc4915265bbda6a86ac45e5e5244cd9708cf0",
+          "model_configuration_id": "model.openai.gpt-6-sol",
+          "protocol_endpoint_id": "endpoint.cpa.codex.responses",
+          "required_adapter_ref": "adapter.openai-responses.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "gpt-6-sol",
+          "upstream_protocol": "responses"
+        },
+        {
           "capability_id": "cap.openrouter.cohere-north-mini-code-free.chat",
           "connector_id": "connector.openrouter.p0",
           "connector_revision": 1,
@@ -1844,6 +1859,19 @@
         },
         {
           "capabilities": {
+            "context_tokens": 1050000,
+            "max_output_tokens": 128000,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
+          "display_name": "GPT-6 Sol",
+          "model_configuration_id": "model.openai.gpt-6-sol",
+          "publisher_id": "publisher.openai",
+          "revision": 1
+        },
+        {
+          "capabilities": {
             "context_tokens": 256000,
             "max_output_tokens": 64000,
             "streaming": true,
@@ -1930,14 +1958,15 @@
           "endpoint_profile_id": "endpoint.cpa.codex",
           "endpoint_profile_revision": 1,
           "entitlement_id": "codex-subscription",
-          "evidence_digest": "sha256:a28d7197008354622ba2115fe634d6437beee4d0bfe40a5b0ff4b7a25fac03e6",
+          "evidence_digest": "sha256:f6d4cc024a79c46518712188e0c5f1725cb067ce66522d4b867316138ea1f47d",
           "model_configuration_ids": [
             "model.openai.gpt-5.3-codex-spark",
             "model.openai.gpt-5.5",
             "model.openai.gpt-5.6-luna",
             "model.openai.gpt-5.6-sol",
             "model.openai.gpt-5.6-terra",
-            "model.openai.gpt-6-astra"
+            "model.openai.gpt-6-astra",
+            "model.openai.gpt-6-sol"
           ],
           "offer_id": "offer.codex.subscription",
           "region_id": "global",
@@ -9247,7 +9276,7 @@
         {
           "authority": "developers.openai.com",
           "bytes_digest": null,
-          "collected_on": "2026-09-23",
+          "collected_on": "2026-09-29",
           "digest_state": "not-captured",
           "locator": "https://developers.openai.com/api/docs/models/gpt-6-sol",
           "source_key": "source-126",
@@ -40575,6 +40604,81 @@
           "roles": [],
           "status_candidates": [],
           "upstream_model_id": "gpt-6-astra",
+          "usable_for": [
+            "context-limit-prefill",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "GPT-6 Sol",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "hermes-agent/openai-codex/gpt-6-sol",
+          "normalized_model_matches": [
+            "gpt-6-sol"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-126"
+            }
+          ],
+          "provider_id": "openai-codex",
+          "provider_record_key": "hermes-agent/openai-codex",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [],
+          "status_candidates": [],
+          "upstream_model_id": "gpt-6-sol",
           "usable_for": [
             "context-limit-prefill",
             "custom-api-model-prefill",
@@ -99920,11 +100024,11 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:66e54c00529a0647b456f9c4550d1b82b4a1197a65aa01f8f2d79f49f72d79b4"
+      "source_catalog_digest": "sha256:898e6881766822b97a9364bcb6308f8062b3cd5fca0f15b4d8834be6864d4588"
     },
     "rating_snapshot": {
-      "digest": "sha256:6e742e9ba3c0940bf0adea6cf2d340bde8fe8b1ff3d3460e721af5a6f211796e",
-      "model_catalog_digest": "sha256:e796713d7fe81527ec9b070698d40112b8bc02637a1b3e895ce22fe320f6f4df",
+      "digest": "sha256:016d04eff4086677083d17f72222c80885765d74706d3e655091fc023334d041",
+      "model_catalog_digest": "sha256:6c4857e73376fedca1ce886a22d00b222f895c9b8ac7abcd6196d70991cf636b",
       "models": [
         {
           "capability": {
@@ -100083,6 +100187,21 @@
             ]
           },
           "model_configuration_id": "model.openai.gpt-6-astra"
+        },
+        {
+          "capability": {
+            "kind": "discrete",
+            "parameter": "reasoning_effort",
+            "profiles": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "model_configuration_id": "model.openai.gpt-6-sol"
         },
         {
           "capability": {
@@ -100988,6 +101107,120 @@
             "state": "unknown"
           },
           "model_configuration_id": "model.openai.gpt-6-astra",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "xhigh"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-sol",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "high"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-sol",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "low"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-sol",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "max"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-sol",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "medium"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-sol",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "none"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-sol",
           "native_configuration": {
             "kind": "profile",
             "profile": "xhigh"
