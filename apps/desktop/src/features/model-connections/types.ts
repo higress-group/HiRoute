@@ -186,13 +186,29 @@ export type ModelMetadataCatalog = {
     interfaces: { interface_key: string; protocol: string; base_url: string | null; request_path: string | null }[];
     documented_upstream_model_ids: string[];
   }[];
-  canonical_models: { model_key: string; display_name: string }[];
+  canonical_models: {
+    model_key: string;
+    display_name: string;
+    upstream_ids: string[];
+    context_tokens: { state: string; value: number | null };
+    max_output_tokens: { state: string; value: number | null };
+    modalities: Record<string, string>;
+    capabilities: Record<string, string>;
+    reasoning: { kind: string; profiles: string[]; default: string | null };
+  }[];
   endpoint_bindings: {
     product_key: string;
     model_key: string;
     upstream_model_id: string;
     interface_candidates: string[];
     lifecycle: string | null;
+    capability_overrides: {
+      context_tokens?: number;
+      max_output_tokens?: number;
+      tool?: boolean;
+      vision?: boolean;
+      streaming?: boolean;
+    };
   }[];
   provider_records: ProviderMetadataRecord[];
   model_records: ModelMetadataRecord[];

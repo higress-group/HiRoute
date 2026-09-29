@@ -165,22 +165,41 @@ export function blankModel(upstreamModelId = '', displayName = upstreamModelId):
     catalog_configuration_id: null,
     membership: 'user_declared',
     capabilities: {
-      tool: { value: null, basis: 'unknown' },
-      vision: { value: null, basis: 'unknown' },
-      streaming: { value: null, basis: 'unknown' },
-      context_tokens: { value: null, basis: 'unknown' },
-      max_output_tokens: { value: null, basis: 'unknown' },
-      native_reasoning: { value: null, basis: 'unknown' },
+      tool: { value: true, basis: 'user_declared' },
+      vision: { value: false, basis: 'user_declared' },
+      streaming: { value: true, basis: 'user_declared' },
+      context_tokens: { value: 200_000, basis: 'user_declared' },
+      max_output_tokens: { value: 32_768, basis: 'user_declared' },
+      native_reasoning: { value: { kind: 'toggle', parameter: 'enable_thinking' }, basis: 'user_declared' },
     },
   };
+}
+
+/** Apply editable execution defaults only where a model still has no capability fact. */
+export function withCapabilityFallback(model: ModelDeclaration): ModelDeclaration {
+  const fallback = blankModel().capabilities;
+  const capabilities = { ...model.capabilities };
+  for (const key of Object.keys(fallback) as Array<keyof ModelDeclaration['capabilities']>) {
+    if (capabilities[key].value === null) {
+      // Each capability has a different value type; this assignment preserves the keyed shape.
+      Object.assign(capabilities, { [key]: fallback[key] });
+    }
+  }
+  if (capabilities.max_output_tokens.value! > capabilities.context_tokens.value!) {
+    capabilities.max_output_tokens = { value: capabilities.context_tokens.value, basis: 'user_declared' };
+  }
+  return { ...model, capabilities };
 }
 
 /** Include the full template catalog while preserving explicit model edits. */
 export function withRegisteredModels(
   models: ModelDeclaration[],
-  candidates: ReadonlyArray<Pick<ModelDeclaration, 'upstream_model_id' | 'display_name'>>,
+  candidates: ReadonlyArray<Pick<ModelDeclaration, 'upstream_model_id' | 'display_name'> &
+    { capability_prefill?: ModelDeclaration['capabilities'] }>,
 ): ModelDeclaration[] {
   const ids = new Set(models.map(model => model.upstream_model_id.trim()));
   return [...models, ...candidates.filter(candidate => !ids.has(candidate.upstream_model_id))
-    .map(candidate => blankModel(candidate.upstream_model_id, candidate.display_name))];
+    .map(candidate => candidate.capability_prefill
+      ? { ...blankModel(candidate.upstream_model_id, candidate.display_name), capabilities: candidate.capability_prefill }
+      : blankModel(candidate.upstream_model_id, candidate.display_name))];
 }

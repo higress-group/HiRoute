@@ -212,8 +212,8 @@ fn compile_model(
         .native_reasoning
         .value
         .clone()
-        .unwrap_or_else(|| NativeReasoningCapabilityV1::Fixed {
-            profile: "non-thinking".into(),
+        .unwrap_or_else(|| NativeReasoningCapabilityV1::Toggle {
+            parameter: "enable_thinking".into(),
         });
     native_reasoning
         .validate()

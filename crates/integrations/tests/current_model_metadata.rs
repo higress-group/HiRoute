@@ -105,6 +105,42 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
     assert_eq!(data.metadata_catalog.provider_records.len(), 105);
     assert_eq!(data.metadata_catalog.model_records.len(), 764);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 187);
+    for product_key in [
+        "bailian-token-personal-cn-beijing",
+        "bailian-token-team-cn-beijing",
+        "bailian-payg-cn",
+        "bailian-coding-cn",
+    ] {
+        let product = data
+            .metadata_catalog
+            .access_products
+            .iter()
+            .find(|product| product.product_key == product_key)
+            .unwrap();
+        for upstream_id in &product.documented_upstream_model_ids {
+            assert!(
+                data.metadata_catalog
+                    .endpoint_bindings
+                    .iter()
+                    .any(|binding| {
+                        binding.product_key == product_key
+                            && binding.upstream_model_id == *upstream_id
+                    }),
+                "missing {product_key}/{upstream_id}"
+            );
+        }
+    }
+    let hosted_flash = data
+        .metadata_catalog
+        .endpoint_bindings
+        .iter()
+        .find(|binding| {
+            binding.product_key == "bailian-token-team-cn-beijing"
+                && binding.upstream_model_id == "deepseek-v4-flash"
+        })
+        .unwrap();
+    assert_eq!(hosted_flash.capability_overrides.vision, Some(false));
+    assert_eq!(hosted_flash.protocol_qualification, "runtime-required");
     for (model_key, provider_key) in [
         ("claude-opus-5-5", "official/anthropic-api"),
         ("gpt-6-luna", "official/openai-platform"),

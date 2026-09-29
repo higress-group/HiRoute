@@ -616,6 +616,47 @@ fn unmarked_native_controls_never_infer_adaptive_from_model_name() {
     }
 }
 
+#[test]
+fn portable_thinking_toggle_renders_the_selected_native_protocol() {
+    let native = ModelNativeReasoningV1 {
+        model_configuration_id: "model.custom.unknown".into(),
+        capability: NativeReasoningCapabilityV1::Toggle {
+            parameter: "enable_thinking".into(),
+        },
+        native_render_convention: None,
+    };
+    for (protocol, path, enabled, disabled) in [
+        (
+            UpstreamProtocol::ChatCompletions,
+            vec!["enable_thinking"],
+            GatewayNativeReasoningValueV1::Bool(true),
+            GatewayNativeReasoningValueV1::Bool(false),
+        ),
+        (
+            UpstreamProtocol::Responses,
+            vec!["reasoning", "effort"],
+            GatewayNativeReasoningValueV1::String("high".into()),
+            GatewayNativeReasoningValueV1::String("none".into()),
+        ),
+        (
+            UpstreamProtocol::Messages,
+            vec!["thinking", "type"],
+            GatewayNativeReasoningValueV1::String("enabled".into()),
+            GatewayNativeReasoningValueV1::String("disabled".into()),
+        ),
+    ] {
+        let profiles = reasoning_profiles(&native, protocol).unwrap();
+        for (profile, expected) in profiles.iter().zip([disabled, enabled]) {
+            let GatewayNativeReasoningRenderV1::ExactFields { fields, .. } = &profile.render else {
+                panic!("toggle must render an explicit wire field");
+            };
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].path, path);
+            assert_eq!(fields[0].value, expected);
+        }
+    }
+}
+
 fn registered_fact(
     catalog: &TrustedReleaseCatalog,
     option: &str,
@@ -1036,7 +1077,7 @@ fn responses_effort_uses_the_exact_nested_native_field() {
 }
 
 #[test]
-fn unknown_native_text_keeps_facts_unknown_and_execution_conservative() {
+fn unknown_native_text_uses_execution_defaults_without_overwriting_unknown_facts() {
     let mut fact = source_local_fact(GatewayAuthenticationSemanticsV1::None);
     fn unknown<T>() -> hiroute_domain::ComputeManagementFactValueV2<T> {
         hiroute_domain::ComputeManagementFactValueV2 {
@@ -1052,16 +1093,16 @@ fn unknown_native_text_keeps_facts_unknown_and_execution_conservative() {
         max_output_tokens: unknown(),
         native_reasoning: unknown(),
     };
-    fact.native_reasoning = NativeReasoningCapabilityV1::Fixed {
-        profile: "non-thinking".into(),
+    fact.native_reasoning = NativeReasoningCapabilityV1::Toggle {
+        parameter: "enable_thinking".into(),
     };
     let candidate = materialize_management_candidate(&fact, None).unwrap();
     assert!(candidate.is_routable());
-    assert!(!candidate.model.capabilities.tool);
+    assert!(candidate.model.capabilities.tool);
     assert!(!candidate.model.capabilities.vision);
-    assert!(!candidate.model.capabilities.streaming);
-    assert_eq!(candidate.model.capabilities.context_tokens, 4096);
-    assert_eq!(candidate.model.capabilities.max_output_tokens, 1024);
+    assert!(candidate.model.capabilities.streaming);
+    assert_eq!(candidate.model.capabilities.context_tokens, 200_000);
+    assert_eq!(candidate.model.capabilities.max_output_tokens, 32_768);
     assert!(fact.capabilities.context_tokens.value.is_none());
     assert!(fact.capabilities.tool.value.is_none());
     assert!(candidate.free_evidence.is_none());

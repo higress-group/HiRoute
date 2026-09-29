@@ -1,6 +1,6 @@
-// Execution-only limits for an unknown text model; never persisted as provider facts.
-const UNKNOWN_TEXT_CONTEXT_TOKENS: u64 = 4_096;
-const UNKNOWN_TEXT_OUTPUT_TOKENS: u64 = 1_024;
+// Execution-only defaults for an unknown text model; never persisted as provider facts.
+const UNKNOWN_TEXT_CONTEXT_TOKENS: u64 = 200_000;
+const UNKNOWN_TEXT_OUTPUT_TOKENS: u64 = 32_768;
 
 use hiroute_application::compiler::{CandidateCompilationFactV1, CandidateFactAuthorityV1};
 use hiroute_application::compute_management::{
@@ -301,9 +301,9 @@ pub(super) fn materialize_management_candidate(
         }
         _ => return None,
     };
-    let tool = fact.capabilities.tool.value.unwrap_or(false);
+    let tool = fact.capabilities.tool.value.unwrap_or(true);
     let vision = fact.capabilities.vision.value.unwrap_or(false);
-    let streaming = fact.capabilities.streaming.value.unwrap_or(false);
+    let streaming = fact.capabilities.streaming.value.unwrap_or(true);
     let context_tokens = fact
         .capabilities
         .context_tokens

@@ -291,11 +291,35 @@ pub(super) fn reasoning_profiles(
                     GatewayReasoningControlKindV1::Toggle,
                     GatewayNativeReasoningRenderV1::ExactFields {
                         protocol,
-                        fields: vec![field(
-                            parameter,
-                            GatewayNativeReasoningValueV1::Bool(enabled),
-                            protocol,
-                        )],
+                        fields: if parameter == "enable_thinking" {
+                            match protocol {
+                                UpstreamProtocol::ChatCompletions => vec![field(
+                                    "enable_thinking",
+                                    GatewayNativeReasoningValueV1::Bool(enabled),
+                                    protocol,
+                                )],
+                                UpstreamProtocol::Responses => vec![field(
+                                    "reasoning.effort",
+                                    GatewayNativeReasoningValueV1::String(
+                                        if enabled { "high" } else { "none" }.into(),
+                                    ),
+                                    protocol,
+                                )],
+                                UpstreamProtocol::Messages => vec![field(
+                                    "thinking.type",
+                                    GatewayNativeReasoningValueV1::String(
+                                        if enabled { "enabled" } else { "disabled" }.into(),
+                                    ),
+                                    protocol,
+                                )],
+                            }
+                        } else {
+                            vec![field(
+                                parameter,
+                                GatewayNativeReasoningValueV1::Bool(enabled),
+                                protocol,
+                            )]
+                        },
                     },
                 )
             })
@@ -311,11 +335,28 @@ pub(super) fn reasoning_profiles(
                     GatewayReasoningControlKindV1::Discrete,
                     GatewayNativeReasoningRenderV1::ExactFields {
                         protocol,
-                        fields: vec![field(
-                            parameter,
-                            GatewayNativeReasoningValueV1::String(profile.clone()),
-                            protocol,
-                        )],
+                        fields: if parameter == "reasoning_effort"
+                            && protocol == UpstreamProtocol::Messages
+                        {
+                            vec![
+                                field(
+                                    "output_config.effort",
+                                    GatewayNativeReasoningValueV1::String(profile.clone()),
+                                    protocol,
+                                ),
+                                field(
+                                    "thinking.type",
+                                    GatewayNativeReasoningValueV1::String("enabled".into()),
+                                    protocol,
+                                ),
+                            ]
+                        } else {
+                            vec![field(
+                                parameter,
+                                GatewayNativeReasoningValueV1::String(profile.clone()),
+                                protocol,
+                            )]
+                        },
                     },
                 )
             })

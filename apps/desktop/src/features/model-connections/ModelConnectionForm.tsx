@@ -9,6 +9,7 @@ import { confirmDiscard, useDiscardGuard } from '../../ui/discard-guard';
 import { saveFailureDefinitelyPreAdmission } from '../subscriptions/model';
 import {
   blankModel,
+  withCapabilityFallback,
   withRegisteredModels,
   buildCheckDraft,
   buildSaveChange,
@@ -174,7 +175,11 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       additional_endpoints,
       models: candidates.map(candidate => {
         const record = records.get(candidate.upstream_model_id);
-        return record ? metadataModelPrefill(record, clientOperationId('model'))
+        if (candidate.capability_prefill) return {
+          ...blankModel(candidate.upstream_model_id, candidate.display_name),
+          capabilities: candidate.capability_prefill,
+        };
+        return record ? withCapabilityFallback(metadataModelPrefill(record, clientOperationId('model')))
           : blankModel(candidate.upstream_model_id, candidate.display_name);
       }),
     }), true, 'connection');
@@ -365,7 +370,10 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const base = !custom && !saveAfterCheck
       ? { ...draftRef.current, models: withRegisteredModels(draftRef.current.models, registeredCandidates) }
       : draftRef.current;
-    const current = { ...base, inference_model_id: inferenceModelId, models: inferenceModelId && !base.models.some(model => model.upstream_model_id === inferenceModelId) ? [...base.models, blankModel(inferenceModelId)] : base.models };
+    const selectedModels = inferenceModelId && !base.models.some(model => model.upstream_model_id === inferenceModelId)
+      ? [...base.models, blankModel(inferenceModelId)] : base.models;
+    const current = { ...base, inference_model_id: inferenceModelId,
+      models: selectedModels.map(withCapabilityFallback) };
     const passwordElement = password.current;
     const enteredSecret = passwordElement?.value ?? '';
     const connectionReady = custom
@@ -587,8 +595,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
                   </optgroup>}
                 </select></label>
                 {selectedPrefill && <p className="field-help">{zh
-                  ? `已收录 ${metadataCandidates.length} 个模型，检查接入后统一选择；未知能力保持空白，凭据不会从资料推断。`
-                  : `${metadataCandidates.length} models in this catalog. Choose after checking the connection; unknown capabilities remain blank and credentials are never inferred.`}</p>}
+                  ? `已收录 ${metadataCandidates.length} 个模型，检查接入后统一选择；未知能力采用可编辑兜底：上下文 200K、输出 32K、工具与流式开启、视觉关闭、思考开关。`
+                  : `${metadataCandidates.length} models in this catalog. Choose after checking the connection; missing capabilities use editable defaults (200K context, 32K output, tools and streaming on, vision off, reasoning toggle).`}</p>}
               </div>}
               <label className="field"><span className="field-label">{zh ? '接入名称' : 'Connection name'}</span><input className="input" data-autofocus value={draft.display_name} placeholder={zh ? '例如：团队模型服务' : 'e.g. Team models'} onChange={event => invalidate(current => ({ ...current, display_name: event.target.value }), false, 'connection')} /></label>
               <label className="field"><span className="field-label">Base URL</span><input className="input" inputMode="url" value={draft.base_url} placeholder="https://example.com/v1" onChange={event => invalidate(current => ({ ...current, base_url: event.target.value }), true, 'connection')} /></label>

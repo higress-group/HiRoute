@@ -89,8 +89,9 @@ function numberFact(value: string): { value: number | null; basis: 'user_declare
 }
 
 function reasoningParameter(protocol: UpstreamProtocol, kind: NativeReasoning['kind']): string {
-  if (protocol === 'messages') return kind === 'budget' ? 'thinking.budget_tokens' : 'thinking.type';
-  if (protocol === 'responses') return kind === 'budget' ? 'reasoning.max_output_tokens' : 'reasoning.effort';
+  if (kind === 'toggle') return 'enable_thinking';
+  if (protocol === 'messages') return kind === 'budget' ? 'thinking.budget_tokens' : 'output_config.effort';
+  if (protocol === 'responses') return kind === 'budget' ? 'reasoning.max_output_tokens' : 'reasoning_effort';
   return kind === 'budget' ? 'thinking_budget' : 'reasoning_effort';
 }
 
@@ -158,8 +159,8 @@ export function ManualModelEditor({ model, protocol, language, disabled, catalog
 
   return <fieldset className="connection-fields manual-capability-fields" disabled={disabled}>
     <p className="v3-select-intro">{zh
-      ? '填写模型 ID 即可接入基础文字。能力为可选声明，未知能力不会被当作支持。'
-      : 'A model ID is enough for basic text. Capabilities are optional declarations; unknown does not mean supported.'}</p>
+      ? '填写模型 ID 即可接入基础文字。缺少能力资料时采用表单中的可编辑兜底值。'
+      : 'A model ID is enough for basic text. Missing capability facts use the editable defaults shown below.'}</p>
     <label className="field"><span className="field-label">{zh ? '模型 ID' : 'Model ID'}</span><input className="input" data-autofocus value={model.upstream_model_id} placeholder="my-model" onChange={event => onChange({ ...model, upstream_model_id: event.target.value, display_name: model.display_name === model.upstream_model_id ? event.target.value : model.display_name })} /></label>
     {catalogManaged ? <p className="field-help">{zh
       ? '此模型采用内置目录的名称和能力。如需修改，请返回连接信息，选择“自定义此模板的连接配置”。'
