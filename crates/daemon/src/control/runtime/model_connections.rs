@@ -38,6 +38,7 @@ mod key_inputs;
 mod presentation;
 mod registered;
 mod saved;
+mod saved_prefill;
 
 pub(super) fn registered_source_matches_current_option(
     source: &hiroute_domain::ComputeManagementSourceV2,

@@ -26,7 +26,7 @@ export type NativeReasoning =
   | { kind: 'unknown' }
   | { kind: 'fixed'; profile: string }
   | { kind: 'toggle'; parameter: string }
-  | { kind: 'discrete'; parameter: string; profiles: string[] }
+  | { kind: 'discrete'; parameter: string; profiles: string[]; default_profile?: string }
   | { kind: 'budget'; parameter: string; minimum_tokens: number; maximum_tokens: number; step_tokens: number };
 
 export type FactValue<T> = { value: T | null; basis: FactBasis };

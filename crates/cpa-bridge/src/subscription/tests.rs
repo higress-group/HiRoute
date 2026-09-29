@@ -56,6 +56,7 @@ impl CpaSubscriptionRuntimePort for FakeRuntime {
                     native_reasoning: Some(NativeReasoningCapabilityV1::Discrete {
                         parameter: "reasoning_effort".to_owned(),
                         profiles: vec!["low".to_owned(), "high".to_owned()],
+                        default_profile: None,
                     }),
                     capability_evidence_digest: CanonicalDigest::of_bytes(b"catalog-capability"),
                 }
@@ -274,6 +275,7 @@ fn verified_result_preserves_known_and_inventory_only_models() {
         Some(NativeReasoningCapabilityV1::Discrete {
             parameter: "reasoning_effort".to_owned(),
             profiles: vec!["low".to_owned(), "high".to_owned()],
+            default_profile: None,
         })
     );
     assert!(result.inventory[1].selectable);

@@ -3,7 +3,6 @@ import type {
   ModelDeclaration,
   NativeReasoning,
   TriState,
-  UpstreamProtocol,
 } from './types';
 import { Disclosure } from '../../ui/Disclosure';
 
@@ -88,25 +87,22 @@ function numberFact(value: string): { value: number | null; basis: 'user_declare
     : { value: null, basis: 'unknown' };
 }
 
-function reasoningParameter(protocol: UpstreamProtocol, kind: NativeReasoning['kind']): string {
+function reasoningParameter(kind: NativeReasoning['kind']): string {
   if (kind === 'toggle') return 'enable_thinking';
-  if (protocol === 'messages') return kind === 'budget' ? 'thinking.budget_tokens' : 'output_config.effort';
-  if (protocol === 'responses') return kind === 'budget' ? 'reasoning.max_output_tokens' : 'reasoning_effort';
   return kind === 'budget' ? 'thinking_budget' : 'reasoning_effort';
 }
 
 export function reasoningValue(
   kind: NativeReasoning['kind'],
-  protocol: UpstreamProtocol,
   previous?: Exclude<NativeReasoning, { kind: 'unknown' }> | null,
 ): Exclude<NativeReasoning, { kind: 'unknown' }> | null {
   if (kind === 'unknown') return null;
   if (kind === 'fixed') return { kind, profile: previous?.kind === kind ? previous.profile : 'provider-default' };
-  if (kind === 'toggle') return { kind, parameter: reasoningParameter(protocol, kind) };
-  if (kind === 'discrete') return { kind, parameter: reasoningParameter(protocol, kind), profiles: previous?.kind === kind ? previous.profiles : [] };
+  if (kind === 'toggle') return { kind, parameter: previous?.kind === kind ? previous.parameter : reasoningParameter(kind) };
+  if (kind === 'discrete') return { kind, parameter: previous?.kind === kind ? previous.parameter : reasoningParameter(kind), profiles: previous?.kind === kind ? previous.profiles : [], ...(previous?.kind === kind && previous.default_profile ? { default_profile: previous.default_profile } : {}) };
   return {
     kind,
-    parameter: reasoningParameter(protocol, kind),
+    parameter: previous?.kind === kind ? previous.parameter : reasoningParameter(kind),
     minimum_tokens: previous?.kind === kind ? previous.minimum_tokens : 1,
     maximum_tokens: previous?.kind === kind ? previous.maximum_tokens : 1,
     step_tokens: previous?.kind === kind ? previous.step_tokens : 1,
@@ -124,6 +120,7 @@ export function manualModelError(model: ModelDeclaration | undefined): string {
     || reasoning.profiles.length > 16
     || new Set(reasoning.profiles).size !== reasoning.profiles.length
     || reasoning.profiles.some(profile => !/^[A-Za-z0-9._-]{1,64}$/.test(profile) || profile.toLocaleLowerCase() === 'ultra')
+    || (reasoning.default_profile !== undefined && !reasoning.profiles.includes(reasoning.default_profile))
   )) return 'MODEL_REASONING_INVALID';
   if (reasoning?.kind === 'budget' && (
     ![reasoning.minimum_tokens, reasoning.maximum_tokens, reasoning.step_tokens].every(value => Number.isSafeInteger(value) && value > 0 && value <= 0xffff_ffff)
@@ -143,9 +140,8 @@ export function validEndpoint(value: string): boolean {
   }
 }
 
-export function ManualModelEditor({ model, protocol, language, disabled, catalogManaged = false, onChange }: {
+export function ManualModelEditor({ model, language, disabled, catalogManaged = false, onChange }: {
   model: ModelDeclaration;
-  protocol: UpstreamProtocol;
   language: 'zh' | 'en';
   disabled: boolean;
   catalogManaged?: boolean;
@@ -174,13 +170,18 @@ export function ManualModelEditor({ model, protocol, language, disabled, catalog
         ['streaming', zh ? '流式输出' : 'Streaming'],
       ] as const).map(([key, label]) => <label className="field" key={key}><span className="field-label">{label}</span><select className="select" value={triState(model.capabilities[key].value)} onChange={event => updateCapability(key, booleanFact(event.target.value as TriState))}><option value="unknown">{zh ? '未知' : 'Unknown'}</option><option value="supported">{zh ? '支持' : 'Supported'}</option><option value="unsupported">{zh ? '不支持' : 'Not supported'}</option></select></label>)}
       <label className="field"><span className="field-label">{zh ? '思考能力' : 'Reasoning capability'}</span><select className="select" value={reasoningKind} onChange={event => {
-        const value = reasoningValue(event.target.value as NativeReasoning['kind'], protocol, reasoning);
+        const value = reasoningValue(event.target.value as NativeReasoning['kind'], reasoning);
         updateCapability('native_reasoning', { value, basis: value ? 'user_declared' : 'unknown' });
       }}><option value="unknown">{zh ? '未知' : 'Unknown'}</option><option value="fixed">{zh ? '供应商固定' : 'Provider fixed'}</option><option value="toggle">{zh ? '开关' : 'On / off'}</option><option value="discrete">{zh ? '可选档位' : 'Discrete levels'}</option><option value="budget">{zh ? 'Token 预算' : 'Token budget'}</option></select></label>
       <label className="field"><span className="field-label">{zh ? '上下文上限 · tokens' : 'Context limit · tokens'}</span><input className="input" type="number" min="1" value={model.capabilities.context_tokens.value ?? ''} onChange={event => updateCapability('context_tokens', numberFact(event.target.value))} /></label>
       <label className="field"><span className="field-label">{zh ? '输出上限 · tokens' : 'Output limit · tokens'}</span><input className="input" type="number" min="1" value={model.capabilities.max_output_tokens.value ?? ''} onChange={event => updateCapability('max_output_tokens', numberFact(event.target.value))} /></label>
     </div>
-    {reasoning?.kind === 'discrete' && <label className="field"><span className="field-label">{zh ? '支持的档位 · 从低到高，逗号分隔' : 'Supported levels · low to high, comma separated'}</span><input className="input" value={reasoning.profiles.join(', ')} placeholder="low, medium, high" onChange={event => updateCapability('native_reasoning', { value: { ...reasoning, profiles: event.target.value.split(',').map(value => value.trim()).filter(Boolean) }, basis: 'user_declared' })} /></label>}
+    {reasoning?.kind === 'discrete' && <label className="field"><span className="field-label">{zh ? '支持的档位 · 从低到高，逗号分隔' : 'Supported levels · low to high, comma separated'}</span><input className="input" value={reasoning.profiles.join(', ')} placeholder="low, medium, high" onChange={event => {
+      const profiles = event.target.value.split(',').map(value => value.trim()).filter(Boolean);
+      updateCapability('native_reasoning', { value: { ...reasoning, profiles,
+        ...(reasoning.default_profile && profiles.includes(reasoning.default_profile) ? { default_profile: reasoning.default_profile } : { default_profile: undefined }),
+      }, basis: 'user_declared' });
+    }} /></label>}
     {reasoning?.kind === 'budget' && <div className="oc-field-grid">
       {([
         ['minimum_tokens', zh ? '最小思考预算' : 'Minimum reasoning budget'],

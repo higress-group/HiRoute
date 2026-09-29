@@ -20,6 +20,7 @@ fn snapshot() -> RatingSnapshotV2 {
             capability: NativeReasoningCapabilityV1::Discrete {
                 parameter: "reasoning_effort".into(),
                 profiles: vec!["low".into(), "xhigh".into()],
+                default_profile: None,
             },
         }],
         records: vec![NativeConfigurationRatingV2 {

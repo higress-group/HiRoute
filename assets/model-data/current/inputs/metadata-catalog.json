@@ -3183,7 +3183,6 @@
       "canonical_identity": "deepseek-v4-1-flash",
       "upstream_ids": [
         "deepseek-flash",
-        "deepseek-v4-flash",
         "deepseek-v4-flash-vision-exp",
         "deepseek-v4.1-flash"
       ],
@@ -3206,7 +3205,7 @@
       },
       "identity_stability": "rolling-alias",
       "lifecycle": "active",
-      "source_stability_note": "deepseek-flash serves V4.1 Flash on DeepSeek direct API; deepseek-v4.1-flash is Alibaba Cloud Model Studio’s product-scoped upstream ID; legacy V4 Flash IDs remain accepted by DeepSeek",
+      "source_stability_note": "deepseek-flash serves V4.1 Flash on the direct API; deepseek-v4.1-flash is Alibaba Cloud Model Studio’s product-scoped upstream ID. The retired direct deepseek-v4-flash compatibility alias is not a current binding.",
       "evidence_refs": [
         "source-007",
         "source-008",
@@ -3214,6 +3213,39 @@
         "source-134",
         "source-135",
         "source-172"
+      ]
+    },
+    {
+      "model_key": "deepseek-v4-flash",
+      "publisher": "DeepSeek",
+      "display_name": "DeepSeek V4 Flash",
+      "canonical_identity": "deepseek-v4-flash",
+      "upstream_ids": [
+        "deepseek-v4-flash"
+      ],
+      "context_tokens": 1000000,
+      "max_output_tokens": 393216,
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "unsupported",
+        "text_output": "supported"
+      },
+      "capabilities": {
+        "tool": "supported",
+        "streaming": "supported",
+        "json": "supported",
+        "vision": "unsupported"
+      },
+      "reasoning": {
+        "kind": "toggle",
+        "default": "on"
+      },
+      "identity_stability": "rolling-alias",
+      "lifecycle": "active",
+      "source_stability_note": "Alibaba Cloud Model Studio serves the text-only V4 Flash model under this ID; the same retired ID on the direct DeepSeek API temporarily routes to V4.1 Flash.",
+      "evidence_refs": [
+        "source-150",
+        "source-153"
       ]
     },
     {
@@ -4885,29 +4917,6 @@
       ]
     },
     {
-      "binding_key": "bailian-payg-cn/deepseek-v4-1-flash/deepseek-v4-flash",
-      "product_key": "bailian-payg-cn",
-      "model_key": "deepseek-v4-1-flash",
-      "upstream_model_id": "deepseek-v4-flash",
-      "interface_candidates": [
-        "bailian-payg-cn/anthropic-messages",
-        "bailian-payg-cn/openai-chat",
-        "bailian-payg-cn/openai-responses"
-      ],
-      "availability": {
-        "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
-      },
-      "protocol_qualification": "runtime-required",
-      "evidence_refs": [
-        "source-138",
-        "source-172"
-      ],
-      "capability_overrides": {
-        "vision": false
-      }
-    },
-    {
       "binding_key": "bailian-payg-cn/deepseek-v4-flash-0731/deepseek-v4-flash-0731",
       "product_key": "bailian-payg-cn",
       "model_key": "deepseek-v4-flash-0731",
@@ -4925,6 +4934,27 @@
       "evidence_refs": [
         "source-138",
         "source-153"
+      ]
+    },
+    {
+      "binding_key": "bailian-payg-cn/deepseek-v4-flash/deepseek-v4-flash",
+      "product_key": "bailian-payg-cn",
+      "model_key": "deepseek-v4-flash",
+      "upstream_model_id": "deepseek-v4-flash",
+      "interface_candidates": [
+        "bailian-payg-cn/anthropic-messages",
+        "bailian-payg-cn/openai-chat",
+        "bailian-payg-cn/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-138",
+        "source-153",
+        "source-172"
       ]
     },
     {
@@ -5509,29 +5539,6 @@
       ]
     },
     {
-      "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-1-flash/deepseek-v4-flash",
-      "product_key": "bailian-token-team-cn-beijing",
-      "model_key": "deepseek-v4-1-flash",
-      "upstream_model_id": "deepseek-v4-flash",
-      "interface_candidates": [
-        "bailian-token-team-cn-beijing/anthropic-messages",
-        "bailian-token-team-cn-beijing/openai-chat",
-        "bailian-token-team-cn-beijing/openai-responses"
-      ],
-      "availability": {
-        "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
-      },
-      "protocol_qualification": "runtime-required",
-      "evidence_refs": [
-        "source-137",
-        "source-172"
-      ],
-      "capability_overrides": {
-        "vision": false
-      }
-    },
-    {
       "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-flash-0731/deepseek-v4-flash-0731",
       "product_key": "bailian-token-team-cn-beijing",
       "model_key": "deepseek-v4-flash-0731",
@@ -5548,6 +5555,27 @@
       "evidence_refs": [
         "source-137",
         "source-153"
+      ]
+    },
+    {
+      "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-flash/deepseek-v4-flash",
+      "product_key": "bailian-token-team-cn-beijing",
+      "model_key": "deepseek-v4-flash",
+      "upstream_model_id": "deepseek-v4-flash",
+      "interface_candidates": [
+        "bailian-token-team-cn-beijing/anthropic-messages",
+        "bailian-token-team-cn-beijing/openai-chat",
+        "bailian-token-team-cn-beijing/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-137",
+        "source-153",
+        "source-172"
       ]
     },
     {
@@ -5897,31 +5925,6 @@
       "availability": {
         "state": "conditional",
         "condition": "documented for the product; account, region, entitlement, and protocol still require qualification"
-      },
-      "protocol_qualification": "runtime-required",
-      "evidence_refs": [
-        "source-007",
-        "source-008",
-        "source-009",
-        "source-010"
-      ]
-    },
-    {
-      "binding_key": "deepseek-platform/deepseek-v4-1-flash/deepseek-v4-flash",
-      "product_key": "deepseek-platform",
-      "model_key": "deepseek-v4-1-flash",
-      "upstream_model_id": "deepseek-v4-flash",
-      "upstream_identity_role": "legacy-routing-alias",
-      "lifecycle": "deprecated",
-      "replaced_by_upstream_id": "deepseek-flash",
-      "interface_candidates": [
-        "deepseek-platform/anthropic-messages",
-        "deepseek-platform/openai-chat",
-        "deepseek-platform/openai-responses"
-      ],
-      "availability": {
-        "state": "conditional",
-        "condition": "legacy ID remains accepted but is served by the current DeepSeek V4.1 Flash model"
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
@@ -17646,21 +17649,20 @@
       "display_name": "deepseek-v4-flash",
       "context_tokens": {
         "state": "known",
-        "value": 1048576
+        "value": 1000000
       },
       "max_output_tokens": {
         "state": "known",
-        "value": 384000
+        "value": 393216
       },
       "input_modalities": [
-        "image",
         "text"
       ],
       "capability_hints": {
         "reasoning": "supported",
         "streaming": "supported",
         "tool": "supported",
-        "vision": "supported"
+        "vision": "unsupported"
       },
       "reasoning_rendering_hints": {
         "reasoning_effort_maps": [],
@@ -17675,7 +17677,7 @@
         "client-static-collection"
       ],
       "normalized_model_matches": [
-        "deepseek-v4-1-flash"
+        "deepseek-v4-flash"
       ],
       "metadata_completeness": {
         "capabilities": "complete",
@@ -17704,53 +17706,53 @@
           "git_object_id": "6de68d51042e2d4d04c780ccc9cd325222bfe5ec"
         }
       ],
-      "execution_fit": {
-        "state": "native-text-representable"
-      },
       "field_provenance": {
         "capability_hints.reasoning": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "capability_hints.streaming": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "capability_hints.tool": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "capability_hints.vision": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "context_tokens": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "execution_fit": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "input_modalities": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "lifecycle": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "max_output_tokens": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         },
         "reasoning_rendering_hints": {
           "basis": "inferred",
-          "rule_key": "rule.deepseek.v4-flash/v1"
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
         }
       },
-      "reasoning_rendering_state": "not-applicable",
-      "cost_hint_state": "not-recorded"
+      "cost_hint_state": "not-recorded",
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "reasoning_rendering_state": "not-applicable"
     },
     {
       "model_record_key": "hermes-agent/alibaba-token-plan/deepseek-v4-pro",
@@ -111282,10 +111284,50 @@
       "collected_on": "2026-09-13"
     },
     {
+      "rule_key": "rule.deepseek.v4-flash-bailian/v1",
+      "record_kind": "model",
+      "match": {
+        "provider_id_pattern": "^alibaba-token-plan$",
+        "upstream_model_id_pattern": "^deepseek-v4-flash$"
+      },
+      "assignments": {
+        "capability_hints.reasoning": "supported",
+        "capability_hints.streaming": "supported",
+        "capability_hints.tool": "supported",
+        "capability_hints.vision": "unsupported",
+        "input_modalities": [
+          "text"
+        ],
+        "context_tokens": {
+          "state": "known",
+          "value": 1000000
+        },
+        "max_output_tokens": {
+          "state": "known",
+          "value": 393216
+        },
+        "lifecycle": "active",
+        "reasoning_rendering_hints": {
+          "state": "not-applicable"
+        },
+        "execution_fit": {
+          "state": "native-text-representable"
+        }
+      },
+      "basis": "inferred",
+      "reason": "Alibaba Cloud Model Studio documents its distinct deepseek-v4-flash deployment as text-only with 1,000,000 context and 393,216 maximum output; Token Plan exposes this model ID.",
+      "evidence_refs": [
+        "source-137",
+        "source-153"
+      ],
+      "collected_on": "2026-09-13"
+    },
+    {
       "rule_key": "rule.deepseek.v4-flash/v1",
       "record_kind": "model",
       "match": {
-        "upstream_model_id_pattern": "^deepseek-v4-flash(-vision.*)?$"
+        "upstream_model_id_pattern": "^deepseek-v4-flash(-vision.*)?$",
+        "provider_id_pattern": "^(?!alibaba-token-plan$).+"
       },
       "assignments": {
         "capability_hints.reasoning": "supported",
@@ -111313,7 +111355,7 @@
         }
       },
       "basis": "inferred",
-      "reason": "DeepSeek V4 Flash is documented with a 1,000,000+/384,000 surface and accepts image input; thinking is a toggle rather than a named ladder.",
+      "reason": "The retired direct V4 Flash aliases temporarily route to V4.1 Flash; this rule excludes Alibaba Token Plan, where the same ID serves the original text-only V4 Flash.",
       "evidence_refs": [
         "source-007",
         "source-010"

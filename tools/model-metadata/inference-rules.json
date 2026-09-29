@@ -1236,7 +1236,8 @@
       "rule_key": "rule.deepseek.v4-flash/v1",
       "record_kind": "model",
       "match": {
-        "upstream_model_id_pattern": "^deepseek-v4-flash(-vision.*)?$"
+        "upstream_model_id_pattern": "^deepseek-v4-flash(-vision.*)?$",
+        "provider_id_pattern": "^(?!alibaba-token-plan$).+"
       },
       "assignments": {
         "capability_hints.reasoning": "supported",
@@ -1263,10 +1264,47 @@
           "state": "native-text-representable"
         }
       },
-      "reason": "DeepSeek V4 Flash is documented with a 1,000,000+/384,000 surface and accepts image input; thinking is a toggle rather than a named ladder.",
+      "reason": "The retired direct V4 Flash aliases temporarily route to V4.1 Flash; this rule excludes Alibaba Token Plan, where the same ID serves the original text-only V4 Flash.",
       "evidence_refs": [
         "source-007",
         "source-010"
+      ]
+    },
+    {
+      "rule_key": "rule.deepseek.v4-flash-bailian/v1",
+      "record_kind": "model",
+      "match": {
+        "provider_id_pattern": "^alibaba-token-plan$",
+        "upstream_model_id_pattern": "^deepseek-v4-flash$"
+      },
+      "assignments": {
+        "capability_hints.reasoning": "supported",
+        "capability_hints.streaming": "supported",
+        "capability_hints.tool": "supported",
+        "capability_hints.vision": "unsupported",
+        "input_modalities": [
+          "text"
+        ],
+        "context_tokens": {
+          "state": "known",
+          "value": 1000000
+        },
+        "max_output_tokens": {
+          "state": "known",
+          "value": 393216
+        },
+        "lifecycle": "active",
+        "reasoning_rendering_hints": {
+          "state": "not-applicable"
+        },
+        "execution_fit": {
+          "state": "native-text-representable"
+        }
+      },
+      "reason": "Alibaba Cloud Model Studio documents its distinct deepseek-v4-flash deployment as text-only with 1,000,000 context and 393,216 maximum output; Token Plan exposes this model ID.",
+      "evidence_refs": [
+        "source-137",
+        "source-153"
       ]
     },
     {

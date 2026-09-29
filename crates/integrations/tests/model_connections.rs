@@ -61,6 +61,7 @@ fn model(id: &str) -> NativeModelDeclarationV1 {
             native_reasoning: fact(NativeReasoningCapabilityV1::Discrete {
                 parameter: "reasoning_effort".into(),
                 profiles: vec!["low".into(), "medium".into(), "high".into()],
+                default_profile: None,
             }),
         },
     }

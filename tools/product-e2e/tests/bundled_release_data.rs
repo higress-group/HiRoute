@@ -155,6 +155,7 @@ fn bundled_current_catalog_admits_codex_terra_only_on_its_exact_provider_endpoin
     let NativeReasoningCapabilityV1::Discrete {
         parameter,
         profiles,
+        ..
     } = &reasoning.capability
     else {
         panic!("Codex Terra must retain discrete native reasoning");

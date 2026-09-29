@@ -137,8 +137,10 @@ test('all template models enter the check draft with product facts or editable d
   assert.deepEqual(byId.get('qwen3.8-flash').context_tokens, { value: 1_000_000, basis: 'user_declared' });
   assert.deepEqual(byId.get('qwen3.8-flash').max_output_tokens, { value: 131_072, basis: 'user_declared' });
   assert.equal(byId.get('qwen3.8-flash').native_reasoning.value.kind, 'discrete');
-  assert.equal(byId.get('deepseek-v4-flash').vision.value, false, 'hosted V4 alias is text only');
+  assert.equal(byId.get('deepseek-v4-flash').vision.value, false, 'Bailian V4 Flash is text only');
   assert.equal(byId.get('deepseek-v4.1-flash').vision.value, true);
+  assert.notEqual(candidates.find(value => value.upstream_model_id === 'deepseek-v4-flash').display_name,
+    candidates.find(value => value.upstream_model_id === 'deepseek-v4.1-flash').display_name);
   assert.equal(byId.get('glm-5.3').context_tokens.value, 1_048_576);
   for (const id of ['qwen3-coder-next', 'qwen3-coder-plus']) {
     const coding = registeredModelCandidates(option('bailian.coding-plan.cn.v1'), bundle.metadata_catalog)
@@ -146,6 +148,15 @@ test('all template models enter the check draft with product facts or editable d
     assert.equal(coding.capability_prefill.tool.value, true, id);
     assert.equal(coding.capability_prefill.vision.value, false, id);
   }
+  const directDeepseek = registeredModelCandidates(option('deepseek.official.global.v1'), bundle.metadata_catalog)
+    .find(candidate => candidate.upstream_model_id === 'deepseek-flash');
+  assert.deepEqual(directDeepseek.capability_prefill.native_reasoning.value,
+    { kind: 'toggle', parameter: 'deepseek_thinking' });
+  const anthropic = registeredModelCandidates(option('anthropic.platform.global.v1'), bundle.metadata_catalog)
+    .find(candidate => candidate.upstream_model_id === 'claude-opus-5-5');
+  assert.deepEqual(anthropic.capability_prefill.native_reasoning.value,
+    { kind: 'discrete', parameter: 'claude_adaptive_effort',
+      profiles: ['low', 'medium', 'high', 'xhigh', 'max'], default_profile: 'medium' });
   const edited = { ...blankModel('glm-5.3', 'My GLM'), capabilities: {
     ...blankModel().capabilities, context_tokens: { value: 1000, basis: 'user_declared' },
   } };

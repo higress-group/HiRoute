@@ -31,7 +31,7 @@ type CanonicalModel = ModelMetadataCatalog['canonical_models'][number];
 type BindingOverrides = ModelMetadataCatalog['endpoint_bindings'][number]['capability_overrides'];
 
 /** Product facts take precedence over publisher facts; the editable fallback fills only gaps. */
-function catalogCapabilities(model: CanonicalModel, overrides: BindingOverrides = {}): ModelDeclaration['capabilities'] {
+function catalogCapabilities(model: CanonicalModel, overrides: BindingOverrides = {}, productKey = ''): ModelDeclaration['capabilities'] {
   const basis = 'user_declared' as const;
   const capabilities: ModelDeclaration['capabilities'] = {
     tool: { value: true, basis },
@@ -53,15 +53,21 @@ function catalogCapabilities(model: CanonicalModel, overrides: BindingOverrides 
   capabilities.tool = { value: overrides.tool ?? booleanFact(model.capabilities.tool, true), basis: 'user_declared' };
   capabilities.vision = { value: overrides.vision ?? booleanFact(model.modalities.image_input, false), basis: 'user_declared' };
   capabilities.streaming = { value: overrides.streaming ?? booleanFact(model.capabilities.streaming, true), basis: 'user_declared' };
-  if (['discrete-or-budget', 'toggle-plus-discrete'].includes(model.reasoning.kind)
-    && model.reasoning.profiles.length) {
+  const profiles = model.reasoning.profiles.filter(profile => profile !== 'ultra');
+  if (['discrete', 'discrete-or-budget', 'discrete-fixed-on', 'toggle-plus-discrete', 'adaptive-fixed-on'].includes(model.reasoning.kind)
+    && profiles.length && profiles[0] !== 'provider-default') {
     capabilities.native_reasoning = { value: {
-      kind: 'discrete', parameter: 'reasoning_effort', profiles: model.reasoning.profiles,
+      kind: 'discrete', parameter: model.reasoning.kind === 'adaptive-fixed-on' ? 'claude_adaptive_effort' : 'reasoning_effort',
+      profiles,
+      ...(model.reasoning.default && profiles.includes(model.reasoning.default)
+        ? { default_profile: model.reasoning.default } : {}),
     }, basis: 'user_declared' };
-  } else if (model.reasoning.kind === 'discrete-fixed-on' || model.reasoning.kind === 'fixed-on') {
+  } else if (['discrete-fixed-on', 'fixed-on', 'adaptive-fixed-on'].includes(model.reasoning.kind)) {
     capabilities.native_reasoning = { value: { kind: 'fixed', profile: 'provider-default' }, basis: 'user_declared' };
   } else if (model.reasoning.kind === 'unsupported') {
     capabilities.native_reasoning = { value: { kind: 'fixed', profile: 'non-thinking' }, basis: 'user_declared' };
+  } else if (model.reasoning.kind === 'toggle' && productKey === 'deepseek-platform') {
+    capabilities.native_reasoning = { value: { kind: 'toggle', parameter: 'deepseek_thinking' }, basis: 'user_declared' };
   }
   return capabilities;
 }
@@ -148,10 +154,10 @@ export function registeredModelCandidates(
       upstream_model_id: id,
       display_name: names.get(binding.model_key) ?? id,
       source: 'product_metadata',
-      ...(model ? { capability_prefill: catalogCapabilities(model, binding.capability_overrides) } : {}),
+      ...(model ? { capability_prefill: catalogCapabilities(model, binding.capability_overrides, binding.product_key) } : {}),
     });
     else if (model && !candidates.get(id)?.capability_prefill) {
-      candidates.set(id, { ...candidates.get(id)!, capability_prefill: catalogCapabilities(model, binding.capability_overrides) });
+      candidates.set(id, { ...candidates.get(id)!, capability_prefill: catalogCapabilities(model, binding.capability_overrides, binding.product_key) });
     }
   }
   for (const product of catalog.access_products) {

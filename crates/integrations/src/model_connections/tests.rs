@@ -93,6 +93,7 @@ fn native_reasoning_shapes_are_preserved_without_effort_mapping() {
         NativeReasoningCapabilityV1::Discrete {
             parameter: "output_config.effort".into(),
             profiles: vec!["low".into(), "max".into()],
+            default_profile: None,
         },
         NativeReasoningCapabilityV1::Budget {
             parameter: "thinking.budget_tokens".into(),
@@ -131,6 +132,7 @@ fn invalid_bounds_are_rejected_but_missing_limits_remain_unknown() {
     invalid_reasoning.native_reasoning = known(NativeReasoningCapabilityV1::Discrete {
         parameter: "reasoning_effort".into(),
         profiles: Vec::new(),
+        default_profile: None,
     });
     assert!(!model_is_selectable(&invalid_reasoning));
 }

@@ -41,7 +41,6 @@ import {
   connectionErrorMessage,
   ManualModelEditor,
   manualModelError,
-  reasoningValue,
   registeredConnectionLabel,
   safeConnectionErrorCode,
   validEndpoint,
@@ -628,11 +627,6 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
                     protocol_profile_id: existing?.protocol_profile_id ?? `profile/custom/${protocol}`,
                     protocol_profile_revision: (existing?.protocol_profile_revision ?? current.protocol_profile_revision) + 1,
                     additional_endpoints: existingIndex < 0 ? current.additional_endpoints : current.additional_endpoints.map((value, index) => index === existingIndex ? previousPrimary : value),
-                    models: current.models.map(model => {
-                      const previous = model.capabilities.native_reasoning.value;
-                      const next = previous ? reasoningValue(previous.kind, protocol, previous) : null;
-                      return { ...model, capabilities: { ...model.capabilities, native_reasoning: { value: next, basis: next ? 'user_declared' : 'unknown' } } };
-                    }),
                   };
                 }, true, 'connection');
               }}><option value="chat_completions">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option><option value="messages">Anthropic Messages</option></select></label>
@@ -689,7 +683,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         </form>
 
         {screen === 'manual' && <form id="mc-manual-form" onSubmit={event => { event.preventDefault(); void runCheck(true); }}>
-          {draft.models.map(model => <div key={model.client_id}><ManualModelEditor model={model} protocol={draft.protocol} language={language} disabled={!props.mutable} catalogManaged={!custom && Object.hasOwn(registeredOption?.known_models ?? {}, model.upstream_model_id.trim())} onChange={updateManualModel} /><button className="btn btn-quiet" type="button" onClick={() => invalidate(current => ({ ...current, models: current.models.filter(value => value.client_id !== model.client_id) }), false, 'manual')}>{zh ? '移除模型' : 'Remove model'}</button></div>)}
+          {draft.models.map(model => <div key={model.client_id}><ManualModelEditor model={model} language={language} disabled={!props.mutable} catalogManaged={!custom && Object.hasOwn(registeredOption?.known_models ?? {}, model.upstream_model_id.trim())} onChange={updateManualModel} /><button className="btn btn-quiet" type="button" onClick={() => invalidate(current => ({ ...current, models: current.models.filter(value => value.client_id !== model.client_id) }), false, 'manual')}>{zh ? '移除模型' : 'Remove model'}</button></div>)}
           <button className="btn" type="button" onClick={() => invalidate(current => ({ ...current, models: [...current.models, blankModel()] }), false, 'manual')}>{zh ? '添加模型 ID' : 'Add model ID'}</button>
         </form>}
 

@@ -149,6 +149,8 @@ impl LocalControlAdapter {
                 }
                 other => other,
             })?;
+        let base_url = draft.base_url.clone();
+        let request_path = draft.request_path_override.clone().unwrap_or_default();
         for model in &source.models {
             if model.catalog_configuration_id.is_none()
                 && !draft
@@ -156,7 +158,15 @@ impl LocalControlAdapter {
                     .iter()
                     .any(|declared| declared.upstream_model_id == model.upstream_model_id)
             {
-                draft.models.push(saved_model(model)?);
+                let mut declaration = saved_model(model)?;
+                super::saved_prefill::fill_unknown_registered_model(
+                    &mut declaration,
+                    catalog.model_metadata(),
+                    &base_url,
+                    &request_path,
+                    draft.protocol,
+                );
+                draft.models.push(declaration);
             }
         }
         draft.trusted_lineage_digest = Some(source.lineage_digest.clone());
@@ -844,6 +854,113 @@ mod tests {
                 .registry()
                 .registry_version
         ));
+    }
+
+    #[test]
+    fn saved_registered_recheck_prefills_only_unknown_product_capabilities() {
+        if crate::test_support::isolated_agent_home(
+            "control::runtime::model_connections::saved::tests::saved_registered_recheck_prefills_only_unknown_product_capabilities",
+        ) {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let catalog = crate::release_catalog::current_fixture_catalog();
+        let runtime = super::super::super::ProductionControlRuntime::open_with_release_catalog(
+            root.path(),
+            catalog.clone(),
+        )
+        .unwrap();
+        let mut source = source_from_registered_draft(
+            &runtime
+                .adapter
+                .trusted_registered_draft(&registered_request(&catalog))
+                .unwrap(),
+        );
+        fn unknown<T>() -> ComputeManagementFactValueV2<T> {
+            ComputeManagementFactValueV2 {
+                value: None,
+                basis: ComputeManagementFactBasisV2::Unknown,
+            }
+        }
+        for (index, id) in [
+            "deepseek-v4-flash",
+            "deepseek-v4.1-flash",
+            "my-private-model",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut model = source.models[0].clone();
+            model.model_ref = format!("model/saved-unknown-{index}");
+            model.binding_id = format!("binding/saved-unknown-{index}");
+            model.upstream_model_id = id.into();
+            model.display_name = id.into();
+            model.catalog_configuration_id = None;
+            model.membership = ComputeManagementMembershipV2::UserDeclared;
+            model.capabilities = ComputeManagedCapabilitiesV2 {
+                tool: unknown(),
+                vision: unknown(),
+                streaming: unknown(),
+                context_tokens: unknown(),
+                max_output_tokens: unknown(),
+                native_reasoning: unknown(),
+            };
+            if id == "deepseek-v4-flash" {
+                model.capabilities.tool = ComputeManagementFactValueV2 {
+                    value: Some(false),
+                    basis: ComputeManagementFactBasisV2::UserDeclared,
+                };
+            }
+            source.models.push(model);
+        }
+        source.validate().unwrap();
+        let original_endpoints = source.additional_native_endpoints.clone();
+        let original_credentials = source.credentials.clone();
+        let request = SavedModelConnectionCheckRequestV1 {
+            source_id: source.source_id.clone(),
+            expected_source_revision: source.revision,
+            candidate_ref: Some(source.last_candidate_ref.clone()),
+            edit_revision: 7,
+            check_id: "check/bailian-saved/unknown-prefill".into(),
+        };
+        let candidate = ComputeCandidateRefV2 {
+            candidate_ref: source.last_candidate_ref.clone(),
+            candidate_revision: source.last_candidate_revision,
+        };
+        let draft = runtime
+            .adapter
+            .saved_registered_draft(&request, &source, &candidate)
+            .unwrap();
+        assert_eq!(draft.additional_native_endpoints, original_endpoints);
+        assert_eq!(source.credentials, original_credentials);
+        for (id, vision) in [("deepseek-v4-flash", false), ("deepseek-v4.1-flash", true)] {
+            let model = draft
+                .models
+                .iter()
+                .find(|model| model.upstream_model_id == id)
+                .unwrap();
+            assert_eq!(model.capabilities.vision.value, Some(vision), "{id}");
+            assert_eq!(
+                model.capabilities.vision.basis,
+                NativeCandidateFactBasisV1::UserDeclared
+            );
+            assert_eq!(model.catalog_configuration_id, None);
+        }
+        let v4 = draft
+            .models
+            .iter()
+            .find(|model| model.upstream_model_id == "deepseek-v4-flash")
+            .unwrap();
+        assert_eq!(v4.capabilities.tool.value, Some(false));
+        let private = draft
+            .models
+            .iter()
+            .find(|model| model.upstream_model_id == "my-private-model")
+            .unwrap();
+        assert_eq!(private.capabilities.context_tokens.value, Some(200_000));
+        assert_eq!(private.capabilities.max_output_tokens.value, Some(32_768));
+        assert_eq!(private.capabilities.vision.value, Some(false));
+        assert_eq!(private.capabilities.tool.value, Some(true));
     }
 
     #[test]
