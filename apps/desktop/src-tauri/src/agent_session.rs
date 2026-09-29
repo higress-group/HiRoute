@@ -138,9 +138,9 @@ impl AgentConfirmation {
             }
         } else if self.input.spec.is_restore_only() {
             if self.english() {
-                "Disable task delegation skill"
+                "Disable task routing"
             } else {
-                "停用任务委派技能"
+                "停用任务路由"
             }
         } else if matches!(&self.input.spec.model, AgentFacetIntent::Configure { .. }) {
             if self.english() {
@@ -217,22 +217,22 @@ impl AgentConfirmation {
         let collaboration_details = match &self.input.spec.collaboration {
             AgentFacetIntent::Configure { settings } => match settings.trigger_mode {
                 AgentCollaborationTriggerModeV2::Explicit => if self.english() {
-                    "Task delegation: only when explicitly requested."
+                    "Task routing: only delegate when explicitly requested."
                 } else {
-                    "任务委派：仅在明确要求时触发。"
+                    "任务路由：仅在明确要求时委派。"
                 }
                 .into(),
                 AgentCollaborationTriggerModeV2::DelegateByDefault => if self.english() {
-                    "Task delegation: delegate executable work by default."
+                    "Task routing: let the Agent decide when to delegate."
                 } else {
-                    "任务委派：默认委派可执行工作。"
+                    "任务路由：由 Agent 判断何时委派。"
                 }
                 .into(),
             },
             AgentFacetIntent::Restore { .. } => if self.english() {
-                "Disable the task delegation skill for this Agent. Model routing stays configured."
+                "Disable task routing for this Agent. Model routing stays configured."
             } else {
-                "停用此 Agent 的任务委派技能；模型路由保持原配置。"
+                "停用此 Agent 的任务路由；模型路由保持原配置。"
             }
             .into(),
             AgentFacetIntent::Keep => String::new(),

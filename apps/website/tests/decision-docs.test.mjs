@@ -35,3 +35,17 @@ test('prepared Jev policy is byte-identical to the bundled default', () => {
   const prepared = fs.readFileSync(new URL('../public/api/jev-policy.default.json', import.meta.url));
   assert.deepEqual(prepared, canonical);
 });
+
+test('native homepage screenshots are distinct, correctly sized and copied unchanged', () => {
+  const captures = ['en', 'zh-CN'].map(language => {
+    const name = `quality-native-${language}.png`;
+    const source = fs.readFileSync(new URL(`../../../decision-extensions/assets/${name}`, import.meta.url));
+    const prepared = fs.readFileSync(new URL(`../public/decision-assets/${name}`, import.meta.url));
+    assert.deepEqual(prepared, source);
+    assert.equal(source.subarray(1, 4).toString(), 'PNG');
+    assert.equal(source.readUInt32BE(16), 1200);
+    assert.equal(source.readUInt32BE(20), 813);
+    return source;
+  });
+  assert.notDeepEqual(captures[0], captures[1]);
+});

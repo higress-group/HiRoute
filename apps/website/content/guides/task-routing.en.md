@@ -19,15 +19,22 @@ Do not delegate coordination, plan discovery, status checks, waits, or result su
 
 A missing installation does not block saving the plan, but the chosen execution agent must pass its dependency check before a task can start. Give the plan a specific name and purpose that describe fitting tasks and expected results, so a main agent can choose it correctly.
 
-## Allow a main agent to use the plan
+## Allow a main agent to delegate tasks
 
-Open Agents, choose the Codex or Claude Code installation that will act as the main agent, then open Task delegation skill:
+Open Agents, choose the Codex or Claude Code installation that will act as the main agent, then open Task routing:
 
-1. Enable the task delegation skill.
-2. Select the published plans it may discover and invoke.
-3. Save and complete the skill check.
+1. Enable task routing.
+2. Choose when to delegate: only when you explicitly ask, or let the Agent decide by default.
+3. Save the settings and complete the task delegation skill check when prompted.
 
-You can now explicitly ask for delegation in the agent's normal conversation. If you choose the default-delegation behavior, the main agent may also select a plan for suitable independent work. Desktop lists accepted work on the Tasks page.
+Manage routes available for task delegation under Smart routing. The main agent discovers published plans that allow task delegation.
+
+After enabling, explicitly mention HiRoute and delegation in the agent's normal conversation, for example:
+
+- Choose a route: “Use HiRoute to delegate this task to [route name].” Replace the placeholder with a route that allows task delegation under Smart routing.
+- Let the Agent choose: “Use HiRoute to delegate this task and choose a suitable route.”
+
+If you choose the default-delegation behavior, the main agent may also select a plan for suitable independent work. Desktop lists accepted work on the Tasks page.
 
 ## Use the same production path from Terminal
 

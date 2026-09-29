@@ -1,5 +1,28 @@
 # Decision documentation illustrations
 
+## Native Desktop homepage screenshots
+
+`quality-native-en.png` and `quality-native-zh-CN.png` are unmodified screenshots
+of the running macOS Desktop WebView (1200 × 813), not a browser composition.
+Both show the Sessions page with Model performance expanded and the latest
+stage's Assessment feedback selected. The app reads the records through its
+real daemon. No CSS changes, simulated IPC, rearranged components or image
+retouching were used.
+
+The isolated observation store was populated with a synthetic order-reconciliation
+conversation, two scored stages and the corresponding feedback. The conversation
+is marked as a demonstration. Model scores, execution outcomes and user feedback
+are illustrative, not measurements of model quality. These captures establish
+the displayed UI and evidence navigation only, not end-to-end classification,
+score production, persistence ingestion or live provider execution.
+
+To reproduce the view, use an isolated Desktop instance with matching-language
+demonstration records, open Sessions, expand Model performance and select the
+latest stage's Assessment feedback. Capture the whole WebView with no layout
+overrides. The website selects the corresponding screenshot for each language.
+
+## Component-based documentation previews
+
 These documentation previews use HiRoute's real `HomeNavigation`, `RoutingPage`,
 `PlanEditor` and `PlanQuality` components and shared product styles. They were
 captured in Chromium on the configured macOS workbench, not from a native Desktop
