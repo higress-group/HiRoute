@@ -118,7 +118,7 @@ test('Token Plan includes the documented text catalogs on both endpoint protocol
   }
 });
 
-test('all template models enter the check draft without import or fabricated capabilities', async () => {
+test('all template models enter the check draft with product facts or editable defaults', async () => {
   const { blankModel, withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
   for (const registered of registry.connection_options.filter(value => value.origin !== 'agent_subscription')) {
     const candidates = registeredModelCandidates(option(registered.connection_option_id), bundle.metadata_catalog);
@@ -127,11 +127,36 @@ test('all template models enter the check draft without import or fabricated cap
     for (const model of models) {
       assert.equal(model.membership, 'user_declared');
       assert.equal(model.catalog_configuration_id, null);
-      assert.ok(Object.values(model.capabilities).every(fact => fact.value === null && fact.basis === 'unknown'));
+      assert.ok(Object.values(model.capabilities).every(fact => fact.value !== null && fact.basis === 'user_declared'));
+      assert.ok(model.capabilities.context_tokens.value >= model.capabilities.max_output_tokens.value);
     }
     assert.deepEqual(withRegisteredModels(models, candidates), models, 'recheck does not duplicate models');
   }
   const candidates = registeredModelCandidates(option('bailian.token-plan.cn.v1'), bundle.metadata_catalog);
+  const byId = new Map(candidates.map(candidate => [candidate.upstream_model_id, candidate.capability_prefill]));
+  assert.deepEqual(byId.get('qwen3.8-flash').context_tokens, { value: 1_000_000, basis: 'user_declared' });
+  assert.deepEqual(byId.get('qwen3.8-flash').max_output_tokens, { value: 131_072, basis: 'user_declared' });
+  assert.equal(byId.get('qwen3.8-flash').native_reasoning.value.kind, 'discrete');
+  assert.equal(byId.get('deepseek-v4-flash').vision.value, false, 'Bailian V4 Flash is text only');
+  assert.equal(byId.get('deepseek-v4.1-flash').vision.value, true);
+  assert.notEqual(candidates.find(value => value.upstream_model_id === 'deepseek-v4-flash').display_name,
+    candidates.find(value => value.upstream_model_id === 'deepseek-v4.1-flash').display_name);
+  assert.equal(byId.get('glm-5.3').context_tokens.value, 1_048_576);
+  for (const id of ['qwen3-coder-next', 'qwen3-coder-plus']) {
+    const coding = registeredModelCandidates(option('bailian.coding-plan.cn.v1'), bundle.metadata_catalog)
+      .find(candidate => candidate.upstream_model_id === id);
+    assert.equal(coding.capability_prefill.tool.value, true, id);
+    assert.equal(coding.capability_prefill.vision.value, false, id);
+  }
+  const directDeepseek = registeredModelCandidates(option('deepseek.official.global.v1'), bundle.metadata_catalog)
+    .find(candidate => candidate.upstream_model_id === 'deepseek-flash');
+  assert.deepEqual(directDeepseek.capability_prefill.native_reasoning.value,
+    { kind: 'toggle', parameter: 'deepseek_thinking' });
+  const anthropic = registeredModelCandidates(option('anthropic.platform.global.v1'), bundle.metadata_catalog)
+    .find(candidate => candidate.upstream_model_id === 'claude-opus-5-5');
+  assert.deepEqual(anthropic.capability_prefill.native_reasoning.value,
+    { kind: 'discrete', parameter: 'claude_adaptive_effort',
+      profiles: ['low', 'medium', 'high', 'xhigh', 'max'], default_profile: 'medium' });
   const edited = { ...blankModel('glm-5.3', 'My GLM'), capabilities: {
     ...blankModel().capabilities, context_tokens: { value: 1000, basis: 'user_declared' },
   } };

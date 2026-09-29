@@ -104,7 +104,64 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
     );
     assert_eq!(data.metadata_catalog.provider_records.len(), 105);
     assert_eq!(data.metadata_catalog.model_records.len(), 764);
-    assert_eq!(data.metadata_catalog.inference_rules.len(), 187);
+    assert_eq!(data.metadata_catalog.inference_rules.len(), 188);
+    for product_key in [
+        "bailian-token-personal-cn-beijing",
+        "bailian-token-team-cn-beijing",
+        "bailian-payg-cn",
+        "bailian-coding-cn",
+    ] {
+        let product = data
+            .metadata_catalog
+            .access_products
+            .iter()
+            .find(|product| product.product_key == product_key)
+            .unwrap();
+        for upstream_id in &product.documented_upstream_model_ids {
+            assert!(
+                data.metadata_catalog
+                    .endpoint_bindings
+                    .iter()
+                    .any(|binding| {
+                        binding.product_key == product_key
+                            && binding.upstream_model_id == *upstream_id
+                    }),
+                "missing {product_key}/{upstream_id}"
+            );
+        }
+    }
+    let hosted_flash = data
+        .metadata_catalog
+        .endpoint_bindings
+        .iter()
+        .find(|binding| {
+            binding.product_key == "bailian-token-team-cn-beijing"
+                && binding.upstream_model_id == "deepseek-v4-flash"
+        })
+        .unwrap();
+    assert_eq!(hosted_flash.model_key, "deepseek-v4-flash");
+    assert_eq!(hosted_flash.capability_overrides.vision, None);
+    let hosted_model = data
+        .metadata_catalog
+        .canonical_models
+        .iter()
+        .find(|model| model.model_key == hosted_flash.model_key)
+        .unwrap();
+    assert_eq!(
+        hosted_model.modalities.get("image_input"),
+        Some(&MetadataCapabilityStateV1::Unsupported)
+    );
+    let hosted_v41 = data
+        .metadata_catalog
+        .endpoint_bindings
+        .iter()
+        .find(|binding| {
+            binding.product_key == "bailian-token-team-cn-beijing"
+                && binding.upstream_model_id == "deepseek-v4.1-flash"
+        })
+        .unwrap();
+    assert_ne!(hosted_flash.model_key, hosted_v41.model_key);
+    assert_eq!(hosted_flash.protocol_qualification, "runtime-required");
     for (model_key, provider_key) in [
         ("claude-opus-5-5", "official/anthropic-api"),
         ("gpt-6-luna", "official/openai-platform"),
@@ -533,6 +590,7 @@ fn claude_effort_convention_is_exposed_without_a_second_rating_axis() {
             NativeReasoningCapabilityV1::Discrete {
                 parameter: "reasoning.effort".into(),
                 profiles: vec!["high".into()],
+                default_profile: None,
             },
         ] {
             let mut invalid = native.clone();
@@ -650,6 +708,7 @@ fn claude_effort_convention_is_preserved_by_client_bundled_catalog() {
             NativeReasoningCapabilityV1::Discrete {
                 parameter: "reasoning.effort".into(),
                 profiles: vec!["high".into()],
+                default_profile: None,
             },
         ] {
             let mut invalid = native.clone();

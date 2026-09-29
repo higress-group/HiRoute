@@ -15,6 +15,8 @@ pub enum NativeReasoningCapabilityV1 {
     Discrete {
         parameter: String,
         profiles: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default_profile: Option<String>,
     },
     Budget {
         parameter: String,
@@ -81,6 +83,7 @@ impl NativeReasoningCapabilityV1 {
             Self::Discrete {
                 parameter,
                 profiles,
+                default_profile,
             } => {
                 validate_parameter(parameter)?;
                 if profiles.is_empty() || profiles.len() > 16 {
@@ -93,6 +96,12 @@ impl NativeReasoningCapabilityV1 {
                     if !seen.insert(profile) {
                         return Err(ReasoningContractError::InvalidCapability);
                     }
+                }
+                if default_profile
+                    .as_ref()
+                    .is_some_and(|profile| !seen.contains(profile))
+                {
+                    return Err(ReasoningContractError::InvalidCapability);
                 }
                 Ok(())
             }
@@ -140,6 +149,7 @@ impl NativeReasoningCapabilityV1 {
                 Self::Discrete {
                     parameter,
                     profiles,
+                    ..
                 },
                 selected,
             ) => {
@@ -331,6 +341,7 @@ mod routing_reasoning_tests {
         let capability = NativeReasoningCapabilityV1::Discrete {
             parameter: "reasoning_effort".into(),
             profiles: vec!["low".into(), "medium".into(), "high".into()],
+            default_profile: None,
         };
         assert_eq!(
             capability
@@ -386,6 +397,7 @@ mod routing_reasoning_tests {
         let capability = NativeReasoningCapabilityV1::Discrete {
             parameter: "reasoning_effort".into(),
             profiles: vec!["disabled".into(), "low".into(), "high".into()],
+            default_profile: None,
         };
         assert!(matches!(
             capability

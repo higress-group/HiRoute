@@ -260,6 +260,7 @@ fn candidate(candidate_ref: &str, input_slot: &str) -> ComputeCandidateFactsV2 {
                     native_reasoning: fact(NativeReasoningCapabilityV1::Discrete {
                         parameter: "reasoning_effort".into(),
                         profiles: vec!["low".into(), "high".into()],
+                        default_profile: None,
                     }),
                 },
                 capability_evidence_digest: CanonicalDigest::of_bytes(

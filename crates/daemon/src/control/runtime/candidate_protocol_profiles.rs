@@ -61,8 +61,17 @@ pub(super) fn protocol_profiles(
         let Some(reasoning_profiles) = reasoning_profiles else {
             continue;
         };
+        let preferred_profile = match &reasoning.capability {
+            NativeReasoningCapabilityV1::Discrete {
+                default_profile: Some(profile),
+                ..
+            } => Some(profile.as_str()),
+            _ => None,
+        };
         let Some(selected_reasoning_profile_id) = reasoning_profiles
-            .first()
+            .iter()
+            .find(|profile| Some(profile.profile_id.as_str()) == preferred_profile)
+            .or_else(|| reasoning_profiles.first())
             .map(|profile| profile.profile_id.clone())
         else {
             continue;
@@ -266,6 +275,11 @@ pub(super) fn reasoning_profiles(
 ) -> Option<Vec<GatewayReasoningProfileCapabilityV1>> {
     native.validate_for_protocol(protocol).ok()?;
     let capability = &native.capability;
+    if matches!(capability, NativeReasoningCapabilityV1::Discrete { parameter, .. }
+        if parameter == "claude_adaptive_effort" && protocol != UpstreamProtocol::Messages)
+    {
+        return None;
+    }
     let make = |profile_id: String,
                 control_kind: GatewayReasoningControlKindV1,
                 render: GatewayNativeReasoningRenderV1| {
@@ -291,11 +305,56 @@ pub(super) fn reasoning_profiles(
                     GatewayReasoningControlKindV1::Toggle,
                     GatewayNativeReasoningRenderV1::ExactFields {
                         protocol,
-                        fields: vec![field(
-                            parameter,
-                            GatewayNativeReasoningValueV1::Bool(enabled),
-                            protocol,
-                        )],
+                        fields: if parameter == "deepseek_thinking" {
+                            match protocol {
+                                UpstreamProtocol::Responses => vec![field(
+                                    "reasoning.effort",
+                                    GatewayNativeReasoningValueV1::String(
+                                        if enabled { "high" } else { "none" }.into(),
+                                    ),
+                                    protocol,
+                                )],
+                                UpstreamProtocol::ChatCompletions | UpstreamProtocol::Messages => {
+                                    vec![field(
+                                        "thinking.type",
+                                        GatewayNativeReasoningValueV1::String(
+                                            if enabled { "enabled" } else { "disabled" }.into(),
+                                        ),
+                                        protocol,
+                                    )]
+                                }
+                            }
+                        } else if parameter == "enable_thinking" {
+                            match protocol {
+                                UpstreamProtocol::ChatCompletions => vec![field(
+                                    "enable_thinking",
+                                    GatewayNativeReasoningValueV1::Bool(enabled),
+                                    protocol,
+                                )],
+                                UpstreamProtocol::Responses => vec![field(
+                                    "reasoning.effort",
+                                    GatewayNativeReasoningValueV1::String(
+                                        if enabled { "high" } else { "none" }.into(),
+                                    ),
+                                    protocol,
+                                )],
+                                UpstreamProtocol::Messages => {
+                                    vec![field(
+                                        "thinking.type",
+                                        GatewayNativeReasoningValueV1::String(
+                                            if enabled { "enabled" } else { "disabled" }.into(),
+                                        ),
+                                        protocol,
+                                    )]
+                                }
+                            }
+                        } else {
+                            vec![field(
+                                parameter,
+                                GatewayNativeReasoningValueV1::Bool(enabled),
+                                protocol,
+                            )]
+                        },
                     },
                 )
             })
@@ -303,6 +362,7 @@ pub(super) fn reasoning_profiles(
         NativeReasoningCapabilityV1::Discrete {
             parameter,
             profiles,
+            ..
         } => profiles
             .iter()
             .map(|profile| {
@@ -311,11 +371,43 @@ pub(super) fn reasoning_profiles(
                     GatewayReasoningControlKindV1::Discrete,
                     GatewayNativeReasoningRenderV1::ExactFields {
                         protocol,
-                        fields: vec![field(
-                            parameter,
-                            GatewayNativeReasoningValueV1::String(profile.clone()),
-                            protocol,
-                        )],
+                        fields: if parameter == "claude_adaptive_effort"
+                            && protocol == UpstreamProtocol::Messages
+                        {
+                            vec![
+                                field(
+                                    "output_config.effort",
+                                    GatewayNativeReasoningValueV1::String(profile.clone()),
+                                    protocol,
+                                ),
+                                field(
+                                    "thinking.type",
+                                    GatewayNativeReasoningValueV1::String("adaptive".into()),
+                                    protocol,
+                                ),
+                            ]
+                        } else if parameter == "reasoning_effort"
+                            && protocol == UpstreamProtocol::Messages
+                        {
+                            vec![
+                                field(
+                                    "output_config.effort",
+                                    GatewayNativeReasoningValueV1::String(profile.clone()),
+                                    protocol,
+                                ),
+                                field(
+                                    "thinking.type",
+                                    GatewayNativeReasoningValueV1::String("enabled".into()),
+                                    protocol,
+                                ),
+                            ]
+                        } else {
+                            vec![field(
+                                parameter,
+                                GatewayNativeReasoningValueV1::String(profile.clone()),
+                                protocol,
+                            )]
+                        },
                     },
                 )
             })
@@ -432,6 +524,13 @@ pub(super) fn parameter_path(parameter: &str, protocol: UpstreamProtocol) -> Vec
     // Chat Completions keeps the historical top-level field.
     if protocol == UpstreamProtocol::Responses && parameter == "reasoning_effort" {
         return vec!["reasoning".into(), "effort".into()];
+    }
+    if parameter == "thinking_budget" {
+        return match protocol {
+            UpstreamProtocol::Responses => vec!["reasoning".into(), "max_output_tokens".into()],
+            UpstreamProtocol::Messages => vec!["thinking".into(), "budget_tokens".into()],
+            UpstreamProtocol::ChatCompletions => vec!["thinking_budget".into()],
+        };
     }
     parameter.split('.').map(str::to_owned).collect()
 }

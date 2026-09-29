@@ -11,7 +11,26 @@ import {
   saveEligibility,
   savedSourceConnectionFields,
   selectedModelRefsForSave,
+  blankModel,
+  withCapabilityFallback,
 } from '../src/features/model-connections/state.ts';
+
+test('unknown capability fallback is explicit and leaves user facts untouched', () => {
+  const model = blankModel('unknown-model');
+  assert.equal(model.capabilities.context_tokens.value, 200_000);
+  assert.equal(model.capabilities.max_output_tokens.value, 32_768);
+  assert.equal(model.capabilities.vision.value, false);
+  assert.equal(model.capabilities.tool.value, true);
+  assert.equal(model.capabilities.streaming.value, true);
+  assert.deepEqual(model.capabilities.native_reasoning.value, { kind: 'toggle', parameter: 'enable_thinking' });
+  const withUnknown = { ...model, capabilities: { ...model.capabilities,
+    tool: { value: null, basis: 'unknown' },
+    vision: { value: true, basis: 'user_declared' },
+  } };
+  const completed = withCapabilityFallback(withUnknown);
+  assert.equal(completed.capabilities.tool.value, true);
+  assert.equal(completed.capabilities.vision.value, true);
+});
 
 test('only a terminal saved Operation can close a model save as successful', () => {
   for (const disposition of ['pending', 'needs_input', 'conflict', 'failed']) {

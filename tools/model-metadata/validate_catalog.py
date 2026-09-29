@@ -968,6 +968,19 @@ def main() -> int:
             errors.append(f"binding {binding_key} interface candidates are not sorted/unique")
         if any(interfaces.get(key) != product_key for key in candidate_interfaces):
             errors.append(f"binding {binding_key} references another product's interface")
+        overrides = binding.get("capability_overrides", {})
+        if not isinstance(overrides, dict) or set(overrides) - {
+            "context_tokens", "max_output_tokens", "tool", "vision", "streaming"
+        }:
+            errors.append(f"binding {binding_key} has invalid capability overrides")
+        else:
+            for key, value in overrides.items():
+                if key in ("context_tokens", "max_output_tokens") and (
+                    isinstance(value, bool) or not isinstance(value, int) or value <= 0
+                ):
+                    errors.append(f"binding {binding_key} has invalid {key} override")
+                if key in ("tool", "vision", "streaming") and not isinstance(value, bool):
+                    errors.append(f"binding {binding_key} has invalid {key} override")
         if binding.get("upstream_model_id", "").casefold() not in {
             value.casefold() for value in models[model_key].get("upstream_ids", [])
         }:

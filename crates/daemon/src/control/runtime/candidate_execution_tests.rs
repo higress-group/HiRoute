@@ -328,6 +328,7 @@ fn cpa_codex_messages_face_maps_effort_to_adaptive_messages_controls() {
         capability: NativeReasoningCapabilityV1::Discrete {
             parameter: "reasoning_effort".into(),
             profiles: vec!["low".into(), "high".into()],
+            default_profile: None,
         },
         native_render_convention: None,
     };
@@ -395,6 +396,7 @@ fn cpa_profiles_prefer_same_protocol_and_messages_falls_back_to_responses() {
         capability: NativeReasoningCapabilityV1::Discrete {
             parameter: "reasoning_effort".into(),
             profiles: vec!["low".into(), "high".into()],
+            default_profile: None,
         },
         native_render_convention: None,
     };
@@ -464,6 +466,30 @@ fn cpa_profiles_prefer_same_protocol_and_messages_falls_back_to_responses() {
             GatewayNativeProviderStateEmissionV1::ExactOwnerAffine
         );
     }
+
+    let mut preferred = reasoning.clone();
+    let NativeReasoningCapabilityV1::Discrete {
+        default_profile, ..
+    } = &mut preferred.capability
+    else {
+        unreachable!();
+    };
+    *default_profile = Some("high".into());
+    let selected = protocol_profiles(
+        &connector,
+        &model,
+        &capability,
+        &preferred,
+        "hiroute-account/codex-model",
+        ConnectorRuntimeKind::CpaBridge,
+        &faces,
+    )
+    .unwrap();
+    assert!(
+        selected
+            .iter()
+            .all(|profile| profile.capability.selected_reasoning_profile_id == "high")
+    );
 
     let fallback = protocol_profiles(
         &connector,
@@ -583,6 +609,7 @@ fn unmarked_native_controls_never_infer_adaptive_from_model_name() {
         NativeReasoningCapabilityV1::Discrete {
             parameter: "output_config.effort".into(),
             profiles: vec!["high".into()],
+            default_profile: None,
         },
     ] {
         let native = ModelNativeReasoningV1 {
@@ -613,6 +640,137 @@ fn unmarked_native_controls_never_infer_adaptive_from_model_name() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn portable_thinking_toggle_renders_the_selected_native_protocol() {
+    let native = ModelNativeReasoningV1 {
+        model_configuration_id: "model.custom.unknown".into(),
+        capability: NativeReasoningCapabilityV1::Toggle {
+            parameter: "enable_thinking".into(),
+        },
+        native_render_convention: None,
+    };
+    for (protocol, path, enabled, disabled) in [
+        (
+            UpstreamProtocol::ChatCompletions,
+            vec!["enable_thinking"],
+            GatewayNativeReasoningValueV1::Bool(true),
+            GatewayNativeReasoningValueV1::Bool(false),
+        ),
+        (
+            UpstreamProtocol::Responses,
+            vec!["reasoning", "effort"],
+            GatewayNativeReasoningValueV1::String("high".into()),
+            GatewayNativeReasoningValueV1::String("none".into()),
+        ),
+        (
+            UpstreamProtocol::Messages,
+            vec!["thinking", "type"],
+            GatewayNativeReasoningValueV1::String("enabled".into()),
+            GatewayNativeReasoningValueV1::String("disabled".into()),
+        ),
+    ] {
+        let profiles = reasoning_profiles(&native, protocol).unwrap();
+        for (profile, expected) in profiles.iter().zip([disabled, enabled]) {
+            let GatewayNativeReasoningRenderV1::ExactFields { fields, .. } = &profile.render else {
+                panic!("toggle must render an explicit wire field");
+            };
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].path, path);
+            assert_eq!(fields[0].value, expected);
+        }
+    }
+}
+
+#[test]
+fn deepseek_toggle_uses_each_native_protocols_documented_control() {
+    let native = ModelNativeReasoningV1 {
+        model_configuration_id: "model.deepseek.direct".into(),
+        capability: NativeReasoningCapabilityV1::Toggle {
+            parameter: "deepseek_thinking".into(),
+        },
+        native_render_convention: None,
+    };
+    for (protocol, path, on, off) in [
+        (
+            UpstreamProtocol::ChatCompletions,
+            "thinking.type",
+            "enabled",
+            "disabled",
+        ),
+        (
+            UpstreamProtocol::Responses,
+            "reasoning.effort",
+            "high",
+            "none",
+        ),
+        (
+            UpstreamProtocol::Messages,
+            "thinking.type",
+            "enabled",
+            "disabled",
+        ),
+    ] {
+        let profiles = reasoning_profiles(&native, protocol).unwrap();
+        for (profile, value) in profiles.iter().zip([off, on]) {
+            let GatewayNativeReasoningRenderV1::ExactFields { fields, .. } = &profile.render else {
+                panic!("DeepSeek toggle must render exact native fields");
+            };
+            assert_eq!(
+                fields[0],
+                field(
+                    path,
+                    GatewayNativeReasoningValueV1::String(value.into()),
+                    protocol
+                )
+            );
+            assert_eq!(fields.len(), 1);
+        }
+    }
+}
+
+#[test]
+fn claude_adaptive_effort_never_renders_manual_thinking() {
+    let native = ModelNativeReasoningV1 {
+        model_configuration_id: "model.anthropic.claude-opus-5-5".into(),
+        capability: NativeReasoningCapabilityV1::Discrete {
+            parameter: "claude_adaptive_effort".into(),
+            profiles: vec!["low".into(), "medium".into(), "high".into()],
+            default_profile: Some("medium".into()),
+        },
+        native_render_convention: None,
+    };
+    let profiles = reasoning_profiles(&native, UpstreamProtocol::Messages).unwrap();
+    assert!(reasoning_profiles(&native, UpstreamProtocol::Responses).is_none());
+    assert!(reasoning_profiles(&native, UpstreamProtocol::ChatCompletions).is_none());
+    assert_eq!(
+        profiles
+            .iter()
+            .map(|profile| profile.profile_id.as_str())
+            .collect::<Vec<_>>(),
+        ["low", "medium", "high"]
+    );
+    for profile in profiles {
+        assert_eq!(
+            profile.render,
+            GatewayNativeReasoningRenderV1::ExactFields {
+                protocol: UpstreamProtocol::Messages,
+                fields: vec![
+                    field(
+                        "output_config.effort",
+                        GatewayNativeReasoningValueV1::String(profile.profile_id.clone()),
+                        UpstreamProtocol::Messages
+                    ),
+                    field(
+                        "thinking.type",
+                        GatewayNativeReasoningValueV1::String("adaptive".into()),
+                        UpstreamProtocol::Messages
+                    ),
+                ],
+            }
+        );
     }
 }
 
@@ -1036,7 +1194,7 @@ fn responses_effort_uses_the_exact_nested_native_field() {
 }
 
 #[test]
-fn unknown_native_text_keeps_facts_unknown_and_execution_conservative() {
+fn unknown_native_text_uses_execution_defaults_without_overwriting_unknown_facts() {
     let mut fact = source_local_fact(GatewayAuthenticationSemanticsV1::None);
     fn unknown<T>() -> hiroute_domain::ComputeManagementFactValueV2<T> {
         hiroute_domain::ComputeManagementFactValueV2 {
@@ -1052,16 +1210,16 @@ fn unknown_native_text_keeps_facts_unknown_and_execution_conservative() {
         max_output_tokens: unknown(),
         native_reasoning: unknown(),
     };
-    fact.native_reasoning = NativeReasoningCapabilityV1::Fixed {
-        profile: "non-thinking".into(),
+    fact.native_reasoning = NativeReasoningCapabilityV1::Toggle {
+        parameter: "enable_thinking".into(),
     };
     let candidate = materialize_management_candidate(&fact, None).unwrap();
     assert!(candidate.is_routable());
-    assert!(!candidate.model.capabilities.tool);
+    assert!(candidate.model.capabilities.tool);
     assert!(!candidate.model.capabilities.vision);
-    assert!(!candidate.model.capabilities.streaming);
-    assert_eq!(candidate.model.capabilities.context_tokens, 4096);
-    assert_eq!(candidate.model.capabilities.max_output_tokens, 1024);
+    assert!(candidate.model.capabilities.streaming);
+    assert_eq!(candidate.model.capabilities.context_tokens, 200_000);
+    assert_eq!(candidate.model.capabilities.max_output_tokens, 32_768);
     assert!(fact.capabilities.context_tokens.value.is_none());
     assert!(fact.capabilities.tool.value.is_none());
     assert!(candidate.free_evidence.is_none());

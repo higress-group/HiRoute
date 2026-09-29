@@ -1,4 +1,4 @@
-import type { ComputeConnectionOption, ModelConnectionDraft, ModelMetadataCatalog, ProviderMetadataRecord, UpstreamProtocol } from './types';
+import type { ComputeConnectionOption, ModelConnectionDraft, ModelDeclaration, ModelMetadataCatalog, ProviderMetadataRecord, UpstreamProtocol } from './types';
 
 type RegisteredEndpoint = NonNullable<ComputeConnectionOption['endpoints']>[number];
 
@@ -24,7 +24,53 @@ export type RegisteredModelCandidate = {
   upstream_model_id: string;
   display_name: string;
   source: 'built_in' | 'product_metadata';
+  capability_prefill?: ModelDeclaration['capabilities'];
 };
+
+type CanonicalModel = ModelMetadataCatalog['canonical_models'][number];
+type BindingOverrides = ModelMetadataCatalog['endpoint_bindings'][number]['capability_overrides'];
+
+/** Product facts take precedence over publisher facts; the editable fallback fills only gaps. */
+function catalogCapabilities(model: CanonicalModel, overrides: BindingOverrides = {}, productKey = ''): ModelDeclaration['capabilities'] {
+  const basis = 'user_declared' as const;
+  const capabilities: ModelDeclaration['capabilities'] = {
+    tool: { value: true, basis },
+    vision: { value: false, basis },
+    streaming: { value: true, basis },
+    context_tokens: { value: 200_000, basis },
+    max_output_tokens: { value: 32_768, basis },
+    native_reasoning: { value: { kind: 'toggle', parameter: 'enable_thinking' }, basis },
+  };
+  const numberFact = (value: number | null | undefined, fallback: number) =>
+    Number.isSafeInteger(value) && (value ?? 0) > 0 ? value! : fallback;
+  const booleanFact = (value: string | undefined, fallback: boolean) =>
+    value === 'supported' ? true : value === 'unsupported' ? false : fallback;
+  capabilities.context_tokens = { value: numberFact(overrides.context_tokens ?? model.context_tokens.value, 200_000), basis: 'user_declared' };
+  capabilities.max_output_tokens = { value: Math.min(
+    numberFact(overrides.max_output_tokens ?? model.max_output_tokens.value, 32_768),
+    capabilities.context_tokens.value!,
+  ), basis: 'user_declared' };
+  capabilities.tool = { value: overrides.tool ?? booleanFact(model.capabilities.tool, true), basis: 'user_declared' };
+  capabilities.vision = { value: overrides.vision ?? booleanFact(model.modalities.image_input, false), basis: 'user_declared' };
+  capabilities.streaming = { value: overrides.streaming ?? booleanFact(model.capabilities.streaming, true), basis: 'user_declared' };
+  const profiles = model.reasoning.profiles.filter(profile => profile !== 'ultra');
+  if (['discrete', 'discrete-or-budget', 'discrete-fixed-on', 'toggle-plus-discrete', 'adaptive-fixed-on'].includes(model.reasoning.kind)
+    && profiles.length && profiles[0] !== 'provider-default') {
+    capabilities.native_reasoning = { value: {
+      kind: 'discrete', parameter: model.reasoning.kind === 'adaptive-fixed-on' ? 'claude_adaptive_effort' : 'reasoning_effort',
+      profiles,
+      ...(model.reasoning.default && profiles.includes(model.reasoning.default)
+        ? { default_profile: model.reasoning.default } : {}),
+    }, basis: 'user_declared' };
+  } else if (['discrete-fixed-on', 'fixed-on', 'adaptive-fixed-on'].includes(model.reasoning.kind)) {
+    capabilities.native_reasoning = { value: { kind: 'fixed', profile: 'provider-default' }, basis: 'user_declared' };
+  } else if (model.reasoning.kind === 'unsupported') {
+    capabilities.native_reasoning = { value: { kind: 'fixed', profile: 'non-thinking' }, basis: 'user_declared' };
+  } else if (model.reasoning.kind === 'toggle' && productKey === 'deepseek-platform') {
+    capabilities.native_reasoning = { value: { kind: 'toggle', parameter: 'deepseek_thinking' }, basis: 'user_declared' };
+  }
+  return capabilities;
+}
 
 /** Product priority belongs to the connection picker, not the generated registry. */
 export function sortRegisteredOptions(options: ComputeConnectionOption[]): ComputeConnectionOption[] {
@@ -93,6 +139,7 @@ export function registeredModelCandidates(
       }
     }
   }
+  const models = new Map(catalog.canonical_models.map(model => [model.model_key, model]));
   const names = new Map(catalog.canonical_models.map(model => [model.model_key, model.display_name]));
   const retiredIds = new Set(catalog.endpoint_bindings
     .filter(binding => productKeys.has(binding.product_key) && binding.lifecycle === 'deprecated')
@@ -102,11 +149,16 @@ export function registeredModelCandidates(
       || !binding.interface_candidates.some(key => interfaceKeys.has(key))
       || binding.lifecycle === 'deprecated') continue;
     const id = binding.upstream_model_id;
+    const model = models.get(binding.model_key);
     if (!candidates.has(id)) candidates.set(id, {
       upstream_model_id: id,
       display_name: names.get(binding.model_key) ?? id,
       source: 'product_metadata',
+      ...(model ? { capability_prefill: catalogCapabilities(model, binding.capability_overrides, binding.product_key) } : {}),
     });
+    else if (model && !candidates.get(id)?.capability_prefill) {
+      candidates.set(id, { ...candidates.get(id)!, capability_prefill: catalogCapabilities(model, binding.capability_overrides, binding.product_key) });
+    }
   }
   for (const product of catalog.access_products) {
     if (!productKeys.has(product.product_key)) continue;
@@ -118,6 +170,11 @@ export function registeredModelCandidates(
         source: 'product_metadata',
       });
     }
+  }
+  for (const candidate of candidates.values()) {
+    if (candidate.capability_prefill) continue;
+    const model = catalog.canonical_models.find(value => value.upstream_ids.some(id => id.toLowerCase() === candidate.upstream_model_id.toLowerCase()));
+    if (model) candidate.capability_prefill = catalogCapabilities(model);
   }
   return [...candidates.values()].sort(compareCandidates);
 }

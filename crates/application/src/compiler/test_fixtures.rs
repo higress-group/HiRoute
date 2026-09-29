@@ -367,6 +367,7 @@ fn fixture_reasoning_profiles(
         NativeReasoningCapabilityV1::Discrete {
             parameter,
             profiles,
+            ..
         } => profiles
             .iter()
             .map(|profile| {
@@ -431,6 +432,7 @@ fn discrete_reasoning() -> NativeReasoningCapabilityV1 {
     NativeReasoningCapabilityV1::Discrete {
         parameter: "reasoning_effort".into(),
         profiles: vec!["low".into(), "medium".into(), "high".into()],
+        default_profile: None,
     }
 }
 

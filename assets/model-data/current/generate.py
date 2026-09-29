@@ -131,6 +131,7 @@ def project_metadata_catalog(catalog, client_runs):
         "interface_candidates": value["interface_candidates"],
         "availability": value["availability"],
         "protocol_qualification": value["protocol_qualification"],
+        "capability_overrides": value.get("capability_overrides", {}),
         "evidence_refs": value["evidence_refs"],
     } for value in catalog["endpoint_bindings"]]
     dynamic_routes = [copy.deepcopy(value) for value in catalog["dynamic_routes"]]

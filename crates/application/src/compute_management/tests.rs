@@ -283,6 +283,7 @@ fn native_reasoning_preserves_discrete_budget_and_unknown_facts() {
     let discrete = NativeReasoningCapabilityV1::Discrete {
         parameter: "reasoning_effort".to_owned(),
         profiles: vec!["low".to_owned(), "medium".to_owned(), "high".to_owned()],
+        default_profile: None,
     };
     let budget = NativeReasoningCapabilityV1::Budget {
         parameter: "thinking.budget_tokens".to_owned(),

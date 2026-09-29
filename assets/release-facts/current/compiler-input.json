@@ -371,7 +371,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.anthropic.platform.global.v1.messages",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1790640000,
         "logical_endpoint_group": "anthropic-platform",
         "protocol_endpoints": [
           {
@@ -602,7 +602,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.deepseek.official.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1790640000,
         "logical_endpoint_group": "deepseek-official",
         "protocol_endpoints": [
           {
@@ -663,7 +663,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.google.gemini-api.global.v1.chat",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1790640000,
         "logical_endpoint_group": "google-gemini-api",
         "protocol_endpoints": [
           {
@@ -877,7 +877,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.openai.platform.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1790640000,
         "logical_endpoint_group": "openai-platform",
         "protocol_endpoints": [
           {
@@ -977,7 +977,7 @@
         "endpoint_profile_id": "endpoint.zai.coding-plan.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1790640000,
         "logical_endpoint_group": "zai-coding-plan",
         "protocol_endpoints": [
           {
@@ -1024,7 +1024,7 @@
         "endpoint_profile_id": "endpoint.zai.general.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1790640000,
         "logical_endpoint_group": "zai-general",
         "protocol_endpoints": [
           {
@@ -2297,7 +2297,8 @@
           "evidence_refs": [
             "source-044",
             "source-045",
-            "source-136"
+            "source-136",
+            "source-170"
           ],
           "interfaces": [
             {
@@ -2314,6 +2315,14 @@
               "interface_key": "bailian-token-personal-cn-beijing/openai-chat",
               "protocol": "openai-chat",
               "request_path": "/chat/completions",
+              "request_path_template": null
+            },
+            {
+              "base_url": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+              "base_url_template": null,
+              "interface_key": "bailian-token-personal-cn-beijing/openai-responses",
+              "protocol": "openai-responses",
+              "request_path": "/responses",
               "request_path_template": null
             }
           ],
@@ -2362,7 +2371,8 @@
           ],
           "evidence_refs": [
             "source-044",
-            "source-137"
+            "source-137",
+            "source-170"
           ],
           "interfaces": [
             {
@@ -2379,6 +2389,14 @@
               "interface_key": "bailian-token-team-cn-beijing/openai-chat",
               "protocol": "openai-chat",
               "request_path": "/chat/completions",
+              "request_path_template": null
+            },
+            {
+              "base_url": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+              "base_url_template": null,
+              "interface_key": "bailian-token-team-cn-beijing/openai-responses",
+              "protocol": "openai-responses",
+              "request_path": "/responses",
               "request_path_template": null
             }
           ],
@@ -3382,7 +3400,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-09-13",
+      "as_of": "2026-09-29",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -3579,6 +3597,52 @@
           ]
         },
         {
+          "canonical_identity": "deepseek-v3-2",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 131072
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "DeepSeek V3.2",
+          "evidence_refs": [
+            "source-041",
+            "source-150",
+            "source-151"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 65536
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "deepseek-v3-2",
+          "publisher": "DeepSeek",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "deepseek-v3.2"
+          ]
+        },
+        {
           "canonical_identity": "deepseek-v4-1-flash",
           "capabilities": {
             "json": "supported",
@@ -3598,7 +3662,8 @@
             "source-008",
             "source-010",
             "source-134",
-            "source-135"
+            "source-135",
+            "source-172"
           ],
           "identity_stability": "rolling-alias",
           "lifecycle": "active",
@@ -3607,7 +3672,7 @@
           "max_output_scope": null,
           "max_output_tokens": {
             "state": "known",
-            "value": 384000
+            "value": 393216
           },
           "modalities": {
             "image_input": "supported",
@@ -3622,13 +3687,105 @@
             "note": null,
             "profiles": []
           },
-          "source_stability_note": "deepseek-flash serves V4.1 Flash on DeepSeek direct API; deepseek-v4.1-flash is Alibaba Cloud Model Studio’s product-scoped upstream ID; legacy V4 Flash IDs remain accepted by DeepSeek",
+          "source_stability_note": "deepseek-flash serves V4.1 Flash on the direct API; deepseek-v4.1-flash is Alibaba Cloud Model Studio’s product-scoped upstream ID. The retired direct deepseek-v4-flash compatibility alias is not a current binding.",
           "upstream_id_state": null,
           "upstream_ids": [
             "deepseek-flash",
-            "deepseek-v4-flash",
             "deepseek-v4-flash-vision-exp",
             "deepseek-v4.1-flash"
+          ]
+        },
+        {
+          "canonical_identity": "deepseek-v4-flash",
+          "capabilities": {
+            "json": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "unsupported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "DeepSeek V4 Flash",
+          "evidence_refs": [
+            "source-150",
+            "source-153"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 393216
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "deepseek-v4-flash",
+          "publisher": "DeepSeek",
+          "reasoning": {
+            "default": "on",
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "Alibaba Cloud Model Studio serves the text-only V4 Flash model under this ID; the same retired ID on the direct DeepSeek API temporarily routes to V4.1 Flash.",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "deepseek-v4-flash"
+          ]
+        },
+        {
+          "canonical_identity": "deepseek-v4-flash-0731",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "DeepSeek V4 Flash 0731",
+          "evidence_refs": [
+            "source-041",
+            "source-150",
+            "source-153"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 393216
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "deepseek-v4-flash-0731",
+          "publisher": "DeepSeek",
+          "reasoning": {
+            "default": "on",
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "deepseek-v4-flash-0731"
           ]
         },
         {
@@ -3649,7 +3806,9 @@
           "evidence_refs": [
             "source-007",
             "source-008",
-            "source-010"
+            "source-010",
+            "source-152",
+            "source-172"
           ],
           "identity_stability": "rolling-alias",
           "lifecycle": "active",
@@ -3658,7 +3817,7 @@
           "max_output_scope": null,
           "max_output_tokens": {
             "state": "known",
-            "value": 384000
+            "value": 393216
           },
           "modalities": {
             "image_input": "unsupported",
@@ -3676,7 +3835,8 @@
           "source_stability_note": "deepseek-v4-pro currently maps to the V4 Pro 0813 model version",
           "upstream_id_state": null,
           "upstream_ids": [
-            "deepseek-v4-pro"
+            "deepseek-v4-pro",
+            "deepseek-v4-pro-0813"
           ]
         },
         {
@@ -3830,6 +3990,141 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "gemini-3.8-flash"
+          ]
+        },
+        {
+          "canonical_identity": "glm-4-7",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 202752
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "GLM-4.7",
+          "evidence_refs": [
+            "source-041",
+            "source-158"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 16384
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "glm-4-7",
+          "publisher": "Zhipu AI",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "glm-4.7"
+          ]
+        },
+        {
+          "canonical_identity": "glm-5",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 202752
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "GLM-5",
+          "evidence_refs": [
+            "source-041",
+            "source-157"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 16384
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "glm-5",
+          "publisher": "Zhipu AI",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "glm-5"
+          ]
+        },
+        {
+          "canonical_identity": "glm-5-1",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 202745
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "GLM-5.1",
+          "evidence_refs": [
+            "source-041",
+            "source-156"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 131072
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "glm-5-1",
+          "publisher": "Zhipu AI",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "glm-5.1"
           ]
         },
         {
@@ -4477,6 +4772,53 @@
           ]
         },
         {
+          "canonical_identity": "kimi-k2-5",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 262144
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Kimi K2.5",
+          "evidence_refs": [
+            "source-041",
+            "source-159",
+            "source-162"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 16384
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "kimi-k2-5",
+          "publisher": "Moonshot AI",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "kimi-k2.5"
+          ]
+        },
+        {
           "canonical_identity": "kimi-k2-6",
           "capabilities": {
             "streaming": "supported",
@@ -4522,6 +4864,108 @@
           ]
         },
         {
+          "canonical_identity": "kimi-k2-7-code",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 262144
+          },
+          "context_variants": [],
+          "data_note": "Aliyun hosted max output is 16,384; model-level maximum is not established for all Kimi-hosted endpoints.",
+          "display_name": "Kimi K2.7 Code",
+          "evidence_refs": [
+            "source-041",
+            "source-160",
+            "source-168"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "kimi-k2-7-code",
+          "publisher": "Moonshot AI",
+          "reasoning": {
+            "default": "high",
+            "kind": "discrete-fixed-on",
+            "note": null,
+            "profiles": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "kimi-for-coding-highspeed",
+            "kimi-k2.7-code",
+            "kimi-k2.7-code-highspeed"
+          ]
+        },
+        {
+          "canonical_identity": "kimi-k2-8-preview",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "entitlement_dependent",
+            "value": null
+          },
+          "context_variants": [],
+          "data_note": "Kimi Code context depends on plan entitlement; published tiers include up to 1M.",
+          "display_name": "Kimi K2.8 Preview",
+          "evidence_refs": [
+            "source-168"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "kimi-k2-8-preview",
+          "publisher": "Moonshot AI",
+          "reasoning": {
+            "default": "max",
+            "kind": "discrete-fixed-on",
+            "note": null,
+            "profiles": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "kimi-for-coding"
+          ]
+        },
+        {
           "canonical_identity": "kimi-k3",
           "capabilities": {
             "cache": "supported",
@@ -4554,7 +4998,8 @@
           "display_name": "Kimi K3",
           "evidence_refs": [
             "source-062",
-            "source-075"
+            "source-075",
+            "source-173"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -4588,6 +5033,53 @@
             "k3",
             "k3-256k",
             "kimi-k3"
+          ]
+        },
+        {
+          "canonical_identity": "minimax-m2-5",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 204800
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "MiniMax M2.5",
+          "evidence_refs": [
+            "source-041",
+            "source-163"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 32768
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "minimax-m2-5",
+          "publisher": "MiniMax",
+          "reasoning": {
+            "default": null,
+            "kind": "discrete-fixed-on",
+            "note": null,
+            "profiles": [
+              "provider-default"
+            ]
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "MiniMax-M2.5"
           ]
         },
         {
@@ -4725,6 +5217,286 @@
           ]
         },
         {
+          "canonical_identity": "qwen-3-5-plus",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Qwen 3.5 Plus",
+          "evidence_refs": [
+            "source-041",
+            "source-166"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 65536
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "qwen-3-5-plus",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3.5-plus"
+          ]
+        },
+        {
+          "canonical_identity": "qwen-3-6-flash",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Qwen 3.6 Flash",
+          "evidence_refs": [
+            "source-041",
+            "source-148"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 65536
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "qwen-3-6-flash",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3.6-flash"
+          ]
+        },
+        {
+          "canonical_identity": "qwen-3-6-plus",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Qwen 3.6 Plus",
+          "evidence_refs": [
+            "source-041",
+            "source-149"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 65536
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "qwen-3-6-plus",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3.6-plus"
+          ]
+        },
+        {
+          "canonical_identity": "qwen-3-7-max",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Qwen 3.7 Max",
+          "evidence_refs": [
+            "source-041",
+            "source-146"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 131072
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "qwen-3-7-max",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3.7-max"
+          ]
+        },
+        {
+          "canonical_identity": "qwen-3-7-plus",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Qwen 3.7 Plus",
+          "evidence_refs": [
+            "source-041",
+            "source-147"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 131072
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "qwen-3-7-plus",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3.7-plus"
+          ]
+        },
+        {
+          "canonical_identity": "qwen-3-8-flash",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Qwen 3.8 Flash",
+          "evidence_refs": [
+            "source-041",
+            "source-145"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 131072
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "qwen-3-8-flash",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "discrete-or-budget",
+            "note": "reasoning_effort and thinking_budget are mutually exclusive",
+            "profiles": [
+              "low",
+              "medium",
+              "xhigh"
+            ]
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3.8-flash"
+          ]
+        },
+        {
           "canonical_identity": "qwen-3.8-max",
           "capabilities": {
             "streaming": "supported",
@@ -4776,6 +5548,143 @@
             "qwen3.8-max",
             "qwen3.8-max-2026-09-02"
           ]
+        },
+        {
+          "canonical_identity": "qwen-3-coder-next",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "unknown"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 262144
+          },
+          "context_variants": [],
+          "data_note": "Function Calling conflicts between the overview and model detail; keep unknown until resolved.",
+          "display_name": "Qwen 3 Coder Next",
+          "evidence_refs": [
+            "source-041",
+            "source-138",
+            "source-164"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 65536
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "qwen-3-coder-next",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3-coder-next"
+          ]
+        },
+        {
+          "canonical_identity": "qwen-3-coder-plus",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "unknown"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": "Function Calling conflicts between the overview and model detail; keep unknown until resolved.",
+          "display_name": "Qwen 3 Coder Plus",
+          "evidence_refs": [
+            "source-041",
+            "source-138",
+            "source-165"
+          ],
+          "identity_stability": "rolling-alias",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 65536
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "qwen-3-coder-plus",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3-coder-plus"
+          ]
+        },
+        {
+          "canonical_identity": "qwen-3-max-2026-01-23",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 262144
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Qwen 3 Max 2026-01-23",
+          "evidence_refs": [
+            "source-041",
+            "source-167"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 65536
+          },
+          "modalities": {
+            "image_input": "unsupported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "qwen-3-max-2026-01-23",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen3-max-2026-01-23"
+          ]
         }
       ],
       "client_runs": [
@@ -4823,6 +5732,7 @@
             "state": "conditional"
           },
           "binding_key": "anthropic-platform/claude-opus-5-5/claude-opus-5-5",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-129",
             "source-130"
@@ -4843,11 +5753,275 @@
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
-          "binding_key": "bailian-payg-cn/deepseek-v4-1-flash/deepseek-v4-1-flash",
+          "binding_key": "bailian-coding-cn/glm-4-7/glm-4.7",
+          "capability_overrides": {},
           "evidence_refs": [
-            "source-134"
+            "source-043",
+            "source-158"
           ],
           "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-4-7",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-4.7"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/glm-5/glm-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-043",
+            "source-157"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/kimi-k2-5/kimi-k2.5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-043",
+            "source-162"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-5",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.5"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/minimax-m2-5/MiniMax-M2.5",
+          "capability_overrides": {
+            "context_tokens": 196608
+          },
+          "evidence_refs": [
+            "source-043",
+            "source-163"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "minimax-m2-5",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "MiniMax-M2.5"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/qwen-3-5-plus/qwen3.5-plus",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-043",
+            "source-166"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-5-plus",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.5-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/qwen-3-6-plus/qwen3.6-plus",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-043",
+            "source-149"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-6-plus",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.6-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/qwen-3-7-plus/qwen3.7-plus",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-043",
+            "source-147"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-7-plus",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.7-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/qwen-3-coder-next/qwen3-coder-next",
+          "capability_overrides": {
+            "tool": true
+          },
+          "evidence_refs": [
+            "source-043",
+            "source-138",
+            "source-164"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-coder-next",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3-coder-next"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/qwen-3-coder-plus/qwen3-coder-plus",
+          "capability_overrides": {
+            "tool": true
+          },
+          "evidence_refs": [
+            "source-043",
+            "source-165"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-coder-plus",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3-coder-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-coding-cn/qwen-3-max-2026-01-23/qwen3-max-2026-01-23",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-043",
+            "source-167"
+          ],
+          "interface_candidates": [
+            "bailian-coding-cn/anthropic-messages",
+            "bailian-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-max-2026-01-23",
+          "product_key": "bailian-coding-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3-max-2026-01-23"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/deepseek-v3-2/deepseek-v3.2",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-151"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v3-2",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v3.2"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/deepseek-v4-1-flash/deepseek-v4-1-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-134",
+            "source-138",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
             "bailian-payg-cn/openai-chat",
             "bailian-payg-cn/openai-responses"
           ],
@@ -4864,13 +6038,432 @@
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
-          "binding_key": "bailian-token-personal-cn-beijing/deepseek-v4-1-flash/deepseek-v4-1-flash",
+          "binding_key": "bailian-payg-cn/deepseek-v4-flash-0731/deepseek-v4-flash-0731",
+          "capability_overrides": {},
           "evidence_refs": [
-            "source-135"
+            "source-138",
+            "source-153"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-flash-0731",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-flash-0731"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/deepseek-v4-flash/deepseek-v4-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-153",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-flash",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/deepseek-v4-pro-0813/deepseek-v4-pro",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-pro-0813",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-pro"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/deepseek-v4-pro-0813/deepseek-v4-pro-0813",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-pro-0813",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-pro-0813"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/glm-5-1/glm-5.1",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-156"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-1",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.1"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/glm-5-2/glm-5.2",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 131072
+          },
+          "evidence_refs": [
+            "source-027",
+            "source-138"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-2",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.2"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/glm-5-3-global/glm-5.3",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 131072
+          },
+          "evidence_refs": [
+            "source-036",
+            "source-138"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-global",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.3"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/glm-5/glm-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-157"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/kimi-k2-6/kimi-k2.6",
+          "capability_overrides": {
+            "context_tokens": 262144,
+            "max_output_tokens": 16384
+          },
+          "evidence_refs": [
+            "source-064",
+            "source-138"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-6",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.6"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/kimi-k2-7-code/kimi-k2.7-code",
+          "capability_overrides": {
+            "max_output_tokens": 16384
+          },
+          "evidence_refs": [
+            "source-138",
+            "source-168"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-7-code",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.7-code"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/kimi-k3/kimi-k3",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-173"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k3",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k3"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-3-6-flash/qwen3.6-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-148"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-6-flash",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.6-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-3-6-plus/qwen3.6-plus",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-149"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-6-plus",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.6-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-3-7-max/qwen3.7-max",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-146"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-7-max",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.7-max"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-3-7-plus/qwen3.7-plus",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-147"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-7-plus",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.7-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-3-8-flash/qwen3.8-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-138",
+            "source-145"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-8-flash",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.8-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-3-8-max/qwen3.8-max",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-042",
+            "source-138"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-8-max",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.8-max"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/deepseek-v4-1-flash/deepseek-v4-1-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-135",
+            "source-136",
+            "source-172"
           ],
           "interface_candidates": [
             "bailian-token-personal-cn-beijing/anthropic-messages",
-            "bailian-token-personal-cn-beijing/openai-chat"
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
           ],
           "lifecycle": null,
           "model_key": "deepseek-v4-1-flash",
@@ -4885,13 +6478,287 @@
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
-          "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-1-flash/deepseek-v4-1-flash",
+          "binding_key": "bailian-token-personal-cn-beijing/deepseek-v4-flash-0731/deepseek-v4-flash-0731",
+          "capability_overrides": {},
           "evidence_refs": [
-            "source-135"
+            "source-136",
+            "source-153"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-flash-0731",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-flash-0731"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/deepseek-v4-pro-0813/deepseek-v4-pro",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-136",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-pro-0813",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-pro"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/deepseek-v4-pro-0813/deepseek-v4-pro-0813",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-136",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-pro-0813",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-pro-0813"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/glm-5-2/glm-5.2",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 131072
+          },
+          "evidence_refs": [
+            "source-027",
+            "source-136"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-2",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.2"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/glm-5-3-global/glm-5.3",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 131072
+          },
+          "evidence_refs": [
+            "source-036",
+            "source-136"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-global",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.3"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-3-6-flash/qwen3.6-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-136",
+            "source-148"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-6-flash",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.6-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-3-7-max/qwen3.7-max",
+          "capability_overrides": {
+            "vision": false
+          },
+          "evidence_refs": [
+            "source-136",
+            "source-146"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-7-max",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.7-max"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-3-7-plus/qwen3.7-plus",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-136",
+            "source-147"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-7-plus",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.7-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-3-8-flash/qwen3.8-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-136",
+            "source-145"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-8-flash",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.8-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-3-8-max/qwen3.8-max",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-042",
+            "source-136"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-8-max",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.8-max"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/deepseek-v3-2/deepseek-v3.2",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-151"
           ],
           "interface_candidates": [
             "bailian-token-team-cn-beijing/anthropic-messages",
             "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v3-2",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v3.2"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-1-flash/deepseek-v4-1-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-135",
+            "source-137",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
           ],
           "lifecycle": null,
           "model_key": "deepseek-v4-1-flash",
@@ -4903,10 +6770,450 @@
         },
         {
           "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-flash-0731/deepseek-v4-flash-0731",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-153"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-flash-0731",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-flash-0731"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-flash/deepseek-v4-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-153",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-flash",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-pro-0813/deepseek-v4-pro",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-pro-0813",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-pro"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-pro-0813/deepseek-v4-pro-0813",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-172"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-pro-0813",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "deepseek-v4-pro-0813"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/glm-5-1/glm-5.1",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-156"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-1",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.1"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/glm-5-2/glm-5.2",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 131072
+          },
+          "evidence_refs": [
+            "source-027",
+            "source-137"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-2",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.2"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/glm-5-3-global/glm-5.3",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 131072
+          },
+          "evidence_refs": [
+            "source-036",
+            "source-137"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-global",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.3"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/glm-5/glm-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-157"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/kimi-k2-5/kimi-k2.5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-162"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-5",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.5"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/kimi-k2-6/kimi-k2.6",
+          "capability_overrides": {
+            "context_tokens": 262144,
+            "max_output_tokens": 16384
+          },
+          "evidence_refs": [
+            "source-064",
+            "source-137"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-6",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.6"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/kimi-k2-7-code/kimi-k2.7-code",
+          "capability_overrides": {
+            "max_output_tokens": 16384
+          },
+          "evidence_refs": [
+            "source-137",
+            "source-168"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-7-code",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.7-code"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/minimax-m2-5/MiniMax-M2.5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-163"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "minimax-m2-5",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "MiniMax-M2.5"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-3-6-flash/qwen3.6-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-148"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-6-flash",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.6-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-3-6-plus/qwen3.6-plus",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-149"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-6-plus",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.6-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-3-7-max/qwen3.7-max",
+          "capability_overrides": {
+            "vision": false
+          },
+          "evidence_refs": [
+            "source-137",
+            "source-146"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-7-max",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.7-max"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-3-7-plus/qwen3.7-plus",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-147"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-7-plus",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.7-plus"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-3-8-flash/qwen3.8-flash",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-137",
+            "source-145"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-8-flash",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.8-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-3-8-max/qwen3.8-max",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-042",
+            "source-137"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-8-max",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "qwen3.8-max"
+        },
+        {
+          "availability": {
             "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
           "binding_key": "deepseek-platform/deepseek-v4-1-flash/deepseek-flash",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-007",
             "source-008",
@@ -4931,32 +7238,8 @@
             "condition": "legacy ID remains accepted but is served by the current DeepSeek V4.1 Flash model",
             "state": "conditional"
           },
-          "binding_key": "deepseek-platform/deepseek-v4-1-flash/deepseek-v4-flash",
-          "evidence_refs": [
-            "source-007",
-            "source-008",
-            "source-009",
-            "source-010"
-          ],
-          "interface_candidates": [
-            "deepseek-platform/anthropic-messages",
-            "deepseek-platform/openai-chat",
-            "deepseek-platform/openai-responses"
-          ],
-          "lifecycle": "deprecated",
-          "model_key": "deepseek-v4-1-flash",
-          "product_key": "deepseek-platform",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": "deepseek-flash",
-          "upstream_identity_role": "legacy-routing-alias",
-          "upstream_model_id": "deepseek-v4-flash"
-        },
-        {
-          "availability": {
-            "condition": "legacy ID remains accepted but is served by the current DeepSeek V4.1 Flash model",
-            "state": "conditional"
-          },
           "binding_key": "deepseek-platform/deepseek-v4-1-flash/deepseek-v4-flash-vision-exp",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-007",
             "source-008",
@@ -4981,6 +7264,7 @@
             "state": "conditional"
           },
           "binding_key": "deepseek-platform/deepseek-v4-pro-0813/deepseek-v4-pro",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-007",
             "source-008",
@@ -5006,6 +7290,7 @@
             "state": "conditional"
           },
           "binding_key": "gemini-api/gemini-3-8-flash/gemini-3-8-flash",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-004"
           ],
@@ -5026,6 +7311,7 @@
             "state": "conditional"
           },
           "binding_key": "groqcloud/groq-gpt-oss-120b/openai-gpt-oss-120b",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-019",
             "source-020"
@@ -5048,6 +7334,7 @@
             "state": "conditional"
           },
           "binding_key": "groqcloud/groq-gpt-oss-20b/openai-gpt-oss-20b",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-019",
             "source-020"
@@ -5066,14 +7353,64 @@
         },
         {
           "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-code-subscription/kimi-k2-7-code/kimi-for-coding-highspeed",
+          "capability_overrides": {
+            "context_tokens": 262144
+          },
+          "evidence_refs": [
+            "source-075",
+            "source-168"
+          ],
+          "interface_candidates": [
+            "kimi-code-subscription/anthropic-messages",
+            "kimi-code-subscription/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-7-code",
+          "product_key": "kimi-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-for-coding-highspeed"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-code-subscription/kimi-k2-8-preview/kimi-for-coding",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-075",
+            "source-168"
+          ],
+          "interface_candidates": [
+            "kimi-code-subscription/anthropic-messages",
+            "kimi-code-subscription/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-8-preview",
+          "product_key": "kimi-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-for-coding"
+        },
+        {
+          "availability": {
             "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
           "binding_key": "kimi-code-subscription/kimi-k3/k3",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-062",
             "source-074",
-            "source-075"
+            "source-075",
+            "source-173"
           ],
           "interface_candidates": [
             "kimi-code-subscription/anthropic-messages",
@@ -5093,10 +7430,14 @@
             "state": "conditional"
           },
           "binding_key": "kimi-code-subscription/kimi-k3/k3-256k",
+          "capability_overrides": {
+            "context_tokens": 262144
+          },
           "evidence_refs": [
             "source-062",
             "source-074",
-            "source-075"
+            "source-075",
+            "source-173"
           ],
           "interface_candidates": [
             "kimi-code-subscription/anthropic-messages",
@@ -5116,8 +7457,10 @@
             "state": "conditional"
           },
           "binding_key": "kimi-platform-cn/kimi-k2-6/kimi-k2-6",
+          "capability_overrides": {},
           "evidence_refs": [
-            "source-064"
+            "source-064",
+            "source-142"
           ],
           "interface_candidates": [
             "kimi-platform-cn/openai-chat"
@@ -5132,13 +7475,81 @@
         },
         {
           "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-cn/kimi-k2-7-code/kimi-k2.7-code",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-142",
+            "source-168"
+          ],
+          "interface_candidates": [
+            "kimi-platform-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-7-code",
+          "product_key": "kimi-platform-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.7-code"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-cn/kimi-k2-7-code/kimi-k2.7-code-highspeed",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-142",
+            "source-168"
+          ],
+          "interface_candidates": [
+            "kimi-platform-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-7-code",
+          "product_key": "kimi-platform-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.7-code-highspeed"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-cn/kimi-k3/kimi-k3",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-142",
+            "source-173"
+          ],
+          "interface_candidates": [
+            "kimi-platform-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k3",
+          "product_key": "kimi-platform-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k3"
+        },
+        {
+          "availability": {
             "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
           "binding_key": "kimi-platform-global/kimi-k2-6/kimi-k2-6",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-062",
-            "source-064"
+            "source-064",
+            "source-143"
           ],
           "interface_candidates": [
             "kimi-platform-global/openai-chat"
@@ -5153,13 +7564,60 @@
         },
         {
           "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-global/kimi-k2-7-code/kimi-k2.7-code",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-143",
+            "source-168"
+          ],
+          "interface_candidates": [
+            "kimi-platform-global/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-7-code",
+          "product_key": "kimi-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.7-code"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-global/kimi-k2-7-code/kimi-k2.7-code-highspeed",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-143",
+            "source-168"
+          ],
+          "interface_candidates": [
+            "kimi-platform-global/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "kimi-k2-7-code",
+          "product_key": "kimi-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k2.7-code-highspeed"
+        },
+        {
+          "availability": {
             "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
           "binding_key": "kimi-platform-global/kimi-k3/kimi-k3",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-062",
-            "source-075"
+            "source-075",
+            "source-143",
+            "source-173"
           ],
           "interface_candidates": [
             "kimi-platform-global/openai-chat"
@@ -5178,6 +7636,7 @@
             "state": "conditional"
           },
           "binding_key": "minimax-payg-cn/minimax-m2-7/minimax-m2-7",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-066",
             "source-067",
@@ -5201,6 +7660,7 @@
             "state": "conditional"
           },
           "binding_key": "minimax-payg-global/minimax-m2-7/minimax-m2-7",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-065",
             "source-066",
@@ -5224,6 +7684,7 @@
             "state": "conditional"
           },
           "binding_key": "mistral-platform/mistral-large-3/mistral-large-3-25-12",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-028",
             "source-029",
@@ -5246,6 +7707,7 @@
             "state": "conditional"
           },
           "binding_key": "mistral-platform/mistral-small-4/mistral-small-2603",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-028",
             "source-029",
@@ -5268,6 +7730,7 @@
             "state": "conditional"
           },
           "binding_key": "openai-platform-global/gpt-6-luna/gpt-6-luna",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-127"
           ],
@@ -5289,6 +7752,7 @@
             "state": "conditional"
           },
           "binding_key": "openai-platform-global/gpt-6-sol/gpt-6-sol",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-126"
           ],
@@ -5310,6 +7774,7 @@
             "state": "conditional"
           },
           "binding_key": "tencent-hy-token-plan/hunyuan-hy3/hy3",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-014",
             "source-017",
@@ -5333,6 +7798,7 @@
             "state": "conditional"
           },
           "binding_key": "tencent-hy-token-plan/hunyuan-hy3/hy3-202608",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-014",
             "source-018"
@@ -5355,6 +7821,7 @@
             "state": "conditional"
           },
           "binding_key": "tencent-hy-token-plan/hunyuan-hy3/hy3-preview",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-014",
             "source-018"
@@ -5377,6 +7844,7 @@
             "state": "conditional"
           },
           "binding_key": "tencent-hy-token-plan/hunyuan-hy4-preview/hy4-preview",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-014",
             "source-017",
@@ -5400,6 +7868,7 @@
             "state": "conditional"
           },
           "binding_key": "tencent-tokenhub-cn/hunyuan-hy3/hy3",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-015",
             "source-016",
@@ -5424,6 +7893,7 @@
             "state": "conditional"
           },
           "binding_key": "tencent-tokenhub-cn/hunyuan-hy4-preview/hy4-preview",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-015",
             "source-016",
@@ -5448,6 +7918,7 @@
             "state": "conditional"
           },
           "binding_key": "volcengine-ark-payg-cn/doubao-seed-2-0-lite/doubao-seed-2-0-lite-260215",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-076",
             "source-078"
@@ -5469,6 +7940,7 @@
             "state": "conditional"
           },
           "binding_key": "xai-api/grok-4-6/grok-4-6",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-031",
             "source-032",
@@ -5492,6 +7964,7 @@
             "state": "conditional"
           },
           "binding_key": "zai-devpack-global/glm-5-3-flash-global/glm-5-3-flash",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-133"
           ],
@@ -5513,6 +7986,7 @@
             "state": "conditional"
           },
           "binding_key": "zai-general-global/glm-5-3-flash-global/glm-5-3-flash",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-034",
             "source-035",
@@ -5535,6 +8009,7 @@
             "state": "conditional"
           },
           "binding_key": "zai-general-global/glm-5-3-global/glm-5-3",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-034",
             "source-035",
@@ -5557,6 +8032,7 @@
             "state": "conditional"
           },
           "binding_key": "zhipu-coding-cn/glm-5-3-flash-global/glm-5-3-flash",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-132"
           ],
@@ -5579,6 +8055,7 @@
             "state": "conditional"
           },
           "binding_key": "zhipu-coding-cn/glm-5-3-global/glm-5-3",
+          "capability_overrides": {},
           "evidence_refs": [
             "source-125"
           ],
@@ -5601,8 +8078,11 @@
             "state": "conditional"
           },
           "binding_key": "zhipu-general-cn/glm-5-3-flash-global/glm-5-3-flash",
+          "capability_overrides": {},
           "evidence_refs": [
-            "source-132"
+            "source-036",
+            "source-132",
+            "source-140"
           ],
           "interface_candidates": [
             "zhipu-general-cn/openai-chat"
@@ -5614,6 +8094,28 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "glm-5.3-flash"
+        },
+        {
+          "availability": {
+            "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
+            "state": "conditional"
+          },
+          "binding_key": "zhipu-general-cn/glm-5-3-global/glm-5.3",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-036",
+            "source-140"
+          ],
+          "interface_candidates": [
+            "zhipu-general-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-global",
+          "product_key": "zhipu-general-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.3"
         }
       ],
       "evidence_sources": [
@@ -6912,6 +9414,276 @@
           "locator": "https://api-docs.deepseek.com/updates/",
           "source_key": "source-144",
           "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-8-flash",
+          "source_key": "source-145",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-7-max",
+          "source_key": "source-146",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-7-plus",
+          "source_key": "source-147",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-6-flash",
+          "source_key": "source-148",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-6-plus",
+          "source_key": "source-149",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/deepseek-api",
+          "source_key": "source-150",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/deepseek-v3-3",
+          "source_key": "source-151",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/deepseek-v4-pro",
+          "source_key": "source-152",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/deepseek-v4-flash",
+          "source_key": "source-153",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/glm-5-3",
+          "source_key": "source-154",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/glm-5-2",
+          "source_key": "source-155",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/glm-5-1",
+          "source_key": "source-156",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/glm-9",
+          "source_key": "source-157",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/glm-4-7",
+          "source_key": "source-158",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/kimi-api",
+          "source_key": "source-159",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/kimi-k2-7-code",
+          "source_key": "source-160",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/kimi-k2-6",
+          "source_key": "source-161",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/kimi-k2-5",
+          "source_key": "source-162",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/minimax-m2-5",
+          "source_key": "source-163",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-coder-next",
+          "source_key": "source-164",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-coder-plus",
+          "source_key": "source-165",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-5-plus",
+          "source_key": "source-166",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/model-qwen3-max",
+          "source_key": "source-167",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "www.kimi.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://www.kimi.com/code/docs/en/kimi-code/models.html",
+          "source_key": "source-168",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
+          "source_key": "source-169",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/codex",
+          "source_key": "source-170",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/anthropic-api-messages",
+          "source_key": "source-171",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "api-docs.deepseek.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://api-docs.deepseek.com/api/list-models/",
+          "source_key": "source-172",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/kimi-k3",
+          "source_key": "source-173",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-09-29",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/coding-plan-faq",
+          "source_key": "source-174",
+          "source_kind": "provider-documentation"
         }
       ],
       "inference_rules": [
@@ -7092,10 +9864,21 @@
           "basis": "inferred",
           "collected_on": "2026-09-13",
           "evidence_refs": [
+            "source-137",
+            "source-153"
+          ],
+          "reason": "Alibaba Cloud Model Studio documents its distinct deepseek-v4-flash deployment as text-only with 1,000,000 context and 393,216 maximum output; Token Plan exposes this model ID.",
+          "record_kind": "model",
+          "rule_key": "rule.deepseek.v4-flash-bailian/v1"
+        },
+        {
+          "basis": "inferred",
+          "collected_on": "2026-09-13",
+          "evidence_refs": [
             "source-007",
             "source-010"
           ],
-          "reason": "DeepSeek V4 Flash is documented with a 1,000,000+/384,000 surface and accepts image input; thinking is a toggle rather than a named ladder.",
+          "reason": "The retired direct V4 Flash aliases temporarily route to V4.1 Flash; this rule excludes Alibaba Token Plan, where the same ID serves the original text-only V4 Flash.",
           "record_kind": "model",
           "rule_key": "rule.deepseek.v4-flash/v1"
         },
@@ -10145,11 +12928,11 @@
             "reasoning": "supported",
             "streaming": "supported",
             "tool": "supported",
-            "vision": "supported"
+            "vision": "unsupported"
           },
           "context_tokens": {
             "state": "known",
-            "value": 1048576
+            "value": 1000000
           },
           "cost_hint_state": "not_recorded",
           "cost_hints": [],
@@ -10160,53 +12943,52 @@
           "field_provenance": {
             "capability_hints.reasoning": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "capability_hints.streaming": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "capability_hints.tool": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "capability_hints.vision": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "context_tokens": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "execution_fit": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "input_modalities": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "lifecycle": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "max_output_tokens": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             },
             "reasoning_rendering_hints": {
               "basis": "inferred",
-              "rule_key": "rule.deepseek.v4-flash/v1"
+              "rule_key": "rule.deepseek.v4-flash-bailian/v1"
             }
           },
           "input_modalities": [
-            "image",
             "text"
           ],
           "lifecycle": "active",
           "max_output_tokens": {
             "state": "known",
-            "value": 384000
+            "value": 393216
           },
           "metadata_completeness": {
             "capabilities": "complete",
@@ -10219,7 +13001,7 @@
           },
           "model_record_key": "hermes-agent/alibaba-token-plan/deepseek-v4-flash",
           "normalized_model_matches": [
-            "deepseek-v4-1-flash"
+            "deepseek-v4-flash"
           ],
           "provenance_refs": [
             {
@@ -97138,7 +99920,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:268c1e399789e74eaa88caa2db22aa9c5b5285f3f4d1f0cd4aaabe182698d22a"
+      "source_catalog_digest": "sha256:66e54c00529a0647b456f9c4550d1b82b4a1197a65aa01f8f2d79f49f72d79b4"
     },
     "rating_snapshot": {
       "digest": "sha256:6e742e9ba3c0940bf0adea6cf2d340bde8fe8b1ff3d3460e721af5a6f211796e",

@@ -277,7 +277,24 @@ pub struct MetadataEndpointBindingV1 {
     pub interface_candidates: Vec<String>,
     pub availability: MetadataAvailabilityV1,
     pub protocol_qualification: String,
+    #[serde(default)]
+    pub capability_overrides: MetadataBindingCapabilityOverridesV1,
     pub evidence_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetadataBindingCapabilityOverridesV1 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streaming: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -450,6 +467,8 @@ impl ModelMetadataCatalogV1 {
                 || !valid_optional_text(&binding.upstream_identity_role, 128)
                 || !valid_optional_text(&binding.lifecycle, 128)
                 || !valid_optional_text(&binding.replaced_by_upstream_id, 512)
+                || binding.capability_overrides.context_tokens == Some(0)
+                || binding.capability_overrides.max_output_tokens == Some(0)
                 || !refs_exist(&binding.evidence_refs, &evidence)
             {
                 return Err(ComputeContractError::CrossReference);

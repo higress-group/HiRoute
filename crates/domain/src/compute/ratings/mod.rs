@@ -287,6 +287,7 @@ pub fn legacy_rating_configuration(
         NativeReasoningCapabilityV1::Discrete {
             parameter,
             profiles,
+            ..
         } if profiles.iter().any(|p| p == effort) => ExactNativeReasoningV1::Profile {
             parameter: parameter.clone(),
             profile: effort.into(),
