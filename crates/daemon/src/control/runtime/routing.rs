@@ -642,7 +642,11 @@ mod tests {
         );
         assert!(registered.inventory[0].model_configuration_id.is_none());
         assert_eq!(
-            unique_live_cpa_source(&[registered.clone()], "connector.cpa.codex", account_ref),
+            unique_live_cpa_source(
+                std::slice::from_ref(&registered),
+                "connector.cpa.codex",
+                account_ref
+            ),
             Some(&registered),
         );
         assert!(
