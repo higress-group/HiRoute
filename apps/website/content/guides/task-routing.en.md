@@ -29,7 +29,12 @@ Open Agents, choose the Codex or Claude Code installation that will act as the m
 
 Manage routes available for task delegation under Smart routing. The main agent discovers published plans that allow task delegation.
 
-You can now explicitly ask for delegation in the agent's normal conversation. If you choose the default-delegation behavior, the main agent may also select a plan for suitable independent work. Desktop lists accepted work on the Tasks page.
+After enabling, explicitly mention HiRoute and delegation in the agent's normal conversation, for example:
+
+- Choose a route: “Use HiRoute to delegate this task to [route name].” Replace the placeholder with a route that allows task delegation under Smart routing.
+- Let the Agent choose: “Use HiRoute to delegate this task and choose a suitable route.”
+
+If you choose the default-delegation behavior, the main agent may also select a plan for suitable independent work. Desktop lists accepted work on the Tasks page.
 
 ## Use the same production path from Terminal
 
