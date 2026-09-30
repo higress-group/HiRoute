@@ -442,18 +442,13 @@ impl LocalControlAdapter {
                     for fact in &compilation {
                         let candidate = match &fact.provenance {
                     hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
+                        connector_id,
                         account_ref,
-                        ..
-                    } => cpa_sources
-                        .iter()
-                        .find(|(registered, model_id)| {
-                            &registered.source.identity.account_subject_ref == account_ref
-                                && registered.source.connection_option_id
-                                    == super::subscriptions::CONNECTION_OPTION_ID
-                                && fact.catalog_configuration_id.as_deref()
-                                    == Some(model_id.as_str())
+                    } => cpa_targets
+                        .and_then(|batch| {
+                            unique_live_cpa_source(batch.sources(), connector_id, account_ref)
                         })
-                        .and_then(|(registered, _)| {
+                        .and_then(|registered| {
                             super::candidate_execution::materialize_connector_management_candidate(
                                 fact,
                                 registered,
@@ -581,5 +576,86 @@ impl LocalControlAdapter {
         // authorization becoming temporarily unavailable must remove only those candidates, not
         // make unrelated native/API candidates or the plan editor unreadable.
         self.registered_cpa_candidates().unwrap_or_default()
+    }
+}
+
+fn unique_live_cpa_source<'a>(
+    sources: &'a [hiroute_integrations::CpaRegisteredSourceV1],
+    connector_id: &str,
+    account_ref: &str,
+) -> Option<&'a hiroute_integrations::CpaRegisteredSourceV1> {
+    let mut matching = sources.iter().filter(|registered| {
+        registered.source.connector_id == connector_id
+            && registered.source.connection_option_id == super::subscriptions::CONNECTION_OPTION_ID
+            && registered.source.identity.account_subject_ref == account_ref
+    });
+    let source = matching.next()?;
+    matching.next().is_none().then_some(source)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hiroute_domain::{CredentialRefV1, InventoryDisposition};
+    use hiroute_integrations::{
+        CpaAccountMaterializationV1, TrustedReleaseCatalog, register_cpa_account,
+    };
+
+    #[test]
+    fn observed_cpa_model_without_catalog_projection_keeps_its_live_account_source() {
+        const MANIFEST: &[u8] =
+            include_bytes!("../../../../../assets/release-facts/current/bundle/manifest.json");
+        let catalog = TrustedReleaseCatalog::load_bundled_release_facts(
+            MANIFEST,
+            MANIFEST,
+            include_bytes!(
+                "../../../../../assets/release-facts/current/bundle/connector-registry.json"
+            ),
+            include_bytes!("../../../../../assets/release-facts/current/bundle/model-data.json"),
+        )
+        .unwrap();
+        let source_id = "cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let account_ref =
+            "account/cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let materialization = CpaAccountMaterializationV1 {
+            connector_id: "connector.cpa.codex".into(),
+            connection_option_id: super::super::subscriptions::CONNECTION_OPTION_ID.into(),
+            endpoint_profile_id: "endpoint.cpa.codex".into(),
+            source_id: source_id.into(),
+            account_subject: account_ref.into(),
+            credential_ref: CredentialRefV1::new(
+                "credential/cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                format!("source/{source_id}"),
+                "connector/connector.cpa.codex",
+                "provider-auth",
+                ["connection-option/codex.subscription.global.v1".into()],
+                1,
+            )
+            .unwrap(),
+            observed_model_ids: ["gpt-6-future-text".into()].into_iter().collect(),
+        };
+        let registered = register_cpa_account(&catalog, &materialization).unwrap();
+        assert_eq!(registered.inventory.len(), 1);
+        assert_eq!(
+            registered.inventory[0].disposition,
+            InventoryDisposition::InventoryOnly
+        );
+        assert!(registered.inventory[0].model_configuration_id.is_none());
+        assert_eq!(
+            unique_live_cpa_source(
+                std::slice::from_ref(&registered),
+                "connector.cpa.codex",
+                account_ref
+            ),
+            Some(&registered),
+        );
+        assert!(
+            unique_live_cpa_source(
+                &[registered.clone(), registered],
+                "connector.cpa.codex",
+                account_ref
+            )
+            .is_none()
+        );
     }
 }

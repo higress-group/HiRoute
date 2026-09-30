@@ -173,6 +173,8 @@ impl RequestObservation {
                     None
                 } else {
                     state.accepted_attempt_finished = true;
+                    state.accepted_attempt_cancelled =
+                        observation.downstream == AttemptDownstreamOutcome::Cancelled;
                     state.accepted_attempt.clone()
                 }
             };

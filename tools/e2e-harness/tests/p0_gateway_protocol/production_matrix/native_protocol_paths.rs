@@ -230,7 +230,7 @@ fn one_registered_native_source_uses_matching_messages_and_responses_provider_pa
         assert_eq!(
             response.status,
             200,
-            "{}",
+            "{protocol:?}: {}",
             String::from_utf8_lossy(&response.body)
         );
         assert_same_protocol_stream(protocol, alias, &response.body);

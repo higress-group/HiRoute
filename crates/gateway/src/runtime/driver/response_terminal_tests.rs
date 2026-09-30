@@ -1,5 +1,7 @@
 use super::*;
-use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
+use crate::server::core_runtime::profiles::{
+    CandidateProtocolProfile, ClientProtocolProfile, fixed_reasoning,
+};
 use hiroute_gateway_core::runtime::body::{BodyDirection, BodyPlan, BodyPlanExecutor, BudgetTree};
 use serde_json::json;
 
@@ -109,6 +111,87 @@ fn accepted_codex_terminal_event_crosses_transport_frames_and_keeps_eos() {
             .unwrap()
             .contains("\"model\":\"alias\"")
     );
+    assert_eq!(
+        readiness.semantic_terminal,
+        Some(SemanticTerminalOutcome::Complete)
+    );
+}
+
+#[test]
+fn accepted_chat_terminal_closes_responses_stream_without_waiting_for_transport_eof() {
+    let tree = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024).unwrap();
+    let budget = tree.stream(8 * 1024 * 1024).unwrap();
+    let plan = BodyPlan::PassThrough {
+        max_chunk_bytes: 64 * 1024,
+    };
+    let prefix =
+        ChargedBodyQueue::new(&budget, MemoryRole::ResponsePrefix, &plan, 256 * 1024, 64).unwrap();
+    let profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::ChatCompletions,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let client = ClientProtocolProfile::for_candidate(&profile).unwrap();
+    let mut readiness = ProductionReadiness {
+        response_status: StatusCode::OK,
+        content_type: "text/event-stream",
+        prefix,
+        terminal_body: None,
+        decoder: Some(
+            adapters::NativeResponseDecoder::new_for_attempt(
+                &profile,
+                200,
+                true,
+                None,
+                budget.clone(),
+            )
+            .unwrap(),
+        ),
+        renderer: Some(adapters::IncrementalClientSseRenderer::new(client, "alias").unwrap()),
+        projector: None,
+        _decoder_budget: None,
+        _chat_tool_projection_budget: None,
+        budget: budget.clone(),
+        streaming: true,
+        prefix_eos_pending: false,
+        prefix_terminal_chunks: None,
+        semantic_terminal: None,
+    };
+    let terminal = json!({
+        "id": "chat", "object": "chat.completion.chunk", "created": 1,
+        "model": "physical",
+        "choices": [{"index": 0, "delta": {"role": "assistant", "content": "DONE"},
+            "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}
+    });
+    let wire = format!("data: {terminal}\n\ndata: [DONE]\n\n");
+    let input =
+        ChargedBytes::copy_from_opaque(&budget, MemoryRole::ResponsePrefix, wire.as_bytes())
+            .unwrap();
+    assert!(
+        encode_accepted_event(
+            &mut readiness,
+            ProviderAcceptedEvent::Raw(PrecommitEvent::Body(input)),
+        )
+        .unwrap()
+        .is_none()
+    );
+    let mut reconstructed = Vec::new();
+    let mut eos = 0;
+    while let Some(event) = take_accepted_prefix(&mut readiness) {
+        let frame = encode_accepted_event(&mut readiness, event)
+            .unwrap()
+            .unwrap();
+        if let Some(output) = frame.output {
+            reconstructed.extend_from_slice(output.bytes.bytes());
+        }
+        eos += usize::from(frame.end_stream);
+    }
+    assert_eq!(eos, 1, "the semantic terminal must carry downstream EOS");
+    let rendered = std::str::from_utf8(&reconstructed).unwrap();
+    assert!(rendered.contains("event: response.completed"));
+    assert!(rendered.contains("\"input_tokens\":4"));
     assert_eq!(
         readiness.semantic_terminal,
         Some(SemanticTerminalOutcome::Complete)

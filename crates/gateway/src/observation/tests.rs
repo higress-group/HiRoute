@@ -206,6 +206,112 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+#[test]
+fn accepted_client_cancellation_finishes_the_request_as_cancelled() {
+    use hiroute_diagnostics::event::ProcessRole;
+    use hiroute_diagnostics::record::Component;
+    use hiroute_diagnostics::runtime::{DiagnosticRuntime, RuntimeConfig};
+    use hiroute_gateway_core::core::execution_plan::{
+        CredentialRef, PlanRevision, ResolvedTargetBindingId,
+    };
+    use hiroute_gateway_core::runtime::attempt::{AttemptTransportFacts, CommitFence};
+    use hiroute_gateway_core::runtime::driver::{
+        AttemptBudgetGrant, AttemptCleanupOutcome, AttemptCommitFacts, AttemptDownstreamOutcome,
+        AttemptStreamOutcome, AttemptTerminationReason, CompletedAttemptObservation,
+        RealtimeRoutingFacts, RouteDecisionId,
+    };
+    use std::time::{Duration, Instant};
+
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-cancel-diagnostics-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let runtime = DiagnosticRuntime::start(RuntimeConfig {
+        root: root.clone(),
+        role: ProcessRole::Daemon,
+        component: Component::Gateway,
+        parent_session_id: None,
+        level_override: None,
+    });
+    let request = request_with_diagnostics(OtelContentPolicy::Disabled, runtime.port());
+    let credential = "credential/none/source-local-test";
+    request.no_credential_materialized("binding:test", credential);
+    request.disposition_published(&PublishedDisposition {
+        request_id: RequestId(9),
+        attempt_id: AttemptId(4),
+        generation: AttemptGeneration(2),
+        disposition: Disposition::Accept,
+    });
+    assert!(request.accept_current("frame:test", 128).is_some());
+    let now = Instant::now();
+    request.completed_attempt(
+        &CompletedAttemptObservation {
+            route_decision_id: RouteDecisionId(1),
+            attempt_id: AttemptId(4),
+            generation: AttemptGeneration(2),
+            binding: ResolvedTargetBindingId::new(PlanRevision(1), 1),
+            credential_ref: CredentialRef::new(credential).unwrap(),
+            budget: AttemptBudgetGrant {
+                issued_at: now,
+                allocated: Duration::from_secs(1),
+                deadline: now + Duration::from_secs(1),
+            },
+            routing_facts: RealtimeRoutingFacts::default(),
+            provider: None,
+            failure: None,
+            transport: AttemptTransportFacts {
+                started_at: now,
+                connect_elapsed: None,
+                request_write_elapsed: None,
+                upstream_ttfb: None,
+                last_upstream_progress_at: None,
+                local_read_suppressed: Duration::ZERO,
+                upstream_body_bytes: 128,
+                timeout: None,
+            },
+            disposition: Disposition::Accept,
+            commits: AttemptCommitFacts {
+                upstream_request: CommitFence::WriteConfirmed,
+                downstream_headers: CommitFence::WriteConfirmed,
+                downstream_semantic: CommitFence::WriteConfirmed,
+            },
+            stream: AttemptStreamOutcome::StreamStartedNoRetry,
+            downstream: AttemptDownstreamOutcome::Cancelled,
+            cleanup: AttemptCleanupOutcome::Completed,
+            ended_at: now,
+            termination_reason: AttemptTerminationReason::Cancelled,
+        },
+        None,
+    );
+    request.finish("cancelled");
+    runtime.shutdown();
+
+    let log = std::fs::read_to_string(root.join("daemon").join("current.jsonl")).unwrap();
+    let events = log
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    for kind in ["attempt_end", "request_end"] {
+        assert!(
+            events
+                .iter()
+                .any(|event| event["event"][kind]["outcome"] == "cancelled"),
+            "{kind} missing or misclassified: {log}"
+        );
+    }
+    assert!(
+        events
+            .iter()
+            .any(|event| event["event"]["request_cancel"]["accepted"] == true),
+        "accepted cancellation missing: {log}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Rejects every delivery, so the channel's own sink-failure projection is exercised
 /// without a real sink outage.
 struct RejectingSink;

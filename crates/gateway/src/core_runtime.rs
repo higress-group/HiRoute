@@ -1287,12 +1287,11 @@ impl ProductionGatewayRuntime {
             drop(core_session);
             let runtime_state_authority_failed =
                 !response_started && runtime_state_authority.failed();
-            let observation_outcome =
-                match (request_observation.has_accepted_attempt(), result.is_ok()) {
-                    (true, true) => "accepted",
-                    (true, false) => "postcommit_transport_failed",
-                    (false, _) => "failed",
-                };
+            let observation_outcome = classify_request_observation_outcome(
+                request_observation.has_accepted_attempt(),
+                result.is_ok(),
+                request_observation.accepted_attempt_cancelled(),
+            );
             if let Some(mut guard) = agent_turn_guard.take() {
                 request_observation.finish_agent_turn_output().await;
                 let executions = request_observation
@@ -1342,6 +1341,19 @@ impl ProductionGatewayRuntime {
                 result
             }
         })
+    }
+}
+
+fn classify_request_observation_outcome(
+    accepted: bool,
+    completed: bool,
+    accepted_attempt_cancelled: bool,
+) -> &'static str {
+    match (accepted, completed, accepted_attempt_cancelled) {
+        (true, _, true) => "cancelled",
+        (true, true, false) => "accepted",
+        (true, false, false) => "postcommit_transport_failed",
+        (false, _, _) => "failed",
     }
 }
 

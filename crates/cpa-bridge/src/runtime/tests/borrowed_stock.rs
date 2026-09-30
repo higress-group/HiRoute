@@ -7,6 +7,83 @@ use zeroize::Zeroizing;
 use super::*;
 
 #[test]
+fn borrowed_codex_reenabled_source_leases_without_auth_rotation() {
+    let root = tempfile::tempdir().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let control = Arc::new(FakeControl::default());
+    control.set_accounts(vec![snapshot(CpaAccountKind::Codex, 'a', "codex-model")]);
+    let runtime = fixture_runtime(&root, backend, control, 2);
+    runtime.start().unwrap();
+    let source = root.path().join("codex-auth.json");
+    let source_before = fs::read(&source).unwrap();
+    let first = runtime
+        .materialize_account("connector.cpa.codex", "endpoint.cpa.codex")
+        .unwrap();
+    runtime
+        .apply_account_management(&first.account_subject, 1, CpaSourceManagementState::Enabled)
+        .unwrap();
+    runtime
+        .apply_account_management(
+            &first.account_subject,
+            2,
+            CpaSourceManagementState::Disabled,
+        )
+        .unwrap();
+    runtime
+        .apply_account_management(&first.account_subject, 3, CpaSourceManagementState::Enabled)
+        .unwrap();
+    let resumed = runtime
+        .materialize_account("connector.cpa.codex", "endpoint.cpa.codex")
+        .unwrap();
+    assert_eq!(resumed.credential_ref.generation(), 2);
+    assert_eq!(fs::read(&source).unwrap(), source_before);
+    let target = prepare_target(
+        &runtime,
+        ExactCpaAttemptRequest {
+            credential_ref: &resumed.credential_ref,
+            upstream_model_id: "codex-model",
+            protocol: UpstreamProtocol::Responses,
+        },
+    )
+    .unwrap();
+    let request = || ExactCpaCredentialRequest {
+        credential_id: target.credential_ref().credential_id(),
+        connector_id: target.connector_id(),
+        upstream_model_id: target.upstream_model_id(),
+        protocol: target.protocol(),
+        address: target.address(),
+        request_path: target.request_path(),
+        native_transport_model: target.native_transport_model(),
+        runtime_epoch: target.runtime_epoch(),
+        target_epoch: target.target_epoch(),
+        excluded_key_ids: &[],
+    };
+    let first_capability = runtime
+        .lease_downstream_capability(request())
+        .unwrap()
+        .unwrap();
+    assert_eq!(first_capability.generation(), 2);
+
+    write_fixture_codex_source(
+        &source,
+        "fixture-account-one",
+        "fixture-codex-access-lease-rotated",
+        "fixture.codex.id-token-rotated",
+        "fixture-refresh-time-two",
+    );
+    let rotated_capability = runtime
+        .lease_downstream_capability(request())
+        .unwrap()
+        .unwrap();
+    assert!(rotated_capability.generation() > first_capability.generation());
+    assert_eq!(
+        first_capability.apply_authorization(&mut http::HeaderMap::new()),
+        Err(CpaAttemptError::RevokedCredential)
+    );
+    runtime.shutdown().unwrap();
+}
+
+#[test]
 fn borrowed_codex_rotation_and_deletion_revoke_attempts_inside_cpa() {
     let root = tempfile::tempdir().unwrap();
     let backend = Arc::new(FakeBackend::default());
