@@ -1825,6 +1825,15 @@
       "collected_on": "2026-09-30",
       "bytes_digest": null,
       "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-177",
+      "authority": "chatgpt.com",
+      "source_kind": "authenticated-service-metadata",
+      "locator": "https://chatgpt.com/backend-api/codex/models?client_version=0.159.0",
+      "collected_on": "2026-09-30",
+      "bytes_digest": "sha256:50360739bc708185822a742414cd3fb5e7906dc40ace7290e8d528696f46c1c8",
+      "digest_state": "captured"
     }
   ],
   "access_products": [
@@ -74609,6 +74618,120 @@
       "cost_hint_state": "recorded"
     },
     {
+      "model_record_key": "official/openai-codex/gpt-6.1-sol",
+      "provider_record_key": "hermes-agent/openai-codex",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-175"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-177"
+        }
+      ],
+      "provider_id": "openai-codex",
+      "upstream_model_id": "gpt-6.1-sol",
+      "display_name": "GPT-6.1 Sol",
+      "context_tokens": {
+        "state": "known",
+        "value": 272000
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 128000
+      },
+      "input_modalities": [
+        "image",
+        "text"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [
+          "high",
+          "low",
+          "max",
+          "medium",
+          "xhigh"
+        ],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [],
+      "normalized_model_matches": [
+        "gpt-6.1-sol"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "complete"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "reasoning-rendering-hint",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [
+        {
+          "slug": "gpt-6.1-sol",
+          "clientVersion": "0.159.0",
+          "contextWindow": 272000,
+          "maxContextWindow": 872000,
+          "supportsExperimentalContext": false,
+          "inputModalities": [
+            "text",
+            "image"
+          ],
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "runtimeEffortNote": "ultra advertises automatic delegation, not a documented Responses reasoning.effort value; the executable projection uses the intersection with the public model's low..max profiles. Context uses the advertised default, not an experimental maximum."
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-175"
+        },
+        {
+          "source_key": "source-177"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "cost_hint_state": "not-recorded",
+      "field_provenance": {
+        "max_output_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt-6.1-sol-output/v1"
+        }
+      }
+    },
+    {
       "model_record_key": "official/openai-platform/gpt-6-luna",
       "provider_record_key": "official/openai-platform",
       "provenance_refs": [
@@ -111374,6 +111497,27 @@
         "source-080"
       ],
       "collected_on": "2026-09-13"
+    },
+    {
+      "rule_key": "rule.codex.gpt-6.1-sol-output/v1",
+      "record_kind": "model",
+      "match": {
+        "provider_id_pattern": "^openai-codex$",
+        "upstream_model_id_pattern": "^gpt-6\\.1-sol$"
+      },
+      "assignments": {
+        "max_output_tokens": {
+          "state": "known",
+          "value": 128000
+        }
+      },
+      "basis": "inferred",
+      "reason": "The authenticated Codex directory publishes context and effort profiles but no output limit. Conservatively inherit the same GPT-6.1 Sol model's public 128,000 output limit as an explicitly labeled inference, not a measured subscription entitlement. Runtime account eligibility remains separate.",
+      "evidence_refs": [
+        "source-175",
+        "source-177"
+      ],
+      "collected_on": "2026-09-30"
     },
     {
       "rule_key": "rule.cohere.command-a-plus/v1",

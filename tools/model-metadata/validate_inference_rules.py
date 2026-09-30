@@ -137,16 +137,26 @@ def validate_rule_catalog(
             return
         for rule in records:
             rule_key = rule.get("rule_key") if isinstance(rule, dict) else None
-            if not isinstance(rule, dict) or set(rule) != {
+            required_fields = {
                 "assignments",
                 "evidence_refs",
                 "match",
                 "reason",
                 "record_kind",
                 "rule_key",
-            }:
+            }
+            if (
+                not isinstance(rule, dict)
+                or not required_fields <= set(rule)
+                or set(rule) - required_fields - {"collected_on"}
+            ):
                 errors.append(f"malformed {kind} inference rule {rule_key}")
                 continue
+            collected_on = rule.get("collected_on", rules_document.get("as_of"))
+            try:
+                datetime.strptime(collected_on, "%Y-%m-%d")
+            except (TypeError, ValueError):
+                errors.append(f"inference rule {rule_key} has invalid collected_on")
             if rule.get("record_kind") != kind:
                 errors.append(f"inference rule {rule_key} has a mismatched record kind")
             match = rule.get("match", {})
@@ -218,7 +228,7 @@ def validate_rule_catalog(
                 "basis": "inferred",
                 "reason": rule["reason"],
                 "evidence_refs": sorted(set(rule["evidence_refs"])),
-                "collected_on": rules_document.get("as_of"),
+                "collected_on": collected_on,
             }:
                 errors.append(
                     f"catalog inference rule {rule_key} does not match the rule table"

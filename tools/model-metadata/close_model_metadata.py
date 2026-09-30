@@ -530,7 +530,7 @@ def close(catalog: dict[str, Any], rules_document: dict[str, Any]) -> dict[str, 
                 "basis": "inferred",
                 "reason": rule["reason"],
                 "evidence_refs": sorted(set(rule["evidence_refs"])),
-                "collected_on": rules_document["as_of"],
+                "collected_on": rule.get("collected_on", rules_document["as_of"]),
             }
             for rule in [*model_rules, *provider_rules]
         ),

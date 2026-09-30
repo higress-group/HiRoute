@@ -93,8 +93,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
     ))
     .unwrap();
     data.validate_against(&registry).unwrap();
-    assert_eq!(data.data.models.len(), 20);
-    assert_eq!(data.rating_snapshot.records.len(), 52);
+    assert_eq!(data.data.models.len(), 21);
+    assert_eq!(data.rating_snapshot.records.len(), 57);
     assert!(
         data.data
             .model_endpoint_capabilities
@@ -103,8 +103,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         "incomplete bindings must not become executable capabilities"
     );
     assert_eq!(data.metadata_catalog.provider_records.len(), 105);
-    assert_eq!(data.metadata_catalog.model_records.len(), 766);
-    assert_eq!(data.metadata_catalog.inference_rules.len(), 188);
+    assert_eq!(data.metadata_catalog.model_records.len(), 767);
+    assert_eq!(data.metadata_catalog.inference_rules.len(), 189);
     for product_key in [
         "bailian-token-personal-cn-beijing",
         "bailian-token-team-cn-beijing",
@@ -195,12 +195,11 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .unwrap();
         assert_eq!(binding.availability.state, "conditional");
         assert_eq!(binding.protocol_qualification, "runtime-required");
-        if model_key == "gpt-6-sol" {
+        if matches!(model_key, "gpt-6-sol" | "gpt-6.1-sol") {
             assert!(
-                data.data
-                    .models
-                    .iter()
-                    .any(|model| model.model_configuration_id == "model.openai.gpt-6-sol")
+                data.data.models.iter().any(
+                    |model| model.model_configuration_id == format!("model.openai.{model_key}")
+                )
             );
         } else {
             assert!(
