@@ -103,7 +103,7 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         "incomplete bindings must not become executable capabilities"
     );
     assert_eq!(data.metadata_catalog.provider_records.len(), 105);
-    assert_eq!(data.metadata_catalog.model_records.len(), 765);
+    assert_eq!(data.metadata_catalog.model_records.len(), 766);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 188);
     for product_key in [
         "bailian-token-personal-cn-beijing",
@@ -166,6 +166,7 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         ("claude-opus-5-5", "official/anthropic-api"),
         ("gpt-6-luna", "official/openai-platform"),
         ("gpt-6-sol", "official/openai-platform"),
+        ("gpt-6.1-sol", "official/openai-platform"),
     ] {
         assert!(
             data.metadata_catalog
