@@ -8,6 +8,7 @@ import {
   isCurrentResult,
   saveFailureDefinitelyPreAdmission,
   saveIntent,
+  selectionRows,
   statusText,
   validatedSubscriptionCandidate,
 } from '../src/features/subscriptions/model.ts';
@@ -145,4 +146,42 @@ test('inventory-only rows stay visible but cannot be selected or saved', () => {
   assert.equal(canSave(checked, true, new Set(['model/gpt'])), true);
   assert.equal(canSave(checked, true, new Set(['model/gpt', 'model/unknown'])), false);
   assert.equal(canSave(checked, true, new Set()), false);
+});
+
+test('an existing checked subscription permits explicit addition and removal, not unverified additions', () => {
+  const checked = candidate({ existing_source_id: 'source/subscription' });
+  checked.models.push({
+    model_ref: 'model/new', upstream_model_id: 'new', display_name: 'New',
+    membership: 'catalog', selectable: true,
+  });
+  assert.equal(canSave(checked, true, new Set(['model/gpt', 'model/new'])), true);
+  assert.equal(canSave(checked, true, new Set(['model/new'])), true);
+  checked.models[1].selectable = false;
+  assert.equal(canSave(checked, true, new Set(['model/gpt', 'model/new'])), false);
+  assert.equal(canSave(checked, true, new Set(['model/missing'])), false);
+});
+
+test('a saved model missing from the checked directory stays visible until explicitly removed', () => {
+  const checked = candidate({ existing_source_id: 'source/subscription' });
+  const selected = new Set(['model/gpt', 'model/retired']);
+  const saved = [{ model_ref: 'model/retired', display_name: 'Saved retired model' }];
+  assert.equal(canSave(checked, true, selected), false);
+  assert.deepEqual(selectionRows(checked, selected, saved).at(-1), {
+    model_ref: 'model/retired', display_name: 'Saved retired model', selectable: false, missing: true,
+  });
+  selected.delete('model/retired');
+  assert.equal(selectionRows(checked, selected, saved).length, 1);
+  assert.equal(canSave(checked, true, selected), true);
+});
+
+test('a disappeared unsaved selection is also removable without granting eligibility', () => {
+  const checked = candidate();
+  const selected = new Set(['model/gpt', 'model/no-longer-listed']);
+  const missing = selectionRows(checked, selected).at(-1);
+  assert.equal(missing.model_ref, 'model/no-longer-listed');
+  assert.equal(missing.selectable, false);
+  assert.equal(missing.missing, true);
+  assert.equal(canSave(checked, true, selected), false);
+  selected.delete(missing.model_ref);
+  assert.equal(canSave(checked, true, selected), true);
 });

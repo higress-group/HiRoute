@@ -38,7 +38,7 @@ import type {
   SubscriptionCandidate,
   SubscriptionCheckResult,
 } from '../features/subscriptions/types';
-import { canSave as canSaveSubscription, saveFailureDefinitelyPreAdmission, saveIntent, validatedSubscriptionCandidate } from '../features/subscriptions/model';
+import { canSave as canSaveSubscription, saveFailureDefinitelyPreAdmission, saveIntent, selectionRows, validatedSubscriptionCandidate } from '../features/subscriptions/model';
 import { safeDiagnosticCode } from '../error-code';
 
 type SubscriptionSaveSelection = {
@@ -873,7 +873,6 @@ export function ModelManagementPage({
     ? validatedSubscriptionCandidate(selectedSubscription, selectedSubscriptionCheck)
     : null;
   const effectiveSubscription = validatedSubscription ?? selectedSubscription;
-  const subscriptionModels = effectiveSubscription?.models ?? [];
   const selectableSubscriptionModels = effectiveSubscription?.models.filter(model => model.selectable) ?? [];
   const selectedSubscriptionModels = new Set(effectiveSubscription
     ? (subscriptionSelections[effectiveSubscription.candidate.candidate_ref]
@@ -881,6 +880,10 @@ export function ModelManagementPage({
         ? repairingSource?.models.map(model => model.model_ref) ?? []
         : selectableSubscriptionModels.map(model => model.model_ref)))
     : []);
+  const savedSubscriptionSource = management?.sources.find(source => source.source_id === selectedSubscription?.existing_source_id);
+  const subscriptionModels = effectiveSubscription
+    ? selectionRows(effectiveSubscription, selectedSubscriptionModels, savedSubscriptionSource?.models)
+    : [];
   const subscriptionChecking = subscriptionAction === 'checking';
   const subscriptionWorking = subscriptionLoading || subscriptionChecking || subscriptionAction === 'saving';
   const subscriptionReady = Boolean(validatedSubscription);
@@ -906,14 +909,11 @@ export function ModelManagementPage({
   function openSubscription(candidate: SubscriptionCandidate) {
     returnToScanList();
     setSelectedSubscriptionRef(candidate.candidate.candidate_ref);
-    const repairingModelRefs = repairingSource
-      && candidate.existing_source_id === repairingSource.source_id
-      ? repairingSource.models.map(model => model.model_ref)
-      : null;
-    if (repairingModelRefs) {
+    const savedSource = management?.sources.find(source => source.source_id === candidate.existing_source_id);
+    if (savedSource) {
       setSubscriptionSelections(current => ({
         ...current,
-        [candidate.candidate.candidate_ref]: repairingModelRefs,
+        [candidate.candidate.candidate_ref]: savedSource.models.map(model => model.model_ref),
       }));
     }
     setSubscriptionError(null);
@@ -1048,10 +1048,12 @@ export function ModelManagementPage({
         <div className="oc-status-row"><BrandIcon kind="codex" label="Codex" /><div className="row-main"><strong>{effectiveSubscription.display_name}</strong><p>{language === 'zh' ? '复用本机登录，无需复制订阅凭据。' : 'Reuse the local sign-in without copying credentials.'}</p></div>{subscriptionReady && <span className="badge good">{language === 'zh' ? '可用' : 'Ready'}</span>}</div>
         {subscriptionReady && repairingSelectedSubscription
           ? <p className="oc-meta">{language === 'zh' ? '将保留原有模型、绑定和路由，仅更新当前订阅授权与可执行资格。' : 'Existing models, bindings, and routes will be retained; only current subscription access and execution eligibility will be updated.'}</p>
-          : subscriptionReady ? subscriptionModels.length === 1 && selectableSubscriptionModels.length === 1
-          ? <p className="oc-meta">{language === 'zh' ? '检查通过，可接入以下模型：' : 'Check passed. Available model: '} {selectableSubscriptionModels[0].display_name}</p>
-          : subscriptionModels.length
-            ? <><p className="oc-meta">{language === 'zh' ? '已读取此账号可见的模型。选择资料完整、可接入路由的模型。' : 'Models visible to this account were loaded. Select models with complete routing data.'}</p><div className="v3-catalog">{subscriptionModels.map(model => <label className="check-row" key={model.model_ref}><input type="checkbox" disabled={!trustedAuthority || !model.selectable} checked={selectedSubscriptionModels.has(model.model_ref)} onChange={() => toggleSubscriptionModel(model.model_ref)} /><div><strong>{model.display_name}</strong>{!model.selectable && <span>{language === 'zh' ? '账号可见 · 能力资料待补充，暂不能用于路由' : 'Visible to this account · capability data pending; not yet routable'}</span>}</div></label>)}</div></>
+          : subscriptionReady ? subscriptionModels.length
+            ? <><p className="oc-meta">{language === 'zh' ? '已读取此账号可见的模型。选择资料完整、可接入路由的模型。' : 'Models visible to this account were loaded. Select models with complete routing data.'}</p><div className="v3-catalog">{subscriptionModels.map(model => <label className="check-row" key={model.model_ref}><input type="checkbox" disabled={!trustedAuthority || (!model.selectable && !selectedSubscriptionModels.has(model.model_ref))} checked={selectedSubscriptionModels.has(model.model_ref)} onChange={() => toggleSubscriptionModel(model.model_ref)} /><div><strong>{model.display_name}</strong>{!model.selectable && <span>{model.missing
+              ? (language === 'zh' ? '已不在当前订阅目录，可取消选择' : 'No longer in the subscription directory; uncheck to remove')
+              : selectedSubscriptionModels.has(model.model_ref)
+                ? (language === 'zh' ? '当前不可用，可取消选择' : 'Currently unavailable; uncheck to remove')
+                : (language === 'zh' ? '账号可见 · 能力资料待补充，暂不能用于路由' : 'Visible to this account · capability data pending; not yet routable')}</span>}</div></label>)}</div></>
             : <p className="oc-meta">{language === 'zh' ? '检查已完成，但没有可接入的模型。' : 'The check completed, but no connectable model was found.'}</p>
           : <p className="oc-meta">{language === 'zh' ? '检查会使用这项本机订阅验证连接；保存后才加入模型列表。' : 'The check uses this local subscription to verify the connection. Save it to add the model.'}</p>}
       </div> : <DeviceScanList
