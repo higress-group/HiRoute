@@ -10,7 +10,7 @@ use http::{HeaderMap, Method};
 
 use super::*;
 use crate::provider_state::ProviderStateScopeV1;
-use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
+use crate::server::core_runtime::profiles::{fixed_reasoning, CandidateProtocolProfile};
 
 #[test]
 fn cancelled_accepted_attempt_is_not_reported_as_transport_failure_or_success() {
@@ -153,6 +153,105 @@ async fn production_response_sink_keeps_only_the_tool_unit_accepted_before_reset
     drop(session);
     assert_eq!(active.accepted_count(), 1);
     assert_eq!(downstream.accepted.len(), 1);
+}
+
+#[tokio::test]
+async fn native_reasoning_state_is_reusable_only_after_its_formatted_wire_is_accepted() {
+    let scope = ProviderStateScopeV1 {
+        authority_id: "authority:state-test".into(),
+        authority_epoch: 1,
+        grant_id: "grant:state-test".into(),
+        grant_generation: 1,
+        served_model_id: "state-test".into(),
+        route: hiroute_domain::ModelRequestRouteV2::Plan {
+            revision: 1,
+            semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"state-test-plan"),
+        },
+    };
+    let states = Arc::new(crate::provider_state::ProviderStateStore::default());
+    let active = adapters::ActiveResponseDelivery::new(
+        IngressProtocol::Responses,
+        crate::provider_state::ActiveProviderStates::new(
+            states.clone(),
+            scope.clone(),
+            IngressProtocol::Responses,
+        ),
+    );
+    let profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        "native-state-test",
+        fixed_reasoning("fixed"),
+    );
+    let frames = adapters::with_active_response_delivery(active.clone(), async {
+        let mut projector = adapters::NativeResponseProjector::new_for_attempt(
+            &profile,
+            true,
+            "state-test".into(),
+            None,
+            budget(),
+        )
+        .unwrap();
+        let mut frames = Vec::new();
+        for (index, state) in ["opaque/first", "opaque/second"].into_iter().enumerate() {
+            let item = serde_json::json!({"type":"response.output_item.done","output_index":index,
+                "item":{"type":"reasoning","id":format!("reasoning-{index}"),"status":"completed",
+                        "summary":[],"encrypted_content":state}});
+            let encoded = serde_json::to_string(&item)
+                .unwrap()
+                .replace(":", ": ")
+                .replace("opaque", "\\u006fpaque");
+            let wire = format!("data: {encoded}\n\n");
+            let mut units = Vec::new();
+            for chunk in wire.as_bytes().chunks(7) {
+                units.extend(projector.feed(chunk, false).unwrap());
+            }
+            assert_eq!(units.len(), 1);
+            frames.push(units.pop().unwrap().bytes);
+        }
+        frames
+    })
+    .await;
+    let request = |state| {
+        serde_json::json!({"input":[{"type":"reasoning",
+                                                     "encrypted_content":state}]})
+    };
+    assert!(states
+        .resolve_with_replay(&scope, &request("opaque/first"), None, Instant::now())
+        .is_err());
+    let observation = observation::accepted_request_for_runtime_test();
+    let mut downstream = FailSecondBodyWrite {
+        writes: 0,
+        accepted: Vec::new(),
+    };
+    let mut session = ReplayBodySession {
+        inner: &mut downstream,
+        request_head: request_head(),
+        request_body: None,
+        budget: budget(),
+        response_capture: AcceptedResponseCapture::new(observation),
+        response_started: true,
+        runtime_state_authority: Default::default(),
+        continuation_scanner: active.scanner(),
+    };
+    session
+        .write_response_body(Bytes::from(frames[0].clone()), false)
+        .await
+        .unwrap();
+    let resolved = states
+        .resolve_with_replay(&scope, &request("opaque/first"), None, Instant::now())
+        .unwrap();
+    assert_eq!(
+        resolved.owner_for("opaque/first"),
+        Some(&profile.exact_provider_path().unwrap())
+    );
+    assert!(session
+        .write_response_body(Bytes::from(frames[1].clone()), false)
+        .await
+        .is_err());
+    assert!(states
+        .resolve_with_replay(&scope, &request("opaque/second"), None, Instant::now())
+        .is_err());
 }
 
 fn request_head() -> GatewayRequestHead {
