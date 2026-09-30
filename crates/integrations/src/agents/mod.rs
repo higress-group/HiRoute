@@ -16,6 +16,7 @@ mod collaboration_probe;
 mod discovery;
 mod emulator;
 mod executable;
+pub use executable::codex_subscription_client_version;
 mod filesystem;
 mod filesystem_config;
 mod managed_launch;

@@ -124,6 +124,7 @@ impl ManagedCpaRuntime {
             &live.secrets,
             &live.artifact.version().to_string(),
             self.spec.control_timeout,
+            expected.is_some(),
         ) {
             Ok(discovered) => discovered,
             Err(error) => {

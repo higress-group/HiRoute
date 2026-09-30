@@ -127,10 +127,10 @@ mod tests {
             serde_json::from_str(include_str!("../development-cpa-artifacts.v1.json")).unwrap();
         let artifact = artifact_for(&manifest, "macos", "aarch64").unwrap();
         assert_eq!(artifact.target, "aarch64-apple-darwin");
-        assert_eq!(artifact.version, "7.2.140-hiroute.2");
+        assert_eq!(artifact.version, "8.0.4-hiroute.1");
         assert_eq!(
             artifact.sha256,
-            "5a51825066357c7d8b0bda23e852ac0f9df57139d7ef39348d0d741c4f8d8cb1"
+            "836834077b2d1d0c6b6e39fa836267fc249bddffdcaa6bf403be776ca7579b3f"
         );
     }
 }

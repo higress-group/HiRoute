@@ -36,6 +36,7 @@ pub use evidence::BorrowedCodexEvidence;
 #[derive(Clone, Eq, PartialEq)]
 pub struct BorrowedCodexAuthSpec {
     source_path: PathBuf,
+    executable: PathBuf,
 }
 
 impl std::fmt::Debug for BorrowedCodexAuthSpec {
@@ -48,7 +49,13 @@ impl BorrowedCodexAuthSpec {
     pub fn new(source_path: impl Into<PathBuf>) -> Self {
         Self {
             source_path: source_path.into(),
+            executable: PathBuf::from("codex"),
         }
+    }
+
+    pub fn with_executable(mut self, executable: PathBuf) -> Self {
+        self.executable = executable;
+        self
     }
 
     pub fn source_path(&self) -> &Path {
@@ -112,6 +119,7 @@ impl ManagedAuthLease {
 
 struct BorrowedCodexLease {
     canonical_source: PathBuf,
+    client_version: Option<String>,
     source_path_digest: String,
     _source_lock: File,
     flat_path: PathBuf,
@@ -134,6 +142,9 @@ impl BorrowedCodexLease {
         let source_lock = acquire_lock(&lease_root.join(format!("{source_path_digest}.lock")))?;
         let mut lease = Self {
             canonical_source,
+            client_version: hiroute_integrations::codex_subscription_client_version(
+                &source.executable,
+            ),
             source_path_digest,
             _source_lock: source_lock,
             flat_path: auth_dir.join(MANAGED_FILE_NAME),
@@ -172,7 +183,7 @@ impl BorrowedCodexLease {
         }
 
         let prefix = "hiroute-codex-current".to_owned();
-        let rendered = render_access_only_auth(&source, &prefix)?;
+        let rendered = render_access_only_auth(&source, &prefix, self.client_version.as_deref())?;
         let revision_digest = revision_digest(&source);
 
         let changed = previous.as_ref().is_none_or(|state| {
@@ -195,7 +206,13 @@ impl BorrowedCodexLease {
             validate_private_file(&self.flat_path)
                 .map_err(|_| CpaLifecycleError::InvalidBorrowedCodexAuth)?;
         }
-        let flat_matches = flat_exists && private_file_matches(&self.flat_path, &source, &prefix)?;
+        let flat_matches = flat_exists
+            && private_file_matches(
+                &self.flat_path,
+                &source,
+                &prefix,
+                self.client_version.as_deref(),
+            )?;
         if previous.is_none() && flat_exists && !flat_matches {
             return Err(CpaLifecycleError::InvalidBorrowedCodexAuth);
         }
@@ -269,6 +286,7 @@ struct FlatAccessLease<'a> {
     prefix: &'a str,
     request_retry: u8,
     disable_cooling: bool,
+    hiroute_client_version: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
@@ -288,6 +306,8 @@ struct ExistingFlatAccessLease<'a> {
     prefix: &'a str,
     request_retry: i64,
     disable_cooling: bool,
+    #[serde(borrow)]
+    hiroute_client_version: Option<&'a str>,
     #[serde(default, borrow)]
     refresh_token: Option<&'a str>,
     #[serde(default, borrow)]
@@ -392,6 +412,7 @@ fn valid_text(value: &str, max: usize) -> bool {
 fn render_access_only_auth(
     source: &OwnedNestedSource,
     prefix: &str,
+    client_version: Option<&str>,
 ) -> Result<Zeroizing<Vec<u8>>, CpaLifecycleError> {
     serde_json::to_vec(&FlatAccessLease {
         kind: "codex",
@@ -402,6 +423,7 @@ fn render_access_only_auth(
         prefix,
         request_retry: 0,
         disable_cooling: true,
+        hiroute_client_version: client_version,
     })
     .map(Zeroizing::new)
     .map_err(|_| CpaLifecycleError::InvalidBorrowedCodexAuth)
@@ -619,6 +641,7 @@ fn private_file_matches(
     path: &Path,
     source: &OwnedNestedSource,
     prefix: &str,
+    client_version: Option<&str>,
 ) -> Result<bool, CpaLifecycleError> {
     let file = File::open(path).map_err(|_| CpaLifecycleError::BorrowedCodexAuthIo)?;
     let mut bytes = Zeroizing::new(Vec::new());
@@ -631,6 +654,7 @@ fn private_file_matches(
     let existing: ExistingFlatAccessLease<'_> = serde_json::from_slice(bytes.as_slice())
         .map_err(|_| CpaLifecycleError::InvalidBorrowedCodexAuth)?;
     Ok(existing.kind == "codex"
+        && existing.hiroute_client_version == client_version
         && existing.access_token == source.access_token.as_str()
         && existing.id_token == source.id_token.as_str()
         && existing.account_id == source.account_id.as_str()

@@ -76,6 +76,7 @@ impl CpaControlPlane for StockCpaControlPlane {
         secrets: &InstanceSecrets,
         expected_version: &str,
         timeout: Duration,
+        refresh_models: bool,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         let deadline = Instant::now()
             .checked_add(timeout)
@@ -139,14 +140,22 @@ impl CpaControlPlane for StockCpaControlPlane {
                 let prefix = format!("hiroute-{}", &digest[..24]);
                 (digest, prefix, 1)
             };
-            patch_account_controls(
-                address,
-                secrets,
-                expected_version,
-                remaining_timeout(deadline)?,
-                &account.id,
-                &prefix,
-            )?;
+            // PATCH also synchronously re-registers the account in CPA, including
+            // remote model discovery. Ordinary compilation/preview is a read;
+            // only repair changed controls or honor an explicit subscription check.
+            if refresh_models
+                || account.request_retry != Some(0)
+                || !persisted_controls_match(auth_dir, &name, &prefix)?
+            {
+                patch_account_controls(
+                    address,
+                    secrets,
+                    expected_version,
+                    remaining_timeout(deadline)?,
+                    &account.id,
+                    &prefix,
+                )?;
+            }
             let models = wait_for_account_pin(
                 address,
                 auth_dir,
@@ -501,7 +510,7 @@ fn validate_transport_model_id(value: &str) -> Result<(), AccountDiscoveryError>
 mod tests {
     use super::*;
 
-    fn oauth_response(extra: &str) -> Vec<u8> {
+    pub(super) fn oauth_response(extra: &str) -> Vec<u8> {
         format!(
             r#"{{"files":[{{"id":"codex-a.json","auth_index":"idx-a","name":"codex-a.json","type":"codex","provider":"codex","status":"active","disabled":false,"unavailable":false,"runtime_only":false,"source":"file","account_type":"oauth","request_retry":0{extra}}}]}}"#
         )
@@ -576,3 +585,6 @@ mod tests {
         assert!(strip_exact_prefix(&BTreeSet::from(["codex-model".into()]), &prefix).is_err());
     }
 }
+
+#[cfg(test)]
+mod pin_tests;
