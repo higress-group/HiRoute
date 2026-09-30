@@ -8,7 +8,7 @@ const FIRST: &[u8] = br#"event: response.created
 data: {"type":"response.created","response":{"id":"native-first","model":"continuation-native-2","status":"in_progress","service_tier":"auto"}}
 
 event: response.output_item.added
-data: {"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_native","summary":[],"encrypted_content":"fixture-opaque-first"}}
+data: {"type": "response.output_item.added", "output_index": 0, "item": {"type": "reasoning", "id": "rs_native", "summary": [], "encrypted_content": "\u0066ixture-opaque-first"}}
 
 event: response.output_item.done
 data: {"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_native","status":"completed","summary":[],"encrypted_content":"fixture-opaque-final"}}
@@ -20,17 +20,26 @@ data: {"type":"response.completed","response":{"id":"native-first","model":"cont
 
 #[test]
 fn production_responses_continuation_keeps_actual_owner_in_multi_candidate_route() {
-    production_continuation(IngressProtocol::Responses, IngressProtocol::Responses);
+    production_continuation(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        false,
+    );
+}
+
+#[test]
+fn production_responses_continuation_accepts_formatted_state_absent_from_terminal_snapshot() {
+    production_continuation(IngressProtocol::Responses, IngressProtocol::Responses, true);
 }
 
 #[test]
 fn production_messages_signature_keeps_responses_owner_in_multi_candidate_route() {
-    production_continuation(IngressProtocol::Messages, IngressProtocol::Responses);
+    production_continuation(IngressProtocol::Messages, IngressProtocol::Responses, false);
 }
 
 #[test]
 fn production_native_messages_fragmented_signature_and_tool_result_keep_actual_owner() {
-    production_continuation(IngressProtocol::Messages, IngressProtocol::Messages);
+    production_continuation(IngressProtocol::Messages, IngressProtocol::Messages, false);
 }
 
 const FIRST_MESSAGES: &[u8] = br#"event: message_start
@@ -68,7 +77,11 @@ data: {"type":"message_stop"}
 
 const SECOND_MESSAGES: &[u8] = br#"{"id":"native-done","model":"continuation-native-2","type":"message","role":"assistant","content":[{"type":"text","text":"done"}],"stop_reason":"end_turn","usage":{"input_tokens":8,"output_tokens":1}}"#;
 
-fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) {
+fn production_continuation(
+    ingress: IngressProtocol,
+    upstream: IngressProtocol,
+    replay_initial_state: bool,
+) {
     let _serial = process_test_lock();
     let directory = tempfile::tempdir().unwrap();
     let provider = ContinuationProvider::start(vec![
@@ -200,6 +213,18 @@ fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) 
     assert_eq!(response["model"], "continuation");
     let mut input = response["output"].as_array().unwrap().clone();
     assert_eq!(input[0]["encrypted_content"], "fixture-opaque-final");
+    let expected_state = if replay_initial_state {
+        let item = &events
+            .iter()
+            .find(|(name, _)| name == "response.output_item.added")
+            .expect("accepted initial reasoning state")
+            .1["item"];
+        assert_eq!(item["encrypted_content"], "fixture-opaque-first");
+        input[0] = item.clone();
+        "fixture-opaque-first"
+    } else {
+        "fixture-opaque-final"
+    };
     input.insert(0, initial);
     input.push(json!({"type":"message","role":"user","content":"continue"}));
     let next =
@@ -215,11 +240,12 @@ fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) 
     let bodies = provider.requests();
     let forwarded: Value = serde_json::from_slice(http_body(&bodies[1])).unwrap();
     assert_eq!(forwarded["model"], "continuation-native-2");
-    assert_eq!(
-        forwarded["input"][1]["encrypted_content"],
-        "fixture-opaque-final"
-    );
-    assert_eq!(forwarded["input"][1]["status"], "completed");
+    assert_eq!(forwarded["input"][1]["encrypted_content"], expected_state);
+    if replay_initial_state {
+        assert!(forwarded["input"][1].get("status").is_none());
+    } else {
+        assert_eq!(forwarded["input"][1]["status"], "completed");
+    }
     assert_eq!(
         forwarded["input"]
             .as_array()

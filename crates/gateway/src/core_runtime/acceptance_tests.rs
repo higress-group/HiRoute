@@ -10,7 +10,7 @@ use http::{HeaderMap, Method};
 
 use super::*;
 use crate::provider_state::ProviderStateScopeV1;
-use crate::server::core_runtime::profiles::{fixed_reasoning, CandidateProtocolProfile};
+use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
 #[test]
 fn cancelled_accepted_attempt_is_not_reported_as_transport_failure_or_success() {
@@ -216,9 +216,11 @@ async fn native_reasoning_state_is_reusable_only_after_its_formatted_wire_is_acc
         serde_json::json!({"input":[{"type":"reasoning",
                                                      "encrypted_content":state}]})
     };
-    assert!(states
-        .resolve_with_replay(&scope, &request("opaque/first"), None, Instant::now())
-        .is_err());
+    assert!(
+        states
+            .resolve_with_replay(&scope, &request("opaque/first"), None, Instant::now())
+            .is_err()
+    );
     let observation = observation::accepted_request_for_runtime_test();
     let mut downstream = FailSecondBodyWrite {
         writes: 0,
@@ -245,13 +247,17 @@ async fn native_reasoning_state_is_reusable_only_after_its_formatted_wire_is_acc
         resolved.owner_for("opaque/first"),
         Some(&profile.exact_provider_path().unwrap())
     );
-    assert!(session
-        .write_response_body(Bytes::from(frames[1].clone()), false)
-        .await
-        .is_err());
-    assert!(states
-        .resolve_with_replay(&scope, &request("opaque/second"), None, Instant::now())
-        .is_err());
+    assert!(
+        session
+            .write_response_body(Bytes::from(frames[1].clone()), false)
+            .await
+            .is_err()
+    );
+    assert!(
+        states
+            .resolve_with_replay(&scope, &request("opaque/second"), None, Instant::now())
+            .is_err()
+    );
 }
 
 fn request_head() -> GatewayRequestHead {
