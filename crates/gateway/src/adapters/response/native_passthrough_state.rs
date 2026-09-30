@@ -3,6 +3,29 @@ use super::super::super::continuation::record_provider_state_at_acceptance;
 use super::*;
 
 impl ProjectionState {
+    pub(super) fn normalizes_responses_state(&self, frame: &Value) -> bool {
+        if self.protocol != IngressProtocol::Responses || !self.authority.records_state() {
+            return false;
+        }
+        let carries_state = |item: &Value| {
+            item["type"] == "reasoning"
+                && item["encrypted_content"]
+                    .as_str()
+                    .is_some_and(|state| !state.is_empty())
+        };
+        match frame["type"].as_str() {
+            Some("response.output_item.added" | "response.output_item.done") => {
+                carries_state(&frame["item"])
+            }
+            Some("response.completed" | "response.incomplete" | "response.failed") => {
+                frame["response"]["output"]
+                    .as_array()
+                    .is_some_and(|output| output.iter().any(carries_state))
+            }
+            _ => false,
+        }
+    }
+
     pub(super) fn observe_reasoning_state(
         &mut self,
         index: u32,

@@ -398,13 +398,15 @@ impl ProjectionState {
         let changed = value
             != serde_json::from_slice::<Value>(data)
                 .map_err(|error| ModelIrError::InvalidJson(error.to_string()))?;
-        // Tool delivery bookkeeping matches the serialized ID field only after
-        // transport acceptance. Normalize this known frame's JSON syntax even
-        // when the native ID itself is unchanged (including escaped IDs).
-        let rewritten = (changed || self.tools.len() != tools_before)
-            .then(|| serde_json::to_vec(&value))
-            .transpose()
-            .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
+        // Delivery bookkeeping matches serialized owned fields only after
+        // transport acceptance. Normalize known tool/state frames even when
+        // their decoded values are unchanged (including whitespace/escapes).
+        let rewritten = (changed
+            || self.tools.len() != tools_before
+            || self.normalizes_responses_state(&value))
+        .then(|| serde_json::to_vec(&value))
+        .transpose()
+        .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
         Ok((rewritten, metadata))
     }
 
