@@ -1807,6 +1807,24 @@
       "collected_on": "2026-09-29",
       "bytes_digest": null,
       "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-175",
+      "authority": "developers.openai.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "collected_on": "2026-09-30",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-176",
+      "authority": "developers.openai.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://developers.openai.com/api/docs/changelog",
+      "collected_on": "2026-09-30",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -3822,6 +3840,49 @@
       "evidence_refs": [
         "source-126"
       ]
+    },
+    {
+      "model_key": "gpt-6.1-sol",
+      "publisher": "OpenAI",
+      "display_name": "GPT-6.1 Sol",
+      "canonical_identity": "gpt-6.1-sol",
+      "upstream_ids": [
+        "gpt-6.1-sol"
+      ],
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "supported",
+        "text_output": "supported"
+      },
+      "capabilities": {
+        "tool": "supported",
+        "streaming": "supported",
+        "web": "supported",
+        "file": "supported",
+        "computer": "supported"
+      },
+      "reasoning": {
+        "kind": "discrete",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "medium",
+        "note": "none and minimal are not supported"
+      },
+      "identity_stability": "unknown",
+      "lifecycle": "active",
+      "source_stability_note": "current-platform; snapshot permanence not documented",
+      "evidence_refs": [
+        "source-175",
+        "source-176"
+      ],
+      "data_note": "Tool calling requires Responses; Chat Completions is supported without tool calling."
     },
     {
       "model_key": "grok-4-6",
@@ -6389,6 +6450,27 @@
       ]
     },
     {
+      "binding_key": "openai-platform-global/gpt-6.1-sol/gpt-6.1-sol",
+      "product_key": "openai-platform-global",
+      "model_key": "gpt-6.1-sol",
+      "upstream_model_id": "gpt-6.1-sol",
+      "upstream_identity_role": "canonical-callable-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "openai-platform-global/openai-chat",
+        "openai-platform-global/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Platform API documentation lists Responses and Chat Completions; project tier and wire behavior require qualification. Tool calling requires Responses; Chat Completions does not support tool calling."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-175",
+        "source-176"
+      ]
+    },
+    {
       "binding_key": "tencent-hy-token-plan/hunyuan-hy3/hy3",
       "product_key": "tencent-hy-token-plan",
       "model_key": "hunyuan-hy3",
@@ -6948,6 +7030,53 @@
       "evidence_refs": [
         "source-126",
         "source-128"
+      ]
+    },
+    {
+      "pricing_key": "openai-platform-global/gpt-6.1-sol/gpt-6.1-sol",
+      "product_key": "openai-platform-global",
+      "model_key": "gpt-6.1-sol",
+      "upstream_model_id": "gpt-6.1-sol",
+      "currency": "USD",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "standard-long-context",
+          "condition": {
+            "kind": "prompt-token-threshold",
+            "minimum_input_tokens": 272001,
+            "service_tier": "standard",
+            "processing": "non-regional"
+          },
+          "application": "whole-request",
+          "rates": {
+            "input": "4",
+            "cache-read": "0.2",
+            "cache-write": "5",
+            "output": "15"
+          }
+        },
+        {
+          "schedule_key": "standard-short-context",
+          "condition": {
+            "kind": "prompt-token-threshold",
+            "maximum_input_tokens": 272000,
+            "service_tier": "standard",
+            "processing": "non-regional"
+          },
+          "application": "whole-request",
+          "rates": {
+            "input": "2",
+            "cache-read": "0.1",
+            "cache-write": "2.5",
+            "output": "10"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-175",
+        "source-176"
       ]
     }
   ],
@@ -74673,6 +74802,150 @@
         },
         {
           "source_key": "source-128"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "cost_hint_state": "recorded"
+    },
+    {
+      "model_record_key": "official/openai-platform/gpt-6.1-sol",
+      "provider_record_key": "official/openai-platform",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-175"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-176"
+        }
+      ],
+      "provider_id": "openai-platform",
+      "upstream_model_id": "gpt-6.1-sol",
+      "display_name": "GPT-6.1 Sol",
+      "context_tokens": {
+        "state": "known",
+        "value": 1050000
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 128000
+      },
+      "input_modalities": [
+        "image",
+        "text"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [
+          "high",
+          "low",
+          "max",
+          "medium",
+          "xhigh"
+        ],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [
+        {
+          "currency": "USD",
+          "unit": "per-1m-tokens",
+          "condition": "standard non-regional; tiered at 272000 input tokens",
+          "input": 2,
+          "output": 10,
+          "cacheRead": 0.1,
+          "cacheWrite": 2.5,
+          "tieredPricing": [
+            {
+              "range": [
+                0,
+                272000
+              ],
+              "input": 2,
+              "output": 10,
+              "cacheRead": 0.1,
+              "cacheWrite": 2.5
+            },
+            {
+              "range": [
+                272001
+              ],
+              "input": 4,
+              "output": 15,
+              "cacheRead": 0.2,
+              "cacheWrite": 5
+            }
+          ]
+        }
+      ],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [
+        "provider-documented-model"
+      ],
+      "normalized_model_matches": [
+        "gpt-6.1-sol"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "partial",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "complete"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "cost-hint-display",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "reasoning-rendering-hint",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [
+        {
+          "id": "gpt-6.1-sol",
+          "contextWindow": 1050000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ],
+          "defaultEffort": "medium",
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "toolCallingProtocol": "responses",
+          "chatCompletionsToolCalling": false,
+          "structuredOutputs": true,
+          "knowledgeCutoff": "2026-04-30",
+          "releasedOn": "2026-09-29"
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-175"
+        },
+        {
+          "source_key": "source-176"
         }
       ],
       "execution_fit": {

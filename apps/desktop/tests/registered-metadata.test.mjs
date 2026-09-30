@@ -157,6 +157,13 @@ test('all template models enter the check draft with product facts or editable d
   assert.deepEqual(anthropic.capability_prefill.native_reasoning.value,
     { kind: 'discrete', parameter: 'claude_adaptive_effort',
       profiles: ['low', 'medium', 'high', 'xhigh', 'max'], default_profile: 'medium' });
+  const sol = registeredModelCandidates(option('openai.platform.global.v1'), bundle.metadata_catalog)
+    .find(candidate => candidate.upstream_model_id === 'gpt-6.1-sol');
+  assert.equal(sol.capability_prefill.context_tokens.value, 1_050_000);
+  assert.equal(sol.capability_prefill.max_output_tokens.value, 128_000);
+  assert.deepEqual(sol.capability_prefill.native_reasoning.value,
+    { kind: 'discrete', parameter: 'reasoning_effort',
+      profiles: ['low', 'medium', 'high', 'xhigh', 'max'], default_profile: 'medium' });
   const edited = { ...blankModel('glm-5.3', 'My GLM'), capabilities: {
     ...blankModel().capabilities, context_tokens: { value: 1000, basis: 'user_declared' },
   } };
