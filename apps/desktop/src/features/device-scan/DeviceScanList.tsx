@@ -137,6 +137,7 @@ export function DeviceScanList({
           <p>{repairing ? text('重新检查当前订阅登录', 'Check the current subscription sign-in again') : candidate.existing_source_id ? text('已接入，可以在模型页查看', 'Connected. View it on the Models page') : text('已发现本机登录', 'Local sign-in found')}</p>
         </div>
         <button className={`btn${repairing || !candidate.existing_source_id ? ' btn-primary' : ''}`} type="button" disabled={!trustedAuthority && (repairing || !candidate.existing_source_id)} onClick={() => repairing || !candidate.existing_source_id ? onOpenSubscription(candidate) : onViewConnectedSubscription(candidate)}>{repairing ? text('检查', 'Check') : candidate.existing_source_id ? text('查看', 'View') : text('接入', 'Connect')}</button>
+        {candidate.existing_source_id && !repairing && <button className="btn" type="button" disabled={!trustedAuthority} onClick={() => onOpenSubscription(candidate)}>{text('调整模型', 'Choose models')}</button>}
       </div>;
     })}
     {!subscriptions.length && !subscriptionScanFailed && !subscriptionRuntimeUnavailable && <p className="oc-meta" role="status">{text('没有发现可复用的 Codex 订阅。', 'No reusable Codex subscription was found.')}</p>}

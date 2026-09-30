@@ -219,6 +219,68 @@ const scenarios = [
     assert(!document.querySelector('[role="alert"]'), 'Unknown save falsely reported failed');
     assert(c().recoveryRefreshes > 0, 'Unknown operation not handed to recovery');
   }],
+  ['adjustment can remove a saved model absent from the current directory and add a new model', async () => {
+    await fresh(control => {
+      const source = control.management.sources[0];
+      const template = source.models[0];
+      source.models = [
+        { ...template, model_ref: 'model/retired', display_name: 'Saved retired model' },
+        { ...template, model_ref: 'model/matched', display_name: 'Matched model' },
+      ];
+      control.subscriptions = [{ ...control.pending, existing_source_id: source.source_id }];
+      const checked = { ...control.checked, existing_source_id: source.source_id, models: [
+        control.checked.models[0],
+        { ...control.checked.models[0], model_ref: 'model/new', display_name: 'New model' },
+      ] };
+      control.handlers.check_subscription = () => {
+        control.subscriptions = [checked];
+        control.result = { ...control.verified, checked_candidate: checked };
+        return control.result;
+      };
+    });
+    await scan(); await click('调整模型'); await click('检查订阅');
+    await until(() => button('保存接入'), 'adjustment checked');
+    const box = name => [...document.querySelectorAll('.v3-catalog .check-row')].find(row => row.textContent.includes(name))?.querySelector('input');
+    assert(box('Saved retired model')?.checked && !box('Saved retired model').disabled, 'Missing saved model has no removal control');
+    assert(box('Matched model').checked && !box('New model').checked, 'Adjustment changed saved selections automatically');
+    assert(button('保存接入').disabled, 'Missing model can be submitted');
+    box('Saved retired model').click(); await tick();
+    assert(!box('Saved retired model'), 'Removed missing model remains selected');
+    box('New model').click(); await tick();
+    await click('保存接入');
+    await until(() => calls('apply_compute_save').length === 1, 'adjustment applied');
+    assert(JSON.stringify(calls('preview_compute_save')[0].payload.change.selected_model_refs) === '["model/matched","model/new"]', 'Explicit adjustment submitted stale or automatic selections');
+  }],
+  ['adjustment can deselect a listed unavailable model but cannot select an unavailable model', async () => {
+    await fresh(control => {
+      const source = control.management.sources[0];
+      const template = source.models[0];
+      source.models = [
+        { ...template, model_ref: 'model/unavailable', display_name: 'Unavailable saved model' },
+        { ...template, model_ref: 'model/matched', display_name: 'Matched model' },
+      ];
+      control.subscriptions = [{ ...control.pending, existing_source_id: source.source_id }];
+      const checked = { ...control.checked, existing_source_id: source.source_id, models: [
+        { ...control.checked.models[0], model_ref: 'model/unavailable', display_name: 'Unavailable saved model', selectable: false },
+        control.checked.models[0], control.checked.models[1],
+      ] };
+      control.handlers.check_subscription = () => {
+        control.subscriptions = [checked];
+        control.result = { ...control.verified, checked_candidate: checked };
+        return control.result;
+      };
+    });
+    await scan(); await click('调整模型'); await click('检查订阅');
+    await until(() => button('保存接入'), 'unavailable adjustment checked');
+    const box = name => [...document.querySelectorAll('.v3-catalog .check-row')].find(row => row.textContent.includes(name))?.querySelector('input');
+    assert(box('Unavailable saved model')?.checked && !box('Unavailable saved model').disabled, 'Unavailable saved model cannot be deselected');
+    assert(box('Inventory only').disabled && !box('Inventory only').checked, 'Unverified addition was enabled');
+    box('Unavailable saved model').click(); await tick();
+    assert(!box('Unavailable saved model').checked && box('Unavailable saved model').disabled, 'Unavailable model can be selected again');
+    await click('保存接入');
+    await until(() => calls('apply_compute_save').length === 1, 'unavailable adjustment applied');
+    assert(JSON.stringify(calls('preview_compute_save')[0].payload.change.selected_model_refs) === '["model/matched"]', 'Unavailable model survived the explicit removal');
+  }],
 ];
 
 export async function runSubscriptionRepairScenarios(start = 0, end = Infinity) {

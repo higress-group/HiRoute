@@ -31,6 +31,8 @@ use hiroute_domain::{
 use super::super::super::ControlStore;
 use crate::{LocalSecretStore, LocalStorageSet, RuntimeStore};
 
+mod subscription_selection;
+
 struct ProtectedInput;
 
 impl ProtectedInputPort for ProtectedInput {

@@ -137,8 +137,14 @@ where
                     && candidate.producer
                         == hiroute_application_api::ComputeCandidateProducerV2::Cpa
                     && candidate.existing_source_id.as_deref()
-                        == Some(source.source_id.as_str()) =>
+                        == Some(source.source_id.as_str())
+                    && change
+                        .selected_model_refs
+                        .iter()
+                        .eq(source.models.iter().map(|model| &model.model_ref)) =>
             {
+                // An unchanged recheck preserves lost members as unavailable. Explicit
+                // selection edits use ordinary candidate validation instead of retention.
                 ModelSelectionPolicy::RetainSubscriptionMembers
             }
             _ => policy,

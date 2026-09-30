@@ -49,6 +49,18 @@ export function canSave(candidate: SubscriptionCandidate, enable: boolean, selec
   return selected.size > 0;
 }
 
+export function selectionRows(candidate: SubscriptionCandidate, selected: ReadonlySet<string>, saved: readonly { model_ref: string; display_name: string }[] = []) {
+  const rows = candidate.models.map(model => ({
+    model_ref: model.model_ref, display_name: model.display_name, selectable: model.selectable, missing: false,
+  }));
+  for (const ref of selected) {
+    if (!rows.some(model => model.model_ref === ref)) {
+      rows.push({ model_ref: ref, display_name: saved.find(model => model.model_ref === ref)?.display_name ?? ref, selectable: false, missing: true });
+    }
+  }
+  return rows;
+}
+
 export type CloseAction =
   | { kind: 'none' }
   | { kind: 'cancel_a'; operation_id: string }
