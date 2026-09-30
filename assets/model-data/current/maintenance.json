@@ -3,9 +3,9 @@
   "source_bundle": "assets/model-data/current/rating-seed.json",
   "source_bytes_digest": "sha256:2f3b02526a9263e756c3a94e4d74336aca36724abd984fbec4a0a89833619b9f",
   "metadata_catalog": "assets/model-data/current/inputs/metadata-catalog.json",
-  "metadata_catalog_bytes_digest": "sha256:627e4ebc9164c8fb00ea486c6d1d15182a981e637dd221d866a7c3953261444c",
+  "metadata_catalog_bytes_digest": "sha256:0b4bde6935419e34f67b95da508c0236180d2a069bff5ccd8a33b06f42fdcc6a",
   "client_discovery_runs": "assets/model-data/current/inputs/client-discovery-runs.json",
-  "client_discovery_runs_bytes_digest": "sha256:c7fe1562bd686706eea8a43a3b92a8598122c75d22dc168761deb2416d5339a9",
+  "client_discovery_runs_bytes_digest": "sha256:60bd8809284ce32e7ad42c4ac0e8180c02cc1354023a40973ca25b24c03aa0af",
   "snapshot_version": "hiroute-20260913/current-1",
   "method_revision": "preserved-explicit-native/v1",
   "evidence": {
@@ -632,6 +632,75 @@
             "region_id": "global",
             "model_configuration_ids": [
               "model.openai.gpt-6-sol"
+            ],
+            "billing_class": "subscription",
+            "evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "model": {
+        "model_configuration_id": "model.openai.gpt-6.1-sol",
+        "revision": 1,
+        "display_name": "GPT-6.1 Sol",
+        "publisher_id": "publisher.openai",
+        "capabilities": {
+          "tool": true,
+          "vision": true,
+          "streaming": true,
+          "context_tokens": 272000,
+          "max_output_tokens": 128000
+        }
+      },
+      "native_capability": {
+        "kind": "discrete",
+        "parameter": "reasoning_effort",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      "sources": [
+        "https://chatgpt.com/backend-api/codex/models?client_version=0.159.0",
+        "https://developers.openai.com/api/docs/models/gpt-6.1-sol"
+      ],
+      "collected_on": "2026-09-30",
+      "identity_note": "Codex 0.159.0 authenticated directory advertises GPT-6.1 Sol with 272,000 default context and low..max reasoning profiles. Its ultra automatic-delegation mode is not projected as a Responses reasoning.effort value. Output limit is the labeled public-model inference in the provider-scoped record; account availability still requires observed CPA inventory. No subscription token price is inferred from API pricing.",
+      "rating_method": "Unknown: no comparable measurement on the retained legacy scale. No new normalization.",
+      "catalog_intent": {
+        "endpoint_capabilities": [
+          {
+            "capability_id": "cap.openai.gpt-6.1-sol.codex.responses",
+            "revision": 1,
+            "model_configuration_id": "model.openai.gpt-6.1-sol",
+            "connector_id": "connector.cpa.codex",
+            "connector_revision": 1,
+            "endpoint_profile_id": "endpoint.cpa.codex",
+            "endpoint_profile_revision": 1,
+            "protocol_endpoint_id": "endpoint.cpa.codex.responses",
+            "upstream_protocol": "responses",
+            "upstream_model_id": "gpt-6.1-sol",
+            "required_adapter_ref": "adapter.openai-responses.v1",
+            "required_adapter_revision": 1,
+            "evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "offers": [
+          {
+            "offer_id": "offer.codex.subscription",
+            "revision": 1,
+            "endpoint_profile_id": "endpoint.cpa.codex",
+            "endpoint_profile_revision": 1,
+            "service_offering_id": "codex-subscription",
+            "entitlement_id": "codex-subscription",
+            "usage_scope": "account",
+            "region_id": "global",
+            "model_configuration_ids": [
+              "model.openai.gpt-6.1-sol"
             ],
             "billing_class": "subscription",
             "evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"

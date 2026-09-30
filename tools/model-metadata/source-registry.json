@@ -357,6 +357,7 @@
     {
       "authority_key": "openai",
       "allowed_https_prefixes": [
+        "https://chatgpt.com/backend-api/codex/models",
         "https://developers.openai.com/",
         "https://learn.chatgpt.com/"
       ],

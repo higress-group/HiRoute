@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
   "as_of": "2026-09-29",
-  "catalog_digest_compared": "sha256:dce4a5da92c8c7ce12903a3acecc6cfdd8a8eb64708a9e98836fdced1939d517",
+  "catalog_digest_compared": "sha256:c403d30a23b40b59c271fad12f3c2e32357d406a2a6a2d4ad950e0cdd82cd1b9",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -11,24 +11,24 @@
     "determinate_outcome_closure_script": ".agents/skills/model-metadata-maintainer/scripts/close_model_metadata.py"
   },
   "materialization": {
-    "model_metadata_record_count": 766,
+    "model_metadata_record_count": 767,
     "provider_metadata_record_count": 105,
     "scenario_eligible_record_counts": {
       "adapter-planning": 4,
-      "context-limit-prefill": 762,
+      "context-limit-prefill": 763,
       "cost-hint-display": 233,
       "credential-setup-hint": 105,
       "custom-api-endpoint-prefill": 85,
-      "custom-api-model-prefill": 766,
-      "lifecycle-warning": 766,
-      "model-directory": 766,
+      "custom-api-model-prefill": 767,
+      "lifecycle-warning": 767,
+      "model-directory": 767,
       "model-discovery-setup": 102,
-      "output-limit-prefill": 735,
+      "output-limit-prefill": 736,
       "provider-directory": 105,
-      "reasoning-capability-prefill": 762,
-      "reasoning-rendering-hint": 366,
-      "request-limit-prefill": 738,
-      "vision-capability-prefill": 764
+      "reasoning-capability-prefill": 763,
+      "reasoning-rendering-hint": 367,
+      "request-limit-prefill": 739,
+      "vision-capability-prefill": 765
     },
     "unique_upstream_model_id_count": 400
   },
@@ -96,6 +96,12 @@
       "client_signal": "Provider-scoped records kept unknown or partial capability, limit, lifecycle, modality, rendering, and endpoint fields even where official family documentation and the user decision allow a determinate conservative outcome.",
       "provider_resolution": "Every indeterminate field is closed through a reviewed rule table: searched facts stay observed, conservative family/product inferences are recorded per field as basis=inferred with their rule_key and evidence, and explicit unsupported or not-applicable outcomes are used where the field does not apply.",
       "catalog_result": "761 model records and 103 provider records are fully determinate; inference rules, field provenance, execution_fit outcomes, and the extended vocabulary are embedded in the catalog and re-verified by closure fixed-point and field validators."
+    },
+    {
+      "change_key": "gpt61-codex-subscription-projection",
+      "client_signal": "The authenticated Codex 0.159.0 directory advertises GPT-6.1 Sol and reasoning profiles; the previous current source only described the public API product.",
+      "provider_resolution": "Add a separate Codex provider-scoped record using the advertised default context and documented low..max wire efforts. Label the public-model output limit as an inference and keep subscription cost hints absent. Existing pinned client scans are unchanged; no new repository scan is claimed.",
+      "catalog_result": "The existing Codex Responses offer gains the reviewed GPT-6.1 Sol definition and reasoning profiles. Account eligibility remains gated by current observed inventory."
     },
     {
       "change_key": "tencent-hy-callable-ids",

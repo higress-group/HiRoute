@@ -50,6 +50,26 @@
   ],
   "model_rules": [
     {
+      "rule_key": "rule.codex.gpt-6.1-sol-output/v1",
+      "record_kind": "model",
+      "collected_on": "2026-09-30",
+      "match": {
+        "provider_id_pattern": "^openai-codex$",
+        "upstream_model_id_pattern": "^gpt-6\\.1-sol$"
+      },
+      "assignments": {
+        "max_output_tokens": {
+          "state": "known",
+          "value": 128000
+        }
+      },
+      "reason": "The authenticated Codex directory publishes context and effort profiles but no output limit. Conservatively inherit the same GPT-6.1 Sol model's public 128,000 output limit as an explicitly labeled inference, not a measured subscription entitlement. Runtime account eligibility remains separate.",
+      "evidence_refs": [
+        "source-175",
+        "source-177"
+      ]
+    },
+    {
       "rule_key": "rule.codex.auto-review/v1",
       "record_kind": "model",
       "match": {
