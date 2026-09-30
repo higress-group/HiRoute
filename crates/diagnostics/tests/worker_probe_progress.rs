@@ -105,6 +105,16 @@ fn a_running_worker_step_republishes_and_never_clears_the_startup_stage() {
         WorkerStageKind::ProbeLoad,
         WorkerStageOutcome::Completed,
     );
+    // Shutdown deliberately bounds its wait for the writer; it is not a persistence
+    // barrier on a slow filesystem. Observe the real end before checking its ordering.
+    assert!(
+        wait_until(Instant::now() + Duration::from_secs(12), || {
+            worker_steps(&log, WorkerStageKind::ProbeLoad)
+                .iter()
+                .any(|step| step.outcome == WorkerStageOutcome::Completed)
+        }),
+        "the real step end must be written before validating the lifecycle"
+    );
     runtime.shutdown();
 
     let steps = worker_steps(&log, WorkerStageKind::ProbeLoad);
