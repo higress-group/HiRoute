@@ -112,39 +112,51 @@ fn current_catalog_reconciles_observed_models_without_cross_provider_matching() 
 #[test]
 fn current_codex_subscription_catalog_qualifies_sol_only_on_its_exact_account_inventory() {
     let catalog = current_catalog();
-    let models = catalog
-        .reconcile_observed_inventory(
-            "endpoint.cpa.codex",
-            [ObservedModelV1 {
-                upstream_model_id: "gpt-6-sol".into(),
-                metadata: Default::default(),
-            }],
-        )
-        .unwrap();
-    assert_eq!(models.len(), 1);
-    assert_eq!(
-        models[0].disposition,
-        hiroute_domain::InventoryDisposition::CatalogMatched
-    );
-    assert_eq!(
-        models[0].model_configuration_id.as_deref(),
-        Some("model.openai.gpt-6-sol")
-    );
-    assert_eq!(
-        catalog
-            .native_reasoning()
-            .iter()
-            .find(|value| value.model_configuration_id == "model.openai.gpt-6-sol")
-            .map(|value| &value.capability),
-        Some(&hiroute_domain::NativeReasoningCapabilityV1::Discrete {
-            parameter: "reasoning_effort".into(),
-            profiles: ["none", "low", "medium", "high", "xhigh", "max"]
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-            default_profile: None,
-        })
-    );
+    for (upstream_model_id, profiles) in [
+        (
+            "gpt-6-sol",
+            &["none", "low", "medium", "high", "xhigh", "max"][..],
+        ),
+        (
+            "gpt-6.1-sol",
+            &["low", "medium", "high", "xhigh", "max"][..],
+        ),
+    ] {
+        let models = catalog
+            .reconcile_observed_inventory(
+                "endpoint.cpa.codex",
+                [ObservedModelV1 {
+                    upstream_model_id: upstream_model_id.into(),
+                    metadata: Default::default(),
+                }],
+            )
+            .unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(
+            models[0].disposition,
+            hiroute_domain::InventoryDisposition::CatalogMatched
+        );
+        let configuration_id = format!("model.openai.{upstream_model_id}");
+        assert_eq!(
+            models[0].model_configuration_id.as_deref(),
+            Some(configuration_id.as_str())
+        );
+        assert_eq!(
+            catalog
+                .native_reasoning()
+                .iter()
+                .find(|value| value.model_configuration_id == configuration_id)
+                .map(|value| &value.capability),
+            Some(&hiroute_domain::NativeReasoningCapabilityV1::Discrete {
+                parameter: "reasoning_effort".into(),
+                profiles: profiles
+                    .iter()
+                    .map(|profile| (*profile).to_owned())
+                    .collect(),
+                default_profile: None,
+            })
+        );
+    }
 }
 
 #[test]
