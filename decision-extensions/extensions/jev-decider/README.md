@@ -167,6 +167,14 @@ are also recorded. Missing competence retains the existing non-blocking behavior
 These explain the rule, not model-generated reasoning. Request text, credentials and
 raw upstream bodies are not logged. Embedded hosts must enable `jev_decider` at INFO.
 
+`decision_completed.upstream_usage` preserves valid upstream-reported `input_tokens`,
+`output_tokens`, and `cost` (USD on OpenRouter), including a response whose decision
+answer is subsequently rejected. Only these numeric fields are logged; arbitrary usage
+fields are excluded. Missing/invalid usage is `null`, and omitted fields remain unknown,
+not zero. A reported zero is preserved. Usage does not alter the decision response,
+branch choice or retry behavior. Include failed-call usage when totaling decision cost;
+timeouts and rejected/malformed responses without usage cannot establish a zero charge.
+
 ### Running tests
 
 The suite starts the real HTTP handler and a controlled upstream server. It does not read a real key or access the network:

@@ -114,6 +114,12 @@ HiRoute 的智能省钱计划配置：
 启动日志记录智能省钱的有效定义哈希；每次决策日志记录实际 `criteria_source`（default/policy/request）和
 `criteria_sha256`，不记录定义正文。比对不同实验时应同时固定需求、可见历史、定义哈希、模型和阈值。
 
+`decision_completed.upstream_usage` 保留上游实际报告的 `input_tokens`、`output_tokens` 和
+`cost`（OpenRouter 为美元），即使随后判定答案无效也保留，便于把失败调用纳入费用。
+仅记录这三个合法数值字段，不记录 usage 中的其他字段；缺失/非法用量为 `null`，缺字段仍是未知，
+不会补成零。上游明确报告的零会保留。用量不改变响应合同、分支选择或重试；超时及没有用量的
+拒绝/非法响应不能当作零费用。通过 `X-Jev-Decision-Id` 对应现有决策日志即可，无需新存储。
+
 ## 上下文边界
 
 服务接收完整、非空的 `latest_user` 和保留的 `visible_conversation`。一次决策可能因为没有可继承分支、追加了用户消息，或 ContextHold 不再有候选保持而开始；服务不识别压缩。因此 `latest_user` 可以与上一执行轮次相同，也可以是客户端生成的摘要/继续消息，这种形状本身不是用户反馈。每个 visible 项是已封存的路由执行轮次；仅因进入下一决策边界而封存的项可以是 `unknown`，但仍可能包含可评分的实际推进。
