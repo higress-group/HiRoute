@@ -445,6 +445,11 @@ impl ProductionBundle {
             "aggregate_port_digest": CURRENT_AGGREGATE_PORT_DIGEST,
         }));
         bundle.profile.sut_source_revision = identity.revision.clone();
+        // Current same-protocol delivery preserves Responses shorthand. Keep
+        // the sealed historical oracle unchanged, but assert the actual native
+        // input contract for the current candidate (not canonical array shape).
+        bundle.fixture.case.providers[0].expected_request.body["input"] =
+            bundle.fixture.case.ingress.body["input"].clone();
         bundle.candidate = Some(identity);
         Ok(bundle)
     }
