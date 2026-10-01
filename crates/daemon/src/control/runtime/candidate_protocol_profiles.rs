@@ -5,7 +5,7 @@ use hiroute_domain::{
     GatewayNativeProviderStateEmissionV1, GatewayNativeReasoningFieldAssignmentV1,
     GatewayNativeReasoningRenderV1, GatewayNativeReasoningValueV1, GatewayReasoningAccountingV1,
     GatewayReasoningControlKindV1, GatewayReasoningProfileCapabilityV1,
-    GatewayRequestFeatureProfileV1, GatewayResponseFeatureProfileV1, GatewayStateAffinityV1,
+    GatewayRequestFeatureProfileV1, GatewayResponseFeatureProfileV1,
     GatewayStreamingRefusalSemanticsV1, GatewayTokenEstimatorProfileV1, ModelDefinitionV1,
     ModelEndpointCapabilityV1, ModelNativeReasoningV1, NativeReasoningCapabilityV1,
     NativeReasoningRenderConventionV1, UpstreamProtocol,
@@ -76,13 +76,10 @@ pub(super) fn protocol_profiles(
         else {
             continue;
         };
-        let exact_provider_state = (runtime_kind == ConnectorRuntimeKind::CpaBridge
-            && matches!(
-                upstream_protocol,
-                UpstreamProtocol::Responses | UpstreamProtocol::Messages
-            ))
-            || (runtime_kind == ConnectorRuntimeKind::BuiltinNative
-                && upstream_protocol == UpstreamProtocol::Messages);
+        let exact_provider_state = matches!(
+            upstream_protocol,
+            UpstreamProtocol::Responses | UpstreamProtocol::Messages
+        );
         let exact = GatewayFidelityV1::Exact;
         let unsupported = GatewayFidelityV1::Unsupported;
         let tool = if model.capabilities.tool {
@@ -170,11 +167,6 @@ pub(super) fn protocol_profiles(
                     } else {
                         unsupported
                     },
-                    state_affinity: if exact_provider_state {
-                        GatewayStateAffinityV1::ExactOwner
-                    } else {
-                        GatewayStateAffinityV1::Unsupported
-                    },
                 },
                 response: GatewayResponseFeatureProfileV1 {
                     text: exact,
@@ -189,11 +181,6 @@ pub(super) fn protocol_profiles(
                         exact
                     } else {
                         unsupported
-                    },
-                    state_affinity: if exact_provider_state {
-                        GatewayStateAffinityV1::ExactOwner
-                    } else {
-                        GatewayStateAffinityV1::Unsupported
                     },
                     stream_refusal: if upstream_protocol == UpstreamProtocol::Messages {
                         GatewayStreamingRefusalSemanticsV1::TerminalClassified
@@ -228,7 +215,7 @@ pub(super) fn protocol_profiles(
                 },
                 native_streaming: GatewayCriticalFactV1::Exact(model.capabilities.streaming),
                 native_provider_state: if exact_provider_state {
-                    GatewayNativeProviderStateEmissionV1::ExactOwnerAffine
+                    GatewayNativeProviderStateEmissionV1::Native
                 } else {
                     GatewayNativeProviderStateEmissionV1::Never
                 },

@@ -281,7 +281,6 @@ fn fixture_protocol_profile(
                 tool_result_json: exact,
                 logical_tool_id_mapping: exact,
                 provider_state: GatewayFidelityV1::Unsupported,
-                state_affinity: GatewayStateAffinityV1::Unsupported,
             },
             response: GatewayResponseFeatureProfileV1 {
                 text: exact,
@@ -293,7 +292,6 @@ fn fixture_protocol_profile(
                 finish_reason: exact,
                 typed_error: exact,
                 provider_state: GatewayFidelityV1::Unsupported,
-                state_affinity: GatewayStateAffinityV1::Unsupported,
                 stream_refusal: GatewayStreamingRefusalSemanticsV1::ExactDelta,
                 stream_text_delta: exact,
                 stream_tool_argument_delta: exact,

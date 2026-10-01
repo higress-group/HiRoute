@@ -201,7 +201,8 @@ fn native_messages_signatures_use_budget_without_byte_or_block_quotas() {
             wire.as_bytes()
         );
     }
-    assert!(budget.snapshot().unwrap().live > 0);
+    // Native passthrough no longer retains signatures for a continuation registry.
+    assert_eq!(budget.snapshot().unwrap().live, 0);
     drop(projector);
     assert_eq!(budget.snapshot().unwrap().live, 0);
 }

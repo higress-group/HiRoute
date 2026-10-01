@@ -153,6 +153,8 @@ pub(super) struct CandidateObservation {
 
 #[derive(Clone, Debug)]
 pub(super) struct AttemptObservation {
+    pub(super) reasoning_fields_removed: u64,
+    pub(super) response_cleanup_reported: bool,
     pub(super) ordinal: u32,
     pub(super) attempt_id: String,
     pub(super) stable_binding_id: String,
@@ -239,6 +241,72 @@ impl RequestObservation {
         self.inner
             .context
             .token(CorrelationDomain::Attempt, attempt_id)
+    }
+
+    pub(crate) fn reasoning_cleanup(
+        &self,
+        reason: hiroute_diagnostics::event::ReasoningCleanupReason,
+        removed: usize,
+        prefix: Option<usize>,
+    ) {
+        use hiroute_diagnostics::event::{ReasoningCleanup, ReasoningCleanupReason};
+        if removed == 0 {
+            return;
+        }
+        let response = reason == ReasoningCleanupReason::ResponseProtocolProjection;
+        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        let next_ordinal = state.next_attempt_ordinal;
+        let attempt = if response {
+            if state.accepted_attempt.is_some() {
+                state.accepted_attempt.as_mut()
+            } else if state.current_attempt.is_some() {
+                state.current_attempt.as_mut()
+            } else {
+                state.pending_attempt.as_mut()
+            }
+        } else {
+            state.pending_attempt.as_mut()
+        };
+        let Some(attempt) = attempt else {
+            return;
+        };
+        attempt.reasoning_fields_removed = attempt
+            .reasoning_fields_removed
+            .saturating_add(removed as u64);
+        let report = !response || !attempt.response_cleanup_reported;
+        attempt.response_cleanup_reported |= response;
+        let event = ReasoningCleanup {
+            request_token: self.inner.request_token,
+            // Before upstream I/O the core has not published its Attempt ID.
+            // Correlate by request + upcoming ordinal + binding; never hash an
+            // empty ID or delay the warning until the provider finishes.
+            attempt_token: (!attempt.attempt_id.is_empty())
+                .then(|| self.attempt_token(&attempt.attempt_id))
+                .flatten(),
+            attempt_index: u64::from(if attempt.ordinal == 0 {
+                next_ordinal
+            } else {
+                attempt.ordinal
+            }),
+            binding_token: self
+                .inner
+                .context
+                .token(CorrelationDomain::Binding, &attempt.stable_binding_id),
+            ingress_protocol: self.ingress_protocol(),
+            upstream_protocol: match attempt.upstream_protocol.as_str() {
+                "responses" => DiagnosticIngressProtocol::OpenAiResponses,
+                "messages" => DiagnosticIngressProtocol::AnthropicMessages,
+                "chat_completions" => DiagnosticIngressProtocol::OpenAiChat,
+                _ => DiagnosticIngressProtocol::Unknown,
+            },
+            reason,
+            fields_removed_so_far: attempt.reasoning_fields_removed,
+            cleaned_prefix_len: prefix.map(|n| n as u64),
+        };
+        drop(state);
+        if report {
+            self.emit_diagnostic(DiagnosticEvent::ReasoningCleanup(event));
+        }
     }
 
     fn ingress_protocol(&self) -> DiagnosticIngressProtocol {
@@ -652,6 +720,8 @@ impl RequestObservation {
                     streaming: false,
                 });
         let attempt = AttemptObservation {
+            reasoning_fields_removed: 0,
+            response_cleanup_reported: false,
             ordinal: 0,
             attempt_id: String::new(),
             stable_binding_id: candidate.stable_binding_id,

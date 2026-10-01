@@ -34,6 +34,132 @@ const CHAT_REFUSAL: &[u8] = br#"{"id":"chat-refusal","object":"chat.completion",
 const CHAT_OK: &[u8] = br#"{"id":"chat-ok","object":"chat.completion","model":"runtime-native","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
 const PROTOCOL_ERROR: &[u8] =
     br#"{"error":{"type":"protocol_error","message":"retry another candidate"}}"#;
+const REASONING_ERROR: &[u8] =
+    br#"{"error":{"code":"invalid_encrypted_content","message":"fixture history rejected"}}"#;
+
+#[test]
+fn real_hirouted_context_break_cleans_once_and_reuses_only_the_old_prefix() {
+    let simple = NativeProvider::start(vec![
+        ProviderReply::Complete {
+            status: 400,
+            error_kind: None,
+            body: REASONING_ERROR,
+        },
+        complete(),
+        complete(),
+        complete(),
+    ]);
+    let complex = NativeProvider::start(vec![complete()]);
+    let fixture = RuntimeFixture::launch_classified(&[&simple, &complex], 3);
+    assert_eq!(
+        send(
+            &fixture,
+            "cleanup",
+            vec![message("user", "complex-route initial work")]
+        )
+        .status,
+        200
+    );
+    let old = json!({"type":"reasoning","summary":[],"encrypted_content":"old-state"});
+    let mut history = vec![old, message("user", "rename after compaction")];
+    assert_eq!(send(&fixture, "cleanup", history.clone()).status, 200);
+    assert_eq!((simple.calls(), complex.calls()), (2, 1));
+    let requests = simple.requests();
+    assert_eq!(
+        request_json_body(&requests[0])["input"][0]["encrypted_content"],
+        "old-state"
+    );
+    assert_eq!(
+        request_json_body(&requests[1])["input"],
+        json!([message("user", "rename after compaction")])
+    );
+    history.push(json!({"type":"reasoning","summary":[],"encrypted_content":"new-model-state"}));
+    history.push(message("assistant", "ok"));
+    history.push(message("user", "rename the label"));
+    assert_eq!(send(&fixture, "cleanup", history.clone()).status, 200);
+    let projected = request_json_body(&simple.requests()[2]);
+    let wire = serde_json::to_string(&projected).unwrap();
+    assert!(!wire.contains("old-state"));
+    assert!(wire.contains("new-model-state"));
+    // An instruction change invalidates the strong candidate hint, not an
+    // already successful cleanup prefix in otherwise continuous history.
+    let response = send_document(
+        &fixture,
+        "cleanup",
+        json!({
+            "model":MODEL, "stream":false, "instructions":"Keep answers concise",
+            "input":history,
+        }),
+    );
+    assert_eq!(response.status, 200);
+    let projected = request_json_body(&simple.requests()[3]);
+    assert_eq!(
+        projected["input"],
+        request_json_body(&simple.requests()[2])["input"]
+    );
+    assert_eq!((simple.calls(), complex.calls()), (4, 1));
+}
+
+#[test]
+fn real_hirouted_failed_cleaned_retry_returns_to_original_without_mutating_its_history() {
+    let simple = NativeProvider::start(vec![
+        ProviderReply::Complete {
+            status: 400,
+            error_kind: None,
+            body: REASONING_ERROR,
+        },
+        ProviderReply::Complete {
+            status: 400,
+            error_kind: None,
+            body: REASONING_ERROR,
+        },
+        ProviderReply::Complete {
+            status: 400,
+            error_kind: None,
+            body: REASONING_ERROR,
+        },
+    ]);
+    let complex = NativeProvider::start(vec![complete(), complete(), complete()]);
+    let fixture = RuntimeFixture::launch_classified(&[&simple, &complex], 3);
+    assert_eq!(
+        send(
+            &fixture,
+            "cleanup-fallback",
+            vec![message("user", "complex-route initial")]
+        )
+        .status,
+        200
+    );
+    let history = vec![
+        json!({"type":"reasoning","summary":[],"encrypted_content":"keep-for-original"}),
+        message("user", "rename after compaction"),
+    ];
+    assert_eq!(
+        send(&fixture, "cleanup-fallback", history.clone()).status,
+        200
+    );
+    assert_eq!((simple.calls(), complex.calls()), (2, 2));
+    assert_eq!(
+        request_json_body(&complex.requests()[1])["input"],
+        json!(history)
+    );
+    assert_eq!(
+        send(&fixture, "cleanup-fallback", history.clone()).status,
+        200
+    );
+    // The selected simple branch may try B again; A was only its fallback.
+    // Continuous history gives B no cleanup retry and the failed cleanup was
+    // never committed. Both attempts must receive the original history.
+    assert_eq!((simple.calls(), complex.calls()), (3, 3));
+    assert_eq!(
+        request_json_body(&simple.requests()[2])["input"],
+        json!(history)
+    );
+    assert_eq!(
+        request_json_body(&complex.requests()[2])["input"],
+        json!(history)
+    );
+}
 
 fn complete() -> ProviderReply {
     ProviderReply::Complete {

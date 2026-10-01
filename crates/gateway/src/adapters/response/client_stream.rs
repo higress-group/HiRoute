@@ -7,7 +7,7 @@ use crate::server::core_runtime::model_ir::{
     OpaqueProviderState, ResponseBlock, ResponseBlockKind, ToolKindV1,
 };
 use crate::server::core_runtime::profiles::{
-    ClientProtocolProfile, Fidelity, StateAffinity, StreamingRefusalSemantics,
+    ClientProtocolProfile, Fidelity, StreamingRefusalSemantics,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -38,6 +38,7 @@ pub struct IncrementalClientSseRenderer {
     profile: ClientProtocolProfile,
     alias: String,
     expected_sequence: u64,
+    pending_loss: usize,
     native_sequence: u64,
     response_id: Option<String>,
     source_owner: Option<ExactProviderPathV1>,
@@ -55,6 +56,7 @@ pub struct IncrementalClientSseRenderer {
     responses_metadata: BTreeMap<String, Value>,
     open_messages_blocks: BTreeSet<u32>,
     pending_messages_reasoning: BTreeSet<u32>,
+    messages_wire_indices: BTreeMap<u32, u32>,
     retention: super::body_buffer::Retention,
 }
 
@@ -82,6 +84,7 @@ impl IncrementalClientSseRenderer {
             retention: super::body_buffer::Retention::new(super::body_buffer::standalone_budget()),
             alias,
             expected_sequence: 0,
+            pending_loss: 0,
             native_sequence: 0,
             response_id: None,
             source_owner: None,
@@ -99,6 +102,7 @@ impl IncrementalClientSseRenderer {
             responses_metadata: BTreeMap::new(),
             open_messages_blocks: BTreeSet::new(),
             pending_messages_reasoning: BTreeSet::new(),
+            messages_wire_indices: BTreeMap::new(),
         })
     }
 
@@ -106,6 +110,10 @@ impl IncrementalClientSseRenderer {
     /// by construction; only bounded routing metadata is retained.
     pub const fn buffered_semantic_bytes(&self) -> usize {
         0
+    }
+
+    pub(crate) fn take_reasoning_loss(&mut self) -> usize {
+        std::mem::take(&mut self.pending_loss)
     }
 
     pub fn push(
@@ -119,6 +127,39 @@ impl IncrementalClientSseRenderer {
             .into());
         }
         self.validate_event_capability(&event.event)?;
+        let omit = match &event.event {
+            ModelEvent::ProviderState { state } => match self.profile.protocol {
+                IngressProtocol::Responses => state.kind != "encrypted_content",
+                IngressProtocol::Messages => !matches!(
+                    state.kind.as_str(),
+                    "thinking_signature" | "redacted_thinking"
+                ),
+                IngressProtocol::ChatCompletions => true,
+            },
+            ModelEvent::ContentBlockStarted {
+                block_kind: ResponseBlockKind::Reasoning,
+                ..
+            }
+            | ModelEvent::ReasoningDelta { .. }
+            | ModelEvent::ReasoningFinished { .. } => {
+                self.profile.protocol == IngressProtocol::Messages
+                    && self.profile.source_protocol != IngressProtocol::Messages
+            }
+            _ => false,
+        };
+        if omit {
+            if matches!(
+                &event.event,
+                ModelEvent::ProviderState { .. } | ModelEvent::ContentBlockStarted { .. }
+            ) {
+                self.pending_loss = self.pending_loss.saturating_add(1);
+            }
+            self.expected_sequence = self
+                .expected_sequence
+                .checked_add(1)
+                .ok_or_else(|| invalid("client event sequence overflow"))?;
+            return Ok(Vec::new());
+        }
         if let ModelEvent::ResponsesMetadata { metadata } = &event.event {
             self.charge_metadata(
                 serde_json::to_vec(metadata)
@@ -134,6 +175,24 @@ impl IncrementalClientSseRenderer {
             IngressProtocol::ChatCompletions => self.push_chat(&event.event),
             IngressProtocol::Messages => self.push_messages(&event.event),
         }?;
+        if self.profile.protocol == IngressProtocol::Messages {
+            for event in &mut output {
+                if let Some(index) = event.data.get("index").and_then(Value::as_u64) {
+                    let index = u32::try_from(index).map_err(|_| invalid("Messages index"))?;
+                    let wire_index =
+                        if let Some(wire_index) = self.messages_wire_indices.get(&index) {
+                            *wire_index
+                        } else {
+                            self.charge_metadata(32)?;
+                            let wire_index = u32::try_from(self.messages_wire_indices.len())
+                                .map_err(|_| invalid("Messages index"))?;
+                            self.messages_wire_indices.insert(index, wire_index);
+                            wire_index
+                        };
+                    event.data["index"] = json!(wire_index);
+                }
+            }
+        }
         if self.profile.protocol == IngressProtocol::Responses {
             for event in &mut output {
                 if let Some(response) = event
@@ -955,7 +1014,6 @@ impl IncrementalClientSseRenderer {
         output: &mut Vec<RenderedSseEvent>,
         state: &OpaqueProviderState,
     ) -> Result<(), ProtocolAdapterError> {
-        self.check_state_owner(state)?;
         if state.kind != "encrypted_content" {
             return Err(unrepresentable("Responses provider-state kind"));
         }
@@ -1003,13 +1061,11 @@ impl IncrementalClientSseRenderer {
         output: &mut Vec<RenderedSseEvent>,
         state: &OpaqueProviderState,
     ) -> Result<(), ProtocolAdapterError> {
-        self.check_state_owner(state)?;
         let index = state
             .block_index
             .ok_or_else(|| unrepresentable("Messages provider-state block binding"))?;
-        match (state.owner.upstream_protocol, state.kind.as_str()) {
-            (IngressProtocol::Messages, "thinking_signature")
-            | (IngressProtocol::Responses, "encrypted_content") => {
+        match state.kind.as_str() {
+            "thinking_signature" => {
                 let signature = state
                     .value
                     .as_str()
@@ -1027,7 +1083,7 @@ impl IncrementalClientSseRenderer {
                     self.close_messages_block(index, output);
                 }
             }
-            (IngressProtocol::Messages, "redacted_thinking") => {
+            "redacted_thinking" => {
                 self.named(
                     output,
                     "content_block_start",
@@ -1040,26 +1096,6 @@ impl IncrementalClientSseRenderer {
                 );
             }
             _ => return Err(unrepresentable("Messages streaming provider-state kind")),
-        }
-        Ok(())
-    }
-
-    fn check_state_owner(
-        &mut self,
-        state: &OpaqueProviderState,
-    ) -> Result<(), ProtocolAdapterError> {
-        if self.profile.response.provider_state != Fidelity::Exact
-            || self.profile.response.state_affinity != StateAffinity::ExactOwner
-            || self.profile.state_owner.as_ref() != Some(&state.owner)
-            || self
-                .source_owner
-                .as_ref()
-                .is_some_and(|owner| owner != &state.owner)
-        {
-            return Err(unrepresentable("provider-state exact owner"));
-        }
-        if self.source_owner.is_none() {
-            self.source_owner = Some(state.owner.clone());
         }
         Ok(())
     }

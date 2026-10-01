@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 use hiroute_gateway_core::runtime::body::{BudgetTree, MemoryRole, Reservation, StreamBudget};
 use hiroute_gateway_core::runtime::sse::{EofPolicy, SseFramer, SseLimits};
 use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 
 use crate::server::core_runtime::model_ir::{
     ExactProviderPathV1, ModelError, ModelIrError, ModelUsage, ToolKindV1,
@@ -18,10 +17,7 @@ use crate::server::core_runtime::model_ir::{
 use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 use crate::server::request_plan::IngressProtocol;
 
-use super::super::continuation::{
-    ToolIdProjection, project_delivered_tool_id, record_provider_state,
-    record_provider_state_at_acceptance,
-};
+use super::super::continuation::{ToolIdProjection, project_delivered_tool_id};
 use super::super::{ChatToolIdentity, ChatToolProjection, ProtocolAdapterError};
 
 #[path = "native_passthrough_helpers.rs"]
@@ -29,8 +25,6 @@ mod helpers;
 use helpers::*;
 #[path = "native_passthrough_evidence.rs"]
 mod evidence;
-#[path = "native_passthrough_state.rs"]
-mod provider_state;
 
 const RETAINED_SSE_CAPACITY: usize = 256 * 1024;
 const OBSERVATION_STREAM_BUDGET: usize = 1024 * 1024;
@@ -161,14 +155,13 @@ impl NativeResponseProjector {
                 response_items: BTreeMap::new(),
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
-                reasoning_state: BTreeMap::new(),
-                messages_signatures: BTreeMap::new(),
                 responses_done_seen: false,
                 usage: ModelUsage::default(),
                 usage_input_overflow: false,
                 terminal: None,
                 messages_stop: None,
                 messages_stop_digest: None,
+                messages_thinking_open: BTreeMap::new(),
                 chat_seen: false,
                 chat_finish: None,
                 chat_finish_digest: None,
@@ -256,10 +249,6 @@ impl ToolIdDelivery {
             Self::Projection(projection) => projection.project(native_id, owner),
         }
     }
-
-    fn records_state(&self) -> bool {
-        matches!(self, Self::Active)
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -291,14 +280,14 @@ pub(super) struct ProjectionState {
     response_items: BTreeMap<u32, ResponseItemEvidence>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
-    reasoning_state: BTreeMap<u32, [u8; 32]>,
-    messages_signatures: BTreeMap<u32, String>,
     responses_done_seen: bool,
     usage: ModelUsage,
     usage_input_overflow: bool,
     pub(super) terminal: Option<NativeTerminalOutcome>,
     messages_stop: Option<NativeTerminalOutcome>,
     messages_stop_digest: Option<[u8; 32]>,
+    // Only live block indices, never signature bytes or cross-request history.
+    messages_thinking_open: BTreeMap<u32, Reservation>,
     chat_seen: bool,
     chat_finish: Option<NativeTerminalOutcome>,
     chat_finish_digest: Option<[u8; 32]>,
@@ -330,7 +319,7 @@ impl ProjectionState {
         &mut self,
         event_type: Option<&str>,
         data: &[u8],
-        raw_event: &[u8],
+        _raw_event: &[u8],
     ) -> Result<(Option<Vec<u8>>, ProjectionMetadata), ProtocolAdapterError> {
         if self.protocol == IngressProtocol::Responses && data == b"[DONE]" {
             if event_type.is_some() || self.terminal.is_none() || self.responses_done_seen {
@@ -383,11 +372,7 @@ impl ProjectionState {
         let tools_before = self.tools.len();
         let mut metadata = match self.protocol {
             IngressProtocol::Responses => self.project_responses_sse(event_type, object)?,
-            IngressProtocol::Messages => {
-                let metadata = self.project_messages_sse(event_type, object)?;
-                self.observe_messages_state(object, raw_event)?;
-                metadata
-            }
+            IngressProtocol::Messages => self.project_messages_sse(event_type, object)?,
             IngressProtocol::ChatCompletions => self.project_chat_sse(object)?,
         };
         if after_terminal {
@@ -398,9 +383,9 @@ impl ProjectionState {
         let changed = value
             != serde_json::from_slice::<Value>(data)
                 .map_err(|error| ModelIrError::InvalidJson(error.to_string()))?;
-        // Tool delivery bookkeeping matches the serialized ID field only after
-        // transport acceptance. Normalize this known frame's JSON syntax even
-        // when the native ID itself is unchanged (including escaped IDs).
+        // Delivery bookkeeping matches serialized owned fields only after
+        // transport acceptance. Normalize known tool/state frames even when
+        // their decoded values are unchanged (including whitespace/escapes).
         let rewritten = (changed || self.tools.len() != tools_before)
             .then(|| serde_json::to_vec(&value))
             .transpose()
@@ -530,6 +515,16 @@ impl ProjectionState {
             "content_block_start" => {
                 let index = u32_field(object, "index")?;
                 let block = object_field_mut(object, "content_block")?;
+                if self.messages_thinking_open.contains_key(&index) {
+                    return Err(ModelIrError::InvalidField("thinking.index").into());
+                }
+                if block.get("type").and_then(Value::as_str) == Some("thinking") {
+                    let charge = self
+                        .budget
+                        .reserve(MemoryRole::SemanticState, 64)
+                        .map_err(|_| ModelIrError::BufferLimit(64))?;
+                    self.messages_thinking_open.insert(index, charge);
+                }
                 if block.get("type").and_then(Value::as_str) == Some("tool_use") {
                     self.project_messages_tool(index, block)?;
                 }
@@ -540,6 +535,25 @@ impl ProjectionState {
                 semantic
             }
             "content_block_delta" => {
+                if object
+                    .get("delta")
+                    .and_then(|delta| delta.get("type"))
+                    .and_then(Value::as_str)
+                    == Some("signature_delta")
+                {
+                    let index = u32_field(object, "index")?;
+                    if !self.messages_thinking_open.contains_key(&index) {
+                        return Err(ModelIrError::InvalidField("signature.index").into());
+                    }
+                    if object
+                        .get("delta")
+                        .and_then(|delta| delta.get("signature"))
+                        .and_then(Value::as_str)
+                        .is_none()
+                    {
+                        return Err(ModelIrError::InvalidField("signature").into());
+                    }
+                }
                 let semantic = object
                     .get("delta")
                     .and_then(Value::as_object)
@@ -549,7 +563,6 @@ impl ProjectionState {
                 }
                 semantic
             }
-            "content_block_stop" => false,
             "message_delta" => {
                 let delta = object
                     .get("delta")
@@ -566,7 +579,15 @@ impl ProjectionState {
                 self.observe_usage(IngressProtocol::Messages, object.get("usage"));
                 false
             }
+            "content_block_stop" => {
+                self.messages_thinking_open
+                    .remove(&u32_field(object, "index")?);
+                false
+            }
             "message_stop" => {
+                if !self.messages_thinking_open.is_empty() {
+                    return Err(ModelIrError::InvalidField("thinking.unclosed").into());
+                }
                 let outcome = self.messages_stop.unwrap_or(NativeTerminalOutcome::Unknown);
                 self.set_terminal(outcome)?;
                 terminal = Some(outcome);
@@ -688,24 +709,6 @@ impl ProjectionState {
                         u32::try_from(index).map_err(|_| ModelIrError::InvalidField("content"))?,
                         block,
                     )?;
-                }
-                if block.get("type").and_then(Value::as_str) == Some("thinking")
-                    && let Some(signature) = block
-                        .get("signature")
-                        .filter(|value| value.as_str().is_some_and(|s| !s.is_empty()))
-                    && self.authority.records_state()
-                {
-                    record_provider_state(signature, &self.owner)?;
-                }
-                if block.get("type").and_then(Value::as_str) == Some("redacted_thinking")
-                    && let Some(data) = block.get("data").and_then(Value::as_str)
-                    && !data.is_empty()
-                    && self.authority.records_state()
-                {
-                    let serialized = serde_json::to_string(data)
-                        .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
-                    let pattern = format!("\"data\":{serialized}");
-                    record_provider_state_at_acceptance(data, &self.owner, pattern.as_bytes())?;
                 }
             }
         }
@@ -856,14 +859,6 @@ impl ProjectionState {
                 let logical =
                     self.project_tool(index, &native_id, ToolKindV1::Function, None, "web_search")?;
                 item.insert("id".into(), Value::String(logical));
-            }
-            Some("reasoning") => {
-                if let Some(value) = item
-                    .get("encrypted_content")
-                    .filter(|value| !value.is_null())
-                {
-                    self.observe_reasoning_state(index, value)?;
-                }
             }
             _ => {}
         }

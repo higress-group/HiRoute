@@ -227,24 +227,15 @@ fn large_image_arguments_and_native_reasoning_fit_the_eight_mib_budget() {
                     crate::server::core_runtime::profiles::fixed_reasoning("fixed"),
                 );
                 use crate::server::core_runtime::profiles::{
-                    Fidelity, NativeProviderStateEmission, StateAffinity,
+                    Fidelity, NativeProviderStateEmission,
                 };
-                profile.capability.native_provider_state =
-                    NativeProviderStateEmission::ExactOwnerAffine;
+                profile.capability.native_provider_state = NativeProviderStateEmission::Native;
                 profile.capability.request.provider_state = Fidelity::Exact;
-                profile.capability.request.state_affinity = StateAffinity::ExactOwner;
                 profile.capability.response.provider_state = Fidelity::Exact;
-                profile.capability.response.state_affinity = StateAffinity::ExactOwner;
-                let owner = profile.exact_provider_path().unwrap();
-                let mut request =
-                    crate::server::core_runtime::adapters::decode_ingress_request_with_bindings(
-                        protocol,
-                        &document,
-                        &crate::server::core_runtime::adapters::IngressRequestBindings {
-                            provider_state_owner: Some(owner),
-                        },
-                    )
-                    .unwrap();
+                let mut request = crate::server::core_runtime::adapters::decode_ingress_request(
+                    protocol, &document,
+                )
+                .unwrap();
                 let crate::server::core_runtime::model_ir::ContentPart::ProviderState { state } =
                     &request.messages[0].content[0]
                 else {

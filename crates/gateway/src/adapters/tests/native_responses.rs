@@ -34,7 +34,6 @@ fn responses_previous_response_id_has_an_explicit_http_boundary() {
 
 #[test]
 fn responses_conversation_never_borrows_reasoning_ciphertext_owner() {
-    let origin = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
     for input in [
         json!("continue"),
         json!([
@@ -42,12 +41,9 @@ fn responses_conversation_never_borrows_reasoning_ciphertext_owner() {
             {"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
         ]),
     ] {
-        let error = decode_ingress_request_with_bindings(
+        let error = decode_ingress_request(
             IngressProtocol::Responses,
             &json!({"model":"alias","input":input,"conversation":"conversation-1"}),
-            &IngressRequestBindings {
-                provider_state_owner: origin.exact_provider_path().ok(),
-            },
         )
         .unwrap_err();
         assert_eq!(error, ModelIrError::ResponsesConversationUnsupported);
@@ -206,7 +202,14 @@ fn responses_replayed_plain_reasoning_uses_the_existing_bounded_body_path() {
         "physical",
         fixed_reasoning("fixed"),
     );
-    assert!(project_candidate_request(&request, &cross_protocol).is_err());
+    let chat = project_candidate_request(&request, &cross_protocol).unwrap();
+    assert!(
+        chat.body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message.get("reasoning_content").is_some())
+    );
 
     let root = std::env::temp_dir().join(format!(
         "hiroute-reasoning-replay-{}-{}",
@@ -249,13 +252,9 @@ fn responses_replayed_plain_reasoning_uses_the_existing_bounded_body_path() {
 #[test]
 fn responses_multitool_continuation_replays_externalized_reasoning_state() {
     let profile = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
-    let owner = profile.exact_provider_path().expect("exact owner");
     let opaque_first = "first-state".repeat(180);
     let opaque_second = "second-state".repeat(130);
-    let bindings = IngressRequestBindings {
-        provider_state_owner: Some(owner.clone()),
-    };
-    let mut request = decode_ingress_request_with_bindings(
+    let mut request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({
             "model":"alias",
@@ -271,7 +270,6 @@ fn responses_multitool_continuation_replays_externalized_reasoning_state() {
                 {"type":"function_call_output","call_id":"call-2","output":"done two"}
             ]
         }),
-        &bindings,
     )
     .expect("two round Responses history");
     let expected = project_candidate_request(&request, &profile)

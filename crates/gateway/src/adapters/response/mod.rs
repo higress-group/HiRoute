@@ -677,9 +677,7 @@ impl DecoderCore {
                 self.bind_item_status(*index, *status)?;
             }
             ModelEvent::ProviderState { state } => {
-                if state.owner != self.owner
-                    || self.provider_state_emission != NativeProviderStateEmission::ExactOwnerAffine
-                {
+                if self.provider_state_emission != NativeProviderStateEmission::Native {
                     return Err(ModelIrError::ProviderStateNotPortable.into());
                 }
                 self.accumulator.provider_state.push(state.as_ref().clone());
@@ -1312,13 +1310,10 @@ impl DecoderCore {
         if self.provider_state_emission == NativeProviderStateEmission::Never {
             return Ok(());
         }
-        if self.provider_state_emission != NativeProviderStateEmission::ExactOwnerAffine {
+        if self.provider_state_emission != NativeProviderStateEmission::Native {
             return Err(ModelIrError::ProviderStateNotPortable.into());
         }
         let kind = kind.into();
-        if kind == "encrypted_content" && self.tool_id_projection.is_none() {
-            super::continuation::record_provider_state(&value, &self.owner)?;
-        }
         if let Some(native_index) = native_block_index
             && (protocol == IngressProtocol::Responses
                 || matches!(
@@ -1336,11 +1331,9 @@ impl DecoderCore {
         self.emit(
             ModelEvent::ProviderState {
                 state: Box::new(OpaqueProviderState {
-                    owner: self.owner.clone(),
                     block_index,
                     kind,
                     value,
-                    messages_thinking: None,
                 }),
             },
             output,

@@ -168,6 +168,18 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
     );
     request.record_plan_stage(std::time::Duration::from_millis(4));
     request.no_credential_materialized("binding:test", "credential/none/source-local-test");
+    use hiroute_diagnostics::event::ReasoningCleanupReason;
+    request.reasoning_cleanup(ReasoningCleanupReason::ContextBreakRetry, 2, Some(3));
+    request.reasoning_cleanup(ReasoningCleanupReason::SuccessfulPrefixReuse, 0, Some(3));
+    assert!(
+        request
+            .lock_state()
+            .pending_attempt
+            .as_ref()
+            .unwrap()
+            .attempt_id
+            .is_empty()
+    );
     request.disposition_published(&PublishedDisposition {
         request_id: RequestId(9),
         attempt_id: AttemptId(4),
@@ -175,6 +187,17 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
         disposition: Disposition::Accept,
     });
     assert!(request.accept_current("frame:test", 128).is_some());
+    request.reasoning_cleanup(ReasoningCleanupReason::ResponseProtocolProjection, 1, None);
+    request.reasoning_cleanup(ReasoningCleanupReason::ResponseProtocolProjection, 3, None);
+    assert_eq!(
+        request
+            .lock_state()
+            .accepted_attempt
+            .as_ref()
+            .unwrap()
+            .reasoning_fields_removed,
+        6
+    );
     request.finish("accepted");
     runtime.shutdown();
 
@@ -195,6 +218,44 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
     assert!(log.contains("\"outcome\":\"completed\""), "{log}");
     assert!(log.contains("\"stage\":\"parse\""), "{log}");
     assert!(log.contains("\"state\":\"semantic_committed\""), "{log}");
+    let records: Vec<Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    // Two warnings only: the actual request loss and the first response loss.
+    // Further response losses are accumulated, not logged per stream fragment.
+    assert_eq!(log.matches("\"reasoning_cleanup\":").count(), 2, "{log}");
+    assert!(log.contains("\"fields_removed_so_far\":3"), "{log}");
+    let serialized = records.iter().map(Value::to_string).collect::<Vec<_>>();
+    let begin = serialized
+        .iter()
+        .find(|row| row.contains("\"attempt_begin\":"))
+        .unwrap();
+    // Pre-send warnings use the request/ordinal/binding, never a fake attempt
+    // token. After publication the response warning has the exact core token.
+    fn payload<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
+        value.get(key).or_else(|| {
+            value
+                .as_object()?
+                .values()
+                .find_map(|value| payload(value, key))
+        })
+    }
+    let begin: Value = serde_json::from_str(begin).unwrap();
+    let token = &payload(&begin, "attempt_begin").unwrap()["attempt_token"];
+    assert!(!token.is_null());
+    for record in &records {
+        if let Some(cleanup) = payload(record, "reasoning_cleanup") {
+            assert_eq!(cleanup["attempt_index"], 1);
+            assert!(!cleanup["binding_token"].is_null());
+            if cleanup["reason"] == "response_protocol_projection" {
+                assert_eq!(&cleanup["attempt_token"], token);
+            } else {
+                assert!(cleanup["attempt_token"].is_null());
+            }
+        }
+    }
+    assert!(log.find("\"reasoning_cleanup\":").unwrap() < log.find("\"attempt_begin\":").unwrap());
     assert!(
         !log.contains("request:test"),
         "raw request id leaked: {log}"

@@ -1,9 +1,9 @@
 use crate::server::core_runtime::model_ir::{
-    ContentPart, ExactProviderPathV1, ModelRequestIRV1, RequestCapabilityRequirementsV1, ToolChoice,
+    ModelRequestIRV1, RequestCapabilityRequirementsV1, ToolChoice,
 };
 use crate::server::core_runtime::profiles::{
     CandidateContextDemand, CandidateProtocolProfile, ContextProjectionError, ContextProjector,
-    Fidelity, NativeProviderStateEmission, StateAffinity, StreamingRefusalSemantics,
+    Fidelity, StreamingRefusalSemantics,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -36,7 +36,6 @@ pub(crate) fn evaluate_candidate(
     let reasoning = reasoning_gate(&candidate.protocol_profile)?;
     let context = context_gate(candidate, reasoning)?;
     streaming_gate(&requirements, &candidate.protocol_profile)?;
-    state_gate(request, &requirements, &candidate.protocol_profile)?;
     static_cost_gate(candidate, cost_policy, limits)?;
     Ok(EligibleProjection {
         reasoning_profile_id: reasoning.profile_id.clone(),
@@ -284,40 +283,6 @@ fn streaming_gate(
     Ok(())
 }
 
-fn state_gate(
-    request: &ModelRequestIRV1,
-    requirements: &RequestCapabilityRequirementsV1,
-    profile: &CandidateProtocolProfile,
-) -> Result<(), ExclusionReasonCodeV1> {
-    let request_profile = &profile.capability.request;
-    let response_profile = &profile.capability.response;
-    if requirements.provider_state
-        && (request_profile.provider_state != Fidelity::Exact
-            || request_profile.state_affinity != StateAffinity::ExactOwner)
-    {
-        return Err(ExclusionReasonCodeV1::OpaqueStateUnportable);
-    }
-    if state_owners(request).any(|owner| !owner.is_complete()) {
-        return Err(ExclusionReasonCodeV1::ProviderStateAffinityMismatch);
-    }
-    match profile.capability.native_provider_state {
-        NativeProviderStateEmission::Never => {}
-        NativeProviderStateEmission::Unknown => {
-            return Err(ExclusionReasonCodeV1::OpaqueStateUnportable);
-        }
-        NativeProviderStateEmission::ExactOwnerAffine => {
-            if request_profile.provider_state != Fidelity::Exact
-                || request_profile.state_affinity != StateAffinity::ExactOwner
-                || response_profile.provider_state != Fidelity::Exact
-                || response_profile.state_affinity != StateAffinity::ExactOwner
-            {
-                return Err(ExclusionReasonCodeV1::OpaqueStateUnportable);
-            }
-        }
-    }
-    Ok(())
-}
-
 fn static_cost_gate(
     candidate: &PlannerCandidateFactsV1,
     cost_policy: StaticCostPolicyV1,
@@ -372,29 +337,4 @@ fn valid_stream_refusal(protocol: IngressProtocol, semantics: StreamingRefusalSe
             StreamingRefusalSemantics::ExactDelta
         )
     )
-}
-
-pub(crate) fn state_owners(
-    request: &ModelRequestIRV1,
-) -> impl Iterator<Item = &ExactProviderPathV1> {
-    request
-        .provider_state
-        .iter()
-        .map(|state| &state.owner)
-        .chain(
-            request
-                .instructions
-                .iter()
-                .flat_map(|instruction| instruction.content.iter())
-                .chain(
-                    request
-                        .messages
-                        .iter()
-                        .flat_map(|message| message.content.iter()),
-                )
-                .filter_map(|part| match part {
-                    ContentPart::ProviderState { state } => Some(&state.owner),
-                    _ => None,
-                }),
-        )
 }

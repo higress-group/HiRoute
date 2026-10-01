@@ -2,7 +2,7 @@
 use super::ProtocolAdapterError;
 use crate::server::core_runtime::model_ir::{ExactProviderPathV1, ModelIrError};
 use crate::server::request_plan::IngressProtocol;
-use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation};
+use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
 use sha2::{Digest, Sha256};
 use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -66,6 +66,29 @@ impl ToolIdProjection {
     }
 }
 
+// Counting writer uses the same escaping rules as the actual serializer.
+struct JsonLength(usize);
+
+impl std::io::Write for JsonLength {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self
+            .0
+            .checked_add(bytes.len())
+            .ok_or_else(|| std::io::Error::other("serialized tool ID length overflow"))?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+pub(crate) fn json_string_length(value: &str) -> Result<usize, ModelIrError> {
+    let mut length = JsonLength(0);
+    serde_json::to_writer(&mut length, value).map_err(|_| ModelIrError::BufferLimit(usize::MAX))?;
+    Ok(length.0)
+}
+
 struct PendingTool {
     id: String,
     pattern: Vec<u8>,
@@ -75,18 +98,15 @@ struct PendingTool {
 #[derive(Clone)]
 pub(crate) struct ActiveResponseDelivery {
     projection: ToolIdProjection,
-    provider_states: crate::provider_state::ActiveProviderStates,
+    budget: StreamBudget,
     pending_tools: Arc<Mutex<Vec<PendingTool>>>,
     accepted_count: Arc<AtomicUsize>,
 }
 impl ActiveResponseDelivery {
-    pub(crate) fn new(
-        downstream: IngressProtocol,
-        provider_states: crate::provider_state::ActiveProviderStates,
-    ) -> Self {
+    pub(crate) fn new(downstream: IngressProtocol, budget: StreamBudget) -> Self {
         Self {
             projection: ToolIdProjection::new(downstream),
-            provider_states,
+            budget,
             pending_tools: Default::default(),
             accepted_count: Default::default(),
         }
@@ -96,7 +116,6 @@ impl ActiveResponseDelivery {
             active: self.clone(),
             carry: Vec::new(),
             carry_charge: None,
-            provider_states: self.provider_states.scanner(),
         }
     }
     pub(crate) fn accepted_count(&self) -> usize {
@@ -131,7 +150,7 @@ pub(super) fn project_delivered_tool_id(
             IngressProtocol::Responses => b"\"call_id\":",
             _ => b"\"id\":",
         };
-        let length = crate::provider_state::json_string_length(&id)?
+        let length = json_string_length(&id)?
             .checked_add(prefix.len())
             .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
         let bytes = length
@@ -139,8 +158,7 @@ pub(super) fn project_delivered_tool_id(
             .and_then(|n| n.checked_add(std::mem::size_of::<PendingTool>()))
             .ok_or(ModelIrError::BufferLimit(usize::MAX))?;
         let charge = active
-            .provider_states
-            .budget()
+            .budget
             .reserve(MemoryRole::SemanticState, bytes)
             .map_err(|_| ModelIrError::BufferLimit(bytes))?;
         let mut pattern = Vec::with_capacity(length);
@@ -155,39 +173,14 @@ pub(super) fn project_delivered_tool_id(
     }
     Ok(id)
 }
-pub(super) fn record_provider_state(
-    value: &serde_json::Value,
-    owner: &ExactProviderPathV1,
-) -> Result<(), ProtocolAdapterError> {
-    ACTIVE_RESPONSE_DELIVERY
-        .try_with(|active| active.provider_states.record(value, owner))
-        .unwrap_or(Ok(()))
-        .map_err(Into::into)
-}
-pub(super) fn record_provider_state_at_acceptance(
-    state: &str,
-    owner: &ExactProviderPathV1,
-    closing_event: &[u8],
-) -> Result<(), ProtocolAdapterError> {
-    ACTIVE_RESPONSE_DELIVERY
-        .try_with(|active| {
-            active
-                .provider_states
-                .record_at_acceptance(state, owner, closing_event)
-        })
-        .unwrap_or(Ok(()))
-        .map_err(Into::into)
-}
 /// Delivery facts only; no later request queries these patterns.
 pub(crate) struct AcceptedResponseDeliveryScanner {
     active: ActiveResponseDelivery,
     carry: Vec<u8>,
     carry_charge: Option<Arc<Reservation>>,
-    provider_states: crate::provider_state::AcceptedProviderStateScanner,
 }
 impl AcceptedResponseDeliveryScanner {
-    pub(crate) fn accept_bytes(&mut self, bytes: &[u8], now: Instant) {
-        self.provider_states.accept_bytes(bytes, now);
+    pub(crate) fn accept_bytes(&mut self, bytes: &[u8], _now: Instant) {
         let mut pending = self
             .active
             .pending_tools
@@ -239,26 +232,7 @@ mod tests {
                 .unwrap()
                 .stream(8 * 1024 * 1024)
                 .unwrap();
-        let scope = crate::provider_state::ProviderStateScopeV1 {
-            authority_id: "a".into(),
-            authority_epoch: 1,
-            grant_id: "g".into(),
-            grant_generation: 1,
-            served_model_id: "alias".into(),
-            route: hiroute_domain::ModelRequestRouteV2::Plan {
-                revision: 1,
-                semantic_digest: hiroute_domain::CanonicalDigest::of_bytes(b"route"),
-            },
-        };
-        let active = ActiveResponseDelivery::new(
-            IngressProtocol::Responses,
-            crate::provider_state::ActiveProviderStates::with_budget(
-                Arc::new(crate::provider_state::ProviderStateStore::default()),
-                scope,
-                IngressProtocol::Responses,
-                budget.clone(),
-            ),
-        );
+        let active = ActiveResponseDelivery::new(IngressProtocol::Responses, budget.clone());
         let owner = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
             IngressProtocol::Responses,

@@ -548,7 +548,7 @@ where
     ACTIVE_REQUEST_OBSERVATION.scope(request, future).await
 }
 
-pub(super) fn active_request() -> Option<RequestObservation> {
+pub(crate) fn active_request() -> Option<RequestObservation> {
     ACTIVE_REQUEST_OBSERVATION.try_with(Clone::clone).ok()
 }
 

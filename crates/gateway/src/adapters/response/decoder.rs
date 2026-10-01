@@ -9,7 +9,7 @@ use hiroute_gateway_core::runtime::sse::{
 use crate::server::core_runtime::model_ir::{ModelIrError, ModelResponseIRV1, ModelStreamEventV1};
 use crate::server::core_runtime::profiles::{
     CandidateProtocolProfile, CapabilityError, Fidelity, NativeProviderStateEmission,
-    StateAffinity, StreamingRefusalSemantics,
+    StreamingRefusalSemantics,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -116,12 +116,9 @@ impl NativeResponseDecoder {
             || profile.capability.native_provider_state == NativeProviderStateEmission::Unknown
             || profile.capability.response.refusal != Fidelity::Exact
             || (streaming && profile.capability.native_streaming.exact() != Some(&true))
-            || (profile.capability.native_provider_state
-                == NativeProviderStateEmission::ExactOwnerAffine
+            || (profile.capability.native_provider_state == NativeProviderStateEmission::Native
                 && (profile.capability.request.provider_state != Fidelity::Exact
-                    || profile.capability.request.state_affinity != StateAffinity::ExactOwner
-                    || profile.capability.response.provider_state != Fidelity::Exact
-                    || profile.capability.response.state_affinity != StateAffinity::ExactOwner))
+                    || profile.capability.response.provider_state != Fidelity::Exact))
         {
             return Err(
                 crate::server::core_runtime::profiles::CapabilityError::ProfileUnknown.into(),

@@ -170,10 +170,9 @@ pub(super) fn decode(
         .transpose()?;
     let (reasoning_summary, reasoning_context) = reasoning.unwrap_or((None, None));
     let store = optional_bool(object, "store")?;
-    // Server-stored conversations need the existing exact provider-state authority, not a
-    // boolean supplied by the caller. The current stateless Worker explicitly sends false.
+    // Server-stored conversations are outside this stateless history contract.
     if store == Some(true) {
-        return Err(ModelIrError::ProviderStateOwnershipRequired);
+        return Err(ModelIrError::UnsupportedField("store".into()));
     }
     let include = object
         .get("include")
@@ -510,10 +509,9 @@ mod tests {
     #[test]
     fn installed_codex_request_matches_same_protocol_projection_except_owned_rewrites() {
         use super::super::super::project_candidate_request;
-        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
+        use super::super::decode_ingress_request;
         use crate::server::core_runtime::profiles::{
-            CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, StateAffinity,
-            fixed_reasoning,
+            CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, fixed_reasoning,
         };
 
         let native = json!({
@@ -549,19 +547,10 @@ mod tests {
             "physical-model",
             fixed_reasoning("fixed"),
         );
-        profile.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        profile.capability.native_provider_state = NativeProviderStateEmission::Native;
         profile.capability.request.provider_state = Fidelity::Exact;
-        profile.capability.request.state_affinity = StateAffinity::ExactOwner;
         profile.capability.response.provider_state = Fidelity::Exact;
-        profile.capability.response.state_affinity = StateAffinity::ExactOwner;
-        let request = decode_ingress_request_with_bindings(
-            IngressProtocol::Responses,
-            &native,
-            &IngressRequestBindings {
-                provider_state_owner: profile.exact_provider_path().ok(),
-            },
-        )
-        .unwrap();
+        let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
         let projected = project_candidate_request(&request, &profile).unwrap().body;
         let mut expected = native;
         expected["model"] = json!("physical-model");
@@ -613,10 +602,9 @@ mod tests {
     #[test]
     fn reasoning_history_preserves_native_fields_but_requires_opaque_owner() {
         use super::super::super::project_candidate_request;
-        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
+        use super::super::decode_ingress_request;
         use crate::server::core_runtime::profiles::{
-            CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, StateAffinity,
-            fixed_reasoning,
+            CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, fixed_reasoning,
         };
 
         let native = json!({"model":"alias","input":[{
@@ -630,19 +618,10 @@ mod tests {
             "physical",
             fixed_reasoning("fixed"),
         );
-        profile.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        profile.capability.native_provider_state = NativeProviderStateEmission::Native;
         profile.capability.request.provider_state = Fidelity::Exact;
-        profile.capability.request.state_affinity = StateAffinity::ExactOwner;
         profile.capability.response.provider_state = Fidelity::Exact;
-        profile.capability.response.state_affinity = StateAffinity::ExactOwner;
-        let request = decode_ingress_request_with_bindings(
-            IngressProtocol::Responses,
-            &native,
-            &IngressRequestBindings {
-                provider_state_owner: profile.exact_provider_path().ok(),
-            },
-        )
-        .unwrap();
+        let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
         let projected = project_candidate_request(&request, &profile).unwrap().body;
         assert_eq!(
             projected["input"][0]["summary"],
@@ -658,35 +637,19 @@ mod tests {
             json!({"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"native reasoning"}],"provider_extension":{"mode":1},"encrypted_content":"state"}),
         ] {
             let native = json!({"model":"alias","input":[reasoning]});
-            let request = decode_ingress_request_with_bindings(
-                IngressProtocol::Responses,
-                &native,
-                &IngressRequestBindings {
-                    provider_state_owner: profile.exact_provider_path().ok(),
-                },
-            )
-            .unwrap();
+            let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
             assert_eq!(
                 project_candidate_request(&request, &profile).unwrap().body["input"],
                 native["input"]
             );
         }
-        assert!(
-            decode_ingress_request_with_bindings(
-                IngressProtocol::Responses,
-                &native,
-                &IngressRequestBindings {
-                    provider_state_owner: None
-                },
-            )
-            .is_err()
-        );
+        assert!(decode_ingress_request(IngressProtocol::Responses, &native).is_ok());
     }
 
     #[test]
     fn summary_only_reasoning_preserves_native_encrypted_content_shape() {
         use super::super::super::project_candidate_request;
-        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
+        use super::super::decode_ingress_request;
         use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
         let profile = CandidateProtocolProfile::exact_portable_path(
@@ -714,14 +677,7 @@ mod tests {
                     reasoning["encrypted_content"] = value;
                 }
                 let native = json!({"model":"alias","input":[reasoning]});
-                let request = decode_ingress_request_with_bindings(
-                    IngressProtocol::Responses,
-                    &native,
-                    &IngressRequestBindings {
-                        provider_state_owner: None,
-                    },
-                )
-                .unwrap();
+                let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
                 assert!(request.messages[0].content.is_empty());
                 let projected = project_candidate_request(&request, &profile).unwrap().body;
                 assert_eq!(projected["input"], native["input"]);
@@ -731,16 +687,7 @@ mod tests {
         let invalid = json!({"model":"alias","input":[{
             "type":"reasoning","summary":[],"encrypted_content":7
         }]});
-        assert!(
-            decode_ingress_request_with_bindings(
-                IngressProtocol::Responses,
-                &invalid,
-                &IngressRequestBindings {
-                    provider_state_owner: None
-                },
-            )
-            .is_err()
-        );
+        assert!(decode_ingress_request(IngressProtocol::Responses, &invalid,).is_err());
     }
     #[test]
     fn generic_namespace_functions_preserve_structure_order_and_ordinary_requirements() {

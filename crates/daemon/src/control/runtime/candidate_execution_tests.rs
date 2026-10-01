@@ -463,7 +463,7 @@ fn cpa_profiles_prefer_same_protocol_and_messages_falls_back_to_responses() {
             .unwrap();
         assert_eq!(
             profile.capability.native_provider_state,
-            GatewayNativeProviderStateEmissionV1::ExactOwnerAffine
+            GatewayNativeProviderStateEmissionV1::Native
         );
     }
 

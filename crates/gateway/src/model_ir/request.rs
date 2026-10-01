@@ -104,11 +104,11 @@ pub struct ResponsesInternalChatMessageMetadataV1 {
 #[serde(deny_unknown_fields)]
 pub struct ResponsesReasoningHistoryV1 {
     /// Native, non-authority fields of a Responses reasoning item. These are
-    /// returned only to a Responses upstream; the Gateway does not interpret
-    /// a provider's plain reasoning format.
+    /// preserved for Responses; standard summary/content text may also be
+    /// projected to a protocol with a plaintext reasoning field.
     pub native_fields: serde_json::Map<String, serde_json::Value>,
     /// Wire shape of the native `encrypted_content` sibling. Only `Opaque`
-    /// corresponds to ProviderState and therefore requires exact-owner authority.
+    /// corresponds to a ProviderState payload; no source registration is required.
     pub encrypted_content: ResponsesReasoningEncryptedContentV1,
 }
 
@@ -424,14 +424,9 @@ impl RequestedReasoningControl {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpaqueProviderState {
-    pub owner: ExactProviderPathV1,
     pub block_index: Option<u32>,
     pub kind: String,
     pub value: Value,
-    /// Plain thinking text that accompanied a Responses ciphertext in a
-    /// Messages wrapper. Kept separately so both native wires remain exact.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub messages_thinking: Option<ContentValue>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

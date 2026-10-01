@@ -45,7 +45,6 @@ use crate::content_ref::{
     model_content_refs, parse_ingress_document, scan_ingress_document,
 };
 use crate::context_hold::{ContextHoldStore, ContextRequest, HoldCompletion, begin_context};
-use crate::provider_state::ProviderStateScopeV1;
 use crate::replay::{ReplayError, ReplayManager, ReplayReader, ReplayStore};
 use crate::runtime::{
     ProductionProvider, ProductionReplaySeed, ProductionReplaySeedEnvelope, ProductionRouteContext,
@@ -81,7 +80,6 @@ pub struct ProductionGatewayRuntime {
     context_holds: Arc<ContextHoldStore>,
     agent_turn_history: Arc<AgentTurnHistoryStore>,
     replay: Option<ReplayManager>,
-    provider_states: Arc<crate::provider_state::ProviderStateStore>,
     executable_sha256: Option<Arc<str>>,
     capture_observation_content: bool,
 }
@@ -149,7 +147,6 @@ impl ProductionGatewayRuntime {
             context_holds: Arc::new(ContextHoldStore::default()),
             agent_turn_history: Arc::new(AgentTurnHistoryStore::default()),
             replay: ReplayManager::from_environment().ok(),
-            provider_states: Arc::new(crate::provider_state::ProviderStateStore::default()),
             executable_sha256: None,
             capture_observation_content: true,
         }
@@ -381,7 +378,6 @@ impl ProductionGatewayRuntime {
         budget: StreamBudget,
     ) -> Pin<Box<dyn Future<Output = Result<SessionReuse, TransportError>> + Send + 'a>> {
         Box::pin(async move {
-            let continuation_scope = tool_continuation_scope(&authorized);
             let Some(replay_manager) = &self.replay else {
                 return write_typed_error_phase(
                     session,
@@ -518,73 +514,6 @@ impl ProductionGatewayRuntime {
                     return write_typed_error_phase(session, status, code, "planner").await;
                 }
             };
-            // Native Messages state already has an exact single-source binding.
-            // Responses ciphertext, including its Messages signature projection,
-            // must instead resolve the source actually accepted downstream.
-            let native_messages_owner = if protocol == IngressProtocol::Messages {
-                match provider_state_owner(&authorized, protocol) {
-                    Ok(owner) => {
-                        owner.filter(|owner| owner.upstream_protocol == IngressProtocol::Messages)
-                    }
-                    Err(_) => {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "PROVIDER_STATE_AUTHORITY_UNAVAILABLE",
-                            "continuation_authority",
-                        )
-                        .await;
-                    }
-                }
-            } else {
-                None
-            };
-            let (provider_state_owner, verified_states) = if protocol == IngressProtocol::Responses
-                || (protocol == IngressProtocol::Messages && native_messages_owner.is_none())
-            {
-                match self.provider_states.resolve_with_replay(
-                    &continuation_scope,
-                    &document,
-                    Some(&replay),
-                    Instant::now(),
-                ) {
-                    Ok(states) => (states.decode_owner(protocol).cloned(), states),
-                    Err(error) => {
-                        let code = if error == model_ir::ModelIrError::ProviderStateNotPortable {
-                            "PROVIDER_STATE_CONTINUATION_CONFLICT"
-                        } else {
-                            "PROVIDER_STATE_CONTINUATION_UNAVAILABLE"
-                        };
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::BAD_REQUEST,
-                            code,
-                            "continuation_authority",
-                        )
-                        .await;
-                    }
-                }
-            } else {
-                match if protocol == IngressProtocol::Messages {
-                    Ok(native_messages_owner)
-                } else {
-                    provider_state_owner(&authorized, protocol)
-                } {
-                    Ok(owner) => (
-                        owner,
-                        crate::provider_state::ResolvedProviderStates::default(),
-                    ),
-                    Err(_) => {
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "PROVIDER_STATE_AUTHORITY_UNAVAILABLE",
-                            "continuation_authority",
-                        )
-                        .await;
-                    }
-                }
-            };
             if let Err(error) = compact_ingress_document_with_markers(
                 protocol,
                 &mut document,
@@ -604,41 +533,20 @@ impl ProductionGatewayRuntime {
                 return write_typed_error_phase(session, status, code, "canonical_request").await;
             }
             let parse_started = Instant::now();
-            let mut canonical_request = match adapters::decode_ingress_request_with_bindings(
-                protocol,
-                &document,
-                &adapters::IngressRequestBindings {
-                    provider_state_owner,
-                },
-            )
-            .map(Box::new)
-            {
-                Ok(request) => request,
-                Err(error) => {
-                    let error = adapters::ProtocolAdapterError::from(error);
-                    return write_typed_error_phase(
-                        session,
-                        StatusCode::BAD_REQUEST,
-                        error.code(),
-                        "canonical_request",
-                    )
-                    .await;
-                }
-            };
-            if let Err(error) = verified_states.bind_request(&mut canonical_request) {
-                let code = if error == model_ir::ModelIrError::ProviderStateNotPortable {
-                    "PROVIDER_STATE_CONTINUATION_CONFLICT"
-                } else {
-                    "PROVIDER_STATE_CONTINUATION_UNAVAILABLE"
+            let mut canonical_request =
+                match adapters::decode_ingress_request(protocol, &document).map(Box::new) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        let error = adapters::ProtocolAdapterError::from(error);
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::BAD_REQUEST,
+                            error.code(),
+                            "canonical_request",
+                        )
+                        .await;
+                    }
                 };
-                return write_typed_error_phase(
-                    session,
-                    StatusCode::BAD_REQUEST,
-                    code,
-                    "continuation_authority",
-                )
-                .await;
-            }
             let parse_elapsed = parse_started.elapsed();
             let (identity, hold_ticket) = begin_context(
                 &self.context_holds,
@@ -1210,6 +1118,46 @@ impl ProductionGatewayRuntime {
                 })
                 .and_then(|_| frozen_candidates.get(1).map(|candidate| candidate.binding));
             let canonical_request = Box::new(planner_input.request);
+            let reused_cleanup = hold_ticket.as_ref().and_then(|ticket| {
+                let prefix = ticket.cleaned_prefix_len?;
+                let previous = ticket.previous_success.as_ref()?;
+                hold_candidates
+                    .iter()
+                    .find(|(_, candidate)| *candidate == *previous)
+                    .map(|(binding, _)| (*binding, prefix))
+            });
+            let cleanup_eligible = hold_ticket
+                .as_ref()
+                .filter(|ticket| !ticket.message_history_continues)
+                .and(planner_input.previous_success_candidate_id.as_ref())
+                .and_then(|previous| {
+                    let first = planner_output.ledger.ordered_candidates.first()?;
+                    if first.candidate_id == *previous {
+                        return None;
+                    }
+                    let profile = &planner_input
+                        .candidates
+                        .iter()
+                        .find(|candidate| candidate.candidate_id == first.candidate_id)?
+                        .protocol_profile;
+                    let normal =
+                        adapters::project_candidate_request_template(&canonical_request, profile)
+                            .ok()?;
+                    let cleaned = adapters::project_candidate_request_template_with_cleanup(
+                        &canonical_request,
+                        profile,
+                        Some(canonical_request.messages.len()),
+                    )
+                    .ok()?;
+                    (normal.bytes != cleaned.bytes).then_some((
+                        frozen_candidates.first()?.binding,
+                        canonical_request.messages.len(),
+                    ))
+                });
+            let reasoning_cleanup = Arc::new(crate::runtime::ReasoningCleanup::new(
+                cleanup_eligible,
+                reused_cleanup,
+            ));
             let mut replay_references = model_content_refs(&canonical_request);
             replay_references.push(raw_body.clone());
             if replay.prevalidate(&replay_references).is_err() {
@@ -1223,15 +1171,8 @@ impl ProductionGatewayRuntime {
             }
             let frozen_candidates: Arc<[DecisionCandidateAuthority]> = frozen_candidates.into();
             let route_binding = frozen_candidates[0].binding;
-            let active_continuation = adapters::ActiveResponseDelivery::new(
-                protocol,
-                crate::provider_state::ActiveProviderStates::with_budget(
-                    Arc::clone(&self.provider_states),
-                    continuation_scope,
-                    protocol,
-                    budget.clone(),
-                ),
-            );
+            let active_continuation =
+                adapters::ActiveResponseDelivery::new(protocol, budget.clone());
             request_observation.bind_tool_id_projection(active_continuation.tool_id_projection());
             let response_delivery = active_continuation.clone();
             let admission = BoundRequestAdmission {
@@ -1251,6 +1192,7 @@ impl ProductionGatewayRuntime {
                 ingress: protocol,
                 context_holds: Arc::clone(&self.context_holds),
                 switch_fallback,
+                reasoning_cleanup,
                 hold_completion: hold_ticket.map(|ticket| HoldCompletion {
                     ticket: *ticket,
                     candidates: hold_candidates.into(),
@@ -1561,64 +1503,6 @@ impl GatewaySession for ReplayBodySession<'_> {
         self.response_capture.accepted_frame(&captured, end_stream);
         Ok(())
     }
-}
-
-fn tool_continuation_scope(authorized: &AuthorizedRequestPlan) -> ProviderStateScopeV1 {
-    let receipt = authorized.receipt();
-    ProviderStateScopeV1 {
-        authority_id: receipt.authority_id.to_string(),
-        authority_epoch: receipt.authority_epoch,
-        grant_id: receipt.grant_id.to_string(),
-        grant_generation: receipt.grant_generation,
-        served_model_id: receipt.served_model_id.to_string(),
-        route: receipt.route.clone(),
-    }
-}
-
-fn provider_state_owner(
-    authorized: &AuthorizedRequestPlan,
-    ingress: IngressProtocol,
-) -> Result<Option<model_ir::ExactProviderPathV1>, ()> {
-    use profiles::{Fidelity, NativeProviderStateEmission, StateAffinity};
-
-    let mut owner = None;
-    for binding in authorized
-        .core_binding()
-        .candidate_bindings()
-        .map_err(|_| ())?
-    {
-        let attempt = authorized
-            .core_binding()
-            .resolve_attempt(*binding)
-            .map_err(|_| ())?;
-        if attempt.plan().config_cell_ids.len() != 1 {
-            return Err(());
-        }
-        let config_id = attempt.plan().config_cell_ids[0];
-        let configs = attempt.acquire_attempt_configs().map_err(|_| ())?;
-        let candidate: crate::server::publication::CandidateBindingV1 =
-            serde_json::from_slice(&configs.value(config_id).ok_or(())?.bytes).map_err(|_| ())?;
-        for product_profile in candidate.protocol_profiles {
-            let profile: profiles::CandidateProtocolProfile =
-                serde_json::from_value(serde_json::to_value(product_profile).map_err(|_| ())?)
-                    .map_err(|_| ())?;
-            if profile.ingress_protocol != ingress
-                || profile.capability.native_provider_state
-                    != NativeProviderStateEmission::ExactOwnerAffine
-                || profile.capability.request.provider_state != Fidelity::Exact
-                || profile.capability.request.state_affinity != StateAffinity::ExactOwner
-            {
-                continue;
-            }
-            let candidate_owner = profile.exact_provider_path().map_err(|_| ())?;
-            match owner.as_ref() {
-                None => owner = Some(candidate_owner),
-                Some(current) if current == &candidate_owner => {}
-                Some(_) => return Ok(None),
-            }
-        }
-    }
-    Ok(owner)
 }
 
 #[derive(Debug)]

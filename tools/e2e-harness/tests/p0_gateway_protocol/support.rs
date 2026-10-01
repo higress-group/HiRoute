@@ -8,7 +8,7 @@ use hiroute_gateway::server::core_runtime::model_ir::{
 use hiroute_gateway::server::core_runtime::profiles::{
     CandidateProtocolProfile, Fidelity, NativeProviderStateEmission,
     NativeReasoningFieldAssignment, NativeReasoningRender, NativeReasoningValue,
-    ReasoningAccounting, ReasoningControlKind, ReasoningProfileCapability, StateAffinity,
+    ReasoningAccounting, ReasoningControlKind, ReasoningProfileCapability,
 };
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
@@ -60,11 +60,9 @@ pub fn candidate_profile(
 
 pub fn decoder_profile(protocol: IngressProtocol) -> CandidateProtocolProfile {
     let mut profile = candidate_profile(protocol, protocol);
-    profile.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+    profile.capability.native_provider_state = NativeProviderStateEmission::Native;
     profile.capability.response.provider_state = Fidelity::Exact;
-    profile.capability.response.state_affinity = StateAffinity::ExactOwner;
     profile.capability.request.provider_state = Fidelity::Exact;
-    profile.capability.request.state_affinity = StateAffinity::ExactOwner;
     profile
 }
 

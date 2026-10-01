@@ -451,6 +451,7 @@ impl RequestObservation {
         let commit = commit_state(observation);
         if let Some(outcome) = attempt_outcome(outcome, timed_out) {
             self.emit_diagnostic(DiagnosticEvent::AttemptEnd(AttemptEnd {
+                reasoning_fields_removed: attempt.reasoning_fields_removed,
                 attempt_token: self.attempt_token(&attempt.attempt_id),
                 outcome,
                 commit,

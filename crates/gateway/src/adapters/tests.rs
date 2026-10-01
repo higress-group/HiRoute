@@ -11,7 +11,7 @@ use crate::server::core_runtime::model_ir::{
 };
 use crate::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, CriticalFact, Fidelity,
-    NativeProviderStateEmission, StateAffinity, StreamingRefusalSemantics, fixed_reasoning,
+    NativeProviderStateEmission, StreamingRefusalSemantics, fixed_reasoning,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -28,11 +28,9 @@ fn exact_state_profile(
         "physical",
         fixed_reasoning("fixed"),
     );
-    profile.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+    profile.capability.native_provider_state = NativeProviderStateEmission::Native;
     profile.capability.request.provider_state = Fidelity::Exact;
-    profile.capability.request.state_affinity = StateAffinity::ExactOwner;
     profile.capability.response.provider_state = Fidelity::Exact;
-    profile.capability.response.state_affinity = StateAffinity::ExactOwner;
     profile
 }
 
@@ -160,9 +158,6 @@ fn malformed_tool_arguments_above_inline_limit_replay_exactly() {
 
 #[test]
 fn messages_ingress_accepts_claude_compaction_after_tool_roundtrip() {
-    let owner = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages)
-        .exact_provider_path()
-        .unwrap();
     let body = json!({
         "model": "alias",
         "max_tokens": 1024,
@@ -192,14 +187,8 @@ fn messages_ingress_accepts_claude_compaction_after_tool_roundtrip() {
         ]
     });
     let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
-    let request = decode_ingress_request_with_bindings(
-        IngressProtocol::Messages,
-        &body,
-        &IngressRequestBindings {
-            provider_state_owner: Some(owner),
-        },
-    )
-    .expect("Claude compaction request should retain tool semantics");
+    let request = decode_ingress_request(IngressProtocol::Messages, &body)
+        .expect("Claude compaction request should retain tool semantics");
     assert_eq!(request.messages.len(), 5);
     assert!(matches!(
         &request.messages[3].content[0],
@@ -216,14 +205,7 @@ fn messages_ingress_accepts_claude_compaction_after_tool_roundtrip() {
 
     let mut unsupported = body;
     unsupported["messages"][3]["content"][0]["cache_control"]["type"] = json!("persistent");
-    let error = decode_ingress_request_with_bindings(
-        IngressProtocol::Messages,
-        &unsupported,
-        &IngressRequestBindings {
-            provider_state_owner: profile.exact_provider_path().ok(),
-        },
-    )
-    .unwrap_err();
+    let error = decode_ingress_request(IngressProtocol::Messages, &unsupported).unwrap_err();
     assert!(matches!(error, ModelIrError::UnsupportedValue(_)));
 }
 
@@ -233,7 +215,7 @@ fn messages_signed_thinking_crosses_provider_without_mutation_but_not_protocol()
     origin.capability.native_model = "origin-glm".into();
     let mut target = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
     target.capability.native_model = "target-luna".into();
-    let request = decode_ingress_request_with_bindings(
+    let request = decode_ingress_request(
         IngressProtocol::Messages,
         &json!({
             "model":"alias", "max_tokens":128,
@@ -241,9 +223,6 @@ fn messages_signed_thinking_crosses_provider_without_mutation_but_not_protocol()
                 {"type":"thinking","thinking":"signed notes","signature":"opaque-glm"}
             ]},{"role":"user","content":"continue"}]
         }),
-        &IngressRequestBindings {
-            provider_state_owner: Some(origin.exact_provider_path().unwrap()),
-        },
     )
     .unwrap();
     let projected = project_candidate_request(&request, &target).unwrap();
@@ -253,10 +232,11 @@ fn messages_signed_thinking_crosses_provider_without_mutation_but_not_protocol()
     );
 
     let responses = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
-    assert!(matches!(
-        project_candidate_request(&request, &responses),
-        Err(ProtocolAdapterError::ClientUnrepresentable(_))
-    ));
+    let cross = project_candidate_request(&request, &responses)
+        .unwrap()
+        .body;
+    assert_eq!(cross["input"][0]["summary"][0]["text"], "signed notes");
+    assert!(cross["input"][0].get("encrypted_content").is_none());
 }
 
 #[test]
@@ -265,7 +245,7 @@ fn responses_ciphertext_in_messages_wrapper_can_try_another_messages_provider() 
     original.capability.native_model = "luna".into();
     let mut switched = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
     switched.capability.native_model = "glm".into();
-    let request = decode_ingress_request_with_bindings(
+    let request = decode_ingress_request(
         IngressProtocol::Messages,
         &json!({
             "model":"alias", "max_tokens":128,
@@ -276,9 +256,6 @@ fn responses_ciphertext_in_messages_wrapper_can_try_another_messages_provider() 
                 {"role":"user","content":"continue"}
             ]
         }),
-        &IngressRequestBindings {
-            provider_state_owner: original.exact_provider_path().ok(),
-        },
     )
     .unwrap();
     let switched_body = project_candidate_request(&request, &switched).unwrap().body;
@@ -287,10 +264,7 @@ fn responses_ciphertext_in_messages_wrapper_can_try_another_messages_provider() 
         json!({"type":"thinking","thinking":"compressed context summary","signature":"opaque-luna"})
     );
     let original_body = project_candidate_request(&request, &original).unwrap().body;
-    assert_eq!(
-        original_body["input"][0]["encrypted_content"],
-        "opaque-luna"
-    );
+    assert!(original_body["input"][0].get("encrypted_content").is_none());
     assert_eq!(
         original_body["input"][0]["summary"][0]["text"],
         "compressed context summary"
@@ -320,11 +294,10 @@ fn long_responses_ciphertext_rebuilds_the_same_messages_wrapper_after_externaliz
             .stream(4 * 1024 * 1024)
             .unwrap();
     let replay = manager.begin_request(budget.clone()).unwrap();
-    let origin = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
     let target = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
     let signature = "ciphertext-🙂".repeat(1000);
     let thinking = "compacted summary 🙂".repeat(1000);
-    let mut request = decode_ingress_request_with_bindings(
+    let mut request = decode_ingress_request(
         IngressProtocol::Messages,
         &json!({"model":"alias","max_tokens":128,"messages":[
             {"role":"assistant","content":[
@@ -332,9 +305,6 @@ fn long_responses_ciphertext_rebuilds_the_same_messages_wrapper_after_externaliz
             ]},
             {"role":"user","content":"continue"}
         ]}),
-        &IngressRequestBindings {
-            provider_state_owner: origin.exact_provider_path().ok(),
-        },
     )
     .unwrap();
     externalize_model_request(&mut request, &replay, 8 * 1024).unwrap();
@@ -784,19 +754,20 @@ data: {"type":"response.completed","sequence_number":10,"response":{"id":"r","mo
             "content_block_start",
             "content_block_delta",
             "content_block_stop",
-            "content_block_start",
-            "content_block_delta",
-            "content_block_stop",
             "message_delta",
             "message_stop",
         ]
     );
-    assert_eq!(rendered[1].data["content_block"]["type"], "thinking");
-    assert_eq!(rendered[2].data["delta"]["text"], serde_json::Value::Null);
-    assert_eq!(rendered[2].data["delta"]["signature"], "final-opaque-state");
-    assert_eq!(rendered[4].data["content_block"]["type"], "text");
+    assert_eq!(rendered[1].data["content_block"]["type"], "text");
+    assert_eq!(rendered[1].data["index"], 0);
+    assert!(
+        !serde_json::to_string(&rendered.iter().map(|event| &event.data).collect::<Vec<_>>())
+            .unwrap()
+            .contains("final-opaque-state")
+    );
+    assert!(renderer.take_reasoning_loss() > 0);
     assert_eq!(
-        rendered[5].data["delta"]["text"],
+        rendered[2].data["delta"]["text"],
         "HIROUTE-SUBSCRIPTION-E2E-OK"
     );
     decoder.finish().unwrap();
@@ -891,8 +862,7 @@ data: {"type":"response.completed","response":{"id":"r","model":"physical","stat
 #[test]
 fn messages_thinking_and_signature_replay_as_responses_reasoning_in_order() {
     let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
-    let owner = profile.exact_provider_path().unwrap();
-    let request = decode_ingress_request_with_bindings(
+    let request = decode_ingress_request(
         IngressProtocol::Messages,
         &json!({
             "model":"alias",
@@ -906,9 +876,6 @@ fn messages_thinking_and_signature_replay_as_responses_reasoning_in_order() {
                 ]
             }]
         }),
-        &IngressRequestBindings {
-            provider_state_owner: Some(owner),
-        },
     )
     .unwrap();
     let projected = project_candidate_request(&request, &profile).unwrap();
@@ -916,7 +883,7 @@ fn messages_thinking_and_signature_replay_as_responses_reasoning_in_order() {
         projected.body["input"],
         json!([
             {"type":"message","role":"assistant","content":[{"type":"output_text","text":"before"}]},
-            {"type":"reasoning","summary":[{"type":"summary_text","text":"summary text"}],"content":null,"encrypted_content":"opaque-replay"},
+            {"type":"reasoning","summary":[{"type":"summary_text","text":"summary text"}]},
             {"type":"message","role":"assistant","content":[{"type":"output_text","text":"after"}]}
         ])
     );
@@ -925,7 +892,7 @@ fn messages_thinking_and_signature_replay_as_responses_reasoning_in_order() {
 #[test]
 fn responses_state_wrapper_preserves_plaintext_and_rejects_malformed_thinking() {
     let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses);
-    let valid = decode_ingress_request_with_bindings(
+    let valid = decode_ingress_request(
         IngressProtocol::Messages,
         &json!({
             "model":"alias",
@@ -934,25 +901,19 @@ fn responses_state_wrapper_preserves_plaintext_and_rejects_malformed_thinking() 
                 {"type":"thinking","thinking":"preserve me","signature":"opaque-replay"}
             ]}]
         }),
-        &IngressRequestBindings {
-            provider_state_owner: profile.exact_provider_path().ok(),
-        },
     )
     .unwrap();
     assert_eq!(
         project_candidate_request(&valid, &profile).unwrap().body["input"][0]["summary"][0]["text"],
         "preserve me"
     );
-    let error = decode_ingress_request_with_bindings(
+    let error = decode_ingress_request(
         IngressProtocol::Messages,
         &json!({"model":"alias","max_tokens":128,"messages":[{
             "role":"assistant","content":[
                 {"type":"thinking","thinking":42,"signature":"opaque-replay"}
             ]
         }]}),
-        &IngressRequestBindings {
-            provider_state_owner: profile.exact_provider_path().ok(),
-        },
     )
     .unwrap_err();
     assert!(matches!(error, ModelIrError::InvalidField("thinking")));
@@ -983,32 +944,26 @@ fn long_native_continuation_bytes_reach_upstream_after_ingress_compaction() {
         let budget = tree.stream(4 * 1024 * 1024).expect("stream budget");
         let store = manager.begin_request(budget.clone()).expect("replay store");
         let profile = exact_state_profile(protocol, protocol);
-        let owner = profile.exact_provider_path().expect("state owner");
         let mut document = match protocol {
             IngressProtocol::Responses => json!({
                 "model":"alias",
                 "input":[
                     {"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]},
-                    {"type":"reasoning","summary":[{"type":"summary_text","text":summary}],"encrypted_content":opaque}
+                    {"type":"reasoning","summary":[{"type":"summary_text","text":summary}],"encrypted_content":opaque},
+                    {"type":"reasoning","summary":[{"type":"summary_text","text":"short plaintext"}]}
                 ]
             }),
             IngressProtocol::Messages => json!({
                 "model":"alias", "max_tokens":128,
                 "messages":[{"role":"assistant","content":[
-                    {"type":"thinking","thinking":thinking,"signature":opaque}
+                    {"type":"thinking","thinking":thinking,"signature":opaque},
+                    {"type":"thinking","thinking":"second plaintext","signature":"second signature"}
                 ]}]
             }),
             IngressProtocol::ChatCompletions => unreachable!(),
         };
         compact_ingress_document(protocol, &mut document, &store).expect("compact ingress");
-        let mut request = decode_ingress_request_with_bindings(
-            protocol,
-            &document,
-            &IngressRequestBindings {
-                provider_state_owner: Some(owner),
-            },
-        )
-        .expect("decode native state");
+        let mut request = decode_ingress_request(protocol, &document).expect("decode native state");
         externalize_model_request(&mut request, &store, 8 * 1024)
             .expect("externalize complete native state");
         let template = project_candidate_request_template(&request, &profile)
@@ -1035,6 +990,41 @@ fn long_native_continuation_bytes_reach_upstream_after_ingress_compaction() {
             IngressProtocol::ChatCompletions => unreachable!(),
         }
         reader.release();
+        if protocol == IngressProtocol::Responses {
+            let cross = exact_state_profile(protocol, IngressProtocol::ChatCompletions);
+            let template = project_candidate_request_template(&request, &cross).unwrap();
+            let mut reader =
+                sequential_attempt_body(template, store.clone(), &budget, 257).unwrap();
+            let mut bytes = Vec::new();
+            while let Some(chunk) = reader.next_chunk().unwrap() {
+                bytes.extend_from_slice(chunk.bytes());
+            }
+            let projected: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(projected["messages"][1]["reasoning_content"], summary);
+            assert_eq!(
+                projected["messages"][2]["reasoning_content"],
+                "short plaintext"
+            );
+            assert!(!String::from_utf8_lossy(&bytes).contains("encrypted_content"));
+            reader.release();
+        } else {
+            let cross = exact_state_profile(protocol, IngressProtocol::ChatCompletions);
+            let template = project_candidate_request_template(&request, &cross).unwrap();
+            let mut reader =
+                sequential_attempt_body(template, store.clone(), &budget, 257).unwrap();
+            let mut bytes = Vec::new();
+            while let Some(chunk) = reader.next_chunk().unwrap() {
+                bytes.extend_from_slice(chunk.bytes());
+            }
+            let projected: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(projected["messages"][0]["reasoning_content"], thinking);
+            assert_eq!(
+                projected["messages"][1]["reasoning_content"],
+                "second plaintext"
+            );
+            assert!(!String::from_utf8_lossy(&bytes).contains("signature"));
+            reader.release();
+        }
         drop(store);
         assert_eq!(budget.snapshot().expect("released replay").live, 0);
     }

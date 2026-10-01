@@ -28,7 +28,7 @@ pub use planning::{
 
 use planning::{
     EligibleForRanking, canonical_digest, evaluate_candidate, has_exact_reasoning_profile,
-    rank_group, state_owners,
+    rank_group,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -37,7 +37,7 @@ pub struct Planner;
 impl Planner {
     pub fn plan(&self, input: &PlannerInputV1) -> Result<PlannerOutputV1, PlannerError> {
         validate_input(input)?;
-        let (branch, complexity, complexity_facts, mut group_ids, mut reason_ledger) =
+        let (branch, complexity, complexity_facts, group_ids, mut reason_ledger) =
             select_groups(input)?;
         // Deliberately digest only content-free planning facts. A Routing
         // Receipt may retain this value without creating a Prompt hash.
@@ -54,14 +54,6 @@ impl Planner {
             .iter()
             .map(|group| (group.group_id.as_str(), group))
             .collect::<BTreeMap<_, _>>();
-
-        apply_provider_state_owner_continuation(
-            input,
-            &candidate_by_id,
-            &group_by_id,
-            &mut group_ids,
-            &mut reason_ledger,
-        )?;
 
         let mut seen = BTreeSet::new();
         let mut evaluations = Vec::new();
@@ -268,137 +260,6 @@ fn guard_anchor_score(
     }
 }
 
-fn group_has_eligible_state_owner(
-    input: &PlannerInputV1,
-    group: &MaterializedModelGroupV1,
-    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
-    owner: &crate::server::core_runtime::model_ir::ExactProviderPathV1,
-) -> Result<bool, PlannerError> {
-    let mut eligible = Vec::new();
-    for (index, candidate_id) in group.candidate_ids.iter().enumerate() {
-        let candidate = candidate_by_id[candidate_id.as_str()];
-        if candidate
-            .protocol_profile
-            .exact_provider_path()
-            .ok()
-            .as_ref()
-            != Some(owner)
-        {
-            continue;
-        }
-        if let Ok(projection) = evaluate_candidate(
-            &input.request,
-            candidate,
-            input.policy.cost_policy,
-            &input.policy.limits,
-        ) {
-            eligible.push(EligibleForRanking {
-                candidate,
-                projection,
-                declared_order: u32::try_from(index)
-                    .map_err(|_| PlannerError::ArithmeticOverflow)?,
-            });
-        }
-    }
-    Ok(
-        !rank_group(group, eligible, guard_anchor_score(group, candidate_by_id))
-            .ordered
-            .is_empty(),
-    )
-}
-
-fn group_has_eligible_candidate(
-    input: &PlannerInputV1,
-    group: &MaterializedModelGroupV1,
-    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
-) -> Result<bool, PlannerError> {
-    let mut eligible = Vec::new();
-    for (index, candidate_id) in group.candidate_ids.iter().enumerate() {
-        let candidate = candidate_by_id[candidate_id.as_str()];
-        if let Ok(projection) = evaluate_candidate(
-            &input.request,
-            candidate,
-            input.policy.cost_policy,
-            &input.policy.limits,
-        ) {
-            eligible.push(EligibleForRanking {
-                candidate,
-                projection,
-                declared_order: u32::try_from(index)
-                    .map_err(|_| PlannerError::ArithmeticOverflow)?,
-            });
-        }
-    }
-    Ok(
-        !rank_group(group, eligible, guard_anchor_score(group, candidate_by_id))
-            .ordered
-            .is_empty(),
-    )
-}
-
-fn apply_provider_state_owner_continuation(
-    input: &PlannerInputV1,
-    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
-    group_by_id: &BTreeMap<&str, &MaterializedModelGroupV1>,
-    group_ids: &mut Vec<String>,
-    reason_ledger: &mut Vec<ReasonLedgerEntryV1>,
-) -> Result<(), PlannerError> {
-    let MaterializedRouteV1::SmartSaving {
-        simple_group_id,
-        simple_fallback_group_ids,
-        complex_group_id,
-        ..
-    } = &input.policy.route
-    else {
-        return Ok(());
-    };
-    let mut owners = state_owners(&input.request);
-    let Some(owner) = owners.next() else {
-        return Ok(());
-    };
-    if owners.any(|other| other != owner) {
-        return Ok(());
-    }
-    for group_id in group_ids.iter() {
-        if group_has_eligible_candidate(input, group_by_id[group_id.as_str()], candidate_by_id)? {
-            return Ok(());
-        }
-    }
-
-    let alternatives = if group_ids.first() == Some(simple_group_id) {
-        vec![complex_group_id.clone()]
-    } else {
-        std::iter::once(simple_group_id.clone())
-            .chain(simple_fallback_group_ids.iter().cloned())
-            .collect()
-    };
-    let mut continuation = Vec::new();
-    for group_id in alternatives {
-        if group_has_eligible_state_owner(
-            input,
-            group_by_id[group_id.as_str()],
-            candidate_by_id,
-            owner,
-        )? {
-            continuation.push(group_id);
-        }
-    }
-    if !continuation.is_empty() {
-        reason_ledger.retain(|entry| {
-            !matches!(
-                entry.code,
-                LedgerReasonCodeV1::GroupExhaustedFallback | LedgerReasonCodeV1::ComplexNoDowngrade
-            )
-        });
-        reason_ledger.push(reason(
-            LedgerReasonCodeV1::ProviderStateOwnerContinuation,
-            continuation.first().cloned(),
-        ));
-        *group_ids = continuation;
-    }
-    Ok(())
-}
-
 fn apply_context_hold(
     input: &PlannerInputV1,
     selected_group_ids: &[String],
@@ -522,7 +383,7 @@ fn apply_previous_success_fallback(
     frozen: &mut Vec<FrozenCandidateV1>,
     reason_ledger: &mut Vec<ReasonLedgerEntryV1>,
 ) -> Result<(), PlannerError> {
-    if !matches!(input.policy.route, MaterializedRouteV1::SmartSaving { .. }) || frozen.is_empty() {
+    if !matches!(input.policy.route, MaterializedRouteV1::SmartSaving { .. }) {
         return Ok(());
     }
     let Some(previous_id) = input.previous_success_candidate_id.as_deref() else {

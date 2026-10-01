@@ -54,7 +54,6 @@ pub struct RequestFeatureProfile {
     pub tool_result_json: Fidelity,
     pub logical_tool_id_mapping: Fidelity,
     pub provider_state: Fidelity,
-    pub state_affinity: StateAffinity,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -69,7 +68,6 @@ pub struct ResponseFeatureProfile {
     pub finish_reason: Fidelity,
     pub typed_error: Fidelity,
     pub provider_state: Fidelity,
-    pub state_affinity: StateAffinity,
     pub stream_refusal: StreamingRefusalSemantics,
     pub stream_text_delta: Fidelity,
     pub stream_tool_argument_delta: Fidelity,
@@ -94,7 +92,7 @@ pub struct CandidateCapabilityProfile {
     pub native_streaming: CriticalFact<bool>,
     /// Exact state-emission contract for this physical attempt. Unknown is a
     /// pre-connect rejection state; owner-affine emission is accepted only
-    /// when request and response profiles also require the same exact owner.
+    /// through the corresponding native protocol representation.
     pub native_provider_state: NativeProviderStateEmission,
 }
 
@@ -115,17 +113,9 @@ pub struct CandidateProtocolProfile {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum StateAffinity {
-    Unsupported,
-    ExactOwner,
-    Unknown,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum NativeProviderStateEmission {
     Never,
-    ExactOwnerAffine,
+    Native,
     Unknown,
 }
 
@@ -136,10 +126,8 @@ pub use hiroute_domain::GatewayStreamingRefusalSemanticsV1 as StreamingRefusalSe
 pub struct ClientProtocolProfile {
     pub schema_version: String,
     pub protocol: IngressProtocol,
+    pub source_protocol: IngressProtocol,
     pub adapter_revision: String,
-    /// Required for any opaque state projection. Protocol equality alone is
-    /// never sufficient ownership evidence.
-    pub state_owner: Option<ExactProviderPathV1>,
     pub response: ResponseFeatureProfile,
 }
 
@@ -213,7 +201,6 @@ impl CandidateProtocolProfile {
                     tool_result_json: exact,
                     logical_tool_id_mapping: exact,
                     provider_state: Fidelity::Unsupported,
-                    state_affinity: StateAffinity::Unsupported,
                 },
                 response: ResponseFeatureProfile {
                     text: exact,
@@ -225,7 +212,6 @@ impl CandidateProtocolProfile {
                     finish_reason: exact,
                     typed_error: exact,
                     provider_state: Fidelity::Unsupported,
-                    state_affinity: StateAffinity::Unsupported,
                     stream_refusal: if upstream_protocol == IngressProtocol::Messages {
                         StreamingRefusalSemantics::TerminalClassified
                     } else {
@@ -407,14 +393,9 @@ impl CandidateProtocolProfile {
             request.logical_tool_id_mapping,
             CapabilityError::LogicalToolIdMappingUnsupported,
         )?;
-        exact(
-            requirements.provider_state,
-            request.provider_state,
-            CapabilityError::ProviderStateUnsupported,
-        )?;
-        if requirements.provider_state && request.state_affinity != StateAffinity::ExactOwner {
-            return Err(CapabilityError::StateAffinityUnsupported);
-        }
+        // History is client-supplied data, not a model-capability admission gate.
+        // The concrete serializer preserves native state or omits fields that
+        // have no representation in the target protocol.
         if requirements.streaming && self.capability.native_streaming.exact() != Some(&true) {
             return Err(CapabilityError::StreamingUnsupported);
         }
@@ -474,23 +455,17 @@ impl CandidateProtocolProfile {
         {
             return Err(CapabilityError::StreamRefusalUnsupported);
         }
-        if self.capability.native_provider_state == NativeProviderStateEmission::ExactOwnerAffine {
+        if self.capability.native_provider_state == NativeProviderStateEmission::Native {
             exact(
                 true,
                 request.provider_state,
                 CapabilityError::ProviderStateUnsupported,
             )?;
-            if request.state_affinity != StateAffinity::ExactOwner {
-                return Err(CapabilityError::StateAffinityUnsupported);
-            }
             exact(
                 true,
                 response.provider_state,
                 CapabilityError::ResponseProviderStateUnsupported,
             )?;
-            if response.state_affinity != StateAffinity::ExactOwner {
-                return Err(CapabilityError::StateAffinityUnsupported);
-            }
         }
         exact(
             requirements.stream_text,
@@ -519,17 +494,9 @@ impl CandidateProtocolProfile {
 
 impl ClientProtocolProfile {
     pub fn for_candidate(candidate: &CandidateProtocolProfile) -> Result<Self, CapabilityError> {
-        if client_can_represent_provider_state(
-            candidate.ingress_protocol,
-            candidate.capability.upstream_protocol,
-        ) && candidate.capability.native_provider_state
-            == NativeProviderStateEmission::ExactOwnerAffine
-        {
-            return candidate
-                .exact_provider_path()
-                .map(|owner| Self::exact_owner_affine(candidate.ingress_protocol, owner));
-        }
-        Ok(Self::exact_portable(candidate.ingress_protocol))
+        let mut profile = Self::exact_portable(candidate.ingress_protocol);
+        profile.source_protocol = candidate.capability.upstream_protocol;
+        Ok(profile)
     }
 
     pub fn exact_portable(protocol: IngressProtocol) -> Self {
@@ -537,8 +504,8 @@ impl ClientProtocolProfile {
         Self {
             schema_version: "hiroute.client-protocol-profile/v1".into(),
             protocol,
+            source_protocol: protocol,
             adapter_revision: "builtin-client-protocol-adapter/v1".into(),
-            state_owner: None,
             response: ResponseFeatureProfile {
                 text: exact,
                 reasoning: exact,
@@ -548,8 +515,7 @@ impl ClientProtocolProfile {
                 usage: exact,
                 finish_reason: exact,
                 typed_error: exact,
-                provider_state: Fidelity::Unsupported,
-                state_affinity: StateAffinity::Unsupported,
+                provider_state: Fidelity::Exact,
                 stream_refusal: StreamingRefusalSemantics::ExactDelta,
                 stream_text_delta: exact,
                 stream_tool_argument_delta: exact,
@@ -559,38 +525,10 @@ impl ClientProtocolProfile {
         }
     }
 
-    pub fn exact_owner_affine(protocol: IngressProtocol, owner: ExactProviderPathV1) -> Self {
-        let mut profile = Self::exact_portable(protocol);
-        profile.state_owner = Some(owner);
-        profile.response.provider_state = Fidelity::Exact;
-        profile.response.state_affinity = StateAffinity::ExactOwner;
-        profile
-    }
-
     pub fn is_complete(&self) -> bool {
         self.schema_version == "hiroute.client-protocol-profile/v1"
             && !self.adapter_revision.trim().is_empty()
-            && match self.state_owner.as_ref() {
-                Some(owner) => {
-                    owner.is_complete()
-                        && client_can_represent_provider_state(
-                            self.protocol,
-                            owner.upstream_protocol,
-                        )
-                        && self.response.provider_state == Fidelity::Exact
-                        && self.response.state_affinity == StateAffinity::ExactOwner
-                }
-                None => {
-                    self.response.provider_state == Fidelity::Unsupported
-                        && self.response.state_affinity == StateAffinity::Unsupported
-                }
-            }
     }
-}
-
-fn client_can_represent_provider_state(client: IngressProtocol, upstream: IngressProtocol) -> bool {
-    client == upstream
-        || (client == IngressProtocol::Messages && upstream == IngressProtocol::Responses)
 }
 
 fn exact(
@@ -653,8 +591,6 @@ pub enum CapabilityError {
     LogicalToolIdMappingUnsupported,
     #[error("provider state is unsupported")]
     ProviderStateUnsupported,
-    #[error("provider state exact-owner affinity is unsupported or unknown")]
-    StateAffinityUnsupported,
     #[error("native streaming is unsupported or unknown")]
     StreamingUnsupported,
     #[error("streaming refusal classification is unsupported, unbounded, or unknown")]
@@ -739,37 +675,28 @@ mod tests {
     }
 
     #[test]
-    fn client_profile_preserves_only_explicitly_representable_exact_owner_state() {
+    fn client_profiles_do_not_require_reasoning_owner_registration() {
         let mut candidate = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Messages,
             IngressProtocol::Messages,
             "physical-model",
             fixed_reasoning("fixed"),
         );
-        candidate.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        candidate.capability.native_provider_state = NativeProviderStateEmission::Native;
         candidate.capability.request.provider_state = Fidelity::Exact;
-        candidate.capability.request.state_affinity = StateAffinity::ExactOwner;
         candidate.capability.response.provider_state = Fidelity::Exact;
-        candidate.capability.response.state_affinity = StateAffinity::ExactOwner;
 
-        let expected_owner = candidate.exact_provider_path().unwrap();
         let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
-        assert_eq!(profile.state_owner, Some(expected_owner));
         assert_eq!(profile.response.provider_state, Fidelity::Exact);
-        assert_eq!(profile.response.state_affinity, StateAffinity::ExactOwner);
 
         candidate.ingress_protocol = IngressProtocol::Responses;
         let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
-        assert_eq!(profile.state_owner, None);
-        assert_eq!(profile.response.provider_state, Fidelity::Unsupported);
-        assert_eq!(profile.response.state_affinity, StateAffinity::Unsupported);
+        assert!(profile.is_complete());
 
         candidate.ingress_protocol = IngressProtocol::Messages;
         candidate.capability.upstream_protocol = IngressProtocol::Responses;
         candidate.connector.upstream_protocol = IngressProtocol::Responses;
-        let expected_owner = candidate.exact_provider_path().unwrap();
         let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
-        assert_eq!(profile.state_owner, Some(expected_owner));
         assert_eq!(profile.response.provider_state, Fidelity::Exact);
     }
 }

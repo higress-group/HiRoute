@@ -147,6 +147,7 @@ pub(super) fn begin_request(
         return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
     }
     Ok(ProductionLogicalRequest {
+        reasoning_cleanup: Arc::clone(&seed.route_context.reasoning_cleanup),
         ingress,
         replay: seed.replay,
         raw_body: seed.raw_body,
@@ -269,8 +270,10 @@ pub(super) async fn materialize_attempt(
         .ir
         .as_ref()
         .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
-    let mut prepared = adapters::project_candidate_request_template(ir, profile)
-        .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let cleanup_prefix = logical.reasoning_cleanup.prefix_for(context.binding_id());
+    let mut prepared =
+        adapters::project_candidate_request_template_with_cleanup(ir, profile, cleanup_prefix)
+            .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
     let streaming = ir.stream;
     let served_model_alias = ir.served_model_id.clone();
     let client_profile = client_profile_for_candidate(profile)?;
@@ -512,6 +515,29 @@ pub(super) async fn materialize_attempt(
         )
         .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
     );
+    if let Some(observation) = crate::server::core_runtime::observation::active_request() {
+        use hiroute_diagnostics::event::ReasoningCleanupReason;
+        let reason = if cleanup_prefix.is_none() {
+            ReasoningCleanupReason::RequestProtocolProjection
+        } else if logical
+            .reasoning_cleanup
+            .used
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            ReasoningCleanupReason::ContextBreakRetry
+        } else {
+            ReasoningCleanupReason::SuccessfulPrefixReuse
+        };
+        observation.reasoning_cleanup(
+            reason,
+            adapters::reasoning_loss::request_loss(
+                ir,
+                profile.capability.upstream_protocol,
+                cleanup_prefix,
+            ),
+            cleanup_prefix,
+        );
+    }
     Ok((
         PreparedAttemptHttpRequest {
             head: PreparedRequestHead {

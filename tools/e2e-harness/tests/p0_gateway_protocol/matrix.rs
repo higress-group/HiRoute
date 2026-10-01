@@ -323,8 +323,22 @@ fn protocol_native_nonstream_and_sse_fragmentation_share_one_ledger() {
 fn protocol_three_by_three_client_renderers_preserve_ledger_and_alias() {
     for source in PROTOCOLS {
         let decoded = decode_fragmented(source, true, &native_stream(source), &[1, 4, 2, 9]);
-        let expected = decoded.response.semantic_ledger();
         for client in PROTOCOLS {
+            let mut projected = decoded.response.clone();
+            if client == IngressProtocol::Messages {
+                use hiroute_gateway::server::core_runtime::model_ir::ResponseBlock;
+                projected.blocks.retain(|block| !matches!(block, ResponseBlock::Reasoning { index, .. }
+                    if !projected.provider_state.iter().any(|state| state.block_index == Some(*index) && state.kind == "thinking_signature")));
+                for (ordinal, block) in projected.blocks.iter_mut().enumerate() {
+                    let (ResponseBlock::Text { index, .. }
+                    | ResponseBlock::Reasoning { index, .. }
+                    | ResponseBlock::Refusal { index, .. }
+                    | ResponseBlock::ToolCall { index, .. }
+                    | ResponseBlock::WebSearch { index, .. }) = block;
+                    *index = ordinal as u32;
+                }
+            }
+            let expected = projected.semantic_ledger();
             for rendered in [
                 ClientResponseRenderer::render_nonstream(
                     client,
@@ -428,31 +442,9 @@ fn protocol_native_provider_state_stays_typed_or_projection_is_rejected() {
         let bytes = serde_json::to_vec(&value).unwrap();
         let decoded = decode_fragmented(protocol, false, &bytes, &[1, 3, 2]);
         assert_eq!(decoded.response.provider_state.len(), 1);
-        assert_eq!(
-            decoded.response.provider_state[0].owner.upstream_protocol,
-            protocol
-        );
-
-        assert_eq!(
-            ClientResponseRenderer::render_nonstream(
-                protocol,
-                "agent/research",
-                &decoded.response,
-            )
-            .unwrap_err()
-            .code(),
-            "CLIENT_PROTOCOL_UNREPRESENTABLE"
-        );
-        let client_profile = ClientProtocolProfile::exact_owner_affine(
-            protocol,
-            decoded.response.provider_state[0].owner.clone(),
-        );
-        let same = ClientResponseRenderer::render_nonstream_with_profile(
-            &client_profile,
-            "agent/research",
-            &decoded.response,
-        )
-        .unwrap();
+        let same =
+            ClientResponseRenderer::render_nonstream(protocol, "agent/research", &decoded.response)
+                .unwrap();
         assert_eq!(
             ledger_from_rendered(protocol, &same),
             decoded.response.semantic_ledger()
@@ -462,28 +454,26 @@ fn protocol_native_provider_state_stays_typed_or_projection_is_rejected() {
         } else {
             IngressProtocol::Responses
         };
-        let cross_protocol = ClientResponseRenderer::render_nonstream_with_profile(
-            &ClientProtocolProfile::exact_owner_affine(
-                other,
-                decoded.response.provider_state[0].owner.clone(),
-            ),
-            "agent/research",
-            &decoded.response,
-        );
-        if protocol == IngressProtocol::Responses {
-            let RenderedClientResponse::Json { body, .. } = cross_protocol.unwrap() else {
-                panic!("Responses state projected to Messages must be non-stream JSON")
-            };
-            assert_eq!(
-                body["content"],
-                json!([{"type":"thinking","thinking":"careful","signature":"opaque-state"}])
-            );
+        let mut client = ClientProtocolProfile::exact_portable(other);
+        client.source_protocol = protocol;
+        let RenderedClientResponse::Json { body, .. } =
+            ClientResponseRenderer::render_nonstream_with_profile(
+                &client,
+                "agent/research",
+                &decoded.response,
+            )
+            .unwrap()
+        else {
+            panic!("expected JSON");
+        };
+        if other == IngressProtocol::Messages {
+            assert_eq!(body["content"], json!([]));
         } else {
-            assert_eq!(
-                cross_protocol.unwrap_err().code(),
-                "CLIENT_PROTOCOL_UNREPRESENTABLE"
-            );
+            assert_eq!(body["output"][0]["summary"][0]["text"], "careful");
         }
+        let wire = serde_json::to_string(&body).unwrap();
+        assert!(!wire.contains("opaque-state"));
+        assert!(!wire.contains("signed-state"));
     }
 
     let chat_with_unprofiled_state = serde_json::to_vec(&json!({

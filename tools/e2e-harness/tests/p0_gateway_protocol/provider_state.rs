@@ -1,14 +1,14 @@
 //! Native Responses continuation through the real hirouted entry and two candidates.
 use super::*;
 use hiroute_gateway::server::core_runtime::profiles::{
-    CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, StateAffinity,
+    CandidateProtocolProfile, Fidelity, NativeProviderStateEmission,
 };
 
 const FIRST: &[u8] = br#"event: response.created
 data: {"type":"response.created","response":{"id":"native-first","model":"continuation-native-2","status":"in_progress","service_tier":"auto"}}
 
 event: response.output_item.added
-data: {"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_native","summary":[],"encrypted_content":"fixture-opaque-first"}}
+data: {"type": "response.output_item.added", "output_index": 0, "item": {"type": "reasoning", "id": "rs_native", "summary": [], "encrypted_content": "\u0066ixture-opaque-first"}}
 
 event: response.output_item.done
 data: {"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_native","status":"completed","summary":[],"encrypted_content":"fixture-opaque-final"}}
@@ -20,17 +20,26 @@ data: {"type":"response.completed","response":{"id":"native-first","model":"cont
 
 #[test]
 fn production_responses_continuation_keeps_actual_owner_in_multi_candidate_route() {
-    production_continuation(IngressProtocol::Responses, IngressProtocol::Responses);
+    production_continuation(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        false,
+    );
+}
+
+#[test]
+fn production_responses_continuation_accepts_formatted_state_absent_from_terminal_snapshot() {
+    production_continuation(IngressProtocol::Responses, IngressProtocol::Responses, true);
 }
 
 #[test]
 fn production_messages_signature_keeps_responses_owner_in_multi_candidate_route() {
-    production_continuation(IngressProtocol::Messages, IngressProtocol::Responses);
+    production_continuation(IngressProtocol::Messages, IngressProtocol::Responses, false);
 }
 
 #[test]
 fn production_native_messages_fragmented_signature_and_tool_result_keep_actual_owner() {
-    production_continuation(IngressProtocol::Messages, IngressProtocol::Messages);
+    production_continuation(IngressProtocol::Messages, IngressProtocol::Messages, false);
 }
 
 const FIRST_MESSAGES: &[u8] = br#"event: message_start
@@ -68,7 +77,11 @@ data: {"type":"message_stop"}
 
 const SECOND_MESSAGES: &[u8] = br#"{"id":"native-done","model":"continuation-native-2","type":"message","role":"assistant","content":[{"type":"text","text":"done"}],"stop_reason":"end_turn","usage":{"input_tokens":8,"output_tokens":1}}"#;
 
-fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) {
+fn production_continuation(
+    ingress: IngressProtocol,
+    upstream: IngressProtocol,
+    replay_initial_state: bool,
+) {
     let _serial = process_test_lock();
     let directory = tempfile::tempdir().unwrap();
     let provider = ContinuationProvider::start(vec![
@@ -76,6 +89,11 @@ fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) 
             FIRST_MESSAGES
         } else {
             FIRST
+        }),
+        ProviderReply::Json(if upstream == IngressProtocol::Messages {
+            SECOND_MESSAGES
+        } else {
+            SECOND_PROVIDER_JSON
         }),
         ProviderReply::Json(if upstream == IngressProtocol::Messages {
             SECOND_MESSAGES
@@ -122,11 +140,9 @@ fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) 
             let mut native: CandidateProtocolProfile =
                 serde_json::from_value(serde_json::to_value(&*profile).unwrap()).unwrap();
             native.ingress_protocol = ingress;
-            native.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+            native.capability.native_provider_state = NativeProviderStateEmission::Native;
             native.capability.request.provider_state = Fidelity::Exact;
-            native.capability.request.state_affinity = StateAffinity::ExactOwner;
             native.capability.response.provider_state = Fidelity::Exact;
-            native.capability.response.state_affinity = StateAffinity::ExactOwner;
             *profile = serde_json::from_value(serde_json::to_value(native).unwrap()).unwrap();
         }
         binding.protocol_profile_digest =
@@ -200,10 +216,34 @@ fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) 
     assert_eq!(response["model"], "continuation");
     let mut input = response["output"].as_array().unwrap().clone();
     assert_eq!(input[0]["encrypted_content"], "fixture-opaque-final");
+    let expected_state = if replay_initial_state {
+        let item = &events
+            .iter()
+            .find(|(name, _)| name == "response.output_item.added")
+            .expect("accepted initial reasoning state")
+            .1["item"];
+        assert_eq!(item["encrypted_content"], "fixture-opaque-first");
+        input[0] = item.clone();
+        "fixture-opaque-first"
+    } else {
+        "fixture-opaque-final"
+    };
     input.insert(0, initial);
     input.push(json!({"type":"message","role":"user","content":"continue"}));
     let next =
         json!({"model":"continuation","stream":false,"input":input,"client_metadata":metadata});
+    // A fresh process has never observed either ciphertext. Client history must
+    // still reach the authorized upstream without a recovery reader or registry.
+    process.stop();
+    process = Hirouted::spawn(
+        &exact_hirouted_binary(),
+        address,
+        &directory.path().join("lkg.json"),
+        &publication_path,
+        &credentials_path,
+        directory.path(),
+    );
+    process.wait_ready();
     let second = request(address, "continuation-token", &next);
     assert_eq!(
         second.status,
@@ -215,11 +255,12 @@ fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) 
     let bodies = provider.requests();
     let forwarded: Value = serde_json::from_slice(http_body(&bodies[1])).unwrap();
     assert_eq!(forwarded["model"], "continuation-native-2");
-    assert_eq!(
-        forwarded["input"][1]["encrypted_content"],
-        "fixture-opaque-final"
-    );
-    assert_eq!(forwarded["input"][1]["status"], "completed");
+    assert_eq!(forwarded["input"][1]["encrypted_content"], expected_state);
+    if replay_initial_state {
+        assert!(forwarded["input"][1].get("status").is_none());
+    } else {
+        assert_eq!(forwarded["input"][1]["status"], "completed");
+    }
     assert_eq!(
         forwarded["input"]
             .as_array()
@@ -229,23 +270,16 @@ fn production_continuation(ingress: IngressProtocol, upstream: IngressProtocol) 
             .count(),
         1
     );
-    for (token, document) in [
-        ("other-token", next.clone()),
-        ("continuation-token", {
-            let mut altered = next.clone();
-            altered["input"][1]["encrypted_content"] = json!("altered");
-            altered
-        }),
-    ] {
-        let rejected = request(address, token, &document);
-        assert_eq!(rejected.status, 400);
-        assert_eq!(
-            serde_json::from_slice::<Value>(&rejected.body).unwrap()["code"],
-            "PROVIDER_STATE_CONTINUATION_UNAVAILABLE"
-        );
-    }
+    let rejected = request(address, "unrecognized-token", &next);
+    assert_eq!(rejected.status, 401);
+    let mut altered = next;
+    altered["input"][1]["encrypted_content"] = json!("altered");
+    assert_eq!(request(address, "continuation-token", &altered).status, 200);
+    wait_for_calls(&provider, 3);
+    let forwarded: Value = serde_json::from_slice(http_body(&provider.requests()[2])).unwrap();
+    assert_eq!(forwarded["input"][1]["encrypted_content"], "altered");
     assert_eq!(forbidden.connections(), 0);
-    assert_eq!(provider.calls(), 2);
+    assert_eq!(provider.calls(), 3);
     process.stop();
 }
 
@@ -276,7 +310,15 @@ fn assert_messages_continuation(
         .iter()
         .filter_map(|(_, value)| value["delta"]["signature"].as_str())
         .collect();
-    assert_eq!(signatures.concat(), "fixture-opaque-final", "{events:#?}");
+    assert_eq!(
+        signatures.concat(),
+        if upstream == IngressProtocol::Messages {
+            "fixture-opaque-final"
+        } else {
+            ""
+        },
+        "{events:#?}"
+    );
     let mut next = json!({"model":"continuation","stream":false,"max_tokens":256,"messages":[
         initial,
         {"role":"assistant","content":[{"type":"thinking","thinking":"","signature":signatures.concat()}]},
@@ -296,6 +338,8 @@ fn assert_messages_continuation(
             .push(tool.clone());
         next["messages"][2]["content"] =
             json!([{"type":"tool_result","tool_use_id":tool["id"],"content":"/work"}]);
+    } else {
+        next["messages"][1]["content"] = json!([{"type":"text","text":"first answer"}]);
     }
     let second = request_at_path(address, "continuation-token", &next, "/v1/messages");
     assert_eq!(
@@ -319,18 +363,18 @@ fn assert_messages_continuation(
         );
     } else {
         assert!(
-            forwarded["input"]
-                .as_array()
+            !serde_json::to_string(&forwarded)
                 .unwrap()
-                .iter()
-                .any(|item| item["type"] == "reasoning"
-                    && item["encrypted_content"] == "fixture-opaque-final")
+                .contains("fixture-opaque-final")
         );
     }
     assert_eq!(forbidden.connections(), 0);
     let mut altered = next;
-    altered["messages"][1]["content"][0]["signature"] = json!("unknown");
-    let rejected = request_at_path(address, "continuation-token", &altered, "/v1/messages");
-    assert_eq!(rejected.status, 400);
-    assert_eq!(provider.calls(), 2);
+    if upstream == IngressProtocol::Messages {
+        altered["messages"][1]["content"][0]["signature"] = json!("unknown");
+    }
+    let accepted = request_at_path(address, "continuation-token", &altered, "/v1/messages");
+    assert_eq!(accepted.status, 200);
+    wait_for_calls(provider, 3);
+    assert_eq!(provider.calls(), 3);
 }

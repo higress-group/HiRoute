@@ -61,6 +61,49 @@ fn unit_json(unit: &NativeProjectedUnit) -> Value {
 }
 
 #[test]
+fn native_messages_signature_requires_a_live_thinking_block() {
+    let start = json!({"type":"content_block_start","index":9,"content_block":{"type":"thinking","thinking":""}});
+    let stop = json!({"type":"content_block_stop","index":9});
+    let signature = json!({"type":"content_block_delta","index":9,"delta":{"type":"signature_delta","signature":"opaque"}});
+    for prefix in [vec![], vec![start.clone(), stop.clone()]] {
+        let mut native = projector(IngressProtocol::Messages, true);
+        for event in prefix {
+            native.feed(&sse(None, &event), false).unwrap();
+        }
+        assert!(native.feed(&sse(None, &signature), false).is_err());
+    }
+    let mut native = projector(IngressProtocol::Messages, true);
+    native.feed(&sse(None, &start), false).unwrap();
+    assert!(native.feed(&sse(None, &start), false).is_err());
+
+    let mut native = projector(IngressProtocol::Messages, true);
+    native.feed(&sse(None, &start), false).unwrap();
+    native.feed(&sse(None, &signature), false).unwrap();
+    assert!(
+        native
+            .feed(&sse(None, &json!({"type":"message_stop"})), true)
+            .is_err()
+    );
+
+    let mut native = projector(IngressProtocol::Messages, true);
+    for event in [
+        start,
+        signature,
+        stop,
+        json!({"type":"message_delta","delta":{"stop_reason":"end_turn"}}),
+    ] {
+        feed_fragmented(&mut native, &sse(None, &event), 1);
+    }
+    let complete = native
+        .feed(&sse(None, &json!({"type":"message_stop"})), true)
+        .unwrap();
+    assert_eq!(
+        complete.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Complete)
+    );
+}
+
+#[test]
 fn responses_native_done_tail_preserves_wire_and_certifies_one_terminal_at_eof() {
     let created = sse(
         Some("response.created"),

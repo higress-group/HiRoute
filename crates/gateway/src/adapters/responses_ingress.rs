@@ -3,7 +3,6 @@ use super::*;
 pub(super) fn decode_responses_input(
     value: &Value,
     messages: &mut Vec<CanonicalMessage>,
-    state_owner: Option<&ExactProviderPathV1>,
     item_status: Option<&str>,
 ) -> Result<(), ModelIrError> {
     let object = value
@@ -163,19 +162,11 @@ pub(super) fn decode_responses_input(
                 Some(_) => return Err(ModelIrError::InvalidField("encrypted_content")),
             };
             let content = if let Some(encrypted) = encrypted {
-                let owner = state_owner
-                    .filter(|owner| {
-                        owner.is_complete() && owner.upstream_protocol == IngressProtocol::Responses
-                    })
-                    .cloned()
-                    .ok_or(ModelIrError::ProviderStateOwnershipRequired)?;
                 vec![ContentPart::ProviderState {
                     state: Box::new(OpaqueProviderState {
-                        owner,
                         block_index: None,
                         kind: "encrypted_content".into(),
                         value: Value::String(encrypted),
-                        messages_thinking: None,
                     }),
                 }]
             } else {

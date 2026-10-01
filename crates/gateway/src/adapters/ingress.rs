@@ -2,11 +2,6 @@
 mod responses;
 use responses::{decode_responses_input, decode_responses_tools};
 
-#[path = "ingress/continuation.rs"]
-mod continuation;
-pub use continuation::IngressRequestBindings;
-use continuation::validate_bindings;
-
 use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
@@ -22,30 +17,10 @@ pub fn decode_ingress_request(
     protocol: IngressProtocol,
     body: &Value,
 ) -> Result<ModelRequestIRV1, ModelIrError> {
-    decode_ingress_request_with_bindings(protocol, body, &IngressRequestBindings::default())
-}
-
-pub fn decode_ingress_request_with_bindings(
-    protocol: IngressProtocol,
-    body: &Value,
-    bindings: &IngressRequestBindings,
-) -> Result<ModelRequestIRV1, ModelIrError> {
-    validate_bindings(bindings)?;
-    if bindings.provider_state_owner.as_ref().is_some_and(|owner| {
-        owner.upstream_protocol != protocol
-            && !(protocol == IngressProtocol::Messages
-                && owner.upstream_protocol == IngressProtocol::Responses)
-    }) {
-        return Err(ModelIrError::ProviderStateNotPortable);
-    }
     let request = match protocol {
-        IngressProtocol::Responses => {
-            decode_responses(body, bindings.provider_state_owner.as_ref())
-        }
-        IngressProtocol::ChatCompletions => {
-            decode_chat(body, bindings.provider_state_owner.as_ref())
-        }
-        IngressProtocol::Messages => decode_messages(body, bindings.provider_state_owner.as_ref()),
+        IngressProtocol::Responses => decode_responses(body),
+        IngressProtocol::ChatCompletions => decode_chat(body),
+        IngressProtocol::Messages => decode_messages(body),
     }?;
     Ok(request)
 }
@@ -90,10 +65,7 @@ fn validate_responses_named_choice(
     Ok(())
 }
 
-fn decode_responses(
-    body: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
-) -> Result<ModelRequestIRV1, ModelIrError> {
+fn decode_responses(body: &Value) -> Result<ModelRequestIRV1, ModelIrError> {
     let object = checked_object(
         body,
         &[
@@ -184,7 +156,7 @@ fn decode_responses(
                     {
                         return Err(ModelIrError::InvalidField("Responses input item status"));
                     }
-                    decode_responses_input(item, &mut messages, state_owner, item_status)?;
+                    decode_responses_input(item, &mut messages, item_status)?;
                     if let Some(status) = item_status {
                         responses_item_statuses.insert(message_index, status.into());
                     }
@@ -241,10 +213,7 @@ fn decode_responses(
     })
 }
 
-fn decode_chat(
-    body: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
-) -> Result<ModelRequestIRV1, ModelIrError> {
+fn decode_chat(body: &Value) -> Result<ModelRequestIRV1, ModelIrError> {
     let object = checked_object(
         body,
         &[
@@ -272,7 +241,7 @@ fn decode_chat(
     let mut instructions = Vec::new();
     let mut messages = Vec::new();
     for value in required_array(object, "messages")? {
-        decode_chat_message(value, &mut instructions, &mut messages, state_owner)?;
+        decode_chat_message(value, &mut instructions, &mut messages)?;
     }
     let requested_reasoning = object
         .get("reasoning_effort")
@@ -313,7 +282,6 @@ fn decode_chat_message(
     value: &Value,
     instructions: &mut Vec<CanonicalInstruction>,
     messages: &mut Vec<CanonicalMessage>,
-    state_owner: Option<&ExactProviderPathV1>,
 ) -> Result<(), ModelIrError> {
     let object = checked_object(
         value,
@@ -391,11 +359,9 @@ fn decode_chat_message(
         }
         content.push(ContentPart::ProviderState {
             state: Box::new(OpaqueProviderState {
-                owner: require_state_owner(state_owner)?,
                 block_index: None,
                 kind: "reasoning_content".into(),
                 value: reasoning.clone(),
-                messages_thinking: None,
             }),
         });
     }
@@ -473,10 +439,7 @@ fn decode_chat_content(value: &Value) -> Result<Vec<ContentPart>, ModelIrError> 
     }
 }
 
-fn decode_messages(
-    body: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
-) -> Result<ModelRequestIRV1, ModelIrError> {
+fn decode_messages(body: &Value) -> Result<ModelRequestIRV1, ModelIrError> {
     let object = checked_object(
         body,
         &[
@@ -504,7 +467,7 @@ fn decode_messages(
         .collect::<Vec<_>>();
     let mut messages = Vec::new();
     for value in required_array(object, "messages")? {
-        let message = decode_messages_message(value, state_owner)?;
+        let message = decode_messages_message(value)?;
         match message.role {
             // Claude Code 2.1.231 emits an instruction reminder as a `system` message even though
             // the public Messages wire represents instructions at the top level. Normalize this
@@ -558,10 +521,7 @@ fn decode_messages(
     })
 }
 
-fn decode_messages_message(
-    value: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
-) -> Result<CanonicalMessage, ModelIrError> {
+fn decode_messages_message(value: &Value) -> Result<CanonicalMessage, ModelIrError> {
     let object = checked_object(value, &["role", "content"], "messages message")?;
     let role = decode_role(required_string(object, "role")?.as_str())?;
     let values = object
@@ -571,7 +531,7 @@ fn decode_messages_message(
         Value::String(text) => vec![ContentPart::Text { text: text.clone() }],
         Value::Array(values) => values
             .iter()
-            .map(|value| decode_messages_content(value, state_owner))
+            .map(decode_messages_content)
             .collect::<Result<Vec<_>, _>>()?,
         _ => return Err(ModelIrError::InvalidField("content")),
     };
@@ -582,10 +542,7 @@ fn decode_messages_message(
     })
 }
 
-fn decode_messages_content(
-    value: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
-) -> Result<ContentPart, ModelIrError> {
+fn decode_messages_content(value: &Value) -> Result<ContentPart, ModelIrError> {
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("messages content"))?;
@@ -670,11 +627,8 @@ fn decode_messages_content(
             })
         }
         "thinking" | "redacted_thinking" => {
-            let owner = require_state_owner(state_owner)?;
-            if owner.upstream_protocol == IngressProtocol::Responses {
-                if required_string(object, "type")? != "thinking" {
-                    return Err(ModelIrError::ProviderStateNotPortable);
-                }
+            let kind = required_string(object, "type")?;
+            if kind == "thinking" {
                 ensure_keys(
                     object,
                     &["type", "thinking", "signature"],
@@ -684,30 +638,23 @@ fn decode_messages_content(
                 if signature.is_empty() {
                     return Err(ModelIrError::InvalidField("thinking signature"));
                 }
-                let thinking = object
+                object
                     .get("thinking")
                     .and_then(Value::as_str)
                     .ok_or(ModelIrError::InvalidField("thinking"))?;
-                Ok(ContentPart::ProviderState {
-                    state: Box::new(OpaqueProviderState {
-                        owner,
-                        block_index: None,
-                        kind: "encrypted_content".into(),
-                        value: Value::String(signature),
-                        messages_thinking: Some(thinking.to_owned()),
-                    }),
-                })
             } else {
-                Ok(ContentPart::ProviderState {
-                    state: Box::new(OpaqueProviderState {
-                        owner,
-                        block_index: None,
-                        kind: required_string(object, "type")?,
-                        value: value.clone(),
-                        messages_thinking: None,
-                    }),
-                })
+                ensure_keys(object, &["type", "data"], "messages redacted thinking")?;
+                if required_string(object, "data")?.is_empty() {
+                    return Err(ModelIrError::InvalidField("redacted thinking data"));
+                }
             }
+            Ok(ContentPart::ProviderState {
+                state: Box::new(OpaqueProviderState {
+                    block_index: None,
+                    kind,
+                    value: value.clone(),
+                }),
+            })
         }
         other => Err(ModelIrError::UnsupportedValue(format!(
             "messages content {other}"
@@ -991,15 +938,6 @@ fn decode_responses_state(
         return Err(ModelIrError::ResponsesConversationUnsupported);
     }
     Ok(Vec::new())
-}
-
-fn require_state_owner(
-    owner: Option<&ExactProviderPathV1>,
-) -> Result<ExactProviderPathV1, ModelIrError> {
-    owner
-        .filter(|owner| owner.is_complete())
-        .cloned()
-        .ok_or(ModelIrError::ProviderStateOwnershipRequired)
 }
 
 fn decode_image_url(value: String) -> Result<ImageSource, ModelIrError> {

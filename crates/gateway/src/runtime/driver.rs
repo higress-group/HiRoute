@@ -67,6 +67,7 @@ pub struct ProductionProvider {
 }
 
 pub struct ProductionLogicalRequest {
+    reasoning_cleanup: Arc<ReasoningCleanup>,
     ingress: IngressProtocol,
     replay: ReplayStore,
     raw_body: ContentRef,
@@ -84,6 +85,40 @@ pub struct ProductionRouteContext {
     pub(crate) context_holds: Arc<ContextHoldStore>,
     pub(crate) switch_fallback: Option<ResolvedTargetBindingId>,
     pub(crate) hold_completion: Option<HoldCompletion>,
+    pub(crate) reasoning_cleanup: Arc<ReasoningCleanup>,
+}
+
+/// One request's frozen cleanup opportunity, plus a previously successful
+/// prefix. This is not a source registry and never outlives the request.
+pub(crate) struct ReasoningCleanup {
+    pub(crate) eligible: Option<(ResolvedTargetBindingId, usize)>,
+    pub(crate) reused: Option<(ResolvedTargetBindingId, usize)>,
+    used: AtomicBool,
+}
+
+impl ReasoningCleanup {
+    pub(crate) fn new(
+        eligible: Option<(ResolvedTargetBindingId, usize)>,
+        reused: Option<(ResolvedTargetBindingId, usize)>,
+    ) -> Self {
+        Self {
+            eligible,
+            reused,
+            used: AtomicBool::new(false),
+        }
+    }
+
+    fn prefix_for(&self, binding: ResolvedTargetBindingId) -> Option<usize> {
+        self.eligible
+            .filter(|(id, _)| *id == binding && self.used.load(Ordering::Acquire))
+            .or_else(|| self.reused.filter(|(id, _)| *id == binding))
+            .map(|(_, prefix)| prefix)
+    }
+
+    fn consume(&self, binding: ResolvedTargetBindingId) -> bool {
+        self.eligible.is_some_and(|(id, _)| id == binding)
+            && !self.used.swap(true, Ordering::AcqRel)
+    }
 }
 
 pub(crate) struct ProductionReplaySeed {

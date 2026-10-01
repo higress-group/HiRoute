@@ -2,6 +2,7 @@
 
 mod continuation;
 mod ingress;
+pub(crate) mod reasoning_loss;
 mod request;
 mod response;
 mod tool_projection;
@@ -12,16 +13,15 @@ pub(crate) use continuation::{
     AcceptedResponseDeliveryScanner, ActiveResponseDelivery, ToolIdProjection,
     with_active_response_delivery,
 };
-pub use ingress::{
-    IngressRequestBindings, decode_ingress_request, decode_ingress_request_with_bindings,
-};
+pub use ingress::decode_ingress_request;
 pub use request::{
     PreparedNativeRequest, PreparedNativeTemplate, project_candidate_request,
     project_candidate_request_template, sequential_attempt_body,
 };
 pub(crate) use request::{
     PreparedReplayTemplate, ReplacementEncoding, RequestedReplacement,
-    prepare_replay_json_template, sequential_replay_body,
+    prepare_replay_json_template, project_candidate_request_template_with_cleanup,
+    sequential_replay_body,
 };
 pub use response::{
     ClientResponseRenderer, DecodedNativeResponse, IncrementalClientSseRenderer,

@@ -527,24 +527,6 @@ impl<'a> Encoder<'a> {
     }
 
     fn provider_state(&mut self, state: &OpaqueProviderState) -> Option<()> {
-        let owner = &state.owner;
-        for value in [
-            owner.provider_id.as_str(),
-            owner.endpoint_id.as_str(),
-            owner.entitlement_id.as_str(),
-            owner.connector_id.as_str(),
-            owner.connector_revision.as_str(),
-            owner.capability_id.as_str(),
-            owner.capability_revision.as_str(),
-            owner.model_configuration_id.as_str(),
-            owner.native_model.as_str(),
-            owner.adapter_revision.as_str(),
-            owner.serializer_revision.as_str(),
-            owner.decoder_revision.as_str(),
-        ] {
-            self.bytes(value.as_bytes());
-        }
-        self.tag(format!("{:?}", owner.upstream_protocol).as_bytes());
         match state.block_index {
             Some(index) => {
                 self.tag(b"some-block");
@@ -553,7 +535,6 @@ impl<'a> Encoder<'a> {
             None => self.tag(b"no-block"),
         }
         self.bytes(state.kind.as_bytes());
-        self.optional_string(state.messages_thinking.as_deref());
         self.json(&state.value)
     }
 }
@@ -783,28 +764,17 @@ mod tests {
     #[test]
     fn signed_messages_summary_changes_history_even_with_the_same_ciphertext() {
         use crate::replay::{ReplayConfig, ReplayManager};
-        use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
         use hiroute_gateway_core::runtime::body::BudgetTree;
 
-        let owner = CandidateProtocolProfile::exact_portable_path(
-            IngressProtocol::Messages,
-            IngressProtocol::Responses,
-            "luna",
-            fixed_reasoning("fixed"),
-        )
-        .exact_provider_path()
-        .unwrap();
         let make_request = |summary: String| {
             let mut value = request(vec![
                 CanonicalMessage {
                     role: MessageRole::Assistant,
                     content: vec![ContentPart::ProviderState {
                         state: Box::new(OpaqueProviderState {
-                            owner: owner.clone(),
                             block_index: Some(0),
-                            kind: "encrypted_content".into(),
-                            value: serde_json::json!("same-signature"),
-                            messages_thinking: Some(summary),
+                            kind: "thinking".into(),
+                            value: serde_json::json!({"type":"thinking","thinking":summary,"signature":"same-signature"}),
                         }),
                     }],
                     name: None,

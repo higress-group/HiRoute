@@ -106,6 +106,14 @@ pub fn project_candidate_request_template(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
 ) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
+    project_candidate_request_template_with_cleanup(request, profile, None)
+}
+
+pub(crate) fn project_candidate_request_template_with_cleanup(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+    omit_reasoning_prefix: Option<usize>,
+) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
     let requirements = request.requirements();
     let reasoning = profile.validate(&requirements)?;
     validate_message_shapes(request, profile.capability.upstream_protocol)?;
@@ -116,7 +124,9 @@ pub fn project_candidate_request_template(
             None
         };
     let body = match profile.capability.upstream_protocol {
-        IngressProtocol::Responses => serialize_responses(request, profile, reasoning)?,
+        IngressProtocol::Responses => {
+            serialize_responses(request, profile, reasoning, omit_reasoning_prefix)?
+        }
         IngressProtocol::ChatCompletions => serialize_chat(
             request,
             profile,
@@ -124,10 +134,17 @@ pub fn project_candidate_request_template(
             chat_tool_projection
                 .as_ref()
                 .expect("Chat projection was constructed"),
+            omit_reasoning_prefix,
         )?,
-        IngressProtocol::Messages => serialize_messages(request, profile, reasoning)?,
+        IngressProtocol::Messages => {
+            serialize_messages(request, profile, reasoning, omit_reasoning_prefix)?
+        }
     };
-    let refs = request_content_refs(request, profile.capability.upstream_protocol);
+    let refs = request_content_refs(
+        request,
+        profile.capability.upstream_protocol,
+        omit_reasoning_prefix,
+    );
     let replay_template = prepare_replay_json_template(&body, refs)?;
     let wire_len = replay_template.wire_len;
     let PreparedReplayTemplate {
@@ -287,7 +304,7 @@ pub(crate) fn prepare_replay_json_template(
 }
 
 pub(super) fn request_has_content_refs(request: &ModelRequestIRV1) -> bool {
-    !request_content_refs(request, request.ingress_protocol).is_empty()
+    !request_content_refs(request, request.ingress_protocol, None).is_empty()
         || request
             .requested_reasoning
             .native_value
@@ -305,6 +322,7 @@ pub(crate) struct RequestedReplacement {
 fn request_content_refs(
     request: &ModelRequestIRV1,
     target: IngressProtocol,
+    omit_reasoning_prefix: Option<usize>,
 ) -> Vec<RequestedReplacement> {
     let mut refs = Vec::new();
     for instruction in &request.instructions {
@@ -312,15 +330,50 @@ fn request_content_refs(
             collect_part_refs(part, target, &mut refs);
         }
     }
-    for message in &request.messages {
+    for (index, message) in request.messages.iter().enumerate() {
         collect_string_ref(message.name.as_deref(), &mut refs);
         for part in &message.content {
-            collect_part_refs(part, target, &mut refs);
+            if let ContentPart::ProviderState { state } = part {
+                if omit_reasoning_prefix.is_some_and(|end| index < end) {
+                    continue;
+                }
+                match target {
+                    IngressProtocol::Responses if state.kind == "encrypted_content" => {
+                        collect_nested_json_refs(&state.value, &mut refs)
+                    }
+                    IngressProtocol::Messages
+                        if matches!(state.kind.as_str(), "thinking" | "redacted_thinking") =>
+                    {
+                        collect_nested_json_refs(&state.value, &mut refs)
+                    }
+                    IngressProtocol::Responses | IngressProtocol::ChatCompletions => {
+                        if let Some(text) = super::reasoning_text(state) {
+                            collect_nested_json_refs(text, &mut refs);
+                        }
+                    }
+                    _ => {}
+                }
+            } else {
+                collect_part_refs(part, target, &mut refs);
+            }
         }
     }
-    for history in request.responses_reasoning_history.values() {
-        for value in history.native_fields.values() {
-            collect_nested_json_refs(value, &mut refs);
+    for (index, history) in &request.responses_reasoning_history {
+        if omit_reasoning_prefix.is_some_and(|end| *index < end) {
+            continue;
+        }
+        match target {
+            IngressProtocol::Responses => {
+                for value in history.native_fields.values() {
+                    collect_nested_json_refs(value, &mut refs);
+                }
+            }
+            IngressProtocol::ChatCompletions => {
+                for value in super::responses_reasoning_texts(history) {
+                    collect_nested_json_refs(value, &mut refs);
+                }
+            }
+            IngressProtocol::Messages => {}
         }
     }
     for tool in &request.tools {
@@ -400,7 +453,6 @@ fn collect_part_refs(
         } => collect_json_ref(value, ReplacementEncoding::JsonString, refs),
         ContentPart::ProviderState { state } => {
             collect_nested_json_refs(&state.value, refs);
-            collect_string_ref(state.messages_thinking.as_deref(), refs);
         }
     }
 }

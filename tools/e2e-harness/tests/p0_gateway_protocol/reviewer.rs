@@ -1,7 +1,6 @@
 use hiroute_gateway::server::core_runtime::adapters::{
-    ClientResponseRenderer, IncrementalClientSseRenderer, IngressRequestBindings,
-    NativeResponseDecoder, RenderedClientResponse, RenderedSseEvent, decode_ingress_request,
-    decode_ingress_request_with_bindings, project_candidate_request,
+    ClientResponseRenderer, IncrementalClientSseRenderer, NativeResponseDecoder,
+    RenderedClientResponse, RenderedSseEvent, decode_ingress_request, project_candidate_request,
 };
 use hiroute_gateway::server::core_runtime::model_ir::{
     FinishReason, ModelEvent, ModelIrError, ModelStreamEventV1, OpaqueProviderState, ResponseBlock,
@@ -10,7 +9,7 @@ use hiroute_gateway::server::core_runtime::model_ir::{
 use hiroute_gateway::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, Fidelity, NativeReasoningFieldAssignment,
     NativeReasoningRender, NativeReasoningValue, ReasoningAccounting, ReasoningControlKind,
-    ReasoningProfileCapability, StateAffinity, StreamingRefusalSemantics, fixed_reasoning,
+    ReasoningProfileCapability, StreamingRefusalSemantics, fixed_reasoning,
 };
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
@@ -315,7 +314,6 @@ fn protocol_reviewer_provider_state_requires_source_binding_and_allows_lossless_
         fixed_reasoning("fixed"),
     );
     profile.capability.request.provider_state = Fidelity::Exact;
-    profile.capability.request.state_affinity = StateAffinity::ExactOwner;
     let body = json!({
         "model":"agent/research",
         "input":[
@@ -323,19 +321,7 @@ fn protocol_reviewer_provider_state_requires_source_binding_and_allows_lossless_
             {"type":"message","role":"user","content":"continue"}
         ]
     });
-    assert_eq!(
-        decode_ingress_request(IngressProtocol::Responses, &body).unwrap_err(),
-        ModelIrError::ProviderStateOwnershipRequired
-    );
-    let owner = profile.exact_provider_path().unwrap();
-    let request = decode_ingress_request_with_bindings(
-        IngressProtocol::Responses,
-        &body,
-        &IngressRequestBindings {
-            provider_state_owner: Some(owner.clone()),
-        },
-    )
-    .unwrap();
+    let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
     assert_eq!(
         project_candidate_request(&request, &profile).unwrap().body["input"][0]["encrypted_content"],
         "opaque"
@@ -352,14 +338,7 @@ fn protocol_reviewer_provider_state_requires_source_binding_and_allows_lossless_
         "conversation":"conv_previous"
     });
     assert_eq!(
-        decode_ingress_request_with_bindings(
-            IngressProtocol::Responses,
-            &conversation,
-            &IngressRequestBindings {
-                provider_state_owner: Some(owner),
-            },
-        )
-        .unwrap_err(),
+        decode_ingress_request(IngressProtocol::Responses, &conversation,).unwrap_err(),
         ModelIrError::ResponsesConversationUnsupported
     );
 }
@@ -407,9 +386,8 @@ fn protocol_reviewer_provider_state_owner_and_block_survive_sse_fragmentation() 
     );
     assert_eq!(streamed.response.provider_state[0].block_index, Some(0));
 
-    let owner = streamed.response.provider_state[0].owner.clone();
     let mut renderer = IncrementalClientSseRenderer::new(
-        ClientProtocolProfile::exact_owner_affine(IngressProtocol::Responses, owner),
+        ClientProtocolProfile::exact_portable(IngressProtocol::Responses),
         "agent/research",
     )
     .unwrap();
@@ -658,9 +636,8 @@ fn protocol_reviewer_messages_signature_is_one_canonical_state_for_json_and_sse(
             if state.kind == "thinking_signature_delta"
     )));
 
-    let owner = streamed.response.provider_state[0].owner.clone();
     let replayed = ClientResponseRenderer::render_nonstream_with_profile(
-        &ClientProtocolProfile::exact_owner_affine(IngressProtocol::Messages, owner),
+        &ClientProtocolProfile::exact_portable(IngressProtocol::Messages),
         "agent/research",
         &streamed.response,
     )
@@ -682,16 +659,13 @@ fn protocol_reviewer_messages_signature_is_one_canonical_state_for_json_and_sse(
 #[test]
 fn protocol_reviewer_provider_state_never_advances_the_commit_boundary() {
     let profile = decoder_profile(IngressProtocol::Responses);
-    let owner = profile.exact_provider_path().unwrap();
     let state = ModelStreamEventV1::new(
         0,
         ModelEvent::ProviderState {
             state: Box::new(OpaqueProviderState {
-                owner,
                 block_index: Some(0),
                 kind: "encrypted_content".into(),
                 value: json!("opaque"),
-                messages_thinking: None,
             }),
         },
     );

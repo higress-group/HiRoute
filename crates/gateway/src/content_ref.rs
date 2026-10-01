@@ -137,10 +137,21 @@ impl JsonValueExt for Value {
     }
 
     fn wire_value(&self) -> Value {
-        self.content_ref().map_or_else(
-            || self.clone(),
-            |content| Value::String(content.wire_marker()),
-        )
+        if let Some(content) = self.content_ref() {
+            return Value::String(content.wire_marker());
+        }
+        match self {
+            Value::Array(values) => {
+                Value::Array(values.iter().map(JsonValueExt::wire_value).collect())
+            }
+            Value::Object(values) => Value::Object(
+                values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.wire_value()))
+                    .collect(),
+            ),
+            _ => self.clone(),
+        }
     }
 }
 
@@ -184,7 +195,29 @@ pub fn externalize_model_request(
         )?;
     }
     for history in request.responses_reasoning_history.values_mut() {
-        for value in history.native_fields.values_mut() {
+        for (key, value) in &mut history.native_fields {
+            // Cross-protocol projections still need the plaintext leaves. Keep
+            // their small structural envelope, not a raw-JSON ref to the array.
+            if matches!(key.as_str(), "summary" | "content")
+                && let Some(parts) = value.as_array_mut()
+            {
+                for part in parts {
+                    if let Some(fields) = part.as_object_mut() {
+                        for value in fields.values_mut() {
+                            if !contains_replay_string_ref(value, replay) {
+                                externalize_json(
+                                    value,
+                                    replay,
+                                    &mut pool,
+                                    &mut inline_remaining,
+                                    false,
+                                )?;
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
             if !contains_replay_string_ref(value, replay) {
                 externalize_json(value, replay, &mut pool, &mut inline_remaining, false)?;
             }
@@ -316,7 +349,22 @@ fn content_field_count(request: &ModelRequestIRV1) -> Result<usize, ReplayError>
         .values()
         .try_fold(count, |count, history| {
             count
-                .checked_add(history.native_fields.len())
+                .checked_add(history.native_fields.iter().try_fold(
+                    0usize,
+                    |total, (key, value)| {
+                        let fields = if matches!(key.as_str(), "summary" | "content") {
+                            value.as_array().map_or(1, |parts| {
+                                parts
+                                    .iter()
+                                    .map(|part| part.as_object().map_or(1, |fields| fields.len()))
+                                    .sum()
+                            })
+                        } else {
+                            1
+                        };
+                        total.checked_add(fields).ok_or(ReplayError::LengthOverflow)
+                    },
+                )?)
                 .ok_or(ReplayError::LengthOverflow)
         })?;
     for tool in &request.tools {
@@ -363,9 +411,7 @@ fn part_field_count(parts: &[ContentPart]) -> Result<usize, ReplayError> {
             .checked_add(match part {
                 ContentPart::ToolCall { namespace, .. } => 2 + usize::from(namespace.is_some()),
                 ContentPart::ToolResult { .. } => 1,
-                ContentPart::ProviderState { state } => {
-                    1 + usize::from(state.messages_thinking.is_some())
-                }
+                ContentPart::ProviderState { .. } => 1,
                 ContentPart::Text { .. } | ContentPart::Image { .. } => 1,
             })
             .ok_or(ReplayError::LengthOverflow)
@@ -403,9 +449,6 @@ fn collect_part_content_refs(parts: &[ContentPart], refs: &mut Vec<ContentRef>) 
             } => collect_json_content_ref(value, refs),
             ContentPart::ProviderState { state } => {
                 collect_nested_content_refs(&state.value, refs);
-                if let Some(thinking) = &state.messages_thinking {
-                    collect_string_content_ref(thinking, refs);
-                }
             }
         }
     }
@@ -493,11 +536,16 @@ fn externalize_parts(
             ContentPart::ProviderState { state } => {
                 // A native opaque block can already contain Replay-backed
                 // leaves. The sequential template expands them directly.
-                if !contains_replay_string_ref(&state.value, replay) {
+                if matches!(state.kind.as_str(), "thinking" | "redacted_thinking") {
+                    if let Some(object) = state.value.as_object_mut() {
+                        for (key, value) in object {
+                            if key != "type" && !contains_replay_string_ref(value, replay) {
+                                externalize_json(value, replay, pool, inline_remaining, false)?;
+                            }
+                        }
+                    }
+                } else if !contains_replay_string_ref(&state.value, replay) {
                     externalize_json(&mut state.value, replay, pool, inline_remaining, false)?;
-                }
-                if let Some(thinking) = &mut state.messages_thinking {
-                    externalize_value(thinking, replay, pool, inline_remaining)?;
                 }
             }
         }
