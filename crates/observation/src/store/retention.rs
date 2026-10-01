@@ -14,6 +14,14 @@ use super::value_rollup::{
 };
 use super::{LocalObservationStore, increment_store_revision, store_revision};
 
+pub(super) const GARBAGE_CANDIDATES_SQL: &str =
+    "SELECT b.workspace_id, b.blob_digest, b.object_path FROM content_blobs_v2 b
+                     WHERE NOT EXISTS (
+                       SELECT 1 FROM content_instances_v2 c
+                       WHERE c.workspace_id=b.workspace_id
+                         AND c.content_blob_digest=b.blob_digest AND c.state='complete'
+                     ) ORDER BY b.rowid LIMIT ?1";
+
 impl LocalObservationStore {
     pub(super) fn preview_session_deletion_base(
         &self,
@@ -307,14 +315,7 @@ impl LocalObservationStore {
         let mut connection = self.connection.lock();
         let unreferenced = {
             let mut statement = connection
-                .prepare(
-                    "SELECT b.workspace_id, b.blob_digest, b.object_path FROM content_blobs_v2 b
-                     WHERE NOT EXISTS (
-                       SELECT 1 FROM content_instances_v2 c
-                       WHERE c.workspace_id=b.workspace_id
-                         AND c.content_blob_digest=b.blob_digest AND c.state='complete'
-                     ) ORDER BY b.rowid LIMIT ?1",
-                )
+                .prepare(GARBAGE_CANDIDATES_SQL)
                 .map_err(|_| ObservationQueryError::Unavailable)?;
             statement
                 .query_map([limit], |row| {
