@@ -5,6 +5,7 @@ mod ingress;
 pub(crate) mod reasoning_loss;
 mod request;
 mod response;
+mod structured_output;
 mod tool_projection;
 
 pub(crate) use tool_projection::{ChatToolIdentity, ChatToolProjection};

@@ -578,7 +578,7 @@ fn messages_reasoning_controls_remain_visible_after_replay_ingress() {
         });
         if extension {
             body["output_config"]["format"] =
-                json!({"type":"json_schema","schema":{"type":"object"}});
+                json!({"type":"json_schema","schema":{"type":"object"},"provider_mode":"exact"});
         }
         let mut writer = store.begin_raw().unwrap();
         writer.append(&serde_json::to_vec(&body).unwrap()).unwrap();

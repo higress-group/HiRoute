@@ -107,6 +107,35 @@ fn fixed_reasoning_messages_effort_selects_sealed_profile() {
 }
 
 #[test]
+fn fixed_reasoning_messages_format_does_not_override_effort_or_block_conversion() {
+    for target in [IngressProtocol::Responses, IngressProtocol::ChatCompletions] {
+        let profile = choices(IngressProtocol::Messages, target);
+        for effort in [None, Some("high")] {
+            let mut output = json!({"format":{"type":"json_schema",
+                "schema":{"type":"object","properties":{"title":{"type":"string"}},
+                    "required":["title"],"additionalProperties":false}}});
+            if let Some(effort) = effort {
+                output["effort"] = json!(effort);
+            }
+            let selected = profile
+                .select_native_reasoning(
+                    &json!({"output_config":output}),
+                    IngressProtocol::Messages,
+                )
+                .unwrap();
+            assert_eq!(
+                selected.selected_reasoning().unwrap().profile_id,
+                if effort.is_some() {
+                    "sealed-high"
+                } else {
+                    "sealed-low"
+                }
+            );
+        }
+    }
+}
+
+#[test]
 fn fixed_reasoning_ambiguous_directory_does_not_reject_native_controls() {
     let mut profile = choices(IngressProtocol::Responses, IngressProtocol::Responses);
     let mut duplicate = profile.capability.reasoning_profiles[1].clone();

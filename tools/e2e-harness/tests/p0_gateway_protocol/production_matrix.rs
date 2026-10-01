@@ -187,9 +187,12 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
         let path = protocol_path(ingress);
         let alias = pair_alias(ingress, upstream);
         let mut request = client_request(ingress, &alias);
+        if ingress == IngressProtocol::Messages {
+            request["output_config"] = json!({"format": messages_schema_format()});
+        }
         if !fixed && ingress == IngressProtocol::Messages {
             request["thinking"] = json!({"type":"adaptive"});
-            request["output_config"] = json!({"effort":"high"});
+            request["output_config"]["effort"] = json!("high");
         }
         if ingress == IngressProtocol::Messages && upstream == IngressProtocol::Responses {
             request["tools"] = json!([{"name":"probe","input_schema":{"type":"object"}}]);
@@ -237,9 +240,12 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
         let path = protocol_path(protocol);
         let alias = pair_alias(protocol, protocol);
         let mut request = client_request(protocol, &alias);
+        if protocol == IngressProtocol::Messages {
+            request["output_config"] = json!({"format": messages_schema_format()});
+        }
         if !fixed && protocol == IngressProtocol::Messages {
             request["thinking"] = json!({"type":"adaptive"});
-            request["output_config"] = json!({"effort":"high"});
+            request["output_config"]["effort"] = json!("high");
         }
         request["stream"] = Value::Bool(true);
         request["temperature"] = json!(0.2);
@@ -523,6 +529,7 @@ fn expected_native_body(
             IngressProtocol::Responses => body["max_output_tokens"] = json!(256),
             IngressProtocol::ChatCompletions => body["max_completion_tokens"] = json!(256),
             IngressProtocol::Messages => {
+                body["output_config"] = json!({"format": messages_schema_format()});
                 body["system"] = json!([
                     {"type":"text","text":"long instruction ".repeat(1024),"cache_control":{"type":"ephemeral"}},
                     {"type":"text","text":"reminder"}
@@ -565,6 +572,14 @@ fn expected_native_body(
             "max_completion_tokens"
         };
         body[key] = json!(8);
+        let schema = messages_schema_format()["schema"].clone();
+        if upstream == IngressProtocol::Responses {
+            body["text"] = json!({"format":{"type":"json_schema",
+                "name":"hiroute_structured_output","strict":true,"schema":schema}});
+        } else {
+            body["response_format"] = json!({"type":"json_schema","json_schema":{
+                "name":"hiroute_structured_output","strict":true,"schema":schema}});
+        }
         if upstream == IngressProtocol::Responses {
             body["tools"] =
                 json!([{"type":"function","name":"probe","parameters":{"type":"object"}}]);
@@ -580,6 +595,12 @@ fn expected_native_body(
         }
     }
     body
+}
+
+fn messages_schema_format() -> Value {
+    json!({"type":"json_schema","schema":{"type":"object",
+        "properties":{"title":{"type":"string","description":"title schema ".repeat(2000)}},
+        "required":["title"],"additionalProperties":false}})
 }
 
 fn native_response(upstream: IngressProtocol) -> &'static [u8] {

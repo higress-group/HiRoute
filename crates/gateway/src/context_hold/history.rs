@@ -188,6 +188,14 @@ pub(crate) fn visible_history_with_replay<'a>(
         }
         None => instructions.tag(b"no-responses-options"),
     }
+    if let Some(format) = request
+        .native_body
+        .as_ref()
+        .and_then(|body| body.pointer("/output_config/format"))
+    {
+        instructions.tag(b"messages-output-format");
+        instructions.json(format)?;
+    }
     instructions.usize(request.provider_state.len());
     for state in &request.provider_state {
         instructions.provider_state(state)?;

@@ -52,7 +52,7 @@ fn messages_nested_output_semantics_are_native_only() {
     for (key, value) in [
         (
             "output_config",
-            json!({"format":{"type":"json_schema","schema":{"type":"object"}}}),
+            json!({"format":{"type":"provider_format","schema":{"type":"object"}}}),
         ),
         (
             "thinking",

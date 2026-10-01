@@ -149,7 +149,7 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         }
     };
     let body = super::native::project(request, profile, body, omit_reasoning_prefix)?;
-    let refs = if request.ingress_protocol == profile.capability.upstream_protocol
+    let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
     {
         let mut refs = Vec::new();
@@ -162,6 +162,18 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
             omit_reasoning_prefix,
         )
     };
+    if request.ingress_protocol == IngressProtocol::Messages
+        && request.ingress_protocol != profile.capability.upstream_protocol
+    {
+        let format = match profile.capability.upstream_protocol {
+            IngressProtocol::Responses => body.pointer("/text/format"),
+            IngressProtocol::ChatCompletions => body.get("response_format"),
+            IngressProtocol::Messages => None,
+        };
+        if let Some(format) = format {
+            collect_nested_json_refs(format, &mut refs);
+        }
+    }
     let replay_template = prepare_replay_json_template(&body.wire_value(), refs)?;
     let wire_len = replay_template.wire_len;
     let PreparedReplayTemplate {

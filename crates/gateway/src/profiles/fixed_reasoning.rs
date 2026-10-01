@@ -185,7 +185,13 @@ fn requested_control(
                         .ok_or(CapabilityError::ReasoningProfileMismatch)
                 })
                 .transpose()?;
-            if output.is_some_and(|output| output.keys().any(|key| key != "effort")) {
+            // Output formatting is not a reasoning control. The protocol
+            // adapter independently preserves or maps it without changing effort.
+            if output.is_some_and(|output| {
+                output
+                    .keys()
+                    .any(|key| !matches!(key.as_str(), "effort" | "format"))
+            }) {
                 return Err(CapabilityError::ReasoningProfileMismatch);
             }
             let thinking = object

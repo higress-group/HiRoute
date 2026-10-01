@@ -509,11 +509,16 @@ fn decode_messages(
     validate_messages_context_management(context, object.get("context_management"))?;
     for (key, fields) in [
         ("thinking", &["type", "budget_tokens"][..]),
-        ("output_config", &["effort"][..]),
+        ("output_config", &["effort", "format"][..]),
     ] {
         if let Some(value) = object.get(key) {
             checked_object(context, value, fields, "messages reasoning control")?;
         }
+    }
+    if body.pointer("/output_config/format").is_some()
+        && super::structured_output::messages_schema_format(body).is_none()
+    {
+        context.native_only.set(true);
     }
     let mut instructions = object
         .get("system")

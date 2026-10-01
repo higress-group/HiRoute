@@ -21,6 +21,9 @@ mod native_responses;
 #[path = "tests/payload_tolerance.rs"]
 mod payload_tolerance;
 
+#[path = "tests/structured_output.rs"]
+mod structured_output;
+
 fn exact_state_profile(
     ingress: IngressProtocol,
     upstream: IngressProtocol,

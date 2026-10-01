@@ -38,6 +38,12 @@ pub(super) fn project(
                 "native request extensions have no cross-protocol mapping".into(),
             ));
         }
+        let mut canonical = canonical;
+        super::super::structured_output::project_messages_format(
+            request,
+            profile.capability.upstream_protocol,
+            &mut canonical,
+        );
         return Ok(canonical);
     }
     let Some(original) = &request.native_body else {
