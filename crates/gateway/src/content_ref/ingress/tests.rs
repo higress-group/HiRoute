@@ -542,6 +542,113 @@ fn long_native_reasoning_history_is_content_not_control() {
 }
 
 #[test]
+fn messages_reasoning_controls_remain_visible_after_replay_ingress() {
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-messages-controls-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let manager = crate::replay::ReplayManager::open(crate::replay::ReplayConfig {
+        root: root.clone(),
+        memory_threshold_bytes: 128,
+        record_bytes: 31,
+        orphan_ttl: std::time::Duration::from_secs(60),
+    })
+    .unwrap();
+    for extension in [false, true] {
+        let tree = BudgetTree::new(1024 * 1024, 1024 * 1024).unwrap();
+        let budget = tree.stream(1024 * 1024).unwrap();
+        let store = manager.begin_request(budget.clone()).unwrap();
+        let mut body = json!({
+            "model":"alias", "max_tokens":1024,
+            "messages":[
+                {"role":"user","content":"long input ".repeat(2048)},
+                {"role":"assistant","content":[
+                    {"type":"text","text":"before"},
+                    {"type":"tool_use","id":"call_1","name":"probe","input":{"value":1}},
+                    {"type":"text","text":"after"}]},
+                {"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"call_1","content":"1"},
+                    {"type":"text","text":"continue"}]}],
+            "tools":[{"name":"probe","input_schema":{"type":"object"}}],
+            "thinking":{"type":"adaptive"}, "output_config":{"effort":"high"}
+        });
+        if extension {
+            body["output_config"]["format"] =
+                json!({"type":"json_schema","schema":{"type":"object"}});
+        }
+        let mut writer = store.begin_raw().unwrap();
+        writer.append(&serde_json::to_vec(&body).unwrap()).unwrap();
+        let raw = writer.seal().unwrap();
+        let stats = scan_ingress_document(store.reader(&raw).unwrap()).unwrap();
+        let (mut document, mut workspace) =
+            parse_ingress_document(IngressProtocol::Messages, &store, &raw, stats).unwrap();
+        compact_ingress_document_with_markers(
+            IngressProtocol::Messages,
+            &mut document,
+            &store,
+            workspace.generated_markers(),
+        )
+        .unwrap();
+        assert_eq!(document["thinking"], body["thinking"]);
+        assert_eq!(document["output_config"], body["output_config"]);
+        assert!(
+            crate::content_ref::ContentRef::from_wire_marker(
+                document["messages"][0]["content"].as_str().unwrap()
+            )
+            .is_some()
+        );
+        let request = crate::server::core_runtime::adapters::decode_ingress_request(
+            IngressProtocol::Messages,
+            &document,
+        )
+        .unwrap();
+        assert_eq!(request.native_only, extension);
+        if !extension {
+            let profile = crate::server::core_runtime::profiles::CandidateProtocolProfile::exact_portable_path(
+                IngressProtocol::Messages, IngressProtocol::Responses, "physical",
+                crate::server::core_runtime::profiles::fixed_reasoning("fixed"));
+            let template =
+                crate::server::core_runtime::adapters::project_candidate_request_template(
+                    &request, &profile,
+                )
+                .unwrap();
+            store
+                .prevalidate(&super::super::model_content_refs(&request))
+                .unwrap();
+            let mut reader = crate::server::core_runtime::adapters::sequential_attempt_body(
+                template,
+                store.clone(),
+                &budget,
+                16 * 1024,
+            )
+            .unwrap();
+            let mut projected = Vec::new();
+            while let Some(chunk) = reader.next_chunk().unwrap() {
+                projected.extend_from_slice(chunk.bytes());
+            }
+            let projected: Value = serde_json::from_slice(&projected).unwrap();
+            assert_eq!(
+                projected["input"],
+                json!([
+                    {"type":"message","role":"user","content":[{"type":"input_text","text":body["messages"][0]["content"]}]},
+                    {"type":"message","role":"assistant","content":[{"type":"output_text","text":"before"}]},
+                    {"type":"function_call","call_id":"call_1","name":"probe","arguments":"{\"value\":1}"},
+                    {"type":"message","role":"assistant","content":[{"type":"output_text","text":"after"}]},
+                    {"type":"function_call_output","call_id":"call_1","output":"1"},
+                    {"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
+                ])
+            );
+        }
+    }
+    drop(manager);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn responses_reasoning_stays_visible_for_typed_summary_decode() {
     let root = std::env::temp_dir().join(format!(
         "hiroute-responses-reasoning-compaction-{}-{}",

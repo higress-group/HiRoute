@@ -897,18 +897,18 @@ fn content_string_field(field: &str) -> bool {
 fn whole_json_field(protocol: IngressProtocol, field: &str, depth: usize, value: &Value) -> bool {
     matches!(field, "input_schema" | "parameters")
         || (depth == 1
-            && matches!(
-                field,
-                "conversation"
-                    | "output_config"
-                    | "previous_response_id"
-                    | "thinking"
-            ))
+            && matches!(field, "conversation" | "previous_response_id"))
+        // Messages thinking/output_config and Responses reasoning contain
+        // controls decoded or merged by name. Keep their object structure
+        // visible; replacing it with a Replay marker invents a native extension.
+        // Large content leaves still use the existing request-local backing.
+        || (depth == 1
+            && matches!(field, "thinking" | "output_config")
+            && protocol != IngressProtocol::Messages)
         // Responses reasoning currently has only the bounded `effort` and
         // `summary` controls. Keep that small object visible so ingress can
         // validate and retain summary before the sealed Plan replaces effort.
-        // Other protocols still use the request-local JSON backing for their
-        // larger native reasoning shapes.
+        // Other protocols still use backing for their native reasoning shapes.
         || (depth == 1 && field == "reasoning" && protocol != IngressProtocol::Responses)
         || (field == "reasoning_content" && !value.is_null())
 }

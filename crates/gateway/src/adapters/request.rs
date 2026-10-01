@@ -849,8 +849,6 @@ fn validate_message_shapes(
         }
     }
     for message in &request.messages {
-        let mut native_items = 0_usize;
-        let mut message_parts = 0_usize;
         for part in &message.content {
             if request.ingress_protocol != target
                 && let ContentPart::ToolCall { logical_id, .. }
@@ -869,14 +867,13 @@ fn validate_message_shapes(
                 }
             }
             match part {
-                ContentPart::Text { .. } => message_parts += 1,
+                ContentPart::Text { .. } => {}
                 ContentPart::Image { .. } => {
                     if message.role != MessageRole::User {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(
                             "image input must belong to a user message".into(),
                         ));
                     }
-                    message_parts += 1;
                 }
                 ContentPart::ToolCall { .. } => {
                     if message.role != MessageRole::Assistant {
@@ -884,7 +881,6 @@ fn validate_message_shapes(
                             "Tool call must belong to an assistant message".into(),
                         ));
                     }
-                    native_items += 1;
                 }
                 ContentPart::ToolResult { .. } => {
                     if message.role != MessageRole::User {
@@ -892,16 +888,12 @@ fn validate_message_shapes(
                             "Tool result must belong to a user message".into(),
                         ));
                     }
-                    native_items += 1;
                 }
                 ContentPart::ProviderState { .. } => {}
             }
         }
-        if target == IngressProtocol::Responses && native_items != 0 && message_parts != 0 {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "Responses cannot preserve mixed message and item ordering".into(),
-            ));
-        }
+        // Responses ordered input already flushes text at each tool boundary;
+        // a Messages text/tool/text block is representable without reordering.
         if target == IngressProtocol::ChatCompletions
             && message
                 .content

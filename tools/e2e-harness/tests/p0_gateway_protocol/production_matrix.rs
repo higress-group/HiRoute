@@ -187,6 +187,22 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
         let path = protocol_path(ingress);
         let alias = pair_alias(ingress, upstream);
         let mut request = client_request(ingress, &alias);
+        if !fixed && ingress == IngressProtocol::Messages {
+            request["thinking"] = json!({"type":"adaptive"});
+            request["output_config"] = json!({"effort":"high"});
+        }
+        if ingress == IngressProtocol::Messages && upstream == IngressProtocol::Responses {
+            request["tools"] = json!([{"name":"probe","input_schema":{"type":"object"}}]);
+            request["messages"].as_array_mut().unwrap().extend([
+                json!({"role":"assistant","content":[
+                    {"type":"text","text":"before"},
+                    {"type":"tool_use","id":"call_1","name":"probe","input":{"value":1}},
+                    {"type":"text","text":"after"}]}),
+                json!({"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"call_1","content":"1"},
+                    {"type":"text","text":"continue"}]}),
+            ]);
+        }
         if ingress == upstream {
             request["temperature"] = json!(0.2);
             request["provider_payload_hint"] = json!({"future":"kept"});
@@ -221,6 +237,10 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
         let path = protocol_path(protocol);
         let alias = pair_alias(protocol, protocol);
         let mut request = client_request(protocol, &alias);
+        if !fixed && protocol == IngressProtocol::Messages {
+            request["thinking"] = json!({"type":"adaptive"});
+            request["output_config"] = json!({"effort":"high"});
+        }
         request["stream"] = Value::Bool(true);
         request["temperature"] = json!(0.2);
         request["provider_payload_hint"] = json!({"future":"kept"});
@@ -545,6 +565,19 @@ fn expected_native_body(
             "max_completion_tokens"
         };
         body[key] = json!(8);
+        if upstream == IngressProtocol::Responses {
+            body["tools"] =
+                json!([{"type":"function","name":"probe","parameters":{"type":"object"}}]);
+            body["tool_choice"] = json!("auto");
+            body["parallel_tool_calls"] = json!(false);
+            body["input"].as_array_mut().unwrap().extend([
+                json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"before"}]}),
+                json!({"type":"function_call","call_id":"call_1","name":"probe","arguments":"{\"value\":1}"}),
+                json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"after"}]}),
+                json!({"type":"function_call_output","call_id":"call_1","output":"1"}),
+                json!({"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]})
+            ]);
+        }
     }
     body
 }
