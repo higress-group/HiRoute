@@ -8,5 +8,5 @@
   "publication_schema": "hiroute.gateway-publication/v2",
   "publication_digest": "sha256:0f77c62e5c3c994d76092154b029d643cd737b26b61b520a75f52f72f351a13d",
   "gateway_snapshot_schema": "hiroute.gateway.publication-snapshot/v3",
-  "gateway_snapshot_digest": "sha256:43a1387907520d34b2b8118d90b2bab2d8fe25cba7fe0454e9c9d58cd2848dcd"
+  "gateway_snapshot_digest": "sha256:4d7ef79fed8b9c63c53f0da34f33dc7c6b6df908c78e8c9b068ec94a40305e71"
 }
