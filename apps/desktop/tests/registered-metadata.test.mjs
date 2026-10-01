@@ -151,7 +151,18 @@ test('all template models enter the check draft with product facts or editable d
   const directDeepseek = registeredModelCandidates(option('deepseek.official.global.v1'), bundle.metadata_catalog)
     .find(candidate => candidate.upstream_model_id === 'deepseek-flash');
   assert.deepEqual(directDeepseek.capability_prefill.native_reasoning.value,
-    { kind: 'toggle', parameter: 'deepseek_thinking' });
+    { kind: 'discrete', parameter: 'reasoning_effort',
+      profiles: ['low', 'high', 'max'], default_profile: 'high' });
+  for (const id of ['deepseek-v4.1-flash', 'deepseek-v4-flash-0731']) {
+    assert.deepEqual(byId.get(id).native_reasoning.value,
+      { kind: 'discrete', parameter: 'reasoning_effort',
+        profiles: ['low', 'high', 'max'], default_profile: 'high' }, id);
+  }
+  for (const id of ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-v4-pro-0813']) {
+    assert.deepEqual(byId.get(id).native_reasoning.value,
+      { kind: 'discrete', parameter: 'reasoning_effort',
+        profiles: ['high', 'max'], default_profile: 'high' }, id);
+  }
   const anthropic = registeredModelCandidates(option('anthropic.platform.global.v1'), bundle.metadata_catalog)
     .find(candidate => candidate.upstream_model_id === 'claude-opus-5-5');
   assert.deepEqual(anthropic.capability_prefill.native_reasoning.value,
