@@ -1061,13 +1061,13 @@ fn decode_responses_state(
 }
 
 fn decode_image_url(context: &DecodeContext, value: String) -> Result<ImageSource, ModelIrError> {
-    if let Some(rest) = value.strip_prefix("data:") {
-        if let Some((media_type, data)) = rest.split_once(";base64,") {
-            return Ok(ImageSource::Base64 {
-                media_type: media_type.into(),
-                data: data.into(),
-            });
-        }
+    if let Some(rest) = value.strip_prefix("data:")
+        && let Some((media_type, data)) = rest.split_once(";base64,")
+    {
+        return Ok(ImageSource::Base64 {
+            media_type: media_type.into(),
+            data: data.into(),
+        });
     }
     Ok(ImageSource::Url {
         url: decode_http_image_url(context, value)?,
