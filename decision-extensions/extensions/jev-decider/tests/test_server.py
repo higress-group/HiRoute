@@ -323,6 +323,53 @@ class DeciderHttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["error"], "upstream_timeout")
         self.assertEqual(result["event"], "decision_completed")
 
+    async def test_logged_upstream_usage_is_reported_not_exposed_in_decision(self) -> None:
+        self.answer["usage"] = {"input_tokens": 476, "output_tokens": 0,
+                                "cost": 0.000019992, "private": "USAGE_PRIVATE_SENTINEL"}
+        client = await self.client(self.settings())
+        with self.assertLogs("jev_decider", level="INFO") as captured:
+            response = await client.post("/v1/decisions", json=input_body())
+        self.assertEqual(response.status, 200)
+        self.assertEqual(await response.json(), {"branch_id": "smart_saving_simple"})
+        result = json.loads(captured.records[-1].getMessage())
+        self.assertEqual(result["decision_id"], response.headers["X-Jev-Decision-Id"])
+        self.assertEqual(result["upstream_usage"], {"input_tokens": 476, "output_tokens": 0,
+                                                    "cost": 0.000019992})
+        self.assertNotIn("USAGE_PRIVATE_SENTINEL", " ".join(captured.output))
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_missing_or_invalid_usage_never_blocks_or_invents_zero_cost(self) -> None:
+        client = await self.client(self.settings())
+        cases = [(None, None), ([], None), ("raw-usage", None), ({}, None),
+                 ({"input_tokens": True, "output_tokens": -1, "cost": False}, None),
+                 ({"input_tokens": 4.5, "output_tokens": "2", "cost": -1}, None),
+                 ({"input_tokens": 7, "cost": float("nan")}, {"input_tokens": 7}),
+                 ({"output_tokens": 2, "cost": float("inf")}, {"output_tokens": 2}),
+                 ({"cost": 10 ** 309}, None),
+                 ({"input_tokens": 0, "output_tokens": 0, "cost": 0},
+                  {"input_tokens": 0, "output_tokens": 0, "cost": 0})]
+        for usage, expected in cases:
+            with self.subTest(usage=usage):
+                self.answer["usage"] = usage
+                with self.assertLogs("jev_decider", level="INFO") as captured:
+                    response = await client.post("/v1/decisions", json=input_body())
+                self.assertEqual(response.status, 200)
+                self.assertEqual(await response.json(), {"branch_id": "smart_saving_simple"})
+                result = json.loads(captured.records[-1].getMessage())
+                self.assertEqual(result["upstream_usage"], expected)
+        self.assertEqual(len(self.calls), len(cases))
+
+    async def test_paid_usage_is_retained_when_the_upstream_choice_is_invalid(self) -> None:
+        self.answer = {"answers": {}, "usage": {"input_tokens": 120, "cost": 0.00000504}}
+        client = await self.client(self.settings())
+        with self.assertLogs("jev_decider", level="INFO") as captured:
+            response = await client.post("/v1/decisions", json=input_body())
+        self.assertEqual(response.status, 502)
+        self.assertEqual(await response.json(), {"error": "upstream_invalid"})
+        result = json.loads(captured.records[-1].getMessage())
+        self.assertEqual(result["upstream_usage"], {"input_tokens": 120, "cost": 0.00000504})
+        self.assertEqual(len(self.calls), 1)
+
     async def test_openapi_route_is_served_without_legacy_aliases(self) -> None:
         document = json.loads(
             (Path(__file__).resolve().parents[3] / "api/decision.openapi.json").read_text()

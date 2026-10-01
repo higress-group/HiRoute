@@ -488,10 +488,31 @@ async def _bounded_response(response: Any) -> bytes:
     return bytes(body)
 
 
+def reported_usage(upstream: Any) -> dict[str, int | float] | None:
+    """Keep only reported numeric billing facts, never guess a missing charge."""
+    usage = upstream.get("usage") if isinstance(upstream, dict) else None
+    if not isinstance(usage, dict):
+        return None
+    result: dict[str, int | float] = {}
+    for name in ("input_tokens", "output_tokens"):
+        value = usage.get(name)
+        if type(value) is int and value >= 0:
+            result[name] = value
+    cost = usage.get("cost")
+    if type(cost) in (int, float) and cost >= 0:
+        try:
+            if math.isfinite(cost):
+                result["cost"] = cost
+        except OverflowError:
+            pass
+    return result or None
+
+
 async def decide(request: web.Request) -> web.Response:
     decision_id = uuid.uuid4().hex
     started = time.monotonic()
-    trace: dict[str, Any] = {"decision_id": decision_id, "phase": "authentication"}
+    trace: dict[str, Any] = {"decision_id": decision_id, "phase": "authentication",
+                             "upstream_usage": None}
     settings: Settings = request.app[SETTINGS]
     log_event("decision_started", decision_id=decision_id, mode=settings.mode, model=settings.model)
 
@@ -556,6 +577,7 @@ async def decide(request: web.Request) -> web.Response:
                             status=502,
                         )
                     upstream = strict_json(await _bounded_response(upstream_response))
+                    trace["upstream_usage"] = reported_usage(upstream)
             trace["phase"] = "decision"
             result = decision_response(settings, state, upstream, target_trimmed, trace)
             return finish(result)
