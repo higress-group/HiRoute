@@ -3,9 +3,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::server::core_runtime::model_ir::{
-    ExactProviderPathV1, RequestCapabilityRequirementsV1, ToolChoice,
-};
+use crate::server::core_runtime::model_ir::{ExactProviderPathV1, RequestCapabilityRequirementsV1};
 use crate::server::request_plan::IngressProtocol;
 
 use super::{
@@ -25,12 +23,6 @@ pub enum Fidelity {
     GatewayMaterialized,
     Unsupported,
     Unknown,
-}
-
-impl Fidelity {
-    fn is_exact(self) -> bool {
-        self == Self::Exact
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -90,9 +82,7 @@ pub struct CandidateCapabilityProfile {
     pub selected_reasoning_profile_id: String,
     pub context: ContextLimits,
     pub native_streaming: CriticalFact<bool>,
-    /// Exact state-emission contract for this physical attempt. Unknown is a
-    /// pre-connect rejection state; owner-affine emission is accepted only
-    /// through the corresponding native protocol representation.
+    /// Descriptive emission metadata; unknown is not a pre-connect rejection.
     pub native_provider_state: NativeProviderStateEmission,
 }
 
@@ -304,189 +294,12 @@ impl CandidateProtocolProfile {
             return Err(CapabilityError::ProtocolPathUnavailable);
         }
         self.exact_provider_path()?;
-        if self.capability.native_provider_state == NativeProviderStateEmission::Unknown {
-            return Err(CapabilityError::NativeProviderStateUnrepresentable);
-        }
         if !self.connector.critical_facts_are_exact() {
             return Err(CapabilityError::ConnectorFactUnknown);
         }
-        let request = &self.capability.request;
-        exact(
-            requirements.text,
-            request.text,
-            CapabilityError::TextUnsupported,
-        )?;
-        exact(
-            requirements.initial_instructions,
-            request.initial_instructions,
-            CapabilityError::InitialInstructionsUnsupported,
-        )?;
-        exact(
-            requirements.mid_conversation_instructions,
-            request.mid_conversation_instructions,
-            CapabilityError::MidConversationInstructionsUnsupported,
-        )?;
-        exact(
-            requirements.image_url,
-            request.image_url,
-            CapabilityError::ImageUrlUnsupported,
-        )?;
-        exact(
-            requirements.image_base64,
-            request.image_base64,
-            CapabilityError::ImageBase64Unsupported,
-        )?;
-        if requirements.image_base64 {
-            let media_types = request
-                .image_base64_media_types
-                .exact()
-                .ok_or(CapabilityError::ImageMediaTypeUnsupported)?;
-            if requirements.image_media_types.iter().any(|required| {
-                !media_types
-                    .iter()
-                    .any(|supported| supported.eq_ignore_ascii_case(required))
-            }) {
-                return Err(CapabilityError::ImageMediaTypeUnsupported);
-            }
-        }
-        exact(
-            requirements.function_tools,
-            request.function_tools,
-            CapabilityError::ToolInterfaceUnsupported,
-        )?;
-        exact(
-            requirements.strict_tools,
-            request.strict_tools,
-            CapabilityError::StrictToolsUnsupported,
-        )?;
-        if requirements.function_tools {
-            let fidelity = match requirements.tool_choice {
-                ToolChoice::None => request.tool_choice_none,
-                ToolChoice::Auto => request.tool_choice_auto,
-                ToolChoice::RequiredAny => request.tool_choice_required_any,
-                ToolChoice::RequiredNamed { .. } => request.tool_choice_required_named,
-            };
-            exact(true, fidelity, CapabilityError::ToolChoiceUnsupported)?;
-        }
-        exact(
-            requirements.parallel_tools,
-            request.parallel_tools,
-            CapabilityError::ParallelToolsUnsupported,
-        )?;
-        exact(
-            requirements.tool_roundtrip,
-            request.tool_roundtrip,
-            CapabilityError::ToolRoundtripUnsupported,
-        )?;
-        exact(
-            requirements.tool_result_text,
-            request.tool_result_text,
-            CapabilityError::ToolResultTextUnsupported,
-        )?;
-        exact(
-            requirements.tool_result_json,
-            request.tool_result_json,
-            CapabilityError::ToolResultJsonUnsupported,
-        )?;
-        exact(
-            requirements.logical_tool_id_mapping,
-            request.logical_tool_id_mapping,
-            CapabilityError::LogicalToolIdMappingUnsupported,
-        )?;
-        // History is client-supplied data, not a model-capability admission gate.
-        // The concrete serializer preserves native state or omits fields that
-        // have no representation in the target protocol.
-        if requirements.streaming && self.capability.native_streaming.exact() != Some(&true) {
-            return Err(CapabilityError::StreamingUnsupported);
-        }
-        let response = &self.capability.response;
-        exact(
-            true,
-            response.text,
-            CapabilityError::ResponseTextUnsupported,
-        )?;
-        exact(
-            true,
-            response.reasoning,
-            CapabilityError::ResponseReasoningUnsupported,
-        )?;
-        exact(
-            true,
-            response.refusal,
-            CapabilityError::ResponseRefusalUnsupported,
-        )?;
-        exact(
-            requirements.function_tools,
-            response.tool_calls,
-            CapabilityError::ResponseToolsUnsupported,
-        )?;
-        exact(
-            requirements.function_tools,
-            response.logical_tool_id_mapping,
-            CapabilityError::ResponseLogicalToolIdMappingUnsupported,
-        )?;
-        exact(
-            true,
-            response.usage,
-            CapabilityError::ResponseUsageUnsupported,
-        )?;
-        exact(
-            true,
-            response.finish_reason,
-            CapabilityError::ResponseFinishUnsupported,
-        )?;
-        exact(
-            true,
-            response.typed_error,
-            CapabilityError::ResponseErrorUnsupported,
-        )?;
-        if requirements.streaming
-            && !matches!(
-                (self.capability.upstream_protocol, response.stream_refusal),
-                (
-                    IngressProtocol::Messages,
-                    StreamingRefusalSemantics::TerminalClassified
-                        | StreamingRefusalSemantics::LegacyTerminalClassified { .. }
-                ) | (
-                    IngressProtocol::Responses | IngressProtocol::ChatCompletions,
-                    StreamingRefusalSemantics::ExactDelta
-                )
-            )
-        {
-            return Err(CapabilityError::StreamRefusalUnsupported);
-        }
-        if self.capability.native_provider_state == NativeProviderStateEmission::Native {
-            exact(
-                true,
-                request.provider_state,
-                CapabilityError::ProviderStateUnsupported,
-            )?;
-            exact(
-                true,
-                response.provider_state,
-                CapabilityError::ResponseProviderStateUnsupported,
-            )?;
-        }
-        exact(
-            requirements.stream_text,
-            response.stream_text_delta,
-            CapabilityError::StreamTextUnsupported,
-        )?;
-        exact(
-            requirements.stream_tool_arguments,
-            response.stream_tool_argument_delta,
-            CapabilityError::StreamToolUnsupported,
-        )?;
-        exact(
-            requirements.stream_reasoning,
-            response.stream_reasoning_delta,
-            CapabilityError::StreamReasoningUnsupported,
-        )?;
-        exact(
-            requirements.stream_usage,
-            response.stream_usage,
-            CapabilityError::StreamUsageUnsupported,
-        )?;
+        // Provider feature metadata is descriptive, not an execution grant.
+        // Concrete request serializers and response decoders enforce the
+        // conversion they actually implement; upstream validates its payload.
         let reasoning = self.selected_reasoning()?;
         Ok(reasoning)
     }
@@ -528,18 +341,6 @@ impl ClientProtocolProfile {
     pub fn is_complete(&self) -> bool {
         self.schema_version == "hiroute.client-protocol-profile/v1"
             && !self.adapter_revision.trim().is_empty()
-    }
-}
-
-fn exact(
-    required: bool,
-    fidelity: Fidelity,
-    error: CapabilityError,
-) -> Result<(), CapabilityError> {
-    if required && !fidelity.is_exact() {
-        Err(error)
-    } else {
-        Ok(())
     }
 }
 

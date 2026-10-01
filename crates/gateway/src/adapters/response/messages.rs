@@ -337,7 +337,6 @@ fn decode_start(
     )?;
     reject_nonempty_array(message, "content")?;
     reject_non_null(message, "stop_reason")?;
-    reject_non_null(message, "stop_sequence")?;
     core.start_response(
         required_str(message, "id")?.into(),
         required_str(message, "model")?.into(),
@@ -451,7 +450,6 @@ fn decode_message_delta(
     allow(object, &["type", "delta", "usage"])?;
     let delta = object_field(object, "delta")?;
     allow(delta, &["stop_reason", "stop_sequence"])?;
-    reject_non_null(delta, "stop_sequence")?;
     if let Some(reason) = optional_str(delta, "stop_reason")? {
         let reason = decode_finish_reason(reason);
         state.flush(core, reason == FinishReason::Refusal, output)?;
@@ -490,7 +488,6 @@ pub(super) fn decode_nonstream(
         required_str(object, "model")?.into(),
         output,
     )?;
-    reject_non_null(object, "stop_sequence")?;
     let finish_reason = decode_finish_reason(required_str(object, "stop_reason")?);
     for (native_index, block) in array_field(object, "content", false)?.iter().enumerate() {
         let native_index =

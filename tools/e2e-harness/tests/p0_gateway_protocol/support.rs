@@ -126,6 +126,7 @@ pub fn request_fixture(protocol: IngressProtocol) -> Value {
 }
 
 pub fn normalized_request(mut request: ModelRequestIRV1) -> ModelRequestIRV1 {
+    request.native_body = None;
     request.ingress_protocol = IngressProtocol::Responses;
     request.requested_reasoning = RequestedReasoningControl::absent();
     request.requested_max_output_tokens = None;

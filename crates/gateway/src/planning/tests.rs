@@ -13,6 +13,8 @@ use crate::server::request_plan::IngressProtocol;
 
 fn request(protocol: IngressProtocol, text: &str) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
+        native_body: None,
+        native_only: false,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: protocol,
         responses_options: None,
@@ -999,6 +1001,7 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
     let luna = stateful_messages_candidate("luna");
     let mut glm = stateful_messages_candidate("glm");
     glm.protocol_profile.capability.request.image_url = Fidelity::Unsupported;
+    glm.request_projection_exclusion = Some(ExclusionReasonCodeV1::VisionUnsupported);
     refresh_profile(&mut glm);
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
@@ -1083,6 +1086,7 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
         .capability
         .request
         .image_url = Fidelity::Unsupported;
+    incapable_owner.request_projection_exclusion = Some(ExclusionReasonCodeV1::VisionUnsupported);
     refresh_profile(&mut incapable_owner);
     let no_eligible_owner = Planner
         .plan(&input(complex_request, smart, vec![incapable_owner, glm]))
@@ -1557,7 +1561,7 @@ fn planner_opaque_state_affinity_and_cost_are_after_streaming() {
         .unwrap();
     assert_eq!(
         evaluation(&output, "stateful").first_exclusion,
-        Some(ExclusionReasonCodeV1::StreamFeatureUnsupported)
+        Some(ExclusionReasonCodeV1::CostPolicyExcluded)
     );
 
     facts.protocol_profile.capability.native_streaming = CriticalFact::Exact(true);

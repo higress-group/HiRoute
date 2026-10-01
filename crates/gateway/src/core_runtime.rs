@@ -582,8 +582,11 @@ impl ProductionGatewayRuntime {
                 )
                 .await;
             }
-            if let Some(digest) = fixed_reasoning {
+            if let Some(profile) = fixed_reasoning {
+                let digest = hiroute_domain::CanonicalDigest::of(&profile)
+                    .expect("resolved reasoning profile is serializable");
                 canonical_request.requested_reasoning.fixed_profile_digest = Some(digest);
+                canonical_request.requested_reasoning.fixed_profile = Some(profile);
                 canonical_request.requested_reasoning.disposition =
                     model_ir::RequestedReasoningDisposition::AppliedToFixedBinding;
             }

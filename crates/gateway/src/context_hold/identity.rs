@@ -316,6 +316,8 @@ mod tests {
 
     fn request(text: &str) -> ModelRequestIRV1 {
         ModelRequestIRV1 {
+            native_body: None,
+            native_only: false,
             schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
             ingress_protocol: IngressProtocol::Responses,
             served_model_id: "agent/test".into(),

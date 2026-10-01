@@ -268,6 +268,9 @@ pub fn externalize_model_request(
             )?;
         }
     }
+    if let Some(body) = &mut request.native_body {
+        externalize_native_leaves(body, replay, &mut pool, &mut inline_remaining)?;
+    }
     if let Some(pool) = pool {
         pool.seal()?;
     }
@@ -276,6 +279,9 @@ pub fn externalize_model_request(
 
 pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
     let mut refs = Vec::new();
+    if let Some(body) = &request.native_body {
+        collect_nested_content_refs(body, &mut refs);
+    }
     for instruction in &request.instructions {
         collect_part_content_refs(&instruction.content, &mut refs);
     }
@@ -330,6 +336,44 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
     refs
 }
 
+// Keep native structure editable for bounded prefix cleanup, while sharing all
+// large string storage with the existing request-local Replay owner.
+fn externalize_native_leaves(
+    value: &mut Value,
+    replay: &ReplayStore,
+    pool: &mut Option<ReplayContentWriter>,
+    remaining: &mut usize,
+) -> Result<(), ReplayError> {
+    // Each Value is charged once. Map keys/node overhead belong to the parent;
+    // charging a full map slot for array elements double-counts the Value.
+    replay.charge_metadata(std::mem::size_of::<Value>())?;
+    if value.content_ref().is_some() {
+        return Ok(());
+    }
+    match value {
+        Value::String(s) => externalize_value(s, replay, pool, remaining)?,
+        Value::Array(values) => {
+            for value in values {
+                externalize_native_leaves(value, replay, pool, remaining)?;
+            }
+        }
+        Value::Object(values) => {
+            for (key, value) in values {
+                replay.charge_metadata(key.capacity() + std::mem::size_of::<String>() + 32)?;
+                if !matches!(key.as_str(), "type" | "role") {
+                    externalize_native_leaves(value, replay, pool, remaining)?;
+                } else {
+                    replay.charge_metadata(std::mem::size_of::<Value>())?;
+                    if let Some(value) = value.as_str() {
+                        replay.charge_metadata(value.len())?;
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
 fn content_field_count(request: &ModelRequestIRV1) -> Result<usize, ReplayError> {
     let mut count = 0_usize;
     for instruction in &request.instructions {

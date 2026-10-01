@@ -396,7 +396,7 @@ pub struct FrozenCandidateV1 {
     pub profile_digest: String,
     pub upstream_protocol: IngressProtocol,
     pub reasoning_profile_id: String,
-    pub context: CandidateContextDemand,
+    pub context: Option<CandidateContextDemand>,
     pub overall_score_tenths: Option<i32>,
     pub effective_cost_micros: Option<u64>,
     pub cost_class: CostClassV1,

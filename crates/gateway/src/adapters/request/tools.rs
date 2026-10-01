@@ -290,6 +290,13 @@ fn render_responses_tools_in_order(
 }
 
 fn render_messages_tool(tool: &CanonicalTool) -> Result<Value, ProtocolAdapterError> {
+    // The cross-protocol serializer has no strict-schema mapping. Native
+    // Messages requests bypass this serializer and preserve provider fields.
+    if tool.strict == Some(true) {
+        return Err(ProtocolAdapterError::ClientUnrepresentable(
+            "strict function schema has no Messages conversion".into(),
+        ));
+    }
     if tool.format.is_some() {
         return Err(ProtocolAdapterError::ClientUnrepresentable(
             "Messages function tool cannot carry custom format".into(),

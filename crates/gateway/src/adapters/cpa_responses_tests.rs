@@ -220,14 +220,8 @@ fn cpa_native_request_without_reasoning_does_not_gain_state() {
     )
     .unwrap();
     let projected = project_candidate_request(&request, &profile()).unwrap();
-    let input = projected.body["input"].as_array().unwrap();
-    assert_eq!(input.len(), 1);
-    assert_eq!(input[0]["role"], "user");
-    assert!(
-        input
-            .iter()
-            .all(|item| item.get("encrypted_content").is_none())
-    );
+    assert_eq!(projected.body["input"], "hello");
+    assert!(projected.body.get("encrypted_content").is_none());
 }
 
 #[test]
@@ -302,6 +296,13 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
                         .map(String::as_str),
                     Some("completed")
                 );
+            } else if status.is_string() {
+                let decoded = decoded.unwrap();
+                assert!(decoded.native_only);
+                assert_eq!(
+                    decoded.responses_item_statuses.get(&0).map(String::as_str),
+                    status.as_str()
+                );
             } else {
                 assert!(decoded.is_err(), "accepted {status}");
             }
@@ -347,7 +348,11 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
                 "status":status
             }]}),
         );
-        assert!(decoded.is_err(), "accepted {status}");
+        if status.is_string() {
+            assert!(decoded.unwrap().native_only);
+        } else {
+            assert!(decoded.is_err(), "accepted {status}");
+        }
     }
 }
 

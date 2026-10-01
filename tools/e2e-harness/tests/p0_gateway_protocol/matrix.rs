@@ -62,9 +62,11 @@ fn protocol_request_matrix_preserves_shared_content_and_exact_status_semantics()
                 project_candidate_request(request, &profile).unwrap()
             })
             .collect::<Vec<_>>();
-        for request in &projected[1..] {
-            assert_eq!(request.bytes, projected[0].bytes);
-            assert_eq!(request.context, projected[0].context);
+        for request in &projected {
+            let decoded =
+                normalized_request(decode_ingress_request(target, &request.body).unwrap());
+            assert_eq!(decoded.messages, expected.messages);
+            assert_eq!(decoded.tools, expected.tools);
         }
         let body = &projected[0].body;
         assert_eq!(body["model"], format!("physical-{target:?}"));
@@ -72,17 +74,17 @@ fn protocol_request_matrix_preserves_shared_content_and_exact_status_semantics()
         match target {
             IngressProtocol::Responses => {
                 assert_eq!(body["reasoning"], json!({"effort":"high"}));
-                assert_eq!(body["max_output_tokens"], 256);
+                assert_eq!(body["max_output_tokens"], 7);
             }
             IngressProtocol::ChatCompletions => {
                 assert_eq!(body["reasoning_effort"], "high");
-                assert_eq!(body["max_completion_tokens"], 256);
+                assert_eq!(body["max_completion_tokens"], 7);
                 assert_eq!(body["stream_options"], json!({"include_usage":true}));
             }
             IngressProtocol::Messages => {
                 assert_eq!(body["thinking"], json!({"type":"adaptive"}));
                 assert_eq!(body["output_config"], json!({"effort":"high"}));
-                assert_eq!(body["max_tokens"], 256);
+                assert_eq!(body["max_tokens"], 7);
                 assert_eq!(body["tool_choice"]["disable_parallel_tool_use"], true);
             }
         }
@@ -103,14 +105,23 @@ fn protocol_context_estimates_are_advisory_but_capability_boundaries_fail_before
         reasoning_profile(IngressProtocol::Responses),
     );
     let baseline = project_candidate_request(&request, &profile).unwrap();
-    let input_n = baseline.context.target_serialized_input_upper_bound;
-    let total_n = baseline.context.required_total;
+    let input_n = baseline
+        .context
+        .as_ref()
+        .unwrap()
+        .target_serialized_input_upper_bound;
+    let total_n = baseline
+        .context
+        .as_ref()
+        .expect("fixture estimate")
+        .required_total;
 
     profile.capability.context.max_input_tokens = CriticalFact::Exact(input_n);
     assert_eq!(
         project_candidate_request(&request, &profile)
             .unwrap()
             .context
+            .unwrap()
             .target_serialized_input_upper_bound,
         input_n
     );
@@ -119,6 +130,7 @@ fn protocol_context_estimates_are_advisory_but_capability_boundaries_fail_before
         project_candidate_request(&request, &profile)
             .unwrap()
             .context
+            .unwrap()
             .target_serialized_input_upper_bound,
         input_n
     );
@@ -131,6 +143,7 @@ fn protocol_context_estimates_are_advisory_but_capability_boundaries_fail_before
         project_candidate_request(&request, &profile)
             .unwrap()
             .context
+            .unwrap()
             .required_total,
         total_n
     );
@@ -146,10 +159,12 @@ fn protocol_context_estimates_are_advisory_but_capability_boundaries_fail_before
         reasoning_profile(IngressProtocol::Responses),
     );
     assert_eq!(
-        project_candidate_request(&max_low, &profile).unwrap().bytes,
-        project_candidate_request(&max_high, &profile)
-            .unwrap()
-            .bytes
+        project_candidate_request(&max_low, &profile).unwrap().body["max_output_tokens"],
+        1
+    );
+    assert_eq!(
+        project_candidate_request(&max_high, &profile).unwrap().body["max_output_tokens"],
+        256
     );
 
     let connects = AtomicUsize::new(0);
@@ -197,15 +212,11 @@ fn protocol_context_estimates_are_advisory_but_capability_boundaries_fail_before
 
     let mut may_emit_state = profile.clone();
     may_emit_state.capability.native_provider_state = NativeProviderStateEmission::Unknown;
-    reject_before_connect(
-        &request,
-        &may_emit_state,
-        &connects,
-        "PROTOCOL_CAPABILITY_UNSUPPORTED",
-    );
+    assert!(project_candidate_request(&request, &may_emit_state).is_ok());
 
     let mut strict = request.clone();
     strict.tools[0].strict = Some(true);
+    strict.tool_choice = hiroute_gateway::server::core_runtime::model_ir::ToolChoice::Auto;
     let messages = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Responses,
         IngressProtocol::Messages,
@@ -216,7 +227,7 @@ fn protocol_context_estimates_are_advisory_but_capability_boundaries_fail_before
         &strict,
         &messages,
         &connects,
-        "PROTOCOL_CAPABILITY_UNSUPPORTED",
+        "CLIENT_PROTOCOL_UNREPRESENTABLE",
     );
 
     request.stream = false;
@@ -234,6 +245,7 @@ fn protocol_context_estimates_are_advisory_but_capability_boundaries_fail_before
         project_candidate_request(&request, &additive)
             .unwrap()
             .context
+            .unwrap()
             .additional_reasoning_reservation,
         37
     );
@@ -393,7 +405,7 @@ fn protocol_errors_malformed_sse_and_unknown_semantics_fail_closed() {
     let mut decoder = NativeResponseDecoder::new(&profile, 200, true).unwrap();
     assert!(matches!(
         decoder.feed(malformed, true),
-        Err(error) if error.code() == "PROTOCOL_SEMANTICS_UNSUPPORTED"
+        Err(error) if error.code() == "PROTOCOL_INVALID_PAYLOAD"
     ));
 
     let incomplete = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"model\":\"m\"}}\n\n";
@@ -405,7 +417,10 @@ fn protocol_errors_malformed_sse_and_unknown_semantics_fail_closed() {
 
     let request = request_fixture(IngressProtocol::Responses);
     let mut request = request.as_object().unwrap().clone();
-    request.insert("temperature".into(), Value::from(0.1));
+    request.insert(
+        "base_url".into(),
+        Value::from("https://unauthorized.invalid"),
+    );
     assert!(matches!(
         decode_ingress_request(IngressProtocol::Responses, &Value::Object(request)),
         Err(ModelIrError::UnsupportedField(_))

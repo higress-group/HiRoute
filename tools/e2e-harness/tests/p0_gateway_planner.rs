@@ -126,6 +126,8 @@ fn corpus_request(case: &CorpusCase) -> ModelRequestIRV1 {
         });
     }
     ModelRequestIRV1 {
+        native_body: None,
+        native_only: false,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: protocol(&case.protocol),
         responses_options: None,
@@ -387,7 +389,9 @@ fn planner_frozen_ledger_covers_capability_context_reasoning_and_bytes() {
         .unwrap();
     assert_eq!(
         output.ledger.evaluations[0].first_exclusion,
-        Some(ExclusionReasonCodeV1::VisionUnsupported)
+        // Provider metadata is not admission; the nonexistent configured
+        // reasoning profile is the actual executable-plan error.
+        Some(ExclusionReasonCodeV1::ReasoningProfileMismatch)
     );
     assert_eq!(output.ledger.ordered_candidates[0].candidate_id, "capable");
 

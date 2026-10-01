@@ -205,3 +205,16 @@ Request warnings occur before sending; response loss is reported once and the at
 record retains the total. Check the associated attempt outcome rather than treating the
 warning as proof of success. Responses server-side history handles (`conversation`,
 `previous_response_id`, `store: true`) remain unsupported; clients must send their history.
+
+## Native payloads and provider validation
+
+On the same protocol, ordinary provider-defined payload fields are preserved instead of
+being rejected because local capability metadata is incomplete. Empty text or an absent
+thinking signature is not proof of an invalid provider request. Authentication, destination
+authorization, hosted-tool policy, framing and complete-stream checks still apply.
+
+An unknown extension is native-only: it cannot silently disappear through protocol conversion,
+nor establish history continuity for ContextHold or reasoning cleanup. Cross-protocol requests
+still need an executable mapping. Fixed bindings preserve explicit native reasoning controls;
+smart-routing plans apply their configured reasoning and output limits. Unknown accounting
+remains unknown, so a strict paid budget still requires a provable upper bound.

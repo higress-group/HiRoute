@@ -11,6 +11,13 @@ pub const MODEL_REQUEST_IR_SCHEMA: &str = "hiroute.model-request-ir/v1";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelRequestIRV1 {
+    /// Request-local native payload; never persisted or exported as an IR contract.
+    #[serde(skip)]
+    pub native_body: Option<Value>,
+    /// Unknown native semantics cannot participate in cross-protocol conversion
+    /// or history-prefix reuse/cleanup admission.
+    #[serde(skip)]
+    pub native_only: bool,
     pub schema_version: String,
     pub ingress_protocol: IngressProtocol,
     pub served_model_id: String,
@@ -171,7 +178,7 @@ impl ModelRequestIRV1 {
                 .tools
                 .iter()
                 .chain(namespace_functions)
-                .any(|tool| tool.kind == ToolKindV1::Function && tool.strict.is_some()),
+                .any(|tool| tool.kind == ToolKindV1::Function && tool.strict == Some(true)),
             tool_choice: self.tool_choice.clone(),
             parallel_tools: self.parallel_tool_calls,
             tool_roundtrip: active_function_tools || !self.responses_search_history.is_empty(),
@@ -401,6 +408,9 @@ pub struct RequestedReasoningControl {
     pub disposition: RequestedReasoningDisposition,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) fixed_profile_digest: Option<hiroute_domain::CanonicalDigest>,
+    /// Resolved before Replay externalizes native controls. Request-local only.
+    #[serde(skip)]
+    pub(crate) fixed_profile: Option<super::super::profiles::ReasoningProfileCapability>,
 }
 
 impl RequestedReasoningControl {
@@ -409,6 +419,7 @@ impl RequestedReasoningControl {
             native_value: None,
             disposition: RequestedReasoningDisposition::Absent,
             fixed_profile_digest: None,
+            fixed_profile: None,
         }
     }
 
@@ -417,6 +428,7 @@ impl RequestedReasoningControl {
             native_value: Some(native_value),
             disposition: RequestedReasoningDisposition::OverriddenByAgentPlan,
             fixed_profile_digest: None,
+            fixed_profile: None,
         }
     }
 }

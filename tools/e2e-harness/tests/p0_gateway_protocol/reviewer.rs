@@ -20,7 +20,7 @@ use super::support::{
 };
 
 #[test]
-fn protocol_reviewer_pdf_is_rejected_by_the_exact_path_before_connect() {
+fn protocol_reviewer_native_image_payload_is_left_to_the_provider() {
     let request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({
@@ -37,11 +37,10 @@ fn protocol_reviewer_pdf_is_rejected_by_the_exact_path_before_connect() {
         "physical",
         fixed_reasoning("fixed"),
     );
+    let body = project_candidate_request(&request, &profile).unwrap().body;
     assert_eq!(
-        project_candidate_request(&request, &profile)
-            .unwrap_err()
-            .code(),
-        "PROTOCOL_CAPABILITY_UNSUPPORTED"
+        body["input"][0]["content"][0]["image_url"],
+        "data:application/pdf;base64,AA=="
     );
 }
 
@@ -76,16 +75,6 @@ fn protocol_reviewer_path_identity_and_response_discriminants_fail_closed() {
         {
             let mut value = profile.clone();
             value.connector.entitlement_id.clear();
-            value
-        },
-        {
-            let mut value = profile.clone();
-            value.capability.response.refusal = Fidelity::Unknown;
-            value
-        },
-        {
-            let mut value = profile.clone();
-            value.capability.response.logical_tool_id_mapping = Fidelity::Unknown;
             value
         },
     ] {
@@ -458,10 +447,12 @@ fn protocol_reviewer_json_tool_result_uses_exact_native_binding_for_all_targets(
         let body = project_candidate_request(&request, &profile).unwrap().body;
         let (native_id, native_wire, output) = native_tool_result(target, &body);
         assert_eq!(native_id, "logical_weather");
-        assert_eq!(
-            native_wire,
-            r#"{"nested":{"a":1,"z":2},"temperature":21,"z":1}"#
-        );
+        if target != IngressProtocol::Responses {
+            assert_eq!(
+                native_wire,
+                r#"{"nested":{"a":1,"z":2},"temperature":21,"z":1}"#
+            );
+        }
         assert_eq!(
             output,
             json!({"z":1,"temperature":21,"nested":{"z":2,"a":1}})
@@ -506,19 +497,8 @@ fn protocol_reviewer_messages_terminal_refusal_is_typed_before_client_emission()
     ] {
         let mut invalid = exact_profile.clone();
         invalid.capability.response.stream_refusal = semantics;
-        assert_eq!(
-            project_candidate_request(&request, &invalid)
-                .unwrap_err()
-                .code(),
-            "PROTOCOL_CAPABILITY_UNSUPPORTED"
-        );
-        assert_eq!(
-            NativeResponseDecoder::new(&invalid, 200, true)
-                .err()
-                .unwrap()
-                .code(),
-            "PROTOCOL_CAPABILITY_UNSUPPORTED"
-        );
+        assert!(project_candidate_request(&request, &invalid).is_ok());
+        assert!(NativeResponseDecoder::new(&invalid, 200, true).is_ok());
     }
 
     let native = wire(&messages_refusal_events());
@@ -893,12 +873,14 @@ fn native_tool_result(protocol: IngressProtocol, body: &Value) -> (String, Strin
             )
         }
     };
-    let schema_text = output
-        .as_str()
-        .expect("native Tool-result schema requires string content");
-    let canonical = serde_json::from_str(schema_text)
-        .expect("canonical JSON Tool result must round-trip from native text");
-    (native_id, schema_text.into(), canonical)
+    match output.as_str() {
+        Some(text) => (
+            native_id,
+            text.into(),
+            serde_json::from_str(text).expect("converted JSON tool result"),
+        ),
+        None => (native_id, output.to_string(), output),
+    }
 }
 
 fn wire(events: &[RenderedSseEvent]) -> Vec<u8> {

@@ -10,6 +10,7 @@ use crate::server::request_plan::IngressProtocol;
 
 use super::{ChatToolProjection, ProtocolAdapterError};
 
+mod native;
 mod reader;
 mod template;
 mod tools;
@@ -28,7 +29,7 @@ pub struct PreparedNativeRequest {
     pub path: String,
     pub body: Value,
     pub bytes: Vec<u8>,
-    pub context: CandidateContextDemand,
+    pub context: Option<CandidateContextDemand>,
     pub capability_id: String,
     pub connector_id: String,
     pub adapter_revision: String,
@@ -51,29 +52,45 @@ pub fn project_candidate_request(
     }
     let requirements = request.requirements();
     let reasoning = profile.validate(&requirements)?;
-    validate_message_shapes(request, profile.capability.upstream_protocol)?;
+    let native = request.native_body.is_some()
+        && request.ingress_protocol == profile.capability.upstream_protocol;
+    if !native {
+        validate_message_shapes(request, profile.capability.upstream_protocol)?;
+    }
     let chat_tool_projection =
-        if profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
+        if !native && profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
             Some(ChatToolProjection::for_request(request)?)
         } else {
             None
         };
-    let body = match profile.capability.upstream_protocol {
-        IngressProtocol::Responses => serialize_responses(request, profile, reasoning, None)?,
-        IngressProtocol::ChatCompletions => serialize_chat(
-            request,
-            profile,
-            reasoning,
-            chat_tool_projection
-                .as_ref()
-                .expect("Chat projection was constructed"),
-            None,
-        )?,
-        IngressProtocol::Messages => serialize_messages(request, profile, reasoning, None)?,
+    let body = if native {
+        native::controls(request, profile, reasoning)?
+    } else {
+        match profile.capability.upstream_protocol {
+            IngressProtocol::Responses => serialize_responses(request, profile, reasoning, None)?,
+            IngressProtocol::ChatCompletions => serialize_chat(
+                request,
+                profile,
+                reasoning,
+                chat_tool_projection
+                    .as_ref()
+                    .expect("Chat projection was constructed"),
+                None,
+            )?,
+            IngressProtocol::Messages => serialize_messages(request, profile, reasoning, None)?,
+        }
     };
+    let body = native::project(request, profile, body, None)?;
     let bytes = serde_json::to_vec(&body)
         .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
-    let context = ContextProjector::project(&bytes, &profile.capability.context, reasoning)?;
+    let context = ContextProjector::project(
+        &bytes,
+        &profile
+            .capability
+            .context
+            .with_requested_output(request.requested_max_output_tokens),
+        reasoning,
+    )?;
     Ok(PreparedNativeRequest {
         protocol: profile.capability.upstream_protocol,
         path: profile.connector.request_path.clone(),
@@ -360,10 +377,9 @@ fn serialize_responses(
     body.insert("input".into(), Value::Array(input));
     insert_responses_tools(&mut body, request)?;
     render_reasoning(&mut body, reasoning, IngressProtocol::Responses)?;
-    body.insert(
-        "max_output_tokens".into(),
-        Value::from(candidate_max_output(profile)?),
-    );
+    if let Some(cap) = candidate_max_output(request, profile) {
+        body.insert("max_output_tokens".into(), Value::from(cap));
+    }
     Ok(Value::Object(body))
 }
 
@@ -626,10 +642,9 @@ fn serialize_chat(
     }
     insert_chat_tools(&mut body, request, tool_projection)?;
     render_reasoning(&mut body, reasoning, IngressProtocol::ChatCompletions)?;
-    body.insert(
-        "max_completion_tokens".into(),
-        Value::from(candidate_max_output(profile)?),
-    );
+    if let Some(cap) = candidate_max_output(request, profile) {
+        body.insert("max_completion_tokens".into(), Value::from(cap));
+    }
     Ok(Value::Object(body))
 }
 
@@ -647,7 +662,10 @@ fn serialize_messages(
     body.insert("stream".into(), Value::Bool(request.stream));
     body.insert(
         "max_tokens".into(),
-        Value::from(candidate_max_output(profile)?),
+        Value::from(
+            candidate_max_output(request, profile)
+                .ok_or(ContextProjectionError::UnknownLimit("Messages max_tokens"))?,
+        ),
     );
     if !request.instructions.is_empty() {
         body.insert(
@@ -981,14 +999,22 @@ fn insert_exact_field(
     Ok(())
 }
 
-fn candidate_max_output(profile: &CandidateProtocolProfile) -> Result<u64, ProtocolAdapterError> {
-    profile
-        .capability
-        .context
-        .max_output_tokens
-        .exact()
-        .copied()
-        .ok_or_else(|| ContextProjectionError::UnknownLimit("max_output").into())
+fn candidate_max_output(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+) -> Option<u64> {
+    match (
+        request.requested_max_output_tokens,
+        profile
+            .capability
+            .context
+            .max_output_tokens
+            .exact()
+            .copied(),
+    ) {
+        (Some(client), Some(configured)) => Some(client.min(configured)),
+        (client, configured) => client.or(configured),
+    }
 }
 
 fn instruction_text(

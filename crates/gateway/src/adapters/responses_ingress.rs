@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) fn decode_responses_input(
+    context: &DecodeContext,
     value: &Value,
     messages: &mut Vec<CanonicalMessage>,
     item_status: Option<&str>,
@@ -12,6 +13,7 @@ pub(super) fn decode_responses_input(
     match item_type.as_str() {
         "message" => {
             ensure_keys(
+                context,
                 object,
                 &[
                     "type",
@@ -28,6 +30,7 @@ pub(super) fn decode_responses_input(
             messages.push(CanonicalMessage {
                 role: decode_role(required_string(object, "role")?.as_str())?,
                 content: decode_responses_content(
+                    context,
                     object
                         .get("content")
                         .ok_or(ModelIrError::InvalidField("content"))?,
@@ -37,6 +40,7 @@ pub(super) fn decode_responses_input(
         }
         "function_call" => {
             ensure_keys(
+                context,
                 object,
                 &[
                     "type",
@@ -51,7 +55,7 @@ pub(super) fn decode_responses_input(
                 "responses function_call",
             )?;
             let (arguments, raw_arguments) =
-                parse_tool_arguments(required_string(object, "arguments")?);
+                parse_tool_arguments(content_string(object, "arguments")?);
             messages.push(CanonicalMessage {
                 role: MessageRole::Assistant,
                 content: vec![ContentPart::ToolCall {
@@ -67,6 +71,7 @@ pub(super) fn decode_responses_input(
         }
         "function_call_output" => {
             ensure_keys(
+                context,
                 object,
                 &[
                     "type",
@@ -93,7 +98,8 @@ pub(super) fn decode_responses_input(
                         Some("incomplete") => ToolResultStatusV1::Failed,
                         Some("in_progress") | None => ToolResultStatusV1::Unknown,
                         Some(_) => {
-                            return Err(ModelIrError::InvalidField("Responses input item status"));
+                            context.native_only.set(true);
+                            ToolResultStatusV1::Unknown
                         }
                     },
                 }],
@@ -102,6 +108,7 @@ pub(super) fn decode_responses_input(
         }
         "custom_tool_call" => {
             ensure_keys(
+                context,
                 object,
                 &[
                     "type",
@@ -121,7 +128,7 @@ pub(super) fn decode_responses_input(
                     tool_kind: ToolKindV1::Custom,
                     namespace: optional_string(object, "namespace")?,
                     name: required_string(object, "name")?,
-                    arguments: Value::String(required_string(object, "input")?),
+                    arguments: Value::String(content_string(object, "input")?),
                     raw_arguments: None,
                 }],
                 name: None,
@@ -129,6 +136,7 @@ pub(super) fn decode_responses_input(
         }
         "custom_tool_call_output" => {
             ensure_keys(
+                context,
                 object,
                 &[
                     "type",
@@ -187,7 +195,10 @@ pub(super) fn decode_responses_input(
     Ok(())
 }
 
-fn decode_responses_content(value: &Value) -> Result<Vec<ContentPart>, ModelIrError> {
+fn decode_responses_content(
+    context: &DecodeContext,
+    value: &Value,
+) -> Result<Vec<ContentPart>, ModelIrError> {
     let values = match value {
         Value::String(text) => {
             return Ok(vec![ContentPart::Text { text: text.clone() }]);
@@ -203,15 +214,20 @@ fn decode_responses_content(value: &Value) -> Result<Vec<ContentPart>, ModelIrEr
                 .ok_or(ModelIrError::InvalidField("content[]"))?;
             match required_string(object, "type")?.as_str() {
                 "input_text" | "output_text" => {
-                    ensure_keys(object, &["type", "text", "annotations"], "responses text")?;
+                    ensure_keys(
+                        context,
+                        object,
+                        &["type", "text", "annotations"],
+                        "responses text",
+                    )?;
                     Ok(ContentPart::Text {
-                        text: required_string(object, "text")?,
+                        text: content_string(object, "text")?,
                     })
                 }
                 "input_image" => {
-                    ensure_keys(object, &["type", "image_url"], "responses image")?;
+                    ensure_keys(context, object, &["type", "image_url"], "responses image")?;
                     Ok(ContentPart::Image {
-                        source: decode_image_url(required_string(object, "image_url")?)?,
+                        source: decode_image_url(context, content_string(object, "image_url")?)?,
                     })
                 }
                 other => Err(ModelIrError::UnsupportedValue(format!(
@@ -230,6 +246,7 @@ pub(super) struct DecodedResponsesTools {
 }
 
 pub(super) fn decode_responses_tools(
+    context: &DecodeContext,
     value: Option<&Value>,
     additional: &[&Value],
 ) -> Result<DecodedResponsesTools, ModelIrError> {
@@ -240,10 +257,10 @@ pub(super) fn decode_responses_tools(
         order: Vec::new(),
     };
     if let Some(value) = value {
-        merge_responses_tools(value, &mut decoded)?;
+        merge_responses_tools(context, value, &mut decoded)?;
     }
     for value in additional {
-        merge_responses_tools(value, &mut decoded)?;
+        merge_responses_tools(context, value, &mut decoded)?;
     }
     // Flat tools already retain their native order in `tools`. Keep the
     // Responses-only order ledger only when it is needed to interleave a
@@ -255,6 +272,7 @@ pub(super) fn decode_responses_tools(
 }
 
 fn merge_responses_tools(
+    context: &DecodeContext,
     value: &Value,
     decoded: &mut DecodedResponsesTools,
 ) -> Result<(), ModelIrError> {
@@ -267,7 +285,7 @@ fn merge_responses_tools(
             .ok_or(ModelIrError::InvalidField("tools[]"))?;
         match required_string(object, "type")?.as_str() {
             "function" | "custom" => {
-                let tool = decode_responses_tool(object)?;
+                let tool = decode_responses_tool(context, object)?;
                 if let Some(existing) = decoded
                     .tools
                     .iter()
@@ -289,6 +307,7 @@ fn merge_responses_tools(
             }
             "namespace" => {
                 ensure_keys(
+                    context,
                     object,
                     &["type", "name", "description", "tools"],
                     "responses namespace Tool",
@@ -301,6 +320,7 @@ fn merge_responses_tools(
                 let mut tools = Vec::with_capacity(children.len());
                 for child in children {
                     let tool = decode_responses_tool(
+                        context,
                         child
                             .as_object()
                             .ok_or(ModelIrError::InvalidField("namespace tools[]"))?,
@@ -364,10 +384,14 @@ fn merge_responses_tools(
     Ok(())
 }
 
-fn decode_responses_tool(object: &Map<String, Value>) -> Result<CanonicalTool, ModelIrError> {
+fn decode_responses_tool(
+    context: &DecodeContext,
+    object: &Map<String, Value>,
+) -> Result<CanonicalTool, ModelIrError> {
     match required_string(object, "type")?.as_str() {
         "function" => {
             ensure_keys(
+                context,
                 object,
                 &["type", "name", "description", "parameters", "strict"],
                 "responses function Tool",
@@ -388,6 +412,7 @@ fn decode_responses_tool(object: &Map<String, Value>) -> Result<CanonicalTool, M
         }
         "custom" => {
             ensure_keys(
+                context,
                 object,
                 &["type", "name", "description", "format"],
                 "responses custom Tool",

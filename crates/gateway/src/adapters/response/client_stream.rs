@@ -1069,7 +1069,6 @@ impl IncrementalClientSseRenderer {
                 let signature = state
                     .value
                     .as_str()
-                    .filter(|signature| !signature.is_empty())
                     .ok_or_else(|| unrepresentable("Messages thinking signature value"))?;
                 if !self.open_messages_blocks.contains(&index) {
                     return Err(unrepresentable("Messages thinking signature lifecycle"));

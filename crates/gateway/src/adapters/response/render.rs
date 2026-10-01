@@ -598,13 +598,9 @@ fn append_messages_state(
         match state.kind.as_str() {
             "redacted_thinking" => content.push(state.value.clone()),
             "thinking_signature" => {
-                if !state
-                    .value
-                    .as_str()
-                    .is_some_and(|signature| !signature.is_empty())
-                {
+                if !state.value.is_string() {
                     return Err(ProtocolAdapterError::ClientUnrepresentable(
-                        "thinking signature is not a non-empty string".into(),
+                        "thinking signature is not a string".into(),
                     ));
                 }
                 let Some(index) = state
@@ -647,15 +643,11 @@ fn messages_signatures(
                 "Messages streaming provider state has no reasoning block".into(),
             )
         })?;
-        let signature = state
-            .value
-            .as_str()
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                ProtocolAdapterError::ClientUnrepresentable(
-                    "Messages streaming signature is not a non-empty string".into(),
-                )
-            })?;
+        let signature = state.value.as_str().ok_or_else(|| {
+            ProtocolAdapterError::ClientUnrepresentable(
+                "Messages streaming signature is not a string".into(),
+            )
+        })?;
         if signatures.insert(index, signature.to_owned()).is_some() {
             return Err(ProtocolAdapterError::ClientUnrepresentable(
                 "Messages streaming reasoning state is not unique".into(),

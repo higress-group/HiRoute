@@ -57,6 +57,12 @@ impl ProtocolAdapterError {
             Self::ModelIr(ModelIrError::ResponsesConversationUnsupported) => {
                 "RESPONSES_CONVERSATION_UNSUPPORTED"
             }
+            Self::ModelIr(
+                ModelIrError::ExpectedObject
+                | ModelIrError::InvalidField(_)
+                | ModelIrError::InvalidJson(_)
+                | ModelIrError::InvalidSse(_),
+            ) => "PROTOCOL_INVALID_PAYLOAD",
             Self::ModelIr(_) => "PROTOCOL_SEMANTICS_UNSUPPORTED",
             Self::Capability(CapabilityError::ProtocolPathUnavailable) => {
                 "PROTOCOL_PATH_UNAVAILABLE"

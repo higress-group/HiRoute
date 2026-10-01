@@ -1,9 +1,6 @@
-use crate::server::core_runtime::model_ir::{
-    ModelRequestIRV1, RequestCapabilityRequirementsV1, ToolChoice,
-};
+use crate::server::core_runtime::model_ir::{ModelRequestIRV1, RequestCapabilityRequirementsV1};
 use crate::server::core_runtime::profiles::{
     CandidateContextDemand, CandidateProtocolProfile, ContextProjectionError, ContextProjector,
-    Fidelity, StreamingRefusalSemantics,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -15,7 +12,7 @@ use super::{
 #[derive(Clone, Debug)]
 pub(crate) struct EligibleProjection {
     pub reasoning_profile_id: String,
-    pub context: CandidateContextDemand,
+    pub context: Option<CandidateContextDemand>,
     pub effective_cost_micros: Option<u64>,
 }
 
@@ -31,11 +28,14 @@ pub(crate) fn evaluate_candidate(
         return Err(exclusion);
     }
     tool_projection_gate(request, &candidate.protocol_profile)?;
-    vision_gate(&requirements, &candidate.protocol_profile)?;
-    tool_gate(&requirements, &candidate.protocol_profile)?;
     let reasoning = reasoning_gate(&candidate.protocol_profile)?;
-    let context = context_gate(candidate, reasoning)?;
-    streaming_gate(&requirements, &candidate.protocol_profile)?;
+    let context = context_gate(request, candidate, reasoning)?;
+    if context.is_none()
+        && cost_policy == StaticCostPolicyV1::BudgetedPaid
+        && candidate.cost_class == CostClassV1::Paid
+    {
+        return Err(ExclusionReasonCodeV1::PaidBudgetQuoteUnavailable);
+    }
     static_cost_gate(candidate, cost_policy, limits)?;
     Ok(EligibleProjection {
         reasoning_profile_id: reasoning.profile_id.clone(),
@@ -71,33 +71,15 @@ fn protocol_gate(
     {
         return Err(ExclusionReasonCodeV1::ProtocolPathUnavailable);
     }
-    let request = &capability.request;
-    if !exact_if(requirements.text, request.text)
-        || !exact_if(
-            requirements.initial_instructions,
-            request.initial_instructions,
-        )
-        || !exact_if(
-            requirements.mid_conversation_instructions,
-            request.mid_conversation_instructions,
-        )
-    {
-        return Err(ExclusionReasonCodeV1::ProtocolPathUnavailable);
-    }
-    let response = &capability.response;
-    if [
-        response.text,
-        response.reasoning,
-        response.refusal,
-        response.usage,
-        response.finish_reason,
-        response.typed_error,
-    ]
-    .into_iter()
-    .any(|fidelity| fidelity != Fidelity::Exact)
-    {
-        return Err(ExclusionReasonCodeV1::ProtocolPathUnavailable);
-    }
+    profile
+        .validate(requirements)
+        .map_err(|error| match error {
+            crate::server::core_runtime::profiles::CapabilityError::ReasoningProfileMismatch
+            | crate::server::core_runtime::profiles::CapabilityError::ReasoningProfileUnknown => {
+                ExclusionReasonCodeV1::ReasoningProfileMismatch
+            }
+            _ => ExclusionReasonCodeV1::ProtocolPathUnavailable,
+        })?;
     Ok(())
 }
 
@@ -135,79 +117,6 @@ fn tool_projection_gate(
     }
 }
 
-fn vision_gate(
-    requirements: &RequestCapabilityRequirementsV1,
-    profile: &CandidateProtocolProfile,
-) -> Result<(), ExclusionReasonCodeV1> {
-    let request = &profile.capability.request;
-    if !exact_if(requirements.image_url, request.image_url)
-        || !exact_if(requirements.image_base64, request.image_base64)
-    {
-        return Err(ExclusionReasonCodeV1::VisionUnsupported);
-    }
-    if requirements.image_base64 {
-        let Some(media_types) = request.image_base64_media_types.exact() else {
-            return Err(ExclusionReasonCodeV1::ImageSourceUnsupported);
-        };
-        if requirements.image_media_types.iter().any(|required| {
-            !media_types
-                .iter()
-                .any(|supported| supported.eq_ignore_ascii_case(required))
-        }) {
-            return Err(ExclusionReasonCodeV1::ImageSourceUnsupported);
-        }
-    }
-    Ok(())
-}
-
-fn tool_gate(
-    requirements: &RequestCapabilityRequirementsV1,
-    profile: &CandidateProtocolProfile,
-) -> Result<(), ExclusionReasonCodeV1> {
-    let request = &profile.capability.request;
-    let response = &profile.capability.response;
-    let tools_active = requirements.function_tools && requirements.tool_choice != ToolChoice::None;
-    if !exact_if(tools_active, request.function_tools)
-        || !exact_if(
-            tools_active && requirements.strict_tools,
-            request.strict_tools,
-        )
-        || !exact_if(
-            tools_active && requirements.parallel_tools,
-            request.parallel_tools,
-        )
-        || !exact_if(tools_active, response.tool_calls)
-        || !exact_if(
-            tools_active && requirements.logical_tool_id_mapping,
-            response.logical_tool_id_mapping,
-        )
-    {
-        return Err(ExclusionReasonCodeV1::ToolInterfaceUnsupported);
-    }
-    if tools_active {
-        let choice = match requirements.tool_choice {
-            ToolChoice::None => request.tool_choice_none,
-            ToolChoice::Auto => request.tool_choice_auto,
-            ToolChoice::RequiredAny => request.tool_choice_required_any,
-            ToolChoice::RequiredNamed { .. } => request.tool_choice_required_named,
-        };
-        if choice != Fidelity::Exact {
-            return Err(ExclusionReasonCodeV1::ToolChoiceUnsupported);
-        }
-    }
-    if !exact_if(requirements.tool_roundtrip, request.tool_roundtrip)
-        || !exact_if(requirements.tool_result_text, request.tool_result_text)
-        || !exact_if(requirements.tool_result_json, request.tool_result_json)
-        || !exact_if(
-            requirements.logical_tool_id_mapping,
-            request.logical_tool_id_mapping,
-        )
-    {
-        return Err(ExclusionReasonCodeV1::ToolRoundtripUnsupported);
-    }
-    Ok(())
-}
-
 fn reasoning_gate(
     profile: &CandidateProtocolProfile,
 ) -> Result<&crate::server::core_runtime::profiles::ReasoningProfileCapability, ExclusionReasonCodeV1>
@@ -231,18 +140,16 @@ fn reasoning_gate(
 }
 
 fn context_gate(
+    request: &ModelRequestIRV1,
     candidate: &PlannerCandidateFactsV1,
     reasoning: &crate::server::core_runtime::profiles::ReasoningProfileCapability,
-) -> Result<CandidateContextDemand, ExclusionReasonCodeV1> {
-    let limits = &candidate.protocol_profile.capability.context;
-    match limits.max_output_tokens.exact() {
-        Some(1..) => {}
-        Some(0) | None => return Err(ExclusionReasonCodeV1::MaxOutputUnsupported),
-    }
-    if limits.estimator.exact().is_none() {
-        return Err(ExclusionReasonCodeV1::ContextLimitUnknown);
-    }
-    ContextProjector::project_serialized_len(candidate.target_serialized_bytes, limits, reasoning)
+) -> Result<Option<CandidateContextDemand>, ExclusionReasonCodeV1> {
+    let limits = candidate
+        .protocol_profile
+        .capability
+        .context
+        .with_requested_output(request.requested_max_output_tokens);
+    ContextProjector::project_serialized_len(candidate.target_serialized_bytes, &limits, reasoning)
         .map_err(|error| match error {
             ContextProjectionError::UnknownLimit(_)
             | ContextProjectionError::UnknownEstimator
@@ -250,37 +157,6 @@ fn context_gate(
                 ExclusionReasonCodeV1::ContextLimitUnknown
             }
         })
-}
-
-fn streaming_gate(
-    requirements: &RequestCapabilityRequirementsV1,
-    profile: &CandidateProtocolProfile,
-) -> Result<(), ExclusionReasonCodeV1> {
-    if !requirements.streaming {
-        return Ok(());
-    }
-    if profile.capability.native_streaming.exact() != Some(&true) {
-        return Err(ExclusionReasonCodeV1::StreamFeatureUnsupported);
-    }
-    let response = &profile.capability.response;
-    if !exact_if(requirements.stream_text, response.stream_text_delta)
-        || !exact_if(
-            requirements.stream_tool_arguments,
-            response.stream_tool_argument_delta,
-        )
-        || !exact_if(
-            requirements.stream_reasoning,
-            response.stream_reasoning_delta,
-        )
-        || !exact_if(requirements.stream_usage, response.stream_usage)
-        || !valid_stream_refusal(
-            profile.capability.upstream_protocol,
-            response.stream_refusal,
-        )
-    {
-        return Err(ExclusionReasonCodeV1::StreamFeatureUnsupported);
-    }
-    Ok(())
 }
 
 fn static_cost_gate(
@@ -319,22 +195,4 @@ fn static_cost_gate(
         }
     }
     Ok(())
-}
-
-fn exact_if(required: bool, fidelity: Fidelity) -> bool {
-    !required || fidelity == Fidelity::Exact
-}
-
-fn valid_stream_refusal(protocol: IngressProtocol, semantics: StreamingRefusalSemantics) -> bool {
-    matches!(
-        (protocol, semantics),
-        (
-            IngressProtocol::Messages,
-            StreamingRefusalSemantics::TerminalClassified
-                | StreamingRefusalSemantics::LegacyTerminalClassified { .. }
-        ) | (
-            IngressProtocol::Responses | IngressProtocol::ChatCompletions,
-            StreamingRefusalSemantics::ExactDelta
-        )
-    )
 }

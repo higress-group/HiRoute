@@ -51,7 +51,7 @@ fn planner_hard_gate_order_is_stable_and_fail_closed() {
         .unwrap();
     assert_eq!(
         evaluation(&output, "candidate").first_exclusion,
-        Some(ExclusionReasonCodeV1::VisionUnsupported)
+        Some(ExclusionReasonCodeV1::ReasoningProfileMismatch)
     );
 
     facts.protocol_profile.capability.request.image_url = Fidelity::Exact;
@@ -65,7 +65,7 @@ fn planner_hard_gate_order_is_stable_and_fail_closed() {
         .unwrap();
     assert_eq!(
         evaluation(&output, "candidate").first_exclusion,
-        Some(ExclusionReasonCodeV1::ToolInterfaceUnsupported)
+        Some(ExclusionReasonCodeV1::ReasoningProfileMismatch)
     );
 
     facts.protocol_profile.capability.request.function_tools = Fidelity::Exact;
@@ -95,10 +95,7 @@ fn planner_hard_gate_order_is_stable_and_fail_closed() {
             vec![facts.clone()],
         ))
         .unwrap();
-    assert_eq!(
-        evaluation(&output, "candidate").first_exclusion,
-        Some(ExclusionReasonCodeV1::StreamFeatureUnsupported)
-    );
+    assert_eq!(evaluation(&output, "candidate").first_exclusion, None);
 
     facts.protocol_profile.capability.native_streaming = CriticalFact::Exact(true);
     refresh_profile(&mut facts);
@@ -222,10 +219,7 @@ fn planner_freezes_namespace_only_tools_with_ordinary_tool_roundtrip_gates() {
         ))
         .unwrap();
     assert!(evaluation(&output, "responses").eligible);
-    assert_eq!(
-        evaluation(&output, "no-tool").first_exclusion,
-        Some(ExclusionReasonCodeV1::ToolInterfaceUnsupported)
-    );
+    assert_eq!(evaluation(&output, "no-tool").first_exclusion, None);
     assert!(
         evaluation(&output, "chat").eligible,
         "{:#?}",

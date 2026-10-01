@@ -45,7 +45,8 @@ impl PublicationPlannerInputAuthority {
         document: &serde_json::Value,
         ingress: IngressProtocol,
         authorized: &AuthorizedRequestPlan,
-    ) -> Result<Option<hiroute_domain::CanonicalDigest>, PortError> {
+    ) -> Result<Option<crate::server::core_runtime::profiles::ReasoningProfileCapability>, PortError>
+    {
         use crate::server::core_runtime::profiles::PlannerRouteIdentityV2;
 
         if !matches!(
@@ -102,9 +103,7 @@ impl PublicationPlannerInputAuthority {
         let selected = selected
             .selected_reasoning()
             .map_err(|_| PortError::InvalidReasoningControl)?;
-        Ok(Some(
-            hiroute_domain::CanonicalDigest::of(selected).map_err(|_| PortError::Rejected)?,
-        ))
+        Ok(Some(selected.clone()))
     }
 }
 
@@ -747,6 +746,9 @@ mod sizing_tests {
             .unwrap()
             .encrypted_content =
             crate::server::core_runtime::model_ir::ResponsesReasoningEncryptedContentV1::Absent;
+        // Native delivery uses the preserved payload, while the canonical-only
+        // conversion path must still reject inconsistent canonical state.
+        request.native_body = None;
         assert!(project_candidate_facts_template(&request, &other).is_err());
     }
 

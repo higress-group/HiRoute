@@ -109,7 +109,6 @@ impl NativeResponseProjector {
         if profile.ingress_protocol != profile.capability.upstream_protocol
             || profile.capability.upstream_protocol != profile.connector.upstream_protocol
             || !profile.connector.critical_facts_are_exact()
-            || (streaming && profile.capability.native_streaming.exact() != Some(&true))
         {
             return Err(
                 crate::server::core_runtime::profiles::CapabilityError::ProfileUnknown.into(),

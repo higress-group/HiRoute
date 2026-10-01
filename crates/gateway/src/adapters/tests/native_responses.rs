@@ -114,9 +114,7 @@ fn responses_to_messages_keeps_top_level_instructions_and_tool_history_but_rejec
     assert!(mid.requirements().mid_conversation_instructions);
     assert!(matches!(
         project_candidate_request(&mid, &profile),
-        Err(ProtocolAdapterError::Capability(
-            crate::server::core_runtime::profiles::CapabilityError::MidConversationInstructionsUnsupported
-        ))
+        Err(ProtocolAdapterError::ClientUnrepresentable(_))
     ));
 }
 
@@ -171,9 +169,7 @@ fn codex_input_developer_prelude_is_initial_but_not_messages_representable() {
     assert!(mid.requirements().mid_conversation_instructions);
     assert!(matches!(
         project_candidate_request(&mid, &messages),
-        Err(ProtocolAdapterError::Capability(
-            crate::server::core_runtime::profiles::CapabilityError::MidConversationInstructionsUnsupported
-        ))
+        Err(ProtocolAdapterError::ClientUnrepresentable(_))
     ));
 }
 

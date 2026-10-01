@@ -7,10 +7,7 @@ use hiroute_gateway_core::runtime::sse::{
 };
 
 use crate::server::core_runtime::model_ir::{ModelIrError, ModelResponseIRV1, ModelStreamEventV1};
-use crate::server::core_runtime::profiles::{
-    CandidateProtocolProfile, CapabilityError, Fidelity, NativeProviderStateEmission,
-    StreamingRefusalSemantics,
-};
+use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 use crate::server::request_plan::IngressProtocol;
 
 use super::ProtocolAdapterError;
@@ -113,33 +110,12 @@ impl NativeResponseDecoder {
     ) -> Result<Self, ProtocolAdapterError> {
         if profile.capability.upstream_protocol != profile.connector.upstream_protocol
             || !profile.connector.critical_facts_are_exact()
-            || profile.capability.native_provider_state == NativeProviderStateEmission::Unknown
-            || profile.capability.response.refusal != Fidelity::Exact
-            || (streaming && profile.capability.native_streaming.exact() != Some(&true))
-            || (profile.capability.native_provider_state == NativeProviderStateEmission::Native
-                && (profile.capability.request.provider_state != Fidelity::Exact
-                    || profile.capability.response.provider_state != Fidelity::Exact))
         {
             return Err(
                 crate::server::core_runtime::profiles::CapabilityError::ProfileUnknown.into(),
             );
         }
         let protocol = profile.capability.upstream_protocol;
-        if streaming
-            && !matches!(
-                (protocol, profile.capability.response.stream_refusal),
-                (
-                    IngressProtocol::Messages,
-                    StreamingRefusalSemantics::TerminalClassified
-                        | StreamingRefusalSemantics::LegacyTerminalClassified { .. }
-                ) | (
-                    IngressProtocol::Responses | IngressProtocol::ChatCompletions,
-                    StreamingRefusalSemantics::ExactDelta
-                )
-            )
-        {
-            return Err(CapabilityError::StreamRefusalUnsupported.into());
-        }
         let owner = profile.exact_provider_path()?;
         let budget_tree = BudgetTree::new(STREAM_MEMORY_BUDGET, STREAM_MEMORY_BUDGET)
             .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?;

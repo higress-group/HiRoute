@@ -22,7 +22,7 @@ pub struct PreparedNativeTemplate {
     pub(crate) bytes: Arc<[u8]>,
     pub(crate) replacements: Arc<[TemplateReplacement]>,
     pub wire_len: usize,
-    pub context: CandidateContextDemand,
+    pub context: Option<CandidateContextDemand>,
     pub capability_id: String,
     pub connector_id: String,
     pub adapter_revision: String,
@@ -116,36 +116,53 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
 ) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
     let requirements = request.requirements();
     let reasoning = profile.validate(&requirements)?;
-    validate_message_shapes(request, profile.capability.upstream_protocol)?;
+    let native = request.native_body.is_some()
+        && request.ingress_protocol == profile.capability.upstream_protocol;
+    if !native {
+        validate_message_shapes(request, profile.capability.upstream_protocol)?;
+    }
     let chat_tool_projection =
-        if profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
+        if !native && profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
             Some(ChatToolProjection::for_request(request)?)
         } else {
             None
         };
-    let body = match profile.capability.upstream_protocol {
-        IngressProtocol::Responses => {
-            serialize_responses(request, profile, reasoning, omit_reasoning_prefix)?
-        }
-        IngressProtocol::ChatCompletions => serialize_chat(
-            request,
-            profile,
-            reasoning,
-            chat_tool_projection
-                .as_ref()
-                .expect("Chat projection was constructed"),
-            omit_reasoning_prefix,
-        )?,
-        IngressProtocol::Messages => {
-            serialize_messages(request, profile, reasoning, omit_reasoning_prefix)?
+    let body = if native {
+        super::native::controls(request, profile, reasoning)?
+    } else {
+        match profile.capability.upstream_protocol {
+            IngressProtocol::Responses => {
+                serialize_responses(request, profile, reasoning, omit_reasoning_prefix)?
+            }
+            IngressProtocol::ChatCompletions => serialize_chat(
+                request,
+                profile,
+                reasoning,
+                chat_tool_projection
+                    .as_ref()
+                    .expect("Chat projection was constructed"),
+                omit_reasoning_prefix,
+            )?,
+            IngressProtocol::Messages => {
+                serialize_messages(request, profile, reasoning, omit_reasoning_prefix)?
+            }
         }
     };
-    let refs = request_content_refs(
-        request,
-        profile.capability.upstream_protocol,
-        omit_reasoning_prefix,
-    );
-    let replay_template = prepare_replay_json_template(&body, refs)?;
+    let body = super::native::project(request, profile, body, omit_reasoning_prefix)?;
+    let refs = if request.ingress_protocol == profile.capability.upstream_protocol
+        && request.native_body.is_some()
+    {
+        let mut refs = Vec::new();
+        collect_nested_json_refs(&body, &mut refs);
+        refs
+    } else {
+        request_content_refs(
+            request,
+            profile.capability.upstream_protocol,
+            omit_reasoning_prefix,
+        )
+    };
+    let replay_template = prepare_replay_json_template(&body.wire_value(), refs)?;
     let wire_len = replay_template.wire_len;
     let PreparedReplayTemplate {
         bytes,
@@ -154,7 +171,10 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
     } = replay_template;
     let context = ContextProjector::project_serialized_len(
         wire_len as u64,
-        &profile.capability.context,
+        &profile
+            .capability
+            .context
+            .with_requested_output(request.requested_max_output_tokens),
         reasoning,
     )?;
     Ok(PreparedNativeTemplate {
@@ -304,6 +324,13 @@ pub(crate) fn prepare_replay_json_template(
 }
 
 pub(super) fn request_has_content_refs(request: &ModelRequestIRV1) -> bool {
+    if let Some(body) = &request.native_body {
+        let mut refs = Vec::new();
+        collect_nested_json_refs(body, &mut refs);
+        if !refs.is_empty() {
+            return true;
+        }
+    }
     !request_content_refs(request, request.ingress_protocol, None).is_empty()
         || request
             .requested_reasoning
