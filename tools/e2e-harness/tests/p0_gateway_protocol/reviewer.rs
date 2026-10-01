@@ -658,7 +658,6 @@ fn protocol_reviewer_messages_signature_is_one_canonical_state_for_json_and_sse(
 
 #[test]
 fn protocol_reviewer_provider_state_never_advances_the_commit_boundary() {
-    let profile = decoder_profile(IngressProtocol::Responses);
     let state = ModelStreamEventV1::new(
         0,
         ModelEvent::ProviderState {
