@@ -12,6 +12,16 @@
 .hr-ui.occami-root { --titlebar-height:44px; --toolbar-height:calc(44px + 24px * var(--hr-text-scale)); font-family:var(--font-sans); font-size:calc(16px * var(--hr-text-scale)); color:var(--text); background:var(--bg); }
 .main > div:not([hidden]) { height:100%; min-height:0; }
 .main > [hidden] { display:none !important; }
+/* Keep list viewports below in-flow notices, within the page's remaining height. */
+.hr-models-page > .page-content.no-padding,
+.routing-page > .page-content.no-padding { display:flex; flex-direction:column; }
+.hr-models-page > .page-content.no-padding > *,
+.routing-page > .page-content.no-padding > * { flex-shrink:0; }
+.hr-models-page > .page-content > .models-feature,
+.routing-page > .page-content.no-padding > .split-view { flex:1; min-height:0; }
+.hr-models-page .models-feature { min-width:0; }
+.routing-page > .page-content.no-padding > .split-view { height:auto; }
+.hr-models-page .master-toolbar { flex-shrink:0; }
 .fatal-recovery { width:100%; height:100%; min-height:100%; background:var(--bg); }
 .fatal-recovery .btn { margin:0 auto; }
 .modal-backdrop, .sheet-backdrop { top:0; }
