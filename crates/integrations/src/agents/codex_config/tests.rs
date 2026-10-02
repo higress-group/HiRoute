@@ -64,7 +64,7 @@ fn codex_native_preserves_comments_unknown_fields_and_original_provider() {
             .as_str()
             .is_some()
     );
-    assert_eq!(provider["requires_openai_auth"].as_bool(), Some(true));
+    assert_eq!(provider["requires_openai_auth"].as_bool(), Some(false));
     assert_eq!(provider["supports_websockets"].as_bool(), Some(false));
     for forbidden in [
         "experimental_bearer_token",
@@ -420,4 +420,45 @@ fn codex_native_never_produces_a_config_too_large_for_its_restore_reader() {
         configure(&near_limit, CodexSelectionTarget::Root),
         Err(CodexNativeError::InvalidToml)
     ));
+}
+
+#[test]
+fn managed_profile_rejects_added_auth_fields_and_headers_but_preserves_them_on_revoke() {
+    let edit = configure("", CodexSelectionTarget::Root).unwrap();
+    for extra in [
+        "[model_providers.hiroute]\nenv_key = 'USER_SECRET'\n",
+        "[model_providers.hiroute.http_headers]\nAuthorization = 'user-owned'\n",
+    ] {
+        let mut current = edit.rendered.parse::<DocumentMut>().unwrap();
+        let addition = extra.parse::<DocumentMut>().unwrap();
+        if extra.contains("Authorization") {
+            current["model_providers"]["hiroute"]["http_headers"]["Authorization"] =
+                addition["model_providers"]["hiroute"]["http_headers"]["Authorization"].clone();
+        } else {
+            current["model_providers"]["hiroute"]["env_key"] =
+                addition["model_providers"]["hiroute"]["env_key"].clone();
+        }
+        let current = current.to_string();
+        assert!(!edit.restore.managed_fields_are_applied(&current));
+        assert!(matches!(
+            reconfigure_codex_native(
+                &current,
+                &CanonicalDigest::of_bytes(current.as_bytes()),
+                &edit.restore,
+                CodexSelectionTarget::Root,
+                "hiroute",
+                "http://127.0.0.1:5837/v1",
+                None,
+                &AgentAccessGrantMaterial::from_csprng_entropy([4; 32]),
+            ),
+            Err(CodexNativeError::FieldConflict)
+        ));
+        let restored = restore_codex_native(&current, &edit.restore).unwrap();
+        assert!(!restored.contains("X-HiRoute-Token"));
+        assert!(restored.contains(if extra.contains("Authorization") {
+            "user-owned"
+        } else {
+            "USER_SECRET"
+        }));
+    }
 }

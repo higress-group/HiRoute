@@ -427,7 +427,15 @@ where
             .load_operation(&operation.operation_id)?
             .ok_or(TransactionError::OperationNotFound)?;
         match self.activate_settings_file_tail(&mut operation) {
-            Ok(()) => self.finish_success(operation),
+            Ok(()) => {
+                // The explicit tail retry bypasses run_step; complete its step journal before
+                // publishing terminal success so strict history readers can verify the result.
+                operation.step_mut(OperationStepKind::Activate).status =
+                    OperationStepStatus::Applied;
+                operation.safe_error_code = None;
+                self.control.save_operation(&mut operation)?;
+                self.finish_success(operation)
+            }
             Err(error) => {
                 operation.safe_error_code = Some(error.safe_code().to_owned());
                 self.control.save_operation_tail(&mut operation)?;

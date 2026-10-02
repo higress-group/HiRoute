@@ -85,7 +85,7 @@ impl Fixture {
                 } else {
                     panic!("unexpected request: {}", header.lines().next().unwrap());
                 };
-                write!(stream, "HTTP/1.1 {status} OK\r\nX-CPA-Version: 8.0.4-hiroute.1\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                write!(stream, "HTTP/1.1 {status} OK\r\nX-CPA-Version: 8.0.4-hiroute.2\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
             }
         });
         Self {
@@ -109,7 +109,7 @@ impl Fixture {
                 generation: 1,
             }],
             &InstanceSecrets::generate().unwrap(),
-            "8.0.4-hiroute.1",
+            "8.0.4-hiroute.2",
             Duration::from_secs(2),
             refresh,
         )

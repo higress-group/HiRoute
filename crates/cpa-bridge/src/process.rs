@@ -38,6 +38,25 @@ pub trait CpaProcessBackend: Send + Sync {
     fn pid_is_running(&self, pid: u32) -> Result<bool, CpaProcessError>;
 }
 
+// Keep private upstream credentials and shell execution hooks out of the child.
+fn proxy_environment(
+    vars: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+) -> impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)> {
+    vars.into_iter().filter(|(key, _)| {
+        matches!(
+            key.to_str(),
+            Some(
+                "HTTP_PROXY"
+                    | "HTTPS_PROXY"
+                    | "NO_PROXY"
+                    | "http_proxy"
+                    | "https_proxy"
+                    | "no_proxy"
+            )
+        )
+    })
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StdCpaProcessBackend;
 
@@ -53,6 +72,7 @@ impl CpaProcessBackend for StdCpaProcessBackend {
             .arg("--local-model")
             .arg("--local-password-stdin")
             .env_clear()
+            .envs(proxy_environment(std::env::vars_os()))
             .current_dir(&launch.work_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())

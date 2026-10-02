@@ -11,6 +11,8 @@ pub struct AgentSettingsInput {
 }
 #[derive(Deserialize, Serialize)]
 pub struct AgentEntry {
+    #[serde(default)]
+    pub codex_access: Option<Value>,
     pub agent_id: String,
     pub version: String,
     pub configuration_state: String,
@@ -303,6 +305,12 @@ impl AgentConfirmation {
     }
 }
 impl Session {
+    pub async fn retry_agent_settings(
+        &mut self,
+        input: hiroute_application_api::AgentSettingsRetryV1,
+    ) -> Result<Value, DesktopFailure> {
+        query(&self.client, "ApplyAgentConnectionChange", &input).await
+    }
     pub async fn agent_snapshot(&mut self) -> Result<AgentSnapshot, DesktopFailure> {
         #[derive(Deserialize)]
         struct Scan {

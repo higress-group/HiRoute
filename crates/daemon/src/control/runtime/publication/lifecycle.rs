@@ -19,6 +19,7 @@ impl LocalControlAdapter {
         if intent.kind() != OwnedEffectKind::Publication {
             return Ok(());
         }
+        self.guard_codex_pending_change(None)?;
         if intent.desired()["transaction"] == "settings" {
             hiroute_domain::validate_settings_model_publication_intent(intent)
                 .map_err(|_| invalid("publication.settings.admission"))?;
@@ -71,6 +72,7 @@ impl LocalControlAdapter {
         operation: &OperationV1,
     ) -> PortResult<()> {
         self.require_current_operation(operation)?;
+        self.guard_codex_pending_change(Some(&operation.operation_id))?;
         self.begin_plan_content_activation(operation)?;
         // Settings model publications are hot-swappable: the aggregate ArcSwap cutover keeps
         // every in-flight pin on its old root, so normal B updates never suspend admission.

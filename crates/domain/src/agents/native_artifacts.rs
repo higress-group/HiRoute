@@ -12,6 +12,14 @@ pub trait NativeAgentArtifactPort: ExternalEffectPort {
         operation: &OperationId,
         intent: &ExternalEffectIntentV1,
     ) -> PortResult<crate::EffectReconciliation>;
+    /// A trusted adapter has verified semantic restoration against the protected field record.
+    /// Acknowledge only this exact safe snapshot; never write or compensate the user's file.
+    fn acknowledge_native_restoration(
+        &self,
+        operation: &OperationId,
+        intent: &ExternalEffectIntentV1,
+        current: Option<&[u8]>,
+    ) -> PortResult<OwnedEffectV1>;
     /// Stage a Skill effect while carrying only validated original directory ownership into its marker.
     fn stage_native_skill_target(
         &self,

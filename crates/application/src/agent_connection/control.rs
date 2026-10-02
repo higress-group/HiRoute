@@ -88,6 +88,7 @@ mod tests {
     impl AgentDiscoveryPort for Discovery {
         fn discover(&self) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
             Ok(vec![DiscoveredAgentV1 {
+                codex_access: None,
                 context_id: Some("agent-context/codex/default".into()),
                 agent_id: "agent_codex_default".into(),
                 profile_id: "codex-responses-v1".into(),

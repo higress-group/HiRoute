@@ -1880,6 +1880,11 @@ fn port(code: PortErrorCode, context: &'static str) -> PortError {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+struct NativeRestorationReceipt {
+    fingerprint: Option<CanonicalDigest>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct ArtifactMarker {
     schema: String,
     restore_store_uuid: String,
@@ -1907,6 +1912,8 @@ struct ArtifactMarker {
     backup_aad: ArtifactBackupAad,
     activated: bool,
     compensated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    native_restoration: Option<NativeRestorationReceipt>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     created_directories: Vec<CreatedNativeDirectory>,
 }
@@ -2323,6 +2330,11 @@ impl ManagedArtifactStore {
             || !supported_artifact_mode(marker.after_mode)
             || (marker.sensitive && marker.after_mode != 0o600)
             || marker.external_path_digest != self.external_path_digest(&marker.target)?
+            || marker.native_restoration.is_some()
+                && (!marker.rendered
+                    || !marker.activated
+                    || marker.compensated
+                    || marker.kind != OwnedEffectKind::AgentArtifact)
             || marker.rendered != marker.intent_digest.is_some()
             || (marker.backup_name.is_none() && marker.backup_aad != ArtifactBackupAad::CurrentV4)
         {
@@ -2420,7 +2432,10 @@ impl ManagedArtifactStore {
             kind: marker.kind,
             target: marker.target.clone(),
             before_fingerprint: marker.before_digest.clone(),
-            after_fingerprint: marker.after_exists.then(|| marker.after_digest.clone()),
+            after_fingerprint: marker.native_restoration.as_ref().map_or_else(
+                || marker.after_exists.then(|| marker.after_digest.clone()),
+                |r| r.fingerprint.clone(),
+            ),
             compensation: json!({
                 "schema": "hiroute.managed-artifact-compensation/v1",
                 "operation_id": marker.operation_id,
@@ -2553,6 +2568,7 @@ impl ManagedArtifactStore {
             backup_aad: ArtifactBackupAad::CurrentV4,
             activated: false,
             compensated: false,
+            native_restoration: None,
             created_directories,
         };
         if let (Some(snapshot), Some(name)) = (&before, &marker.backup_name) {
@@ -2659,6 +2675,15 @@ impl ManagedArtifactStore {
         let current_digest = current
             .as_ref()
             .map(|snapshot| snapshot.fingerprint.clone());
+        if let Some(receipt) = &marker.native_restoration {
+            return Ok(
+                if marker.activated && current_digest == receipt.fingerprint {
+                    EffectReconciliation::Applied(Self::effect(&marker))
+                } else {
+                    EffectReconciliation::OwnershipLost(Self::effect(&marker))
+                },
+            );
+        }
         if marker.activated
             && current_digest.as_ref() == marker.after_exists.then_some(&marker.after_digest)
         {
@@ -2810,6 +2835,9 @@ impl ManagedArtifactStore {
             .load_marker(&operation_id, effect_id)
             .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.marker"))?
             .ok_or_else(|| port(PortErrorCode::NotFound, "artifact.compensate.marker"))?;
+        if marker.native_restoration.is_some() {
+            return Ok(CompensationOutcome::OwnershipLost);
+        }
         if marker.compensated {
             return Ok(CompensationOutcome::AlreadyCompensated);
         }

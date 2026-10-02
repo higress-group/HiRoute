@@ -50,6 +50,7 @@ fn main() {
             "resolve_web_confirmation",
             "agent_snapshot",
             "preview_agent_settings",
+            "retry_agent_settings",
             "check_agent_authentication",
             "worker_settings_get",
             "worker_settings_set",

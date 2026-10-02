@@ -81,6 +81,7 @@ mod protected_inputs;
 mod publication;
 mod release_install;
 mod routing;
+mod settings_codex_profile;
 mod settings_facts;
 mod settings_status;
 mod source_authorization;
@@ -326,6 +327,15 @@ impl ProductionControlRuntime {
         let codex_managed_target = AgentConnectionEffectRoleV1::ManagedConfiguration
             .target_for(&codex_subject)
             .map_err(|error| error.to_string())?;
+        let profile_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent_codex_default",
+            hiroute_integrations::CODEX_STANDALONE_PROFILE_ID,
+            CODEX_INTEGRATION_PROFILE_REF_V1,
+        )
+        .map_err(|error| error.to_string())?;
+        let profile_target = AgentConnectionEffectRoleV1::ManagedConfiguration
+            .target_for(&profile_subject)
+            .map_err(|error| error.to_string())?;
         let artifacts = stores
             .open_managed_artifacts_with_external_targets(
                 storage_root.join("managed-artifacts"),
@@ -333,6 +343,7 @@ impl ProductionControlRuntime {
                 [
                     (claude_managed_target, scanner.claude_user_settings_target()),
                     (codex_managed_target, scanner.codex_user_config_target()),
+                    (profile_target, scanner.codex_profile_config_target()),
                     (
                         AgentConnectionEffectRoleV1::RoutingSkill
                             .target_for(&codex_subject)
@@ -1111,6 +1122,18 @@ impl AgentDiscoveryPort for LocalControlAdapter {
                 agent.available_surfaces = self.scanner.available_model_surfaces(&agent.agent_id);
                 if agent.agent_id == "agent_codex_default" {
                     agent.native_model_catalog = codex_catalog.clone();
+                    let access = self.codex_access_view()?;
+                    agent.context_id = Some(if access.selected_mode == "profile" {
+                        access.profile_context_id.clone()
+                    } else {
+                        access.root_context_id.clone()
+                    });
+                    if access.selected_mode == "profile" {
+                        agent
+                            .available_surfaces
+                            .retain(|s| *s == hiroute_domain::AgentModelSurfaceV2::CodexCli);
+                    }
+                    agent.codex_access = Some(access);
                 }
                 Ok(agent)
             })
@@ -1293,6 +1316,7 @@ fn discovered_agent(
         })
         .transpose()?;
     Ok(DiscoveredAgentV1 {
+        codex_access: None,
         context_id: None,
         agent_id,
         profile_id,

@@ -39,6 +39,7 @@
     "hiroute.agent-routing-overlay/v1",
     "hiroute.agent-scan-observation/v1",
     "hiroute.agent-settings-preview/v2",
+    "hiroute.agent-settings-retry/v1",
     "hiroute.agent-surface-check/v1",
     "hiroute.borrowed-codex-access-lease/v1",
     "hiroute.borrowed-codex-binding-evidence/v1",

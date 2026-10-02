@@ -219,6 +219,7 @@ impl ControlRepositoryPort for LocalControlAdapter {
     }
 
     fn begin_local_operation(&self, operation: &OperationV1) -> PortResult<BeginOperationOutcome> {
+        self.guard_codex_pending_change(Some(&operation.operation_id))?;
         self.stores_lock()?
             .control()
             .begin_local_operation(operation)
@@ -248,6 +249,7 @@ impl ControlRepositoryPort for LocalControlAdapter {
         operation: &OperationV1,
         authorization: &VerifiedApplyAuthorizationV1,
     ) -> PortResult<BeginOperationOutcome> {
+        self.guard_codex_pending_change(Some(&operation.operation_id))?;
         self.stores_lock()?
             .control()
             .begin_operation(operation, authorization)

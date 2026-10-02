@@ -271,7 +271,7 @@ def run(repository, expected_sha):
         assert checked['data']['trusted_cli_execution'] == 'proven', checked
         stage = 'confirmed-collaboration-with-local-worker-plan-policy'
         scan = product.preview('agents scan')
-        context = next(agent['context_id'] for agent in scan['agents'] if agent['agent_id'] == 'agent_codex_default')
+        context = next(agent['codex_access']['root_context_id'] for agent in scan['agents'] if agent['agent_id'] == 'agent_codex_default')
         settings = {'schema_version': {'major': 2, 'minor': 0}, 'context_id': context,
                     'collaboration': {'intent': 'configure', 'settings': {
                         'trigger_mode': 'explicit'}}}

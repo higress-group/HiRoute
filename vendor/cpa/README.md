@@ -33,3 +33,9 @@ Focused upstream tests are shipped in the patch:
 go test ./sdk/cliproxy ./internal/runtime/executor ./cmd/server ./internal/api/handlers/management \
   -run 'TestCodexDiscovery|TestCodexModelDiscovery|TestRegisterModelsForAuth|TestLocalManagementPasswordPipeBounds|TestLocalMachinePasswordPreservesRemotePolicy'
 ```
+
+Managed children allowlist HTTP(S)_PROXY and NO_PROXY (both cases). The local
+patch applies Go's standard per-destination environment proxy selection to
+protected-host TLS transports when no explicit proxy/injected transport exists.
+It preserves NO_PROXY and does not retry direct after proxy failure. ALL_PROXY
+is not part of this contract; configure HTTPS_PROXY for subscription endpoints.

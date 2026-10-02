@@ -48,7 +48,7 @@ fn v2_settings_skill_only_enable_change_and_disable_keep_model_untouched() {
         .unwrap()
         .iter()
         .find(|agent| agent["agent_id"] == "agent_codex_default")
-        .unwrap()["context_id"]
+        .unwrap()["codex_access"]["root_context_id"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -242,7 +242,7 @@ fn v2_settings_releases_borrowed_skill_after_user_file_drift() {
         .unwrap()
         .iter()
         .find(|agent| agent["agent_id"] == "agent_codex_default")
-        .unwrap()["context_id"]
+        .unwrap()["codex_access"]["root_context_id"]
         .as_str()
         .unwrap()
         .to_owned();

@@ -66,3 +66,27 @@ printf 'pipe-eof-ok' > result
         b"pipe-eof-ok"
     );
 }
+
+#[test]
+fn proxy_environment_preserves_bypass_without_forwarding_credentials_or_hooks() {
+    let vars = [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        "OPENAI_API_KEY",
+        "MANAGEMENT_PASSWORD",
+        "LD_PRELOAD",
+        "BASH_ENV",
+        "HOME",
+    ];
+    let selected: Vec<_> =
+        proxy_environment(vars.map(|key| (key.into(), "sentinel".into()))).collect();
+    assert_eq!(selected.len(), 6);
+    for (i, (key, value)) in selected.iter().enumerate() {
+        assert_eq!(key, vars[i]);
+        assert_eq!(value, "sentinel");
+    }
+}

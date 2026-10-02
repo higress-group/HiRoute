@@ -477,6 +477,22 @@ pub async fn agent_snapshot(
         .await
 }
 #[tauri::command]
+pub async fn retry_agent_settings(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: hiroute_application_api::AgentSettingsRetryV1,
+) -> Result<Value, DesktopFailure> {
+    main_window(&window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_mut()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .retry_agent_settings(input)
+        .await
+}
+#[tauri::command]
 pub async fn preview_agent_settings(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
@@ -993,6 +1009,7 @@ pub fn run() {
             resolve_web_confirmation,
             agent_snapshot,
             preview_agent_settings,
+            retry_agent_settings,
             check_agent_authentication,
             check_agent_live,
             worker_settings_get,

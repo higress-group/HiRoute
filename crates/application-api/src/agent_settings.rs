@@ -370,3 +370,12 @@ mod tests {
         assert!(request.valid_target());
     }
 }
+
+/// Resume the original already-authorized Codex settings Operation; never creates a new intent.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSettingsRetryV1 {
+    pub schema: String,
+    pub context_id: String,
+    pub operation_id: hiroute_domain::OperationId,
+}

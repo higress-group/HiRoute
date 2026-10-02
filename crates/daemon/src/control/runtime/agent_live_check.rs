@@ -110,9 +110,14 @@ impl LocalControlAdapter {
                         deadline,
                     )
                 }
-                AgentModelSurfaceV2::CodexCli | AgentModelSurfaceV2::CodexDesktop => {
-                    self.execute_codex_live_attempt(target.surface, model, trust, deadline)
-                }
+                AgentModelSurfaceV2::CodexCli | AgentModelSurfaceV2::CodexDesktop => self
+                    .execute_codex_live_attempt(
+                        &target.context_id,
+                        target.surface,
+                        model,
+                        trust,
+                        deadline,
+                    ),
             };
             match result {
                 Ok(evidence) => {
@@ -224,6 +229,7 @@ impl LocalControlAdapter {
 
     fn execute_codex_live_attempt(
         &self,
+        context_id: &str,
         surface: AgentModelSurfaceV2,
         model: &str,
         trust: &FrozenExecutionTrustV1,
@@ -241,6 +247,26 @@ impl LocalControlAdapter {
             reason: CLIENT_FAILED,
         })?;
         let mut command = Command::new(executable);
+        let root = self.scanner.codex_user_config_target();
+        let home = root.parent().ok_or(AttemptFailure {
+            executed: false,
+            reason: CLIENT_FAILED,
+        })?;
+        command.env("CODEX_HOME", home);
+        if self.settings_agent_for_context(context_id)
+            == Some(super::settings_facts::SettingsAgentClass::CodexProfile)
+        {
+            if surface != AgentModelSurfaceV2::CodexCli {
+                return Err(AttemptFailure {
+                    executed: false,
+                    reason: CLIENT_FAILED,
+                });
+            }
+            command.args([
+                "--profile",
+                hiroute_integrations::CODEX_MANAGED_PROFILE_NAME,
+            ]);
+        }
         command.current_dir(working.path()).args([
             "exec",
             "--json",

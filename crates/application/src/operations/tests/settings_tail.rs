@@ -330,6 +330,13 @@ fn client_file_failure_parks_the_tail_without_rollback() {
     let finished = coordinator(&ports, &admission).run(&operation_id).unwrap();
 
     assert_eq!(finished.state, OperationState::Succeeded);
+    assert!(
+        finished
+            .steps
+            .iter()
+            .all(|step| step.status == OperationStepStatus::Applied)
+    );
+    assert!(finished.safe_error_code.is_none());
     assert!(effect_applied(&ports, &operation_id, MODEL_FILE_EFFECT));
     let activations = ports
         .state

@@ -70,7 +70,10 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
         codex["supported"], true,
         "the V2 settings entry treats an executable version as diagnostic, not an allowlist"
     );
-    let context = codex["context_id"].as_str().unwrap().to_owned();
+    let context = codex["codex_access"]["root_context_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let plans = runtime
         .adapter
         .stores_lock()
@@ -295,7 +298,7 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
         1
     );
     let configured = fs::read_to_string(&path).unwrap();
-    fs::write(&path, format!("{configured}unrelated_native = true\n")).unwrap();
+    fs::write(&path, format!("unrelated_native = true\n{configured}")).unwrap();
     apply(
         &ordinary,
         &runtime,
@@ -532,7 +535,10 @@ fn exercise_settings_entry() {
         codex["supported"], true,
         "the V2 settings entry treats an executable version as diagnostic, not an allowlist"
     );
-    let context = codex["context_id"].as_str().unwrap().to_owned();
+    let context = codex["codex_access"]["root_context_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let plans = runtime
         .adapter
         .stores_lock()
@@ -1002,3 +1008,6 @@ impl AgentConnectionControlPort for FixtureFacts {
 
 #[path = "settings_entry_facets_tests.rs"]
 mod facets;
+
+#[path = "settings_profile_tests.rs"]
+mod settings_profile_tests;

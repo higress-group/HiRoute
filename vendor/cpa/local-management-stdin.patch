@@ -405,3 +405,143 @@
 +		t.Fatal("cross-account catalog leakage")
 +	}
 +}
+--- a/internal/runtime/executor/helps/utls_client.go
++++ b/internal/runtime/executor/helps/utls_client.go
+@@ -385,6 +385,9 @@
+ 		chromeRT = ctxRoundTripper
+ 		anthropicRT = ctxRoundTripper
+ 		standardTransport = ctxRoundTripper
++	} else {
++		chromeRT = &environmentProxyTransport{direct: chromeRT, build: func(proxy string) http.RoundTripper { return newUtlsRoundTripper(proxy) }, proxy: http.ProxyFromEnvironment}
++		anthropicRT = &environmentProxyTransport{direct: anthropicRT, build: cachedClaudeCodeRoundTripper, proxy: http.ProxyFromEnvironment}
+ 	}
+ 
+ 	client := &http.Client{
+--- /dev/null
++++ b/internal/runtime/executor/helps/environment_proxy.go
+@@ -0,0 +1,31 @@
++package helps
++
++import (
++	"errors"
++	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
++	"net/http"
++	"net/url"
++)
++
++// Preserve provider TLS fingerprints while applying the standard environment
++// proxy and NO_PROXY rules to the actual destination. Selection errors fail closed.
++type environmentProxyTransport struct {
++	direct http.RoundTripper
++	build  func(string) http.RoundTripper
++	proxy  func(*http.Request) (*url.URL, error)
++}
++
++func (t *environmentProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
++	proxy, err := t.proxy(req)
++	if err != nil {
++		return nil, err
++	}
++	if proxy == nil {
++		return t.direct.RoundTrip(req)
++	}
++	// CPA's transport constructor otherwise falls back to direct on invalid input.
++	if !proxyutil.ValidRequestProxy(proxy.String()) {
++		return nil, errors.New("invalid environment proxy")
++	}
++	return t.build(proxy.String()).RoundTrip(req)
++}
+--- /dev/null
++++ b/internal/runtime/executor/helps/environment_proxy_test.go
+@@ -0,0 +1,91 @@
++package helps
++
++import (
++	"context"
++	"errors"
++	"net/http"
++	"net/url"
++	"os"
++	"os/exec"
++	"testing"
++)
++
++type environmentTestRT func(*http.Request) (*http.Response, error)
++
++func (f environmentTestRT) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
++
++func TestEnvironmentProxySelection(t *testing.T) {
++	if os.Getenv("HIROUTE_PROXY_TEST_CHILD") == "1" {
++		c := NewUtlsHTTPClient(context.Background(), nil, nil, 0)
++		rt, ok := c.Transport.(*fallbackRoundTripper).chrome.(*environmentProxyTransport)
++		if !ok {
++			t.Fatal("protected transport ignores environment")
++		}
++		req, _ := http.NewRequest("GET", "https://chatgpt.com/backend-api/codex/models", nil)
++		p, err := rt.proxy(req)
++		if err != nil {
++			t.Fatal(err)
++		}
++		want := os.Getenv("HIROUTE_EXPECT_PROXY")
++		if want == "" {
++			if p != nil {
++				t.Fatal("NO_PROXY bypass lost")
++			}
++		} else if p == nil || p.String() != want {
++			t.Fatal("HTTPS proxy lost")
++		}
++		return
++	}
++	for _, bypass := range []bool{false, true} {
++		cmd := exec.Command(os.Args[0], "-test.run=^TestEnvironmentProxySelection$")
++		cmd.Env = []string{"HIROUTE_PROXY_TEST_CHILD=1", "HTTPS_PROXY=http://127.0.0.1:1187"}
++		if bypass {
++			cmd.Env = append(cmd.Env, "NO_PROXY=chatgpt.com")
++		} else {
++			cmd.Env = append(cmd.Env, "HIROUTE_EXPECT_PROXY=http://127.0.0.1:1187")
++		}
++		if out, err := cmd.CombinedOutput(); err != nil {
++			t.Fatalf("child: %v %s", err, out)
++		}
++	}
++}
++
++func TestEnvironmentProxyTransportNeverFallsBackOnError(t *testing.T) {
++	req, _ := http.NewRequest("GET", "https://chatgpt.com/", nil)
++	sentinel := errors.New("proxy failure")
++	directCalls := 0
++	rt := &environmentProxyTransport{
++		direct: environmentTestRT(func(*http.Request) (*http.Response, error) {
++			directCalls++
++			return &http.Response{StatusCode: 200}, nil
++		}),
++		proxy: func(*http.Request) (*url.URL, error) { return url.Parse("http://127.0.0.1:1187") },
++		build: func(s string) http.RoundTripper {
++			return environmentTestRT(func(*http.Request) (*http.Response, error) { return nil, sentinel })
++		},
++	}
++	if _, err := rt.RoundTrip(req); err != sentinel || directCalls != 0 {
++		t.Fatal("proxy failure fell back to direct")
++	}
++	rt.proxy = func(*http.Request) (*url.URL, error) { return nil, sentinel }
++	if _, err := rt.RoundTrip(req); err != sentinel || directCalls != 0 {
++		t.Fatal("selection failure fell back to direct")
++	}
++	rt.proxy = func(*http.Request) (*url.URL, error) { return nil, nil }
++	if _, err := rt.RoundTrip(req); err != nil || directCalls != 1 {
++		t.Fatal("direct bypass broken")
++	}
++}
++
++func TestInvalidEnvironmentProxyFailsBeforeTransportConstruction(t *testing.T) {
++	req, _ := http.NewRequest("GET", "https://chatgpt.com/", nil)
++	for _, raw := range []string{"ftp://127.0.0.1:1187", "http://127.0.0.1:0", "http://127.0.0.1:99999"} {
++		rt := &environmentProxyTransport{
++			proxy: func(*http.Request) (*url.URL, error) { return url.Parse(raw) },
++			build: func(string) http.RoundTripper { t.Fatal("invalid proxy reached constructor"); return nil },
++		}
++		if _, err := rt.RoundTrip(req); err == nil {
++			t.Fatal("invalid proxy accepted")
++		}
++	}
++}

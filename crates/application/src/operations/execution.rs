@@ -331,6 +331,8 @@ where
             .cloned()
             .collect::<Vec<_>>()
         {
+            self.external
+                .prepare_agent_artifact_activation(operation, &intent)?;
             let effect = match self.external.observe_external(operation, &intent)? {
                 EffectReconciliation::Staged(effect) => {
                     self.external.activate_external(operation, &effect)?

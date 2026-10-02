@@ -1,3 +1,4 @@
+import { CodexAccessPanel, type CodexAccess } from './features/agents/CodexAccessPanel';
 import { AgentCapabilityPreview } from './agent-capability-preview';
 import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon } from './ui';
 import { confirmDiscard, useDiscardGuard } from './ui/discard-guard';
@@ -98,6 +99,7 @@ export type ModelStatus = {
   collaboration?: CollaborationStatus | null;
 };
 export type Agent = {
+  codex_access?: CodexAccess | null;
   agent_id: string;
   version: string;
   context_id: string | null;
@@ -205,6 +207,7 @@ export function Agents({
   const [tokenEditing, setTokenEditing] = useState(false);
   const [tokenDraft, setTokenDraft] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(initialAgentId);
+  const [codexMode, setCodexMode] = useState<'profile' | 'root'>('profile');
   const [showAgentList, setShowAgentList] = useState(false);
   const [tab, setTab] = useState<'configuration' | 'tasks'>(initialTab);
   const agentName = (agent: Agent) => agent.agent_id === 'agent_codex_default'
@@ -323,8 +326,10 @@ export function Agents({
           };
       return {
         schema_version: { major: 2, minor: 0 },
-        context_id: agent.context_id,
-        restore_native_model: restore && agent.agent_id === 'agent_codex_default' && restoreNativeModel
+        context_id: agent.codex_access && !agent.codex_access.slot_occupied
+          ? (codexMode === 'root' ? agent.codex_access.root_context_id : agent.codex_access.profile_context_id)
+          : agent.context_id,
+        restore_native_model: restore && agent.agent_id === 'agent_codex_default' && agent.codex_access?.selected_mode !== 'profile' && restoreNativeModel
           ? restoreNativeModel : undefined,
         model: restore
           ? { intent: 'restore', restore_point_ref: agent.settings?.restore_point_ref }
@@ -335,7 +340,7 @@ export function Agents({
 
     return {
       schema_version: { major: 2, minor: 0 },
-      context_id: agent.context_id,
+      context_id: agent.codex_access?.root_context_id ?? agent.context_id,
       model: keep,
       collaboration: restore
         ? {
@@ -848,12 +853,22 @@ export function Agents({
               {selected && snapshot && <div className="detail-inner" data-agent-id={selected.agent_id}>
                 <header className="detail-hero"><div className="detail-identity"><BrandIcon kind={brand(selected)} label={`${agentName(selected)} logo`} /><div><h2>{agentName(selected)}</h2><p>{text('选择你需要的路由能力', 'Choose the routing capabilities you need')}</p></div></div></header>
                 {!mutable && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('Agent 配置可以查看，暂时不能修改', 'Agent settings are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，连接恢复后即可保存配置。', 'The local service is not ready. Reconnect before saving.')}</p></div></div>}
+                {selected.codex_access && <CodexAccessPanel access={selected.codex_access} mode={selected.codex_access.slot_occupied ? selected.codex_access.selected_mode : codexMode} language={language} disabled={busy || Boolean(editor) || !mutable} onMode={setCodexMode} onRetry={async () => {
+                  const access = selected.codex_access;
+                  if (!access?.pending_operation || !selected.context_id || busy) return;
+                  setBusy(true); setActionError('');
+                  try {
+                    await invoke('retry_agent_settings', { input: { schema: 'hiroute.agent-settings-retry/v1', context_id: selected.context_id, operation_id: access.pending_operation } });
+                    await refresh();
+                  } catch (error) { setActionError(desktopErrorCode(error)); }
+                  finally { setBusy(false); }
+                }} />}
                 {selected.status_error && <div className="callout warn" data-error-code={selected.status_error}><UiIcon name="warning" /><div><strong>{text('暂时无法核实 Agent 状态', 'Agent status is temporarily unavailable')}</strong><p>{text('当前仍显示已发现的 Agent；重新读取成功前不会把未知状态当作已接入。', 'The detected Agent remains visible. Unknown status is not treated as connected until it can be read again.')}</p><button className="btn" type="button" onClick={() => void refresh()}>{text('重新读取', 'Try again')}</button></div></div>}
                 {executableStatus}
                 {selectedHasDrift && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('接入配置已变化', 'Connection settings changed')}</strong><p>{text('HiRoute 不会覆盖已变化的设置。请在“连接详情与恢复”中恢复需要的路由配置。', 'HiRoute will not overwrite changed settings. Restore the required routing configuration under Connection details and recovery.')}</p></div></div>}
-                {selectedPending && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('路由配置正在应用，完成后会自动更新。', 'Routing settings are being applied and will update automatically.')}</p></div>}
+                {selectedPending && !selected.codex_access?.pending_operation && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('路由配置正在应用，完成后会自动更新。', 'Routing settings are being applied and will update automatically.')}</p></div>}
                 <section className="detail-section v3-agent-section">
-                  <div className="detail-section-head"><h3>{text('模型路由', 'Model routing')}</h3><button className="btn btn-quiet" data-agent-facet="model" disabled={busy || !selected.context_id || !mutable} onClick={event => open(selected, 'model', event.currentTarget)}>{modelSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button></div>
+                  <div className="detail-section-head"><h3>{text('模型路由', 'Model routing')}</h3><button className="btn btn-quiet" data-agent-facet="model" disabled={busy || selectedPending || !selected.context_id || !mutable} onClick={event => open(selected, 'model', event.currentTarget)}>{modelSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button></div>
                   <p>{modelSelection ? <>{text('当前选择：', 'Current selection: ')}<strong>{modelSelectionSummary}</strong></> : text('为此 Agent 配置固定模型，或通过智能路由自动选择模型。', 'Configure a fixed model for this Agent, or use smart routing to choose a model automatically.')}</p>
                   {modelSelection && (selected.available_surfaces ?? []).length > 0 && <div className="agent-surface-results" aria-label={text('当前客户端验证结果', 'Current client verification results')}>
                     {selected.available_surfaces?.map(surface => {
@@ -883,7 +898,7 @@ export function Agents({
                       : text('让此 Agent 将任务交给合适的执行 Agent，并获取结果。', 'Let this Agent delegate work to a suitable execution Agent and retrieve the results.')}</p>
                   <p className="field-help">{text('启用后，可在对话中说：“使用 HiRoute，将当前任务委派给【路由名称】执行。”路由名称见“智能路由”，也可让 Agent 选择合适的路由。', 'After enabling, ask in conversation: “Use HiRoute to delegate this task to [route name].” Find route names under Smart routing, or ask the Agent to choose a suitable route.')}</p>
                 </section>
-                <Disclosure className="native-details" label={text('连接详情与恢复', 'Connection details and recovery')} language={language}><dl>{selected.version && <div><dt>{text('版本', 'Version')}</dt><dd>{selected.version}</dd></div>}{selected.settings?.state === 'configured' && modelSelection && <div><dt>{text('本机接入令牌', 'Local access token')}</dt><dd><input className="input" type="password" value="••••••••••••••••" readOnly aria-label={text('当前令牌已隐藏', 'Current token hidden')} /></dd></div>}</dl>{selected.settings?.restore_point_ref && selected.agent_id === 'agent_codex_default' && <label className="field-label">{text('恢复时选择原生模型（可选）', 'Native model on restore (optional)')}<input list="codex-native-restore-models" value={restoreNativeModel} onChange={event => { setRestoreNativeModel(event.target.value); setPreview(null); }} placeholder={text('保留原设置', 'Keep original setting')} disabled={busy || !mutable} /><datalist id="codex-native-restore-models">{nativeRestoreOptions.map(model => <option key={model.client_model_id} value={model.client_model_id}>{model.display_name}</option>)}</datalist></label>}{selected.settings?.state === 'configured' && modelSelection && <div className="actions" data-agent-token-controls><button className="btn" disabled={busy || !mutable} onClick={() => { setTokenEditing(true); setTokenDraft(''); setActionError(''); }}>{text('修改令牌', 'Change token')}</button><button className="btn" disabled={busy || !mutable} onClick={event => void changeToken(selected, true, event.currentTarget)}>{text('重新生成', 'Regenerate')}</button></div>}{tokenEditing && selected.settings?.state === 'configured' && modelSelection && <form className="agent-token-form" onSubmit={event => { event.preventDefault(); void changeToken(selected, false, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}><label className="field"><span className="field-label">{text('新令牌', 'New token')}</span><input className="input" type="password" autoComplete="new-password" value={tokenDraft} onChange={event => setTokenDraft(event.target.value)} minLength={16} maxLength={128} pattern="[A-Za-z0-9._~\\-]{16,128}" required disabled={busy} /><span className="field-help">{text('16–128 位英文字母、数字及 . _ ~ -；保存后原令牌立即失效，无需重新接入。', 'Use 16–128 letters, numbers, or . _ ~ -. The old token stops working after save; reconnecting is unnecessary.')}</span></label><div className="actions"><button className="btn btn-primary" type="submit" disabled={busy || !mutable}>{text('保存令牌', 'Save token')}</button><button className="btn" type="button" disabled={busy} onClick={() => { setTokenEditing(false); setTokenDraft(''); }}>{text('取消', 'Cancel')}</button></div></form>}<div className="actions">{selected.settings?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'model', true, event.currentTarget)}>{text('恢复模型设置', 'Restore model settings')}</button>}{selectedCollaboration?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'collaboration', true, event.currentTarget)}>{text('停用任务路由', 'Disable task routing')}</button>}</div></Disclosure>
+                <Disclosure className="native-details" label={text('连接详情与恢复', 'Connection details and recovery')} language={language}><dl>{selected.version && <div><dt>{text('版本', 'Version')}</dt><dd>{selected.version}</dd></div>}{selected.settings?.state === 'configured' && modelSelection && <div><dt>{text('本机接入令牌', 'Local access token')}</dt><dd><input className="input" type="password" value="••••••••••••••••" readOnly aria-label={text('当前令牌已隐藏', 'Current token hidden')} /></dd></div>}</dl>{selected.settings?.restore_point_ref && selected.agent_id === 'agent_codex_default' && selected.codex_access?.selected_mode !== 'profile' && <label className="field-label">{text('恢复时选择原生模型（可选）', 'Native model on restore (optional)')}<input list="codex-native-restore-models" value={restoreNativeModel} onChange={event => { setRestoreNativeModel(event.target.value); setPreview(null); }} placeholder={text('保留原设置', 'Keep original setting')} disabled={busy || !mutable} /><datalist id="codex-native-restore-models">{nativeRestoreOptions.map(model => <option key={model.client_model_id} value={model.client_model_id}>{model.display_name}</option>)}</datalist></label>}{selected.settings?.state === 'configured' && modelSelection && <div className="actions" data-agent-token-controls><button className="btn" disabled={busy || !mutable} onClick={() => { setTokenEditing(true); setTokenDraft(''); setActionError(''); }}>{text('修改令牌', 'Change token')}</button><button className="btn" disabled={busy || !mutable} onClick={event => void changeToken(selected, true, event.currentTarget)}>{text('重新生成', 'Regenerate')}</button></div>}{tokenEditing && selected.settings?.state === 'configured' && modelSelection && <form className="agent-token-form" onSubmit={event => { event.preventDefault(); void changeToken(selected, false, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}><label className="field"><span className="field-label">{text('新令牌', 'New token')}</span><input className="input" type="password" autoComplete="new-password" value={tokenDraft} onChange={event => setTokenDraft(event.target.value)} minLength={16} maxLength={128} pattern="[A-Za-z0-9._~\\-]{16,128}" required disabled={busy} /><span className="field-help">{text('16–128 位英文字母、数字及 . _ ~ -；保存后原令牌立即失效，无需重新接入。', 'Use 16–128 letters, numbers, or . _ ~ -. The old token stops working after save; reconnecting is unnecessary.')}</span></label><div className="actions"><button className="btn btn-primary" type="submit" disabled={busy || !mutable}>{text('保存令牌', 'Save token')}</button><button className="btn" type="button" disabled={busy} onClick={() => { setTokenEditing(false); setTokenDraft(''); }}>{text('取消', 'Cancel')}</button></div></form>}<div className="actions">{selected.settings?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'model', true, event.currentTarget)}>{text('恢复模型设置', 'Restore model settings')}</button>}{selectedCollaboration?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'collaboration', true, event.currentTarget)}>{text('停用任务路由', 'Disable task routing')}</button>}</div></Disclosure>
                 {!editor && loadError && <div className="callout warn agent-feedback agent-inline-feedback" role="alert" data-error-code={loadError}><UiIcon name="warning" /><div><strong>{text('状态刷新失败', 'Status refresh failed')}</strong><p>{text('当前仍显示上次读取的结果。', 'The last loaded result is still shown.')}</p><button className="btn" type="button" onClick={() => void refresh()}>{text('重试', 'Retry')}</button></div></div>}
                 {!editor && blockedPreview}
                 {!editor && notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{notice}</span></div></div>}

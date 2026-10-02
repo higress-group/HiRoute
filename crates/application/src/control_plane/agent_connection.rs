@@ -65,7 +65,9 @@ pub(crate) fn dispatch_apply_agent_connection(
     service: &ApplicationService,
     request: LocalControlRequestV2,
 ) -> MachineEnvelopeV2<Value> {
-    if request.payload["spec"]["schema_version"]["major"] == 2 {
+    if request.payload["spec"]["schema_version"]["major"] == 2
+        || request.payload["schema"] == "hiroute.agent-settings-retry/v1"
+    {
         return super::agent_settings::apply(service, request);
     }
     if request.protected_grant.is_some() {

@@ -50,6 +50,7 @@ fn facts() -> AgentSettingsFacts {
         native_default_must_be_original: false,
         native_default_model: None,
         restore_native_model_ids: None,
+        restore_inherits_root: false,
         restored_native_model: None,
         native_claude_presets: None,
         collaboration_file_conflict: false,
@@ -459,6 +460,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
             native_default_must_be_original: false,
             native_default_model: None,
             restore_native_model_ids: None,
+            restore_inherits_root: false,
             restored_native_model: None,
             native_claude_presets: None,
             collaboration_file_conflict: false,
@@ -1058,4 +1060,46 @@ fn claude_settings_share_the_smallest_published_window_and_block_overrides() {
             .iter()
             .any(|block| block.reason == SettingsBlockReason::ClaudePlanCapabilityUnavailable)
     );
+}
+
+#[test]
+fn standalone_profile_restore_inherits_root_without_catalog_or_native_override() {
+    let mut facts = facts();
+    facts.ingress = AgentIngressProtocolV1::Responses;
+    facts.restore_inherits_root = true;
+    facts.capabilities = AgentCapabilitySet::new(
+        [
+            AgentCapability::EffectiveConfiguration,
+            AgentCapability::AtomicManagedReplace,
+        ]
+        .into_iter()
+        .map(|capability| CapabilityEvidence {
+            capability,
+            state: CapabilityState::Proven,
+            adapter_contract: "isolated-test/1".into(),
+            observed_at_unix_ms: 1,
+            dependency_digest: facts.dependency_digest.clone(),
+            reason: None,
+        }),
+    )
+    .unwrap();
+    facts
+        .restore_points
+        .insert("restore/owned".into(), AgentSettingsFacet::Model);
+    let mut spec: AgentSettingsSpecV2 = serde_json::from_value(json!({
+        "schema_version":{"major":2,"minor":0}, "context_id":"agent-context/test",
+        "model":{"intent":"restore","restore_point_ref":"restore/owned"}
+    }))
+    .unwrap();
+    assert!(
+        preview_agent_settings(spec.clone(), &facts)
+            .unwrap()
+            .blockers
+            .is_empty()
+    );
+    spec.restore_native_model = Some("gpt-5.6-sol".into());
+    assert!(matches!(
+        preview_agent_settings(spec, &facts),
+        Err(SettingsPlanningError::InvalidSelection)
+    ));
 }

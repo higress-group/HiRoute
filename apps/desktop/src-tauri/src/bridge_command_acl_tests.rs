@@ -196,3 +196,8 @@ fn worker_task_commands_are_exposed_to_the_main_window() {
 fn the_explicit_quit_command_is_exposed_to_the_main_window() {
     assert_commands(&["quit_desktop"]);
 }
+
+#[test]
+fn profile_restore_retry_is_limited_to_the_main_window_capability() {
+    assert_commands(&["retry_agent_settings"]);
+}

@@ -666,13 +666,13 @@ def run(repository):
         codex = next(agent for agent in scan['agents']
                      if agent['agent_id'] == 'agent_codex_default')
         assert codex['supported'], codex
-        context = codex['context_id']
+        context = codex['codex_access']['root_context_id']
         checked_agent = product.cli(
             'agents', 'check', 'agent_codex_default', '--scope', 'native-authentication')['data']
         assert checked_agent['native_authentication'] == 'proven'
         rescanned = next(agent for agent in product.cli('agents', 'scan')['data']['agents']
                          if agent['agent_id'] == 'agent_codex_default')
-        assert rescanned['supported'] and rescanned['context_id'] == context, rescanned
+        assert rescanned['supported'] and rescanned['codex_access']['root_context_id'] == context, rescanned
         spec = {
             'schema_version': {'major': 2, 'minor': 0},
             'context_id': context,

@@ -390,6 +390,13 @@ impl AgentConnectionControlPort for LocalControlAdapter {
         self.save_model_live_check_result(record)
     }
 
+    fn retry_settings_operation(
+        &self,
+        request: &hiroute_application_api::AgentSettingsRetryV1,
+    ) -> Result<hiroute_domain::OperationV1, ControlReadError> {
+        self.retry_codex_operation(request)
+    }
+
     fn settings_status(
         &self,
         request: &hiroute_application_api::AgentSettingsStatusRequestV2,

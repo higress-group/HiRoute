@@ -68,7 +68,7 @@ fn v2_settings_skill_only_works_before_the_first_publication() {
         .unwrap()
         .iter()
         .find(|agent| agent["agent_id"] == "agent_codex_default")
-        .unwrap()["context_id"]
+        .unwrap()["codex_access"]["root_context_id"]
         .as_str()
         .unwrap()
         .to_owned();

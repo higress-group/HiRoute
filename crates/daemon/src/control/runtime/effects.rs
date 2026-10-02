@@ -239,6 +239,7 @@ impl ExternalEffectPort for LocalControlAdapter {
         operation: &hiroute_domain::OperationV1,
         intent: &ExternalEffectIntentV1,
     ) -> PortResult<()> {
+        self.acknowledge_clean_codex_restoration(operation, intent)?;
         if intent.effect_id() == "agent-connection-routing-skill"
             && intent.desired()["transaction"] == "settings"
         {

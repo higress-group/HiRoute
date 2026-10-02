@@ -236,7 +236,8 @@ impl FilesystemAgentScannerV1 {
         ))
     }
 
-    pub fn new(layout: AgentFilesystemLayoutV1, registry: ClaudeRegistrationIndexV1) -> Self {
+    pub fn new(mut layout: AgentFilesystemLayoutV1, registry: ClaudeRegistrationIndexV1) -> Self {
+        layout.codex_user_config = super::canonical_codex_config_path(&layout.codex_user_config);
         Self {
             layout,
             registry,
@@ -491,6 +492,12 @@ impl FilesystemAgentScannerV1 {
     /// Backend composition uses this path; public requests cannot choose an arbitrary target.
     pub fn codex_user_config_target(&self) -> PathBuf {
         self.layout.codex_user_config.clone()
+    }
+
+    pub fn codex_profile_config_target(&self) -> PathBuf {
+        self.layout
+            .codex_user_config
+            .with_file_name("hiroute.config.toml")
     }
 
     /// Exact engine selected for one Codex surface. This is target location only: callers must

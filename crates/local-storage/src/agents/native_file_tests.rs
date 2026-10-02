@@ -521,3 +521,53 @@ fn all_native_target_bindings_are_restored_together_before_marker_validation() {
     redirected[1].1 = root.path().join("replacement.toml");
     assert!(open(redirected).is_err());
 }
+
+#[test]
+fn native_restoration_acknowledgment_preserves_bytes_and_reopens() {
+    let temp = crate::test_tempdir().unwrap();
+    let path = temp.path().join("config.toml");
+    write(&path, b"owned = true\n");
+    let prototype = intent(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        None,
+    );
+    let artifacts = store(temp.path(), prototype.target(), &path);
+    let cleanup = intent(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        artifacts
+            .current_external_fingerprint(prototype.target())
+            .unwrap(),
+    );
+    let op = OperationId::parse("op_00112233445566778899aabbccddeeff").unwrap();
+    artifacts
+        .stage_native_target(&op, &cleanup, None, true)
+        .unwrap();
+    let cleaned = b"# new unrelated comment\nuser_setting = true\n";
+    write(&path, cleaned);
+    assert!(
+        artifacts
+            .acknowledge_native_restoration(&op, &cleanup, Some(b"stale"))
+            .is_err()
+    );
+    let effect = artifacts
+        .acknowledge_native_restoration(&op, &cleanup, Some(cleaned))
+        .unwrap();
+    assert_eq!(fs::read(&path).unwrap(), cleaned);
+    drop(artifacts);
+    let reopened = store(temp.path(), prototype.target(), &path);
+    assert!(matches!(
+        reopened.observe_artifact(&op, &cleanup).unwrap(),
+        EffectReconciliation::Applied(_)
+    ));
+    assert_eq!(
+        reopened.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::OwnershipLost
+    );
+    write(&path, b"# changed after acknowledgment\n");
+    assert!(matches!(
+        reopened.observe_artifact(&op, &cleanup).unwrap(),
+        EffectReconciliation::OwnershipLost(_)
+    ));
+}
