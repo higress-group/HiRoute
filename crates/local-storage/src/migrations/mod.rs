@@ -16,7 +16,9 @@ mod startup_format;
 pub(crate) use startup_format::validate_startup_format;
 #[cfg(test)]
 mod stopped_read_tests;
-pub(crate) use current_storage::{acquire_startup_lock, validate_current_storage};
+pub(crate) use current_storage::{
+    acquire_startup_lock, validate_current_storage, validate_recovered_grant_publications,
+};
 mod collaboration_dependency;
 mod completed_batches;
 mod compute_v8;

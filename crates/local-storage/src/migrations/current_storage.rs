@@ -66,8 +66,29 @@ pub(crate) fn validate_current_storage(
     if invalid {
         return Err(LocalStorageError::InvalidData);
     }
+    visit_publications(&connection, |_| {})?;
+    // Cross-store grant/publication equality is checked only after Operation recovery.
+    // Each store's format and integrity must already be valid before recovery writes.
+    let secret_connection = secrets.connection.borrow();
+    for store in [
+        &*connection,
+        &*runtime.connection.borrow(),
+        &*secret_connection,
+    ] {
+        let result: String = store.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+        if result != "ok" {
+            return Err(LocalStorageError::InvalidData);
+        }
+    }
+    Ok(())
+}
+
+/// Validate every retained publication, retaining only one decoded runtime object at a time.
+fn visit_publications(
+    connection: &rusqlite::Connection,
+    mut inspect: impl FnMut(&GatewayPublicationV1),
+) -> Result<(), LocalStorageError> {
     let mut statement=connection.prepare("SELECT workspace_id,publication_revision,digest,publication_bytes FROM gateway_publications")?;
-    let mut publications = Vec::new();
     for row in statement.query_map([], |r| {
         Ok((
             r.get::<_, String>(0)?,
@@ -85,12 +106,21 @@ pub(crate) fn validate_current_storage(
         {
             return Err(LocalStorageError::InvalidData);
         }
-        publications.push(publication);
+        inspect(&publication);
     }
-    // Publication/secret equality is required only for an active grant version. Historical
-    // revoked grants stay in historical publications without regaining admission authority.
+    Ok(())
+}
+
+/// Active Secret heads may legitimately precede publication compensation on a crash.
+/// Run only after journal recovery, before resuming serving admission. Historical revoked
+/// grants remain history and never regain admission authority through this check.
+pub(crate) fn validate_recovered_grant_publications(
+    control: &crate::ControlStore,
+    secrets: &crate::LocalSecretStore,
+) -> Result<(), LocalStorageError> {
     let secret_connection = secrets.connection.borrow();
     let mut statement=secret_connection.prepare("SELECT v.grant_id,v.generation,v.scope_json,v.material_sha256 FROM agent_access_grant_heads h JOIN agent_access_grant_versions v ON v.connection_id=h.connection_id AND v.generation=h.active_version_generation")?;
+    let mut unmatched = Vec::new();
     for row in statement.query_map([], |r| {
         Ok((
             r.get::<_, String>(0)?,
@@ -102,28 +132,23 @@ pub(crate) fn validate_current_storage(
         let (id, generation, json, material) = row?;
         let scope: AgentAccessGrantScopeV1 =
             serde_json::from_str(&json).map_err(|_| LocalStorageError::InvalidData)?;
-        if !publications.iter().any(|p| {
-            p.grants.iter().any(|g| {
-                g.grant_id == id
-                    && g.generation == generation
-                    && g.bearer_token_sha256.as_str() == material
-                    && g.model_grant == *scope.model_grant()
-            })
-        }) {
-            return Err(LocalStorageError::InvalidData);
-        }
+        unmatched.push((id, generation, scope, material));
     }
-    // A source can have a prepared grant with no active publication yet. Exact validation of
-    // that installation decision remains the existing coordinator's responsibility.
-    for store in [
-        &*connection,
-        &*runtime.connection.borrow(),
-        &*secret_connection,
-    ] {
-        let result: String = store.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
-        if result != "ok" {
-            return Err(LocalStorageError::InvalidData);
-        }
+    visit_publications(&control.connection.borrow(), |publication| {
+        unmatched.retain(|(id, generation, scope, material)| {
+            !publication.grants.iter().any(|grant| {
+                grant.grant_id == *id
+                    && grant.generation == *generation
+                    && grant.bearer_token_sha256.as_str() == material
+                    && grant.model_grant == *scope.model_grant()
+            })
+        });
+    })?;
+    if !unmatched.is_empty() {
+        return Err(LocalStorageError::InvalidData);
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

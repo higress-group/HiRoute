@@ -245,6 +245,9 @@ impl LocalControlAdapter {
     pub(in crate::control::runtime) fn finish_startup_publication_recovery(
         &self,
     ) -> PortResult<()> {
+        self.stores_lock()?
+            .validate_recovered_grant_publications()
+            .map_err(|_| invalid("publication.startup.grant-integrity"))?;
         self.restore_active_publication()?;
         self.resume_active_publication()?;
         self.startup_recovery_complete

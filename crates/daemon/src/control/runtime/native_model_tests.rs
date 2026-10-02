@@ -18,6 +18,8 @@ use std::{collections::BTreeSet, fs, os::unix::fs::PermissionsExt};
 mod codex_cache;
 #[path = "native_model_lifecycle_tests.rs"]
 mod lifecycle;
+#[path = "native_model_tests/recovery_admission.rs"]
+mod recovery_admission;
 
 #[test]
 fn settings_status_joins_surface_checks_with_the_active_publication_revision() {

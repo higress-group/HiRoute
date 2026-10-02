@@ -229,6 +229,12 @@ impl LocalStorageSet {
         })
     }
 
+    /// Validate cross-store grant/publication equality after Operation recovery and before
+    /// serving admission opens. Store opening deliberately admits recoverable saga checkpoints.
+    pub fn validate_recovered_grant_publications(&self) -> Result<(), LocalStorageError> {
+        migrations::validate_recovered_grant_publications(&self.control, &self.secrets)
+    }
+
     pub fn control(&self) -> &ControlStore {
         &self.control
     }
