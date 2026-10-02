@@ -7,13 +7,14 @@ use crate::server::core_runtime::model_ir::{
     RequestedReasoningControl, ToolChoice, ToolKindV1, ToolOutput, ToolResultStatusV1,
 };
 use crate::server::core_runtime::profiles::{
-    CandidateProtocolProfile, CriticalFact, Fidelity, NativeProviderStateEmission, StateAffinity,
-    fixed_reasoning,
+    CandidateProtocolProfile, CriticalFact, Fidelity, NativeProviderStateEmission, fixed_reasoning,
 };
 use crate::server::request_plan::IngressProtocol;
 
 fn request(protocol: IngressProtocol, text: &str) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
+        native_body: None,
+        native_only: false,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: protocol,
         responses_options: None,
@@ -98,12 +99,9 @@ fn stateful_messages_candidate(id: &str) -> PlannerCandidateFactsV1 {
         format!("native-{id}"),
         fixed_reasoning("fixed"),
     );
-    facts.protocol_profile.capability.native_provider_state =
-        NativeProviderStateEmission::ExactOwnerAffine;
+    facts.protocol_profile.capability.native_provider_state = NativeProviderStateEmission::Native;
     facts.protocol_profile.capability.request.provider_state = Fidelity::Exact;
-    facts.protocol_profile.capability.request.state_affinity = StateAffinity::ExactOwner;
     facts.protocol_profile.capability.response.provider_state = Fidelity::Exact;
-    facts.protocol_profile.capability.response.state_affinity = StateAffinity::ExactOwner;
     refresh_profile(&mut facts);
     facts
 }
@@ -819,11 +817,9 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
             role: MessageRole::Assistant,
             content: vec![ContentPart::ProviderState {
                 state: Box::new(OpaqueProviderState {
-                    owner: glm.protocol_profile.exact_provider_path().unwrap(),
                     block_index: Some(0),
                     kind: "signed_thinking".into(),
                     value: json!({"signature":"opaque"}),
-                    messages_thinking: None,
                 }),
             }],
             name: None,
@@ -843,12 +839,6 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
         reason.code == LedgerReasonCodeV1::PreviousSuccessFallback
             && reason.group_id.as_deref() == Some("complex-group")
     }));
-    assert!(
-        !output
-            .reason_ledger
-            .iter()
-            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
-    );
 
     let mut no_state = simple_request.clone();
     no_state.messages.remove(0);
@@ -857,12 +847,6 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
     let normal = Planner.plan(&no_state_input).unwrap();
     assert_eq!(normal.ledger.ordered_candidates[0].candidate_id, "luna");
     assert_eq!(normal.ledger.ordered_candidates[1].candidate_id, "glm");
-    assert!(
-        !normal
-            .reason_ledger
-            .iter()
-            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
-    );
 
     let mut complex_request = request(
         IngressProtocol::Messages,
@@ -874,11 +858,9 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
             role: MessageRole::Assistant,
             content: vec![ContentPart::ProviderState {
                 state: Box::new(OpaqueProviderState {
-                    owner: luna.protocol_profile.exact_provider_path().unwrap(),
                     block_index: Some(0),
                     kind: "signed_thinking".into(),
                     value: json!({"signature":"opaque"}),
-                    messages_thinking: None,
                 }),
             }],
             name: None,
@@ -921,9 +903,12 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
         unavailable_complex.branch,
         PlannedBranchV1::SmartSavingComplex
     );
-    assert!(unavailable_complex.ledger.ordered_candidates.is_empty());
+    assert_eq!(
+        unavailable_complex.ledger.ordered_candidates[0].candidate_id,
+        "luna"
+    );
     assert!(
-        !unavailable_complex
+        unavailable_complex
             .reason_ledger
             .iter()
             .any(|reason| { reason.code == LedgerReasonCodeV1::PreviousSuccessFallback })
@@ -940,35 +925,21 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
         unavailable.ledger.ordered_candidates[0].candidate_id,
         "luna"
     );
-    assert!(
-        !unavailable
-            .reason_ledger
-            .iter()
-            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
-    );
 
     let mut conflicting = simple_request;
     conflicting.messages[0]
         .content
         .push(ContentPart::ProviderState {
             state: Box::new(OpaqueProviderState {
-                owner: luna.protocol_profile.exact_provider_path().unwrap(),
                 block_index: Some(1),
                 kind: "signed_thinking".into(),
                 value: json!({"signature":"other"}),
-                messages_thinking: None,
             }),
         });
     let conflict = Planner
         .plan(&input(conflicting, smart, vec![luna, glm]))
         .unwrap();
     assert_eq!(conflict.ledger.ordered_candidates[0].candidate_id, "luna");
-    assert!(
-        !conflict
-            .reason_ledger
-            .iter()
-            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
-    );
 }
 
 #[test]
@@ -1005,25 +976,23 @@ fn smart_saving_uses_owner_group_when_selected_group_cannot_serialize() {
             role: MessageRole::Assistant,
             content: vec![ContentPart::ProviderState {
                 state: Box::new(OpaqueProviderState {
-                    owner: glm.protocol_profile.exact_provider_path().unwrap(),
                     block_index: Some(0),
                     kind: "thinking".into(),
                     value: json!({"type":"thinking","thinking":"note","signature":"opaque"}),
-                    messages_thinking: None,
                 }),
             }],
             name: None,
         },
     );
-    let output = Planner
-        .plan(&input(state_request, smart, vec![luna, glm]))
-        .unwrap();
+    let mut continuation = input(state_request, smart, vec![luna, glm]);
+    continuation.previous_success_candidate_id = Some("glm".into());
+    let output = Planner.plan(&continuation).unwrap();
     assert_eq!(output.ledger.ordered_candidates[0].candidate_id, "glm");
     assert!(
         output
             .reason_ledger
             .iter()
-            .any(|reason| { reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation })
+            .any(|reason| { reason.code == LedgerReasonCodeV1::PreviousSuccessFallback })
     );
 }
 
@@ -1032,6 +1001,7 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
     let luna = stateful_messages_candidate("luna");
     let mut glm = stateful_messages_candidate("glm");
     glm.protocol_profile.capability.request.image_url = Fidelity::Unsupported;
+    glm.request_projection_exclusion = Some(ExclusionReasonCodeV1::VisionUnsupported);
     refresh_profile(&mut glm);
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
@@ -1065,11 +1035,9 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
             role: MessageRole::Assistant,
             content: vec![ContentPart::ProviderState {
                 state: Box::new(OpaqueProviderState {
-                    owner: luna.protocol_profile.exact_provider_path().unwrap(),
                     block_index: Some(0),
                     kind: "signed_thinking".into(),
                     value: json!({"signature":"opaque"}),
-                    messages_thinking: None,
                 }),
             }],
             name: None,
@@ -1083,13 +1051,13 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
             },
         });
 
-    let output = Planner
-        .plan(&input(
-            complex_request.clone(),
-            smart.clone(),
-            vec![luna.clone(), glm.clone()],
-        ))
-        .unwrap();
+    let mut continuation = input(
+        complex_request.clone(),
+        smart.clone(),
+        vec![luna.clone(), glm.clone()],
+    );
+    continuation.previous_success_candidate_id = Some("luna".into());
+    let output = Planner.plan(&continuation).unwrap();
     assert_eq!(output.branch, PlannedBranchV1::SmartSavingComplex);
     assert_eq!(
         evaluate_candidate(&complex_request, &glm, smart.cost_policy, &smart.limits).unwrap_err(),
@@ -1097,7 +1065,7 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
     );
     assert_eq!(output.ledger.ordered_candidates[0].candidate_id, "luna");
     assert!(output.reason_ledger.iter().any(|reason| {
-        reason.code == LedgerReasonCodeV1::ProviderStateOwnerContinuation
+        reason.code == LedgerReasonCodeV1::PreviousSuccessFallback
             && reason.group_id.as_deref() == Some("simple-group")
     }));
 
@@ -1118,6 +1086,7 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
         .capability
         .request
         .image_url = Fidelity::Unsupported;
+    incapable_owner.request_projection_exclusion = Some(ExclusionReasonCodeV1::VisionUnsupported);
     refresh_profile(&mut incapable_owner);
     let no_eligible_owner = Planner
         .plan(&input(complex_request, smart, vec![incapable_owner, glm]))
@@ -1576,20 +1545,10 @@ fn planner_opaque_state_affinity_and_cost_are_after_streaming() {
         Some(1),
         CostClassV1::Unknown,
     );
-    let other_owner = CandidateProtocolProfile::exact_portable_path(
-        IngressProtocol::Responses,
-        IngressProtocol::Responses,
-        "other",
-        fixed_reasoning("fixed"),
-    )
-    .exact_provider_path()
-    .unwrap();
     state_request.provider_state = vec![OpaqueProviderState {
-        owner: other_owner,
         block_index: None,
         kind: "previous_response_id".into(),
         value: json!("response-1"),
-        messages_thinking: None,
     }];
     facts.protocol_profile.capability.native_streaming = CriticalFact::Unknown;
     refresh_profile(&mut facts);
@@ -1602,7 +1561,7 @@ fn planner_opaque_state_affinity_and_cost_are_after_streaming() {
         .unwrap();
     assert_eq!(
         evaluation(&output, "stateful").first_exclusion,
-        Some(ExclusionReasonCodeV1::StreamFeatureUnsupported)
+        Some(ExclusionReasonCodeV1::CostPolicyExcluded)
     );
 
     facts.protocol_profile.capability.native_streaming = CriticalFact::Exact(true);
@@ -1616,7 +1575,7 @@ fn planner_opaque_state_affinity_and_cost_are_after_streaming() {
         .unwrap();
     assert_eq!(
         evaluation(&output, "stateful").first_exclusion,
-        Some(ExclusionReasonCodeV1::OpaqueStateUnportable)
+        Some(ExclusionReasonCodeV1::CostPolicyExcluded)
     );
 
     let output = Planner

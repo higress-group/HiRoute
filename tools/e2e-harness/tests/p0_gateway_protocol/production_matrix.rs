@@ -78,6 +78,27 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
     let credentials_path = directory.path().join("credentials.json");
     let lkg_path = directory.path().join("publication-lkg.json");
     let mut publication = snapshot(&provider_authorities, &pairs);
+    // Unknown provider metadata must not veto an executable native stream.
+    // Keep cross-protocol fixtures unchanged to exercise actual conversion.
+    for alias in &mut publication.aliases {
+        for candidate in &mut alias.candidates {
+            for profile in &mut candidate.protocol_profiles {
+                if profile.ingress_protocol == profile.capability.upstream_protocol {
+                    profile.capability.native_streaming = GatewayCriticalFactV1::Unknown;
+                    profile.capability.native_provider_state =
+                        hiroute_domain::GatewayNativeProviderStateEmissionV1::Unknown;
+                    profile.capability.response.usage = hiroute_domain::GatewayFidelityV1::Unknown;
+                    profile.capability.response.reasoning =
+                        hiroute_domain::GatewayFidelityV1::Unknown;
+                    profile.capability.response.refusal =
+                        hiroute_domain::GatewayFidelityV1::Unknown;
+                }
+            }
+            candidate.protocol_profile_digest =
+                CanonicalDigest::of(&candidate.protocol_profiles).unwrap();
+        }
+    }
+    publication.payload_digest = publication.canonical_digest().unwrap();
     if fixed {
         for grant in &mut publication.grants {
             for (name, route) in &mut grant.routes {
@@ -165,11 +186,38 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
         let (ingress, upstream) = (*ingress, *upstream);
         let path = protocol_path(ingress);
         let alias = pair_alias(ingress, upstream);
-        let response = fragmented_request(
-            address,
-            path,
-            &serde_json::to_vec(&client_request(ingress, &alias)).unwrap(),
-        );
+        let mut request = client_request(ingress, &alias);
+        if ingress == IngressProtocol::Messages {
+            request["output_config"] = json!({"format": messages_schema_format()});
+        }
+        if !fixed && ingress == IngressProtocol::Messages {
+            request["thinking"] = json!({"type":"adaptive"});
+            request["output_config"]["effort"] = json!("high");
+        }
+        if ingress == IngressProtocol::Messages && upstream == IngressProtocol::Responses {
+            request["tools"] = json!([{"name":"probe","input_schema":{"type":"object"}}]);
+            request["messages"].as_array_mut().unwrap().extend([
+                json!({"role":"assistant","content":[
+                    {"type":"text","text":"before"},
+                    {"type":"tool_use","id":"call_1","name":"probe","input":{"value":1}},
+                    {"type":"text","text":"after"}]}),
+                json!({"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"call_1","content":"1"},
+                    {"type":"text","text":"continue"}]}),
+            ]);
+        }
+        if ingress == upstream {
+            request["temperature"] = json!(0.2);
+            request["provider_payload_hint"] = json!({"future":"kept"});
+            if ingress == IngressProtocol::Messages {
+                request["system"] = json!([{"type":"text","text":"long instruction ".repeat(1024),"cache_control":{"type":"ephemeral"}}]);
+                request["messages"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!({"role":"system","content":"reminder"}));
+            }
+        }
+        let response = fragmented_request(address, path, &serde_json::to_vec(&request).unwrap());
         assert_eq!(
             response.status,
             200,
@@ -192,7 +240,23 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
         let path = protocol_path(protocol);
         let alias = pair_alias(protocol, protocol);
         let mut request = client_request(protocol, &alias);
+        if protocol == IngressProtocol::Messages {
+            request["output_config"] = json!({"format": messages_schema_format()});
+        }
+        if !fixed && protocol == IngressProtocol::Messages {
+            request["thinking"] = json!({"type":"adaptive"});
+            request["output_config"]["effort"] = json!("high");
+        }
         request["stream"] = Value::Bool(true);
+        request["temperature"] = json!(0.2);
+        request["provider_payload_hint"] = json!({"future":"kept"});
+        if protocol == IngressProtocol::Messages {
+            request["system"] = json!([{"type":"text","text":"long instruction ".repeat(1024),"cache_control":{"type":"ephemeral"}}]);
+            request["messages"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"role":"system","content":"reminder"}));
+        }
         let pair_index = pairs
             .iter()
             .position(|pair| *pair == (protocol, protocol))
@@ -223,7 +287,7 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
         address,
         "/v1/responses",
         format!(
-            r#"{{"model":"{}","input":"hello","temperature":0.2}}"#,
+            r#"{{"model":"{}","input":"hello","base_url":"https://not-authorized.invalid"}}"#,
             pair_alias(IngressProtocol::Responses, IngressProtocol::Responses)
         )
         .as_bytes(),
@@ -232,6 +296,25 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
     let invalid: Value = serde_json::from_slice(&invalid.body).unwrap();
     assert_eq!(invalid["phase"], "canonical_request");
     assert_eq!(invalid["code"], "PROTOCOL_SEMANTICS_UNSUPPORTED");
+    if pairs.contains(&(
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::ChatCompletions,
+    )) {
+        let denied_search = single_write_request(
+        address,
+        "/v1/chat/completions",
+        &serde_json::to_vec(&json!({
+            "model": pair_alias(IngressProtocol::ChatCompletions, IngressProtocol::ChatCompletions),
+            "messages":[{"role":"user","content":"search"}],"web_search_options":{}
+        }))
+        .unwrap(),
+    );
+        assert_eq!(denied_search.status, 400);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&denied_search.body).unwrap()["code"],
+            "PROTOCOL_SEMANTICS_UNSUPPORTED"
+        );
+    }
     for provider in &providers {
         assert_eq!(
             provider_accept_error_kind(provider),
@@ -431,8 +514,31 @@ fn expected_client_body(ingress: IngressProtocol, upstream: IngressProtocol, ali
     }
 }
 
-fn expected_native_body(upstream: IngressProtocol, target: &str, streaming: bool) -> Value {
-    match upstream {
+fn expected_native_body(
+    ingress: IngressProtocol,
+    upstream: IngressProtocol,
+    target: &str,
+    streaming: bool,
+) -> Value {
+    if ingress == upstream {
+        let mut body = client_request(ingress, target);
+        body["stream"] = json!(streaming);
+        body["temperature"] = json!(0.2);
+        body["provider_payload_hint"] = json!({"future":"kept"});
+        match upstream {
+            IngressProtocol::Responses => body["max_output_tokens"] = json!(256),
+            IngressProtocol::ChatCompletions => body["max_completion_tokens"] = json!(256),
+            IngressProtocol::Messages => {
+                body["output_config"] = json!({"format": messages_schema_format()});
+                body["system"] = json!([
+                    {"type":"text","text":"long instruction ".repeat(1024),"cache_control":{"type":"ephemeral"}},
+                    {"type":"text","text":"reminder"}
+                ]);
+            }
+        }
+        return body;
+    }
+    let mut body = match upstream {
         IngressProtocol::Responses => json!({
             "model": target,
             "input": [{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}],
@@ -457,7 +563,44 @@ fn expected_native_body(upstream: IngressProtocol, target: &str, streaming: bool
             "max_tokens": 256,
             "stream": streaming
         }),
+    };
+    // Messages ingress asks for eight output tokens, regardless of target API.
+    if ingress == IngressProtocol::Messages {
+        let key = if upstream == IngressProtocol::Responses {
+            "max_output_tokens"
+        } else {
+            "max_completion_tokens"
+        };
+        body[key] = json!(8);
+        let schema = messages_schema_format()["schema"].clone();
+        if upstream == IngressProtocol::Responses {
+            body["text"] = json!({"format":{"type":"json_schema",
+                "name":"hiroute_structured_output","strict":true,"schema":schema}});
+        } else {
+            body["response_format"] = json!({"type":"json_schema","json_schema":{
+                "name":"hiroute_structured_output","strict":true,"schema":schema}});
+        }
+        if upstream == IngressProtocol::Responses {
+            body["tools"] =
+                json!([{"type":"function","name":"probe","parameters":{"type":"object"}}]);
+            body["tool_choice"] = json!("auto");
+            body["parallel_tool_calls"] = json!(false);
+            body["input"].as_array_mut().unwrap().extend([
+                json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"before"}]}),
+                json!({"type":"function_call","call_id":"call_1","name":"probe","arguments":"{\"value\":1}"}),
+                json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"after"}]}),
+                json!({"type":"function_call_output","call_id":"call_1","output":"1"}),
+                json!({"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]})
+            ]);
+        }
     }
+    body
+}
+
+fn messages_schema_format() -> Value {
+    json!({"type":"json_schema","schema":{"type":"object",
+        "properties":{"title":{"type":"string","description":"title schema ".repeat(2000)}},
+        "required":["title"],"additionalProperties":false}})
 }
 
 fn native_response(upstream: IngressProtocol) -> &'static [u8] {
@@ -678,6 +821,7 @@ fn serve_native_provider(
                         assert_eq!(
                             body,
                             expected_native_body(
+                                ingress,
                                 upstream,
                                 &pair_target(ingress, upstream),
                                 streaming,

@@ -20,8 +20,6 @@ pub enum ModelIrError {
     MissingToolIdentity(String),
     #[error("provider state is not portable to the requested protocol")]
     ProviderStateNotPortable,
-    #[error("provider state has no exact owner binding")]
-    ProviderStateOwnershipRequired,
     #[error("Tool call has no exact logical/native ID binding: {0}")]
     ToolIdBindingRequired(String),
     #[error("Tool continuation identity is ambiguous or conflicting")]

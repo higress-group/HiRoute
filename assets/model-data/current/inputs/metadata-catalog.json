@@ -1588,7 +1588,7 @@
       "authority": "help.aliyun.com",
       "source_kind": "provider-documentation",
       "locator": "https://help.aliyun.com/zh/model-studio/deepseek-api",
-      "collected_on": "2026-09-29",
+      "collected_on": "2026-10-01",
       "bytes_digest": null,
       "digest_state": "not-captured"
     },
@@ -1777,7 +1777,7 @@
       "authority": "help.aliyun.com",
       "source_kind": "provider-documentation",
       "locator": "https://help.aliyun.com/zh/model-studio/anthropic-api-messages",
-      "collected_on": "2026-09-29",
+      "collected_on": "2026-10-01",
       "bytes_digest": null,
       "digest_state": "not-captured"
     },
@@ -3227,8 +3227,14 @@
         "vision": "supported"
       },
       "reasoning": {
-        "kind": "toggle",
-        "default": "on"
+        "kind": "toggle-plus-discrete",
+        "profiles": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "high",
+        "note": "Thinking defaults on. Alibaba Chat uses reasoning_effort, Responses uses reasoning.effort, and Messages uses output_config.effort with thinking.type=enabled. Provider protocol defaults may differ from the explicit catalog selection."
       },
       "identity_stability": "rolling-alias",
       "lifecycle": "active",
@@ -3239,6 +3245,8 @@
         "source-010",
         "source-134",
         "source-135",
+        "source-150",
+        "source-171",
         "source-172"
       ]
     },
@@ -3264,15 +3272,21 @@
         "vision": "unsupported"
       },
       "reasoning": {
-        "kind": "toggle",
-        "default": "on"
+        "kind": "toggle-plus-discrete",
+        "profiles": [
+          "high",
+          "max"
+        ],
+        "default": "high",
+        "note": "Alibaba documents high/max for this unversioned V4 Flash ID; low is documented for the separate 0731 and V4.1 models. Messages defaults to max when effort is omitted."
       },
       "identity_stability": "rolling-alias",
       "lifecycle": "active",
       "source_stability_note": "Alibaba Cloud Model Studio serves the text-only V4 Flash model under this ID; the same retired ID on the direct DeepSeek API temporarily routes to V4.1 Flash.",
       "evidence_refs": [
         "source-150",
-        "source-153"
+        "source-153",
+        "source-171"
       ]
     },
     {
@@ -3295,8 +3309,13 @@
         "streaming": "supported"
       },
       "reasoning": {
-        "kind": "toggle",
-        "default": "on"
+        "kind": "toggle-plus-discrete",
+        "profiles": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "high"
       },
       "identity_stability": "immutable-or-provider-stable",
       "lifecycle": "active",
@@ -3330,8 +3349,13 @@
         "vision": "unsupported"
       },
       "reasoning": {
-        "kind": "toggle",
-        "default": "on"
+        "kind": "toggle-plus-discrete",
+        "profiles": [
+          "high",
+          "max"
+        ],
+        "default": "high",
+        "note": "Use the documented common high/max levels for the unversioned and 0813 IDs. Alibaba additionally documents low for deepseek-v4-pro-0813, but not the unversioned alias; do not advertise that alias-specific value globally. Messages defaults to max when effort is omitted."
       },
       "identity_stability": "rolling-alias",
       "lifecycle": "active",
@@ -3340,7 +3364,9 @@
         "source-007",
         "source-008",
         "source-010",
+        "source-150",
         "source-152",
+        "source-171",
         "source-172"
       ]
     },

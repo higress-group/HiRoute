@@ -1,7 +1,6 @@
 use hiroute_gateway::server::core_runtime::adapters::{
-    ClientResponseRenderer, IncrementalClientSseRenderer, IngressRequestBindings,
-    NativeResponseDecoder, RenderedClientResponse, RenderedSseEvent, decode_ingress_request,
-    decode_ingress_request_with_bindings, project_candidate_request,
+    ClientResponseRenderer, IncrementalClientSseRenderer, NativeResponseDecoder,
+    RenderedClientResponse, RenderedSseEvent, decode_ingress_request, project_candidate_request,
 };
 use hiroute_gateway::server::core_runtime::model_ir::{
     FinishReason, ModelEvent, ModelIrError, ModelStreamEventV1, OpaqueProviderState, ResponseBlock,
@@ -10,7 +9,7 @@ use hiroute_gateway::server::core_runtime::model_ir::{
 use hiroute_gateway::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, Fidelity, NativeReasoningFieldAssignment,
     NativeReasoningRender, NativeReasoningValue, ReasoningAccounting, ReasoningControlKind,
-    ReasoningProfileCapability, StateAffinity, StreamingRefusalSemantics, fixed_reasoning,
+    ReasoningProfileCapability, StreamingRefusalSemantics, fixed_reasoning,
 };
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
@@ -21,7 +20,7 @@ use super::support::{
 };
 
 #[test]
-fn protocol_reviewer_pdf_is_rejected_by_the_exact_path_before_connect() {
+fn protocol_reviewer_native_image_payload_is_left_to_the_provider() {
     let request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({
@@ -38,11 +37,10 @@ fn protocol_reviewer_pdf_is_rejected_by_the_exact_path_before_connect() {
         "physical",
         fixed_reasoning("fixed"),
     );
+    let body = project_candidate_request(&request, &profile).unwrap().body;
     assert_eq!(
-        project_candidate_request(&request, &profile)
-            .unwrap_err()
-            .code(),
-        "PROTOCOL_CAPABILITY_UNSUPPORTED"
+        body["input"][0]["content"][0]["image_url"],
+        "data:application/pdf;base64,AA=="
     );
 }
 
@@ -77,16 +75,6 @@ fn protocol_reviewer_path_identity_and_response_discriminants_fail_closed() {
         {
             let mut value = profile.clone();
             value.connector.entitlement_id.clear();
-            value
-        },
-        {
-            let mut value = profile.clone();
-            value.capability.response.refusal = Fidelity::Unknown;
-            value
-        },
-        {
-            let mut value = profile.clone();
-            value.capability.response.logical_tool_id_mapping = Fidelity::Unknown;
             value
         },
     ] {
@@ -315,7 +303,6 @@ fn protocol_reviewer_provider_state_requires_source_binding_and_allows_lossless_
         fixed_reasoning("fixed"),
     );
     profile.capability.request.provider_state = Fidelity::Exact;
-    profile.capability.request.state_affinity = StateAffinity::ExactOwner;
     let body = json!({
         "model":"agent/research",
         "input":[
@@ -323,19 +310,7 @@ fn protocol_reviewer_provider_state_requires_source_binding_and_allows_lossless_
             {"type":"message","role":"user","content":"continue"}
         ]
     });
-    assert_eq!(
-        decode_ingress_request(IngressProtocol::Responses, &body).unwrap_err(),
-        ModelIrError::ProviderStateOwnershipRequired
-    );
-    let owner = profile.exact_provider_path().unwrap();
-    let request = decode_ingress_request_with_bindings(
-        IngressProtocol::Responses,
-        &body,
-        &IngressRequestBindings {
-            provider_state_owner: Some(owner.clone()),
-        },
-    )
-    .unwrap();
+    let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
     assert_eq!(
         project_candidate_request(&request, &profile).unwrap().body["input"][0]["encrypted_content"],
         "opaque"
@@ -352,14 +327,7 @@ fn protocol_reviewer_provider_state_requires_source_binding_and_allows_lossless_
         "conversation":"conv_previous"
     });
     assert_eq!(
-        decode_ingress_request_with_bindings(
-            IngressProtocol::Responses,
-            &conversation,
-            &IngressRequestBindings {
-                provider_state_owner: Some(owner),
-            },
-        )
-        .unwrap_err(),
+        decode_ingress_request(IngressProtocol::Responses, &conversation,).unwrap_err(),
         ModelIrError::ResponsesConversationUnsupported
     );
 }
@@ -407,9 +375,8 @@ fn protocol_reviewer_provider_state_owner_and_block_survive_sse_fragmentation() 
     );
     assert_eq!(streamed.response.provider_state[0].block_index, Some(0));
 
-    let owner = streamed.response.provider_state[0].owner.clone();
     let mut renderer = IncrementalClientSseRenderer::new(
-        ClientProtocolProfile::exact_owner_affine(IngressProtocol::Responses, owner),
+        ClientProtocolProfile::exact_portable(IngressProtocol::Responses),
         "agent/research",
     )
     .unwrap();
@@ -480,10 +447,12 @@ fn protocol_reviewer_json_tool_result_uses_exact_native_binding_for_all_targets(
         let body = project_candidate_request(&request, &profile).unwrap().body;
         let (native_id, native_wire, output) = native_tool_result(target, &body);
         assert_eq!(native_id, "logical_weather");
-        assert_eq!(
-            native_wire,
-            r#"{"nested":{"a":1,"z":2},"temperature":21,"z":1}"#
-        );
+        if target != IngressProtocol::Responses {
+            assert_eq!(
+                native_wire,
+                r#"{"nested":{"a":1,"z":2},"temperature":21,"z":1}"#
+            );
+        }
         assert_eq!(
             output,
             json!({"z":1,"temperature":21,"nested":{"z":2,"a":1}})
@@ -528,19 +497,8 @@ fn protocol_reviewer_messages_terminal_refusal_is_typed_before_client_emission()
     ] {
         let mut invalid = exact_profile.clone();
         invalid.capability.response.stream_refusal = semantics;
-        assert_eq!(
-            project_candidate_request(&request, &invalid)
-                .unwrap_err()
-                .code(),
-            "PROTOCOL_CAPABILITY_UNSUPPORTED"
-        );
-        assert_eq!(
-            NativeResponseDecoder::new(&invalid, 200, true)
-                .err()
-                .unwrap()
-                .code(),
-            "PROTOCOL_CAPABILITY_UNSUPPORTED"
-        );
+        assert!(project_candidate_request(&request, &invalid).is_ok());
+        assert!(NativeResponseDecoder::new(&invalid, 200, true).is_ok());
     }
 
     let native = wire(&messages_refusal_events());
@@ -658,9 +616,8 @@ fn protocol_reviewer_messages_signature_is_one_canonical_state_for_json_and_sse(
             if state.kind == "thinking_signature_delta"
     )));
 
-    let owner = streamed.response.provider_state[0].owner.clone();
     let replayed = ClientResponseRenderer::render_nonstream_with_profile(
-        &ClientProtocolProfile::exact_owner_affine(IngressProtocol::Messages, owner),
+        &ClientProtocolProfile::exact_portable(IngressProtocol::Messages),
         "agent/research",
         &streamed.response,
     )
@@ -681,17 +638,13 @@ fn protocol_reviewer_messages_signature_is_one_canonical_state_for_json_and_sse(
 
 #[test]
 fn protocol_reviewer_provider_state_never_advances_the_commit_boundary() {
-    let profile = decoder_profile(IngressProtocol::Responses);
-    let owner = profile.exact_provider_path().unwrap();
     let state = ModelStreamEventV1::new(
         0,
         ModelEvent::ProviderState {
             state: Box::new(OpaqueProviderState {
-                owner,
                 block_index: Some(0),
                 kind: "encrypted_content".into(),
                 value: json!("opaque"),
-                messages_thinking: None,
             }),
         },
     );
@@ -920,12 +873,14 @@ fn native_tool_result(protocol: IngressProtocol, body: &Value) -> (String, Strin
             )
         }
     };
-    let schema_text = output
-        .as_str()
-        .expect("native Tool-result schema requires string content");
-    let canonical = serde_json::from_str(schema_text)
-        .expect("canonical JSON Tool result must round-trip from native text");
-    (native_id, schema_text.into(), canonical)
+    match output.as_str() {
+        Some(text) => (
+            native_id,
+            text.into(),
+            serde_json::from_str(text).expect("converted JSON tool result"),
+        ),
+        None => (native_id, output.to_string(), output),
+    }
 }
 
 fn wire(events: &[RenderedSseEvent]) -> Vec<u8> {

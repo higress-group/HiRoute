@@ -2,11 +2,6 @@
 mod responses;
 use responses::{decode_responses_input, decode_responses_tools};
 
-#[path = "ingress/continuation.rs"]
-mod continuation;
-pub use continuation::IngressRequestBindings;
-use continuation::validate_bindings;
-
 use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
@@ -18,35 +13,23 @@ use crate::server::request_plan::IngressProtocol;
 #[path = "responses_options.rs"]
 mod responses_options;
 
+#[derive(Default)]
+struct DecodeContext {
+    native_only: std::cell::Cell<bool>,
+}
+
 pub fn decode_ingress_request(
     protocol: IngressProtocol,
     body: &Value,
 ) -> Result<ModelRequestIRV1, ModelIrError> {
-    decode_ingress_request_with_bindings(protocol, body, &IngressRequestBindings::default())
-}
-
-pub fn decode_ingress_request_with_bindings(
-    protocol: IngressProtocol,
-    body: &Value,
-    bindings: &IngressRequestBindings,
-) -> Result<ModelRequestIRV1, ModelIrError> {
-    validate_bindings(bindings)?;
-    if bindings.provider_state_owner.as_ref().is_some_and(|owner| {
-        owner.upstream_protocol != protocol
-            && !(protocol == IngressProtocol::Messages
-                && owner.upstream_protocol == IngressProtocol::Responses)
-    }) {
-        return Err(ModelIrError::ProviderStateNotPortable);
-    }
-    let request = match protocol {
-        IngressProtocol::Responses => {
-            decode_responses(body, bindings.provider_state_owner.as_ref())
-        }
-        IngressProtocol::ChatCompletions => {
-            decode_chat(body, bindings.provider_state_owner.as_ref())
-        }
-        IngressProtocol::Messages => decode_messages(body, bindings.provider_state_owner.as_ref()),
+    let context = &DecodeContext::default();
+    let mut request = match protocol {
+        IngressProtocol::Responses => decode_responses(context, body),
+        IngressProtocol::ChatCompletions => decode_chat(context, body),
+        IngressProtocol::Messages => decode_messages(context, body),
     }?;
+    request.native_body = Some(body.clone());
+    request.native_only = context.native_only.get();
     Ok(request)
 }
 
@@ -91,10 +74,11 @@ fn validate_responses_named_choice(
 }
 
 fn decode_responses(
+    context: &DecodeContext,
     body: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
 ) -> Result<ModelRequestIRV1, ModelIrError> {
     let object = checked_object(
+        context,
         body,
         &[
             "model",
@@ -118,7 +102,7 @@ fn decode_responses(
     let served_model_id = required_string(object, "model")?;
     let instructions = object
         .get("instructions")
-        .map(|value| decode_instruction(value, InstructionRole::System))
+        .map(|value| decode_instruction(context, value, InstructionRole::System))
         .transpose()?
         .into_iter()
         .collect();
@@ -138,7 +122,8 @@ fn decode_responses(
         Some(Value::Array(items)) => {
             for item in items {
                 if item.get("type").and_then(Value::as_str) == Some("additional_tools") {
-                    let additional = checked_object(item, &["type", "tools"], "additional_tools")?;
+                    let additional =
+                        checked_object(context, item, &["type", "tools"], "additional_tools")?;
                     additional_tools.push(
                         additional
                             .get("tools")
@@ -147,7 +132,8 @@ fn decode_responses(
                     continue;
                 }
                 let message_index = messages.len();
-                let internal_metadata = responses_options::internal_chat_message_metadata(item)?;
+                let internal_metadata =
+                    responses_options::internal_chat_message_metadata(context, item)?;
                 let item_type = item.get("type").and_then(Value::as_str);
                 if item_type == Some("web_search_call") {
                     let mut native_item = item.clone();
@@ -182,9 +168,9 @@ fn decode_responses(
                         && !(item_type == Some("function_call_output")
                             && matches!(status, "incomplete" | "in_progress"))
                     {
-                        return Err(ModelIrError::InvalidField("Responses input item status"));
+                        context.native_only.set(true);
                     }
-                    decode_responses_input(item, &mut messages, state_owner, item_status)?;
+                    decode_responses_input(context, item, &mut messages, item_status)?;
                     if let Some(status) = item_status {
                         responses_item_statuses.insert(message_index, status.into());
                     }
@@ -193,7 +179,7 @@ fn decode_responses(
                     responses_internal_chat_message_metadata.insert(message_index, metadata);
                 }
                 if item_type == Some("message")
-                    && let Some(phase) = responses_options::message_phase(item)?
+                    && let Some(phase) = responses_options::message_phase(context, item)?
                 {
                     responses_message_phases.insert(message_index, phase);
                 }
@@ -207,13 +193,19 @@ fn decode_responses(
         None => return Err(ModelIrError::InvalidField("input")),
     }
     let provider_state = decode_responses_state(object)?;
-    let tools = decode_responses_tools(object.get("tools"), &additional_tools)?;
-    let tool_choice = decode_tool_choice(IngressProtocol::Responses, object.get("tool_choice"))?;
+    let tools = decode_responses_tools(context, object.get("tools"), &additional_tools)?;
+    let tool_choice = decode_tool_choice(
+        context,
+        IngressProtocol::Responses,
+        object.get("tool_choice"),
+    )?;
     validate_responses_named_choice(&tools, &tool_choice)?;
     Ok(ModelRequestIRV1 {
+        native_body: None,
+        native_only: false,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
-        responses_options: responses_options::decode(object)?,
+        responses_options: responses_options::decode(context, object)?,
         responses_item_ids: responses_options::item_ids(object.get("input"))?,
         served_model_id,
         stream: optional_bool(object, "stream")?.unwrap_or(false),
@@ -241,11 +233,9 @@ fn decode_responses(
     })
 }
 
-fn decode_chat(
-    body: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
-) -> Result<ModelRequestIRV1, ModelIrError> {
+fn decode_chat(context: &DecodeContext, body: &Value) -> Result<ModelRequestIRV1, ModelIrError> {
     let object = checked_object(
+        context,
         body,
         &[
             "model",
@@ -262,17 +252,20 @@ fn decode_chat(
         "chat request",
     )?;
     if let Some(stream_options) = object.get("stream_options") {
-        let options = checked_object(stream_options, &["include_usage"], "stream_options")?;
+        let options = checked_object(
+            context,
+            stream_options,
+            &["include_usage"],
+            "stream_options",
+        )?;
         if optional_bool(options, "include_usage")? == Some(false) {
-            return Err(ModelIrError::UnsupportedValue(
-                "stream_options.include_usage=false".into(),
-            ));
+            context.native_only.set(true);
         }
     }
     let mut instructions = Vec::new();
     let mut messages = Vec::new();
     for value in required_array(object, "messages")? {
-        decode_chat_message(value, &mut instructions, &mut messages, state_owner)?;
+        decode_chat_message(context, value, &mut instructions, &mut messages)?;
     }
     let requested_reasoning = object
         .get("reasoning_effort")
@@ -280,6 +273,8 @@ fn decode_chat(
         .map(RequestedReasoningControl::overridden)
         .unwrap_or_else(RequestedReasoningControl::absent);
     Ok(ModelRequestIRV1 {
+        native_body: None,
+        native_only: false,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::ChatCompletions,
         responses_options: None,
@@ -289,7 +284,7 @@ fn decode_chat(
         stream: optional_bool(object, "stream")?.unwrap_or(false),
         instructions,
         messages,
-        tools: decode_chat_tools(object.get("tools"))?,
+        tools: decode_chat_tools(context, object.get("tools"))?,
         tool_namespaces: Vec::new(),
         responses_tool_order: Vec::new(),
         web_search: None,
@@ -299,6 +294,7 @@ fn decode_chat(
         responses_internal_chat_message_metadata: Default::default(),
         responses_reasoning_history: Default::default(),
         tool_choice: decode_tool_choice(
+            context,
             IngressProtocol::ChatCompletions,
             object.get("tool_choice"),
         )?,
@@ -310,12 +306,13 @@ fn decode_chat(
 }
 
 fn decode_chat_message(
+    context: &DecodeContext,
     value: &Value,
     instructions: &mut Vec<CanonicalInstruction>,
     messages: &mut Vec<CanonicalMessage>,
-    state_owner: Option<&ExactProviderPathV1>,
 ) -> Result<(), ModelIrError> {
     let object = checked_object(
+        context,
         value,
         &[
             "role",
@@ -342,7 +339,7 @@ fn decode_chat_message(
         let content = object
             .get("content")
             .ok_or(ModelIrError::InvalidField("content"))?;
-        let instruction = decode_instruction(content, instruction_role)?;
+        let instruction = decode_instruction(context, content, instruction_role)?;
         if messages.is_empty() {
             instructions.push(instruction);
         } else {
@@ -382,7 +379,7 @@ fn decode_chat_message(
     }
     let mut content = object
         .get("content")
-        .map(decode_chat_content)
+        .map(|value| decode_chat_content(context, value))
         .transpose()?
         .unwrap_or_default();
     if let Some(reasoning) = object.get("reasoning_content") {
@@ -391,11 +388,9 @@ fn decode_chat_message(
         }
         content.push(ContentPart::ProviderState {
             state: Box::new(OpaqueProviderState {
-                owner: require_state_owner(state_owner)?,
                 block_index: None,
                 kind: "reasoning_content".into(),
                 value: reasoning.clone(),
-                messages_thinking: None,
             }),
         });
     }
@@ -407,20 +402,26 @@ fn decode_chat_message(
             .as_array()
             .ok_or(ModelIrError::InvalidField("tool_calls"))?
         {
-            let call = checked_object(value, &["id", "type", "function"], "chat tool call")?;
+            let call = checked_object(
+                context,
+                value,
+                &["id", "type", "function"],
+                "chat tool call",
+            )?;
             if required_string(call, "type")? != "function" {
                 return Err(ModelIrError::UnsupportedValue(
                     "chat non-function Tool".into(),
                 ));
             }
             let function = checked_object(
+                context,
                 call.get("function")
                     .ok_or(ModelIrError::InvalidField("function"))?,
                 &["name", "arguments"],
                 "chat function",
             )?;
             let (arguments, raw_arguments) =
-                parse_tool_arguments(required_string(function, "arguments")?);
+                parse_tool_arguments(content_string(function, "arguments")?);
             content.push(ContentPart::ToolCall {
                 logical_id: required_string(call, "id")?,
                 tool_kind: ToolKindV1::Function,
@@ -439,20 +440,29 @@ fn decode_chat_message(
     Ok(())
 }
 
-fn decode_chat_content(value: &Value) -> Result<Vec<ContentPart>, ModelIrError> {
+fn decode_chat_content(
+    context: &DecodeContext,
+    value: &Value,
+) -> Result<Vec<ContentPart>, ModelIrError> {
     match value {
         Value::Null => Ok(Vec::new()),
         Value::String(text) => Ok(vec![ContentPart::Text { text: text.clone() }]),
         Value::Array(values) => values
             .iter()
             .map(|value| {
-                let object = checked_object(value, &["type", "text", "image_url"], "chat content")?;
+                let object = checked_object(
+                    context,
+                    value,
+                    &["type", "text", "image_url"],
+                    "chat content",
+                )?;
                 match required_string(object, "type")?.as_str() {
                     "text" => Ok(ContentPart::Text {
-                        text: required_string(object, "text")?,
+                        text: content_string(object, "text")?,
                     }),
                     "image_url" => {
                         let image = checked_object(
+                            context,
                             object
                                 .get("image_url")
                                 .ok_or(ModelIrError::InvalidField("image_url"))?,
@@ -460,7 +470,7 @@ fn decode_chat_content(value: &Value) -> Result<Vec<ContentPart>, ModelIrError> 
                             "chat image_url",
                         )?;
                         Ok(ContentPart::Image {
-                            source: decode_image_url(required_string(image, "url")?)?,
+                            source: decode_image_url(context, content_string(image, "url")?)?,
                         })
                     }
                     other => Err(ModelIrError::UnsupportedValue(format!(
@@ -474,10 +484,11 @@ fn decode_chat_content(value: &Value) -> Result<Vec<ContentPart>, ModelIrError> 
 }
 
 fn decode_messages(
+    context: &DecodeContext,
     body: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
 ) -> Result<ModelRequestIRV1, ModelIrError> {
     let object = checked_object(
+        context,
         body,
         &[
             "model",
@@ -494,17 +505,30 @@ fn decode_messages(
         ],
         "messages request",
     )?;
-    validate_messages_metadata(object.get("metadata"))?;
-    validate_messages_context_management(object.get("context_management"))?;
+    validate_messages_metadata(context, object.get("metadata"))?;
+    validate_messages_context_management(context, object.get("context_management"))?;
+    for (key, fields) in [
+        ("thinking", &["type", "budget_tokens"][..]),
+        ("output_config", &["effort", "format"][..]),
+    ] {
+        if let Some(value) = object.get(key) {
+            checked_object(context, value, fields, "messages reasoning control")?;
+        }
+    }
+    if body.pointer("/output_config/format").is_some()
+        && super::structured_output::messages_schema_format(body).is_none()
+    {
+        context.native_only.set(true);
+    }
     let mut instructions = object
         .get("system")
-        .map(|value| decode_instruction(value, InstructionRole::System))
+        .map(|value| decode_instruction(context, value, InstructionRole::System))
         .transpose()?
         .into_iter()
         .collect::<Vec<_>>();
     let mut messages = Vec::new();
     for value in required_array(object, "messages")? {
-        let message = decode_messages_message(value, state_owner)?;
+        let message = decode_messages_message(context, value)?;
         match message.role {
             // Claude Code 2.1.231 emits an instruction reminder as a `system` message even though
             // the public Messages wire represents instructions at the top level. Normalize this
@@ -532,6 +556,8 @@ fn decode_messages(
         })),
     };
     Ok(ModelRequestIRV1 {
+        native_body: None,
+        native_only: false,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Messages,
         responses_options: None,
@@ -541,7 +567,7 @@ fn decode_messages(
         stream: optional_bool(object, "stream")?.unwrap_or(false),
         instructions,
         messages,
-        tools: decode_messages_tools(object.get("tools"))?,
+        tools: decode_messages_tools(context, object.get("tools"))?,
         tool_namespaces: Vec::new(),
         responses_tool_order: Vec::new(),
         web_search: None,
@@ -550,7 +576,11 @@ fn decode_messages(
         responses_message_phases: Default::default(),
         responses_internal_chat_message_metadata: Default::default(),
         responses_reasoning_history: Default::default(),
-        tool_choice: decode_tool_choice(IngressProtocol::Messages, object.get("tool_choice"))?,
+        tool_choice: decode_tool_choice(
+            context,
+            IngressProtocol::Messages,
+            object.get("tool_choice"),
+        )?,
         parallel_tool_calls: decode_messages_parallel(object.get("tool_choice"))?,
         requested_reasoning,
         requested_max_output_tokens: optional_u64(object, "max_tokens")?,
@@ -559,10 +589,10 @@ fn decode_messages(
 }
 
 fn decode_messages_message(
+    context: &DecodeContext,
     value: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
 ) -> Result<CanonicalMessage, ModelIrError> {
-    let object = checked_object(value, &["role", "content"], "messages message")?;
+    let object = checked_object(context, value, &["role", "content"], "messages message")?;
     let role = decode_role(required_string(object, "role")?.as_str())?;
     let values = object
         .get("content")
@@ -571,7 +601,7 @@ fn decode_messages_message(
         Value::String(text) => vec![ContentPart::Text { text: text.clone() }],
         Value::Array(values) => values
             .iter()
-            .map(|value| decode_messages_content(value, state_owner))
+            .map(|value| decode_messages_content(context, value))
             .collect::<Result<Vec<_>, _>>()?,
         _ => return Err(ModelIrError::InvalidField("content")),
     };
@@ -583,23 +613,29 @@ fn decode_messages_message(
 }
 
 fn decode_messages_content(
+    context: &DecodeContext,
     value: &Value,
-    state_owner: Option<&ExactProviderPathV1>,
 ) -> Result<ContentPart, ModelIrError> {
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("messages content"))?;
     match required_string(object, "type")?.as_str() {
         "text" => {
-            ensure_keys(object, &["type", "text", "cache_control"], "messages text")?;
-            validate_messages_cache_control(object.get("cache_control"))?;
+            ensure_keys(
+                context,
+                object,
+                &["type", "text", "cache_control"],
+                "messages text",
+            )?;
+            validate_messages_cache_control(context, object.get("cache_control"))?;
             Ok(ContentPart::Text {
-                text: required_string(object, "text")?,
+                text: content_string(object, "text")?,
             })
         }
         "image" => {
-            ensure_keys(object, &["type", "source"], "messages image")?;
+            ensure_keys(context, object, &["type", "source"], "messages image")?;
             let source = checked_object(
+                context,
                 object
                     .get("source")
                     .ok_or(ModelIrError::InvalidField("source"))?,
@@ -612,7 +648,7 @@ fn decode_messages_content(
                     data: required_string(source, "data")?,
                 },
                 "url" => ImageSource::Url {
-                    url: decode_http_image_url(required_string(source, "url")?)?,
+                    url: decode_http_image_url(context, content_string(source, "url")?)?,
                 },
                 other => {
                     return Err(ModelIrError::UnsupportedValue(format!(
@@ -624,11 +660,12 @@ fn decode_messages_content(
         }
         "tool_use" => {
             ensure_keys(
+                context,
                 object,
                 &["type", "id", "name", "input", "cache_control"],
                 "messages tool_use",
             )?;
-            validate_messages_cache_control(object.get("cache_control"))?;
+            validate_messages_cache_control(context, object.get("cache_control"))?;
             Ok(ContentPart::ToolCall {
                 logical_id: required_string(object, "id")?,
                 tool_kind: ToolKindV1::Function,
@@ -643,6 +680,7 @@ fn decode_messages_content(
         }
         "tool_result" => {
             ensure_keys(
+                context,
                 object,
                 &[
                     "type",
@@ -653,7 +691,7 @@ fn decode_messages_content(
                 ],
                 "messages tool_result",
             )?;
-            validate_messages_cache_control(object.get("cache_control"))?;
+            validate_messages_cache_control(context, object.get("cache_control"))?;
             Ok(ContentPart::ToolResult {
                 logical_id: required_string(object, "tool_use_id")?,
                 tool_kind: ToolKindV1::Function,
@@ -670,44 +708,37 @@ fn decode_messages_content(
             })
         }
         "thinking" | "redacted_thinking" => {
-            let owner = require_state_owner(state_owner)?;
-            if owner.upstream_protocol == IngressProtocol::Responses {
-                if required_string(object, "type")? != "thinking" {
-                    return Err(ModelIrError::ProviderStateNotPortable);
-                }
+            let kind = required_string(object, "type")?;
+            if kind == "thinking" {
                 ensure_keys(
+                    context,
                     object,
                     &["type", "thinking", "signature"],
                     "messages thinking",
                 )?;
-                let signature = required_string(object, "signature")?;
-                if signature.is_empty() {
-                    return Err(ModelIrError::InvalidField("thinking signature"));
-                }
-                let thinking = object
+                // Provider state is payload, not a HiRoute credential. Plaintext
+                // thinking can legitimately arrive without a signature.
+                optional_string(object, "signature")?;
+                object
                     .get("thinking")
                     .and_then(Value::as_str)
                     .ok_or(ModelIrError::InvalidField("thinking"))?;
-                Ok(ContentPart::ProviderState {
-                    state: Box::new(OpaqueProviderState {
-                        owner,
-                        block_index: None,
-                        kind: "encrypted_content".into(),
-                        value: Value::String(signature),
-                        messages_thinking: Some(thinking.to_owned()),
-                    }),
-                })
             } else {
-                Ok(ContentPart::ProviderState {
-                    state: Box::new(OpaqueProviderState {
-                        owner,
-                        block_index: None,
-                        kind: required_string(object, "type")?,
-                        value: value.clone(),
-                        messages_thinking: None,
-                    }),
-                })
+                ensure_keys(
+                    context,
+                    object,
+                    &["type", "data"],
+                    "messages redacted thinking",
+                )?;
+                content_string(object, "data")?;
             }
+            Ok(ContentPart::ProviderState {
+                state: Box::new(OpaqueProviderState {
+                    block_index: None,
+                    kind,
+                    value: value.clone(),
+                }),
+            })
         }
         other => Err(ModelIrError::UnsupportedValue(format!(
             "messages content {other}"
@@ -716,6 +747,7 @@ fn decode_messages_content(
 }
 
 fn decode_instruction(
+    context: &DecodeContext,
     value: &Value,
     role: InstructionRole,
 ) -> Result<CanonicalInstruction, ModelIrError> {
@@ -725,6 +757,7 @@ fn decode_instruction(
             .iter()
             .map(|value| {
                 let object = checked_object(
+                    context,
                     value,
                     &["type", "text", "cache_control"],
                     "instruction content",
@@ -734,9 +767,9 @@ fn decode_instruction(
                         "non-text instruction".into(),
                     ));
                 }
-                validate_messages_cache_control(object.get("cache_control"))?;
+                validate_messages_cache_control(context, object.get("cache_control"))?;
                 Ok(ContentPart::Text {
-                    text: required_string(object, "text")?,
+                    text: content_string(object, "text")?,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -750,78 +783,110 @@ fn decode_instruction(
 // affinity across candidates, while forwarding an Anthropic user identifier to another provider
 // would be incorrect. Their shapes remain fail-closed so an unknown semantic field cannot be
 // silently erased.
-fn validate_messages_metadata(value: Option<&Value>) -> Result<(), ModelIrError> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    let object = checked_object(value, &["user_id"], "messages metadata")?;
-    if let Some(user_id) = object.get("user_id")
-        && !user_id.is_string()
-    {
-        return Err(ModelIrError::InvalidField("metadata.user_id"));
-    }
-    Ok(())
-}
-
-fn validate_messages_context_management(value: Option<&Value>) -> Result<(), ModelIrError> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    let object = checked_object(value, &["edits"], "messages context_management")?;
-    let edits = object
-        .get("edits")
-        .and_then(Value::as_array)
-        .ok_or(ModelIrError::InvalidField("context_management.edits"))?;
-    if edits.len() != 1 {
-        return Err(ModelIrError::UnsupportedValue(
-            "messages context_management edits".into(),
-        ));
-    }
-    let edit = checked_object(
-        &edits[0],
-        &["type", "keep"],
-        "messages context_management edit",
-    )?;
-    if required_string(edit, "type")? != "clear_thinking_20251015"
-        || required_string(edit, "keep")? != "all"
-    {
-        return Err(ModelIrError::UnsupportedValue(
-            "messages context_management edit".into(),
-        ));
-    }
-
-    // Claude Code emits this exact hint even when it retains every thinking block. Because
-    // `keep: all` performs no edit, it is safe to consume before a cross-protocol projection.
-    // Every behavior-changing context-management shape remains fail-closed above.
-    Ok(())
-}
-
-fn validate_messages_cache_control(value: Option<&Value>) -> Result<(), ModelIrError> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    let object = checked_object(value, &["type", "ttl"], "messages cache_control")?;
-    if required_string(object, "type")? != "ephemeral" {
-        return Err(ModelIrError::UnsupportedValue(
-            "messages cache_control type".into(),
-        ));
-    }
-    if let Some(ttl) = object.get("ttl").map(Value::as_str) {
-        match ttl {
-            Some("5m" | "1h") => {}
-            _ => return Err(ModelIrError::InvalidField("cache_control.ttl")),
+fn validate_messages_metadata(
+    context: &DecodeContext,
+    value: Option<&Value>,
+) -> Result<(), ModelIrError> {
+    let portable = (|| -> Result<(), ModelIrError> {
+        let Some(value) = value else {
+            return Ok(());
+        };
+        let object = checked_object(context, value, &["user_id"], "messages metadata")?;
+        if let Some(user_id) = object.get("user_id")
+            && !user_id.is_string()
+        {
+            return Err(ModelIrError::InvalidField("metadata.user_id"));
         }
+        Ok(())
+    })();
+    if portable.is_err() {
+        context.native_only.set(true);
     }
     Ok(())
 }
 
-fn decode_chat_tools(value: Option<&Value>) -> Result<Vec<CanonicalTool>, ModelIrError> {
+fn validate_messages_context_management(
+    context: &DecodeContext,
+    value: Option<&Value>,
+) -> Result<(), ModelIrError> {
+    let portable = (|| -> Result<(), ModelIrError> {
+        let Some(value) = value else {
+            return Ok(());
+        };
+        let object = checked_object(context, value, &["edits"], "messages context_management")?;
+        let edits = object
+            .get("edits")
+            .and_then(Value::as_array)
+            .ok_or(ModelIrError::InvalidField("context_management.edits"))?;
+        if edits.len() != 1 {
+            return Err(ModelIrError::UnsupportedValue(
+                "messages context_management edits".into(),
+            ));
+        }
+        let edit = checked_object(
+            context,
+            &edits[0],
+            &["type", "keep"],
+            "messages context_management edit",
+        )?;
+        if required_string(edit, "type")? != "clear_thinking_20251015"
+            || required_string(edit, "keep")? != "all"
+        {
+            return Err(ModelIrError::UnsupportedValue(
+                "messages context_management edit".into(),
+            ));
+        }
+
+        // Claude Code emits this exact hint even when it retains every thinking block. Because
+        // `keep: all` performs no edit, it is safe to consume before a cross-protocol projection.
+        // Every behavior-changing context-management shape remains fail-closed above.
+        Ok(())
+    })();
+    if portable.is_err() {
+        context.native_only.set(true);
+    }
+    Ok(())
+}
+
+fn validate_messages_cache_control(
+    context: &DecodeContext,
+    value: Option<&Value>,
+) -> Result<(), ModelIrError> {
+    let portable = (|| -> Result<(), ModelIrError> {
+        let Some(value) = value else {
+            return Ok(());
+        };
+        let object = checked_object(context, value, &["type", "ttl"], "messages cache_control")?;
+        if required_string(object, "type")? != "ephemeral" {
+            return Err(ModelIrError::UnsupportedValue(
+                "messages cache_control type".into(),
+            ));
+        }
+        if let Some(ttl) = object.get("ttl").map(Value::as_str) {
+            match ttl {
+                Some("5m" | "1h") => {}
+                _ => return Err(ModelIrError::InvalidField("cache_control.ttl")),
+            }
+        }
+        Ok(())
+    })();
+    if portable.is_err() {
+        context.native_only.set(true);
+    }
+    Ok(())
+}
+
+fn decode_chat_tools(
+    context: &DecodeContext,
+    value: Option<&Value>,
+) -> Result<Vec<CanonicalTool>, ModelIrError> {
     decode_tools(value, |object| {
-        ensure_keys(object, &["type", "function"], "chat Tool")?;
+        ensure_keys(context, object, &["type", "function"], "chat Tool")?;
         if required_string(object, "type")? != "function" {
             return Err(ModelIrError::UnsupportedValue("chat hosted Tool".into()));
         }
         let function = checked_object(
+            context,
             object
                 .get("function")
                 .ok_or(ModelIrError::InvalidField("function"))?,
@@ -844,9 +909,13 @@ fn decode_chat_tools(value: Option<&Value>) -> Result<Vec<CanonicalTool>, ModelI
     })
 }
 
-fn decode_messages_tools(value: Option<&Value>) -> Result<Vec<CanonicalTool>, ModelIrError> {
+fn decode_messages_tools(
+    context: &DecodeContext,
+    value: Option<&Value>,
+) -> Result<Vec<CanonicalTool>, ModelIrError> {
     decode_tools(value, |object| {
         ensure_keys(
+            context,
             object,
             &["name", "description", "input_schema", "strict"],
             "messages Tool",
@@ -891,6 +960,7 @@ fn decode_tools(
 }
 
 fn decode_tool_choice(
+    context: &DecodeContext,
     protocol: IngressProtocol,
     value: Option<&Value>,
 ) -> Result<ToolChoice, ModelIrError> {
@@ -913,6 +983,7 @@ fn decode_tool_choice(
     match protocol {
         IngressProtocol::Messages => {
             ensure_keys(
+                context,
                 object,
                 &["type", "name", "disable_parallel_tool_use"],
                 "messages tool_choice",
@@ -931,7 +1002,7 @@ fn decode_tool_choice(
             }
         }
         IngressProtocol::Responses => {
-            ensure_keys(object, &["type", "name"], "responses tool_choice")?;
+            ensure_keys(context, object, &["type", "name"], "responses tool_choice")?;
             let kind = match required_string(object, "type")?.as_str() {
                 "function" => ToolKindV1::Function,
                 "custom" => ToolKindV1::Custom,
@@ -947,13 +1018,14 @@ fn decode_tool_choice(
             })
         }
         IngressProtocol::ChatCompletions => {
-            ensure_keys(object, &["type", "function"], "chat tool_choice")?;
+            ensure_keys(context, object, &["type", "function"], "chat tool_choice")?;
             if required_string(object, "type")? != "function" {
                 return Err(ModelIrError::UnsupportedValue(
                     "chat non-function Tool choice".into(),
                 ));
             }
             let function = checked_object(
+                context,
                 object
                     .get("function")
                     .ok_or(ModelIrError::InvalidField("function"))?,
@@ -993,44 +1065,31 @@ fn decode_responses_state(
     Ok(Vec::new())
 }
 
-fn require_state_owner(
-    owner: Option<&ExactProviderPathV1>,
-) -> Result<ExactProviderPathV1, ModelIrError> {
-    owner
-        .filter(|owner| owner.is_complete())
-        .cloned()
-        .ok_or(ModelIrError::ProviderStateOwnershipRequired)
-}
-
-fn decode_image_url(value: String) -> Result<ImageSource, ModelIrError> {
-    if let Some(rest) = value.strip_prefix("data:") {
-        let (media_type, data) = rest
-            .split_once(";base64,")
-            .ok_or(ModelIrError::InvalidField("image_url"))?;
-        if media_type.is_empty() || data.is_empty() {
-            return Err(ModelIrError::InvalidField("image_url"));
-        }
-        Ok(ImageSource::Base64 {
+fn decode_image_url(context: &DecodeContext, value: String) -> Result<ImageSource, ModelIrError> {
+    if let Some(rest) = value.strip_prefix("data:")
+        && let Some((media_type, data)) = rest.split_once(";base64,")
+    {
+        return Ok(ImageSource::Base64 {
             media_type: media_type.into(),
             data: data.into(),
-        })
-    } else {
-        Ok(ImageSource::Url {
-            url: decode_http_image_url(value)?,
-        })
+        });
     }
+    Ok(ImageSource::Url {
+        url: decode_http_image_url(context, value)?,
+    })
 }
 
-fn decode_http_image_url(value: String) -> Result<String, ModelIrError> {
+fn decode_http_image_url(context: &DecodeContext, value: String) -> Result<String, ModelIrError> {
     if ContentRef::from_wire_marker(&value).is_some()
         || value.starts_with("https://")
         || value.starts_with("http://")
     {
         return Ok(value);
     }
-    Err(ModelIrError::UnsupportedValue(
-        "non-HTTP image source".into(),
-    ))
+    // The provider fetches/interprets this reference, not the gateway. Unknown
+    // encodings are native-only, so conversion cannot reinterpret their meaning.
+    context.native_only.set(true);
+    Ok(value)
 }
 
 fn decode_tool_output(value: &Value) -> ToolOutput {
@@ -1061,23 +1120,46 @@ fn decode_role(value: &str) -> Result<MessageRole, ModelIrError> {
 }
 
 fn checked_object<'a>(
+    context: &DecodeContext,
     value: &'a Value,
     keys: &[&str],
     label: &str,
 ) -> Result<&'a Map<String, Value>, ModelIrError> {
     let object = value.as_object().ok_or(ModelIrError::ExpectedObject)?;
-    ensure_keys(object, keys, label)?;
+    ensure_keys(context, object, keys, label)?;
     Ok(object)
 }
 
 fn ensure_keys(
+    context: &DecodeContext,
     object: &Map<String, Value>,
     keys: &[&str],
     label: &str,
 ) -> Result<(), ModelIrError> {
     let allowed = keys.iter().copied().collect::<BTreeSet<_>>();
-    if let Some(key) = object.keys().find(|key| !allowed.contains(key.as_str())) {
-        return Err(ModelIrError::UnsupportedField(format!("{label}.{key}")));
+    for key in object.keys().filter(|key| !allowed.contains(key.as_str())) {
+        // Execution-bearing tool declarations and gateway authority are not
+        // opaque payload extensions. They must remain visible to authorization.
+        if label.to_ascii_lowercase().contains("tool")
+            || matches!(
+                key.as_str(),
+                "authorization"
+                    | "api_key"
+                    | "base_url"
+                    | "endpoint"
+                    | "headers"
+                    | "credentials"
+                    | "mcp_servers"
+                    | "container"
+                    | "computer"
+                    | "web_search_options"
+                    | "conversation"
+                    | "previous_response_id"
+            )
+        {
+            return Err(ModelIrError::UnsupportedField(format!("{label}.{key}")));
+        }
+        context.native_only.set(true);
     }
     Ok(())
 }
@@ -1109,6 +1191,17 @@ fn decode_messages_parallel(value: Option<&Value>) -> Result<bool, ModelIrError>
         return Ok(false);
     };
     Ok(!optional_bool(object, "disable_parallel_tool_use")?.unwrap_or(true))
+}
+
+fn content_string(
+    object: &Map<String, Value>,
+    field: &'static str,
+) -> Result<String, ModelIrError> {
+    object
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or(ModelIrError::InvalidField(field))
 }
 
 fn required_string(

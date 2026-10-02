@@ -305,7 +305,7 @@ fn plan_catalog_does_not_offer_effort_override_or_mutate_mixed_candidates() {
 }
 
 #[test]
-fn missing_function_tools_rejects_plan_without_pruning_candidates() {
+fn missing_function_tools_metadata_does_not_prune_native_candidates() {
     let mut value = plan();
     let candidate = &mut std::sync::Arc::make_mut(&mut value.body)
         .materialized
@@ -317,25 +317,31 @@ fn missing_function_tools_rejects_plan_without_pruning_candidates() {
     }
     let value = reseal(value);
     assert_eq!(
-        original().append_plans(
-            &[value],
-            policy(),
-            CodexCatalogMetadataSourceV1::UserConfigured,
-            None,
-        ),
-        Err(CodexCatalogError::CapabilityUnproven)
+        value.body.materialized.attempt_owned.groups[0]
+            .candidates
+            .len(),
+        2
+    );
+    assert!(
+        original()
+            .append_plans(
+                &[value],
+                policy(),
+                CodexCatalogMetadataSourceV1::UserConfigured,
+                None,
+            )
+            .is_ok()
     );
 }
 
 #[test]
-fn codex_catalog_rejects_missing_instruction_roles_even_when_tools_and_stream_are_exact() {
+fn codex_catalog_allows_native_instruction_roles_without_metadata_certification() {
     let mut value = plan();
     let candidate = &mut std::sync::Arc::make_mut(&mut value.body)
         .materialized
         .attempt_owned
         .groups[0]
         .candidates[0];
-    let binding_id = candidate.binding_id.clone();
     for profile in &mut candidate.protocol_profiles {
         if profile.ingress_protocol == UpstreamProtocol::Responses {
             profile.capability.request.mid_conversation_instructions =
@@ -343,23 +349,19 @@ fn codex_catalog_rejects_missing_instruction_roles_even_when_tools_and_stream_ar
         }
     }
     let value = reseal(value);
-    assert_eq!(
+    assert!(matches!(
         codex_plan_capability_preview(&value),
-        CodexClientCapabilityPreviewV1::Unavailable {
-            issues: vec![CodexCapabilityIssueV1 {
-                kind: CodexCapabilityIssueKindV1::InstructionRoles,
-                binding_id: Some(binding_id),
-            }],
-        }
-    );
-    assert_eq!(
-        original().append_plans(
-            &[value],
-            policy(),
-            CodexCatalogMetadataSourceV1::UserConfigured,
-            None,
-        ),
-        Err(CodexCatalogError::CapabilityUnproven)
+        CodexClientCapabilityPreviewV1::Available { .. }
+    ));
+    assert!(
+        original()
+            .append_plans(
+                &[value],
+                policy(),
+                CodexCatalogMetadataSourceV1::UserConfigured,
+                None,
+            )
+            .is_ok()
     );
 }
 
@@ -705,7 +707,7 @@ fn context_window_overrides_block_plan_catalog_without_editing_user_files() {
 }
 
 #[test]
-fn claude_capability_preview_rejects_missing_tools_and_streaming_in_any_candidate() {
+fn claude_capability_preview_does_not_certify_native_tools_or_streaming() {
     use crate::agents::claude_plan_capability_preview;
     use hiroute_application_api::ClaudeClientCapabilityPreviewV1 as Preview;
     assert!(matches!(
@@ -728,9 +730,10 @@ fn claude_capability_preview_rejects_missing_tools_and_streaming_in_any_candidat
                 }
             }
         }
-        assert!(
-            matches!(claude_plan_capability_preview(&reseal(value)), Preview::Unavailable { reason } if reason == "request_capabilities")
-        );
+        assert!(matches!(
+            claude_plan_capability_preview(&reseal(value)),
+            Preview::Available { .. }
+        ));
     }
     let mut value = plan();
     std::sync::Arc::make_mut(&mut value.body)

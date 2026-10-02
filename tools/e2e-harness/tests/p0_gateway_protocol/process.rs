@@ -113,7 +113,7 @@ fn protocol_real_hirouted_pingora_decodes_all_ingresses_and_rejects_before_provi
     let invalid = single_write_request(
         address,
         "/v1/responses",
-        br#"{"model":"wire-protocol","input":"hello","temperature":0.2}"#,
+        br#"{"model":"wire-protocol","input":"hello","base_url":"https://not-authorized.invalid"}"#,
     );
     assert_eq!(invalid.status, 400);
     let invalid: Value = serde_json::from_slice(&invalid.body).unwrap();

@@ -16,6 +16,8 @@ fn key(id: usize) -> ContextHoldKey {
 
 fn history_request(instruction: u8, messages: &[u8]) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
+        native_body: None,
+        native_only: false,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
         served_model_id: "agent/test".into(),
@@ -110,7 +112,7 @@ fn append_and_repeat_keep_while_rebuild_clears() {
     let rebuilt = begin(&store, 1, 10, &[1, 3], now + Duration::from_secs(4)).unwrap();
     assert!(!rebuilt.message_history_continues);
     assert!(rebuilt.hint.is_none());
-    assert!(rebuilt.previous_success.is_none());
+    assert_eq!(rebuilt.previous_success.unwrap().candidate_id, "a");
 }
 
 #[test]
@@ -135,18 +137,58 @@ fn rebuilt_history_exposes_only_prior_complete_delivery_for_fallback() {
 }
 
 #[test]
-fn first_compatible_success_wins_across_repeat_and_append() {
+fn cleaned_prefix_stays_fixed_and_does_not_restore_invalidated_hint() {
+    let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
+    let now = Instant::now();
+    let first = begin(&store, 1, 9, &[1, 2], now).unwrap();
+    assert_eq!(
+        store.complete_with_cleanup(&first, preference("b"), Some(2), now),
+        HoldCompleteOutcome::Applied
+    );
+    let appended = begin(&store, 1, 9, &[1, 2, 3], now).unwrap();
+    assert_eq!(appended.cleaned_prefix_len, Some(2));
+    assert_eq!(appended.hint.as_ref().unwrap().candidate_id, "b");
+    assert_eq!(
+        store.complete_with_cleanup(&appended, preference("b"), appended.cleaned_prefix_len, now),
+        HoldCompleteOutcome::Applied
+    );
+    let changed_tools = begin(&store, 1, 10, &[1, 2, 3, 4], now).unwrap();
+    assert_eq!(changed_tools.cleaned_prefix_len, Some(2));
+    assert!(changed_tools.hint.is_none());
+    let repeated = begin(&store, 1, 10, &[1, 2, 3, 4], now).unwrap();
+    assert_eq!(repeated.cleaned_prefix_len, Some(2));
+    assert!(repeated.hint.is_none());
+    assert_eq!(
+        store.complete_with_cleanup(&changed_tools, preference("a"), Some(4), now),
+        HoldCompleteOutcome::Stale
+    );
+    let compacted = begin(&store, 1, 10, &[8], now).unwrap();
+    assert_eq!(compacted.cleaned_prefix_len, None);
+    assert_eq!(
+        store.complete_with_cleanup(&repeated, preference("b"), Some(2), now),
+        HoldCompleteOutcome::Stale
+    );
+    assert_eq!(
+        begin(&store, 2, 10, &[1, 2, 3, 4], now)
+            .unwrap()
+            .cleaned_prefix_len,
+        None
+    );
+}
+
+#[test]
+fn latest_history_checkpoint_fences_repeat_and_append_completions() {
     let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
     let now = Instant::now();
     let first = begin(&store, 1, 9, &[1], now).unwrap();
     let repeated = begin(&store, 1, 9, &[1], now + Duration::from_millis(1)).unwrap();
     assert_eq!(
         store.complete(&first, preference("a"), now),
-        HoldCompleteOutcome::Applied
+        HoldCompleteOutcome::Stale
     );
     assert_eq!(
         store.complete(&repeated, preference("b"), now),
-        HoldCompleteOutcome::Stale
+        HoldCompleteOutcome::Applied
     );
     assert_eq!(
         begin(&store, 1, 9, &[1, 2], now + Duration::from_secs(1))
@@ -154,18 +196,18 @@ fn first_compatible_success_wins_across_repeat_and_append() {
             .hint
             .unwrap()
             .candidate_id,
-        "a"
+        "b"
     );
 
     let earlier = begin(&store, 2, 9, &[1], now).unwrap();
     let appended = begin(&store, 2, 9, &[1, 2], now + Duration::from_millis(1)).unwrap();
     assert_eq!(
         store.complete(&earlier, preference("earlier"), now),
-        HoldCompleteOutcome::Applied
+        HoldCompleteOutcome::Stale
     );
     assert_eq!(
         store.complete(&appended, preference("appended"), now),
-        HoldCompleteOutcome::Stale
+        HoldCompleteOutcome::Applied
     );
     assert_eq!(
         begin(&store, 2, 9, &[1, 2, 3], now + Duration::from_secs(1))
@@ -173,7 +215,7 @@ fn first_compatible_success_wins_across_repeat_and_append() {
             .hint
             .unwrap()
             .candidate_id,
-        "earlier"
+        "appended"
     );
 
     let slow = begin(&store, 3, 9, &[1], now).unwrap();

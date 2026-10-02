@@ -25,6 +25,22 @@ impl CandidateProtocolProfile {
             .fixed_profile_digest
             .as_ref()
             .ok_or(CapabilityError::ReasoningProfileMismatch)?;
+        if let Some(selected) = &request.requested_reasoning.fixed_profile {
+            if !selected.validate_for(self.capability.upstream_protocol)
+                || hiroute_domain::CanonicalDigest::of(selected).as_ref().ok() != Some(digest)
+            {
+                return Err(CapabilityError::ReasoningProfileMismatch);
+            }
+            let mut profile = self.clone();
+            if !self.capability.reasoning_profiles.contains(selected) {
+                // Provider-native controls without a published accounting
+                // profile are deliverable, but cannot prove a paid upper bound.
+                profile.capability.context.estimator = super::CriticalFact::Unknown;
+            }
+            profile.capability.selected_reasoning_profile_id = selected.profile_id.clone();
+            profile.capability.reasoning_profiles = vec![selected.clone()];
+            return Ok(profile);
+        }
         let selected = self
             .capability
             .reasoning_profiles
@@ -42,6 +58,40 @@ impl CandidateProtocolProfile {
     }
 
     pub(crate) fn select_native_reasoning(
+        &self,
+        native: &Value,
+        ingress: IngressProtocol,
+    ) -> Result<Self, CapabilityError> {
+        if ingress == self.capability.upstream_protocol {
+            // Retain known accounting when the published directory describes
+            // the controls exactly; an incomplete directory is not admission.
+            if let Ok(mapped) = self.select_mapped_reasoning(native, ingress) {
+                return Ok(mapped);
+            }
+            // This is a request-local Fixed binding, not a new saved model
+            // capability. The provider interprets its native controls; their
+            // digest still separates ContextHold and frozen attempt identity.
+            let control = if ingress == IngressProtocol::Messages {
+                serde_json::json!({"thinking":native.get("thinking"),"output_config":native.get("output_config")})
+            } else {
+                native.clone()
+            };
+            let digest = hiroute_domain::CanonicalDigest::of(&control)
+                .map_err(|_| CapabilityError::ReasoningProfileMismatch)?;
+            let mut selected = self.selected_reasoning()?.clone();
+            selected.profile_id = format!("native-request-{}", digest.as_str());
+            selected.control_kind = super::ReasoningControlKind::Fixed;
+            selected.render = super::NativeReasoningRender::NoControlParameter;
+            let mut profile = self.clone();
+            profile.capability.context.estimator = super::CriticalFact::Unknown;
+            profile.capability.selected_reasoning_profile_id = selected.profile_id.clone();
+            profile.capability.reasoning_profiles = vec![selected];
+            return Ok(profile);
+        }
+        self.select_mapped_reasoning(native, ingress)
+    }
+
+    fn select_mapped_reasoning(
         &self,
         native: &Value,
         ingress: IngressProtocol,
@@ -135,7 +185,13 @@ fn requested_control(
                         .ok_or(CapabilityError::ReasoningProfileMismatch)
                 })
                 .transpose()?;
-            if output.is_some_and(|output| output.keys().any(|key| key != "effort")) {
+            // Output formatting is not a reasoning control. The protocol
+            // adapter independently preserves or maps it without changing effort.
+            if output.is_some_and(|output| {
+                output
+                    .keys()
+                    .any(|key| !matches!(key.as_str(), "effort" | "format"))
+            }) {
                 return Err(CapabilityError::ReasoningProfileMismatch);
             }
             let thinking = object

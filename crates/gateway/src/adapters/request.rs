@@ -10,6 +10,7 @@ use crate::server::request_plan::IngressProtocol;
 
 use super::{ChatToolProjection, ProtocolAdapterError};
 
+mod native;
 mod reader;
 mod template;
 mod tools;
@@ -17,7 +18,8 @@ pub use reader::sequential_attempt_body;
 pub(crate) use reader::sequential_replay_body;
 pub use template::{PreparedNativeTemplate, project_candidate_request_template};
 pub(crate) use template::{
-    PreparedReplayTemplate, ReplacementEncoding, RequestedReplacement, prepare_replay_json_template,
+    PreparedReplayTemplate, ReplacementEncoding, RequestedReplacement,
+    prepare_replay_json_template, project_candidate_request_template_with_cleanup,
 };
 use tools::{insert_chat_tools, insert_messages_tools, insert_responses_tools};
 
@@ -27,7 +29,7 @@ pub struct PreparedNativeRequest {
     pub path: String,
     pub body: Value,
     pub bytes: Vec<u8>,
-    pub context: CandidateContextDemand,
+    pub context: Option<CandidateContextDemand>,
     pub capability_id: String,
     pub connector_id: String,
     pub adapter_revision: String,
@@ -50,28 +52,45 @@ pub fn project_candidate_request(
     }
     let requirements = request.requirements();
     let reasoning = profile.validate(&requirements)?;
-    validate_message_shapes(request, profile.capability.upstream_protocol)?;
+    let native = request.native_body.is_some()
+        && request.ingress_protocol == profile.capability.upstream_protocol;
+    if !native {
+        validate_message_shapes(request, profile.capability.upstream_protocol)?;
+    }
     let chat_tool_projection =
-        if profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
+        if !native && profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
             Some(ChatToolProjection::for_request(request)?)
         } else {
             None
         };
-    let body = match profile.capability.upstream_protocol {
-        IngressProtocol::Responses => serialize_responses(request, profile, reasoning)?,
-        IngressProtocol::ChatCompletions => serialize_chat(
-            request,
-            profile,
-            reasoning,
-            chat_tool_projection
-                .as_ref()
-                .expect("Chat projection was constructed"),
-        )?,
-        IngressProtocol::Messages => serialize_messages(request, profile, reasoning)?,
+    let body = if native {
+        native::controls(request, profile, reasoning)?
+    } else {
+        match profile.capability.upstream_protocol {
+            IngressProtocol::Responses => serialize_responses(request, profile, reasoning, None)?,
+            IngressProtocol::ChatCompletions => serialize_chat(
+                request,
+                profile,
+                reasoning,
+                chat_tool_projection
+                    .as_ref()
+                    .expect("Chat projection was constructed"),
+                None,
+            )?,
+            IngressProtocol::Messages => serialize_messages(request, profile, reasoning, None)?,
+        }
     };
+    let body = native::project(request, profile, body, None)?;
     let bytes = serde_json::to_vec(&body)
         .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
-    let context = ContextProjector::project(&bytes, &profile.capability.context, reasoning)?;
+    let context = ContextProjector::project(
+        &bytes,
+        &profile
+            .capability
+            .context
+            .with_requested_output(request.requested_max_output_tokens),
+        reasoning,
+    )?;
     Ok(PreparedNativeRequest {
         protocol: profile.capability.upstream_protocol,
         path: profile.connector.request_path.clone(),
@@ -92,6 +111,7 @@ fn serialize_responses(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
     reasoning: &ReasoningProfileCapability,
+    omit_reasoning_prefix: Option<usize>,
 ) -> Result<Value, ProtocolAdapterError> {
     let mut body = Map::new();
     if let Some(options) = &request.responses_options {
@@ -151,6 +171,13 @@ fn serialize_responses(
                 false,
                 search.wire_value(),
             )?);
+            continue;
+        }
+        if omit_reasoning_prefix.is_some_and(|end| message_index < end)
+            && request
+                .responses_reasoning_history
+                .contains_key(&message_index)
+        {
             continue;
         }
         if message.content.is_empty()
@@ -271,6 +298,7 @@ fn serialize_responses(
                     )?);
                 }
                 ContentPart::ProviderState { state } => {
+                    if omit_reasoning_prefix.is_some_and(|end| message_index < end) { continue; }
                     flush_responses_message(
                         &mut input,
                         request,
@@ -278,9 +306,13 @@ fn serialize_responses(
                         message,
                         &mut message_content,
                     )?;
-                    ensure_state_owner(state, profile)?;
+                    if state.kind != "encrypted_content" {
+                        if let Some(text) = reasoning_text(state) {
+                            input.push(json!({"type":"reasoning","summary":[{"type":"summary_text","text":text.wire_value()}]}));
+                        }
+                        continue;
+                    }
                     if message.role != MessageRole::Assistant
-                        || state.kind != "encrypted_content"
                         || !(state
                             .value
                             .as_str()
@@ -308,14 +340,6 @@ fn serialize_responses(
                         responses_reasoning_native_fields,
                     );
                     item["type"] = json!("reasoning");
-                    if let Some(thinking) = state.messages_thinking.as_deref()
-                        && !thinking.is_empty()
-                    {
-                        item["summary"] = json!([{
-                            "type": "summary_text",
-                            "text": thinking.wire_value(),
-                        }]);
-                    }
                     item["encrypted_content"] = state.value.wire_value();
                     input.push(with_responses_item_fields(
                         request,
@@ -336,7 +360,6 @@ fn serialize_responses(
         )?;
     }
     for state in &request.provider_state {
-        ensure_state_owner(state, profile)?;
         if !matches!(state.kind.as_str(), "previous_response_id" | "conversation") {
             return Err(ProtocolAdapterError::ClientUnrepresentable(
                 "Responses provider-state kind is not representable".into(),
@@ -354,10 +377,9 @@ fn serialize_responses(
     body.insert("input".into(), Value::Array(input));
     insert_responses_tools(&mut body, request)?;
     render_reasoning(&mut body, reasoning, IngressProtocol::Responses)?;
-    body.insert(
-        "max_output_tokens".into(),
-        Value::from(candidate_max_output(profile)?),
-    );
+    if let Some(cap) = candidate_max_output(request, profile) {
+        body.insert("max_output_tokens".into(), Value::from(cap));
+    }
     Ok(Value::Object(body))
 }
 
@@ -452,11 +474,22 @@ fn with_responses_item_fields(
     Ok(item)
 }
 
+fn responses_reasoning_texts(
+    history: &ResponsesReasoningHistoryV1,
+) -> impl Iterator<Item = &Value> {
+    ["summary", "content"]
+        .into_iter()
+        .filter_map(|key| history.native_fields.get(key).and_then(Value::as_array))
+        .flatten()
+        .filter_map(|part| part.get("text"))
+}
+
 fn serialize_chat(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
     reasoning: &ReasoningProfileCapability,
     tool_projection: &ChatToolProjection,
+    omit_reasoning_prefix: Option<usize>,
 ) -> Result<Value, ProtocolAdapterError> {
     let mut messages = Vec::new();
     for instruction in &request.instructions {
@@ -465,7 +498,16 @@ fn serialize_chat(
             "content": content_text_only(&instruction.content)?,
         }));
     }
-    for message in &request.messages {
+    for (message_index, message) in request.messages.iter().enumerate() {
+        if let Some(history) = request.responses_reasoning_history.get(&message_index) {
+            if !omit_reasoning_prefix.is_some_and(|end| message_index < end) {
+                for text in responses_reasoning_texts(history) {
+                    messages
+                        .push(json!({"role":"assistant", "reasoning_content":text.wire_value()}));
+                }
+            }
+            continue;
+        }
         let mut base_content = Vec::new();
         let mut tool_calls = Vec::new();
         let mut provider_state = Vec::new();
@@ -525,16 +567,17 @@ fn serialize_chat(
                     messages.push(Value::Object(object));
                 }
                 ContentPart::ProviderState { state } => {
-                    ensure_state_owner(state, profile)?;
-                    if message.role != MessageRole::Assistant
-                        || state.kind != "reasoning_content"
-                        || (!state.value.is_string() && state.value.content_ref().is_none())
-                    {
+                    if omit_reasoning_prefix.is_some_and(|end| message_index < end) {
+                        continue;
+                    }
+                    if message.role != MessageRole::Assistant {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(
                             "Chat provider-state value is not exact reasoning_content".into(),
                         ));
                     }
-                    provider_state.push((state.kind.clone(), state.value.wire_value()));
+                    if let Some(text) = reasoning_text(state) {
+                        provider_state.push(text.wire_value());
+                    }
                 }
             }
         }
@@ -553,8 +596,14 @@ fn serialize_chat(
             if !tool_calls.is_empty() {
                 object.insert("tool_calls".into(), Value::Array(tool_calls));
             }
-            for (key, value) in provider_state {
-                object.insert(key, value);
+            // Chat has a single reasoning_content field per message. Preserve
+            // multiple native thinking blocks as ordered assistant items rather
+            // than overwriting one field or materializing large Replay strings.
+            if let Some(last) = provider_state.pop() {
+                for text in provider_state {
+                    messages.push(json!({"role":"assistant","reasoning_content":text}));
+                }
+                object.insert("reasoning_content".into(), last);
             }
             if object.len() == 2
                 && object.get("role").and_then(Value::as_str) == Some("assistant")
@@ -593,10 +642,9 @@ fn serialize_chat(
     }
     insert_chat_tools(&mut body, request, tool_projection)?;
     render_reasoning(&mut body, reasoning, IngressProtocol::ChatCompletions)?;
-    body.insert(
-        "max_completion_tokens".into(),
-        Value::from(candidate_max_output(profile)?),
-    );
+    if let Some(cap) = candidate_max_output(request, profile) {
+        body.insert("max_completion_tokens".into(), Value::from(cap));
+    }
     Ok(Value::Object(body))
 }
 
@@ -604,6 +652,7 @@ fn serialize_messages(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
     reasoning: &ReasoningProfileCapability,
+    omit_reasoning_prefix: Option<usize>,
 ) -> Result<Value, ProtocolAdapterError> {
     let mut body = Map::new();
     body.insert(
@@ -613,7 +662,10 @@ fn serialize_messages(
     body.insert("stream".into(), Value::Bool(request.stream));
     body.insert(
         "max_tokens".into(),
-        Value::from(candidate_max_output(profile)?),
+        Value::from(
+            candidate_max_output(request, profile)
+                .ok_or(ContextProjectionError::UnknownLimit("Messages max_tokens"))?,
+        ),
     );
     if !request.instructions.is_empty() {
         body.insert(
@@ -622,7 +674,7 @@ fn serialize_messages(
         );
     }
     let mut messages = Vec::new();
-    for message in &request.messages {
+    for (message_index, message) in request.messages.iter().enumerate() {
         if message.name.is_some() {
             return Err(ProtocolAdapterError::ClientUnrepresentable(
                 "Messages cannot preserve message names".into(),
@@ -691,28 +743,11 @@ fn serialize_messages(
                     content.push(tool_result);
                 }
                 ContentPart::ProviderState { state } => {
-                    ensure_state_owner(state, profile)?;
-                    if request.ingress_protocol == IngressProtocol::Messages
-                        && state.owner.upstream_protocol == IngressProtocol::Responses
-                        && state.kind == "encrypted_content"
-                        && (state.value.as_str().is_some_and(|value| !value.is_empty())
-                            || state.value.content_ref().is_some())
-                    {
-                        // Preserve the original Messages thinking text and
-                        // Responses signature together when another Messages
-                        // provider is tried. The provider decides whether it
-                        // can accept that opaque signature.
-                        content.push(json!({
-                            "type": "thinking",
-                            "thinking": state.messages_thinking.as_deref().unwrap_or("").wire_value(),
-                            "signature": state.value.wire_value(),
-                        }));
-                        continue;
-                    }
-                    if !matches!(state.kind.as_str(), "thinking" | "redacted_thinking")
-                        || (state.value.content_ref().is_none()
+                    if omit_reasoning_prefix.is_some_and(|end| message_index < end) { continue; }
+                    if !matches!(state.kind.as_str(), "thinking" | "redacted_thinking") { continue; }
+                    if state.value.content_ref().is_none()
                             && state.value.get("type").and_then(Value::as_str)
-                                != Some(state.kind.as_str()))
+                                != Some(state.kind.as_str())
                     {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(
                             "Messages provider-state block is not exact".into(),
@@ -722,10 +757,12 @@ fn serialize_messages(
                 }
             }
         }
-        messages.push(json!({
-            "role": role_label_messages(&message.role)?,
-            "content": content,
-        }));
+        if !content.is_empty() {
+            messages.push(json!({
+                "role": role_label_messages(&message.role)?,
+                "content": content,
+            }));
+        }
     }
     if !request.provider_state.is_empty() {
         return Err(ProtocolAdapterError::ClientUnrepresentable(
@@ -747,11 +784,16 @@ fn validate_message_shapes(
         || !request.responses_search_history.is_empty()
         || request.web_search.is_some()
         || request.responses_options.is_some()
-        || !request.responses_item_ids.is_empty()
-        || !request.responses_item_statuses.is_empty()
+        || request
+            .responses_item_ids
+            .keys()
+            .any(|index| !request.responses_reasoning_history.contains_key(index))
+        || request
+            .responses_item_statuses
+            .keys()
+            .any(|index| !request.responses_reasoning_history.contains_key(index))
         || !request.responses_message_phases.is_empty()
         || !request.responses_internal_chat_message_metadata.is_empty()
-        || !request.responses_reasoning_history.is_empty()
         || (target == IngressProtocol::Messages
             && (!request.tool_namespaces.is_empty() || !request.responses_tool_order.is_empty())))
         && target != IngressProtocol::Responses
@@ -807,8 +849,6 @@ fn validate_message_shapes(
         }
     }
     for message in &request.messages {
-        let mut native_items = 0_usize;
-        let mut message_parts = 0_usize;
         for part in &message.content {
             if request.ingress_protocol != target
                 && let ContentPart::ToolCall { logical_id, .. }
@@ -827,14 +867,13 @@ fn validate_message_shapes(
                 }
             }
             match part {
-                ContentPart::Text { .. } => message_parts += 1,
+                ContentPart::Text { .. } => {}
                 ContentPart::Image { .. } => {
                     if message.role != MessageRole::User {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(
                             "image input must belong to a user message".into(),
                         ));
                     }
-                    message_parts += 1;
                 }
                 ContentPart::ToolCall { .. } => {
                     if message.role != MessageRole::Assistant {
@@ -842,7 +881,6 @@ fn validate_message_shapes(
                             "Tool call must belong to an assistant message".into(),
                         ));
                     }
-                    native_items += 1;
                 }
                 ContentPart::ToolResult { .. } => {
                     if message.role != MessageRole::User {
@@ -850,16 +888,12 @@ fn validate_message_shapes(
                             "Tool result must belong to a user message".into(),
                         ));
                     }
-                    native_items += 1;
                 }
                 ContentPart::ProviderState { .. } => {}
             }
         }
-        if target == IngressProtocol::Responses && native_items != 0 && message_parts != 0 {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "Responses cannot preserve mixed message and item ordering".into(),
-            ));
-        }
+        // Responses ordered input already flushes text at each tool boundary;
+        // a Messages text/tool/text block is representable without reordering.
         if target == IngressProtocol::ChatCompletions
             && message
                 .content
@@ -957,14 +991,22 @@ fn insert_exact_field(
     Ok(())
 }
 
-fn candidate_max_output(profile: &CandidateProtocolProfile) -> Result<u64, ProtocolAdapterError> {
-    profile
-        .capability
-        .context
-        .max_output_tokens
-        .exact()
-        .copied()
-        .ok_or_else(|| ContextProjectionError::UnknownLimit("max_output").into())
+fn candidate_max_output(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+) -> Option<u64> {
+    match (
+        request.requested_max_output_tokens,
+        profile
+            .capability
+            .context
+            .max_output_tokens
+            .exact()
+            .copied(),
+    ) {
+        (Some(client), Some(configured)) => Some(client.min(configured)),
+        (client, configured) => client.or(configured),
+    }
 }
 
 fn instruction_text(
@@ -1049,14 +1091,12 @@ fn render_image_url(source: &ImageSource) -> String {
     }
 }
 
-fn ensure_state_owner(
-    state: &OpaqueProviderState,
-    _profile: &CandidateProtocolProfile,
-) -> Result<(), ProtocolAdapterError> {
-    if state.owner.is_complete() {
-        Ok(())
-    } else {
-        Err(ModelIrError::ProviderStateNotPortable.into())
+/// Opaque protocol-specific fields have no cross-protocol alias.
+fn reasoning_text(state: &OpaqueProviderState) -> Option<&Value> {
+    match state.kind.as_str() {
+        "reasoning_content" => Some(&state.value),
+        "thinking" => state.value.get("thinking"),
+        _ => None,
     }
 }
 

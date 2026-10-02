@@ -34,6 +34,7 @@ pub struct ProductionDecisionSession {
     overall_deadline: Instant,
     hold: Option<(Arc<ContextHoldStore>, HoldCompletion)>,
     switch_fallback: Option<ResolvedTargetBindingId>,
+    reasoning_cleanup: Arc<super::ReasoningCleanup>,
     temporary_block_seen: bool,
     probe_busy_seen: bool,
     earliest_retry_at: Option<Instant>,
@@ -130,6 +131,26 @@ impl DecisionSessionPort for ProductionDecisionSession {
         _transport: &hiroute_gateway_core::runtime::attempt::AttemptTransportFacts,
     ) -> Result<Disposition, Arc<str>> {
         self.upstream_attempted |= selected.attempt_id.0 != 0;
+        if facts
+            .error_class
+            .as_ref()
+            .is_some_and(|class| class.as_str() == "reasoning_history")
+            && self.candidate_index == 0
+            && self
+                .reasoning_cleanup
+                .eligible
+                .is_some_and(|(binding, _)| binding == selected.binding)
+        {
+            self.ensure_selected_matches_cursor(selected)?;
+            if self.reasoning_cleanup.consume(selected.binding) {
+                return Ok(Disposition::Continue);
+            }
+            return Ok(if self.advance_candidate() {
+                Disposition::Continue
+            } else {
+                Disposition::Terminate
+            });
+        }
         if facts.retryability != RetryabilityFact::Retryable {
             if facts.error_class.is_some() && self.can_switch_fallback(selected) {
                 self.ensure_selected_matches_cursor(selected)?;
@@ -241,7 +262,12 @@ impl DecisionSessionPort for ProductionDecisionSession {
             && let Some((store, completion)) = &self.hold
             && let Some(preference) = completion.preference_for(observation.binding)
         {
-            let _ = store.complete(&completion.ticket, preference.clone(), observation.ended_at);
+            let _ = store.complete_with_cleanup(
+                &completion.ticket,
+                preference.clone(),
+                self.reasoning_cleanup.prefix_for(observation.binding),
+                observation.ended_at,
+            );
         }
         Ok(())
     }
@@ -319,6 +345,7 @@ impl SelectionPublicationPort<ProductionRouteContext> for ProductionSelection {
                 .hold_completion
                 .map(|completion| (route_context.context_holds, completion)),
             switch_fallback: route_context.switch_fallback,
+            reasoning_cleanup: route_context.reasoning_cleanup,
             temporary_block_seen: false,
             probe_busy_seen: false,
             earliest_retry_at: None,
@@ -445,6 +472,7 @@ mod tests {
             overall_deadline: now + Duration::from_secs(10),
             hold: None,
             switch_fallback: None,
+            reasoning_cleanup: Arc::new(super::super::ReasoningCleanup::new(None, None)),
             temporary_block_seen: false,
             probe_busy_seen: false,
             earliest_retry_at: None,
@@ -509,6 +537,7 @@ mod tests {
             overall_deadline: now + Duration::from_secs(1),
             hold: None,
             switch_fallback: None,
+            reasoning_cleanup: Arc::new(super::super::ReasoningCleanup::new(None, None)),
             temporary_block_seen: false,
             probe_busy_seen: false,
             earliest_retry_at: None,
@@ -618,6 +647,88 @@ mod tests {
     }
 
     #[test]
+    fn explicit_history_rejection_retries_only_eligible_first_candidate_once() {
+        let now = Instant::now();
+        let facts = RealtimeRoutingFacts::default();
+        let mut session = session(now, vec![candidate(1, &["b"]), candidate(2, &["a"])]);
+        let binding = session.candidates[0].binding;
+        session.reasoning_cleanup = Arc::new(super::super::ReasoningCleanup::new(
+            Some((binding, 3)),
+            None,
+        ));
+        let rejected = ProviderClassificationFacts {
+            error_class: Some(ObservationLabel::new("reasoning_history").unwrap()),
+            retryability: RetryabilityFact::NonRetryable,
+            http_status: Some(StatusCode::BAD_REQUEST),
+            ..ProviderClassificationFacts::default()
+        };
+        let transport = AttemptTransportFacts {
+            started_at: now,
+            connect_elapsed: None,
+            request_write_elapsed: None,
+            upstream_ttfb: None,
+            last_upstream_progress_at: None,
+            local_read_suppressed: Duration::ZERO,
+            upstream_body_bytes: 0,
+            timeout: None,
+        };
+        let first = session
+            .select_next(selection_request(now, 1, 3, &facts))
+            .unwrap()
+            .unwrap();
+        assert_eq!(session.reasoning_cleanup.prefix_for(binding), None);
+        assert_eq!(
+            session.decide(&first, &rejected, &transport).unwrap(),
+            Disposition::Continue
+        );
+        let retry = session
+            .select_next(selection_request(now, 2, 2, &facts))
+            .unwrap()
+            .unwrap();
+        assert_eq!(retry.binding, binding);
+        assert_eq!(session.reasoning_cleanup.prefix_for(binding), Some(3));
+        assert_eq!(
+            session.decide(&retry, &rejected, &transport).unwrap(),
+            Disposition::Continue
+        );
+        let fallback = session
+            .select_next(selection_request(now, 3, 1, &facts))
+            .unwrap()
+            .unwrap();
+        assert_ne!(fallback.binding, binding);
+        assert_eq!(session.reasoning_cleanup.prefix_for(fallback.binding), None);
+        assert_eq!(
+            session.decide(&fallback, &rejected, &transport).unwrap(),
+            Disposition::Terminate
+        );
+        assert!(
+            session
+                .select_next(selection_request(now, 4, 0, &facts))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn history_error_without_context_break_authorization_does_not_enable_cleanup() {
+        let now = Instant::now();
+        let facts = RealtimeRoutingFacts::default();
+        let mut session = session(now, vec![candidate(1, &["a"]), candidate(2, &["b"])]);
+        let selected = session
+            .select_next(selection_request(now, 1, 3, &facts))
+            .unwrap()
+            .unwrap();
+        let mut failure = materialization_failure(now, "reasoning_history", None);
+        failure.provider.as_mut().unwrap().retryability = RetryabilityFact::NonRetryable;
+        assert!(!session.reasoning_cleanup.consume(selected.binding));
+        assert_eq!(session.reasoning_cleanup.prefix_for(selected.binding), None);
+        assert_eq!(
+            session.decide_failure(&selected, &failure).unwrap(),
+            Disposition::Terminate
+        );
+    }
+
+    #[test]
     fn unknown_or_nonretryable_materialization_never_advances_selection() {
         let now = Instant::now();
         let selected = SelectedGatewayAttempt {
@@ -642,6 +753,7 @@ mod tests {
             overall_deadline: now + Duration::from_secs(1),
             hold: None,
             switch_fallback: None,
+            reasoning_cleanup: Arc::new(super::super::ReasoningCleanup::new(None, None)),
             temporary_block_seen: false,
             probe_busy_seen: false,
             earliest_retry_at: None,

@@ -1,7 +1,5 @@
 use super::*;
-use crate::server::core_runtime::adapters::{
-    IngressRequestBindings, decode_ingress_request_with_bindings, project_candidate_request,
-};
+use crate::server::core_runtime::adapters::{decode_ingress_request, project_candidate_request};
 use crate::server::core_runtime::model_ir::ResponseBlock;
 use crate::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, fixed_reasoning,
@@ -74,14 +72,7 @@ fn search_stream_replays_with_trusted_owner_and_original_action() {
         assert_eq!(done.data["item"]["type"], "web_search_call");
         assert_eq!(done.data["item"]["action"], events()[5]["item"]["action"]);
         let body = json!({"model":"alias","input":[done.data["item"].clone()]});
-        let request = decode_ingress_request_with_bindings(
-            IngressProtocol::Responses,
-            &body,
-            &IngressRequestBindings {
-                provider_state_owner: None,
-            },
-        )
-        .unwrap();
+        let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
         let native = project_candidate_request(&request, &candidate).unwrap();
         assert_eq!(native.body["input"][0], events()[5]["item"]);
         let another = CandidateProtocolProfile::exact_portable_path(
@@ -215,10 +206,9 @@ fn citation_offsets_are_preserved_without_guessing_native_index_units() {
     // Native clients may omit item status when replaying their conversation.
     let mut item = done.data["item"].clone();
     item.as_object_mut().unwrap().remove("status");
-    let request = decode_ingress_request_with_bindings(
+    let request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({"model":"alias","input":[item]}),
-        &IngressRequestBindings::default(),
     )
     .unwrap();
     let native = project_candidate_request(&request, &candidate).unwrap();

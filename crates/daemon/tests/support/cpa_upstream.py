@@ -193,8 +193,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # Installed Codex discards optional action.sources even on a direct loopback
         # endpoint. Check its actual replay contract, not a fictitious SDK passthrough.
         expected_search_replay = dict(search_item, action={'type': 'search', 'query': 'isolated fixture search'})
-        search_replayed = expected_search_replay in body.get('input', [])
-        tool_outputs = [item for item in body.get('input', []) if isinstance(item, dict) and item.get('type') == 'function_call_output']
+        input_items = body.get('input', [])
+        if isinstance(input_items, str):
+            input_items = []  # Native Responses shorthand contains no tool items.
+        search_replayed = expected_search_replay in input_items
+        tool_outputs = [item for item in input_items if isinstance(item, dict) and item.get('type') == 'function_call_output']
         tool_output_valid = any(item.get('call_id') == 'fixture-plan-call' and 'Plan updated' in str(item.get('output', '')) for item in tool_outputs)
         with count_lock:
             with (controls / 'attempts.jsonl').open('a') as log:

@@ -83,6 +83,9 @@ pub(crate) fn visible_history_with_replay<'a>(
     key: &'a [u8; 32],
     replay: Option<&'a ReplayStore>,
 ) -> Option<HistoryEvidence<'a>> {
+    if request.native_only {
+        return None;
+    }
     let mut instructions = Encoder::new(key, b"visible-history/v1/instructions", replay)?;
     instructions.usize(request.instructions.len());
     for instruction in &request.instructions {
@@ -184,6 +187,14 @@ pub(crate) fn visible_history_with_replay<'a>(
             instructions.json(&serde_json::to_value(options).ok()?)?;
         }
         None => instructions.tag(b"no-responses-options"),
+    }
+    if let Some(format) = request
+        .native_body
+        .as_ref()
+        .and_then(|body| body.pointer("/output_config/format"))
+    {
+        instructions.tag(b"messages-output-format");
+        instructions.json(format)?;
     }
     instructions.usize(request.provider_state.len());
     for state in &request.provider_state {
@@ -527,24 +538,6 @@ impl<'a> Encoder<'a> {
     }
 
     fn provider_state(&mut self, state: &OpaqueProviderState) -> Option<()> {
-        let owner = &state.owner;
-        for value in [
-            owner.provider_id.as_str(),
-            owner.endpoint_id.as_str(),
-            owner.entitlement_id.as_str(),
-            owner.connector_id.as_str(),
-            owner.connector_revision.as_str(),
-            owner.capability_id.as_str(),
-            owner.capability_revision.as_str(),
-            owner.model_configuration_id.as_str(),
-            owner.native_model.as_str(),
-            owner.adapter_revision.as_str(),
-            owner.serializer_revision.as_str(),
-            owner.decoder_revision.as_str(),
-        ] {
-            self.bytes(value.as_bytes());
-        }
-        self.tag(format!("{:?}", owner.upstream_protocol).as_bytes());
         match state.block_index {
             Some(index) => {
                 self.tag(b"some-block");
@@ -553,7 +546,6 @@ impl<'a> Encoder<'a> {
             None => self.tag(b"no-block"),
         }
         self.bytes(state.kind.as_bytes());
-        self.optional_string(state.messages_thinking.as_deref());
         self.json(&state.value)
     }
 }
@@ -707,6 +699,8 @@ mod tests {
 
     fn request(messages: Vec<CanonicalMessage>) -> ModelRequestIRV1 {
         ModelRequestIRV1 {
+            native_body: None,
+            native_only: false,
             schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
             ingress_protocol: IngressProtocol::Responses,
             served_model_id: "agent/test".into(),
@@ -783,28 +777,17 @@ mod tests {
     #[test]
     fn signed_messages_summary_changes_history_even_with_the_same_ciphertext() {
         use crate::replay::{ReplayConfig, ReplayManager};
-        use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
         use hiroute_gateway_core::runtime::body::BudgetTree;
 
-        let owner = CandidateProtocolProfile::exact_portable_path(
-            IngressProtocol::Messages,
-            IngressProtocol::Responses,
-            "luna",
-            fixed_reasoning("fixed"),
-        )
-        .exact_provider_path()
-        .unwrap();
         let make_request = |summary: String| {
             let mut value = request(vec![
                 CanonicalMessage {
                     role: MessageRole::Assistant,
                     content: vec![ContentPart::ProviderState {
                         state: Box::new(OpaqueProviderState {
-                            owner: owner.clone(),
                             block_index: Some(0),
-                            kind: "encrypted_content".into(),
-                            value: serde_json::json!("same-signature"),
-                            messages_thinking: Some(summary),
+                            kind: "thinking".into(),
+                            value: serde_json::json!({"type":"thinking","thinking":summary,"signature":"same-signature"}),
                         }),
                     }],
                     name: None,

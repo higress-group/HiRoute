@@ -27,6 +27,7 @@ impl ConnectorErrorProfile {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderFailureKind {
+    ReasoningHistory,
     Credential,
     Quota,
     BindingOverload,
@@ -78,6 +79,7 @@ pub enum PreOutputStreamClass {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AttemptFailureClass {
+    ReasoningHistory,
     Credential,
     Quota,
     BindingOverload,
@@ -122,7 +124,8 @@ impl AttemptFailure {
                 class,
                 PreOutputStreamClass::PermanentClient | PreOutputStreamClass::Unclassified
             ),
-            AttemptFailureClass::PermanentClient
+            AttemptFailureClass::ReasoningHistory
+            | AttemptFailureClass::PermanentClient
             | AttemptFailureClass::PostCommit
             | AttemptFailureClass::Unclassified => false,
         }
@@ -157,6 +160,7 @@ impl AttemptFailure {
                 PreOutputStreamClass::BindingOverload | PreOutputStreamClass::Transient,
             ) => Some(FailureStateScope::Binding),
             AttemptFailureClass::Protocol
+            | AttemptFailureClass::ReasoningHistory
             | AttemptFailureClass::PermanentClient
             | AttemptFailureClass::PreOutputStream(
                 PreOutputStreamClass::Protocol
@@ -233,12 +237,16 @@ fn classify_http(
             _ => AttemptFailureClass::Unclassified,
         },
         400 | 404 | 422 => match kind {
+            Some(ProviderFailureKind::ReasoningHistory) if status == 400 => {
+                AttemptFailureClass::ReasoningHistory
+            }
             Some(ProviderFailureKind::Protocol) => AttemptFailureClass::Protocol,
             Some(ProviderFailureKind::PermanentClient) => AttemptFailureClass::PermanentClient,
             _ => AttemptFailureClass::Unclassified,
         },
         500..=599 => AttemptFailureClass::Transient,
         _ => match kind {
+            Some(ProviderFailureKind::ReasoningHistory) => AttemptFailureClass::Unclassified,
             Some(ProviderFailureKind::Protocol) => AttemptFailureClass::Protocol,
             Some(ProviderFailureKind::PermanentClient) => AttemptFailureClass::PermanentClient,
             Some(ProviderFailureKind::Transient) => AttemptFailureClass::Transient,
@@ -257,6 +265,7 @@ fn classify_http(
 
 fn stream_class(kind: ProviderFailureKind) -> PreOutputStreamClass {
     match kind {
+        ProviderFailureKind::ReasoningHistory => PreOutputStreamClass::PermanentClient,
         ProviderFailureKind::Credential => PreOutputStreamClass::Credential,
         ProviderFailureKind::Quota => PreOutputStreamClass::Quota,
         ProviderFailureKind::BindingOverload => PreOutputStreamClass::BindingOverload,

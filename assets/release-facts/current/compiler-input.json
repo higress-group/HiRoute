@@ -3721,6 +3721,8 @@
             "source-010",
             "source-134",
             "source-135",
+            "source-150",
+            "source-171",
             "source-172"
           ],
           "identity_stability": "rolling-alias",
@@ -3740,10 +3742,14 @@
           "model_key": "deepseek-v4-1-flash",
           "publisher": "DeepSeek",
           "reasoning": {
-            "default": "on",
-            "kind": "toggle",
-            "note": null,
-            "profiles": []
+            "default": "high",
+            "kind": "toggle-plus-discrete",
+            "note": "Thinking defaults on. Alibaba Chat uses reasoning_effort, Responses uses reasoning.effort, and Messages uses output_config.effort with thinking.type=enabled. Provider protocol defaults may differ from the explicit catalog selection.",
+            "profiles": [
+              "low",
+              "high",
+              "max"
+            ]
           },
           "source_stability_note": "deepseek-flash serves V4.1 Flash on the direct API; deepseek-v4.1-flash is Alibaba Cloud Model Studio’s product-scoped upstream ID. The retired direct deepseek-v4-flash compatibility alias is not a current binding.",
           "upstream_id_state": null,
@@ -3770,7 +3776,8 @@
           "display_name": "DeepSeek V4 Flash",
           "evidence_refs": [
             "source-150",
-            "source-153"
+            "source-153",
+            "source-171"
           ],
           "identity_stability": "rolling-alias",
           "lifecycle": "active",
@@ -3789,10 +3796,13 @@
           "model_key": "deepseek-v4-flash",
           "publisher": "DeepSeek",
           "reasoning": {
-            "default": "on",
-            "kind": "toggle",
-            "note": null,
-            "profiles": []
+            "default": "high",
+            "kind": "toggle-plus-discrete",
+            "note": "Alibaba documents high/max for this unversioned V4 Flash ID; low is documented for the separate 0731 and V4.1 models. Messages defaults to max when effort is omitted.",
+            "profiles": [
+              "high",
+              "max"
+            ]
           },
           "source_stability_note": "Alibaba Cloud Model Studio serves the text-only V4 Flash model under this ID; the same retired ID on the direct DeepSeek API temporarily routes to V4.1 Flash.",
           "upstream_id_state": null,
@@ -3835,10 +3845,14 @@
           "model_key": "deepseek-v4-flash-0731",
           "publisher": "DeepSeek",
           "reasoning": {
-            "default": "on",
-            "kind": "toggle",
+            "default": "high",
+            "kind": "toggle-plus-discrete",
             "note": null,
-            "profiles": []
+            "profiles": [
+              "low",
+              "high",
+              "max"
+            ]
           },
           "source_stability_note": "current-documented",
           "upstream_id_state": null,
@@ -3865,7 +3879,9 @@
             "source-007",
             "source-008",
             "source-010",
+            "source-150",
             "source-152",
+            "source-171",
             "source-172"
           ],
           "identity_stability": "rolling-alias",
@@ -3885,10 +3901,13 @@
           "model_key": "deepseek-v4-pro-0813",
           "publisher": "DeepSeek",
           "reasoning": {
-            "default": "on",
-            "kind": "toggle",
-            "note": null,
-            "profiles": []
+            "default": "high",
+            "kind": "toggle-plus-discrete",
+            "note": "Use the documented common high/max levels for the unversioned and 0813 IDs. Alibaba additionally documents low for deepseek-v4-pro-0813, but not the unversioned alias; do not advertise that alias-specific value globally. Messages defaults to max when effort is omitted.",
+            "profiles": [
+              "high",
+              "max"
+            ]
           },
           "source_stability_note": "deepseek-v4-pro currently maps to the V4 Pro 0813 model version",
           "upstream_id_state": null,
@@ -9598,7 +9617,7 @@
         {
           "authority": "help.aliyun.com",
           "bytes_digest": null,
-          "collected_on": "2026-09-29",
+          "collected_on": "2026-10-01",
           "digest_state": "not-captured",
           "locator": "https://help.aliyun.com/zh/model-studio/deepseek-api",
           "source_key": "source-150",
@@ -9787,7 +9806,7 @@
         {
           "authority": "help.aliyun.com",
           "bytes_digest": null,
-          "collected_on": "2026-09-29",
+          "collected_on": "2026-10-01",
           "digest_state": "not-captured",
           "locator": "https://help.aliyun.com/zh/model-studio/anthropic-api-messages",
           "source_key": "source-171",
@@ -100364,7 +100383,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:c403d30a23b40b59c271fad12f3c2e32357d406a2a6a2d4ad950e0cdd82cd1b9"
+      "source_catalog_digest": "sha256:352407a24bcd56b693811dda49c6d4040d35eb2aa1be6f1c0031351115dffe84"
     },
     "rating_snapshot": {
       "digest": "sha256:57ebd8c66d5f0967b6d479c43d843a96d7313b7c56fb9e3b18b130a3ea8f4d6b",

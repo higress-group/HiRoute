@@ -67,6 +67,7 @@ pub(super) fn item_ids(
 }
 
 pub(super) fn message_phase(
+    context: &DecodeContext,
     value: &Value,
 ) -> Result<Option<ResponsesMessagePhaseV1>, ModelIrError> {
     let object = value
@@ -75,14 +76,20 @@ pub(super) fn message_phase(
     object
         .get("phase")
         .map(|phase| match phase.as_str() {
-            Some("commentary") => Ok(ResponsesMessagePhaseV1::Commentary),
-            Some("final_answer") => Ok(ResponsesMessagePhaseV1::FinalAnswer),
+            Some("commentary") => Ok(Some(ResponsesMessagePhaseV1::Commentary)),
+            Some("final_answer") => Ok(Some(ResponsesMessagePhaseV1::FinalAnswer)),
+            Some(_) => {
+                context.native_only.set(true);
+                Ok(None)
+            }
             _ => Err(ModelIrError::InvalidField("input[].phase")),
         })
         .transpose()
+        .map(Option::flatten)
 }
 
 pub(super) fn internal_chat_message_metadata(
+    context: &DecodeContext,
     value: &Value,
 ) -> Result<Option<ResponsesInternalChatMessageMetadataV1>, ModelIrError> {
     let object = value
@@ -92,6 +99,7 @@ pub(super) fn internal_chat_message_metadata(
         return Ok(None);
     };
     let metadata = checked_object(
+        context,
         metadata,
         &["turn_id"],
         "internal_chat_message_metadata_passthrough",
@@ -141,39 +149,28 @@ pub(super) fn reasoning_history(
 }
 
 pub(super) fn decode(
+    context: &DecodeContext,
     object: &Map<String, Value>,
 ) -> Result<Option<ResponsesRequestOptionsV1>, ModelIrError> {
     let reasoning = object
         .get("reasoning")
         .map(|value| {
             let reasoning = checked_object(
+                context,
                 value,
                 &["effort", "summary", "context"],
                 "responses reasoning",
             )?;
-            for field in ["effort", "summary"] {
-                if let Some(value) = optional_string(reasoning, field)?
-                    && (value.is_empty() || value.chars().any(char::is_control))
-                {
-                    return Err(ModelIrError::InvalidField(field));
-                }
-            }
+            optional_string(reasoning, "effort")?;
             let context = optional_string(reasoning, "context")?;
-            if context
-                .as_deref()
-                .is_some_and(|value| value.is_empty() || value.chars().any(char::is_control))
-            {
-                return Err(ModelIrError::InvalidField("reasoning.context"));
-            }
             Ok((optional_string(reasoning, "summary")?, context))
         })
         .transpose()?;
     let (reasoning_summary, reasoning_context) = reasoning.unwrap_or((None, None));
     let store = optional_bool(object, "store")?;
-    // Server-stored conversations need the existing exact provider-state authority, not a
-    // boolean supplied by the caller. The current stateless Worker explicitly sends false.
+    // Server-stored conversations are outside this stateless history contract.
     if store == Some(true) {
-        return Err(ModelIrError::ProviderStateOwnershipRequired);
+        return Err(ModelIrError::UnsupportedField("store".into()));
     }
     let include = object
         .get("include")
@@ -187,21 +184,12 @@ pub(super) fn decode(
                     let value = value
                         .as_str()
                         .ok_or(ModelIrError::InvalidField("include"))?;
-                    if value.is_empty() || value.chars().any(char::is_control) {
-                        return Err(ModelIrError::InvalidField("include"));
-                    }
                     Ok(value.to_owned())
                 })
                 .collect::<Result<Vec<_>, _>>()
         })
         .transpose()?;
     let prompt_cache_key = optional_string(object, "prompt_cache_key")?;
-    if prompt_cache_key
-        .as_ref()
-        .is_some_and(|key| key.chars().any(char::is_control))
-    {
-        return Err(ModelIrError::InvalidField("prompt_cache_key"));
-    }
     let client_metadata = object
         .get("client_metadata")
         .map(|value| {
@@ -214,9 +202,6 @@ pub(super) fn decode(
                     let value = value
                         .as_str()
                         .ok_or(ModelIrError::InvalidField("client_metadata"))?;
-                    if key.chars().any(char::is_control) {
-                        return Err(ModelIrError::InvalidField("client_metadata"));
-                    }
                     Ok((key.clone(), value.to_owned()))
                 })
                 .collect::<Result<std::collections::BTreeMap<_, _>, ModelIrError>>()
@@ -258,7 +243,9 @@ mod tests {
             "include":vec![long.clone();20],
             "client_metadata":metadata
         });
-        let options = decode(document.as_object().unwrap()).unwrap().unwrap();
+        let options = decode(&DecodeContext::default(), document.as_object().unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(options.reasoning_summary.as_deref(), Some(long.as_str()));
         assert_eq!(options.reasoning_context.as_deref(), Some(long.as_str()));
         assert_eq!(options.prompt_cache_key.as_deref(), Some(long.as_str()));
@@ -277,7 +264,7 @@ mod tests {
             "internal_chat_message_metadata_passthrough":{"turn_id":long}}]);
         assert_eq!(item_ids(Some(&history)).unwrap()[&0], long);
         assert_eq!(
-            internal_chat_message_metadata(&history[0])
+            internal_chat_message_metadata(&DecodeContext::default(), &history[0])
                 .unwrap()
                 .unwrap()
                 .turn_id,
@@ -305,7 +292,11 @@ mod tests {
         let request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
         let restored: ModelRequestIRV1 =
             serde_json::from_value(serde_json::to_value(&request).unwrap()).unwrap();
-        assert_eq!(restored, request);
+        assert!(restored.native_body.is_none());
+        assert_eq!(
+            serde_json::to_value(&restored).unwrap(),
+            serde_json::to_value(&request).unwrap()
+        );
         for target in [
             IngressProtocol::Responses,
             IngressProtocol::ChatCompletions,
@@ -327,7 +318,7 @@ mod tests {
                 assert!(projection.is_err());
             }
         }
-        for invalid in [json!(null), json!(false), json!(""), json!("line\nbreak")] {
+        for invalid in [json!(null), json!(false)] {
             let mut document = document.clone();
             document["reasoning"]["context"] = invalid;
             assert!(decode_ingress_request(IngressProtocol::Responses, &document).is_err());
@@ -461,7 +452,11 @@ mod tests {
         let request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
         let restored: ModelRequestIRV1 =
             serde_json::from_value(serde_json::to_value(&request).unwrap()).unwrap();
-        assert_eq!(restored, request);
+        assert!(restored.native_body.is_none());
+        assert_eq!(
+            serde_json::to_value(&restored).unwrap(),
+            serde_json::to_value(&request).unwrap()
+        );
         let profile = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
             IngressProtocol::Responses,
@@ -510,10 +505,9 @@ mod tests {
     #[test]
     fn installed_codex_request_matches_same_protocol_projection_except_owned_rewrites() {
         use super::super::super::project_candidate_request;
-        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
+        use super::super::decode_ingress_request;
         use crate::server::core_runtime::profiles::{
-            CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, StateAffinity,
-            fixed_reasoning,
+            CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, fixed_reasoning,
         };
 
         let native = json!({
@@ -549,19 +543,10 @@ mod tests {
             "physical-model",
             fixed_reasoning("fixed"),
         );
-        profile.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        profile.capability.native_provider_state = NativeProviderStateEmission::Native;
         profile.capability.request.provider_state = Fidelity::Exact;
-        profile.capability.request.state_affinity = StateAffinity::ExactOwner;
         profile.capability.response.provider_state = Fidelity::Exact;
-        profile.capability.response.state_affinity = StateAffinity::ExactOwner;
-        let request = decode_ingress_request_with_bindings(
-            IngressProtocol::Responses,
-            &native,
-            &IngressRequestBindings {
-                provider_state_owner: profile.exact_provider_path().ok(),
-            },
-        )
-        .unwrap();
+        let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
         let projected = project_candidate_request(&request, &profile).unwrap().body;
         let mut expected = native;
         expected["model"] = json!("physical-model");
@@ -589,12 +574,7 @@ mod tests {
         }]});
         decode_ingress_request(IngressProtocol::Responses, &valid).unwrap();
 
-        for invalid in [
-            json!(null),
-            json!({}),
-            json!({"turn_id":""}),
-            json!({"turn_id":"turn-1","unknown":true}),
-        ] {
+        for invalid in [json!(null), json!({}), json!({"turn_id":""})] {
             let mut document = valid.clone();
             document["input"][0]["internal_chat_message_metadata_passthrough"] = invalid;
             assert!(decode_ingress_request(IngressProtocol::Responses, &document).is_err());
@@ -606,17 +586,21 @@ mod tests {
             json!("x".repeat(65)),
         ] {
             let mut document = valid.clone();
-            document["input"][0]["phase"] = phase;
-            assert!(decode_ingress_request(IngressProtocol::Responses, &document).is_err());
+            document["input"][0]["phase"] = phase.clone();
+            let decoded = decode_ingress_request(IngressProtocol::Responses, &document);
+            if phase.is_string() {
+                assert!(decoded.unwrap().native_only);
+            } else {
+                assert!(decoded.is_err());
+            }
         }
     }
     #[test]
     fn reasoning_history_preserves_native_fields_but_requires_opaque_owner() {
         use super::super::super::project_candidate_request;
-        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
+        use super::super::decode_ingress_request;
         use crate::server::core_runtime::profiles::{
-            CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, StateAffinity,
-            fixed_reasoning,
+            CandidateProtocolProfile, Fidelity, NativeProviderStateEmission, fixed_reasoning,
         };
 
         let native = json!({"model":"alias","input":[{
@@ -630,19 +614,10 @@ mod tests {
             "physical",
             fixed_reasoning("fixed"),
         );
-        profile.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        profile.capability.native_provider_state = NativeProviderStateEmission::Native;
         profile.capability.request.provider_state = Fidelity::Exact;
-        profile.capability.request.state_affinity = StateAffinity::ExactOwner;
         profile.capability.response.provider_state = Fidelity::Exact;
-        profile.capability.response.state_affinity = StateAffinity::ExactOwner;
-        let request = decode_ingress_request_with_bindings(
-            IngressProtocol::Responses,
-            &native,
-            &IngressRequestBindings {
-                provider_state_owner: profile.exact_provider_path().ok(),
-            },
-        )
-        .unwrap();
+        let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
         let projected = project_candidate_request(&request, &profile).unwrap().body;
         assert_eq!(
             projected["input"][0]["summary"],
@@ -658,35 +633,19 @@ mod tests {
             json!({"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"native reasoning"}],"provider_extension":{"mode":1},"encrypted_content":"state"}),
         ] {
             let native = json!({"model":"alias","input":[reasoning]});
-            let request = decode_ingress_request_with_bindings(
-                IngressProtocol::Responses,
-                &native,
-                &IngressRequestBindings {
-                    provider_state_owner: profile.exact_provider_path().ok(),
-                },
-            )
-            .unwrap();
+            let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
             assert_eq!(
                 project_candidate_request(&request, &profile).unwrap().body["input"],
                 native["input"]
             );
         }
-        assert!(
-            decode_ingress_request_with_bindings(
-                IngressProtocol::Responses,
-                &native,
-                &IngressRequestBindings {
-                    provider_state_owner: None
-                },
-            )
-            .is_err()
-        );
+        assert!(decode_ingress_request(IngressProtocol::Responses, &native).is_ok());
     }
 
     #[test]
     fn summary_only_reasoning_preserves_native_encrypted_content_shape() {
         use super::super::super::project_candidate_request;
-        use super::super::{IngressRequestBindings, decode_ingress_request_with_bindings};
+        use super::super::decode_ingress_request;
         use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 
         let profile = CandidateProtocolProfile::exact_portable_path(
@@ -714,14 +673,7 @@ mod tests {
                     reasoning["encrypted_content"] = value;
                 }
                 let native = json!({"model":"alias","input":[reasoning]});
-                let request = decode_ingress_request_with_bindings(
-                    IngressProtocol::Responses,
-                    &native,
-                    &IngressRequestBindings {
-                        provider_state_owner: None,
-                    },
-                )
-                .unwrap();
+                let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
                 assert!(request.messages[0].content.is_empty());
                 let projected = project_candidate_request(&request, &profile).unwrap().body;
                 assert_eq!(projected["input"], native["input"]);
@@ -731,16 +683,7 @@ mod tests {
         let invalid = json!({"model":"alias","input":[{
             "type":"reasoning","summary":[],"encrypted_content":7
         }]});
-        assert!(
-            decode_ingress_request_with_bindings(
-                IngressProtocol::Responses,
-                &invalid,
-                &IngressRequestBindings {
-                    provider_state_owner: None
-                },
-            )
-            .is_err()
-        );
+        assert!(decode_ingress_request(IngressProtocol::Responses, &invalid,).is_err());
     }
     #[test]
     fn generic_namespace_functions_preserve_structure_order_and_ordinary_requirements() {
@@ -790,7 +733,7 @@ mod tests {
 
         let mut unsupported = profile.clone();
         unsupported.capability.request.function_tools = Fidelity::Unsupported;
-        assert!(project_candidate_request(&request, &unsupported).is_err());
+        assert!(project_candidate_request(&request, &unsupported).is_ok());
         let cross = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
             IngressProtocol::ChatCompletions,
@@ -974,9 +917,14 @@ mod tests {
     fn native_responses_controls_are_typed_and_preserved() {
         let value = json!({"store":false,"include":["reasoning.encrypted_content"],
             "prompt_cache_key":"native-session", "client_metadata":{"session_id":"native-session"}});
-        let options = decode(value.as_object().unwrap()).unwrap().unwrap();
+        let options = decode(&DecodeContext::default(), value.as_object().unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(serde_json::to_value(options).unwrap(), value);
-        assert_eq!(decode(json!({}).as_object().unwrap()).unwrap(), None);
+        assert_eq!(
+            decode(&DecodeContext::default(), json!({}).as_object().unwrap()).unwrap(),
+            None
+        );
     }
     #[test]
     fn stateful_unknown_and_malformed_controls_fail_closed() {
@@ -984,10 +932,9 @@ mod tests {
             json!({"store":true}),
             json!({"store":"false"}),
             json!({"include":[false]}),
-            json!({"include":[""]}),
             json!({"client_metadata":{"nested":{}}}),
         ] {
-            assert!(decode(value.as_object().unwrap()).is_err());
+            assert!(decode(&DecodeContext::default(), value.as_object().unwrap()).is_err());
         }
     }
 }

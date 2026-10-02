@@ -8,7 +8,7 @@ use hiroute_application_api::{
 use hiroute_domain::{CompiledAgentPlanV1, UpstreamProtocol};
 use hiroute_gateway::server::core_runtime::{
     model_ir::{RequestCapabilityRequirementsV1, ToolChoice},
-    profiles::{CandidateProtocolProfile, CapabilityError},
+    profiles::{CandidateProtocolProfile, CapabilityError, Fidelity},
 };
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
@@ -194,7 +194,19 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
                 Some(&candidate.binding_id),
             );
         }
-        let image = executable.validate(&requirements(true)).is_ok();
+        // Runtime admission is not evidence for a client capability claim.
+        let image = executable.capability.request.image_url == Fidelity::Exact
+            && executable.capability.request.image_base64 == Fidelity::Exact
+            && executable
+                .capability
+                .request
+                .image_base64_media_types
+                .exact()
+                .is_some_and(|media| {
+                    ["image/jpeg", "image/png", "image/gif", "image/webp"]
+                        .iter()
+                        .all(|kind| media.iter().any(|supported| supported == kind))
+                });
         let context = &profile.capability.context;
         let Some(input) = context.max_input_tokens.exact().copied() else {
             return unavailable(

@@ -45,7 +45,8 @@ impl PublicationPlannerInputAuthority {
         document: &serde_json::Value,
         ingress: IngressProtocol,
         authorized: &AuthorizedRequestPlan,
-    ) -> Result<Option<hiroute_domain::CanonicalDigest>, PortError> {
+    ) -> Result<Option<crate::server::core_runtime::profiles::ReasoningProfileCapability>, PortError>
+    {
         use crate::server::core_runtime::profiles::PlannerRouteIdentityV2;
 
         if !matches!(
@@ -102,9 +103,7 @@ impl PublicationPlannerInputAuthority {
         let selected = selected
             .selected_reasoning()
             .map_err(|_| PortError::InvalidReasoningControl)?;
-        Ok(Some(
-            hiroute_domain::CanonicalDigest::of(selected).map_err(|_| PortError::Rejected)?,
-        ))
+        Ok(Some(selected.clone()))
     }
 }
 
@@ -313,7 +312,6 @@ fn project_candidate_facts(
         }
         Err(adapters::ProtocolAdapterError::Capability(
             CapabilityError::ProviderStateUnsupported
-            | CapabilityError::StateAffinityUnsupported
             | CapabilityError::NativeProviderStateUnrepresentable,
         )) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: 1,
@@ -717,7 +715,7 @@ pub enum PortError {
 mod sizing_tests {
     use super::*;
     use crate::server::core_runtime::profiles::{
-        Fidelity, NativeProviderStateEmission, StateAffinity, fixed_reasoning,
+        Fidelity, NativeProviderStateEmission, fixed_reasoning,
     };
     use serde_json::json;
 
@@ -729,19 +727,14 @@ mod sizing_tests {
             "luna",
             fixed_reasoning("fixed"),
         );
-        owner.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        owner.capability.native_provider_state = NativeProviderStateEmission::Native;
         owner.capability.request.provider_state = Fidelity::Exact;
-        owner.capability.request.state_affinity = StateAffinity::ExactOwner;
         owner.capability.response.provider_state = Fidelity::Exact;
-        owner.capability.response.state_affinity = StateAffinity::ExactOwner;
         let mut other = owner.clone();
         other.capability.native_model = "terra".into();
-        let mut request = adapters::decode_ingress_request_with_bindings(
+        let mut request = adapters::decode_ingress_request(
             IngressProtocol::Responses,
             &json!({"model":"route","input":[{"type":"reasoning","summary":[],"encrypted_content":"state"}]}),
-            &adapters::IngressRequestBindings {
-                provider_state_owner: Some(owner.exact_provider_path().unwrap()),
-            },
         ).unwrap();
         let before = serde_json::to_value(&request).unwrap();
         assert!(project_candidate_facts_template(&request, &other).is_ok());
@@ -753,6 +746,9 @@ mod sizing_tests {
             .unwrap()
             .encrypted_content =
             crate::server::core_runtime::model_ir::ResponsesReasoningEncryptedContentV1::Absent;
+        // Native delivery uses the preserved payload, while the canonical-only
+        // conversion path must still reject inconsistent canonical state.
+        request.native_body = None;
         assert!(project_candidate_facts_template(&request, &other).is_err());
     }
 
@@ -764,18 +760,16 @@ mod sizing_tests {
             "luna",
             fixed_reasoning("fixed"),
         );
-        owner.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        owner.capability.native_provider_state = NativeProviderStateEmission::Native;
         owner.capability.request.provider_state = Fidelity::Exact;
-        owner.capability.request.state_affinity = StateAffinity::ExactOwner;
         owner.capability.response.provider_state = Fidelity::Exact;
-        owner.capability.response.state_affinity = StateAffinity::ExactOwner;
         let messages = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
             IngressProtocol::Messages,
             "glm-5.3",
             fixed_reasoning("fixed"),
         );
-        let request = adapters::decode_ingress_request_with_bindings(
+        let request = adapters::decode_ingress_request(
             IngressProtocol::Responses,
             &json!({
                 "model": "route",
@@ -786,17 +780,13 @@ mod sizing_tests {
                     ]}
                 ]
             }),
-            &adapters::IngressRequestBindings {
-                provider_state_owner: Some(owner.exact_provider_path().unwrap()),
-            },
         )
         .unwrap();
 
         let excluded = project_candidate_facts(&request, &messages).unwrap();
-        assert_eq!(
-            excluded.exclusion,
-            Some(ExclusionReasonCodeV1::OpaqueStateUnportable)
-        );
+        assert_eq!(excluded.exclusion, None);
+        let projected = project_candidate_facts_template(&request, &messages).unwrap();
+        assert!(!String::from_utf8_lossy(&projected.bytes).contains("opaque-state"));
         assert!(
             project_candidate_facts(&request, &owner)
                 .unwrap()

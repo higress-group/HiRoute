@@ -3,9 +3,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::server::core_runtime::model_ir::{
-    ExactProviderPathV1, RequestCapabilityRequirementsV1, ToolChoice,
-};
+use crate::server::core_runtime::model_ir::{ExactProviderPathV1, RequestCapabilityRequirementsV1};
 use crate::server::request_plan::IngressProtocol;
 
 use super::{
@@ -25,12 +23,6 @@ pub enum Fidelity {
     GatewayMaterialized,
     Unsupported,
     Unknown,
-}
-
-impl Fidelity {
-    fn is_exact(self) -> bool {
-        self == Self::Exact
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -54,7 +46,6 @@ pub struct RequestFeatureProfile {
     pub tool_result_json: Fidelity,
     pub logical_tool_id_mapping: Fidelity,
     pub provider_state: Fidelity,
-    pub state_affinity: StateAffinity,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -69,7 +60,6 @@ pub struct ResponseFeatureProfile {
     pub finish_reason: Fidelity,
     pub typed_error: Fidelity,
     pub provider_state: Fidelity,
-    pub state_affinity: StateAffinity,
     pub stream_refusal: StreamingRefusalSemantics,
     pub stream_text_delta: Fidelity,
     pub stream_tool_argument_delta: Fidelity,
@@ -92,9 +82,7 @@ pub struct CandidateCapabilityProfile {
     pub selected_reasoning_profile_id: String,
     pub context: ContextLimits,
     pub native_streaming: CriticalFact<bool>,
-    /// Exact state-emission contract for this physical attempt. Unknown is a
-    /// pre-connect rejection state; owner-affine emission is accepted only
-    /// when request and response profiles also require the same exact owner.
+    /// Descriptive emission metadata; unknown is not a pre-connect rejection.
     pub native_provider_state: NativeProviderStateEmission,
 }
 
@@ -115,17 +103,9 @@ pub struct CandidateProtocolProfile {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum StateAffinity {
-    Unsupported,
-    ExactOwner,
-    Unknown,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum NativeProviderStateEmission {
     Never,
-    ExactOwnerAffine,
+    Native,
     Unknown,
 }
 
@@ -136,10 +116,8 @@ pub use hiroute_domain::GatewayStreamingRefusalSemanticsV1 as StreamingRefusalSe
 pub struct ClientProtocolProfile {
     pub schema_version: String,
     pub protocol: IngressProtocol,
+    pub source_protocol: IngressProtocol,
     pub adapter_revision: String,
-    /// Required for any opaque state projection. Protocol equality alone is
-    /// never sufficient ownership evidence.
-    pub state_owner: Option<ExactProviderPathV1>,
     pub response: ResponseFeatureProfile,
 }
 
@@ -213,7 +191,6 @@ impl CandidateProtocolProfile {
                     tool_result_json: exact,
                     logical_tool_id_mapping: exact,
                     provider_state: Fidelity::Unsupported,
-                    state_affinity: StateAffinity::Unsupported,
                 },
                 response: ResponseFeatureProfile {
                     text: exact,
@@ -225,7 +202,6 @@ impl CandidateProtocolProfile {
                     finish_reason: exact,
                     typed_error: exact,
                     provider_state: Fidelity::Unsupported,
-                    state_affinity: StateAffinity::Unsupported,
                     stream_refusal: if upstream_protocol == IngressProtocol::Messages {
                         StreamingRefusalSemantics::TerminalClassified
                     } else {
@@ -318,200 +294,12 @@ impl CandidateProtocolProfile {
             return Err(CapabilityError::ProtocolPathUnavailable);
         }
         self.exact_provider_path()?;
-        if self.capability.native_provider_state == NativeProviderStateEmission::Unknown {
-            return Err(CapabilityError::NativeProviderStateUnrepresentable);
-        }
         if !self.connector.critical_facts_are_exact() {
             return Err(CapabilityError::ConnectorFactUnknown);
         }
-        let request = &self.capability.request;
-        exact(
-            requirements.text,
-            request.text,
-            CapabilityError::TextUnsupported,
-        )?;
-        exact(
-            requirements.initial_instructions,
-            request.initial_instructions,
-            CapabilityError::InitialInstructionsUnsupported,
-        )?;
-        exact(
-            requirements.mid_conversation_instructions,
-            request.mid_conversation_instructions,
-            CapabilityError::MidConversationInstructionsUnsupported,
-        )?;
-        exact(
-            requirements.image_url,
-            request.image_url,
-            CapabilityError::ImageUrlUnsupported,
-        )?;
-        exact(
-            requirements.image_base64,
-            request.image_base64,
-            CapabilityError::ImageBase64Unsupported,
-        )?;
-        if requirements.image_base64 {
-            let media_types = request
-                .image_base64_media_types
-                .exact()
-                .ok_or(CapabilityError::ImageMediaTypeUnsupported)?;
-            if requirements.image_media_types.iter().any(|required| {
-                !media_types
-                    .iter()
-                    .any(|supported| supported.eq_ignore_ascii_case(required))
-            }) {
-                return Err(CapabilityError::ImageMediaTypeUnsupported);
-            }
-        }
-        exact(
-            requirements.function_tools,
-            request.function_tools,
-            CapabilityError::ToolInterfaceUnsupported,
-        )?;
-        exact(
-            requirements.strict_tools,
-            request.strict_tools,
-            CapabilityError::StrictToolsUnsupported,
-        )?;
-        if requirements.function_tools {
-            let fidelity = match requirements.tool_choice {
-                ToolChoice::None => request.tool_choice_none,
-                ToolChoice::Auto => request.tool_choice_auto,
-                ToolChoice::RequiredAny => request.tool_choice_required_any,
-                ToolChoice::RequiredNamed { .. } => request.tool_choice_required_named,
-            };
-            exact(true, fidelity, CapabilityError::ToolChoiceUnsupported)?;
-        }
-        exact(
-            requirements.parallel_tools,
-            request.parallel_tools,
-            CapabilityError::ParallelToolsUnsupported,
-        )?;
-        exact(
-            requirements.tool_roundtrip,
-            request.tool_roundtrip,
-            CapabilityError::ToolRoundtripUnsupported,
-        )?;
-        exact(
-            requirements.tool_result_text,
-            request.tool_result_text,
-            CapabilityError::ToolResultTextUnsupported,
-        )?;
-        exact(
-            requirements.tool_result_json,
-            request.tool_result_json,
-            CapabilityError::ToolResultJsonUnsupported,
-        )?;
-        exact(
-            requirements.logical_tool_id_mapping,
-            request.logical_tool_id_mapping,
-            CapabilityError::LogicalToolIdMappingUnsupported,
-        )?;
-        exact(
-            requirements.provider_state,
-            request.provider_state,
-            CapabilityError::ProviderStateUnsupported,
-        )?;
-        if requirements.provider_state && request.state_affinity != StateAffinity::ExactOwner {
-            return Err(CapabilityError::StateAffinityUnsupported);
-        }
-        if requirements.streaming && self.capability.native_streaming.exact() != Some(&true) {
-            return Err(CapabilityError::StreamingUnsupported);
-        }
-        let response = &self.capability.response;
-        exact(
-            true,
-            response.text,
-            CapabilityError::ResponseTextUnsupported,
-        )?;
-        exact(
-            true,
-            response.reasoning,
-            CapabilityError::ResponseReasoningUnsupported,
-        )?;
-        exact(
-            true,
-            response.refusal,
-            CapabilityError::ResponseRefusalUnsupported,
-        )?;
-        exact(
-            requirements.function_tools,
-            response.tool_calls,
-            CapabilityError::ResponseToolsUnsupported,
-        )?;
-        exact(
-            requirements.function_tools,
-            response.logical_tool_id_mapping,
-            CapabilityError::ResponseLogicalToolIdMappingUnsupported,
-        )?;
-        exact(
-            true,
-            response.usage,
-            CapabilityError::ResponseUsageUnsupported,
-        )?;
-        exact(
-            true,
-            response.finish_reason,
-            CapabilityError::ResponseFinishUnsupported,
-        )?;
-        exact(
-            true,
-            response.typed_error,
-            CapabilityError::ResponseErrorUnsupported,
-        )?;
-        if requirements.streaming
-            && !matches!(
-                (self.capability.upstream_protocol, response.stream_refusal),
-                (
-                    IngressProtocol::Messages,
-                    StreamingRefusalSemantics::TerminalClassified
-                        | StreamingRefusalSemantics::LegacyTerminalClassified { .. }
-                ) | (
-                    IngressProtocol::Responses | IngressProtocol::ChatCompletions,
-                    StreamingRefusalSemantics::ExactDelta
-                )
-            )
-        {
-            return Err(CapabilityError::StreamRefusalUnsupported);
-        }
-        if self.capability.native_provider_state == NativeProviderStateEmission::ExactOwnerAffine {
-            exact(
-                true,
-                request.provider_state,
-                CapabilityError::ProviderStateUnsupported,
-            )?;
-            if request.state_affinity != StateAffinity::ExactOwner {
-                return Err(CapabilityError::StateAffinityUnsupported);
-            }
-            exact(
-                true,
-                response.provider_state,
-                CapabilityError::ResponseProviderStateUnsupported,
-            )?;
-            if response.state_affinity != StateAffinity::ExactOwner {
-                return Err(CapabilityError::StateAffinityUnsupported);
-            }
-        }
-        exact(
-            requirements.stream_text,
-            response.stream_text_delta,
-            CapabilityError::StreamTextUnsupported,
-        )?;
-        exact(
-            requirements.stream_tool_arguments,
-            response.stream_tool_argument_delta,
-            CapabilityError::StreamToolUnsupported,
-        )?;
-        exact(
-            requirements.stream_reasoning,
-            response.stream_reasoning_delta,
-            CapabilityError::StreamReasoningUnsupported,
-        )?;
-        exact(
-            requirements.stream_usage,
-            response.stream_usage,
-            CapabilityError::StreamUsageUnsupported,
-        )?;
+        // Provider feature metadata is descriptive, not an execution grant.
+        // Concrete request serializers and response decoders enforce the
+        // conversion they actually implement; upstream validates its payload.
         let reasoning = self.selected_reasoning()?;
         Ok(reasoning)
     }
@@ -519,17 +307,9 @@ impl CandidateProtocolProfile {
 
 impl ClientProtocolProfile {
     pub fn for_candidate(candidate: &CandidateProtocolProfile) -> Result<Self, CapabilityError> {
-        if client_can_represent_provider_state(
-            candidate.ingress_protocol,
-            candidate.capability.upstream_protocol,
-        ) && candidate.capability.native_provider_state
-            == NativeProviderStateEmission::ExactOwnerAffine
-        {
-            return candidate
-                .exact_provider_path()
-                .map(|owner| Self::exact_owner_affine(candidate.ingress_protocol, owner));
-        }
-        Ok(Self::exact_portable(candidate.ingress_protocol))
+        let mut profile = Self::exact_portable(candidate.ingress_protocol);
+        profile.source_protocol = candidate.capability.upstream_protocol;
+        Ok(profile)
     }
 
     pub fn exact_portable(protocol: IngressProtocol) -> Self {
@@ -537,8 +317,8 @@ impl ClientProtocolProfile {
         Self {
             schema_version: "hiroute.client-protocol-profile/v1".into(),
             protocol,
+            source_protocol: protocol,
             adapter_revision: "builtin-client-protocol-adapter/v1".into(),
-            state_owner: None,
             response: ResponseFeatureProfile {
                 text: exact,
                 reasoning: exact,
@@ -548,8 +328,7 @@ impl ClientProtocolProfile {
                 usage: exact,
                 finish_reason: exact,
                 typed_error: exact,
-                provider_state: Fidelity::Unsupported,
-                state_affinity: StateAffinity::Unsupported,
+                provider_state: Fidelity::Exact,
                 stream_refusal: StreamingRefusalSemantics::ExactDelta,
                 stream_text_delta: exact,
                 stream_tool_argument_delta: exact,
@@ -559,49 +338,9 @@ impl ClientProtocolProfile {
         }
     }
 
-    pub fn exact_owner_affine(protocol: IngressProtocol, owner: ExactProviderPathV1) -> Self {
-        let mut profile = Self::exact_portable(protocol);
-        profile.state_owner = Some(owner);
-        profile.response.provider_state = Fidelity::Exact;
-        profile.response.state_affinity = StateAffinity::ExactOwner;
-        profile
-    }
-
     pub fn is_complete(&self) -> bool {
         self.schema_version == "hiroute.client-protocol-profile/v1"
             && !self.adapter_revision.trim().is_empty()
-            && match self.state_owner.as_ref() {
-                Some(owner) => {
-                    owner.is_complete()
-                        && client_can_represent_provider_state(
-                            self.protocol,
-                            owner.upstream_protocol,
-                        )
-                        && self.response.provider_state == Fidelity::Exact
-                        && self.response.state_affinity == StateAffinity::ExactOwner
-                }
-                None => {
-                    self.response.provider_state == Fidelity::Unsupported
-                        && self.response.state_affinity == StateAffinity::Unsupported
-                }
-            }
-    }
-}
-
-fn client_can_represent_provider_state(client: IngressProtocol, upstream: IngressProtocol) -> bool {
-    client == upstream
-        || (client == IngressProtocol::Messages && upstream == IngressProtocol::Responses)
-}
-
-fn exact(
-    required: bool,
-    fidelity: Fidelity,
-    error: CapabilityError,
-) -> Result<(), CapabilityError> {
-    if required && !fidelity.is_exact() {
-        Err(error)
-    } else {
-        Ok(())
     }
 }
 
@@ -653,8 +392,6 @@ pub enum CapabilityError {
     LogicalToolIdMappingUnsupported,
     #[error("provider state is unsupported")]
     ProviderStateUnsupported,
-    #[error("provider state exact-owner affinity is unsupported or unknown")]
-    StateAffinityUnsupported,
     #[error("native streaming is unsupported or unknown")]
     StreamingUnsupported,
     #[error("streaming refusal classification is unsupported, unbounded, or unknown")]
@@ -739,37 +476,28 @@ mod tests {
     }
 
     #[test]
-    fn client_profile_preserves_only_explicitly_representable_exact_owner_state() {
+    fn client_profiles_do_not_require_reasoning_owner_registration() {
         let mut candidate = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Messages,
             IngressProtocol::Messages,
             "physical-model",
             fixed_reasoning("fixed"),
         );
-        candidate.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+        candidate.capability.native_provider_state = NativeProviderStateEmission::Native;
         candidate.capability.request.provider_state = Fidelity::Exact;
-        candidate.capability.request.state_affinity = StateAffinity::ExactOwner;
         candidate.capability.response.provider_state = Fidelity::Exact;
-        candidate.capability.response.state_affinity = StateAffinity::ExactOwner;
 
-        let expected_owner = candidate.exact_provider_path().unwrap();
         let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
-        assert_eq!(profile.state_owner, Some(expected_owner));
         assert_eq!(profile.response.provider_state, Fidelity::Exact);
-        assert_eq!(profile.response.state_affinity, StateAffinity::ExactOwner);
 
         candidate.ingress_protocol = IngressProtocol::Responses;
         let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
-        assert_eq!(profile.state_owner, None);
-        assert_eq!(profile.response.provider_state, Fidelity::Unsupported);
-        assert_eq!(profile.response.state_affinity, StateAffinity::Unsupported);
+        assert!(profile.is_complete());
 
         candidate.ingress_protocol = IngressProtocol::Messages;
         candidate.capability.upstream_protocol = IngressProtocol::Responses;
         candidate.connector.upstream_protocol = IngressProtocol::Responses;
-        let expected_owner = candidate.exact_provider_path().unwrap();
         let profile = ClientProtocolProfile::for_candidate(&candidate).unwrap();
-        assert_eq!(profile.state_owner, Some(expected_owner));
         assert_eq!(profile.response.provider_state, Fidelity::Exact);
     }
 }

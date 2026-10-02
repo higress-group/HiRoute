@@ -203,17 +203,9 @@ pub enum GatewayFidelityV1 {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum GatewayStateAffinityV1 {
-    Unsupported,
-    ExactOwner,
-    Unknown,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
 pub enum GatewayNativeProviderStateEmissionV1 {
     Never,
-    ExactOwnerAffine,
+    Native,
     Unknown,
 }
 
@@ -297,7 +289,6 @@ pub struct GatewayRequestFeatureProfileV1 {
     pub tool_result_json: GatewayFidelityV1,
     pub logical_tool_id_mapping: GatewayFidelityV1,
     pub provider_state: GatewayFidelityV1,
-    pub state_affinity: GatewayStateAffinityV1,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -312,7 +303,6 @@ pub struct GatewayResponseFeatureProfileV1 {
     pub finish_reason: GatewayFidelityV1,
     pub typed_error: GatewayFidelityV1,
     pub provider_state: GatewayFidelityV1,
-    pub state_affinity: GatewayStateAffinityV1,
     pub stream_refusal: GatewayStreamingRefusalSemanticsV1,
     pub stream_text_delta: GatewayFidelityV1,
     pub stream_tool_argument_delta: GatewayFidelityV1,

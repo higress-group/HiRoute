@@ -122,7 +122,7 @@ fn one_registered_native_source_uses_matching_messages_and_responses_provider_pa
         "/v1/messages",
         &serde_json::to_vec(&json!({
             "model":alias,"max_tokens":64,"messages":[{"role":"user","content":"hello"}],
-            "tools":[{"name":"lookup","input_schema":{"type":"object"}}],
+            "tools":[{"type":"unrecognized_hosted_tool","name":"lookup","input_schema":{"type":"object"}}],
             "tool_choice":{"type":"none"}
         }))
         .unwrap(),
@@ -134,8 +134,8 @@ fn one_registered_native_source_uses_matching_messages_and_responses_provider_pa
         String::from_utf8_lossy(&unsupported.body)
     );
     let error: Value = serde_json::from_slice(&unsupported.body).unwrap();
-    assert_eq!(error["code"], "CLIENT_PROTOCOL_UNREPRESENTABLE");
-    assert_eq!(error["phase"], "planner");
+    assert_eq!(error["code"], "PROTOCOL_SEMANTICS_UNSUPPORTED");
+    assert_eq!(error["phase"], "canonical_request");
     assert_eq!(
         provider_accept_error_kind(&provider),
         std::io::ErrorKind::WouldBlock

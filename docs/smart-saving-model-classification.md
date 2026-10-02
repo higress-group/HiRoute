@@ -177,3 +177,44 @@ whether a narrower scenario would help. HiRoute never modifies or creates a plan
   terminates directly; it cannot masquerade as a REST failure followed by fallback.
 - Observation-write failure does not block the model answer. Only a persisted score appears in
   queries.
+
+## Reasoning history across model changes
+
+Client-supplied reasoning history does not need a record from an earlier Gateway process.
+HiRoute still checks authentication, the current plan, candidate permissions and credentials;
+the upstream model decides whether it accepts that history. Same-protocol native fields are
+preserved. Cross-protocol projection preserves representable plaintext, but never relabels
+a Messages signature as Responses encrypted content or vice versa. Reasoning that cannot be
+represented is omitted, without removing ordinary messages or tool history.
+
+If history changes discontinuously (for example, after compaction), the first selected model
+differs from a still-eligible previous successful model, and it explicitly rejects reasoning
+history, HiRoute may retry that model once with historical reasoning omitted. Generic errors,
+cold starts, ordinary follow-ups, changes only to tools/instructions, and ordinary failure
+fallback do not grant this recovery attempt. Existing attempt limits, deadlines, cancellation
+and the prohibition on replay after semantic delivery still apply.
+
+After complete success, continuous requests to that same binding/profile omit only the fixed
+original prefix. New reasoning is retained; later failures do not expand the prefix. This
+in-memory ContextHold hint is lost on restart or eviction, but history remains admissible.
+Lossy projection can reduce reasoning continuity and does not guarantee upstream acceptance.
+
+Actual omissions emit a `reasoning_cleanup` warning with protocols, reason, request/attempt
+correlation, prefix and count—not reasoning text, signatures, ciphertext or credentials.
+Request warnings occur before sending; response loss is reported once and the attempt-end
+record retains the total. Check the associated attempt outcome rather than treating the
+warning as proof of success. Responses server-side history handles (`conversation`,
+`previous_response_id`, `store: true`) remain unsupported; clients must send their history.
+
+## Native payloads and provider validation
+
+On the same protocol, ordinary provider-defined payload fields are preserved instead of
+being rejected because local capability metadata is incomplete. Empty text or an absent
+thinking signature is not proof of an invalid provider request. Authentication, destination
+authorization, hosted-tool policy, framing and complete-stream checks still apply.
+
+An unknown extension is native-only: it cannot silently disappear through protocol conversion,
+nor establish history continuity for ContextHold or reasoning cleanup. Cross-protocol requests
+still need an executable mapping. Fixed bindings preserve explicit native reasoning controls;
+smart-routing plans apply their configured reasoning and output limits. Unknown accounting
+remains unknown, so a strict paid budget still requires a provable upper bound.

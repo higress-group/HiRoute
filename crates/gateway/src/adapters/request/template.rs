@@ -22,7 +22,7 @@ pub struct PreparedNativeTemplate {
     pub(crate) bytes: Arc<[u8]>,
     pub(crate) replacements: Arc<[TemplateReplacement]>,
     pub wire_len: usize,
-    pub context: CandidateContextDemand,
+    pub context: Option<CandidateContextDemand>,
     pub capability_id: String,
     pub connector_id: String,
     pub adapter_revision: String,
@@ -106,29 +106,75 @@ pub fn project_candidate_request_template(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
 ) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
+    project_candidate_request_template_with_cleanup(request, profile, None)
+}
+
+pub(crate) fn project_candidate_request_template_with_cleanup(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+    omit_reasoning_prefix: Option<usize>,
+) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
     let requirements = request.requirements();
     let reasoning = profile.validate(&requirements)?;
-    validate_message_shapes(request, profile.capability.upstream_protocol)?;
+    let native = request.native_body.is_some()
+        && request.ingress_protocol == profile.capability.upstream_protocol;
+    if !native {
+        validate_message_shapes(request, profile.capability.upstream_protocol)?;
+    }
     let chat_tool_projection =
-        if profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
+        if !native && profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
             Some(ChatToolProjection::for_request(request)?)
         } else {
             None
         };
-    let body = match profile.capability.upstream_protocol {
-        IngressProtocol::Responses => serialize_responses(request, profile, reasoning)?,
-        IngressProtocol::ChatCompletions => serialize_chat(
-            request,
-            profile,
-            reasoning,
-            chat_tool_projection
-                .as_ref()
-                .expect("Chat projection was constructed"),
-        )?,
-        IngressProtocol::Messages => serialize_messages(request, profile, reasoning)?,
+    let body = if native {
+        super::native::controls(request, profile, reasoning)?
+    } else {
+        match profile.capability.upstream_protocol {
+            IngressProtocol::Responses => {
+                serialize_responses(request, profile, reasoning, omit_reasoning_prefix)?
+            }
+            IngressProtocol::ChatCompletions => serialize_chat(
+                request,
+                profile,
+                reasoning,
+                chat_tool_projection
+                    .as_ref()
+                    .expect("Chat projection was constructed"),
+                omit_reasoning_prefix,
+            )?,
+            IngressProtocol::Messages => {
+                serialize_messages(request, profile, reasoning, omit_reasoning_prefix)?
+            }
+        }
     };
-    let refs = request_content_refs(request, profile.capability.upstream_protocol);
-    let replay_template = prepare_replay_json_template(&body, refs)?;
+    let body = super::native::project(request, profile, body, omit_reasoning_prefix)?;
+    let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
+        && request.native_body.is_some()
+    {
+        let mut refs = Vec::new();
+        collect_nested_json_refs(&body, &mut refs);
+        refs
+    } else {
+        request_content_refs(
+            request,
+            profile.capability.upstream_protocol,
+            omit_reasoning_prefix,
+        )
+    };
+    if request.ingress_protocol == IngressProtocol::Messages
+        && request.ingress_protocol != profile.capability.upstream_protocol
+    {
+        let format = match profile.capability.upstream_protocol {
+            IngressProtocol::Responses => body.pointer("/text/format"),
+            IngressProtocol::ChatCompletions => body.get("response_format"),
+            IngressProtocol::Messages => None,
+        };
+        if let Some(format) = format {
+            collect_nested_json_refs(format, &mut refs);
+        }
+    }
+    let replay_template = prepare_replay_json_template(&body.wire_value(), refs)?;
     let wire_len = replay_template.wire_len;
     let PreparedReplayTemplate {
         bytes,
@@ -137,7 +183,10 @@ pub fn project_candidate_request_template(
     } = replay_template;
     let context = ContextProjector::project_serialized_len(
         wire_len as u64,
-        &profile.capability.context,
+        &profile
+            .capability
+            .context
+            .with_requested_output(request.requested_max_output_tokens),
         reasoning,
     )?;
     Ok(PreparedNativeTemplate {
@@ -287,7 +336,14 @@ pub(crate) fn prepare_replay_json_template(
 }
 
 pub(super) fn request_has_content_refs(request: &ModelRequestIRV1) -> bool {
-    !request_content_refs(request, request.ingress_protocol).is_empty()
+    if let Some(body) = &request.native_body {
+        let mut refs = Vec::new();
+        collect_nested_json_refs(body, &mut refs);
+        if !refs.is_empty() {
+            return true;
+        }
+    }
+    !request_content_refs(request, request.ingress_protocol, None).is_empty()
         || request
             .requested_reasoning
             .native_value
@@ -305,6 +361,7 @@ pub(crate) struct RequestedReplacement {
 fn request_content_refs(
     request: &ModelRequestIRV1,
     target: IngressProtocol,
+    omit_reasoning_prefix: Option<usize>,
 ) -> Vec<RequestedReplacement> {
     let mut refs = Vec::new();
     for instruction in &request.instructions {
@@ -312,15 +369,50 @@ fn request_content_refs(
             collect_part_refs(part, target, &mut refs);
         }
     }
-    for message in &request.messages {
+    for (index, message) in request.messages.iter().enumerate() {
         collect_string_ref(message.name.as_deref(), &mut refs);
         for part in &message.content {
-            collect_part_refs(part, target, &mut refs);
+            if let ContentPart::ProviderState { state } = part {
+                if omit_reasoning_prefix.is_some_and(|end| index < end) {
+                    continue;
+                }
+                match target {
+                    IngressProtocol::Responses if state.kind == "encrypted_content" => {
+                        collect_nested_json_refs(&state.value, &mut refs)
+                    }
+                    IngressProtocol::Messages
+                        if matches!(state.kind.as_str(), "thinking" | "redacted_thinking") =>
+                    {
+                        collect_nested_json_refs(&state.value, &mut refs)
+                    }
+                    IngressProtocol::Responses | IngressProtocol::ChatCompletions => {
+                        if let Some(text) = super::reasoning_text(state) {
+                            collect_nested_json_refs(text, &mut refs);
+                        }
+                    }
+                    _ => {}
+                }
+            } else {
+                collect_part_refs(part, target, &mut refs);
+            }
         }
     }
-    for history in request.responses_reasoning_history.values() {
-        for value in history.native_fields.values() {
-            collect_nested_json_refs(value, &mut refs);
+    for (index, history) in &request.responses_reasoning_history {
+        if omit_reasoning_prefix.is_some_and(|end| *index < end) {
+            continue;
+        }
+        match target {
+            IngressProtocol::Responses => {
+                for value in history.native_fields.values() {
+                    collect_nested_json_refs(value, &mut refs);
+                }
+            }
+            IngressProtocol::ChatCompletions => {
+                for value in super::responses_reasoning_texts(history) {
+                    collect_nested_json_refs(value, &mut refs);
+                }
+            }
+            IngressProtocol::Messages => {}
         }
     }
     for tool in &request.tools {
@@ -400,7 +492,6 @@ fn collect_part_refs(
         } => collect_json_ref(value, ReplacementEncoding::JsonString, refs),
         ContentPart::ProviderState { state } => {
             collect_nested_json_refs(&state.value, refs);
-            collect_string_ref(state.messages_thinking.as_deref(), refs);
         }
     }
 }

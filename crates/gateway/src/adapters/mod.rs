@@ -2,8 +2,10 @@
 
 mod continuation;
 mod ingress;
+pub(crate) mod reasoning_loss;
 mod request;
 mod response;
+mod structured_output;
 mod tool_projection;
 
 pub(crate) use tool_projection::{ChatToolIdentity, ChatToolProjection};
@@ -12,16 +14,15 @@ pub(crate) use continuation::{
     AcceptedResponseDeliveryScanner, ActiveResponseDelivery, ToolIdProjection,
     with_active_response_delivery,
 };
-pub use ingress::{
-    IngressRequestBindings, decode_ingress_request, decode_ingress_request_with_bindings,
-};
+pub use ingress::decode_ingress_request;
 pub use request::{
     PreparedNativeRequest, PreparedNativeTemplate, project_candidate_request,
     project_candidate_request_template, sequential_attempt_body,
 };
 pub(crate) use request::{
     PreparedReplayTemplate, ReplacementEncoding, RequestedReplacement,
-    prepare_replay_json_template, sequential_replay_body,
+    prepare_replay_json_template, project_candidate_request_template_with_cleanup,
+    sequential_replay_body,
 };
 pub use response::{
     ClientResponseRenderer, DecodedNativeResponse, IncrementalClientSseRenderer,
@@ -57,6 +58,12 @@ impl ProtocolAdapterError {
             Self::ModelIr(ModelIrError::ResponsesConversationUnsupported) => {
                 "RESPONSES_CONVERSATION_UNSUPPORTED"
             }
+            Self::ModelIr(
+                ModelIrError::ExpectedObject
+                | ModelIrError::InvalidField(_)
+                | ModelIrError::InvalidJson(_)
+                | ModelIrError::InvalidSse(_),
+            ) => "PROTOCOL_INVALID_PAYLOAD",
             Self::ModelIr(_) => "PROTOCOL_SEMANTICS_UNSUPPORTED",
             Self::Capability(CapabilityError::ProtocolPathUnavailable) => {
                 "PROTOCOL_PATH_UNAVAILABLE"

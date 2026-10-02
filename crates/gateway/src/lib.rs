@@ -13,7 +13,6 @@ pub mod attempt_outcome;
 pub mod content_ref;
 pub(crate) mod context_hold;
 pub mod ports;
-pub(crate) mod provider_state;
 pub mod replay;
 pub mod runtime;
 pub mod server;

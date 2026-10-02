@@ -707,8 +707,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 mod tests {
     use serde_json::json;
 
-    use crate::server::core_runtime::model_ir::{ExactProviderPathV1, OpaqueProviderState};
-    use crate::server::request_plan::IngressProtocol;
+    use crate::server::core_runtime::model_ir::OpaqueProviderState;
 
     use super::*;
 
@@ -716,25 +715,9 @@ mod tests {
     fn provider_hidden_state_is_not_conversation_response_content() {
         let event = ModelEvent::ProviderState {
             state: Box::new(OpaqueProviderState {
-                owner: ExactProviderPathV1 {
-                    provider_id: "provider".into(),
-                    endpoint_id: "endpoint".into(),
-                    entitlement_id: "entitlement".into(),
-                    connector_id: "connector".into(),
-                    connector_revision: "1".into(),
-                    capability_id: "capability".into(),
-                    capability_revision: "1".into(),
-                    model_configuration_id: "model-config".into(),
-                    native_model: "native".into(),
-                    upstream_protocol: IngressProtocol::Responses,
-                    adapter_revision: "adapter/v1".into(),
-                    serializer_revision: "serializer/v1".into(),
-                    decoder_revision: "decoder/v1".into(),
-                },
                 block_index: Some(0),
                 kind: "encrypted_content".into(),
                 value: json!("provider-hidden-secret"),
-                messages_thinking: None,
             }),
         };
         assert_eq!(canonical_response_content_kind(&event), None);

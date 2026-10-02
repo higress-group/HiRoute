@@ -34,6 +34,6 @@ fn real_hirouted_forwards_locator_shaped_client_text_unchanged() {
     let requests = provider.requests();
     assert_eq!(requests.len(), 1);
     let projected: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
-    assert_eq!(projected["input"][0]["content"][0]["text"], literal);
+    assert_eq!(projected["input"], literal);
     wait_replay_empty(&fixture.replay_root);
 }

@@ -39,6 +39,20 @@ pub struct ContextLimits {
     pub estimator: CriticalFact<TokenEstimatorProfile>,
 }
 
+impl ContextLimits {
+    pub(crate) fn with_requested_output(&self, requested: Option<u64>) -> Self {
+        let mut limits = self.clone();
+        if let Some(requested) = requested {
+            limits.max_output_tokens = CriticalFact::Exact(
+                self.max_output_tokens
+                    .exact()
+                    .map_or(requested, |cap| requested.min(*cap)),
+            );
+        }
+        limits
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateContextDemand {
@@ -57,7 +71,7 @@ impl ContextProjector {
         serialized_request: &[u8],
         limits: &ContextLimits,
         reasoning: &ReasoningProfileCapability,
-    ) -> Result<CandidateContextDemand, ContextProjectionError> {
+    ) -> Result<Option<CandidateContextDemand>, ContextProjectionError> {
         let serialized_bytes = u64::try_from(serialized_request.len())
             .map_err(|_| ContextProjectionError::ArithmeticOverflow)?;
         Self::project_serialized_len(serialized_bytes, limits, reasoning)
@@ -70,15 +84,13 @@ impl ContextProjector {
         serialized_bytes: u64,
         limits: &ContextLimits,
         reasoning: &ReasoningProfileCapability,
-    ) -> Result<CandidateContextDemand, ContextProjectionError> {
-        let max_output = *limits
-            .max_output_tokens
-            .exact()
-            .ok_or(ContextProjectionError::UnknownLimit("max_output"))?;
-        let estimator = limits
-            .estimator
-            .exact()
-            .ok_or(ContextProjectionError::UnknownEstimator)?;
+    ) -> Result<Option<CandidateContextDemand>, ContextProjectionError> {
+        let (Some(max_output), Some(estimator)) =
+            (limits.max_output_tokens.exact(), limits.estimator.exact())
+        else {
+            return Ok(None);
+        };
+        let max_output = *max_output;
         let serialized_bytes_usize = usize::try_from(serialized_bytes)
             .map_err(|_| ContextProjectionError::ArithmeticOverflow)?;
         let input = estimator.estimate(serialized_bytes_usize)?;
@@ -90,14 +102,14 @@ impl ContextProjector {
             .checked_add(max_output)
             .and_then(|value| value.checked_add(reasoning_reservation))
             .ok_or(ContextProjectionError::ArithmeticOverflow)?;
-        Ok(CandidateContextDemand {
+        Ok(Some(CandidateContextDemand {
             target_serialized_bytes: serialized_bytes_usize,
             target_serialized_input_upper_bound: input,
             effective_output_cap: max_output,
             additional_reasoning_reservation: reasoning_reservation,
             required_total,
             estimator_revision: estimator.revision.clone(),
-        })
+        }))
     }
 }
 

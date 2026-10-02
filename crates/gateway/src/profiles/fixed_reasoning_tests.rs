@@ -6,7 +6,7 @@ use crate::content_ref::{JsonValueExt, externalize_model_request};
 use crate::replay::{ReplayConfig, ReplayManager};
 use crate::server::core_runtime::adapters::decode_ingress_request;
 use crate::server::core_runtime::profiles::{
-    NativeReasoningFieldAssignment, NativeReasoningRender, ReasoningAccounting,
+    CriticalFact, NativeReasoningFieldAssignment, NativeReasoningRender, ReasoningAccounting,
     ReasoningControlKind, ReasoningProfileCapability,
 };
 use hiroute_gateway_core::runtime::body::BudgetTree;
@@ -75,7 +75,7 @@ fn fixed_reasoning_accepts_valid_responses_history_policy_without_mistaking_it_f
                 &json!({"effort":"high","context":"unsupported"}),
                 IngressProtocol::Responses,
             )
-            .is_err()
+            .is_ok()
     );
 }
 
@@ -107,7 +107,36 @@ fn fixed_reasoning_messages_effort_selects_sealed_profile() {
 }
 
 #[test]
-fn fixed_reasoning_ambiguous_native_values_are_rejected() {
+fn fixed_reasoning_messages_format_does_not_override_effort_or_block_conversion() {
+    for target in [IngressProtocol::Responses, IngressProtocol::ChatCompletions] {
+        let profile = choices(IngressProtocol::Messages, target);
+        for effort in [None, Some("high")] {
+            let mut output = json!({"format":{"type":"json_schema",
+                "schema":{"type":"object","properties":{"title":{"type":"string"}},
+                    "required":["title"],"additionalProperties":false}}});
+            if let Some(effort) = effort {
+                output["effort"] = json!(effort);
+            }
+            let selected = profile
+                .select_native_reasoning(
+                    &json!({"output_config":output}),
+                    IngressProtocol::Messages,
+                )
+                .unwrap();
+            assert_eq!(
+                selected.selected_reasoning().unwrap().profile_id,
+                if effort.is_some() {
+                    "sealed-high"
+                } else {
+                    "sealed-low"
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn fixed_reasoning_ambiguous_directory_does_not_reject_native_controls() {
     let mut profile = choices(IngressProtocol::Responses, IngressProtocol::Responses);
     let mut duplicate = profile.capability.reasoning_profiles[1].clone();
     duplicate.profile_id = "ambiguous".into();
@@ -115,7 +144,7 @@ fn fixed_reasoning_ambiguous_native_values_are_rejected() {
     assert!(
         profile
             .select_native_reasoning(&json!({"effort":"high"}), IngressProtocol::Responses)
-            .is_err()
+            .is_ok()
     );
 }
 
@@ -133,12 +162,30 @@ fn fixed_reasoning_thinking_cannot_guess_cross_protocol_budget() {
 }
 
 #[test]
-fn fixed_reasoning_profile_id_is_not_a_native_effort() {
+fn fixed_reasoning_unknown_native_effort_is_left_to_provider() {
     let profile = choices(IngressProtocol::Responses, IngressProtocol::Responses);
-    assert!(
+    let selected = profile
+        .select_native_reasoning(&json!({"effort":"sealed-high"}), IngressProtocol::Responses)
+        .unwrap();
+    assert_eq!(selected.capability.context.estimator, CriticalFact::Unknown);
+    let mut request = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"alias", "input":"hello", "reasoning":{"effort":"sealed-high"}}),
+    )
+    .unwrap();
+    request.requested_reasoning.fixed_profile_digest =
+        Some(CanonicalDigest::of(selected.selected_reasoning().unwrap()).unwrap());
+    request.requested_reasoning.fixed_profile =
+        Some(selected.selected_reasoning().unwrap().clone());
+    request.requested_reasoning.disposition = RequestedReasoningDisposition::AppliedToFixedBinding;
+    assert_eq!(
         profile
-            .select_native_reasoning(&json!({"effort":"sealed-high"}), IngressProtocol::Responses)
-            .is_err()
+            .for_request_reasoning(&request)
+            .unwrap()
+            .capability
+            .context
+            .estimator,
+        CriticalFact::Unknown
     );
 }
 
@@ -199,6 +246,8 @@ fn fixed_reasoning_content_references_preserve_sealed_choice() {
         .unwrap();
     request.requested_reasoning.fixed_profile_digest =
         Some(CanonicalDigest::of(selected.selected_reasoning().unwrap()).unwrap());
+    request.requested_reasoning.fixed_profile =
+        Some(selected.selected_reasoning().unwrap().clone());
     request.requested_reasoning.disposition = RequestedReasoningDisposition::AppliedToFixedBinding;
     let root = std::env::temp_dir().join(format!(
         "hiroute-fixed-reasoning-{}-{}",
@@ -229,7 +278,14 @@ fn fixed_reasoning_content_references_preserve_sealed_choice() {
             .content_ref()
             .is_some()
     );
-    assert_eq!(profile.for_request_reasoning(&request).unwrap(), selected);
+    assert_eq!(
+        profile
+            .for_request_reasoning(&request)
+            .unwrap()
+            .selected_reasoning()
+            .unwrap(),
+        selected.selected_reasoning().unwrap()
+    );
     request.requested_reasoning.fixed_profile_digest = Some(CanonicalDigest::of_bytes(b"unsealed"));
     assert!(profile.for_request_reasoning(&request).is_err());
     drop(store);

@@ -11,6 +11,13 @@ pub const MODEL_REQUEST_IR_SCHEMA: &str = "hiroute.model-request-ir/v1";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelRequestIRV1 {
+    /// Request-local native payload; never persisted or exported as an IR contract.
+    #[serde(skip)]
+    pub native_body: Option<Value>,
+    /// Unknown native semantics cannot participate in cross-protocol conversion
+    /// or history-prefix reuse/cleanup admission.
+    #[serde(skip)]
+    pub native_only: bool,
     pub schema_version: String,
     pub ingress_protocol: IngressProtocol,
     pub served_model_id: String,
@@ -104,11 +111,11 @@ pub struct ResponsesInternalChatMessageMetadataV1 {
 #[serde(deny_unknown_fields)]
 pub struct ResponsesReasoningHistoryV1 {
     /// Native, non-authority fields of a Responses reasoning item. These are
-    /// returned only to a Responses upstream; the Gateway does not interpret
-    /// a provider's plain reasoning format.
+    /// preserved for Responses; standard summary/content text may also be
+    /// projected to a protocol with a plaintext reasoning field.
     pub native_fields: serde_json::Map<String, serde_json::Value>,
     /// Wire shape of the native `encrypted_content` sibling. Only `Opaque`
-    /// corresponds to ProviderState and therefore requires exact-owner authority.
+    /// corresponds to a ProviderState payload; no source registration is required.
     pub encrypted_content: ResponsesReasoningEncryptedContentV1,
 }
 
@@ -171,7 +178,7 @@ impl ModelRequestIRV1 {
                 .tools
                 .iter()
                 .chain(namespace_functions)
-                .any(|tool| tool.kind == ToolKindV1::Function && tool.strict.is_some()),
+                .any(|tool| tool.kind == ToolKindV1::Function && tool.strict == Some(true)),
             tool_choice: self.tool_choice.clone(),
             parallel_tools: self.parallel_tool_calls,
             tool_roundtrip: active_function_tools || !self.responses_search_history.is_empty(),
@@ -401,6 +408,9 @@ pub struct RequestedReasoningControl {
     pub disposition: RequestedReasoningDisposition,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) fixed_profile_digest: Option<hiroute_domain::CanonicalDigest>,
+    /// Resolved before Replay externalizes native controls. Request-local only.
+    #[serde(skip)]
+    pub(crate) fixed_profile: Option<super::super::profiles::ReasoningProfileCapability>,
 }
 
 impl RequestedReasoningControl {
@@ -409,6 +419,7 @@ impl RequestedReasoningControl {
             native_value: None,
             disposition: RequestedReasoningDisposition::Absent,
             fixed_profile_digest: None,
+            fixed_profile: None,
         }
     }
 
@@ -417,6 +428,7 @@ impl RequestedReasoningControl {
             native_value: Some(native_value),
             disposition: RequestedReasoningDisposition::OverriddenByAgentPlan,
             fixed_profile_digest: None,
+            fixed_profile: None,
         }
     }
 }
@@ -424,14 +436,9 @@ impl RequestedReasoningControl {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpaqueProviderState {
-    pub owner: ExactProviderPathV1,
     pub block_index: Option<u32>,
     pub kind: String,
     pub value: Value,
-    /// Plain thinking text that accompanied a Responses ciphertext in a
-    /// Messages wrapper. Kept separately so both native wires remain exact.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub messages_thinking: Option<ContentValue>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

@@ -105,11 +105,13 @@ pub(crate) struct HoldTicket {
     entry_token: u64,
     cycle: u64,
     value_version: u64,
+    checkpoint_revision: u64,
     pub(crate) message_history_continues: bool,
     pub(crate) hint: Option<HoldPreferenceV1>,
     /// Last fully delivered candidate in this exact route scope, even when
     /// rebuilt history invalidates the stronger continuity hint.
     pub(crate) previous_success: Option<HoldPreferenceV1>,
+    pub(crate) cleaned_prefix_len: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -165,6 +167,8 @@ struct HoldEntry {
     message_count: usize,
     history_digest: [u8; 32],
     preference: Option<HoldPreferenceV1>,
+    hint_valid: bool,
+    cleaned_prefix_len: Option<usize>,
     last_access: Instant,
     access_order: u64,
 }
@@ -267,11 +271,16 @@ impl ContextHoldStore {
                 current_value_version.checked_add(1)?
             };
             let access_order = inner.allocate_access_order()?;
-            let (hint, previous_success, removed_dynamic) = {
+            let (hint, previous_success, cleaned_prefix_len, removed_dynamic) = {
                 let entry = inner.entries.get_mut(&key)?;
                 let previous_success = entry.preference.clone();
-                let hint = continues.then(|| entry.preference.clone()).flatten();
-                let removed_dynamic = if continues {
+                let hint = (continues && entry.hint_valid)
+                    .then(|| entry.preference.clone())
+                    .flatten();
+                let cleaned_prefix_len = message_history_continues
+                    .then_some(entry.cleaned_prefix_len)
+                    .flatten();
+                let removed_dynamic = if message_history_continues {
                     0
                 } else {
                     entry.preference.take().as_ref().map_or(0, preference_bytes)
@@ -282,7 +291,9 @@ impl ContextHoldStore {
                 entry.instruction_digest = history.instruction_digest;
                 entry.message_count = measured.message_count;
                 entry.history_digest = measured.complete_digest;
-                (hint, previous_success, removed_dynamic)
+                entry.hint_valid &= continues;
+                entry.cleaned_prefix_len = cleaned_prefix_len;
+                (hint, previous_success, cleaned_prefix_len, removed_dynamic)
             };
             inner.dynamic_bytes = inner.dynamic_bytes.saturating_sub(removed_dynamic);
             inner.touch(&key, now, access_order);
@@ -291,9 +302,11 @@ impl ContextHoldStore {
                 entry_token: snapshot.entry_token,
                 cycle,
                 value_version,
+                checkpoint_revision,
                 message_history_continues,
                 hint,
                 previous_success,
+                cleaned_prefix_len,
             });
         }
 
@@ -313,6 +326,8 @@ impl ContextHoldStore {
             message_count: measured.message_count,
             history_digest: measured.complete_digest,
             preference: None,
+            hint_valid: false,
+            cleaned_prefix_len: None,
             last_access: now,
             access_order,
         };
@@ -336,16 +351,29 @@ impl ContextHoldStore {
             entry_token,
             cycle: 1,
             value_version: 0,
+            checkpoint_revision: 1,
             message_history_continues: false,
             hint: None,
             previous_success: None,
+            cleaned_prefix_len: None,
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn complete(
         &self,
         ticket: &HoldTicket,
         preference: HoldPreferenceV1,
+        now: Instant,
+    ) -> HoldCompleteOutcome {
+        self.complete_with_cleanup(ticket, preference, None, now)
+    }
+
+    pub(crate) fn complete_with_cleanup(
+        &self,
+        ticket: &HoldTicket,
+        preference: HoldPreferenceV1,
+        cleaned_prefix_len: Option<usize>,
         now: Instant,
     ) -> HoldCompleteOutcome {
         let mut inner = self.inner.lock();
@@ -356,6 +384,7 @@ impl ContextHoldStore {
             return HoldCompleteOutcome::Stale;
         };
         if entry.entry_token != ticket.entry_token
+            || entry.checkpoint_revision != ticket.checkpoint_revision
             || entry.cycle != ticket.cycle
             || entry.value_version != ticket.value_version
         {
@@ -371,6 +400,7 @@ impl ContextHoldStore {
             return HoldCompleteOutcome::Stale;
         };
         if entry.entry_token != ticket.entry_token
+            || entry.checkpoint_revision != ticket.checkpoint_revision
             || entry.cycle != ticket.cycle
             || entry.value_version != ticket.value_version
         {
@@ -379,6 +409,9 @@ impl ContextHoldStore {
         let previous_dynamic = entry.preference.as_ref().map_or(0, preference_bytes);
         let next_dynamic = preference_bytes(&preference);
         entry.preference = Some(preference);
+        entry.hint_valid = true;
+        entry.cleaned_prefix_len =
+            cleaned_prefix_len.filter(|end| *end > 0 && *end <= entry.message_count);
         entry.value_version = next_value_version;
         inner.dynamic_bytes = inner
             .dynamic_bytes

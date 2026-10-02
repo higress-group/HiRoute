@@ -1,6 +1,7 @@
 #[path = "render_responses.rs"]
 mod responses;
 use responses::{render_responses_json, render_responses_stream};
+use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
@@ -9,7 +10,7 @@ use crate::server::core_runtime::model_ir::{
     ToolKindV1,
 };
 use crate::server::core_runtime::profiles::{
-    ClientProtocolProfile, Fidelity, StateAffinity, StreamingRefusalSemantics,
+    ClientProtocolProfile, Fidelity, StreamingRefusalSemantics,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -81,11 +82,6 @@ impl ClientResponseRenderer {
         served_model_alias: &str,
         response: &ModelResponseIRV1,
     ) -> Result<RenderedClientResponse, ProtocolAdapterError> {
-        if !response.provider_state.is_empty() {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "provider state requires an exact-owner client profile".into(),
-            ));
-        }
         ensure_alias(served_model_alias)?;
         validate_projection(protocol, response, false)?;
         render_nonstream_validated(protocol, served_model_alias, response)
@@ -96,11 +92,6 @@ impl ClientResponseRenderer {
         served_model_alias: &str,
         response: &ModelResponseIRV1,
     ) -> Result<RenderedClientResponse, ProtocolAdapterError> {
-        if !response.provider_state.is_empty() {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "provider state requires an exact-owner client profile".into(),
-            ));
-        }
         ensure_alias(served_model_alias)?;
         validate_projection(protocol, response, true)?;
         render_stream_validated(protocol, served_model_alias, response)
@@ -215,18 +206,6 @@ fn validate_client_profile(
             ));
         }
     }
-    if !response.provider_state.is_empty()
-        && (profile.response.provider_state != exact
-            || profile.response.state_affinity != StateAffinity::ExactOwner
-            || response
-                .provider_state
-                .iter()
-                .any(|state| profile.state_owner.as_ref() != Some(&state.owner)))
-    {
-        return Err(ProtocolAdapterError::ClientUnrepresentable(
-            "client protocol profile lacks exact provider-state ownership".into(),
-        ));
-    }
     if response.error.is_some() && profile.response.typed_error != exact {
         return Err(ProtocolAdapterError::ClientUnrepresentable(
             "client protocol profile lacks typed errors".into(),
@@ -274,7 +253,6 @@ fn render_chat_json(
     alias: &str,
     response: &ModelResponseIRV1,
 ) -> Result<Value, ProtocolAdapterError> {
-    reject_state(&response.provider_state, IngressProtocol::ChatCompletions)?;
     let mut message = Map::new();
     message.insert("role".into(), Value::String("assistant".into()));
     let text = collect_text(response);
@@ -324,6 +302,7 @@ fn render_messages_json(
         .map(render_messages_block)
         .collect::<Result<Vec<_>, _>>()?;
     append_messages_state(&mut content, &response.provider_state)?;
+    content.retain(|block| block["type"] != "thinking" || block.get("signature").is_some());
     Ok(json!({
         "id": response.response_id,
         "type": "message",
@@ -340,7 +319,6 @@ fn render_chat_stream(
     alias: &str,
     response: &ModelResponseIRV1,
 ) -> Result<Vec<RenderedSseEvent>, ProtocolAdapterError> {
-    reject_state(&response.provider_state, IngressProtocol::ChatCompletions)?;
     let mut events = Vec::new();
     let prefix = |delta: Value, finish_reason: Value, usage: Value| json!({"id":response.response_id,"object":"chat.completion.chunk","created":0,"model":alias,"choices":[{"index":0,"delta":delta,"finish_reason":finish_reason}],"usage":usage});
     events.push(RenderedSseEvent {
@@ -445,6 +423,9 @@ fn render_messages_stream(
                 );
             }
             ResponseBlock::Reasoning { index, text, .. } => {
+                if !signatures.contains_key(index) {
+                    continue;
+                }
                 push_event(
                     &mut events,
                     "content_block_start",
@@ -526,6 +507,15 @@ fn render_messages_stream(
         json!({"type":"message_delta","delta":{"stop_reason":finish_label_messages(response.finish_reason.as_ref()),"stop_sequence":null},"usage":{"output_tokens":response.usage.output_tokens.unwrap_or(0)}}),
     );
     push_event(&mut events, "message_stop", json!({"type":"message_stop"}));
+    // Omitted unsigned reasoning must not leave holes in Messages block indices.
+    let mut indices = BTreeMap::new();
+    for event in &mut events {
+        if let Some(index) = event.data.get("index").and_then(Value::as_u64) {
+            let next = indices.len();
+            let wire_index = *indices.entry(index).or_insert(next);
+            event.data["index"] = json!(wire_index);
+        }
+    }
     Ok(events)
 }
 
@@ -572,12 +562,8 @@ fn append_responses_state(
     state: &[OpaqueProviderState],
 ) -> Result<(), ProtocolAdapterError> {
     for (state_index, state) in state.iter().enumerate() {
-        if state.owner.upstream_protocol != IngressProtocol::Responses
-            || state.kind != "encrypted_content"
-        {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "provider state is not representable by Responses".into(),
-            ));
+        if state.kind != "encrypted_content" {
+            continue;
         }
         if let Some(block_index) = state
             .block_index
@@ -609,25 +595,12 @@ fn append_messages_state(
     state: &[OpaqueProviderState],
 ) -> Result<(), ProtocolAdapterError> {
     for state in state {
-        if !matches!(
-            state.owner.upstream_protocol,
-            IngressProtocol::Messages | IngressProtocol::Responses
-        ) {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "provider state is not representable by Messages".into(),
-            ));
-        }
-        match (state.owner.upstream_protocol, state.kind.as_str()) {
-            (IngressProtocol::Messages, "redacted_thinking") => content.push(state.value.clone()),
-            (IngressProtocol::Messages, "thinking_signature")
-            | (IngressProtocol::Responses, "encrypted_content") => {
-                if !state
-                    .value
-                    .as_str()
-                    .is_some_and(|signature| !signature.is_empty())
-                {
+        match state.kind.as_str() {
+            "redacted_thinking" => content.push(state.value.clone()),
+            "thinking_signature" => {
+                if !state.value.is_string() {
                     return Err(ProtocolAdapterError::ClientUnrepresentable(
-                        "thinking signature is not a non-empty string".into(),
+                        "thinking signature is not a string".into(),
                     ));
                 }
                 let Some(index) = state
@@ -651,11 +624,7 @@ fn append_messages_state(
                     .expect("rendered block is object")
                     .insert("signature".into(), state.value.clone());
             }
-            _ => {
-                return Err(ProtocolAdapterError::ClientUnrepresentable(
-                    "Messages provider state kind is not representable".into(),
-                ));
-            }
+            _ => {}
         }
     }
     Ok(())
@@ -666,29 +635,19 @@ fn messages_signatures(
 ) -> Result<std::collections::BTreeMap<u32, String>, ProtocolAdapterError> {
     let mut signatures = std::collections::BTreeMap::new();
     for state in state {
-        if !matches!(
-            (state.owner.upstream_protocol, state.kind.as_str()),
-            (IngressProtocol::Messages, "thinking_signature")
-                | (IngressProtocol::Responses, "encrypted_content")
-        ) {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "Messages streaming provider state is not a thinking signature".into(),
-            ));
+        if state.kind != "thinking_signature" {
+            continue;
         }
         let index = state.block_index.ok_or_else(|| {
             ProtocolAdapterError::ClientUnrepresentable(
                 "Messages streaming provider state has no reasoning block".into(),
             )
         })?;
-        let signature = state
-            .value
-            .as_str()
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                ProtocolAdapterError::ClientUnrepresentable(
-                    "Messages streaming signature is not a non-empty string".into(),
-                )
-            })?;
+        let signature = state.value.as_str().ok_or_else(|| {
+            ProtocolAdapterError::ClientUnrepresentable(
+                "Messages streaming signature is not a string".into(),
+            )
+        })?;
         if signatures.insert(index, signature.to_owned()).is_some() {
             return Err(ProtocolAdapterError::ClientUnrepresentable(
                 "Messages streaming reasoning state is not unique".into(),
@@ -696,19 +655,6 @@ fn messages_signatures(
         }
     }
     Ok(signatures)
-}
-
-fn reject_state(
-    state: &[OpaqueProviderState],
-    protocol: IngressProtocol,
-) -> Result<(), ProtocolAdapterError> {
-    if state.is_empty() {
-        Ok(())
-    } else {
-        Err(ProtocolAdapterError::ClientUnrepresentable(format!(
-            "{protocol:?} has no exact provider-state representation"
-        )))
-    }
 }
 
 fn collect_text(response: &ModelResponseIRV1) -> String {
@@ -859,13 +805,6 @@ fn validate_projection(
     if response.completed != response.error.is_none() {
         return Err(ProtocolAdapterError::ClientUnrepresentable(
             "canonical terminal state is inconsistent".into(),
-        ));
-    }
-    if response.provider_state.iter().any(|state| {
-        !state.owner.is_complete() || state.owner.upstream_protocol != response.source_protocol
-    }) {
-        return Err(ProtocolAdapterError::ClientUnrepresentable(
-            "canonical provider state lacks its exact source owner".into(),
         ));
     }
     if protocol != IngressProtocol::Responses

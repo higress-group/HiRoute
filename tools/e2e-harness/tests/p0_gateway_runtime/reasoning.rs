@@ -105,8 +105,8 @@ fn fixed_effort_late_model_reaches_upstream_after_large_input() {
 }
 
 #[test]
-fn fixed_effort_unsupported_is_rejected_before_upstream() {
-    assert_fixed_effort(Some(serde_json::json!("ultra")), None);
+fn fixed_effort_unknown_to_metadata_reaches_native_provider() {
+    assert_fixed_effort(Some(serde_json::json!("ultra")), Some("ultra"));
 }
 
 #[test]

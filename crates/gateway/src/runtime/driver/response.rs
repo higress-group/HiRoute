@@ -42,6 +42,18 @@ pub(super) struct PrecommitDecoderBudget {
     _metadata: Reservation,
 }
 
+fn note_response_reasoning_loss(removed: usize) {
+    if removed > 0
+        && let Some(observation) = crate::server::core_runtime::observation::active_request()
+    {
+        observation.reasoning_cleanup(
+            hiroute_diagnostics::event::ReasoningCleanupReason::ResponseProtocolProjection,
+            removed,
+            None,
+        );
+    }
+}
+
 impl PrecommitDecoderBudget {
     const MAX_CHARGE_STEPS: usize = usize::BITS as usize + 1;
 
@@ -408,6 +420,10 @@ pub(super) fn classify_precommit(
                         );
                     }
                 };
+                note_response_reasoning_loss(adapters::reasoning_loss::response_loss(
+                    &decoded.response,
+                    state.client_profile.protocol,
+                ));
                 let (rendered_status, content_type, bytes) = match rendered_response_parts(rendered)
                 {
                     Ok(parts) => parts,
@@ -729,6 +745,20 @@ fn sanitized_provider_kind(
         return None;
     }
     let code = error.code.as_deref()?.to_ascii_lowercase();
+    if code == "invalid_encrypted_content" {
+        return Some(ProviderFailureKind::ReasoningHistory);
+    }
+    if profile.capability.upstream_protocol == IngressProtocol::Messages
+        && code == "invalid_request_error"
+        && error.message.as_deref().is_some_and(|message| {
+            let message = message.to_ascii_lowercase();
+            message.contains("invalid `signature` in `thinking` block")
+                || message.contains("invalid signature in thinking block")
+                || message.contains("expected `thinking` or `redacted_thinking`, but found")
+        })
+    {
+        return Some(ProviderFailureKind::ReasoningHistory);
+    }
     match profile.capability.upstream_protocol {
         IngressProtocol::Responses | IngressProtocol::ChatCompletions => match code.as_str() {
             "invalid_api_key" | "authentication_error" | "unauthorized" => {
@@ -1005,10 +1035,11 @@ fn decode_stream_chunk_state(
             {
                 outcome.failure = Some(error.clone());
             }
-            for rendered in renderer
+            let rendered_events = renderer
                 .push(&event)
-                .map_err(|_| Arc::from("client stream event is not representable"))?
-            {
+                .map_err(|_| Arc::from("client stream event is not representable"))?;
+            let emitted = !rendered_events.is_empty();
+            for rendered in rendered_events {
                 push_queue_bytes(
                     prefix,
                     &state.budget,
@@ -1017,7 +1048,8 @@ fn decode_stream_chunk_state(
                         .map_err(|_| Arc::from("client stream event serialization failed"))?,
                 )?;
             }
-            outcome.semantic |= semantic;
+            note_response_reasoning_loss(renderer.take_reasoning_loss());
+            outcome.semantic |= semantic && emitted;
             let terminal = matches!(
                 event.event,
                 ModelEvent::ResponseCompleted { .. } | ModelEvent::ResponseFailed { .. }
@@ -1067,6 +1099,7 @@ fn decode_stream_chunk_readiness(
                 );
             }
         }
+        note_response_reasoning_loss(renderer.take_reasoning_loss());
         if status != adapters::ResponseDecodeStatus::NeedDrain {
             break;
         }
@@ -1189,6 +1222,7 @@ fn rendered_response_parts(
 pub(super) fn failure_facts(failure: &AttemptFailure) -> ProviderClassificationFacts {
     ProviderClassificationFacts {
         error_class: Some(label(match failure.class {
+            AttemptFailureClass::ReasoningHistory => "reasoning_history",
             AttemptFailureClass::Credential => "credential",
             AttemptFailureClass::Quota => "quota",
             AttemptFailureClass::BindingOverload => "binding_overload",

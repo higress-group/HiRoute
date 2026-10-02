@@ -76,7 +76,7 @@ fn real_hirouted_replays_threshold_below_and_above_for_two_fallbacks() {
         projected[1] == projected[0] && projected[2] == projected[0],
         "fallback candidates must receive identical logical content"
     );
-    assert_eq!(projected[2]["input"][0]["content"][0]["text"], large_text);
+    assert_eq!(projected[2]["input"], large_text);
 
     if let (Some(before), Some(after)) = (warmed_rss, resident_kib(fixture.process.id())) {
         assert!(
@@ -105,9 +105,7 @@ fn real_hirouted_replays_threshold_below_and_above_for_two_fallbacks() {
     let requests = large_provider.requests();
     assert_eq!(requests.len(), 1);
     let projected: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
-    let forwarded = projected["input"][0]["content"][0]["text"]
-        .as_str()
-        .expect("forwarded text");
+    let forwarded = projected["input"].as_str().expect("forwarded text");
     assert!(forwarded == large_text, "4.6 MB text changed in projection");
     wait_replay_empty(&fixture.replay_root);
 }
@@ -306,9 +304,7 @@ fn real_hirouted_releases_large_namespace_replay_before_long_sse_completion() {
     assert_eq!(requests.len(), 2);
     let projected: serde_json::Value =
         serde_json::from_slice(http_body(&requests[1])).expect("provider request JSON");
-    assert_eq!(projected["input"][0]["role"], "user");
-    assert_eq!(projected["input"][0]["content"][0]["type"], "input_text");
-    assert_eq!(projected["input"][0]["content"][0]["text"], input);
+    assert_eq!(projected["input"], input);
     assert_eq!(projected["tools"][0]["type"], "namespace");
     assert_eq!(projected["tools"][0]["name"], "bulk-services");
     assert_eq!(projected["tools"][0]["description"], namespace_description);
@@ -380,7 +376,7 @@ fn real_hirouted_uses_one_owner_only_plaintext_replay_backing() {
 }
 
 #[test]
-fn real_hirouted_rejects_large_non_http_image_source_before_provider_call() {
+fn real_hirouted_preserves_large_provider_owned_image_source() {
     let forbidden = NativeProvider::start(vec![success()]);
     let fixture = RuntimeFixture::launch_with_replay(&[&forbidden], 1, 128, 31);
     let invalid_url = format!("ftp://invalid.example/{}", "x".repeat(12_000));
@@ -397,10 +393,16 @@ fn real_hirouted_rejects_large_non_http_image_source_before_provider_call() {
 
     let response = fixture.request_body(&body);
     assert_eq!(
-        response.status, 400,
-        "invalid image source must fail as a client semantic error"
+        response.status, 200,
+        "the native provider decides whether its image reference is supported"
     );
-    assert_eq!(forbidden.calls(), 0, "Provider must not be connected");
+    assert_eq!(forbidden.calls(), 1);
+    let requests = forbidden.requests();
+    let projected: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
+    assert_eq!(
+        projected["input"][0]["content"][0]["image_url"],
+        invalid_url
+    );
     wait_replay_empty(&fixture.replay_root);
 }
 

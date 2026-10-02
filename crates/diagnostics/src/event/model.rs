@@ -58,6 +58,31 @@ pub struct AttemptEnd {
     pub elapsed_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
+    pub reasoning_fields_removed: u64,
+}
+
+/// Counts only; never records history, signatures or provider error bodies.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReasoningCleanup {
+    pub request_token: Option<CorrelationToken>,
+    pub attempt_token: Option<CorrelationToken>,
+    pub attempt_index: u64,
+    pub binding_token: Option<CorrelationToken>,
+    pub ingress_protocol: super::IngressProtocol,
+    pub upstream_protocol: super::IngressProtocol,
+    pub reason: ReasoningCleanupReason,
+    pub fields_removed_so_far: u64,
+    pub cleaned_prefix_len: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningCleanupReason {
+    RequestProtocolProjection,
+    ContextBreakRetry,
+    SuccessfulPrefixReuse,
+    ResponseProtocolProjection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

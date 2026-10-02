@@ -5,7 +5,7 @@ use super::*;
 use crate::server::core_runtime::model_ir::{ContentPart, ToolResultStatusV1};
 use crate::server::core_runtime::profiles::{
     CandidateProtocolProfile, ClientProtocolProfile, Fidelity, NativeProviderStateEmission,
-    StateAffinity, fixed_reasoning,
+    fixed_reasoning,
 };
 use crate::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
@@ -17,11 +17,9 @@ fn profile() -> CandidateProtocolProfile {
         "native-luna",
         fixed_reasoning("fixed"),
     );
-    profile.capability.native_provider_state = NativeProviderStateEmission::ExactOwnerAffine;
+    profile.capability.native_provider_state = NativeProviderStateEmission::Native;
     profile.capability.request.provider_state = Fidelity::Exact;
-    profile.capability.request.state_affinity = StateAffinity::ExactOwner;
     profile.capability.response.provider_state = Fidelity::Exact;
-    profile.capability.response.state_affinity = StateAffinity::ExactOwner;
     profile
 }
 
@@ -163,12 +161,9 @@ fn cpa_native_client_reasoning_is_preserved_once_for_its_owner() {
 
 fn assert_replay_to_owner(input: Vec<Value>) {
     let profile = profile();
-    let request = decode_ingress_request_with_bindings(
+    let request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({"model":"hiroute-fixture","input":input}),
-        &IngressRequestBindings {
-            provider_state_owner: Some(profile.exact_provider_path().unwrap()),
-        },
     )
     .unwrap();
     let projected = project_candidate_request(&request, &profile).unwrap();
@@ -225,14 +220,8 @@ fn cpa_native_request_without_reasoning_does_not_gain_state() {
     )
     .unwrap();
     let projected = project_candidate_request(&request, &profile()).unwrap();
-    let input = projected.body["input"].as_array().unwrap();
-    assert_eq!(input.len(), 1);
-    assert_eq!(input[0]["role"], "user");
-    assert!(
-        input
-            .iter()
-            .all(|item| item.get("encrypted_content").is_none())
-    );
+    assert_eq!(projected.body["input"], "hello");
+    assert!(projected.body.get("encrypted_content").is_none());
 }
 
 #[test]
@@ -279,7 +268,6 @@ fn native_completion_metadata_survives_json_and_accumulated_stream() {
 
 #[test]
 fn native_input_status_preserves_function_output_lifecycle_only() {
-    let profile = profile();
     for item in [
         json!({"type":"message","role":"assistant","content":"answer"}),
         json!({"type":"reasoning","summary":[],"encrypted_content":"state"}),
@@ -295,12 +283,9 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
         ] {
             let mut item = item.clone();
             item["status"] = status.clone();
-            let decoded = decode_ingress_request_with_bindings(
+            let decoded = decode_ingress_request(
                 IngressProtocol::Responses,
                 &json!({"model":"alias","input":[item]}),
-                &IngressRequestBindings {
-                    provider_state_owner: Some(profile.exact_provider_path().unwrap()),
-                },
             );
             if status == "completed" {
                 assert_eq!(
@@ -310,6 +295,13 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
                         .get(&0)
                         .map(String::as_str),
                     Some("completed")
+                );
+            } else if status.is_string() {
+                let decoded = decoded.unwrap();
+                assert!(decoded.native_only);
+                assert_eq!(
+                    decoded.responses_item_statuses.get(&0).map(String::as_str),
+                    status.as_str()
                 );
             } else {
                 assert!(decoded.is_err(), "accepted {status}");
@@ -331,12 +323,9 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
         if let Some(status) = status {
             item["status"] = json!(status);
         }
-        let decoded = decode_ingress_request_with_bindings(
+        let decoded = decode_ingress_request(
             IngressProtocol::Responses,
             &json!({"model":"alias","input":[item]}),
-            &IngressRequestBindings {
-                provider_state_owner: Some(profile.exact_provider_path().unwrap()),
-            },
         )
         .unwrap();
         assert!(matches!(
@@ -350,7 +339,7 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
     }
 
     for status in [json!("failed"), json!("unknown"), json!(null), json!(1)] {
-        let decoded = decode_ingress_request_with_bindings(
+        let decoded = decode_ingress_request(
             IngressProtocol::Responses,
             &json!({"model":"alias","input":[{
                 "type":"function_call_output",
@@ -358,11 +347,12 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
                 "output":"answer",
                 "status":status
             }]}),
-            &IngressRequestBindings {
-                provider_state_owner: Some(profile.exact_provider_path().unwrap()),
-            },
         );
-        assert!(decoded.is_err(), "accepted {status}");
+        if status.is_string() {
+            assert!(decoded.unwrap().native_only);
+        } else {
+            assert!(decoded.is_err(), "accepted {status}");
+        }
     }
 }
 
