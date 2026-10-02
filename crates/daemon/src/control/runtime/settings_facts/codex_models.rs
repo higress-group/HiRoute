@@ -129,15 +129,50 @@ impl LocalControlAdapter {
         &self,
         catalog: &CodexCatalogSummaryV1,
         candidates: &mut Vec<hiroute_application::compiler::CandidateCompilationFactV1>,
+        managed_root: Option<(&hiroute_domain::OperationId, &str)>,
     ) -> Option<(Vec<AgentFixedModelSelectionV2>, Vec<String>)> {
-        let mut native_candidates = self
-            .scanner
-            .codex_source_candidates(&CodexSelectionTarget::Root)
-            .ok()?;
-        if native_candidates.len() != 1 {
-            return None;
-        }
-        let native = native_candidates.pop()?;
+        let restored_source = if let Some((original, target)) = managed_root {
+            let stores = self.stores_lock().ok()?;
+            let operation = stores.control().load_operation(original).ok()??;
+            if operation.state != hiroute_domain::OperationState::Succeeded
+                || operation.plan.spec().resource_id.as_deref()
+                    != Some(&self.settings_context(SettingsAgentClass::Codex))
+            {
+                return None;
+            }
+            let intent = operation.plan.external().iter().find(|i| {
+                super::native_model::is_settings_codex_model(i) && i.target() == target
+            })?;
+            let record = self
+                .artifacts
+                .load_native_restore(original, intent)
+                .ok()??;
+            if record.len() < 3 || record[0] != 1 || record[1] > 1 {
+                return None;
+            }
+            let restore = CodexNativeRestore::decode_protected(&record[2..]).ok()?;
+            drop(stores);
+            Some(
+                self.scanner
+                    .codex_source_before_managed_change(&restore)
+                    .ok()??,
+            )
+        } else {
+            None
+        };
+        let native = match &restored_source {
+            Some((native, _)) => native.clone(),
+            None => {
+                let mut sources = self
+                    .scanner
+                    .codex_source_candidates(&CodexSelectionTarget::Root)
+                    .ok()?;
+                if sources.len() != 1 {
+                    return None;
+                }
+                sources.pop()?
+            }
+        };
         let stores = self.stores_lock().ok()?;
         let management = stores
             .control()
@@ -166,10 +201,13 @@ impl LocalControlAdapter {
                 NativeIdentity::ConnectorAccount(account_ref)
             }
             DiscoveredAuthSource::EnvironmentKey | DiscoveredAuthSource::InlineToken => {
-                let protected = self
-                    .scanner
-                    .read_selected_codex_source(&CodexSelectionTarget::Root, &native)
-                    .ok()?;
+                let protected = match restored_source {
+                    Some((_, protected)) => protected,
+                    None => self
+                        .scanner
+                        .read_selected_codex_source(&CodexSelectionTarget::Root, &native)
+                        .ok()?,
+                };
                 let fingerprint = stores
                     .secrets()
                     .fingerprint(protected.credential.as_ref()?)

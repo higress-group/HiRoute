@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import traceback
 import urllib.parse
 
 REPO = Path(__file__).resolve().parent.parent
@@ -120,6 +121,7 @@ def run(args):
         'cpa_sha256': digest(args.cpa_binary),
         'checks': {}, 'limitations': [
             'Real creation and no-login model request; edit/restore covered by daemon tests.',
+            'Source auth remains available; the client uses an empty ephemeral auth store.',
             'Desktop and cross-provider history are not verified.',
         ],
     }
@@ -139,9 +141,6 @@ def run(args):
         report['phase'] = 'subscription_check'
         binding = save_source(product, args.model)
         report['checks']['upstream_source_ready'] = True
-        # CPA owns its authorized upstream copy. Remove only the isolated client copy;
-        # the caller's source login is read-only and checked again in finally.
-        (client_home / 'auth.json').unlink()
         root = product.codex_settings
         baseline = root.read_bytes()
         report['phase'] = 'publication'
@@ -151,13 +150,21 @@ def run(args):
         if 'requires_openai_auth = false' not in profile.read_text():
             raise ValueError('profile_writer_shape_changed')
         env = dict(product.env, CODEX_HOME=str(client_home))
-        # Only the source side has copied subscription credentials. Both ordinary
-        # and profile CLI entrypoints resolve this same never-logged-in client home.
-        if (client_home / 'auth.json').exists():
-            raise ValueError('unexpected_client_auth')
+        # Borrowed upstream auth must remain valid: deleting it revokes the source too.
+        # Codex's ephemeral auth backend reads an initially empty process-local map, not
+        # auth.json/keyring. This test-only override separates client auth from source auth
+        # while exercising the exact CODEX_HOME and profile created by production Apply.
+        client_prefix = [str(args.codex_cli), '-c', 'cli_auth_credentials_store="ephemeral"']
+        login = subprocess.run([*client_prefix, 'login', 'status'], env=env,
+            cwd=product.project, stdin=subprocess.DEVNULL, capture_output=True, timeout=15)
+        report['checks']['client_not_logged_in'] = (
+            login.returncode == 1 and b'Not logged in' in login.stderr)
+        if not report['checks']['client_not_logged_in']:
+            raise ValueError('client_auth_not_empty')
+        report['client_auth_store'] = 'ephemeral'
         report['phase'] = 'real_codex_request'
         completed = subprocess.run([
-            str(args.codex_cli), '--profile', 'hiroute', 'exec', '--skip-git-repo-check',
+            *client_prefix, '--profile', 'hiroute', 'exec', '--skip-git-repo-check',
             '--ephemeral', '--json', '--sandbox', 'read-only',
             'Reply with PROFILE_OK only. Do not use tools.',
         ], env=env, cwd=product.project, stdin=subprocess.DEVNULL,
@@ -167,11 +174,25 @@ def run(args):
         report['checks'].update(
             client_completed=codex_completed(completed.stdout, completed.returncode),
             root_unchanged=root.read_bytes() == baseline,
-            client_auth_absent=not (client_home / 'auth.json').exists())
+            upstream_auth_copy_unchanged=digest(client_home / 'auth.json') == source_digest)
         report['scenario'] = 'green' if all(report['checks'].values()) else 'red'
         report['phase'] = 'complete'
     except Exception as error:
         report.update(scenario='red', error_type=type(error).__name__)
+        # Retain bounded code locations, never exception messages or source lines: assertions
+        # in the shared harness can carry complete control responses and protected material.
+        detail = error.args[0] if error.args else None
+        if isinstance(detail, tuple) and len(detail) == 2:
+            detail = detail[1]
+        if isinstance(detail, dict) and isinstance(detail.get('error'), dict):
+            code = detail['error'].get('code')
+            if code in {'INVALID_ARGUMENTS', 'CHANGE_PREVIEW_STALE', 'CAPABILITY_DENIED',
+                        'RESOURCE_NOT_FOUND', 'DAEMON_UNAVAILABLE', 'INTERNAL_ERROR'}:
+                report['control_error_code'] = code
+        report['error_locations'] = [
+            {'file': Path(frame.filename).name, 'function': frame.name, 'line': frame.lineno}
+            for frame in traceback.extract_tb(error.__traceback__)[-5:]
+        ]
         try:
             report['cpa'] = safe_cpa_summary(product)
         except Exception as diagnostic_error:

@@ -61,21 +61,7 @@ impl FilesystemAgentScannerV1 {
         if &draft.public != selected {
             return Err(Error::SourceChanged);
         }
-        let credential = match draft.auth {
-            Auth::None => None,
-            Auth::Environment(key) => {
-                let value =
-                    Zeroizing::new(std::env::var(key).map_err(|_| Error::SourceUnavailable)?);
-                Some(
-                    ProtectedSecret::new(value.as_bytes().to_vec())
-                        .map_err(|_| Error::SourceUnavailable)?,
-                )
-            }
-            Auth::Inline(value) => Some(
-                ProtectedSecret::new(value.as_bytes().to_vec())
-                    .map_err(|_| Error::SourceUnavailable)?,
-            ),
-        };
+        let protected = protect(draft)?;
         if self
             .codex_source_draft(scope)?
             .map(|draft| draft.public)
@@ -84,17 +70,56 @@ impl FilesystemAgentScannerV1 {
         {
             return Err(Error::SourceChanged);
         }
-        Ok(ProtectedAgentSource {
-            endpoint: draft.endpoint,
-            model: draft.model,
-            credential,
-        })
+        Ok(protected)
+    }
+
+    /// Trusted settings restoration supplies the authenticated field record. Source identity
+    /// comes from the original provider, never the currently selected HiRoute Gateway provider.
+    /// Sampling twice retains the existing race check; no user file is written.
+    pub fn codex_source_before_managed_change(
+        &self,
+        restore: &super::CodexNativeRestore,
+    ) -> Result<Option<(AgentSourceCandidate, ProtectedAgentSource)>, Error> {
+        let scope =
+            super::CodexConfigurationScope::user_file(self.layout.codex_user_config.clone());
+        let Some(draft) = self.codex_source_draft_with_restore(&scope, Some(restore))? else {
+            return Ok(None);
+        };
+        let selected = draft.public.clone();
+        let protected = protect(draft)?;
+        if self
+            .codex_source_draft_with_restore(&scope, Some(restore))?
+            .map(|d| d.public)
+            .as_ref()
+            != Some(&selected)
+        {
+            return Err(Error::SourceChanged);
+        }
+        Ok(Some((selected, protected)))
     }
     fn codex_source_draft(
         &self,
         scope: &super::CodexConfigurationScope,
     ) -> Result<Option<Draft>, Error> {
-        let sampled = super::sample_codex_configuration(scope)?;
+        self.codex_source_draft_with_restore(scope, None)
+    }
+    fn codex_source_draft_with_restore(
+        &self,
+        scope: &super::CodexConfigurationScope,
+        restore: Option<&super::CodexNativeRestore>,
+    ) -> Result<Option<Draft>, Error> {
+        let mut sampled = super::sample_codex_configuration(scope)?;
+        if let Some(restore) = restore {
+            let text = Zeroizing::new(sampled.source_document.to_string());
+            let restored =
+                super::restore_codex_native(&text, restore).map_err(|_| Error::SourceChanged)?;
+            sampled.source_document = restored.parse().map_err(|_| Error::InvalidConfig)?;
+            sampled.dependency_digest = CanonicalDigest::of(&(
+                sampled.dependency_digest,
+                CanonicalDigest::of_bytes(restored.as_bytes()),
+            ))
+            .map_err(|_| Error::InvalidConfig)?;
+        }
         let document = &sampled.source_document;
         // An absent or empty config.toml is a valid Codex configuration: the built-in
         // OpenAI provider and native login still apply.
@@ -196,4 +221,26 @@ fn identifier(value: &str) -> bool {
 }
 fn environment_identifier(value: &str) -> bool {
     identifier(value) && !value.contains('-') && !value.as_bytes()[0].is_ascii_digit()
+}
+
+fn protect(draft: Draft) -> Result<ProtectedAgentSource, Error> {
+    let credential = match draft.auth {
+        Auth::None => None,
+        Auth::Environment(key) => {
+            let value = Zeroizing::new(std::env::var(key).map_err(|_| Error::SourceUnavailable)?);
+            Some(
+                ProtectedSecret::new(value.as_bytes().to_vec())
+                    .map_err(|_| Error::SourceUnavailable)?,
+            )
+        }
+        Auth::Inline(value) => Some(
+            ProtectedSecret::new(value.as_bytes().to_vec())
+                .map_err(|_| Error::SourceUnavailable)?,
+        ),
+    };
+    Ok(ProtectedAgentSource {
+        endpoint: draft.endpoint,
+        model: draft.model,
+        credential,
+    })
 }

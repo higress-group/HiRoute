@@ -663,7 +663,14 @@ impl LocalControlAdapter {
                     },
                     Some(catalog),
                 ) if preserve_native_models && active_protected_native_ids.is_empty() => self
-                    .preserved_codex_model_selections(catalog, &mut fixed_candidate_facts)
+                    .preserved_codex_model_selections(
+                        catalog,
+                        &mut fixed_candidate_facts,
+                        active_configuration
+                            .as_ref()
+                            .filter(|_| class == SettingsAgentClass::Codex)
+                            .map(|op| (op, target.as_str())),
+                    )
                     .unwrap_or_default(),
                 (AgentFacetIntent::Configure { .. }, _)
                     if preserve_native_models && !active_protected_native_ids.is_empty() =>
