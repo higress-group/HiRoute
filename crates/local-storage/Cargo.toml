@@ -7,12 +7,14 @@ rust-version.workspace = true
 
 [dependencies]
 hiroute-diagnostics = { path = "../diagnostics" }
+hiroute-host-runtime = { path = "../host-runtime" }
 aes-gcm.workspace = true
 getrandom.workspace = true
+fs2.workspace = true
 hmac.workspace = true
 hiroute-domain = { path = "../domain" }
 rusqlite.workspace = true
-rustix.workspace = true
+rustix = { workspace = true, features = ["fs"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -20,6 +22,7 @@ thiserror.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 hiroute-application = { path = "../application" }
 hiroute-application-api = { path = "../application-api" }
 hiroute-integrations = { path = "../integrations" }

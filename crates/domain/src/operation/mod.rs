@@ -23,6 +23,10 @@ mod routing_content;
 mod routing_draft;
 pub use routing_content::{ConsumedPlanDraftV1, PlanContentControlV2};
 mod journal;
+mod stored;
+pub use stored::*;
+mod agent_read;
+pub use agent_read::*;
 pub(crate) mod shared_input;
 pub use journal::OperationJournalUpdate;
 mod source_price;
@@ -49,7 +53,7 @@ pub use subscription_check::{
     SubscriptionCheckIntentV2, decode_subscription_check_intent, is_subscription_check_effect,
 };
 
-pub const OPERATION_SCHEMA_VERSION: u16 = 1;
+pub const OPERATION_SCHEMA_VERSION: u16 = 2;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
@@ -1326,7 +1330,7 @@ pub struct OperationV1 {
     pub request_digest: CanonicalDigest,
     pub accepted_digest: CanonicalDigest,
     pub expected_revisions: RevisionSetV1,
-    #[serde(serialize_with = "shared_input::serialize")]
+    #[serde(serialize_with = "stored::serialize_plan")]
     pub plan: Arc<TransactionPlanV1>,
     pub state: OperationState,
     pub generation: u64,
@@ -1356,33 +1360,12 @@ impl OperationV1 {
         expected_revisions: RevisionSetV1,
         plan: TransactionPlanV1,
     ) -> Result<Self, OperationValidationError> {
-        let control_step_input = if let Some(selection) = &plan.worker_dependency_selection {
-            serde_json::to_value((&plan.control, &plan.credential_pool, selection))?
-        } else {
-            serde_json::to_value((&plan.control, &plan.credential_pool))?
-        };
-        let step_inputs = [
-            json!({
-                "spec": &plan.spec,
-                "accepted_digest": &accepted_digest,
-                "expected_revisions": &expected_revisions,
-            }),
-            serde_json::to_value((&plan.secrets, &plan.agent_access_grants))?,
-            control_step_input,
-            serde_json::to_value(
-                plan.external
-                    .iter()
-                    .filter(|effect| effect.kind == OwnedEffectKind::Publication)
-                    .collect::<Vec<_>>(),
-            )?,
-            serde_json::to_value(
-                plan.external
-                    .iter()
-                    .filter(|effect| effect.kind == OwnedEffectKind::AgentArtifact)
-                    .collect::<Vec<_>>(),
-            )?,
-            serde_json::to_value(&plan.runtime)?,
-        ];
+        let facts = StoredOperationInputV1::freeze(&plan)?;
+        let step_inputs = facts.step_inputs(
+            &accepted_digest,
+            &expected_revisions,
+            &plan.agent_access_grants,
+        )?;
         let steps = OperationStepKind::ALL
             .into_iter()
             .zip(step_inputs)
@@ -1391,7 +1374,11 @@ impl OperationV1 {
                 Ok(OperationStepV1 {
                     sequence: u16::try_from(index).expect("six steps fit in u16"),
                     kind,
-                    deterministic_input_digest: CanonicalDigest::of(&input)?,
+                    deterministic_input_digest: CanonicalDigest::of(&(
+                        "hiroute.operation-step-input/v1",
+                        kind,
+                        input,
+                    ))?,
                     status: OperationStepStatus::Pending,
                     attempts: 0,
                     effects: Vec::new(),
@@ -1416,6 +1403,10 @@ impl OperationV1 {
         };
         operation.establish_journal_checkpoint()?;
         Ok(operation)
+    }
+
+    pub fn stable_input_digest(&self) -> Result<CanonicalDigest, OperationValidationError> {
+        StoredOperationInputV1::freeze(&self.plan)?.digest()
     }
 
     pub fn transition(&mut self, next: OperationState) -> Result<(), OperationValidationError> {

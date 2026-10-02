@@ -60,8 +60,9 @@ impl PublicationRecordV1 {
         if workspace_id != publication.workspace_id {
             return Err(PublicationError::InvalidWorkspace);
         }
+        let publication = super::StoredPublicationV1::freeze(publication)?.build()?;
         let bytes = publication.canonical_bytes()?;
-        Ok(Self::from_verified(bytes, publication.clone()))
+        Ok(Self::from_verified(bytes, publication))
     }
 
     /// Storage and untrusted inputs always enter through complete authentication.

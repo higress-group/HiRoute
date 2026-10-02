@@ -146,6 +146,16 @@ fn diagnostic_commands_are_exposed_to_the_main_window() {
 fn startup_recovery_commands_are_exposed_to_the_main_window() {
     assert_commands(STARTUP_COMMANDS);
 }
+#[test]
+fn updater_commands_accept_only_native_actions_in_the_main_window() {
+    assert_commands(&[
+        "update_status",
+        "update_check",
+        "update_download",
+        "update_install",
+        "update_cancel",
+    ]);
+}
 
 #[test]
 fn external_urls_use_only_the_restricted_main_window_command() {

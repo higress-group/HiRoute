@@ -8,7 +8,7 @@ fn fresh_current_contains_worker_subscription_and_concurrency_formats_and_reopen
     let root = tempdir().unwrap();
     let storage = root.path().join("storage");
     drop(
-        LocalStorageSet::open(
+        LocalStorageSet::open_migration_component_fixture(
             &crate::test_storage_authority(),
             &test_writer_barrier(),
             &storage,
@@ -51,7 +51,7 @@ fn fresh_current_contains_worker_subscription_and_concurrency_formats_and_reopen
         assert_eq!(worker_settings, if index == 1 { 1 } else { 0 });
     }
     drop(
-        LocalStorageSet::open(
+        LocalStorageSet::open_migration_component_fixture(
             &crate::test_storage_authority(),
             &test_writer_barrier(),
             &storage,
@@ -78,7 +78,7 @@ fn v15_and_both_experimental_v16_layouts_converge_without_losing_data_or_keys() 
         let storage = root.path().join("storage");
         let live = storage.join("live");
         drop(
-            LocalStorageSet::open(
+            LocalStorageSet::open_migration_component_fixture(
                 &crate::test_storage_authority(),
                 &test_writer_barrier(),
                 &storage,
@@ -100,6 +100,7 @@ fn v15_and_both_experimental_v16_layouts_converge_without_losing_data_or_keys() 
                 "CREATE TABLE IF NOT EXISTS convergence_sentinel(value TEXT NOT NULL);
                  DELETE FROM convergence_sentinel;
                  INSERT INTO convergence_sentinel(value) VALUES ('preserve-me');
+                 DROP TABLE IF EXISTS stable_storage_format;
                  DROP TABLE IF EXISTS worker_authorization_format;
                  DROP TABLE IF EXISTS worker_settings;",
             )
@@ -141,7 +142,7 @@ fn v15_and_both_experimental_v16_layouts_converge_without_losing_data_or_keys() 
         }
 
         drop(
-            LocalStorageSet::open(
+            LocalStorageSet::open_migration_component_fixture(
                 &crate::test_storage_authority(),
                 &test_writer_barrier(),
                 &storage,
@@ -154,7 +155,7 @@ fn v15_and_both_experimental_v16_layouts_converge_without_losing_data_or_keys() 
         );
         let backup = BackupSet::open(
             &crate::test_storage_authority(),
-            storage.join("migration-set"),
+            crate::upgrade_backup_root(&storage).unwrap(),
         )
         .unwrap();
         assert_eq!(backup.phase(), BackupSetPhase::Completed);
@@ -210,7 +211,7 @@ fn v15_and_both_experimental_v16_layouts_converge_without_losing_data_or_keys() 
 
         // Completed migration metadata and converged schemas are restart-idempotent.
         drop(
-            LocalStorageSet::open(
+            LocalStorageSet::open_migration_component_fixture(
                 &crate::test_storage_authority(),
                 &test_writer_barrier(),
                 &storage,

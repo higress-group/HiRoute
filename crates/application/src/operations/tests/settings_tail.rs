@@ -460,7 +460,7 @@ fn settings_receipt_parse_accepts_only_the_registered_schema() {
     );
 
     let mut wrong_schema = receipt.clone();
-    wrong_schema.schema = "hiroute.settings-service-completion/v2".to_owned();
+    wrong_schema.schema = format!("hiroute.settings-service-completion/v{}", 999);
     assert_eq!(
         SettingsServiceCompletionV1::parse(&serde_json::to_string(&wrong_schema).unwrap()),
         None

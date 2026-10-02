@@ -11,6 +11,7 @@ fn v2_settings_skill_only_works_before_the_first_publication() {
     }
     let root = tempfile::tempdir().unwrap();
     fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    drop(hiroute_local_storage::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap());
     let executable = root.path().join("codex-fixture");
     fs::write(&executable, b"#!/bin/sh\nprintf 'codex-cli 99.99.99\\n'\n").unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
@@ -116,6 +117,7 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
     }
     let root = tempfile::tempdir().unwrap();
     fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    drop(hiroute_local_storage::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap());
     let home = root.path().join("agent-home");
     fs::create_dir(&home).unwrap();
     let settings = home.join(".claude/settings.json");

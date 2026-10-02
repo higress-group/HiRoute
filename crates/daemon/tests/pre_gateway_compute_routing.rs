@@ -541,6 +541,7 @@ fn run_production_path(root: &Path) {
     assert_eq!(denied.error.unwrap().code, ErrorCode::CapabilityDenied);
     assert_eq!(semantic_database_snapshot(&storage_root), before_denied);
 
+    drop(routing_port);
     drop(application);
     drop(runtime);
     let stores = LocalStorageSet::open_for_daemon_startup(&storage_root).unwrap();

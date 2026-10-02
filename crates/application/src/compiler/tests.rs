@@ -264,7 +264,7 @@ fn compiler_preserves_exact_ordered_credential_refs_and_rejects_duplicates() {
 fn compiler_unknown_fact_revision_and_unqualified_capability_fail_closed() {
     let desired = smart_desired();
     let mut facts = compilation_facts();
-    facts.compiler_revision = "agent-plan-compiler/v2".into();
+    facts.compiler_revision = "agent-plan-compiler/v3".into();
     assert!(matches!(
         materialize_agent_plan(&desired, &facts).unwrap_err(),
         AgentPlanCompilerError::Facts(CompilerFactError::UnsupportedCompilerRevision)
@@ -329,7 +329,7 @@ fn compiler_compiled_revision_is_immutable_and_unknown_compiler_revision_is_reje
     let plan = &mut publication.plans[0];
     assert_eq!(
         plan.body.compiler_revision,
-        hiroute_domain::AGENT_PLAN_COMPILER_REVISION_V2
+        hiroute_domain::AGENT_PLAN_COMPILER_REVISION_V3
     );
     std::sync::Arc::make_mut(&mut plan.body).compiler_revision =
         "unsupported-compiler-revision".into();
@@ -548,7 +548,7 @@ fn compiler_publication_bytes_are_current_deterministic_and_secret_free() {
     assert!(!lowercase.contains("ordering_price_version"));
     assert!(!lowercase.contains("price_rate_id"));
     assert!(lowercase.contains("\"bearer_token_sha256\""));
-    assert!(lowercase.contains("\"catalog_renderer_revision\""));
+    assert!(!lowercase.contains("\"catalog_renderer_revision\""));
     assert!(lowercase.contains("\"credential_refs\""));
     assert!(lowercase.contains("\"endpoint\""));
     assert!(!lowercase.contains("\"authorization\":"));
@@ -568,9 +568,11 @@ fn compiler_publication_bytes_are_current_deterministic_and_secret_free() {
         );
     }
 
+    let restored = hiroute_domain::GatewayPublicationV1::decode(&bytes).unwrap();
+    assert_eq!(restored.canonical_bytes().unwrap(), bytes);
     assert_eq!(
-        hiroute_domain::GatewayPublicationV1::decode(&bytes).unwrap(),
-        first
+        hiroute_domain::StoredPublicationV1::freeze(&restored).unwrap(),
+        hiroute_domain::StoredPublicationV1::freeze(&first).unwrap()
     );
 }
 

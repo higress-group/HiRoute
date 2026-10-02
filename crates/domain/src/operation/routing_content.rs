@@ -147,7 +147,7 @@ fn validate_inputs(
     head.validate().map_err(|_| invalid())?;
     if spec.command_id != "routing.apply"
         || control.schema != CONTROL_SCHEMA
-        || version.compiled.body.schema != crate::AGENT_PLAN_COMPILED_SCHEMA_V2
+        || version.compiled.body.schema != crate::AGENT_PLAN_COMPILED_SCHEMA_V3
         || control.change_spec_digest != CanonicalDigest::of(spec)?
         || spec.resource_id.as_deref()
             != Some(&format!(

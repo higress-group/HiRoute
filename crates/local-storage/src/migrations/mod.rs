@@ -11,7 +11,14 @@ use hiroute_domain::CanonicalDigest;
 
 mod agent_access_grant_v9;
 mod agent_surface_checks_v22;
+mod current_storage;
+mod startup_format;
+pub(crate) use startup_format::validate_startup_format;
+#[cfg(test)]
+mod stopped_read_tests;
+pub(crate) use current_storage::{acquire_startup_lock, validate_current_storage};
 mod collaboration_dependency;
+mod completed_batches;
 mod compute_v8;
 mod convergence_v15;
 mod convergence_v17;
@@ -31,7 +38,7 @@ mod convergence_tests;
 /// Converged integration format: Worker marker in all stores, Control subscription validations,
 /// and the single runtime-owned Worker concurrency setting. Older layouts migrate through a
 /// durable three-store backup set.
-pub const LATEST_SCHEMA_VERSION: u32 = 22;
+pub const LATEST_SCHEMA_VERSION: u32 = 23;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -210,7 +217,7 @@ pub(crate) fn prepare_storage_root(path: &Path) -> Result<(), LocalStorageError>
     prepare_owner_directory(path)
 }
 
-fn validate_owner_file(path: &Path) -> Result<(), LocalStorageError> {
+pub(crate) fn validate_owner_file(path: &Path) -> Result<(), LocalStorageError> {
     let metadata = fs::symlink_metadata(path)?;
     if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
         return Err(LocalStorageError::Permission);
@@ -331,12 +338,32 @@ impl MigrationSetCoordinator {
         backup_root: &Path,
         secret_binding: Option<&MigrationSecretBinding>,
     ) -> Result<Self, LocalStorageError> {
+        if BackupSet::durable_manifest_present(backup_root)? {
+            let previous = BackupSet::open(authority, backup_root)?;
+            completed_batches::archive_if_needed(
+                &previous,
+                &live_database_paths(live_root),
+                backup_root,
+                secret_binding,
+            )?;
+        }
         let durable_present = BackupSet::durable_manifest_present(backup_root)?;
         let mut durable_set = if durable_present {
             Some(BackupSet::open(authority, backup_root)?)
         } else {
             None
         };
+        if let Some(set) = durable_set.as_mut()
+            && set.phase() != BackupSetPhase::Completed
+            && backup_root.join("conversion-in-progress").exists()
+        {
+            crate::backup::source_snapshot::verify_unchanged(
+                live_root.parent().ok_or(LocalStorageError::InvalidData)?,
+                backup_root,
+            )?;
+            set.restore_over_live_root(barrier, live_root)?;
+            return Err(LocalStorageError::InvalidData);
+        }
         // Reconcile the directory swap before creating or inspecting `live`. In the
         // after-live-rename crash state that path is intentionally absent; recreating an empty
         // directory here would hide the durable restore-ready generation and make recovery fail.
@@ -486,6 +513,12 @@ impl MigrationSetCoordinator {
         };
         if set.phase() == BackupSetPhase::Completed {
             return Err(LocalStorageError::InvalidData);
+        }
+        if set.directory().join("source/source-backup.json").exists() {
+            crate::backup::source_snapshot::verify_unchanged(
+                live_root.parent().ok_or(LocalStorageError::InvalidData)?,
+                set.directory(),
+            )?;
         }
         set.restore_over_live_root(barrier, live_root)
     }
@@ -731,6 +764,9 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Control | DatabaseKind::Secrets, 21) => Ok(NOOP_V9),
         (DatabaseKind::Control, 22) => Ok(agent_surface_checks_v22::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 22) => Ok(NOOP_V9),
+        (DatabaseKind::Control | DatabaseKind::Runtime | DatabaseKind::Secrets, 23) => {
+            Ok(current_storage::MARKER_SQL)
+        }
         _ => Err(LocalStorageError::InvalidData),
     }
 }
@@ -1199,7 +1235,7 @@ mod tests {
 
     fn replace_with_legacy_v1_set(storage_root: &Path) {
         drop(
-            LocalStorageSet::open(
+            LocalStorageSet::open_migration_component_fixture(
                 &crate::test_storage_authority(),
                 &test_writer_barrier(),
                 storage_root,
@@ -1242,8 +1278,8 @@ mod tests {
                         "INSERT INTO workspace_state(
                             workspace_id, desired_json, target_revision, desired_digest,
                             owner_operation_id, updated_at
-                         ) VALUES ('personal/default', '{}', 17, ?1, NULL, 1)",
-                        [CanonicalDigest::of_bytes(b"legacy-control").as_str()],
+                         ) VALUES ('personal/default', '{\"schema\":\"hiroute.control-desired/v1\",\"value\":{}}', 17, ?1, NULL, 1)",
+                        [CanonicalDigest::of(&serde_json::json!({})).unwrap().as_str()],
                     )
                     .unwrap();
             }
@@ -1472,7 +1508,7 @@ mod tests {
             let storage_root = directory.path().join("storage");
             replace_with_legacy_v1_set(&storage_root);
             let live = storage_root.join("live");
-            let backup_root = storage_root.join("migration-set");
+            let backup_root = crate::upgrade_backup_root(&storage_root).unwrap();
             let binding = LocalSecretStore::migration_binding(
                 &live.join("secrets.db"),
                 &storage_root.join("master-key"),
@@ -1525,9 +1561,12 @@ mod tests {
 
             // Restart observes either the source phase or the persisted control phase, proves the
             // already-upgraded control UUID, and deterministically completes the remaining pair.
-            let storage =
-                LocalStorageSet::open(&crate::test_storage_authority(), &barrier, &storage_root)
-                    .unwrap();
+            let storage = LocalStorageSet::open_migration_component_fixture(
+                &crate::test_storage_authority(),
+                &barrier,
+                &storage_root,
+            )
+            .unwrap();
             let assert_latest = |connection: &Connection| {
                 let version: u32 = connection
                     .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -1579,8 +1618,12 @@ mod tests {
             assert_eq!(revision, 17);
             drop(restored_control);
             drop(
-                LocalStorageSet::open(&crate::test_storage_authority(), &barrier, &storage_root)
-                    .unwrap(),
+                LocalStorageSet::open_migration_component_fixture(
+                    &crate::test_storage_authority(),
+                    &barrier,
+                    &storage_root,
+                )
+                .unwrap(),
             );
         }
     }
@@ -1599,7 +1642,7 @@ mod tests {
             let storage_root = directory.path().join("storage");
             replace_with_legacy_v1_set(&storage_root);
             let live = storage_root.join("live");
-            let backup_root = storage_root.join("migration-set");
+            let backup_root = crate::upgrade_backup_root(&storage_root).unwrap();
             let binding = LocalSecretStore::migration_binding(
                 &live.join("secrets.db"),
                 &storage_root.join("master-key"),
@@ -1643,13 +1686,21 @@ mod tests {
             // the exact three source backups, republishes the set manifest, and finishes all
             // migrations. A second restart proves the stage cannot become a permanent blocker.
             drop(
-                LocalStorageSet::open(&crate::test_storage_authority(), &barrier, &storage_root)
-                    .unwrap(),
+                LocalStorageSet::open_migration_component_fixture(
+                    &crate::test_storage_authority(),
+                    &barrier,
+                    &storage_root,
+                )
+                .unwrap(),
             );
             assert!(!stage.exists());
             drop(
-                LocalStorageSet::open(&crate::test_storage_authority(), &barrier, &storage_root)
-                    .unwrap(),
+                LocalStorageSet::open_migration_component_fixture(
+                    &crate::test_storage_authority(),
+                    &barrier,
+                    &storage_root,
+                )
+                .unwrap(),
             );
             let completed =
                 BackupSet::open(&crate::test_storage_authority(), &backup_root).unwrap();
@@ -1678,7 +1729,7 @@ mod tests {
             let storage_root = directory.path().join("storage");
             replace_with_legacy_v1_set(&storage_root);
             let live = storage_root.join("live");
-            let backup_root = storage_root.join("migration-set");
+            let backup_root = crate::upgrade_backup_root(&storage_root).unwrap();
             let binding = LocalSecretStore::migration_binding(
                 &live.join("secrets.db"),
                 &storage_root.join("master-key"),
@@ -1724,11 +1775,16 @@ mod tests {
             }
             drop(set);
 
-            // Exercise the production-shaped storage owner, not the coordinator test seam. The
+            // Exercise the SQL coordinator component harness. Unsupported sources cannot enter
+            // production startup. The
             // first reopen completes the exact group restore and stays fail-closed for that call.
             assert!(
-                LocalStorageSet::open(&crate::test_storage_authority(), &barrier, &storage_root,)
-                    .is_err()
+                LocalStorageSet::open_migration_component_fixture(
+                    &crate::test_storage_authority(),
+                    &barrier,
+                    &storage_root,
+                )
+                .is_err()
             );
             let restored = BackupSet::open(&crate::test_storage_authority(), &backup_root).unwrap();
             assert_eq!(restored.phase(), BackupSetPhase::Restored);

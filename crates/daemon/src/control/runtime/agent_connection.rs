@@ -562,9 +562,8 @@ mod tests {
     use hiroute_application_api::AGENT_CONNECT_SPEC_SCHEMA_V1;
     use hiroute_domain::{
         AgentConfigRestorePointV1, AgentPlanAllowedScopeV1, BeginOperationOutcome,
-        ConnectorRegistryBundleV1, GatewayPublicationRevision, GatewayPublicationV1,
-        IdempotencyScopeV1, OperationId, OperationV1, ProtectedApplyCapability,
-        PublicationRecordV1, ReleaseModelDataBundleV2,
+        ConnectorRegistryBundleV1, GatewayPublicationRevision, IdempotencyScopeV1, OperationId,
+        OperationV1, ProtectedApplyCapability, PublicationRecordV1, ReleaseModelDataBundleV2,
     };
     use hiroute_integrations::{
         AgentFilesystemLayoutV1, ClaudeRegistrationIndexV1, FilesystemAgentScannerV1,
@@ -627,10 +626,11 @@ mod tests {
         let artifacts = stores
             .open_managed_artifacts(storage.join("artifacts"), storage.join("restores"))
             .unwrap();
-        let mut publication = GatewayPublicationV1::decode_persisted(include_bytes!(
-            "../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-        ))
-        .unwrap();
+        let mut publication =
+            serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+                "../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+            ))
+            .unwrap();
         publication.publication_revision = GatewayPublicationRevision::new(1).unwrap();
         publication.aliases.clear();
         publication.grants.clear();
@@ -711,6 +711,7 @@ mod tests {
                 resident_service_ready: false,
             })),
             publication_target: Mutex::new(Some(target.clone())),
+            startup_recovery_complete: std::sync::atomic::AtomicBool::new(true),
             delegation_native_cleanup_cursor: Mutex::new(None),
             delegation_task_maintenance_cursor: Mutex::new(None),
         };

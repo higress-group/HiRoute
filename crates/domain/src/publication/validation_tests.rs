@@ -3,8 +3,8 @@ use super::*;
 use crate::routing::CANDIDATE_VALIDATIONS;
 
 fn current_catalog_only(count: usize) -> GatewayPublicationV1 {
-    let mut publication = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let mut publication = serde_json::from_slice::<crate::GatewayPublicationV1>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap()
     .into_current()
@@ -91,8 +91,8 @@ fn publication_raw_boundaries_still_reject_nested_tampering_and_noncanonical_byt
 
 #[test]
 fn current_publication_still_checks_exact_grant_plan_binding_before_projection() {
-    let mut publication = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let mut publication = serde_json::from_slice::<crate::GatewayPublicationV1>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap()
     .into_current()

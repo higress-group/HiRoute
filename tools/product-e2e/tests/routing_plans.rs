@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use hiroute_application_api::{CommandLifecycle, command_by_id};
 use hiroute_domain::{
     AgentIngressProtocolV1, CanonicalDigest, ConnectorRuntimeKind,
-    GatewayCandidatePricingIdentityV1, GatewayCandidateProtocolProfileV1, GatewayExecutableAliasV2,
+    GatewayCandidatePricingIdentityV1, GatewayCandidateProtocolProfileV1,
     GatewayExecutableCandidateV2, GatewayExecutableRoutingV2, GatewayModelRouteV2,
-    GatewayOperationalTargetV1, GatewayPublicationV1,
+    GatewayOperationalTargetV1,
 };
 use serde::{Deserialize, Serialize};
 
@@ -113,7 +113,7 @@ struct LegacySnapshotSource {
     authority_epoch: u64,
     publication_revision: u64,
     catalog_renderer_revision: String,
-    aliases: Vec<GatewayExecutableAliasV2>,
+    aliases: Vec<LegacyFrozenAlias>,
     grants: Vec<LegacyFrozenG0Grant>,
 }
 
@@ -127,7 +127,7 @@ struct LegacyFrozenG0Snapshot {
     publication_revision: u64,
     payload_digest: String,
     catalog_renderer_revision: String,
-    aliases: Vec<GatewayExecutableAliasV2>,
+    aliases: Vec<LegacyFrozenAlias>,
     grants: Vec<LegacyFrozenG0Grant>,
 }
 
@@ -139,6 +139,51 @@ struct LegacyFrozenG0Grant {
     bearer_token_sha256: String,
     allowed_protocols: Vec<AgentIngressProtocolV1>,
     allowed_aliases: Vec<String>,
+}
+
+// The historical snapshot hashed typed serialization, rather than the publication's
+// JSON member order. Freeze only the layers that set that order; opaque candidates
+// retain the original capability contract instead of using today's execution DTO.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyFrozenAlias {
+    served_model_id: String,
+    purpose: String,
+    agent_plan_revision: u64,
+    protocols: Vec<AgentIngressProtocolV1>,
+    overall_timeout_ms: u64,
+    max_attempts: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    routing: Option<LegacyFrozenRouting>,
+    candidates: Box<serde_json::value::RawValue>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyFrozenRouting {
+    agent_plan_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    plan_display_name: Option<String>,
+    request_owned: LegacyFrozenRequestOwned,
+    groups: Box<serde_json::value::RawValue>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyFrozenRequestOwned {
+    strategy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    classifier: Option<Box<serde_json::value::RawValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reselect_on_user_message: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    simple_groups: Option<Box<serde_json::value::RawValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    complex_groups: Option<Box<serde_json::value::RawValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cost_policy: Option<Box<serde_json::value::RawValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ordered_groups: Option<Box<serde_json::value::RawValue>>,
 }
 
 #[test]
@@ -182,10 +227,12 @@ fn routing_plans_reports_compiler_and_production_journey_green() {
 
 #[test]
 fn routing_plans_golden_is_a_closed_deterministic_publication() {
-    serde_json::from_str::<serde_json::Value>(PUBLICATION_GOLDEN).unwrap();
+    let frozen: serde_json::Value = serde_json::from_str(PUBLICATION_GOLDEN).unwrap();
     let bytes = compact_json_preserving_member_order(PUBLICATION_GOLDEN);
-    let legacy = GatewayPublicationV1::decode_persisted(PUBLICATION_GOLDEN.as_bytes()).unwrap();
-    legacy.validate().unwrap();
+    let publication = serde_json::from_str::<hiroute_domain::GatewayPublicationV1>(include_str!(
+        "../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap();
     let boundary: BoundaryGolden = serde_json::from_str(BOUNDARY_GOLDEN).unwrap();
     assert_eq!(boundary.scenario_id, "process-25004-routing-plans");
     assert_eq!(boundary.compiler_contract, "green");
@@ -201,8 +248,7 @@ fn routing_plans_golden_is_a_closed_deterministic_publication() {
         boundary.publication_digest,
         CanonicalDigest::of_bytes(&bytes)
     );
-    let legacy_snapshot_source: LegacySnapshotSource =
-        serde_json::from_str(PUBLICATION_GOLDEN).unwrap();
+    let legacy_snapshot_source: LegacySnapshotSource = serde_json::from_slice(&bytes).unwrap();
     let legacy_snapshot = LegacyFrozenG0Snapshot {
         schema_version: boundary.gateway_snapshot_schema.clone(),
         admission: hiroute_domain::GatewayAdmissionStateV1::NewCallsAllowed,
@@ -216,18 +262,21 @@ fn routing_plans_golden_is_a_closed_deterministic_publication() {
         grants: legacy_snapshot_source.grants,
     };
     assert_eq!(
+        serde_json::to_value(&legacy_snapshot.aliases).unwrap(),
+        frozen["aliases"]
+    );
+    assert_eq!(
         CanonicalDigest::of_bytes(&serde_json::to_vec(&legacy_snapshot).unwrap()),
         boundary.gateway_snapshot_digest
     );
-    let publication = legacy.into_current().unwrap();
     publication.validate_current_contract().unwrap();
     assert_eq!(
         publication.schema,
         hiroute_domain::GATEWAY_PUBLICATION_SCHEMA_V3
     );
     assert!(publication.plans.iter().all(|plan| {
-        plan.body.schema == hiroute_domain::AGENT_PLAN_COMPILED_SCHEMA_V2
-            && plan.body.compiler_revision == hiroute_domain::AGENT_PLAN_COMPILER_REVISION_V2
+        plan.body.schema == hiroute_domain::AGENT_PLAN_COMPILED_SCHEMA_V3
+            && plan.body.compiler_revision == hiroute_domain::AGENT_PLAN_COMPILER_REVISION_V3
     }));
     let gateway_snapshot = publication.gateway_snapshot().unwrap();
     assert_eq!(

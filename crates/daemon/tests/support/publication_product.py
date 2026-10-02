@@ -11,6 +11,7 @@ import select
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -24,9 +25,34 @@ def encoded(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
 
 
+def startup_frame(process, timeout):
+    deadline = time.monotonic() + timeout
+    previous = -1
+    phases = ('source_check', 'backup', 'conversion', 'validation', 'service_recovery')
+    while True:
+        frame = b''
+        while not frame.endswith(b'\n'):
+            remaining = deadline - time.monotonic()
+            assert remaining > 0 and select.select([process.stdout], [], [], remaining)[0], 'daemon readiness timeout'
+            byte = os.read(process.stdout.fileno(), 1)
+            if not byte:
+                assert not frame, 'partial readiness frame'
+                return b''
+            frame += byte
+            assert len(frame) <= 4096, 'oversized readiness frame'
+        value = json.loads(frame)
+        if value.get('schema') != 'hiroute.daemon-upgrade-progress/v1':
+            return frame
+        assert set(value) == {'schema', 'phase'}, 'unknown progress fields'
+        index = phases.index(value['phase'])
+        assert index > previous, 'repeated or reversed progress'
+        previous = index
+
+
 class Product:
     def __init__(self, repository, project_source=False, root=None):
         self.repo = Path(repository)
+        self.release_version = json.loads((self.repo / 'contracts/cli/local-control-hello.v2.schema.json').read_text())['properties']['client_version']['const']
         self.project_source = project_source
         self.bin = Path(os.environ.get('HIROUTE_VALIDATION_PRODUCT_BIN_DIR',
                                        str(self.repo / 'target/debug')))
@@ -253,10 +279,9 @@ finally:
             env=env, cwd=self.project,
             pass_fds=(self.shutdown_r, self.cap_r, self.cap_ack_w), stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
-        assert select.select([self.process.stdout], [], [], getattr(self, 'startup_timeout', 45))[0], 'daemon readiness timeout'
-        ready = self.process.stdout.readline()
+        ready = startup_frame(self.process, getattr(self, 'startup_timeout', 45))
         if expected_failure:
-            assert not ready, 'unsafe recovery opened product service'
+            assert not ready or json.loads(ready).get('schema') == 'hiroute.daemon-startup-failure/v1', 'unsafe recovery opened product service'
             status = self.process.wait(timeout=40)
             self.outputs.append(self.process.stderr.read())
             for fd in (self.shutdown_r, self.shutdown_w, self.cap_r, self.cap_w,
@@ -265,11 +290,11 @@ finally:
             self.process = None
             assert status != 0, 'failed recovery must not report successful startup'
             return status
-        assert ready, 'daemon did not become ready: ' + self.process.stderr.read().decode()
-        assert json.loads(ready)['role'] == 'all'
         self.outputs.append(ready)
+        assert ready, 'daemon did not become ready'
+        assert json.loads(ready).get('role') == 'all', 'daemon returned a startup failure frame'
 
-    def stop(self, crash=False):
+    def stop(self, crash=False, diagnostic_failure=False):
         if self.process is None:
             return
         os.close(self.shutdown_w)
@@ -284,7 +309,8 @@ finally:
                    self.cap_ack_r, self.cap_ack_w):
             os.close(fd)
         self.process = None
-        assert status == (86 if crash else 0), ('daemon exit', status)
+        if not diagnostic_failure:
+            assert status == (86 if crash else 0), ('daemon exit', status)
 
     def cli(self, command, payload=None, capability=None, success=True):
         """Use command notation to exercise Planned operations over internal Local Control.
@@ -395,7 +421,7 @@ finally:
                 'api_version': V2,
                 'machine_schema_version': V2,
                 'client_name': 'publication-product-test',
-                'client_version': '0.1.0',
+                'client_version': self.release_version,
             }) + b'\n')
             stream.flush()
             hello = json.loads(stream.readline())
@@ -559,10 +585,20 @@ finally:
         return self.diagnostics_snapshot(destination)
 
     def close(self):
+        failed = sys.exc_info()[0] is not None
         try:
-            self.stop()
+            self.stop(diagnostic_failure=failed)
             assert all(secret.encode() not in output for secret in self.secrets
                        for output in self.outputs), 'public secret leak'
         finally:
-            if self.temporary is not None:
+            if failed and self.temporary is not None:
+                # Keep failed frames, stderr and data private; do not replace the original
+                # assertion with a shutdown error or erase the evidence in finally.
+                evidence = self.root / 'harness-failure.bin'
+                evidence.write_bytes(b'\n'.join(self.outputs))
+                evidence.chmod(0o600)
+                self.temporary._finalizer.detach()
+                print(json.dumps({'scenario': 'product-harness-failure',
+                                  'state': 'red', 'evidence_root': str(self.root)}), flush=True)
+            elif self.temporary is not None:
                 self.temporary.cleanup()

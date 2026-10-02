@@ -5,10 +5,15 @@
 //! these desired-state templates or consults rating and price inputs.
 
 mod authoring;
+mod capability_compiler;
 mod classifier;
 mod context_window;
 mod gateway_execution;
 mod materialized;
+mod stored;
+mod stored_capability;
+pub use stored::*;
+pub use stored_capability::*;
 mod ordering;
 mod reasoning;
 mod strategy;
@@ -25,5 +30,5 @@ pub const AGENT_PLAN_FACTS_SCHEMA_V1: &str = "hiroute.agent-plan-facts/v1";
 pub const AGENT_PLAN_COMPILED_SCHEMA_V1: &str = "hiroute.compiled-agent-plan/v1";
 pub const AGENT_PLAN_COMPILER_REVISION_V1: &str = "agent-plan-compiler/v1";
 
-pub const AGENT_PLAN_COMPILED_SCHEMA_V2: &str = "hiroute.compiled-agent-plan/v2";
-pub const AGENT_PLAN_COMPILER_REVISION_V2: &str = "agent-plan-compiler/v2";
+pub const AGENT_PLAN_COMPILED_SCHEMA_V3: &str = "hiroute.compiled-agent-plan/v3";
+pub const AGENT_PLAN_COMPILER_REVISION_V3: &str = "agent-plan-compiler/v3";

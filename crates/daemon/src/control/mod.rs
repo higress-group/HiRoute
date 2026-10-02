@@ -201,6 +201,7 @@ fn category_event_code(category: hiroute_application_api::ErrorCategory) -> Even
 
 #[derive(Clone)]
 pub struct LocalControlDaemon {
+    upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
     application: ApplicationService,
     released_commands_only: bool,
     /// Receive-side diagnostics; a no-op handle keeps every existing host unchanged.
@@ -210,6 +211,7 @@ pub struct LocalControlDaemon {
 impl LocalControlDaemon {
     pub fn new(application: ApplicationService) -> Self {
         Self {
+            upgrade: Arc::new(hiroute_host_runtime::UpgradeDrain::default()),
             application,
             released_commands_only: false,
             diagnostics: DiagnosticHandle::noop(),
@@ -218,6 +220,14 @@ impl LocalControlDaemon {
 
     pub(crate) fn with_released_commands_only(mut self) -> Self {
         self.released_commands_only = true;
+        self
+    }
+
+    pub(crate) fn with_upgrade_drain(
+        mut self,
+        upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
+    ) -> Self {
+        self.upgrade = upgrade;
         self
     }
 
@@ -482,6 +492,14 @@ fn serve_connection(
             write_negotiated_error(&mut stream, ErrorV1::new(ErrorCode::InvalidArguments), None)?;
             return Ok(());
         }
+    };
+    let Some(_upgrade_call) = daemon.upgrade.enter(false) else {
+        write_negotiated_error(
+            &mut stream,
+            ErrorV1::new(ErrorCode::DaemonUnavailable),
+            Some(request.request_id),
+        )?;
+        return Ok(());
     };
     let _wait_permit = match admission.classify(&request.operation_id) {
         Ok(permit) => permit,
@@ -1207,7 +1225,10 @@ mod tests {
         )
         .unwrap();
         let mut reader = BufReader::new(healthy.try_clone().unwrap());
-        let _ = read_frame(&mut reader, Instant::now() + Duration::from_secs(1)).unwrap();
+        let hello = read_frame(&mut reader, Instant::now() + Duration::from_secs(1)).unwrap();
+        let hello: hiroute_application_api::ServerHelloV1 = serde_json::from_str(&hello).unwrap();
+        assert_eq!(hello.daemon_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(hello.release_version, env!("CARGO_PKG_VERSION"));
         write_frame(
             &mut healthy,
             &LocalControlWireRequestV2 {

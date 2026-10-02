@@ -19,6 +19,17 @@ use super::{
 
 const CORE_INSTALL_DEADLINE: Duration = Duration::from_secs(5);
 const DURABLE_PUBLICATION_SCHEMA: &str = "hiroute.gateway.durable-publication/v1";
+const CACHE_SCHEMA: &str = "hiroute.gateway.publication-cache/v1";
+const CACHE_COMPILER: &str = "hiroute.gateway-cache-compiler/v1";
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PublicationCache {
+    schema_version: String,
+    compiler_revision: String,
+    source_publication_digest: String,
+    snapshot_sha256: String,
+    snapshot: GatewayPublicationSnapshotV3,
+}
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct DurablePublicationState {
@@ -186,6 +197,28 @@ pub struct GatewayPublicationInstaller {
 }
 
 impl GatewayPublicationInstaller {
+    /// Product startup resolves its authoritative publication and installation decision from
+    /// control.db. A cache, including a stale or corrupt cache, never grants initial admission.
+    pub fn open_for_product_authority(
+        path: impl AsRef<Path>,
+    ) -> Result<Self, PublicationInstallError> {
+        let path = path.as_ref();
+        if path.file_name().is_none() {
+            return Err(PublicationInstallError::InvalidLkgPath);
+        }
+        Ok(Self::empty(path.to_path_buf()))
+    }
+
+    fn empty(path: PathBuf) -> Self {
+        Self {
+            lkg_path: path,
+            core: Arc::new(PublicationInstaller::new()),
+            active: AtomicPublicationSlot::empty(),
+            pending: Arc::new(AtomicBool::new(false)),
+            durability_uncertain: AtomicBool::new(false),
+            publish_gate: Mutex::new(()),
+        }
+    }
     /// Opens a durable aggregate feed. A missing LKG is a valid unavailable
     /// starting state; an existing but invalid LKG fails closed.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, PublicationInstallError> {
@@ -196,14 +229,7 @@ impl GatewayPublicationInstaller {
         } else {
             None
         };
-        let installer = Self {
-            lkg_path: path.clone(),
-            core: Arc::new(PublicationInstaller::new()),
-            active: AtomicPublicationSlot::empty(),
-            pending: Arc::new(AtomicBool::new(false)),
-            durability_uncertain: AtomicBool::new(false),
-            publish_gate: Mutex::new(()),
-        };
+        let installer = Self::empty(path);
         if let Some(snapshot) = restored {
             let prepared = match installer.prepare(snapshot)? {
                 GatewayPrepareOutcome::Prepared(prepared) => prepared,
@@ -387,13 +413,17 @@ impl GatewayPublicationInstaller {
         // after restart; the Gateway LKG stores only execution semantics.
         let mut durable_snapshot = snapshot.clone();
         durable_snapshot.clear_pricing_identities();
-        let durable = encode_durable_state(&durable_snapshot);
+        let durable = encode_durable_state(&durable_snapshot)?;
         let mut bytes = serde_json::to_vec(&durable).map_err(PublicationInstallError::Json)?;
         bytes.push(b'\n');
-        let mut file = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
+        let mut options = OpenOptions::new();
+        options.create(true).truncate(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
             .open(&temporary)
             .map_err(PublicationInstallError::Io)?;
         file.write_all(&bytes)
@@ -414,17 +444,35 @@ impl GatewayPublicationInstaller {
     }
 }
 
-fn encode_durable_state(snapshot: &GatewayPublicationSnapshotV3) -> DurablePublicationState {
-    DurablePublicationState {
-        schema_version: DURABLE_PUBLICATION_SCHEMA.into(),
+fn encode_durable_state(
+    snapshot: &GatewayPublicationSnapshotV3,
+) -> Result<PublicationCache, PublicationInstallError> {
+    let bytes = serde_json::to_string(snapshot).map_err(PublicationInstallError::Json)?;
+    Ok(PublicationCache {
+        schema_version: CACHE_SCHEMA.into(),
+        compiler_revision: CACHE_COMPILER.into(),
+        source_publication_digest: snapshot.payload_digest.clone(),
+        snapshot_sha256: token_sha256(&bytes),
         snapshot: snapshot.clone(),
-        agent_plan_revisions: Vec::new(),
-    }
+    })
 }
 
 fn decode_durable_state(
     bytes: &[u8],
 ) -> Result<GatewayPublicationSnapshotV3, PublicationInstallError> {
+    if let Ok(cache) = serde_json::from_slice::<PublicationCache>(bytes) {
+        let snapshot =
+            serde_json::to_string(&cache.snapshot).map_err(PublicationInstallError::Json)?;
+        if cache.schema_version != CACHE_SCHEMA
+            || cache.compiler_revision != CACHE_COMPILER
+            || cache.source_publication_digest != cache.snapshot.payload_digest
+            || cache.snapshot_sha256 != token_sha256(&snapshot)
+        {
+            return Err(PublicationInstallError::InvalidDurableState);
+        }
+        cache.snapshot.validate()?;
+        return Ok(cache.snapshot);
+    }
     let durable: DurablePublicationState =
         serde_json::from_slice(bytes).map_err(PublicationInstallError::Json)?;
     if durable.schema_version != DURABLE_PUBLICATION_SCHEMA {

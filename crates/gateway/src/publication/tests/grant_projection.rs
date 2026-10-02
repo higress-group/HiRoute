@@ -32,8 +32,8 @@ fn active_plan_revision_accepts_grant_reachable_protocol_expansion() {
     let directory = TestDirectory::new();
     let lkg = directory.path().join("publication.json");
     let installer = GatewayPublicationInstaller::open(&lkg).unwrap();
-    let product = hiroute_domain::GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let product = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+        "../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
     let mut initial: GatewayPublicationSnapshotV3 =
@@ -94,8 +94,8 @@ fn restored_plan_can_serve_codex_and_claude_without_a_new_plan_revision() {
     let directory = TestDirectory::new();
     let lkg = directory.path().join("publication.json");
     let installer = GatewayPublicationInstaller::open(&lkg).unwrap();
-    let product = hiroute_domain::GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let product = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+        "../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
     let initial: GatewayPublicationSnapshotV3 =

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
 import { DiagnosticsSettings } from '../features/diagnostics/DiagnosticsSettings';
+import { UpdatesSettings } from '../features/UpdatesSettings';
 import { safeDiagnosticCode } from '../error-code';
 import { ProductPage } from '../ui';
 import type { Language, LanguagePreference, TextScale, ThemePreference } from '../ui/preferences';
@@ -191,6 +192,7 @@ export function SettingsPage(props: SettingsPageProps) {
         <button className="btn" type="button" onClick={() => props.onOpenSessions()}>{text('查看会话', 'View sessions')}</button>
       </div></div></section>
       <DiagnosticsSettings active={props.active} language={props.language} />
+      <UpdatesSettings active={props.active} language={props.language} />
       <section className="settings-group"><h2>CLI</h2><div className="settings-list"><div className="settings-row">
         <div className="settings-copy"><strong>{text('终端入口', 'Terminal entry')}</strong><span>{cliEntry === null
           ? text('正在检查 ~/.local/bin/hiroute', 'Checking ~/.local/bin/hiroute')

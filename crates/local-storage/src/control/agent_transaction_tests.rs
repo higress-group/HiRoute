@@ -231,6 +231,82 @@ fn agent_operation(plan: TransactionPlanV1, key: &str) -> OperationV1 {
 }
 
 #[test]
+fn succeeded_agent_read_projection_checks_sql_identity_and_both_step_copies() {
+    let directory = tempdir().unwrap();
+    let control = ControlStore::open(
+        &crate::test_storage_authority(),
+        directory.path().join("control.db"),
+        directory.path().join("backups"),
+    )
+    .unwrap();
+    let mut operation = agent_operation(
+        agent_transaction_plan(AgentConnectionTransactionKindV1::Apply, None),
+        "read-facts",
+    );
+    control
+        .grant_apply_capability("read-facts-capability", &operation, i64::MAX)
+        .unwrap();
+    let authorization = control
+        .verify_apply_authorization(
+            &ProtectedApplyCapability::new("read-facts-capability".into()).unwrap(),
+            &operation.workspace_id,
+            &operation.idempotency.principal,
+            &operation.idempotency.operation_kind,
+            &operation.accepted_digest,
+            &operation.expected_revisions,
+        )
+        .unwrap();
+    control.begin_operation(&operation, &authorization).unwrap();
+    operation.state = hiroute_domain::OperationState::Succeeded;
+    for step in &mut operation.steps {
+        step.status = hiroute_domain::OperationStepStatus::Applied;
+    }
+    control.save_operation(&mut operation).unwrap();
+    let facts = control
+        .succeeded_agent_operations_for_kind(&operation.workspace_id, "ApplyAgentConnectionChange")
+        .unwrap();
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].operation_id, operation.operation_id);
+    assert_eq!(facts[0].plan.spec(), operation.plan.spec());
+    assert_eq!(facts[0].plan.external(), operation.plan.external());
+    control.connection.borrow().execute("UPDATE operation_steps SET step_json=json_set(step_json,'$.step.attempts',99) WHERE step_no=2", []).unwrap();
+    assert_eq!(
+        control
+            .succeeded_agent_operations_for_kind(
+                &operation.workspace_id,
+                "ApplyAgentConnectionChange"
+            )
+            .unwrap_err()
+            .code,
+        hiroute_domain::PortErrorCode::Corrupt
+    );
+    control.connection.borrow().execute("UPDATE operation_steps SET step_json=json_set(step_json,'$.step.attempts',0) WHERE step_no=2", []).unwrap();
+    assert!(
+        control
+            .succeeded_agent_operations_for_kind(
+                &operation.workspace_id,
+                "ApplyAgentConnectionChange"
+            )
+            .is_ok()
+    );
+    control
+        .connection
+        .borrow()
+        .execute("UPDATE operations SET generation=generation+1", [])
+        .unwrap();
+    assert_eq!(
+        control
+            .succeeded_agent_operations_for_kind(
+                &operation.workspace_id,
+                "ApplyAgentConnectionChange"
+            )
+            .unwrap_err()
+            .code,
+        hiroute_domain::PortErrorCode::Corrupt
+    );
+}
+
+#[test]
 fn agent_connection_transaction_journal_reopens_with_exact_typed_plan() {
     let directory = tempdir().unwrap();
     let root = directory.path().join("data");

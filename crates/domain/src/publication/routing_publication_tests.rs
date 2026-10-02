@@ -11,7 +11,8 @@ fn routing_publication_unknown_schema_and_revision_fail_closed() {
         Vec::new(),
     )
     .unwrap();
-    let mut value = serde_json::to_value(publication).unwrap();
+    let mut value =
+        serde_json::from_slice::<Value>(&publication.canonical_bytes().unwrap()).unwrap();
     value["schema"] = serde_json::json!(UNSUPPORTED_GATEWAY_PUBLICATION_SCHEMA_V1);
     let bytes = serde_json::to_vec(&value).unwrap();
     assert_eq!(
@@ -20,7 +21,7 @@ fn routing_publication_unknown_schema_and_revision_fail_closed() {
     );
 
     let mut value: Value = serde_json::from_slice(&bytes).unwrap();
-    value["schema"] = serde_json::json!(GATEWAY_PUBLICATION_SCHEMA_V3);
+    value["schema"] = serde_json::json!(STORED_PUBLICATION_SCHEMA);
     value["publication_revision"] = serde_json::json!(0);
     let bytes = serde_json::to_vec(&value).unwrap();
     assert_eq!(
@@ -31,11 +32,12 @@ fn routing_publication_unknown_schema_and_revision_fail_closed() {
 
 #[test]
 fn model_grant_projection_rejects_conflicting_or_future_plan_provenance() {
-    let fixture: Value = serde_json::from_slice(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let fixture: Value = serde_json::from_slice::<serde_json::Value>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
-    let plan: CompiledAgentPlanV1 = serde_json::from_value(fixture["plans"][0].clone()).unwrap();
+    let plan =
+        serde_json::from_value::<crate::CompiledAgentPlanV1>(fixture["plans"][0].clone()).unwrap();
     let plan = plan.into_current().unwrap();
     let revision = plan.body.agent_plan_revision;
     let accepted_digest = plan.body.materialized_route_digest.clone();
@@ -105,9 +107,9 @@ fn routing_publication_record_is_bound_to_its_workspace() {
 
 #[test]
 fn adding_first_grant_does_not_mutate_the_independent_plan_revision() {
-    let granted: GatewayPublicationV1 = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
+    let granted: GatewayPublicationV1 = serde_json::from_slice::<crate::GatewayPublicationV1>(
+        include_bytes!("../../../../e2e/product/fixtures/routing/current-publication.v3.json"),
+    )
     .unwrap();
     let mut plan_only = granted.clone();
     plan_only.publication_revision = GatewayPublicationRevision::new(10).unwrap();
@@ -154,9 +156,9 @@ fn adding_first_grant_does_not_mutate_the_independent_plan_revision() {
 
 #[test]
 fn revoking_last_grant_preserves_the_independent_plan_publication() {
-    let granted: GatewayPublicationV1 = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
+    let granted: GatewayPublicationV1 = serde_json::from_slice::<crate::GatewayPublicationV1>(
+        include_bytes!("../../../../e2e/product/fixtures/routing/current-publication.v3.json"),
+    )
     .unwrap();
     let first_grant_id = granted.grants[0].grant_id.clone();
     let last_grant_id = granted.grants[1].grant_id.clone();
@@ -172,7 +174,7 @@ fn revoking_last_grant_preserves_the_independent_plan_publication() {
         revoked
             .plans
             .iter()
-            .all(|plan| plan.body.schema == AGENT_PLAN_COMPILED_SCHEMA_V2)
+            .all(|plan| plan.body.schema == AGENT_PLAN_COMPILED_SCHEMA_V3)
     );
     for (current, legacy) in revoked.plans.iter().zip(&granted.plans) {
         assert_eq!(current.agent_plan_id(), legacy.agent_plan_id());
@@ -195,91 +197,4 @@ fn revoking_last_grant_preserves_the_independent_plan_publication() {
     assert!(revoked_projection.aliases.is_empty());
     assert!(revoked_projection.grants.is_empty());
     revoked.validate_transition_from(&one_grant).unwrap();
-}
-
-#[test]
-fn legacy_publication_recovery_rederives_route_mapping_from_persisted_name_sets() {
-    let raw: Value = serde_json::from_slice(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
-    .unwrap();
-    let recovered = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
-    .unwrap();
-    // Recovery reads an exact legacy record; only a new publish upgrades the tag.
-    assert_eq!(recovered.schema, LEGACY_GATEWAY_PUBLICATION_SCHEMA_V2);
-    let raw_grants = raw["grants"].as_array().unwrap();
-    assert_eq!(recovered.grants.len(), raw_grants.len());
-    for (grant, raw_grant) in recovered.grants.iter().zip(raw_grants) {
-        assert_eq!(grant.grant_id, raw_grant["grant_id"].as_str().unwrap());
-        let protocol: AgentIngressProtocolV1 =
-            serde_json::from_value(raw_grant["allowed_protocols"][0].clone()).unwrap();
-        assert_eq!(grant.model_grant.protocol, protocol);
-        let aliases: Vec<ModelAlias> = raw_grant["allowed_aliases"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|value| serde_json::from_value(value.clone()).unwrap())
-            .collect();
-        for alias in &aliases {
-            let plan = recovered
-                .plans
-                .iter()
-                .find(|plan| plan.model_alias() == alias)
-                .unwrap();
-            match grant.model_grant.routes.get(alias.as_str()).unwrap() {
-                crate::AgentModelRouteV2::Plan {
-                    plan_id,
-                    alias: route_alias,
-                    revision,
-                    semantic_digest,
-                } => {
-                    assert_eq!(plan_id, plan.agent_plan_id());
-                    assert_eq!(route_alias, alias);
-                    assert_eq!(*revision, plan.body.agent_plan_revision);
-                    assert_eq!(semantic_digest, &plan.body.materialized_route_digest);
-                }
-                crate::AgentModelRouteV2::Fixed { .. } => {
-                    panic!("a V2 grant carries only published plan aliases");
-                }
-            }
-        }
-    }
-    assert!(recovered.clone().into_current().is_ok());
-}
-
-#[test]
-fn legacy_publication_recovery_rejects_grant_shapes_the_v2_writer_never_sealed() {
-    let mut raw: Value = serde_json::from_slice(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
-    .unwrap();
-    let mut two_protocols = raw.clone();
-    two_protocols["grants"][0]["allowed_protocols"] = serde_json::json!(["messages", "responses"]);
-    assert_eq!(
-        GatewayPublicationV1::decode_persisted(&serde_json::to_vec(&two_protocols).unwrap())
-            .unwrap_err(),
-        PublicationError::InvalidGrant
-    );
-    let mut unknown_alias = raw.clone();
-    unknown_alias["grants"][0]["allowed_aliases"] = serde_json::json!(["hiroute/not-published"]);
-    assert_eq!(
-        GatewayPublicationV1::decode_persisted(&serde_json::to_vec(&unknown_alias).unwrap())
-            .unwrap_err(),
-        PublicationError::InvalidGrant
-    );
-    let mut duplicate_alias = raw.clone();
-    duplicate_alias["grants"][0]["allowed_aliases"] =
-        serde_json::json!(["hiroute/2590c10eeae4f930", "hiroute/2590c10eeae4f930"]);
-    assert_eq!(
-        GatewayPublicationV1::decode_persisted(&serde_json::to_vec(&duplicate_alias).unwrap())
-            .unwrap_err(),
-        PublicationError::InvalidGrant
-    );
-    raw["schema"] = serde_json::json!(UNSUPPORTED_GATEWAY_PUBLICATION_SCHEMA_V1);
-    assert_eq!(
-        GatewayPublicationV1::decode_persisted(&serde_json::to_vec(&raw).unwrap()).unwrap_err(),
-        PublicationError::UnsupportedSchema
-    );
 }

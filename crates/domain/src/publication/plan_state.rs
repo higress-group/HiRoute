@@ -15,7 +15,7 @@ impl GatewayPublicationV1 {
         self.validate()?;
         let mut next = self.clone();
         next.schema = GATEWAY_PUBLICATION_SCHEMA_V3.into();
-        next.compiler_revision = crate::AGENT_PLAN_COMPILER_REVISION_V2.into();
+        next.compiler_revision = crate::AGENT_PLAN_COMPILER_REVISION_V3.into();
         next.publication_revision = revision;
         next.alias_registry = aliases;
         next.plans
@@ -72,7 +72,7 @@ impl GatewayPublicationV1 {
         }
         let mut next = self.clone();
         next.schema = GATEWAY_PUBLICATION_SCHEMA_V3.into();
-        next.compiler_revision = crate::AGENT_PLAN_COMPILER_REVISION_V2.into();
+        next.compiler_revision = crate::AGENT_PLAN_COMPILER_REVISION_V3.into();
         next.plans = next
             .plans
             .into_iter()
@@ -222,239 +222,9 @@ impl GatewayPublicationV1 {
 mod tests {
     use super::*;
 
-    /// Replays the aggregate update from master 501453a2. The aggregate kept compiler V1,
-    /// while edited Plans could already be V2. This is a persisted-record fixture, not a writer.
-    fn master_501453a2_plan_content_publication() -> GatewayPublicationV1 {
-        let source: GatewayPublicationV1 = GatewayPublicationV1::decode_persisted(include_bytes!(
-            "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-        ))
-        .unwrap();
-        let plan = source.plans[0].clone();
-        let heads = source
-            .plans
-            .iter()
-            .cloned()
-            .map(|plan| {
-                let version =
-                    crate::PlanVersionV1::from_legacy_compiled(source.workspace_id.clone(), plan)
-                        .unwrap();
-                PlanHeadV1 {
-                    head_revision: version.reference.content_revision,
-                    model_alias: version.compiled.model_alias().clone(),
-                    reference: version.reference,
-                    status: PlanLifecycleV1::Enabled,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let mut next = source.clone();
-        next.schema = GATEWAY_PUBLICATION_SCHEMA_V3.into();
-        next.publication_revision = GatewayPublicationRevision::new(12).unwrap();
-        next.alias_registry = source.alias_registry.clone();
-        next.plans
-            .retain(|candidate| candidate.agent_plan_id() != plan.agent_plan_id());
-        next.plans.push(plan);
-        next.plans
-            .sort_by(|left, right| left.agent_plan_id().cmp(right.agent_plan_id()));
-        next.plan_heads = heads;
-        next.plan_heads
-            .sort_by(|left, right| left.reference.plan_id.cmp(&right.reference.plan_id));
-        next.aliases = materialize_aliases(&next.plans, &next.enabled_grants().unwrap()).unwrap();
-        next.validate_transition_from(&source).unwrap();
-        next
-    }
-
-    #[test]
-    fn master_v3_compiler_v1_record_authenticates_migrates_and_republishes_current() {
-        let persisted = master_501453a2_plan_content_publication();
-        assert_eq!(persisted.schema, GATEWAY_PUBLICATION_SCHEMA_V3);
-        assert_eq!(
-            persisted.compiler_revision,
-            crate::AGENT_PLAN_COMPILER_REVISION_V1
-        );
-        assert!(
-            persisted
-                .plans
-                .iter()
-                .all(|plan| { plan.body.schema == crate::AGENT_PLAN_COMPILED_SCHEMA_V1 })
-        );
-
-        let original_heads = persisted.plan_heads.clone();
-        let original_grants = persisted.grants.clone();
-        let original_materialized = persisted
-            .plans
-            .iter()
-            .map(|plan| plan.body.materialized.clone())
-            .collect::<Vec<_>>();
-        let original_snapshot = persisted.gateway_snapshot().unwrap();
-        let old_record =
-            PublicationRecordV1::from_publication(persisted.workspace_id.clone(), &persisted)
-                .unwrap();
-
-        // The old digest is authenticated before any migration changes the covered bytes.
-        let authenticated = old_record.verify().unwrap();
-        assert_eq!(authenticated, persisted);
-        // A persisted aggregate with one already-currentized Plan keeps its legacy name-set
-        // grants; recovery derives the route bindings from the Plans exactly as persisted.
-        let mut raw: serde_json::Value = serde_json::from_slice(include_bytes!(
-            "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-        ))
-        .unwrap();
-        let upgraded_plan = serde_json::to_value(
-            serde_json::from_value::<crate::CompiledAgentPlanV1>(raw["plans"][0].clone())
-                .unwrap()
-                .into_current()
-                .unwrap(),
-        )
-        .unwrap();
-        raw["plans"][0] = upgraded_plan;
-        let mixed =
-            GatewayPublicationV1::decode_persisted(&serde_json::to_vec(&raw).unwrap()).unwrap();
-        mixed.validate().unwrap();
-        mixed
-            .clone()
-            .into_current()
-            .unwrap()
-            .validate_current_contract()
-            .unwrap();
-        let mut invalid = mixed.clone();
-        invalid.compiler_revision = "unsupported-compiler".into();
-        assert_eq!(
-            invalid.validate(),
-            Err(PublicationError::UnsupportedCompilerRevision)
-        );
-        let mut tampered = mixed;
-        std::sync::Arc::make_mut(&mut tampered.plans[0].body).compiler_revision =
-            crate::AGENT_PLAN_COMPILER_REVISION_V1.into();
-        assert!(tampered.validate().is_err());
-        let current = authenticated.into_current().unwrap();
-        current.validate_current_contract().unwrap();
-        assert_eq!(current.plan_heads, original_heads);
-        // The plan upgrade re-binds grant route digests to the current compiled form; grant
-        // identities, generations and route coverage stay sealed, and the upgrade is
-        // idempotent over the current aggregate.
-        for (current_grant, original_grant) in current.grants.iter().zip(&original_grants) {
-            assert_eq!(current_grant.grant_id, original_grant.grant_id);
-            assert_eq!(current_grant.generation, original_grant.generation);
-            assert_eq!(
-                current_grant.bearer_token_sha256,
-                original_grant.bearer_token_sha256
-            );
-            assert_eq!(
-                current_grant.model_grant.protocol,
-                original_grant.model_grant.protocol
-            );
-            assert_eq!(
-                current_grant.model_grant.routes.keys().collect::<Vec<_>>(),
-                original_grant.model_grant.routes.keys().collect::<Vec<_>>()
-            );
-        }
-        assert_eq!(current.clone().into_current().unwrap(), current);
-        assert_eq!(current.gateway_snapshot().unwrap(), original_snapshot);
-        assert_eq!(
-            current
-                .plans
-                .iter()
-                .map(|plan| plan.body.materialized.clone())
-                .collect::<Vec<_>>(),
-            original_materialized
-                .into_iter()
-                .map(|mut materialized| {
-                    // Only obsolete ordering provenance changes; compare all remaining fields,
-                    // including candidate order, limits and exact execution configuration.
-                    for group in &mut materialized.attempt_owned.groups {
-                        group.ordering_evidence = crate::MaterializedOrderingV1::ExplicitOrder;
-                        group.pinned_ratings.clear();
-                    }
-                    materialized
-                })
-                .collect::<Vec<_>>()
-        );
-
-        // Re-emission stores only current bytes. A subsequent lifecycle write retains the Plan,
-        // grant and immutable content identities while using the current compiler contract.
-        let current_record =
-            PublicationRecordV1::from_publication(current.workspace_id.clone(), &current).unwrap();
-        let recovered = current_record.verify().unwrap();
-        recovered.validate_current_contract().unwrap();
-        let mut disabled = recovered.plan_heads[0].clone();
-        disabled.head_revision += 1;
-        disabled.status = PlanLifecycleV1::Disabled;
-        let republished = recovered
-            .next_with_plan_lifecycle(GatewayPublicationRevision::new(13).unwrap(), disabled)
-            .unwrap();
-        republished.validate_current_contract().unwrap();
-        assert_eq!(republished.plans, recovered.plans);
-        assert_eq!(republished.grants, recovered.grants);
-        assert_eq!(
-            republished.plan_heads[0].reference,
-            recovered.plan_heads[0].reference
-        );
-    }
-
-    #[test]
-    fn persisted_master_accepts_v2_and_mixed_plans_without_rewriting_before_verification() {
-        let source = master_501453a2_plan_content_publication();
-        for converted_count in 0..=source.plans.len() {
-            // Rebuild the aggregate exactly as the era's writer persisted it: legacy
-            // name-set grants around a plan set that may already contain currentized Plans.
-            let mut body = serde_json::to_value(&source).unwrap();
-            body["grants"] = serde_json::Value::Array(
-                source
-                    .grants
-                    .iter()
-                    .map(|grant| {
-                        serde_json::json!({
-                            "grant_id": grant.grant_id,
-                            "generation": grant.generation,
-                            "bearer_token_sha256": grant.bearer_token_sha256,
-                            "allowed_protocols": [grant.model_grant.protocol],
-                            "allowed_aliases": grant
-                                .model_grant
-                                .routes
-                                .keys()
-                                .collect::<Vec<_>>(),
-                        })
-                    })
-                    .collect(),
-            );
-            for plan in body["plans"]
-                .as_array_mut()
-                .unwrap()
-                .iter_mut()
-                .take(converted_count)
-            {
-                let compiled =
-                    serde_json::from_value::<crate::CompiledAgentPlanV1>(plan.clone()).unwrap();
-                *plan = serde_json::to_value(compiled.into_current().unwrap()).unwrap();
-            }
-            let persisted =
-                GatewayPublicationV1::decode_persisted(&serde_json::to_vec(&body).unwrap())
-                    .unwrap();
-            let record =
-                PublicationRecordV1::from_publication(persisted.workspace_id.clone(), &persisted)
-                    .unwrap();
-            let authenticated = record.verify().unwrap();
-            assert_eq!(authenticated, persisted);
-            let current = authenticated.into_current().unwrap();
-            current.validate_current_contract().unwrap();
-            assert_eq!(current.plan_heads, persisted.plan_heads);
-            assert_eq!(
-                current.gateway_snapshot().unwrap(),
-                persisted.gateway_snapshot().unwrap()
-            );
-            // Upgrading the remaining legacy Plans deterministically re-binds grant route
-            // digests; once every Plan is current the grants pass through unchanged.
-            assert_eq!(current.clone().into_current().unwrap(), current);
-            if converted_count == source.plans.len() {
-                assert_eq!(current.grants, persisted.grants);
-            }
-        }
-    }
-
-    fn migrated_publication_with_heads() -> GatewayPublicationV1 {
-        let legacy: GatewayPublicationV1 = GatewayPublicationV1::decode_persisted(include_bytes!(
-            "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    fn current_publication_with_heads() -> GatewayPublicationV1 {
+        let legacy: GatewayPublicationV1 = serde_json::from_str(include_str!(
+            "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
         ))
         .unwrap();
         let heads = legacy
@@ -462,9 +232,11 @@ mod tests {
             .iter()
             .cloned()
             .map(|plan| {
-                let version =
-                    crate::PlanVersionV1::from_legacy_compiled(legacy.workspace_id.clone(), plan)
-                        .unwrap();
+                let version = crate::PlanVersionV1::from_unversioned_compiled_recovery(
+                    legacy.workspace_id.clone(),
+                    plan,
+                )
+                .unwrap();
                 PlanHeadV1 {
                     head_revision: version.reference.content_revision,
                     model_alias: version.compiled.model_alias().clone(),
@@ -479,7 +251,7 @@ mod tests {
         current
     }
     fn publication() -> GatewayPublicationV1 {
-        let current = migrated_publication_with_heads();
+        let current = current_publication_with_heads();
         current
             .next_with_plan_content(
                 GatewayPublicationRevision::new(12).unwrap(),
@@ -491,7 +263,7 @@ mod tests {
     }
     #[test]
     fn lifecycle_write_keeps_every_compiled_plan_current() {
-        let current = migrated_publication_with_heads();
+        let current = current_publication_with_heads();
         let mut head = current.plan_heads[0].clone();
         head.head_revision += 1;
         head.status = PlanLifecycleV1::Disabled;
@@ -502,7 +274,7 @@ mod tests {
         assert!(
             next.plans
                 .iter()
-                .all(|plan| plan.body.schema == crate::AGENT_PLAN_COMPILED_SCHEMA_V2)
+                .all(|plan| plan.body.schema == crate::AGENT_PLAN_COMPILED_SCHEMA_V3)
         );
     }
     #[test]

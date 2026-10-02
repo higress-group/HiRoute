@@ -41,12 +41,13 @@ fn correlation() -> Value {
 #[test]
 fn fixed_publication_digest_matches_the_actual_gateway_binding() {
     use hiroute_domain as domain;
-    let fixture: Value = serde_json::from_slice(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let fixture: Value = serde_json::from_slice::<serde_json::Value>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
-    let plan: domain::CompiledAgentPlanV1 =
-        serde_json::from_value(fixture["plans"][0].clone()).unwrap();
+    let plan =
+        serde_json::from_value::<hiroute_domain::CompiledAgentPlanV1>(fixture["plans"][0].clone())
+            .unwrap();
     let plan = plan.into_current().unwrap();
     let binding = plan.body.materialized.attempt_owned.groups[0].candidates[0].clone();
     let grant = domain::AgentModelGrantV2::seal(

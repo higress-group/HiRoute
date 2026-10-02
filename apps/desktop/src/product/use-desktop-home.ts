@@ -51,7 +51,7 @@ function observationRequest(view: string, query: object) {
 }
 
 export function useDesktopHome() {
-  const [startup, setStartup] = useState<{ state: 'starting' | 'ready' | 'failed'; code?: string; recovery_available: boolean } | null>(null);
+  const [startup, setStartup] = useState<{ state: 'starting' | 'ready' | 'failed'; code?: string; recovery_available: boolean; backup_directory?: string; upgrade_phase?: 'source_check' | 'backup' | 'conversion' | 'validation' | 'service_recovery' } | null>(null);
   const [service, setService] = useState<DomainReadSlot<HomeService>>(loading);
   const [compute, setCompute] = useState<DomainReadSlot<HomeCompute>>(loading);
   const [plans, setPlans] = useState<DomainReadSlot<HomePlans>>(loading);
@@ -242,6 +242,23 @@ export function useDesktopHome() {
   useEffect(() => {
     void refreshAll();
   }, [refreshAll]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const report = await invoke<NonNullable<typeof startup>>('startup_status');
+        if (cancelled) return;
+        setStartup(current => current?.state === 'ready' ? current : report);
+        if (report.state === 'starting') timer = setTimeout(() => void poll(), 500);
+      } catch {
+        if (!cancelled) timer = setTimeout(() => void poll(), 1000);
+      }
+    };
+    void poll();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, []);
 
   return {
     startup,

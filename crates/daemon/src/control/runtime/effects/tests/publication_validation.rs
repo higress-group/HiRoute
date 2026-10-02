@@ -103,10 +103,11 @@ fn publication_recovery_rejects_corrupt_markers_and_upgrades_verified_legacy() {
         GatewayPublicationInstaller::open(directory.path().join("gateway-lkg.json")).unwrap(),
     )));
     *runtime.adapter.publication_target.lock().unwrap() = Some(target);
-    let mut desired = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
-    .unwrap();
+    let mut desired =
+        serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+            "../../../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+        ))
+        .unwrap();
     desired.aliases.clear();
     desired.grants.clear();
     let (mut operation, intent, record) =
@@ -239,9 +240,9 @@ fn publication_recovery_rejects_corrupt_markers_and_upgrades_verified_legacy() {
 }
 
 #[test]
-fn master_authored_v2_plan_is_recovered_from_durable_compiler_v1_publication() {
+fn authored_plan_is_recovered_from_stable_publication_and_updated() {
     if crate::test_support::isolated_agent_home(
-        "control::runtime::effects::tests::publication_validation::master_authored_v2_plan_is_recovered_from_durable_compiler_v1_publication",
+        "control::runtime::effects::tests::publication_validation::authored_plan_is_recovered_from_stable_publication_and_updated",
     ) {
         return;
     }
@@ -290,31 +291,23 @@ fn master_authored_v2_plan_is_recovered_from_durable_compiler_v1_publication() {
     let authored = preview_plan_content(&create, &authoring).unwrap();
     assert_eq!(
         authored.plan_version.compiled.body.schema,
-        hiroute_domain::AGENT_PLAN_COMPILED_SCHEMA_V2
+        hiroute_domain::AGENT_PLAN_COMPILED_SCHEMA_V3
     );
     assert_eq!(
         authored.plan_version.compiled.body.compiler_revision,
-        hiroute_domain::AGENT_PLAN_COMPILER_REVISION_V2
+        hiroute_domain::AGENT_PLAN_COMPILER_REVISION_V3
     );
 
-    // Reproduce master's bootstrap writer: its empty V2/compiler-V1 seed was promoted to V3,
-    // but `preview_plan_content` supplied the already-current compiled Plan V2 unchanged.
-    let legacy_schema = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
-    .unwrap()
-    .schema;
+    // The current writer stores frozen facts. Reopening must reconstruct the same
+    // confirmed plan, permit a content update, and keep the stored bytes unchanged.
     let revision_one = GatewayPublicationRevision::new(1).unwrap();
-    let mut seed = GatewayPublicationV1::new(
+    let seed = GatewayPublicationV1::new(
         workspace.clone(),
         revision_one,
         hiroute_domain::AliasRegistryV1::default(),
         vec![],
     )
     .unwrap();
-    seed.schema = legacy_schema;
-    seed.compiler_revision = hiroute_domain::AGENT_PLAN_COMPILER_REVISION_V1.into();
-    seed.validate().unwrap();
     let mut aliases = seed.alias_registry.clone();
     assert_eq!(
         aliases
@@ -396,7 +389,10 @@ fn master_authored_v2_plan_is_recovered_from_durable_compiler_v1_publication() {
     let recovered_authoring =
         RoutingFactsPort::plan_authoring_snapshot(recovered.adapter.as_ref(), &workspace, &update)
             .unwrap();
-    assert_eq!(recovered_authoring.active_publication, Some(historical));
+    assert_eq!(
+        recovered_authoring.active_publication,
+        Some(historical_record.verify_current().unwrap())
+    );
     assert_eq!(
         recovered_authoring
             .legacy_source
@@ -497,8 +493,8 @@ fn publication_no_new_calls_replaces_servable_before_with_identified_denial() {
         crate::release_catalog::fixture_catalog(),
     )
     .unwrap();
-    let prior = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let prior = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+        "../../../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
     let mut desired = prior.clone();

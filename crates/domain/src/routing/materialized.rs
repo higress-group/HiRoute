@@ -12,12 +12,11 @@ use crate::{
 
 use super::gateway_execution::{GatewayCandidateProtocolProfileV1, GatewayOperationalTargetV1};
 use super::{
-    AGENT_PLAN_COMPILED_SCHEMA_V1, AGENT_PLAN_COMPILED_SCHEMA_V2, AGENT_PLAN_COMPILER_REVISION_V1,
-    AGENT_PLAN_COMPILER_REVISION_V2, ComplexityClassifierV1, RoutingLimitsV1,
+    AGENT_PLAN_COMPILED_SCHEMA_V1, AGENT_PLAN_COMPILED_SCHEMA_V3, AGENT_PLAN_COMPILER_REVISION_V1,
+    AGENT_PLAN_COMPILER_REVISION_V3, ComplexityClassifierV1, RoutingLimitsV1,
 };
 
 const LEGACY_MATERIALIZED_ROUTE_DIGEST_SCHEMA_V1: &str = "hiroute.materialized-route-digest/v1";
-pub const MATERIALIZED_ROUTE_DIGEST_SCHEMA_V2: &str = "hiroute.materialized-route-digest/v2";
 
 #[cfg(test)]
 thread_local! {
@@ -408,16 +407,40 @@ impl MaterializedAgentPlanV1 {
     /// provenance, so a rating/price/new-offer refresh cannot silently change a saved route.
     pub fn route_digest(&self) -> Result<CanonicalDigest, CompiledPlanError> {
         self.validate()?;
+        self.route_digest_for_sealing()
+    }
+
+    /// Calculates the frozen-fact hash without claiming validation. A newly assembled
+    /// stored Plan passes full validation in seal_current before receiving its proof.
+    pub(super) fn route_digest_for_sealing(&self) -> Result<CanonicalDigest, CompiledPlanError> {
         if self.attempt_owned.groups.iter().any(|group| {
             group.ordering_evidence != MaterializedOrderingV1::ExplicitOrder
                 || !group.pinned_ratings.is_empty()
         }) {
             return Err(CompiledPlanError::InvalidOrderingFacts);
         }
+        let groups = self
+            .attempt_owned
+            .groups
+            .iter()
+            .map(|g| {
+                Ok(super::StoredGroupV1 {
+                    group_id: g.group_id,
+                    ordering_evidence: g.ordering_evidence.clone(),
+                    pinned_ratings: g.pinned_ratings.clone(),
+                    candidates: g
+                        .candidates
+                        .iter()
+                        .map(super::StoredCandidateV1::freeze_validated)
+                        .collect::<Result<_, _>>()?,
+                })
+            })
+            .collect::<Result<Vec<_>, CompiledPlanError>>()?;
         CanonicalDigest::of(&(
-            MATERIALIZED_ROUTE_DIGEST_SCHEMA_V2,
+            super::STABLE_ROUTE_SCHEMA,
             &self.request_owned,
-            &self.attempt_owned,
+            &self.attempt_owned.limits,
+            groups,
         ))
         .map_err(|_| CompiledPlanError::Encoding)
     }
@@ -577,7 +600,7 @@ impl CompiledAgentPlanV1 {
     /// Seals the sole live compiled-plan contract. Historical bodies must enter through the
     /// authenticated persisted-record reader and are converted before any new publication write.
     pub fn seal_current(body: CompiledAgentPlanBodyV1) -> Result<Self, CompiledPlanError> {
-        if body.schema != AGENT_PLAN_COMPILED_SCHEMA_V2 {
+        if body.schema != AGENT_PLAN_COMPILED_SCHEMA_V3 {
             return Err(CompiledPlanError::UnsupportedSchema);
         }
         Self::seal_compatible(body)
@@ -629,7 +652,7 @@ impl CompiledAgentPlanV1 {
     /// explicit order and computes the one current route digest.
     pub fn into_current(mut self) -> Result<Self, CompiledPlanError> {
         self.validate()?;
-        if self.body.schema == AGENT_PLAN_COMPILED_SCHEMA_V2 {
+        if self.body.schema == AGENT_PLAN_COMPILED_SCHEMA_V3 {
             return Ok(self);
         }
         let body = Arc::make_mut(&mut self.body);
@@ -637,8 +660,8 @@ impl CompiledAgentPlanV1 {
             group.ordering_evidence = MaterializedOrderingV1::ExplicitOrder;
             group.pinned_ratings.clear();
         }
-        body.schema = AGENT_PLAN_COMPILED_SCHEMA_V2.to_owned();
-        body.compiler_revision = AGENT_PLAN_COMPILER_REVISION_V2.to_owned();
+        body.schema = AGENT_PLAN_COMPILED_SCHEMA_V3.to_owned();
+        body.compiler_revision = AGENT_PLAN_COMPILER_REVISION_V3.to_owned();
         body.materialized_route_digest = body.materialized.route_digest()?;
         Self::seal_current((*self.body).clone())
     }
@@ -655,7 +678,7 @@ impl CompiledAgentPlanV1 {
 fn validate_body(body: &CompiledAgentPlanBodyV1) -> Result<(), CompiledPlanError> {
     let expected_revision = match body.schema.as_str() {
         AGENT_PLAN_COMPILED_SCHEMA_V1 => AGENT_PLAN_COMPILER_REVISION_V1,
-        AGENT_PLAN_COMPILED_SCHEMA_V2 => AGENT_PLAN_COMPILER_REVISION_V2,
+        AGENT_PLAN_COMPILED_SCHEMA_V3 => AGENT_PLAN_COMPILER_REVISION_V3,
         _ => return Err(CompiledPlanError::UnsupportedSchema),
     };
     if body.compiler_revision != expected_revision {
@@ -668,7 +691,7 @@ fn validate_body(body: &CompiledAgentPlanBodyV1) -> Result<(), CompiledPlanError
         return Err(CompiledPlanError::InvalidIdentity);
     }
     // Both digest methods fully validate the borrowed materialized route.
-    let route_digest = if body.schema == AGENT_PLAN_COMPILED_SCHEMA_V2 {
+    let route_digest = if body.schema == AGENT_PLAN_COMPILED_SCHEMA_V3 {
         body.materialized.route_digest()?
     } else {
         body.materialized.legacy_route_digest()?

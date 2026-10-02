@@ -55,10 +55,10 @@ impl LocalControlAdapter {
         connection_id: &str,
     ) -> PortResult<AgentAccessGrantRefV1> {
         let stores = self.stores_lock()?;
-        for operation in stores
-            .control()
-            .succeeded_operations_for_kind(&WorkspaceId::default(), "ApplyAgentConnectionChange")?
-        {
+        for operation in stores.control().succeeded_agent_operations_for_kind(
+            &WorkspaceId::default(),
+            "ApplyAgentConnectionChange",
+        )? {
             let projection = operation
                 .plan
                 .agent_connection_projection()
@@ -480,7 +480,10 @@ impl LocalControlAdapter {
                     || {
                         let target = self.required_publication_target()?;
                         if !target.verify_installed(record).map_err(target_error)? {
-                            target.activate_verified(record).map_err(target_error)?;
+                            crate::publication_failpoint::during_operation_install(|| {
+                                target.activate_verified(record)
+                            })
+                            .map_err(target_error)?;
                         }
                         if !target.verify_installed(record).map_err(target_error)? {
                             return Err(invalid("publication.activate.target-mismatch"));

@@ -253,7 +253,7 @@ fn publication_revision_and_grant_generation_invariants_are_independent() {
     activator.publish(&first, None).unwrap();
 
     let mut same_revision = compiled_publication(11);
-    same_revision.catalog_renderer_revision = "hiroute.gateway-catalog-renderer/v2".into();
+    same_revision.authority_epoch += 1;
     same_revision.validate().unwrap();
     let same_record =
         PublicationRecordV1::from_publication(workspace.clone(), &same_revision).unwrap();

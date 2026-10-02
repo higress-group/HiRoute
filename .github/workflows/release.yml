@@ -113,3 +113,24 @@ jobs:
           export PATH="$RUNNER_TEMP/bin:$PATH"
           .github/scripts/publish-release-oss.sh "$RUNNER_TEMP/release-assets" apps/website/data/releases.json "$RELEASE_TAG"
           .github/scripts/deploy-website-oss.sh apps/website/dist apps/website/data/releases.json
+
+  record-contracts:
+    needs: [verify-release, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-release.outputs.website_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Propose the published contract snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_REVISION: ${{ needs.verify-release.outputs.revision }}
+          WEBSITE_REVISION: ${{ needs.verify-release.outputs.website_revision }}
+        run: bash .github/scripts/release-contract-pr.sh

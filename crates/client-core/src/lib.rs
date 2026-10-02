@@ -17,8 +17,9 @@ pub use error::{ClientFailure, FailureCode, SubmissionState};
 pub use observation::ObservationCursor;
 
 use hiroute_application_api::{
-    ClientHelloV1, ErrorCode, LOCAL_CONTROL_SCHEMA_V2, LocalControlWireRequestV2,
-    MACHINE_ENVELOPE_SCHEMA_V2, MachineEnvelopeV2, PrincipalKind, ServerHelloV1,
+    ClientHelloV1, ErrorCode, LOCAL_CONTROL_RELEASE_VERSION, LOCAL_CONTROL_SCHEMA_V2,
+    LocalControlWireRequestV2, MACHINE_ENVELOPE_SCHEMA_V2, MachineEnvelopeV2, PrincipalKind,
+    ServerHelloV1,
 };
 use hiroute_diagnostics::context::DiagnosticContext;
 use hiroute_diagnostics::correlation::CorrelationDomain;
@@ -181,7 +182,7 @@ impl Client {
                 api_version: LOCAL_CONTROL_SCHEMA_V2,
                 machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
                 client_name: self.name.clone(),
-                client_version: env!("CARGO_PKG_VERSION").into(),
+                client_version: LOCAL_CONTROL_RELEASE_VERSION.into(),
             };
             let handshake = async {
                 stream
@@ -194,8 +195,8 @@ impl Client {
                     Ok(hello)
                         if hello.api_version == LOCAL_CONTROL_SCHEMA_V2
                             && hello.machine_schema_version == MACHINE_ENVELOPE_SCHEMA_V2
-                            && hello.daemon_version == env!("CARGO_PKG_VERSION")
-                            && hello.release_version == env!("CARGO_PKG_VERSION")
+                            && hello.daemon_version == LOCAL_CONTROL_RELEASE_VERSION
+                            && hello.release_version == LOCAL_CONTROL_RELEASE_VERSION
                             && hello.capabilities.iter().any(|c| c == "local-control-v2")
                             && (!matches!(
                                 request.0.operation_id.as_str(),

@@ -298,7 +298,7 @@ pub fn is_settings_publication(intent: &ExternalEffectIntentV1) -> bool {
     intent.kind() == OwnedEffectKind::Publication && intent.desired()["transaction"] == "settings"
 }
 
-pub const SETTINGS_SERVICE_COMPLETION_SCHEMA: &str = "hiroute.settings-service-completion/v1";
+pub const SETTINGS_SERVICE_COMPLETION_SCHEMA: &str = "hiroute.settings-service-completion/v2";
 
 /// Durable proof that a settings operation's service segment (secrets, control, runtime,
 /// non-client artifacts, publication and protected revocations) finished. It authorizes the
@@ -445,67 +445,75 @@ impl TransactionPlanV1 {
             &self.runtime,
             &self.external,
         )?;
-        let control = decode_control(&self.control)?;
-        let subject = decode_subject(control.subject)?;
-        let payload: DurableAgentConnectionPayloadV1 = serde_json::from_value(control.payload)
-            .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
-        payload
-            .connection
-            .validate()
-            .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
-        let desired = self
-            .spec
-            .desired_state
-            .as_object()
-            .ok_or(OperationValidationError::UnregisteredEffectPlan)?;
-        let connection_id = self
-            .spec
-            .resource_id
-            .clone()
-            .ok_or(OperationValidationError::UnregisteredEffectPlan)?;
-        let installed_version = desired
-            .get("installed_version")
-            .and_then(Value::as_str)
-            .ok_or(OperationValidationError::UnregisteredEffectPlan)?
-            .to_owned();
-        let desired_digest = |field: &str| {
-            desired
-                .get(field)
-                .and_then(Value::as_str)
-                .and_then(|value| CanonicalDigest::parse(value.to_owned()).ok())
-                .ok_or(OperationValidationError::UnregisteredEffectPlan)
-        };
-        let observation_digest = desired_digest("observation_digest")?;
-        if connection_id
-            != format!(
-                "agent-connection/{}/{}",
-                payload.connection.agent_id, payload.connection.profile_id
-            )
-            || subject.agent_id() != payload.connection.agent_id
-            || subject.profile_id() != payload.connection.profile_id
-            || subject.integration_profile_ref() != payload.connection.integration_profile_ref
-            || desired.get("agent_id").and_then(Value::as_str)
-                != Some(payload.connection.agent_id.as_str())
-            || desired.get("profile_id").and_then(Value::as_str)
-                != Some(payload.connection.profile_id.as_str())
-            || desired
-                .get("integration_profile_ref")
-                .and_then(Value::as_str)
-                != Some(payload.connection.integration_profile_ref.as_str())
-            || desired_digest("grant_digest")? != payload.connection.grant.digest
-            || desired_digest("publication_digest")? != payload.publication_digest
-            || desired_digest("config_change_digest")? != payload.config_change_digest
-        {
-            return Err(OperationValidationError::UnregisteredEffectPlan);
-        }
-        Ok(Some(ActiveAgentConnectionV1 {
-            connection_id,
-            installed_version,
-            observation_digest,
-            source_publication_digest: payload.publication_digest,
-            connection: payload.connection,
-        }))
+        connection_projection(&self.spec, &self.control)
     }
+}
+
+pub(super) fn connection_projection(
+    spec: &ChangeSpecV1,
+    control: &Value,
+) -> Result<Option<ActiveAgentConnectionV1>, OperationValidationError> {
+    if spec.command_id != AgentConnectionTransactionKindV1::Apply.command_id() {
+        return Ok(None);
+    }
+    let control = decode_control(control)?;
+    let subject = decode_subject(control.subject)?;
+    let payload: DurableAgentConnectionPayloadV1 = serde_json::from_value(control.payload)
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+    payload
+        .connection
+        .validate()
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+    let desired = spec
+        .desired_state
+        .as_object()
+        .ok_or(OperationValidationError::UnregisteredEffectPlan)?;
+    let connection_id = spec
+        .resource_id
+        .clone()
+        .ok_or(OperationValidationError::UnregisteredEffectPlan)?;
+    let installed_version = desired
+        .get("installed_version")
+        .and_then(Value::as_str)
+        .ok_or(OperationValidationError::UnregisteredEffectPlan)?
+        .to_owned();
+    let desired_digest = |field: &str| {
+        desired
+            .get(field)
+            .and_then(Value::as_str)
+            .and_then(|value| CanonicalDigest::parse(value.to_owned()).ok())
+            .ok_or(OperationValidationError::UnregisteredEffectPlan)
+    };
+    let observation_digest = desired_digest("observation_digest")?;
+    if connection_id
+        != format!(
+            "agent-connection/{}/{}",
+            payload.connection.agent_id, payload.connection.profile_id
+        )
+        || subject.agent_id() != payload.connection.agent_id
+        || subject.profile_id() != payload.connection.profile_id
+        || subject.integration_profile_ref() != payload.connection.integration_profile_ref
+        || desired.get("agent_id").and_then(Value::as_str)
+            != Some(payload.connection.agent_id.as_str())
+        || desired.get("profile_id").and_then(Value::as_str)
+            != Some(payload.connection.profile_id.as_str())
+        || desired
+            .get("integration_profile_ref")
+            .and_then(Value::as_str)
+            != Some(payload.connection.integration_profile_ref.as_str())
+        || desired_digest("grant_digest")? != payload.connection.grant.digest
+        || desired_digest("publication_digest")? != payload.publication_digest
+        || desired_digest("config_change_digest")? != payload.config_change_digest
+    {
+        return Err(OperationValidationError::UnregisteredEffectPlan);
+    }
+    Ok(Some(ActiveAgentConnectionV1 {
+        connection_id,
+        installed_version,
+        observation_digest,
+        source_publication_digest: payload.publication_digest,
+        connection: payload.connection,
+    }))
 }
 
 /// Durable non-secret view used by daemon status, descriptor, and raw-grant joins.

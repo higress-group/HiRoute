@@ -816,11 +816,14 @@ fn settings_service_completion_digest(
     publication_digest: &CanonicalDigest,
 ) -> Result<CanonicalDigest, TransactionError> {
     CanonicalDigest::of(&(
+        "hiroute.settings-service-proof/v2",
         operation.operation_id.as_str(),
         &operation.accepted_digest,
         publication_revision,
         publication_digest,
-        &operation.plan,
+        operation
+            .stable_input_digest()
+            .map_err(|_| TransactionError::InvalidArguments)?,
     ))
     .map_err(|_| TransactionError::InvalidArguments)
 }

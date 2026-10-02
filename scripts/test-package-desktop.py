@@ -38,6 +38,19 @@ class BundleIdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "patch checksum mismatch"):
                 builder.pinned_source()
 
+    def test_release_handshake_version_matches_every_shipped_component(self):
+        import json
+        version = json.loads((package.NATIVE / "tauri.conf.json").read_text())["version"]
+        package.validate_release_versions(version)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            api = root / "crates/application-api/Cargo.toml"
+            api.parent.mkdir(parents=True)
+            api.write_text('[package]\nversion = "0.1.0"\n')
+            with patch.object(package, "REPO", root):
+                with self.assertRaisesRegex(ValueError, "release version mismatch: crates/application-api"):
+                    package.validate_release_versions(version)
+
     def test_build_children_do_not_inherit_validation_lock_descriptors(self):
         completed = package.subprocess.CompletedProcess(
             ["fixture"], 0, stdout="ok\n", stderr=""

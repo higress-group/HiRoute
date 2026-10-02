@@ -1,3 +1,4 @@
+pub(crate) mod source_snapshot;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
@@ -283,6 +284,45 @@ pub(crate) fn test_writer_barrier() -> SingleWriterBackupBarrier {
 }
 
 impl BackupSet {
+    /// Saves the complete stopped storage authority beside this verified three-store backup.
+    /// The caller must retain the startup barrier and directory ownership until publication ends.
+    pub fn publish_stopped_source(
+        &self,
+        _barrier: &SingleWriterBackupBarrier,
+        storage_root: &Path,
+        options: &crate::StorageStartupOptions,
+    ) -> Result<(), LocalStorageError> {
+        if self
+            .root
+            .canonicalize()?
+            .starts_with(storage_root.canonicalize()?)
+        {
+            return Err(LocalStorageError::InvalidData);
+        }
+        for (name, backup) in [
+            ("control.db", &self.control),
+            ("runtime.db", &self.runtime),
+            ("secrets.db", &self.secrets),
+        ] {
+            let connection = Connection::open_with_flags(
+                storage_root.join("live").join(name),
+                OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )?;
+            validate_restored_source_identity(&connection, backup.manifest())?;
+            if database_state_digest(&connection)? != backup.manifest().source_state_digest {
+                return Err(LocalStorageError::InvalidData);
+            }
+        }
+        let metadata = serde_json::json!({
+            "batch_id": self.set_id(), "target_schema_version": self.target_schema_version(),
+            "source_stores": {"control":self.control.manifest(),"runtime":self.runtime.manifest(),"secrets":self.secrets.manifest()}
+        });
+        source_snapshot::publish(storage_root, &self.root, &metadata, options)
+    }
+
+    pub(crate) fn directory(&self) -> &Path {
+        &self.root
+    }
     /// Creates a local three-store snapshot under the hirouted single-writer barrier. A durable
     /// writer claim proves that the barrier is not held and causes a fail-closed refusal.
     pub fn create(
@@ -300,6 +340,7 @@ impl BackupSet {
             secrets,
             None,
             crate::migrations::LATEST_SCHEMA_VERSION,
+            false,
         )
     }
 
@@ -320,6 +361,7 @@ impl BackupSet {
             secrets,
             Some(secret_key_id),
             target_schema_version,
+            true,
         )
     }
 
@@ -332,6 +374,7 @@ impl BackupSet {
         secrets: &Connection,
         secret_key_id: Option<&CanonicalDigest>,
         target_schema_version: u32,
+        startup_migration: bool,
     ) -> Result<Self, LocalStorageError> {
         prepare_owner_directory(backup_root)?;
         if reconcile_set_manifest_publication(backup_root)? {
@@ -354,7 +397,7 @@ impl BackupSet {
             && control.query_row("SELECT EXISTS(SELECT 1 FROM writer_claim)", [], |row| {
                 row.get::<_, bool>(0)
             })?;
-        if writer_claim {
+        if writer_claim && !startup_migration {
             return Err(LocalStorageError::InvalidData);
         }
         control.execute_batch("PRAGMA wal_checkpoint(FULL)")?;
@@ -866,6 +909,27 @@ fn database_identity(connection: &Connection) -> Result<DatabaseIdentity, LocalS
     } else {
         Err(LocalStorageError::InvalidData)
     }
+}
+
+/// A manually restored, completed source may have new business rows. Match its identity,
+/// rather than the old state digest; interrupted migration still uses its exact source digest.
+pub(crate) fn validate_restored_source_identity(
+    connection: &Connection,
+    source: &BackupManifest,
+) -> Result<(), LocalStorageError> {
+    let integrity: String = connection.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+    let identity = database_identity(connection)?;
+    if integrity != "ok"
+        || source.store_uuid.is_empty()
+        || source.store_uuid == "legacy-unbound"
+        || identity.kind != source.database_kind
+        || identity.store_uuid != source.store_uuid
+        || identity.schema_version != source.schema_version
+        || identity.key_id != source.key_id
+    {
+        return Err(LocalStorageError::InvalidData);
+    }
+    Ok(())
 }
 
 fn generic_store_binding(

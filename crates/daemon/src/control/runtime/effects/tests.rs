@@ -59,10 +59,11 @@ fn publication_restart_reconciles_every_persisted_install_window() {
             GatewayPublicationInstaller::open(&lkg).unwrap(),
         )));
         *runtime.adapter.publication_target.lock().unwrap() = Some(target.clone());
-        let desired = GatewayPublicationV1::decode_persisted(include_bytes!(
-            "../../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-        ))
-        .unwrap();
+        let desired =
+            serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+                "../../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+            ))
+            .unwrap();
         let (mut operation, intent, record) = routing_operation(
             &runtime.adapter,
             desired,
@@ -156,6 +157,25 @@ fn publication_restart_reconciles_every_persisted_install_window() {
             GatewayPublicationInstaller::open(&lkg).unwrap(),
         )));
         assert!(RuntimePublicationFeed::pin(target.as_ref()).is_none());
+        *recovered.adapter.publication_target.lock().unwrap() = Some(target.clone());
+        recovered.adapter.restore_active_publication().unwrap();
+        recovered.adapter.reconcile_startup_and_open().unwrap();
+        assert_eq!(
+            recovered
+                .adapter
+                .stores_lock()
+                .unwrap()
+                .control()
+                .load_operation(&operation_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            hiroute_domain::OperationState::Succeeded
+        );
+        assert!(
+            RuntimePublicationFeed::pin(target.as_ref()).is_none(),
+            "journal completion must not admit requests before remaining startup recovery"
+        );
         recovered
             .configure_managed_agent_runtime(
                 "http://127.0.0.1:5837/v1".into(),
@@ -192,6 +212,21 @@ fn publication_restart_reconciles_every_persisted_install_window() {
                 .len(),
             1
         );
+        drop(stores);
+        assert!(
+            recovered
+                .configure_managed_agent_runtime(
+                    "invalid-gateway".into(),
+                    "/test/hiroute".into(),
+                    Some(target.clone()),
+                )
+                .is_err()
+        );
+        recovered.adapter.reconcile_active_publication().unwrap();
+        assert!(
+            RuntimePublicationFeed::pin(target.as_ref()).is_none(),
+            "failed startup configuration must keep admission suspended"
+        );
     }
 }
 use crate::control::runtime::LocalControlAdapter;
@@ -210,7 +245,9 @@ fn current_publication(
         .iter()
         .cloned()
         .map(|compiled| {
-            let legacy = PlanVersionV1::from_legacy_compiled(workspace.clone(), compiled).unwrap();
+            let legacy =
+                PlanVersionV1::from_unversioned_compiled_recovery(workspace.clone(), compiled)
+                    .unwrap();
             PlanVersionV1::new(
                 workspace.clone(),
                 legacy.configuration,
@@ -522,6 +559,7 @@ fn permission_effect_hardens_only_pinned_identity_and_never_reverts_mode() {
         ),
         managed_agent_runtime: Mutex::new(None),
         publication_target: Mutex::new(None),
+        startup_recovery_complete: std::sync::atomic::AtomicBool::new(true),
         delegation_native_cleanup_cursor: Mutex::new(None),
         delegation_task_maintenance_cursor: Mutex::new(None),
     };
@@ -621,10 +659,11 @@ fn product_plan_only_publication_installs_identified_no_new_calls_state() {
         crate::release_catalog::fixture_catalog(),
     )
     .unwrap();
-    let mut desired = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
-    .unwrap();
+    let mut desired =
+        serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+            "../../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+        ))
+        .unwrap();
     desired.aliases.clear();
     desired.grants.clear();
     let (operation, intent, desired_record) =
@@ -714,8 +753,8 @@ fn executable_publication_without_gateway_target_rejects_admission_and_install_d
         crate::release_catalog::fixture_catalog(),
     )
     .unwrap();
-    let desired = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let desired = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+        "../../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
     let mut prior = desired.clone();

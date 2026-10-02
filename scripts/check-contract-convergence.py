@@ -58,6 +58,19 @@ def load_text(root, path):
         return ""
 
 
+def historical_release_snapshot(path, source):
+    # These files describe released producers, never current readers/writers or test
+    # fixtures. Their full index, digest and Git-source validation belongs to
+    # release-contracts.py check. Do not exempt code, arbitrary JSON or other paths.
+    if not re.fullmatch(r"contracts/releases/v[0-9][0-9A-Za-z.+-]*\.json", path):
+        return False
+    try:
+        value = json.loads(source)
+    except ValueError:
+        return False
+    return isinstance(value, dict) and value.get("schema") == "hiroute.release-contract-snapshot/v1"
+
+
 def production_source_path(path):
     """Select shipped/internal Rust sources, not tests, fixtures, docs, or third-party data."""
     value = Path(path)
@@ -208,6 +221,8 @@ def audit(root, registry, paths=None):
         if (root / path).is_file():
             errors.append(f"obsolete live contract file reintroduced: {path}")
     texts = {path: load_text(root, path) for path in paths}
+    texts = {path: source for path, source in texts.items()
+             if not historical_release_snapshot(path, source)}
     production = discover_production_contracts(texts)
     declared_production = set(registry["production_contracts"])
     for contract in sorted(set(production) - declared_production):

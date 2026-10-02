@@ -380,7 +380,7 @@ impl LocalControlAdapter {
         let mut selected_collaboration_restore = None;
         for original in stores
             .control()
-            .succeeded_operations_for_kind(&workspace, "ApplyAgentConnectionChange")
+            .succeeded_agent_operations_for_kind(&workspace, "ApplyAgentConnectionChange")
             .map_err(super::map_port)?
         {
             if original.plan.spec().command_id != "agents.settings.apply" {
@@ -913,7 +913,7 @@ fn login_item_owned_by_this_feature(
 ) -> Result<bool, ControlReadError> {
     for original in stores
         .control()
-        .succeeded_operations_for_kinds(
+        .succeeded_agent_operations_for_kinds(
             workspace,
             &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
         )

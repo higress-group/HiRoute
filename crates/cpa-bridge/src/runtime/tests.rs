@@ -837,10 +837,14 @@ fn failed_orphan_authentication_restores_stale_owner_for_bounded_retry() {
 
     control.set_fail_probes(true);
     let failed = fixture_runtime(&root, Arc::clone(&backend), Arc::clone(&control), 2);
-    assert!(matches!(
-        failed.start(),
-        Err(CpaLifecycleError::ControlUnavailable)
-    ));
+    let outcome = failed.start();
+    if !matches!(outcome, Err(CpaLifecycleError::ControlUnavailable)) {
+        let evidence = root.keep();
+        panic!(
+            "orphan authentication returned {outcome:?}; retained fixture: {}",
+            evidence.display()
+        );
+    }
     let restored: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&owner_path).unwrap()).unwrap();
     assert_eq!(restored["owner_pid"], json!(u32::MAX - 1));

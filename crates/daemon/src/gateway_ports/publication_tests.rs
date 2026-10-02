@@ -1,12 +1,12 @@
 use super::*;
-use hiroute_domain::{GatewayPublicationRevision, GatewayPublicationV1};
+use hiroute_domain::GatewayPublicationRevision;
 use hiroute_gateway::server::publication::PublicationFailpoint;
 use hiroute_gateway::server::{dispatch::GatewayRequestAuthority, request_plan::IngressProtocol};
 
 fn record(revision: u64) -> PublicationRecordV1 {
-    let mut publication = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
+    let mut publication = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(
+        include_bytes!("../../../../e2e/product/fixtures/routing/current-publication.v3.json"),
+    )
     .unwrap();
     publication.publication_revision = GatewayPublicationRevision::new(revision).unwrap();
     PublicationRecordV1::from_publication(publication.workspace_id.clone(), &publication).unwrap()

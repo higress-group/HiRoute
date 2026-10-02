@@ -1,8 +1,9 @@
 use hiroute_domain::{
     AgentClaudePresetValuesV2, AgentConfigChangeV1, AgentConnectionControlIntentV1,
     AgentConnectionEffectRoleV1, AgentConnectionTransactionKindV1, AgentFacetIntent,
-    AgentModelGrantV2, AgentSettingsSpecV2, CanonicalDigest, ExternalEffectIntentV1, OperationId,
-    OperationV1, OperationValidationError, PortError, PortErrorCode, PortResult,
+    AgentModelGrantV2, AgentOperationRead, AgentSettingsSpecV2, CanonicalDigest,
+    ExternalEffectIntentV1, OperationId, OperationValidationError, PortError, PortErrorCode,
+    PortResult,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -103,22 +104,22 @@ pub fn decode_settings_claude_model_file(
 }
 
 pub fn settings_claude_model_file_for_operation(
-    operation: &OperationV1,
+    operation: &(impl AgentOperationRead + ?Sized),
     intent: &ExternalEffectIntentV1,
 ) -> PortResult<ClaudeModelFilePayload> {
     let payload = decode_settings_claude_model_file(intent)?;
     let spec: AgentSettingsSpecV2 =
-        serde_json::from_value(operation.plan.spec().desired_state.clone())
+        serde_json::from_value(operation.agent_input().spec.desired_state.clone())
             .map_err(|_| invalid())?;
-    if operation.plan.spec().command_id != "agents.settings.apply"
+    if operation.agent_input().spec.command_id != "agents.settings.apply"
         || spec.context_id != payload.context_id
-        || !operation.plan.external().contains(intent)
+        || !operation.agent_input().external.contains(intent)
     {
         return Err(invalid());
     }
-    let state = &operation.plan.control()["payload"]["state"];
+    let state = &operation.agent_input().control["payload"]["state"];
     if state["accept_digest"]
-        != serde_json::to_value(&operation.accepted_digest).map_err(|_| invalid())?
+        != serde_json::to_value(operation.accepted_digest()).map_err(|_| invalid())?
     {
         return Err(invalid());
     }
@@ -133,12 +134,12 @@ pub fn settings_claude_model_file_for_operation(
         ) => {
             let grant: AgentModelGrantV2 =
                 serde_json::from_value(state["model_grant"].clone()).map_err(|_| invalid())?;
-            let [mutation] = operation.plan.agent_access_grants() else {
+            let [mutation] = operation.agent_input().grants else {
                 return Err(invalid());
             };
             let scope = mutation.desired_scope().ok_or_else(invalid)?;
             if scope.model_grant() != &grant
-                || previous_operation.as_ref() == Some(&operation.operation_id)
+                || previous_operation.as_ref() == Some(operation.operation_id())
                 || grant
                     .claude_preset_values(settings, &snapshot.native_presets)
                     .map_err(|_| invalid())?
@@ -150,7 +151,7 @@ pub fn settings_claude_model_file_for_operation(
         (
             AgentFacetIntent::Restore { restore_point_ref },
             ClaudeModelFileAction::Restore { original_operation },
-        ) if original_operation != &operation.operation_id
+        ) if original_operation != operation.operation_id()
             && *restore_point_ref == super::codex_model_restore_point_ref(original_operation) => {}
         _ => return Err(invalid()),
     }

@@ -3,11 +3,11 @@ use super::*;
 use hiroute_domain::{CanonicalDigest, GatewayCriticalFactV1, GatewayFidelityV1, UpstreamProtocol};
 
 fn plan() -> CompiledAgentPlanV1 {
-    let fixture: Value = serde_json::from_slice(include_bytes!(
-        "../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let fixture: Value = serde_json::from_slice::<serde_json::Value>(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
-    serde_json::from_value::<CompiledAgentPlanV1>(fixture["plans"][0].clone())
+    serde_json::from_value::<hiroute_domain::CompiledAgentPlanV1>(fixture["plans"][0].clone())
         .unwrap()
         .into_current()
         .unwrap()
@@ -15,7 +15,8 @@ fn plan() -> CompiledAgentPlanV1 {
 
 fn original() -> CodexCatalogSelection {
     let value: Value =
-        serde_json::from_slice(include_bytes!("codex_bundled_catalog.json")).unwrap();
+        serde_json::from_slice::<serde_json::Value>(include_bytes!("codex_bundled_catalog.json"))
+            .unwrap();
     CodexCatalogSelection::parse(value).unwrap()
 }
 

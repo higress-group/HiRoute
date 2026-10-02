@@ -19,6 +19,7 @@ pub enum AgentModelRouteV2 {
     },
     Fixed {
         candidate: CandidateSelectionV1,
+        #[serde(with = "crate::binding_codec")]
         binding: Box<AttemptOwnedCandidateV1>,
     },
 }
@@ -167,9 +168,16 @@ impl AgentModelGrantV2 {
 
     pub fn seal(
         protocol: AgentIngressProtocolV1,
-        routes: BTreeMap<String, AgentModelRouteV2>,
+        mut routes: BTreeMap<String, AgentModelRouteV2>,
     ) -> Result<Self, AgentConnectionError> {
-        let digest = CanonicalDigest::of(&("hiroute.agent-model-grant/v2", protocol, &routes))
+        for route in routes.values_mut() {
+            if let AgentModelRouteV2::Fixed { binding, .. } = route {
+                **binding = crate::StoredCandidateV1::freeze(binding)
+                    .and_then(|c| c.build())
+                    .map_err(|_| AgentConnectionError::InvalidGrant)?;
+            }
+        }
+        let digest = CanonicalDigest::of(&("hiroute.agent-model-grant/v3", protocol, &routes))
             .map_err(|_| AgentConnectionError::Encoding)?;
         let grant = Self {
             protocol,
@@ -225,7 +233,7 @@ impl AgentModelGrantV2 {
                 }
             }
         }
-        if CanonicalDigest::of(&("hiroute.agent-model-grant/v2", self.protocol, &self.routes))
+        if CanonicalDigest::of(&("hiroute.agent-model-grant/v3", self.protocol, &self.routes))
             .map_err(|_| AgentConnectionError::Encoding)?
             != self.digest
         {

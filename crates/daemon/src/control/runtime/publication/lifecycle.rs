@@ -35,7 +35,7 @@ impl LocalControlAdapter {
         self.required_publication_target()?;
         Ok(())
     }
-    pub(super) fn publication_target(
+    pub(in crate::control::runtime) fn publication_target(
         &self,
     ) -> PortResult<Option<Arc<dyn PublicationTargetPort + Send + Sync>>> {
         self.publication_target
@@ -232,6 +232,45 @@ impl LocalControlAdapter {
     }
 
     pub(in crate::control::runtime) fn reconcile_active_publication(&self) -> PortResult<()> {
+        self.restore_active_publication()?;
+        if !self
+            .startup_recovery_complete
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Ok(());
+        }
+        self.resume_active_publication()
+    }
+
+    pub(in crate::control::runtime) fn finish_startup_publication_recovery(
+        &self,
+    ) -> PortResult<()> {
+        self.restore_active_publication()?;
+        self.resume_active_publication()?;
+        self.startup_recovery_complete
+            .store(true, std::sync::atomic::Ordering::Release);
+        Ok(())
+    }
+
+    fn resume_active_publication(&self) -> PortResult<()> {
+        if let Some(target) = self.publication_target()? {
+            if self
+                .stores_lock()?
+                .control()
+                .active_publication(&WorkspaceId::default())?
+                .is_none()
+                && !target.is_empty().map_err(target_error)?
+            {
+                return Err(invalid("publication.startup.orphan-target"));
+            }
+            target.resume_requests().map_err(target_error)?;
+        }
+        Ok(())
+    }
+
+    /// Reconstruct committed authority before journal recovery observes service receipts.
+    /// Admission remains suspended until the complete startup recovery succeeds.
+    pub(in crate::control::runtime) fn restore_active_publication(&self) -> PortResult<()> {
         let record = self
             .stores_lock()?
             .control()
@@ -247,16 +286,14 @@ impl LocalControlAdapter {
             }
             return Ok(());
         };
-        if let Some(record) = record {
+        if let Some(record) = record
+            && !self.publication_is_installed(&record)?
+        {
+            target.activate_verified(&record).map_err(target_error)?;
             if !self.publication_is_installed(&record)? {
-                target.activate_verified(&record).map_err(target_error)?;
-                if !self.publication_is_installed(&record)? {
-                    return Err(invalid("publication.startup.identity"));
-                }
+                return Err(invalid("publication.startup.identity"));
             }
-        } else if !target.is_empty().map_err(target_error)? {
-            return Err(invalid("publication.startup.orphan-target"));
         }
-        target.resume_requests().map_err(target_error)
+        Ok(())
     }
 }

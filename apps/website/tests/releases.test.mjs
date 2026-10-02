@@ -22,6 +22,11 @@ const release = {
   notes: { zh: '正式版本。', en: 'Stable release.' }, artifacts: [artifact],
 };
 const manifest = { schema: 'hiroute.website.releases/v2', releases: [release] };
+test('Desktop update endpoint publishes the same validated website catalog', () => {
+  const generated = JSON.parse(fs.readFileSync(new URL('../public/releases.json', import.meta.url), 'utf8'));
+  const source = JSON.parse(fs.readFileSync(new URL('../data/releases.json', import.meta.url), 'utf8'));
+  assert.deepEqual(generated, validateReleaseManifest(source));
+});
 const standalone = {
   kind: 'standalone', platform: 'Linux', architecture: 'x86_64', target: 'x86_64-unknown-linux-gnu',
   format: 'tar.gz', distribution: 'unsigned',

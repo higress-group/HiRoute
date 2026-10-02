@@ -139,9 +139,9 @@ impl LocalControlAdapter {
             collaboration: None,
         };
         let stores = self.stores_lock().map_err(super::map_port)?;
-        let belongs = |operation: &OperationV1| {
-            operation.plan.spec().command_id == "agents.settings.apply"
-                && operation.plan.spec().resource_id.as_deref() == Some(&request.context_id)
+        let belongs = |operation: &dyn hiroute_domain::AgentOperationRead| {
+            operation.agent_input().spec.command_id == "agents.settings.apply"
+                && operation.agent_input().spec.resource_id.as_deref() == Some(&request.context_id)
                 && model_intent(class, operation).is_some()
         };
         if let Some(pending) = stores
@@ -161,12 +161,12 @@ impl LocalControlAdapter {
         }
         let operations = stores
             .control()
-            .succeeded_operations_for_kinds(
+            .succeeded_agent_operations_for_kinds(
                 &WorkspaceId::default(),
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
             )
             .map_err(super::map_port)?;
-        let Some(operation) = operations.into_iter().find(belongs) else {
+        let Some(operation) = operations.into_iter().find(|operation| belongs(operation)) else {
             return Ok((status, None, None));
         };
         let intent = model_intent(class, &operation).ok_or(ControlReadError::Corrupt)?;
@@ -398,21 +398,25 @@ impl LocalControlAdapter {
 
 fn model_intent(
     class: super::settings_facts::SettingsAgentClass,
-    operation: &OperationV1,
+    operation: &(impl hiroute_domain::AgentOperationRead + ?Sized),
 ) -> Option<&hiroute_domain::ExternalEffectIntentV1> {
-    operation.plan.external().iter().find(|intent| match class {
-        super::settings_facts::SettingsAgentClass::Codex => {
-            super::native_model::is_settings_codex_model(intent)
-        }
-        super::settings_facts::SettingsAgentClass::Claude => {
-            super::native_claude_model::is_settings_claude_model(intent)
-        }
-    })
+    operation
+        .agent_input()
+        .external
+        .iter()
+        .find(|intent| match class {
+            super::settings_facts::SettingsAgentClass::Codex => {
+                super::native_model::is_settings_codex_model(intent)
+            }
+            super::settings_facts::SettingsAgentClass::Claude => {
+                super::native_claude_model::is_settings_claude_model(intent)
+            }
+        })
 }
 
 fn model_action(
     class: super::settings_facts::SettingsAgentClass,
-    operation: &OperationV1,
+    operation: &(impl hiroute_domain::AgentOperationRead + ?Sized),
     intent: &hiroute_domain::ExternalEffectIntentV1,
 ) -> hiroute_domain::PortResult<ModelAction> {
     match class {

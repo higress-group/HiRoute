@@ -24,6 +24,7 @@ use zeroize::Zeroizing;
 use crate::native_diagnostics::NativeDiagnostics;
 
 const DAEMON_READY_TIMEOUT: Duration = Duration::from_secs(210);
+mod startup_progress;
 pub enum ApplyPurpose {
     AgentPlan,
     SourcePrice,
@@ -73,6 +74,8 @@ fn decode_startup_failure(value: &serde_json::Value) -> Result<Option<&'static s
     }
     Ok(Some(match failure.code {
         StartupFailureCode::StorageUnavailable => "DAEMON_STORAGE_UNREADABLE",
+        StartupFailureCode::UpgradeSourceUnsupported => "DAEMON_UPGRADE_SOURCE_UNSUPPORTED",
+        StartupFailureCode::UpgradeStorageFailed => "DAEMON_UPGRADE_STORAGE_FAILED",
         StartupFailureCode::ReleaseFactsInvalid => "DAEMON_RELEASE_INVALID",
         StartupFailureCode::DependencyUnavailable => "DAEMON_DEPENDENCY_UNAVAILABLE",
         StartupFailureCode::GatewayUnavailable => "DAEMON_GATEWAY_UNAVAILABLE",
@@ -93,6 +96,84 @@ struct Ack {
 }
 
 impl Resident {
+    pub fn upgrade_stop_requested(&self) -> bool {
+        self.owned
+            .as_ref()
+            .is_some_and(|owned| owned.shutdown.is_none())
+    }
+    pub fn upgrade_status(
+        &mut self,
+        action: hiroute_host_runtime::UpgradeAction,
+    ) -> Result<hiroute_host_runtime::LauncherUpgradeStatus, String> {
+        let owned = self
+            .owned
+            .as_mut()
+            .filter(|owned| owned.authority_healthy)
+            .ok_or("UPGRADE_RESIDENT_NOT_OWNED")?;
+        let id = crate::random_id()?;
+        let mut bytes = serde_json::to_vec(&hiroute_host_runtime::LauncherUpgradeRequest {
+            schema: "hiroute.launcher-upgrade/v1".into(),
+            registration_id: id.clone(),
+            action,
+        })
+        .map_err(|_| "UPGRADE_FRAME_INVALID")?;
+        bytes.push(b'\n');
+        let exchange = (|| {
+            write_frame(&mut owned.capability, &bytes)?;
+            let bytes = read_frame(&mut owned.ack, 4096, Duration::from_secs(10), None)?;
+            let status: hiroute_host_runtime::LauncherUpgradeStatus =
+                serde_json::from_slice(&bytes).map_err(|_| "UPGRADE_ACK_INVALID")?;
+            if status.schema != "hiroute.launcher-upgrade-status/v1" || status.registration_id != id
+            {
+                return Err("UPGRADE_ACK_INVALID".into());
+            }
+            Ok(status)
+        })();
+        // A failed exchange can leave an unread reply in the shared protected channel.
+        // Do not let a later capability registration consume it as its own acknowledgement.
+        if exchange.is_err() {
+            owned.authority_healthy = false;
+        }
+        exchange
+    }
+
+    /// Upgrade never falls back to the ordinary exit path's bounded force-kill. Installation
+    /// remains blocked until the exact owned child has actually exited.
+    pub fn stop_for_upgrade(&mut self) -> Result<(), String> {
+        let shutdown_requested = self
+            .owned
+            .as_ref()
+            .ok_or("UPGRADE_RESIDENT_NOT_OWNED")?
+            .shutdown
+            .is_none();
+        // A timed-out orderly stop is still in progress. Retrying waits for that child;
+        // its protected channel is no longer usable after shutdown was requested.
+        if !shutdown_requested {
+            if !self
+                .upgrade_status(hiroute_host_runtime::UpgradeAction::Status)?
+                .drained()
+            {
+                return Err("UPGRADE_WORK_ACTIVE".into());
+            }
+        }
+        let owned = self.owned.as_mut().ok_or("UPGRADE_RESIDENT_NOT_OWNED")?;
+        drop(owned.shutdown.take());
+        let deadline = Instant::now() + Duration::from_secs(45);
+        loop {
+            if owned
+                .child
+                .try_wait()
+                .map_err(|_| "UPGRADE_STOP_FAILED")?
+                .is_some()
+            {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err("UPGRADE_STOP_PENDING".into());
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
     pub fn open(root: &Path, daemon: &Path) -> Result<Self, String> {
         Self::open_managed(
             root,
@@ -311,7 +392,7 @@ impl Resident {
             Some(DAEMON_READY_TIMEOUT.as_millis() as u64),
         );
         let ready_started = Instant::now();
-        let ready_read = read_frame(&mut stdout, 4096, DAEMON_READY_TIMEOUT, Some(cancelled));
+        let ready_read = startup_progress::read_ready(&mut stdout, cancelled, diagnostics);
         stages
             .handle()
             .try_emit(DiagnosticEvent::ReadyRead(ReadyIo {
@@ -853,158 +934,4 @@ pub(crate) fn acquire_host_lock(root: &Path) -> Result<File, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn shutdown_interrupts_a_pending_daemon_ready_read() {
-        let (mut reader, _writer) = std::os::unix::net::UnixStream::pair().unwrap();
-        reader.set_nonblocking(true).unwrap();
-        let cancelled = AtomicBool::new(false);
-        std::thread::scope(|scope| {
-            scope.spawn(|| {
-                std::thread::sleep(Duration::from_millis(20));
-                cancelled.store(true, Ordering::SeqCst);
-            });
-            let started = Instant::now();
-            assert_eq!(
-                read_frame(&mut reader, 4096, DAEMON_READY_TIMEOUT, Some(&cancelled)).unwrap_err(),
-                "DAEMON_START_CANCELLED"
-            );
-            assert!(started.elapsed() < Duration::from_secs(2));
-        });
-    }
-
-    #[test]
-    fn startup_failure_frame_maps_storage_without_accepting_extra_payload() {
-        assert_eq!(
-            decode_startup_failure(&serde_json::json!({
-                "schema": "hiroute.daemon-startup-failure/v1",
-                "code": "storage_unavailable"
-            })),
-            Ok(Some("DAEMON_STORAGE_UNREADABLE"))
-        );
-        assert_eq!(
-            decode_startup_failure(&serde_json::json!({
-                "schema": "hiroute.daemon-startup-failure/v1",
-                "code": "storage_unavailable",
-                "message": "/private/data/path"
-            })),
-            Err("DAEMON_READY_INVALID")
-        );
-        assert_eq!(
-            decode_startup_failure(&serde_json::json!({
-                "schema": "hiroute.daemon-ready/v1"
-            })),
-            Ok(None)
-        );
-    }
-
-    #[test]
-    fn cancelled_startup_does_not_create_state_or_launch_a_child() {
-        let directory = tempfile::tempdir().unwrap();
-        let root = directory.path().join("not-created");
-        let result = Resident::open_managed(
-            &root,
-            &root.join("hirouted"),
-            &AtomicBool::new(true),
-            &NativeDiagnostics::disabled(),
-        );
-        assert_eq!(result.err().as_deref(), Some("DAEMON_START_CANCELLED"));
-        assert!(!root.exists());
-    }
-
-    #[test]
-    fn a_second_descriptor_of_a_held_host_lock_reports_the_duplicate() {
-        // Parallel process tests may fork while this test holds a file lock. A child
-        // retains the same open-file description until exec, even with CLOEXEC. Exercise
-        // exact close/reclaim ordering in one isolated test process instead.
-        const CASE: &str =
-            "bootstrap::tests::a_second_descriptor_of_a_held_host_lock_reports_the_duplicate";
-        const CHILD: &str = "HIROUTE_ISOLATED_LOCK_TEST";
-        if std::env::var(CHILD).as_deref() != Ok(CASE) {
-            let output = std::process::Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", CASE])
-                .env(CHILD, CASE)
-                .output()
-                .unwrap();
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            assert!(
-                output.status.success()
-                    && stdout
-                        .lines()
-                        .any(|line| line == format!("test {CASE} ... ok")),
-                "isolated lock test must execute its exact case: {stdout} {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            return;
-        }
-        let directory = tempfile::tempdir().unwrap();
-        let root = directory.path().join("host");
-        let held = acquire_host_lock(&root).unwrap();
-        assert_eq!(
-            acquire_host_lock(&root).unwrap_err(),
-            "DESKTOP_ALREADY_RUNNING",
-            "flock on a second descriptor of the same lock file conflicts within one process"
-        );
-        // A duplicated descriptor models the shared open-file description inherited
-        // across fork. Closing one descriptor alone must not release the lease.
-        let inherited = held.try_clone().unwrap();
-        drop(held);
-        assert_eq!(
-            acquire_host_lock(&root).unwrap_err(),
-            "DESKTOP_ALREADY_RUNNING"
-        );
-        drop(inherited);
-        assert!(acquire_host_lock(&root).is_ok());
-    }
-
-    #[test]
-    fn acknowledgement_requires_the_exact_successful_registration() {
-        for (id, registered, expected) in [
-            ("current", true, true),
-            ("older", true, false),
-            ("current", false, false),
-        ] {
-            let bytes = format!(
-                "{{\"schema\":\"hiroute.protected-apply-ack/v2\",\"registration_id\":\"{id}\",\"registered\":{registered}}}\n"
-            );
-            assert_eq!(
-                receive_ack(&mut bytes.as_bytes(), "current", Duration::from_secs(1)).is_ok(),
-                expected
-            );
-        }
-        for bytes in [b"".as_slice(), b"{}", b"{}\n", &[b'a'; 1026]] {
-            let mut reader: &[u8] = bytes;
-            assert!(receive_ack(&mut reader, "current", Duration::from_secs(1)).is_err());
-        }
-    }
-    #[test]
-    fn stalled_acknowledgement_and_registration_writes_have_absolute_deadlines() {
-        struct Stalled;
-        impl Read for Stalled {
-            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
-                Err(std::io::ErrorKind::WouldBlock.into())
-            }
-        }
-        let started = Instant::now();
-        assert_eq!(
-            receive_ack(&mut Stalled, "current", Duration::from_millis(20)).unwrap_err(),
-            "PROTECTED_CHANNEL_TIMEOUT"
-        );
-        assert!(started.elapsed() < Duration::from_secs(1));
-        struct Closed;
-        impl Write for Closed {
-            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-                Ok(0)
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        assert_eq!(
-            write_frame(&mut Closed, b"registration").unwrap_err(),
-            "PROTECTED_CHANNEL_CLOSED"
-        );
-    }
-}
+mod tests;

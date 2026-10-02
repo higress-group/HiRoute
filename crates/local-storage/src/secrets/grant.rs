@@ -11,6 +11,7 @@ use serde_json::Value;
 
 use super::{KEY_VERSION, LocalSecretStore, NONCE_BYTES, port};
 
+pub(crate) mod integrity;
 mod prepared;
 mod records;
 

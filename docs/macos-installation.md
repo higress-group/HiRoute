@@ -63,11 +63,27 @@ manually.
 1. Explicitly quit HiRoute and confirm that this service instance and its tasks have stopped.
    Closing the window only hides the application. Full lifecycle acceptance is tracked
    separately; a vanished window alone is not stop evidence.
-2. Replace `/Applications/HiRoute.app` while preserving application data, then launch it. A
-   fixed location keeps the per-user symlink target stable.
+2. Preserve the complete previous App before replacing `/Applications/HiRoute.app`; keep
+   application data, then launch the new App. A fixed location keeps the per-user symlink
+   target stable. If startup asks for a recovery package, select the preserved matching App;
+   HiRoute validates the full package before converting data.
 3. If the app moved or integration checks report an invalid path, use the integration Preview
    and confirmation in Settings. Resolve user-configuration drift instead of overwriting it.
    Check and, if needed, disable/re-enable the login item.
+
+Settings → Updates checks the official release catalog and validates the full DMG and App.
+Installation pauses new work, waits for existing calls and tasks, and can be cancelled while
+waiting. Both the owned daemon and Desktop exit before replacement. The previous complete
+App remains alongside the installation; storage migration uses the same startup path as a
+manual upgrade.
+
+When a storage conversion is required, startup preserves a complete private source backup
+at `storage.upgrade-backups/migration-set/source` under the application data root. If startup
+fails, use the backup button and follow `恢复说明.md`: fully stop HiRoute, retain the current
+data directory, restore the whole recorded set to its original locations, and install the
+exact previous complete App named in the guide. Do not combine databases, keys or individual
+binaries from different versions. Manual restoration discards changes made after the backup.
+HiRoute does not automatically roll back data after the migration has completed.
 
 Before removal, Preview and restore managed model/Agent integration from Settings, disable
 background launch at login, explicitly quit, and delete the app. App deletion preserves data

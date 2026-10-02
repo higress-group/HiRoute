@@ -18,7 +18,8 @@ mod delegation;
 mod compute_state_tests;
 
 pub struct RuntimeStore {
-    connection: RefCell<Connection>,
+    pub(crate) connection: RefCell<Connection>,
+    pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
 }
 
 impl RuntimeStore {
@@ -28,6 +29,7 @@ impl RuntimeStore {
         migration_backup_root: impl AsRef<Path>,
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
+            startup_lock: None,
             connection: RefCell::new(open_database(
                 _authority,
                 path,
@@ -44,6 +46,7 @@ impl RuntimeStore {
         expected_store_uuid: &str,
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
+            startup_lock: None,
             connection: RefCell::new(open_database_from_set(
                 authority,
                 path,

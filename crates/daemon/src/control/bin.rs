@@ -148,7 +148,14 @@ fn classify_role_all_error(error: &RoleAllError) -> StartupFailureCode {
     match error {
         RoleAllError::InvalidConfiguration => StartupFailureCode::InvalidConfiguration,
         RoleAllError::JoinTimeout(_) => StartupFailureCode::Internal,
-        RoleAllError::Component(component, _) => match *component {
+        RoleAllError::Component(component, detail) => match *component {
+            "Storage" if detail.starts_with("UPGRADE_SOURCE_UNSUPPORTED") => {
+                StartupFailureCode::UpgradeSourceUnsupported
+            }
+
+            "Storage" if detail.starts_with("stable storage upgrade failed") => {
+                StartupFailureCode::UpgradeStorageFailed
+            }
             "Storage" | "Gateway publication" | "Runtime state" => {
                 StartupFailureCode::StorageUnavailable
             }
@@ -247,7 +254,38 @@ fn run_all(arguments: Arguments, diagnostics: &DiagnosticRuntime) -> Result<(), 
     if let Some(engine) = arguments.codex_desktop_engine {
         config = config.with_codex_desktop_engine(engine);
     }
-    let mut role = start_role_all(config)
+    let (progress, phases) = std::sync::mpsc::channel();
+    config.upgrade_progress = Some(progress);
+    let progress_writer = std::thread::spawn(move || -> Result<(), String> {
+        let mut stdout = std::io::stdout().lock();
+        for phase in phases {
+            serde_json::to_writer(
+                &mut stdout,
+                &serde_json::json!({
+                    "schema":"hiroute.daemon-upgrade-progress/v1", "phase":phase
+                }),
+            )
+            .map_err(|_| "upgrade progress write failed")?;
+            stdout
+                .write_all(b"\n")
+                .and_then(|_| stdout.flush())
+                .map_err(|_| "upgrade progress write failed")?;
+        }
+        Ok(())
+    });
+    let result = start_role_all(config);
+    // Drain progress before writing ready/failure. No second listener or business writer is
+    // started to report migration, and frames cannot be interleaved with readiness.
+    progress_writer
+        .join()
+        .map_err(|_| {
+            StartupError::new(
+                StartupFailureCode::ReadyChannelFailed,
+                "upgrade progress writer stopped",
+            )
+        })?
+        .map_err(|error| StartupError::new(StartupFailureCode::ReadyChannelFailed, error))?;
+    let mut role = result
         .map_err(|error| StartupError::new(classify_role_all_error(&error), error.to_string()))?;
     write_ready(&role, diagnostics)
         .map_err(|error| StartupError::new(StartupFailureCode::ReadyChannelFailed, error))?;
@@ -268,6 +306,20 @@ fn run_all(arguments: Arguments, diagnostics: &DiagnosticRuntime) -> Result<(), 
                 );
             }
             match frame {
+                ProtectedChannelFrame::Upgrade(request) => {
+                    let status = role.upgrade_status(request.action, request.registration_id)?;
+                    let writer = acknowledgements.as_mut().expect("checked channel");
+                    serde_json::to_writer(&mut *writer, &status)
+                        .map_err(|_| "upgrade acknowledgement failed")?;
+                    use std::io::Write;
+                    writer
+                        .write_all(b"\n")
+                        .map_err(|_| "upgrade acknowledgement failed")?;
+                    writer
+                        .flush()
+                        .map_err(|_| "upgrade acknowledgement failed")?;
+                    continue;
+                }
                 ProtectedChannelFrame::Apply { registration, .. } => {
                     role.register_apply_capability(registration)?;
                 }
@@ -681,6 +733,7 @@ impl Drop for ProtectedCapabilityFrameV1 {
 }
 
 enum ProtectedChannelFrame {
+    Upgrade(hiroute_host_runtime::LauncherUpgradeRequest),
     Apply {
         registration_id: String,
         registration: ApplyCapabilityRegistrationV1,
@@ -699,6 +752,7 @@ enum ProtectedChannelFrame {
 impl ProtectedChannelFrame {
     fn registration_id(&self) -> String {
         match self {
+            Self::Upgrade(request) => request.registration_id.clone(),
             Self::Apply {
                 registration_id, ..
             } => registration_id.clone(),
@@ -713,6 +767,21 @@ impl ProtectedChannelFrame {
 }
 
 fn parse_capability_frame(bytes: &[u8]) -> Result<ProtectedChannelFrame, String> {
+    let schema: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| "protected frame is invalid")?;
+    if schema["schema"] == "hiroute.launcher-upgrade/v1" {
+        let request: hiroute_host_runtime::LauncherUpgradeRequest =
+            serde_json::from_slice(bytes).map_err(|_| "upgrade frame is invalid")?;
+        if request.registration_id.len() != 64
+            || !request
+                .registration_id
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit())
+        {
+            return Err("upgrade registration id is invalid".into());
+        }
+        return Ok(ProtectedChannelFrame::Upgrade(request));
+    }
     let mut frame: ProtectedCapabilityFrameV1 =
         serde_json::from_slice(bytes).map_err(|_| "capability frame is invalid".to_owned())?;
     let valid_id = |id: &str| id.len() == 64 && id.bytes().all(|b| b.is_ascii_hexdigit());
@@ -815,6 +884,24 @@ fn parse_capability_frame(bytes: &[u8]) -> Result<ProtectedChannelFrame, String>
         registration,
     })
     .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod upgrade_frame_tests {
+    use super::*;
+    #[test]
+    fn upgrade_frame_is_exact_and_cannot_carry_business_authority() {
+        let mut value = serde_json::json!({"schema":"hiroute.launcher-upgrade/v1","registration_id":"a".repeat(64),"action":"prepare"});
+        assert!(matches!(
+            parse_capability_frame(&serde_json::to_vec(&value).unwrap()).unwrap(),
+            ProtectedChannelFrame::Upgrade(_)
+        ));
+        value["capability"] = serde_json::json!("not an upgrade field");
+        assert!(parse_capability_frame(&serde_json::to_vec(&value).unwrap()).is_err());
+        value.as_object_mut().unwrap().remove("capability");
+        value["action"] = serde_json::json!("force_stop");
+        assert!(parse_capability_frame(&serde_json::to_vec(&value).unwrap()).is_err());
+    }
 }
 
 #[cfg(unix)]

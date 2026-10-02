@@ -58,6 +58,9 @@ pub struct RoleAllConfig {
     pub diagnostics: DiagnosticsPort,
     /// Standalone exposes only the current public release manifest at Local Control.
     pub released_commands_only: bool,
+    /// Progress only on the inherited native readiness pipe; it grants no control authority.
+    pub upgrade_progress:
+        Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageUpgradePhase>>,
 }
 
 #[derive(Clone, Debug)]
@@ -82,6 +85,7 @@ impl RoleAllConfig {
             codex_desktop_engine: None,
             diagnostics: DiagnosticsPort::default(),
             released_commands_only: false,
+            upgrade_progress: None,
         }
     }
 
@@ -111,6 +115,7 @@ pub struct RoleAllHandle {
     gateway: ManagedGatewayHandle,
     cpa: Option<Arc<ManagedCpaRuntime>>,
     _runtime: ProductionControlRuntime,
+    upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
 }
 
 struct GatewayClassifierDiagnostic {
@@ -183,6 +188,26 @@ impl RoleAllHandle {
 
     pub fn release_manual_protected_input(&self, candidate_ref: &str) -> Result<(), String> {
         self._runtime.release_manual_protected_input(candidate_ref)
+    }
+
+    pub fn upgrade_status(
+        &self,
+        action: hiroute_host_runtime::UpgradeAction,
+        registration_id: String,
+    ) -> Result<hiroute_host_runtime::LauncherUpgradeStatus, String> {
+        use hiroute_host_runtime::UpgradeAction;
+        match action {
+            UpgradeAction::Prepare => self.upgrade.pause(),
+            UpgradeAction::Cancel => self.upgrade.resume(),
+            UpgradeAction::Status => {}
+        }
+        Ok(hiroute_host_runtime::LauncherUpgradeStatus {
+            schema: "hiroute.launcher-upgrade-status/v1".into(),
+            registration_id,
+            paused: self.upgrade.paused(),
+            active_calls: self.upgrade.active(),
+            active_tasks: self._runtime.upgrade_active_tasks()?,
+        })
     }
 
     pub fn shutdown(&self) {
@@ -279,6 +304,10 @@ pub fn start_role_all(config: RoleAllConfig) -> Result<RoleAllHandle, RoleAllErr
         catalog,
         cpa.clone(),
         config.codex_desktop_engine.clone(),
+        hiroute_local_storage::StorageStartupOptions {
+            gateway_lkg: Some(config.gateway_lkg.clone()),
+            upgrade_progress: config.upgrade_progress.clone(),
+        },
     )
     .map_err(|error| RoleAllError::Component("Storage", error));
     let runtime = match runtime {
@@ -311,7 +340,7 @@ fn start_role_all_with_runtime(
     cpa: Option<Arc<ManagedCpaRuntime>>,
 ) -> Result<RoleAllHandle, RoleAllError> {
     let installer = Arc::new(
-        GatewayPublicationInstaller::open(&config.gateway_lkg)
+        GatewayPublicationInstaller::open_for_product_authority(&config.gateway_lkg)
             .map_err(|error| RoleAllError::Component("Gateway publication", error.to_string()))?,
     );
     let publications = Arc::new(GatewayPublicationAdapter::new(installer));
@@ -366,13 +395,15 @@ fn start_role_all_with_runtime(
         execution_facts: execution_sink,
         conversation_content: content_sink,
     };
+    let upgrade = Arc::new(hiroute_host_runtime::UpgradeDrain::default());
     let gateway_runtime = Arc::new(
         ProductionGatewayRuntime::compose_with_planner_and_observation(
             ports,
             Arc::new(PublicationPlannerInputAuthority),
             observation,
         )
-        .with_run_request_authority(runtime.delegation_run_authority()),
+        .with_run_request_authority(runtime.delegation_run_authority())
+        .with_upgrade_drain(upgrade.clone()),
     );
     config.diagnostics.stage_begin(StartupStage::GatewayStart);
     let gateway =
@@ -442,6 +473,7 @@ fn start_role_all_with_runtime(
         &config.runtime_root,
         runtime.agent_grant_resolver(),
         config.released_commands_only,
+        Some(upgrade.clone()),
     ) {
         Ok(control) => {
             config
@@ -467,6 +499,7 @@ fn start_role_all_with_runtime(
         gateway,
         cpa,
         _runtime: runtime,
+        upgrade,
     })
 }
 

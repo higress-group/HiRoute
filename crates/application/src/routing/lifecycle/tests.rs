@@ -1,17 +1,19 @@
 use super::*;
 
 fn state() -> PlanLifecycleSnapshotV1 {
-    let legacy = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let legacy = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+        "../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
     let versions = legacy
         .plans
         .iter()
         .map(|compiled| {
-            let recovered =
-                PlanVersionV1::from_legacy_compiled(legacy.workspace_id.clone(), compiled.clone())
-                    .unwrap();
+            let recovered = PlanVersionV1::from_unversioned_compiled_recovery(
+                legacy.workspace_id.clone(),
+                compiled.clone(),
+            )
+            .unwrap();
             PlanVersionV1::new(
                 legacy.workspace_id.clone(),
                 recovered.configuration,

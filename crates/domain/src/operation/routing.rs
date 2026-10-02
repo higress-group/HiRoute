@@ -407,8 +407,27 @@ mod tests {
         crate::PublicationRecordV1,
     ) {
         let bytes =
-            include_bytes!("../../../../e2e/product/golden/routing/compiled-publication.v2.json");
-        let publication = crate::GatewayPublicationV1::decode_persisted(bytes).unwrap();
+            include_bytes!("../../../../e2e/product/fixtures/routing/current-publication.v3.json");
+        let mut publication = serde_json::from_value::<crate::GatewayPublicationV1>(
+            serde_json::from_slice::<serde_json::Value>(bytes).unwrap(),
+        )
+        .unwrap();
+        // This retired typed-reader seam requires an authenticated V1 compiled body.
+        // The untouched historical source is authenticated by the source-22 reader above;
+        // this normalized fixture exercises effect ownership, not a source-format claim.
+        for plan in &mut publication.plans {
+            let mut body = plan.body.as_ref().clone();
+            body.schema = crate::AGENT_PLAN_COMPILED_SCHEMA_V1.into();
+            body.compiler_revision = crate::AGENT_PLAN_COMPILER_REVISION_V1.into();
+            body.materialized_route_digest = body.materialized.legacy_route_digest().unwrap();
+            let digest = CanonicalDigest::of(&body).unwrap();
+            *plan = crate::CompiledAgentPlanV1::authenticate_persisted(body, digest).unwrap();
+        }
+        publication.schema = crate::publication::LEGACY_GATEWAY_PUBLICATION_SCHEMA_V2.into();
+        publication.compiler_revision = crate::AGENT_PLAN_COMPILER_REVISION_V1.into();
+        publication.grants.clear();
+        publication.aliases.clear();
+        publication.validate().unwrap();
         let compiled = publication
             .plans
             .iter()
@@ -422,13 +441,14 @@ mod tests {
             resource_id: Some(format!("agent-plan/{}", compiled.agent_plan_id().as_str())),
             desired_state: json!({"agent_plan_id": compiled.agent_plan_id()}),
         };
-        // The exact historical persisted record: the golden bytes are the durable V2
-        // aggregate this recovery decoder must authenticate unchanged.
+        // Exercise the authenticated pre-stable runtime representation. Genuine source-22
+        // bytes are separately authenticated by the storage migration reader.
+        let bytes = serde_json::to_vec(&publication).unwrap();
         let record = crate::PublicationRecordV1::from_parts(
             publication.workspace_id.clone(),
             publication.publication_revision,
-            CanonicalDigest::of_bytes(bytes),
-            bytes.to_vec(),
+            CanonicalDigest::of_bytes(&bytes),
+            bytes,
         )
         .unwrap();
         (spec, intent, compiled, record)

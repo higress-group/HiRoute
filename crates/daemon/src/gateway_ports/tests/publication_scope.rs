@@ -1,15 +1,13 @@
 use super::*;
-use hiroute_domain::{
-    CompiledAgentPlanV1, GatewayPublicationRevision, GatewayPublicationV1, PublicationRecordV1,
-};
+use hiroute_domain::{CompiledAgentPlanV1, GatewayPublicationRevision, PublicationRecordV1};
 use hiroute_gateway::server::dispatch::GatewayRequestAuthority;
 use hiroute_gateway::server::publication::GatewayCatalog;
 
 #[test]
 fn publication_plan_update_preserves_two_independent_agent_scopes_and_old_request_pin() {
-    let mut publication = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
+    let mut publication = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(
+        include_bytes!("../../../../../e2e/product/fixtures/routing/current-publication.v3.json"),
+    )
     .unwrap()
     .into_current()
     .unwrap();

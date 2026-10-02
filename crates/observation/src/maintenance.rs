@@ -10,6 +10,7 @@ const BLOB_GC_BATCH: usize = 32;
 
 pub struct ObservationMaintenance {
     stop: mpsc::Sender<()>,
+    worker: Option<std::thread::JoinHandle<()>>,
 }
 
 /// Optional product-owned work attached to the one maintenance lifecycle.  The hook receives no
@@ -44,19 +45,26 @@ impl ObservationMaintenance {
                 let _lease = lease;
                 run(weak, receiver, hook)
             });
-        if let Err(error) = result {
+        let worker = result.inspect_err(|_| {
             store
                 .maintenance_errors
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return Err(error);
-        }
-        Ok(Self { stop })
+        })?;
+        Ok(Self {
+            stop,
+            worker: Some(worker),
+        })
     }
 }
 
 impl Drop for ObservationMaintenance {
     fn drop(&mut self) {
         let _ = self.stop.send(());
+        // Finish the current bounded cycle before releasing the owner. A hook may
+        // hold the product stores, and an immediate reopen must not race that lease.
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 }
 
@@ -251,5 +259,56 @@ mod tests {
             .unwrap();
         clock.set(clock.get() + Duration::from_millis(1));
         gc.run_if_due(|| clock.get(), || Ok(0)).unwrap();
+    }
+
+    struct BlockedCycle {
+        entered: mpsc::Sender<()>,
+        release: std::sync::Mutex<mpsc::Receiver<()>>,
+    }
+
+    impl ObservationMaintenanceHook for BlockedCycle {
+        fn cycle(&self, _: i64) -> Result<(), ObservationMaintenanceHookError> {
+            self.entered.send(()).unwrap();
+            self.release
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn dropping_maintenance_finishes_its_current_cycle_and_releases_the_lease() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(
+            LocalObservationStore::open(root.path(), crate::DigestAuthority::new([1; 32])).unwrap(),
+        );
+        let (entered, did_enter) = mpsc::channel();
+        let (release, wait_for_release) = mpsc::channel();
+        let worker = ObservationMaintenance::start_with_hook(
+            &store,
+            Some(Arc::new(BlockedCycle {
+                entered,
+                release: std::sync::Mutex::new(wait_for_release),
+            })),
+        )
+        .unwrap();
+        did_enter.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (dropped, did_drop) = mpsc::channel();
+        let owner = std::thread::spawn(move || {
+            drop(worker);
+            dropped.send(()).unwrap();
+        });
+        assert!(matches!(
+            did_drop.recv_timeout(Duration::from_millis(50)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        release.send(()).unwrap();
+        did_drop.recv_timeout(Duration::from_secs(5)).unwrap();
+        owner.join().unwrap();
+        assert!(!store.maintenance_status().0);
+        drop(ObservationMaintenance::start(&store).unwrap());
+        assert!(!store.maintenance_status().0);
     }
 }

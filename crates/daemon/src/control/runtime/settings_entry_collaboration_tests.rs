@@ -9,6 +9,7 @@ fn v2_settings_skill_only_enable_change_and_disable_keep_model_untouched() {
     }
     let root = tempfile::tempdir().unwrap();
     fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    drop(hiroute_local_storage::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap());
     let executable = root.path().join("codex-fixture");
     fs::write(&executable, b"#!/bin/sh\nprintf 'codex-cli 99.99.99\\n'\n").unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
@@ -209,6 +210,7 @@ fn v2_settings_releases_borrowed_skill_after_user_file_drift() {
 
     let root = tempfile::tempdir().unwrap();
     fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    drop(hiroute_local_storage::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap());
     let executable = root.path().join("codex-fixture");
     fs::write(&executable, b"#!/bin/sh\nprintf 'codex-cli 99.99.99\\n'\n").unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();

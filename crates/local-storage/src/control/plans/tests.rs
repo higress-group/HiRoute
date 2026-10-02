@@ -62,8 +62,8 @@ fn saved_draft_cas_survives_reopen_and_cannot_overwrite_or_delete_newer_input() 
 }
 
 fn version() -> PlanVersionV1 {
-    let publication = GatewayPublicationV1::decode_persisted(
-        include_str!("../../../../../e2e/product/golden/routing/compiled-publication.v2.json")
+    let publication = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(
+        include_str!("../../../../../e2e/product/fixtures/routing/current-publication.v3.json")
             .as_bytes(),
     )
     .unwrap();

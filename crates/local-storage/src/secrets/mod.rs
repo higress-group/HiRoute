@@ -30,6 +30,7 @@ mod collaboration_bootstrap;
 #[path = "../agents/collaboration_credentials.rs"]
 mod collaboration_credentials;
 mod grant;
+pub(crate) use grant::integrity::validate as validate_stable_grants;
 #[cfg(test)]
 mod grant_tests;
 mod runtime;
@@ -66,7 +67,8 @@ impl KeyMaterial {
 }
 
 pub struct LocalSecretStore {
-    connection: RefCell<Connection>,
+    pub(crate) connection: RefCell<Connection>,
+    pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
     keys: KeyMaterial,
     #[cfg(test)]
     database_path: PathBuf,
@@ -181,6 +183,7 @@ impl LocalSecretStore {
         bind_store_metadata(&connection, &keys)?;
         migrate_legacy_secret_aad(&mut connection, &keys)?;
         Ok(Self {
+            startup_lock: None,
             connection: RefCell::new(connection),
             keys,
             #[cfg(test)]
@@ -2268,6 +2271,7 @@ mod tests {
                     ],
                 )
                 .unwrap();
+            connection.execute_batch("DROP TABLE stable_storage_format; DELETE FROM schema_migrations WHERE version>16;").unwrap();
             connection.pragma_update(None, "user_version", 16).unwrap();
             connection
                 .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")

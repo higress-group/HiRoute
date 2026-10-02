@@ -69,6 +69,7 @@ use self::observation::{
 
 #[derive(Clone)]
 pub struct ProductionGatewayRuntime {
+    upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
     publications: Arc<dyn RuntimePublicationFeed>,
     authority: GatewayRequestAuthority,
     catalog: GatewayCatalog,
@@ -136,6 +137,7 @@ impl ProductionGatewayRuntime {
             .expect("static production lifecycle limits are valid"),
         );
         Self {
+            upgrade: Arc::new(hiroute_host_runtime::UpgradeDrain::default()),
             authority: GatewayRequestAuthority::from_feed(Arc::clone(&publications)),
             catalog: GatewayCatalog::from_feed(Arc::clone(&publications)),
             publications,
@@ -154,6 +156,11 @@ impl ProductionGatewayRuntime {
 
     pub fn with_executable_sha256(mut self, digest: impl Into<Arc<str>>) -> Self {
         self.executable_sha256 = Some(digest.into());
+        self
+    }
+
+    pub fn with_upgrade_drain(mut self, upgrade: Arc<hiroute_host_runtime::UpgradeDrain>) -> Self {
+        self.upgrade = upgrade;
         self
     }
 
@@ -230,6 +237,15 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
         }
         let authorization = inbound_authorization(path, &request.headers);
         let authorization = authorization.as_deref();
+        // Existing delegated runs still need model calls to finish. The ordinary run bearer
+        // verifier below remains the authority; this prefix never authorizes an aggregate call.
+        let Some(_upgrade_call) = self
+            .upgrade
+            .enter(authorization.is_some_and(|a| a.starts_with("Bearer hr_run_model_")))
+        else {
+            return write_typed_error(session, StatusCode::SERVICE_UNAVAILABLE, "UPGRADE_WAITING")
+                .await;
+        };
         let declared_content_length = request
             .headers
             .get(CONTENT_LENGTH)

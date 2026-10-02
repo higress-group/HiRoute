@@ -9,6 +9,9 @@ use crate::commands::CoverageState;
 
 pub const LOCAL_CONTROL_SCHEMA_V2: SchemaVersion = SchemaVersion::new(2, 0);
 pub const MACHINE_ENVELOPE_SCHEMA_V2: SchemaVersion = SchemaVersion::new(2, 0);
+/// Product release used by the same-release Local Control handshake, independent
+/// of the package versions of client transport and implementation libraries.
+pub const LOCAL_CONTROL_RELEASE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Maximum newline-delimited JSON frame size, including the trailing newline.
 pub const LOCAL_CONTROL_MAX_FRAME_BYTES: usize = 10 * 1024 * 1024;
 
@@ -87,15 +90,15 @@ pub fn negotiate_hello(client: &ClientHelloV1) -> Result<ServerHelloV1, ErrorV1>
     }
     if client.client_name.is_empty()
         || client.client_name.len() > 128
-        || client.client_version != env!("CARGO_PKG_VERSION")
+        || client.client_version != LOCAL_CONTROL_RELEASE_VERSION
     {
         return Err(ErrorV1::new(ErrorCode::InvalidArguments));
     }
     Ok(ServerHelloV1 {
         api_version: LOCAL_CONTROL_SCHEMA_V2,
         machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
-        daemon_version: env!("CARGO_PKG_VERSION").to_owned(),
-        release_version: env!("CARGO_PKG_VERSION").to_owned(),
+        daemon_version: LOCAL_CONTROL_RELEASE_VERSION.to_owned(),
+        release_version: LOCAL_CONTROL_RELEASE_VERSION.to_owned(),
         capabilities: vec![
             "local-control-v2".to_owned(),
             "client-access-v1".to_owned(),

@@ -7,6 +7,7 @@ This is preparation evidence; it is not Desktop GUI acceptance.
 """
 import hashlib, json, os, pathlib, secrets, select, socket, stat, statistics, subprocess, sys, time
 REPO = pathlib.Path(__file__).resolve().parents[3]
+RELEASE_VERSION = json.loads((REPO / 'contracts/cli/local-control-hello.v2.schema.json').read_text())['properties']['client_version']['const']
 BENCH_RUNS = int(os.environ.get('HIROUTE_PLAN_BENCHMARK_RUNS', '1'))
 if BENCH_RUNS < 1 or BENCH_RUNS > 10: raise SystemExit('Benchmark runs must be 1..10')
 BENCHMARK = 'HIROUTE_PLAN_BENCHMARK_RUNS' in os.environ
@@ -25,8 +26,10 @@ if build.returncode:
  raise SystemExit(build.returncode)
 ROOT = pathlib.Path(sys.argv[1]).resolve()
 ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+ROOT.chmod(0o700)
 if any(ROOT.iterdir()): raise SystemExit('Preparation requires an empty isolated directory')
-PROJECT = ROOT / 'agent-input'; (PROJECT / '.claude').mkdir(parents=True, mode=0o700)
+PROJECT = ROOT / 'agent-input'; PROJECT.mkdir(mode=0o700)
+(PROJECT / '.claude').mkdir(mode=0o700)
 SENTINEL = 'hr02-isolated-not-a-provider-credential-' + secrets.token_hex(16)
 settings = PROJECT / '.claude/settings.json'
 settings.write_text(json.dumps({'env': {'ANTHROPIC_BASE_URL': 'https://open.bigmodel.cn/api/anthropic', 'ANTHROPIC_AUTH_TOKEN': SENTINEL, 'ANTHROPIC_MODEL': 'glm-5.3'}}))
@@ -50,6 +53,7 @@ record.chmod(0o600)
 fds=[shutdown_r,capability_r,ack_w]
 daemon_args=[str(REPO/'target/debug/hirouted'),'--role','all','--storage-root',str(ROOT/'storage'),'--runtime-root',str(ROOT/'run'),'--listen',f'127.0.0.1:{port}','--lkg',str(ROOT/'gateway.lkg'),'--shutdown-fd',str(fds[0]),'--capability-fd',str(fds[1]),'--capability-ack-fd',str(fds[2])]
 if BENCHMARK: daemon_args += ['--diagnostics-root',str(ROOT/'diagnostics'),'--diagnostic-level-override','debug']
+startup_started=time.perf_counter_ns()
 daemon=subprocess.Popen(daemon_args,cwd=PROJECT,env=environment,pass_fds=fds,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 os.close(shutdown_r);os.close(capability_r);os.close(ack_w)
 def call(command, payload=None, grant=None):
@@ -69,7 +73,7 @@ def control(operation,payload,grant=None):
  if grant is not None: request['protected_grant']=grant
  with socket.socket(socket.AF_UNIX) as sock:
   sock.settimeout(35);sock.connect(str(ROOT/'run/hiroute/control.sock'));stream=sock.makefile('rwb')
-  stream.write(encoded({'api_version':{'major':2,'minor':0},'machine_schema_version':{'major':2,'minor':0},'client_name':'desktop-e2e','client_version':'0.1.0'})+b'\n');stream.flush()
+  stream.write(encoded({'api_version':{'major':2,'minor':0},'machine_schema_version':{'major':2,'minor':0},'client_name':'desktop-e2e','client_version':RELEASE_VERSION})+b'\n');stream.flush()
   hello=json.loads(stream.readline());assert 'local-control-v2' in hello['capabilities'],hello
   stream.write(encoded(request)+b'\n');stream.flush();raw=stream.readline()
  assert SENTINEL.encode() not in raw,'Secret escaped protected Local Control response'
@@ -102,6 +106,12 @@ try:
  startup=json.loads(ready)
  if 'process_id' not in startup: raise RuntimeError(f"daemon startup failed: {startup.get('code', 'unknown')}")
  assert startup['process_id']==daemon.pid
+ if BENCHMARK:
+  startup_ms=round((time.perf_counter_ns()-startup_started)/1_000_000,3)
+  def daemon_rss_kib():
+   # Query only the live daemon, excluding Cargo and the Python driver.
+   return int(subprocess.check_output(['ps','-o','rss=','-p',str(daemon.pid)],text=True).strip())
+  ready_rss_kib=daemon_rss_kib()
  # This preparation daemon stands in for the previously owned run. Seed its exact endpoint
  # identities while they are live, so Desktop restart can verify the old served address.
  endpoint_dir=ROOT/'run/hiroute'
@@ -157,6 +167,7 @@ try:
  baseline=call(['routing','list'])
  (ROOT/'baseline.json').write_text(json.dumps(baseline,indent=2))
  print(json.dumps({'state':'prepared','operation_id':operation['operation_id'],'plans':len(baseline['plans']),'root':str(ROOT)}),flush=True)
+ if BENCHMARK: print(json.dumps({'benchmark':'startup_and_memory','startup_ready_ms':startup_ms,'ready_rss_kib':ready_rss_kib,'after_publish_rss_kib':daemon_rss_kib(),'profile':'debug','startup':'fresh_current_format','upstream_calls':0}),flush=True)
  if BENCHMARK: print(json.dumps({'benchmark':'plan_apply','runs':BENCH_RUNS,'apply_ms':durations_ms,'median_ms':statistics.median(durations_ms)}),flush=True)
 finally:
  os.close(shutdown_w)

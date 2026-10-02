@@ -1,8 +1,8 @@
 //! Non-secret native model file intent, bound to the original settings Operation.
 use hiroute_domain::{
     AgentConnectionControlIntentV1, AgentConnectionEffectRoleV1, AgentConnectionTransactionKindV1,
-    AgentConnectionTransactionSubjectV1, AgentFacetIntent, AgentSettingsSpecV2, CanonicalDigest,
-    ExternalEffectIntentV1, OperationId, OperationV1, OperationValidationError, PortError,
+    AgentConnectionTransactionSubjectV1, AgentFacetIntent, AgentOperationRead, AgentSettingsSpecV2,
+    CanonicalDigest, ExternalEffectIntentV1, OperationId, OperationValidationError, PortError,
     PortErrorCode, PortResult,
 };
 use serde::{Deserialize, Serialize};
@@ -240,22 +240,22 @@ pub fn decode_settings_codex_model_file(
 /// Validate membership and facet again when consuming a persisted journal during execution.
 /// The original payload, not a new current-state preview, supplies recovery inputs.
 pub fn settings_codex_model_file_for_operation(
-    operation: &OperationV1,
+    operation: &(impl AgentOperationRead + ?Sized),
     intent: &ExternalEffectIntentV1,
 ) -> PortResult<CodexModelFilePayload> {
     let payload = decode_settings_codex_model_file(intent)?;
     let spec: AgentSettingsSpecV2 =
-        serde_json::from_value(operation.plan.spec().desired_state.clone())
+        serde_json::from_value(operation.agent_input().spec.desired_state.clone())
             .map_err(|_| invalid())?;
-    if operation.plan.spec().command_id != "agents.settings.apply"
+    if operation.agent_input().spec.command_id != "agents.settings.apply"
         || spec.context_id != payload.context_id
-        || !operation.plan.external().contains(intent)
+        || !operation.agent_input().external.contains(intent)
     {
         return Err(invalid());
     }
-    let state = &operation.plan.control()["payload"]["state"];
+    let state = &operation.agent_input().control["payload"]["state"];
     if state["accept_digest"]
-        != serde_json::to_value(&operation.accepted_digest).map_err(|_| invalid())?
+        != serde_json::to_value(operation.accepted_digest()).map_err(|_| invalid())?
     {
         return Err(invalid());
     }
@@ -271,7 +271,7 @@ pub fn settings_codex_model_file_for_operation(
         ) => {
             let grant: hiroute_domain::AgentModelGrantV2 =
                 serde_json::from_value(state["model_grant"].clone()).map_err(|_| invalid())?;
-            let [mutation] = operation.plan.agent_access_grants() else {
+            let [mutation] = operation.agent_input().grants else {
                 return Err(invalid());
             };
             let scope = mutation.desired_scope().ok_or_else(invalid)?;
@@ -282,7 +282,7 @@ pub fn settings_codex_model_file_for_operation(
                 .codex_default_override(settings)
                 .map_err(|_| invalid())?
                 != *model
-                || previous_operation.as_ref() == Some(&operation.operation_id)
+                || previous_operation.as_ref() == Some(operation.operation_id())
             {
                 return Err(invalid());
             }
@@ -291,7 +291,7 @@ pub fn settings_codex_model_file_for_operation(
                 return Err(invalid());
             }
             if let Some(digest) = model_catalog
-                && !operation.plan.external().iter().any(|intent| {
+                && !operation.agent_input().external.iter().any(|intent| {
                     decode_settings_codex_catalog(intent)
                         .is_ok_and(|catalog| &catalog.content_digest == digest)
                 })
@@ -305,7 +305,7 @@ pub fn settings_codex_model_file_for_operation(
                 original_operation,
                 native_model,
             },
-        ) if original_operation != &operation.operation_id
+        ) if original_operation != operation.operation_id()
             && *restore_point_ref == codex_model_restore_point_ref(original_operation)
             && &spec.restore_native_model == native_model => {}
         _ => return Err(invalid()),

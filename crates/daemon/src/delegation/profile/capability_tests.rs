@@ -7,8 +7,8 @@ fn missing_worker_dependencies_leave_normal_gateway_publication_available() {
     use hiroute_gateway::server::publication::GatewayPublicationInstaller;
     use std::sync::Arc;
 
-    let publication = hiroute_domain::GatewayPublicationV1::decode_persisted(
-        include_str!("../../../../../e2e/product/golden/routing/compiled-publication.v2.json")
+    let publication = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(
+        include_str!("../../../../../e2e/product/fixtures/routing/current-publication.v3.json")
             .as_bytes(),
     )
     .unwrap();

@@ -942,12 +942,30 @@ pub(super) fn v7_operation_json() -> (
         "accepted_digest": accepted,
         "expected_revisions": expected_revisions,
     });
-    let step_two = serde_json::json!([plan["control"].clone(), serde_json::Value::Null]);
+    // This fixture isolates the schema-7 projection/CAS migration inside the current journal.
+    // Historical journal proofs are covered by the independently frozen schema-22 sources.
+    let step_two = serde_json::json!([
+        plan["control"].clone(),
+        serde_json::Value::Null,
+        serde_json::Value::Null
+    ]);
     let _ = plan;
-    durable["steps"][0]["deterministic_input_digest"] =
-        serde_json::json!(CanonicalDigest::of(&step_zero).unwrap());
-    durable["steps"][2]["deterministic_input_digest"] =
-        serde_json::json!(CanonicalDigest::of(&step_two).unwrap());
+    durable["steps"][0]["deterministic_input_digest"] = serde_json::json!(
+        CanonicalDigest::of(&(
+            "hiroute.operation-step-input/v1",
+            hiroute_domain::OperationStepKind::Prepare,
+            step_zero
+        ))
+        .unwrap()
+    );
+    durable["steps"][2]["deterministic_input_digest"] = serde_json::json!(
+        CanonicalDigest::of(&(
+            "hiroute.operation-step-input/v1",
+            hiroute_domain::OperationStepKind::MaterializeSources,
+            step_two
+        ))
+        .unwrap()
+    );
     (
         serde_json::to_string(&durable).unwrap(),
         operation_id,
