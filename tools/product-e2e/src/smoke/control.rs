@@ -109,7 +109,7 @@ fn observe_cli(
     )?;
     require(
         response_is_private(
-            &serde_json::to_value(&envelope)?,
+            &serde_json::from_slice::<Value>(&stdout)?,
             &ctx.runtime,
             secret,
             matches!(args, ["agents", "scan"] | ["agents", "list"]),
@@ -537,8 +537,19 @@ mod privacy_tests {
         ));
         let mut unrelated = value.clone();
         unrelated["extra"] = json!(home);
+        let raw = serde_json::to_vec(&unrelated).unwrap();
+        let unrelated = serde_json::from_slice::<Value>(&raw).unwrap();
         assert!(!response_is_private(
             &unrelated,
+            runtime,
+            "sentinel-secret",
+            true
+        ));
+        let mut unknown = value.clone();
+        unknown["extra"] = json!("sentinel-secret");
+        let raw = serde_json::to_vec(&unknown).unwrap();
+        assert!(!response_is_private(
+            &serde_json::from_slice::<Value>(&raw).unwrap(),
             runtime,
             "sentinel-secret",
             true
