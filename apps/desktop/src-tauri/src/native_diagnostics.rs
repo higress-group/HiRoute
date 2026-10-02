@@ -38,6 +38,8 @@ pub struct NativeDiagnostics {
     pub root: PathBuf,
     pub parent_session: Option<SessionId>,
     port: DiagnosticsPort,
+    upgrade_progress:
+        Option<std::sync::Arc<std::sync::Mutex<Option<hiroute_host_runtime::StorageUpgradePhase>>>>,
 }
 
 impl NativeDiagnostics {
@@ -46,6 +48,7 @@ impl NativeDiagnostics {
             root,
             parent_session,
             port,
+            upgrade_progress: None,
         }
     }
 
@@ -56,6 +59,23 @@ impl NativeDiagnostics {
 
     pub fn port(&self) -> DiagnosticsPort {
         self.port.clone()
+    }
+
+    pub fn with_upgrade_progress(
+        mut self,
+        progress: std::sync::Arc<
+            std::sync::Mutex<Option<hiroute_host_runtime::StorageUpgradePhase>>,
+        >,
+    ) -> Self {
+        self.upgrade_progress = Some(progress);
+        self
+    }
+    pub(super) fn report_upgrade(&self, phase: hiroute_host_runtime::StorageUpgradePhase) {
+        if let Some(progress) = &self.upgrade_progress
+            && let Ok(mut current) = progress.lock()
+        {
+            *current = Some(phase);
+        }
     }
 
     /// A process-lifetime context for modules that need a diagnostic anchor, for example

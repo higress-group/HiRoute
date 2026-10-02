@@ -31,6 +31,8 @@ pub enum StartupOutcome {
 pub enum StartupFailureCode {
     InvalidConfiguration,
     StorageUnavailable,
+    UpgradeSourceUnsupported,
+    UpgradeStorageFailed,
     ReleaseFactsInvalid,
     DependencyUnavailable,
     WorkerRejected,

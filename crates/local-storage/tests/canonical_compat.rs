@@ -104,50 +104,92 @@ fn capture_pre_fix_canonical_records() {
 }
 
 #[test]
-fn canonical_legacy_default_operation_and_grant_survive_storage_reopen() {
+fn frozen_default_canonical_digests_and_step_proofs_remain_compatible() {
     let value: Value = serde_json::from_slice(&std::fs::read(fixture_path()).unwrap()).unwrap();
-    let grant: AgentCollaborationGrant =
-        serde_json::from_value(value["collaboration_grant"].clone()).unwrap();
     let scope: LegacyAgentAccessGrantScopeV1 =
         serde_json::from_value(value["model_grant_scope"].clone()).unwrap();
     assert_eq!(
         scope.digest().as_str(),
         value["model_grant_scope_digest"].as_str().unwrap()
     );
+    let operation = &value["operation"];
+    let plan = &operation["plan"];
+    assert_eq!(
+        serde_json::from_str::<Value>(value["operation_json"].as_str().unwrap()).unwrap(),
+        *operation
+    );
+    for (input, expected) in [
+        (
+            &operation["expected_revisions"],
+            &value["expected_revisions_digest"],
+        ),
+        (plan, &value["transaction_plan_digest"]),
+    ] {
+        assert_eq!(
+            CanonicalDigest::of(input).unwrap().as_str(),
+            expected.as_str().unwrap()
+        );
+    }
+    let effects = |kind: &str| {
+        plan["external"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|effect| effect["kind"] == kind)
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    // The old producer's six proofs use its exact runtime-shaped inputs. These
+    // bytes remain frozen; a current Operation seals a different durable input.
+    let inputs = [
+        json!({"spec": plan["spec"], "accepted_digest": operation["accepted_digest"], "expected_revisions": operation["expected_revisions"]}),
+        json!([plan["secrets"], []]),
+        json!([plan["control"], null]),
+        json!(effects("publication")),
+        json!(effects("agent_artifact")),
+        plan["runtime"].clone(),
+    ];
+    assert_eq!(operation["steps"].as_array().unwrap().len(), inputs.len());
+    for (step, input) in operation["steps"].as_array().unwrap().iter().zip(inputs) {
+        assert_eq!(
+            CanonicalDigest::of(&input).unwrap().as_str(),
+            step["deterministic_input_digest"].as_str().unwrap()
+        );
+    }
+}
+
+#[test]
+fn current_operation_and_legacy_grant_survive_storage_reopen() {
+    let value: Value = serde_json::from_slice(&std::fs::read(fixture_path()).unwrap()).unwrap();
+    let grant: AgentCollaborationGrant =
+        serde_json::from_value(value["collaboration_grant"].clone()).unwrap();
     let root = private_tempdir();
     let operation_id;
+    let current_operation;
     {
         let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
         let operation = support::begin(&stores, "canonical-legacy");
         operation_id = operation.operation_id.clone();
+        current_operation = serde_json::to_value(&operation).unwrap();
+        for field in [
+            "operation_id",
+            "workspace_id",
+            "idempotency",
+            "request_digest",
+            "accepted_digest",
+            "expected_revisions",
+        ] {
+            assert_eq!(current_operation[field], value["operation"][field]);
+        }
         assert_eq!(
-            serde_json::to_value(&operation).unwrap(),
-            value["operation"]
+            current_operation["plan"]["spec"],
+            value["operation"]["plan"]["spec"]
         );
         assert_eq!(
             CanonicalDigest::of(&operation.expected_revisions)
                 .unwrap()
                 .as_str(),
             value["expected_revisions_digest"].as_str().unwrap()
-        );
-        assert_eq!(
-            CanonicalDigest::of(&operation.plan).unwrap().as_str(),
-            value["transaction_plan_digest"].as_str().unwrap()
-        );
-        // Replay the byte-for-byte old persisted journal into the identical row. This is a
-        // fixture import only; production recovery must use its existing strict decoder.
-        let connection = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
-        assert_eq!(
-            connection
-                .execute(
-                    "UPDATE operations SET operation_json = ?1 WHERE operation_id = ?2",
-                    rusqlite::params![
-                        value["operation_json"].as_str().unwrap(),
-                        operation_id.as_str()
-                    ]
-                )
-                .unwrap(),
-            1
         );
         stores
             .control()
@@ -160,10 +202,7 @@ fn canonical_legacy_default_operation_and_grant_survive_storage_reopen() {
         .load_operation(&operation_id)
         .unwrap()
         .unwrap();
-    assert_eq!(
-        serde_json::to_value(&recovered).unwrap(),
-        value["operation"]
-    );
+    assert_eq!(serde_json::to_value(&recovered).unwrap(), current_operation);
     assert!(
         stores
             .control()
@@ -196,5 +235,32 @@ fn canonical_legacy_default_operation_and_grant_survive_storage_reopen() {
     assert_eq!(
         serde_json::to_value(current).unwrap(),
         value["collaboration_grant"]
+    );
+}
+
+#[test]
+fn current_store_rejects_frozen_pre_mvp_journal_without_migration() {
+    let value: Value = serde_json::from_slice(&std::fs::read(fixture_path()).unwrap()).unwrap();
+    let root = private_tempdir();
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let operation = support::begin(&stores, "canonical-legacy");
+    let connection = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
+    assert_eq!(
+        connection
+            .execute(
+                "UPDATE operations SET operation_json = ?1 WHERE operation_id = ?2",
+                rusqlite::params![
+                    value["operation_json"].as_str().unwrap(),
+                    operation.operation_id.as_str()
+                ],
+            )
+            .unwrap(),
+        1
+    );
+    assert!(
+        stores
+            .control()
+            .load_operation(&operation.operation_id)
+            .is_err()
     );
 }

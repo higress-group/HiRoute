@@ -205,6 +205,10 @@ impl ProductionControlRuntime {
     }
 }
 
+#[cfg(all(test, unix))]
+#[path = "work_plans/current_authority_tests.rs"]
+mod current_authority_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;

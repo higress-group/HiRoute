@@ -179,7 +179,7 @@ fn client_hello_v2_schema() -> Value {
             "api_version": { "$ref": "local-control.v2.schema.json#/properties/schema_version" },
             "machine_schema_version": { "$ref": "local-control.v2.schema.json#/properties/schema_version" },
             "client_name": { "type": "string", "minLength": 1, "maxLength": 128 },
-            "client_version": { "const": env!("CARGO_PKG_VERSION") }
+            "client_version": { "const": crate::LOCAL_CONTROL_RELEASE_VERSION }
         }
     })
 }

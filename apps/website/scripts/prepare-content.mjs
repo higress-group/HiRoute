@@ -29,4 +29,5 @@ for (const entry of await fs.readdir(path.join(source, 'assets'), { withFileType
 }
 await fs.copyFile(path.join(repository, 'scripts/install-standalone.py'), path.join(installDirectory, 'standalone.py'));
 await fs.writeFile(path.join(publicDirectory, 'install.sh'), generateLinuxInstallScript(releaseManifest), { mode: 0o755 });
+await fs.writeFile(path.join(publicDirectory, 'releases.json'), JSON.stringify(releaseManifest, null, 2) + '\n');
 console.log('Prepared canonical Decision API, illustrations, and Linux installer entry.');

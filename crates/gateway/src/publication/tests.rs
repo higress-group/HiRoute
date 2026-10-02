@@ -13,6 +13,27 @@ use crate::server::request_plan::IngressProtocol;
 static DIRECTORY_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
+fn domain_gateway_profile_roundtrip_preserves_model_evidence() {
+    use crate::server::core_runtime::profiles::CandidateProtocolProfile;
+    use hiroute_domain::{
+        GatewayCandidateProtocolProfileV1, GatewayCriticalFactV1, GatewayFidelityV1,
+    };
+    let mut profile = candidate(1).protocol_profiles.remove(0);
+    profile.capability.model_support.tools = GatewayCriticalFactV1::Exact(true);
+    profile.capability.model_support.vision = GatewayCriticalFactV1::Exact(false);
+    // Current implementation fidelity is independent of the model's frozen support.
+    profile.capability.request.function_tools = GatewayFidelityV1::Unsupported;
+    let gateway: CandidateProtocolProfile =
+        serde_json::from_value(serde_json::to_value(&profile).unwrap()).unwrap();
+    let restored: GatewayCandidateProtocolProfileV1 =
+        serde_json::from_value(serde_json::to_value(&gateway).unwrap()).unwrap();
+    assert_eq!(profile, restored);
+    let mut raw = serde_json::to_value(&profile).unwrap();
+    raw["capability"]["unknown_execution_field"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<CandidateProtocolProfile>(raw).is_err());
+}
+
+#[test]
 fn published_attempt_phases_default_to_ten_minutes() {
     let aggregate = super::compiler::compile(&snapshot(1, "renderer")).unwrap();
     #[cfg(feature = "e2e-test-control")]

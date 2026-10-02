@@ -88,31 +88,42 @@ fn production_subprocess_uses_embedded_catalog_and_ignores_storage_tampering() {
     let home = temporary.path().join("home");
     std::fs::create_dir(&home).unwrap();
     std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut command = Command::new(&binaries.hirouted);
+    command
+        .args([
+            "--role",
+            "control",
+            "--storage-root",
+            storage_root.to_str().unwrap(),
+            "--runtime-root",
+            runtime_root.to_str().unwrap(),
+        ])
+        .env("HOME", &home)
+        .env_remove("CODEX_HOME")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("ANTHROPIC_AUTH_TOKEN")
+        .env_remove("ANTHROPIC_BASE_URL")
+        .env_remove("ANTHROPIC_MODEL")
+        .env_remove("ANTHROPIC_DEFAULT_OPUS_MODEL")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    let endpoint = runtime_root.join("hiroute/control.sock");
+    hiroute_product_e2e::smoke::fixtures::initialize_current_storage(
+        &binaries.hirouted,
+        &storage_root,
+        &temporary.path().join("initialize"),
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        Instant::now() + Duration::from_secs(10),
+    )
+    .unwrap();
     install_nonmatching_catalog(&storage_root);
-
     let mut daemon = OwnedChild(
-        Command::new(&binaries.hirouted)
-            .args([
-                "--role",
-                "control",
-                "--storage-root",
-                storage_root.to_str().unwrap(),
-                "--runtime-root",
-                runtime_root.to_str().unwrap(),
-            ])
-            .env("HOME", &home)
-            .env_remove("CODEX_HOME")
-            .env_remove("CLAUDE_CONFIG_DIR")
-            .env_remove("ANTHROPIC_AUTH_TOKEN")
-            .env_remove("ANTHROPIC_BASE_URL")
-            .env_remove("ANTHROPIC_MODEL")
-            .env_remove("ANTHROPIC_DEFAULT_OPUS_MODEL")
+        command
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
             .expect("launch production hirouted"),
     );
-    let endpoint = runtime_root.join("hiroute/control.sock");
     let deadline = Instant::now() + Duration::from_secs(10);
     while !endpoint.exists() {
         assert!(
@@ -182,7 +193,7 @@ fn control_call(endpoint: &Path, operation_id: &str, payload: Value) -> MachineE
             api_version: LOCAL_CONTROL_SCHEMA_V2,
             machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
             client_name: "pre-gateway-product-test".into(),
-            client_version: env!("CARGO_PKG_VERSION").into(),
+            client_version: hiroute_application_api::LOCAL_CONTROL_RELEASE_VERSION.into(),
         },
     )
     .unwrap();

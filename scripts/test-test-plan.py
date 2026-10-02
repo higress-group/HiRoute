@@ -63,6 +63,23 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(result["native_required"])
         self.assertIn(["python3", "scripts/test-contract-convergence.py"], result["commands"])
 
+    def test_release_contract_updates_select_their_checks_without_product_builds(self):
+        for path in sorted(plan.RELEASE_CONTRACT_TOOLING | {"contracts/releases/v9.0.0.json"}):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertFalse(result["rust"])
+                self.assertFalse(result["frontend"])
+                self.assertIn(["python3", "scripts/test-release-contracts.py"], result["commands"])
+                self.assertIn(["python3", "scripts/test-release-contract-pr.py"], result["commands"])
+                self.assertIn(["python3", "scripts/release-contracts.py", "check"], result["commands"])
+        mixed = plan.select(["contracts/releases/index.v1.json", "crates/daemon/src/lib.rs"])
+        self.assertTrue(mixed["rust"])
+        for paths, full in [([], True), (["Cargo.lock"], False), (["crates/domain/src/lib.rs"], False)]:
+            selected = plan.select(paths, full=full)
+            self.assertIn(["python3", "scripts/release-contracts.py", "check"], selected["commands"])
+            self.assertIn(["python3", "scripts/test-release-contracts.py"], selected["commands"])
+            self.assertIn(["python3", "scripts/test-release-contract-pr.py"], selected["commands"])
+
     def test_native_changes_require_platform_evidence(self):
         result = plan.select(["apps/desktop/src-tauri/src/main.rs"])
         self.assertTrue(result["native_required"])
@@ -265,6 +282,19 @@ class IntegrationPreflightTests(unittest.TestCase):
             self.assertIn('--all-features', command)
         self.assertFalse(any('smoke_cli' in c or '--no-fail-fast' in c for c in early['commands']))
         self.assertTrue(early['remote_exclusive'])
+
+    def test_storage_startup_exercises_real_daemon_before_final(self):
+        for path in ['crates/local-storage/src/migrations/startup_format.rs',
+                     'crates/local-storage/src/lib.rs']:
+            final = plan.select([path])
+            original = json.dumps(final, sort_keys=True)
+            early = plan.integration_preflight(final)
+            self.assertIn('publication_process', early['targets'])
+            self.assertIn('pre_gateway_compute_routing', early['targets'])
+            command = next(c for c in early['commands'] if 'publication_process' in c)
+            self.assertIn('--all-features', command)
+            self.assertTrue('--workspace' in command or 'hiroute-daemon' in command)
+            self.assertEqual(original, json.dumps(final, sort_keys=True))
 
     def test_production_protocol_changes_have_early_consumers(self):
         for path in ['crates/gateway/src/adapters/responses_ingress.rs',

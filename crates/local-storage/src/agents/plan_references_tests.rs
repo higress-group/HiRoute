@@ -162,6 +162,9 @@ fn agent_plan_references_join_independent_grants_restore_and_workspace() {
         .store_collaboration_grant(&operation.operation_id, 0, &grant)
         .unwrap();
     assert!(control.agent_plan_references(&workspace, &plan).is_err());
+    for step in &mut operation.steps {
+        step.status = OperationStepStatus::Applied;
+    }
     operation.state = OperationState::Succeeded;
     control.finish_operation(&mut operation).unwrap();
     let initial = control.agent_plan_references(&workspace, &plan).unwrap();
@@ -184,6 +187,9 @@ fn agent_plan_references_join_independent_grants_restore_and_workspace() {
             .is_empty()
     );
     let mut restore = begin_plan(&control, true, "references-restore");
+    for step in &mut restore.steps {
+        step.status = OperationStepStatus::Applied;
+    }
     restore.state = OperationState::Succeeded;
     control.finish_operation(&mut restore).unwrap();
     let after = control.agent_plan_references(&workspace, &plan).unwrap();
@@ -204,6 +210,9 @@ fn agent_plan_references_corrupt_projection_is_not_no_references() {
     )
     .unwrap();
     let mut operation = begin_plan(&control, false, "references-corrupt");
+    for step in &mut operation.steps {
+        step.status = OperationStepStatus::Applied;
+    }
     operation.state = OperationState::Succeeded;
     control.finish_operation(&mut operation).unwrap();
     control.with_connection(|db| {

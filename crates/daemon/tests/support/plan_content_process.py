@@ -54,7 +54,7 @@ def scenario(repository, boundary):
         assert product.catalog()[0] == catalog, 'Preview changed the installed catalog'
         assert preview['plan_head']['model_alias'] == product.model_alias
         assert preview['plan_version']['configuration']['work'] == editor['work']
-        assert preview['plan_version']['compiled']['body']['materialized']['attempt_owned']['limits']['context_window_tokens'] == 16384
+        assert preview['plan_version']['compiled']['limits']['context_window_tokens'] == 16384
         result, body, capability = product.apply('routing apply', 'ApplyAgentPlanChange', preview,
                                                 {'change': change}, 'content-two', crash=bool(boundary))
         if boundary:

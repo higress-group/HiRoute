@@ -1,9 +1,9 @@
 //! Coherent read projection of original Operation model settings and independent grants.
-use super::{ControlStore, decode_operation, port};
+use super::{ControlStore, agent_read::decode_succeeded_agent, port};
 use hiroute_domain::{
     AgentCollaborationGrant, AgentPlanId, AgentPlanReference, AgentPlanReferenceKind,
     AgentPlanReferenceReadPort, AgentPlanReferenceSubject, AgentPlanReferences, CanonicalDigest,
-    OperationState, PortErrorCode, PortResult, WorkspaceId,
+    PortErrorCode, PortResult, WorkspaceId,
 };
 use rusqlite::params;
 use std::collections::BTreeSet;
@@ -26,30 +26,29 @@ impl AgentPlanReferenceReadPort for ControlStore {
         let mut seen = BTreeSet::new();
         {
             let mut statement = transaction.prepare(
-                "SELECT operation_json FROM operations WHERE workspace_id=?1 AND operation_kind IN ('ApplyAgentConnectionChange','ApplyAgentConnectionRestore') ORDER BY rowid DESC"
+                "SELECT state,operation_json FROM operations WHERE workspace_id=?1 AND operation_kind IN ('ApplyAgentConnectionChange','ApplyAgentConnectionRestore') ORDER BY rowid DESC"
             ).map_err(|_| port(PortErrorCode::Unavailable, "agents.references.operations"))?;
             let rows = statement
-                .query_map(params![workspace.as_str()], |row| row.get::<_, String>(0))
+                .query_map(params![workspace.as_str()], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
                 .map_err(|_| port(PortErrorCode::Unavailable, "agents.references.rows"))?;
             for row in rows {
-                let operation = decode_operation(
-                    &self.diagnostics.borrow(),
-                    &row.map_err(|_| port(PortErrorCode::Corrupt, "agents.references.row"))?,
-                )?;
-                if &operation.workspace_id != workspace {
-                    return Err(port(PortErrorCode::Corrupt, "agents.references.workspace"));
-                }
-                match operation.state {
-                    OperationState::Succeeded => {}
-                    OperationState::RolledBack => continue,
-                    // An incomplete operation may have changed authority before terminal commit.
-                    // Do not mistake its previous completed projection for current absence.
+                let (state, encoded) =
+                    row.map_err(|_| port(PortErrorCode::Corrupt, "agents.references.row"))?;
+                match state.as_str() {
+                    "rolled_back" => continue,
+                    "succeeded" => {}
                     _ => {
                         return Err(port(
                             PortErrorCode::Unavailable,
                             "agents.references.recovery_required",
                         ));
                     }
+                }
+                let operation = decode_succeeded_agent(&transaction, &encoded)?;
+                if &operation.workspace_id != workspace {
+                    return Err(port(PortErrorCode::Corrupt, "agents.references.workspace"));
                 }
                 let connection_id = operation
                     .plan

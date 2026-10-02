@@ -22,7 +22,7 @@ impl PlanVersionV1 {
     ) -> Result<Self, PlanVersionError> {
         compiled.validate().map_err(|_| PlanVersionError::Invalid)?;
         if compiled.body.schema != AGENT_PLAN_COMPILED_SCHEMA_V1
-            && compiled.body.schema != AGENT_PLAN_COMPILED_SCHEMA_V2
+            && compiled.body.schema != AGENT_PLAN_COMPILED_SCHEMA_V3
         {
             return Err(PlanVersionError::Invalid);
         }
@@ -130,23 +130,31 @@ mod tests {
 
     #[test]
     fn unversioned_recovery_accepts_currentized_legacy_without_reopening_legacy_authoring() {
-        let publication: GatewayPublicationV1 = GatewayPublicationV1::decode_persisted(
-            include_bytes!("../../../../e2e/product/golden/routing/compiled-publication.v2.json"),
+        let source: serde_json::Value = serde_json::from_slice::<serde_json::Value>(
+            include_bytes!("../../../../e2e/product/fixtures/routing/current-publication.v3.json"),
         )
         .unwrap();
-        let legacy = publication.plans[0].clone();
-        let legacy_version =
-            PlanVersionV1::from_legacy_compiled(publication.workspace_id.clone(), legacy.clone())
-                .unwrap();
-        let current = legacy.into_current().unwrap();
+        let publication =
+            serde_json::from_value::<crate::GatewayPublicationV1>(source.clone()).unwrap();
+        let current = publication.plans[0].clone();
         let recovered = PlanVersionV1::from_unversioned_compiled_recovery(
             publication.workspace_id,
             current.clone(),
         )
         .unwrap();
 
-        assert_eq!(recovered.configuration, legacy_version.configuration);
-        assert_eq!(recovered.compiled, current);
+        assert_eq!(
+            recovered.configuration.display_name,
+            current.body.identity.display_name
+        );
+        assert_eq!(
+            recovered.configuration.purpose,
+            current.body.identity.purpose
+        );
+        assert_eq!(
+            crate::StoredPlanV1::freeze(&recovered.compiled).unwrap(),
+            crate::StoredPlanV1::freeze(&current).unwrap()
+        );
         recovered.validate().unwrap();
         assert!(
             PlanVersionV1::from_legacy_compiled(

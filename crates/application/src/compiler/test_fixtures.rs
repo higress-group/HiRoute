@@ -257,6 +257,10 @@ fn fixture_protocol_profile(
             upstream_protocol: UpstreamProtocol::Responses,
             model_configuration_id: model_configuration_id.into(),
             native_model: native_model.into(),
+            model_support: StoredModelSupportV1 {
+                tools: GatewayCriticalFactV1::Exact(true),
+                vision: GatewayCriticalFactV1::Exact(true),
+            },
             request: GatewayRequestFeatureProfileV1 {
                 text: exact,
                 initial_instructions: exact,

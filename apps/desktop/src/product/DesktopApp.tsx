@@ -148,6 +148,14 @@ export function DesktopApp() {
 
   const service = visibleData(home.reads.service);
   const startupFailure = home.startup?.state === 'failed' ? home.startup : null;
+  const upgradePhase = home.startup?.state === 'starting' ? home.startup.upgrade_phase : undefined;
+  const upgradePhaseText = upgradePhase ? ({
+    source_check: language === 'zh' ? '正在校验存储格式' : 'Checking storage format',
+    backup: language === 'zh' ? '正在保存升级前的完整备份' : 'Saving the complete pre-upgrade backup',
+    conversion: language === 'zh' ? '正在升级本机数据' : 'Upgrading local data',
+    validation: language === 'zh' ? '正在校验升级结果' : 'Verifying upgraded data',
+    service_recovery: language === 'zh' ? '正在恢复本机服务' : 'Restoring the local service',
+  })[upgradePhase] : undefined;
   const serviceLabel = service?.daemon === 'read_only'
     ? text.serviceReadOnly
     : service?.daemon === 'unavailable'
@@ -574,16 +582,20 @@ export function DesktopApp() {
       />
       <main className="main">
         {notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="info" /><span>{notice}</span></div></div>}
+        {upgradePhaseText && <div className="callout" role="status" aria-live="polite"><UiIcon name="info" /><div><strong>{upgradePhaseText}</strong><p>{language === 'zh' ? '请等待升级完成；请保留原数据与完整安装包。' : 'Wait for the upgrade to finish. Keep the original data and complete installation package.'}</p></div></div>}
         {startupFailure && <div className="callout bad" role="alert" data-error-code={startupFailure.code}>
           <UiIcon name="warning" />
           <div>
             <strong>{language === 'zh' ? '本机服务启动失败' : 'Local service failed to start'}</strong>
-            <p>{startupFailure.code === 'DAEMON_STORAGE_UNREADABLE'
-              ? (language === 'zh' ? 'HiRoute 数据无法读取或已损坏。原数据未被清空或迁移；请先备份恢复目录，再同时移走其中的 storage 和 gateway.lkg 后重启。' : 'HiRoute data is unreadable or damaged. It was not cleared or migrated. Back up the recovery directory, then move both storage and gateway.lkg aside before restarting.')
-              : (language === 'zh' ? `启动阶段失败（${startupFailure.code ?? 'STARTUP_FAILED'}）。原数据保持不变，可打开恢复目录查看日志并备份。` : `Startup failed (${startupFailure.code ?? 'STARTUP_FAILED'}). Existing data is unchanged; open the recovery directory to inspect logs and back it up.`)}</p>
+            <p>{startupFailure.code === 'DAEMON_UPGRADE_SOURCE_UNSUPPORTED'
+                ? (language === 'zh' ? '此数据格式尚无经过验证的升级与恢复路径。请保留原数据并使用对应旧版本，勿清空目录重试。' : 'This data format has no verified upgrade and recovery path. Keep the data and use its matching previous version.')
+              : startupFailure.backup_directory
+              ? (language === 'zh' ? '请保留当前数据目录，按升级备份中的《恢复说明.md》恢复整组数据，并覆盖安装说明指定的旧版本。恢复会舍弃备份之后的新数据。' : 'Keep the current data directory. Follow the recovery guide in the upgrade backup to restore the complete data set and install the specified previous version. Changes made after the backup will be lost.')
+              : (language === 'zh' ? `启动阶段失败（${startupFailure.code ?? 'STARTUP_FAILED'}）。请保留现有数据，打开恢复目录查看日志并备份。` : `Startup failed (${startupFailure.code ?? 'STARTUP_FAILED'}). Keep the existing data; open the recovery directory to inspect logs and back it up.`)}</p>
+            {startupFailure.backup_directory && <p>{language === 'zh' ? '升级备份：' : 'Upgrade backup: '}{startupFailure.backup_directory}</p>}
             {startupFailure.recovery_available && <button className="btn" type="button" onClick={() => {
               void invoke('open_startup_recovery_directory').catch(() => setNotice(language === 'zh' ? '无法安全打开恢复目录，请检查目录权限后重试。' : 'The recovery directory could not be opened safely. Check its permissions and try again.'));
-            }}>{language === 'zh' ? '打开恢复目录' : 'Open recovery directory'}</button>}
+            }}>{startupFailure.backup_directory ? (language === 'zh' ? '打开升级备份与恢复说明' : 'Open upgrade backup and recovery guide') : (language === 'zh' ? '打开恢复目录' : 'Open recovery directory')}</button>}
           </div>
         </div>}
 

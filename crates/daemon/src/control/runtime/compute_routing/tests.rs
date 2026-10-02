@@ -383,6 +383,7 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
         ),
         managed_agent_runtime: Mutex::new(None),
         publication_target: Mutex::new(None),
+        startup_recovery_complete: std::sync::atomic::AtomicBool::new(true),
         delegation_native_cleanup_cursor: Mutex::new(None),
         delegation_task_maintenance_cursor: Mutex::new(None),
     };

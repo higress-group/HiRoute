@@ -1,14 +1,12 @@
 use hiroute_domain::{
-    ConnectorRuntimeKind, GatewayAuthenticationSemanticsV1, GatewayCandidateCapabilityProfileV1,
-    GatewayCandidateProtocolProfileV1, GatewayConnectorProfileV1, GatewayContextLimitsV1,
-    GatewayCriticalFactV1, GatewayErrorSemanticsV1, GatewayFidelityV1, GatewayHeaderSemanticsV1,
-    GatewayNativeProviderStateEmissionV1, GatewayNativeReasoningFieldAssignmentV1,
+    ConnectorRuntimeKind, GatewayAuthenticationSemanticsV1, GatewayCandidateProtocolProfileV1,
+    GatewayConnectorProfileV1, GatewayCriticalFactV1, GatewayErrorSemanticsV1,
+    GatewayHeaderSemanticsV1, GatewayNativeReasoningFieldAssignmentV1,
     GatewayNativeReasoningRenderV1, GatewayNativeReasoningValueV1, GatewayReasoningAccountingV1,
-    GatewayReasoningControlKindV1, GatewayReasoningProfileCapabilityV1,
-    GatewayRequestFeatureProfileV1, GatewayResponseFeatureProfileV1,
-    GatewayStreamingRefusalSemanticsV1, GatewayTokenEstimatorProfileV1, ModelDefinitionV1,
+    GatewayReasoningControlKindV1, GatewayReasoningProfileCapabilityV1, ModelDefinitionV1,
     ModelEndpointCapabilityV1, ModelNativeReasoningV1, NativeReasoningCapabilityV1,
-    NativeReasoningRenderConventionV1, UpstreamProtocol,
+    NativeReasoningRenderConventionV1, StoredModelCapabilitiesV1, StoredModelSupportV1,
+    StoredNativeReasoningV1, UpstreamProtocol,
 };
 
 use super::{ProtocolConnectorFacts, ProtocolFace, protocol_label};
@@ -76,22 +74,6 @@ pub(super) fn protocol_profiles(
         else {
             continue;
         };
-        let exact_provider_state = matches!(
-            upstream_protocol,
-            UpstreamProtocol::Responses | UpstreamProtocol::Messages
-        );
-        let exact = GatewayFidelityV1::Exact;
-        let unsupported = GatewayFidelityV1::Unsupported;
-        let tool = if model.capabilities.tool {
-            exact
-        } else {
-            unsupported
-        };
-        let vision = if model.capabilities.vision {
-            exact
-        } else {
-            unsupported
-        };
         profiles.push(GatewayCandidateProtocolProfileV1 {
             schema_version: "hiroute.candidate-protocol-profile/v1".into(),
             native_target: face.native_target.clone(),
@@ -112,114 +94,33 @@ pub(super) fn protocol_profiles(
             ),
             serializer_revision: "hiroute-target-json/v1".into(),
             decoder_revision: "hiroute-native-response/v1".into(),
-            capability: GatewayCandidateCapabilityProfileV1 {
-                schema_version: "hiroute.candidate-capability/v1".into(),
+            capability: StoredModelCapabilitiesV1 {
                 capability_id: capability.capability_id.clone(),
                 capability_revision: capability.revision.to_string(),
-                upstream_protocol,
                 model_configuration_id: capability.model_configuration_id.clone(),
                 native_model: native_transport_model.to_owned(),
-                request: GatewayRequestFeatureProfileV1 {
-                    text: exact,
-                    initial_instructions: exact,
-                    mid_conversation_instructions: if upstream_protocol
-                        == UpstreamProtocol::Messages
-                    {
-                        unsupported
-                    } else {
-                        exact
-                    },
-                    image_url: vision,
-                    image_base64: vision,
-                    image_base64_media_types: GatewayCriticalFactV1::Exact(
-                        if model.capabilities.vision {
-                            vec![
-                                "image/gif".into(),
-                                "image/jpeg".into(),
-                                "image/png".into(),
-                                "image/webp".into(),
-                            ]
-                        } else {
-                            Vec::new()
-                        },
-                    ),
-                    function_tools: tool,
-                    strict_tools: if upstream_protocol == UpstreamProtocol::Messages {
-                        unsupported
-                    } else {
-                        tool
-                    },
-                    tool_choice_none: if upstream_protocol == UpstreamProtocol::Messages {
-                        unsupported
-                    } else {
-                        tool
-                    },
-                    tool_choice_auto: tool,
-                    tool_choice_required_any: tool,
-                    tool_choice_required_named: tool,
-                    parallel_tools: tool,
-                    tool_roundtrip: tool,
-                    tool_result_text: tool,
-                    tool_result_json: tool,
-                    logical_tool_id_mapping: tool,
-                    provider_state: if exact_provider_state {
-                        exact
-                    } else {
-                        unsupported
-                    },
+                model_support: StoredModelSupportV1 {
+                    tools: GatewayCriticalFactV1::Exact(model.capabilities.tool),
+                    vision: GatewayCriticalFactV1::Exact(model.capabilities.vision),
                 },
-                response: GatewayResponseFeatureProfileV1 {
-                    text: exact,
-                    reasoning: exact,
-                    refusal: exact,
-                    tool_calls: tool,
-                    logical_tool_id_mapping: tool,
-                    usage: exact,
-                    finish_reason: exact,
-                    typed_error: exact,
-                    provider_state: if exact_provider_state {
-                        exact
-                    } else {
-                        unsupported
-                    },
-                    stream_refusal: if upstream_protocol == UpstreamProtocol::Messages {
-                        GatewayStreamingRefusalSemanticsV1::TerminalClassified
-                    } else {
-                        GatewayStreamingRefusalSemanticsV1::ExactDelta
-                    },
-                    stream_text_delta: exact,
-                    stream_tool_argument_delta: tool,
-                    stream_reasoning_delta: exact,
-                    stream_usage: exact,
-                },
-                reasoning_profiles: reasoning_profiles.clone(),
-                selected_reasoning_profile_id: selected_reasoning_profile_id.clone(),
-                context: GatewayContextLimitsV1 {
-                    max_input_tokens: GatewayCriticalFactV1::Exact(
-                        model.capabilities.context_tokens,
-                    ),
-                    max_output_tokens: GatewayCriticalFactV1::Exact(
-                        model.capabilities.max_output_tokens,
-                    ),
-                    max_total_tokens: GatewayCriticalFactV1::Exact(
-                        model
-                            .capabilities
-                            .context_tokens
-                            .checked_add(model.capabilities.max_output_tokens),
-                    ),
-                    estimator: GatewayCriticalFactV1::Exact(GatewayTokenEstimatorProfileV1 {
-                        revision: "byte-upper-bound/v1".into(),
-                        bytes_per_token: 1,
-                        fixed_overhead_tokens: 0,
-                    }),
-                },
+                max_input_tokens: GatewayCriticalFactV1::Exact(model.capabilities.context_tokens),
+                max_output_tokens: GatewayCriticalFactV1::Exact(
+                    model.capabilities.max_output_tokens,
+                ),
+                max_total_tokens: GatewayCriticalFactV1::Exact(
+                    model
+                        .capabilities
+                        .context_tokens
+                        .checked_add(model.capabilities.max_output_tokens),
+                ),
                 native_streaming: GatewayCriticalFactV1::Exact(model.capabilities.streaming),
-                native_provider_state: if exact_provider_state {
-                    GatewayNativeProviderStateEmissionV1::Native
-                } else {
-                    GatewayNativeProviderStateEmissionV1::Never
-                },
-            },
+                reasoning_profiles: reasoning_profiles
+                    .iter()
+                    .map(StoredNativeReasoningV1::freeze)
+                    .collect(),
+                selected_reasoning_profile_id,
+            }
+            .compile(upstream_protocol),
             connector: GatewayConnectorProfileV1 {
                 schema_version: "hiroute.connector-profile/v1".into(),
                 provider_id: connector.provider_id.clone(),

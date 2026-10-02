@@ -28,6 +28,7 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
     let root = tempfile::tempdir().unwrap();
     #[cfg(unix)]
     fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    drop(hiroute_local_storage::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap());
     let executable = root.path().join("codex-fixture");
     fs::write(&executable, b"#!/bin/sh\nprintf 'codex-cli 99.99.99\\n'\n").unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
@@ -491,6 +492,7 @@ fn exercise_settings_entry() {
     let root = tempfile::tempdir().unwrap();
     #[cfg(unix)]
     fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    drop(hiroute_local_storage::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap());
     let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
     let mut layout = AgentFilesystemLayoutV1::from_process(&home, root.path());
     layout.codex_executable = std::path::PathBuf::from(

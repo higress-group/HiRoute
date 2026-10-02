@@ -133,7 +133,7 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             api_version: LOCAL_CONTROL_SCHEMA_V2,
             machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
             client_name: "hiroute-desktop".to_owned(),
-            client_version: env!("CARGO_PKG_VERSION").to_owned(),
+            client_version: hiroute_application_api::LOCAL_CONTROL_RELEASE_VERSION.to_owned(),
         },
         Some(LocalControlWireRequestV2 {
             schema_version: LOCAL_CONTROL_SCHEMA_V2,
@@ -167,7 +167,7 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
                 api_version: LOCAL_CONTROL_SCHEMA_V2,
                 machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
                 client_name: "hiroute-desktop".to_owned(),
-                client_version: env!("CARGO_PKG_VERSION").to_owned(),
+                client_version: hiroute_application_api::LOCAL_CONTROL_RELEASE_VERSION.to_owned(),
             },
             Some(LocalControlWireRequestV2 {
                 schema_version: LOCAL_CONTROL_SCHEMA_V2,
@@ -280,7 +280,7 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             api_version: SchemaVersion::new(3, 0),
             machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
             client_name: "hiroute-desktop".to_owned(),
-            client_version: env!("CARGO_PKG_VERSION").to_owned(),
+            client_version: hiroute_application_api::LOCAL_CONTROL_RELEASE_VERSION.to_owned(),
         },
         None,
     );
@@ -293,7 +293,7 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             api_version: LOCAL_CONTROL_SCHEMA_V2,
             machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
             client_name: "hiroute-skill".to_owned(),
-            client_version: env!("CARGO_PKG_VERSION").to_owned(),
+            client_version: hiroute_application_api::LOCAL_CONTROL_RELEASE_VERSION.to_owned(),
         },
         Some(LocalControlWireRequestV2 {
             schema_version: LOCAL_CONTROL_SCHEMA_V2,

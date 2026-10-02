@@ -21,6 +21,7 @@ pub use backup::{BackupSet, SingleWriterBackupBarrier, SqliteBackup};
 pub use control::{
     ApplyCapabilityRegistrar, ApplyCapabilityRegistrationV1, ComputeSubscriptionValidationRecordV1,
     ComputeSubscriptionValidationStateV1, ControlStore, ManagedArtifactStore,
+    SucceededAgentOperationV1,
 };
 pub use runtime::RuntimeStore;
 pub use secrets::{LocalNativeCredentialAuthority, LocalSecretStore};
@@ -36,6 +37,13 @@ pub struct LocalStorageSet {
     secrets: LocalSecretStore,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct StorageStartupOptions {
+    pub gateway_lkg: Option<std::path::PathBuf>,
+    pub upgrade_progress:
+        Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageUpgradePhase>>,
+}
+
 impl LocalStorageSet {
     /// Opens and migrates the coordinated three-store set before daemon listeners or
     /// transaction admission become available. The authority and writer barrier are minted only
@@ -44,20 +52,66 @@ impl LocalStorageSet {
     pub fn open_for_daemon_startup(
         storage_root: impl AsRef<Path>,
     ) -> Result<Self, LocalStorageError> {
-        let authority = daemon_storage_authority();
-        let barrier = backup::daemon_startup_barrier();
-        Self::open(&authority, &barrier, storage_root)
+        Self::open_for_daemon_startup_with_options(storage_root, &StorageStartupOptions::default())
     }
 
-    pub(crate) fn open(
+    pub fn open_for_daemon_startup_with_options(
+        storage_root: impl AsRef<Path>,
+        options: &StorageStartupOptions,
+    ) -> Result<Self, LocalStorageError> {
+        let authority = daemon_storage_authority();
+        let barrier = backup::daemon_startup_barrier();
+        Self::open_with_options(&authority, &barrier, storage_root, options)
+    }
+
+    fn open_with_options(
         authority: &DaemonStorageAuthority,
         barrier: &SingleWriterBackupBarrier,
         storage_root: impl AsRef<Path>,
+        _options: &StorageStartupOptions,
     ) -> Result<Self, LocalStorageError> {
         let storage_root = storage_root.as_ref();
         migrations::prepare_storage_root(storage_root)?;
+        migrations::validate_startup_format(storage_root)?;
+        let startup_lock = std::sync::Arc::new(migrations::acquire_startup_lock(storage_root)?);
+        migrations::validate_startup_format(storage_root)?;
+        Self::open_locked_stores(authority, barrier, storage_root, startup_lock)
+    }
+
+    // SQL coordinator component harness only: unsupported formats never pass through the
+    // production startup entry. Retains the coordinator's crash/backup assertions independently.
+    #[cfg(test)]
+    pub(crate) fn open_migration_component_fixture(
+        authority: &DaemonStorageAuthority,
+        barrier: &SingleWriterBackupBarrier,
+        storage_root: &Path,
+    ) -> Result<Self, LocalStorageError> {
+        migrations::prepare_storage_root(storage_root)?;
+        let lock = std::sync::Arc::new(migrations::acquire_startup_lock(storage_root)?);
+        Self::open_locked_stores(authority, barrier, storage_root, lock)
+    }
+
+    fn open_locked_stores(
+        authority: &DaemonStorageAuthority,
+        barrier: &SingleWriterBackupBarrier,
+        storage_root: &Path,
+        startup_lock: std::sync::Arc<std::fs::File>,
+    ) -> Result<Self, LocalStorageError> {
         let live_root = storage_root.join("live");
-        let backup_root = storage_root.join("migration-set");
+        let backup_root = upgrade_backup_root(storage_root)?;
+        migrations::prepare_storage_root(
+            backup_root.parent().ok_or(LocalStorageError::InvalidData)?,
+        )?;
+        let previous = storage_root.join("migration-set");
+        if previous.exists() {
+            if backup_root.exists() {
+                return Err(LocalStorageError::InvalidData);
+            }
+            std::fs::rename(previous, &backup_root)?;
+            std::fs::File::open(storage_root)?.sync_all()?;
+            std::fs::File::open(backup_root.parent().ok_or(LocalStorageError::InvalidData)?)?
+                .sync_all()?;
+        }
         let master_key_path = storage_root.join("master-key");
         let control_path = live_root.join("control.db");
         let runtime_path = live_root.join("runtime.db");
@@ -70,7 +124,6 @@ impl LocalStorageSet {
             &backup_root,
             secret_binding.as_ref(),
         )?;
-
         let control_result = if migration.durable_set_prepared() {
             ControlStore::open_from_migration_set(
                 authority,
@@ -83,7 +136,7 @@ impl LocalStorageSet {
         } else {
             ControlStore::open(authority, &control_path, &backup_root)
         };
-        let control = match control_result {
+        let mut control = match control_result {
             Ok(control) => control,
             Err(error) => {
                 migration.restore_after_failure(barrier, &live_root)?;
@@ -108,7 +161,7 @@ impl LocalStorageSet {
         } else {
             RuntimeStore::open(authority, &runtime_path, &backup_root)
         };
-        let runtime = match runtime_result {
+        let mut runtime = match runtime_result {
             Ok(runtime) => runtime,
             Err(error) => {
                 drop(control);
@@ -134,7 +187,7 @@ impl LocalStorageSet {
         } else {
             LocalSecretStore::open(authority, &secrets_path, &master_key_path, &backup_root)
         };
-        let secrets = match secrets_result {
+        let mut secrets = match secrets_result {
             Ok(secrets) => secrets,
             Err(error) => {
                 drop(runtime);
@@ -150,6 +203,15 @@ impl LocalStorageSet {
             migration.restore_after_failure(barrier, &live_root)?;
             return Err(error);
         }
+        if let Err(error) = migrations::validate_current_storage(&control, &runtime, &secrets)
+            .map_err(|error| error.at_upgrade_stage("current storage validation"))
+        {
+            drop(secrets);
+            drop(runtime);
+            drop(control);
+            migration.restore_after_failure(barrier, &live_root)?;
+            return Err(error);
+        }
         if let Err(error) = migration.mark_completed(barrier) {
             drop(secrets);
             drop(runtime);
@@ -157,11 +219,20 @@ impl LocalStorageSet {
             migration.restore_after_failure(barrier, &live_root)?;
             return Err(error);
         }
+        control.startup_lock = Some(startup_lock.clone());
+        runtime.startup_lock = Some(startup_lock.clone());
+        secrets.startup_lock = Some(startup_lock);
         Ok(Self {
             control,
             runtime,
             secrets,
         })
+    }
+
+    /// Validate cross-store grant/publication equality after Operation recovery and before
+    /// serving admission opens. Store opening deliberately admits recoverable saga checkpoints.
+    pub fn validate_recovered_grant_publications(&self) -> Result<(), LocalStorageError> {
+        migrations::validate_recovered_grant_publications(&self.control, &self.secrets)
     }
 
     pub fn control(&self) -> &ControlStore {
@@ -230,6 +301,19 @@ impl LocalStorageSet {
             path,
         )
     }
+}
+/// Upgrade backups live beside the directory restored as a whole, never inside it.
+pub fn upgrade_backup_root(storage_root: &Path) -> Result<std::path::PathBuf, LocalStorageError> {
+    let mut name = storage_root
+        .file_name()
+        .ok_or(LocalStorageError::InvalidData)?
+        .to_os_string();
+    name.push(".upgrade-backups");
+    Ok(storage_root
+        .parent()
+        .ok_or(LocalStorageError::InvalidData)?
+        .join(name)
+        .join("migration-set"))
 }
 
 #[cfg(test)]
@@ -399,6 +483,15 @@ pub const IMPLEMENTATION_STATUS: &str = "transaction-v1";
 
 #[derive(Debug, Error)]
 pub enum LocalStorageError {
+    #[error(
+        "UPGRADE_SOURCE_UNSUPPORTED: this source format has no validated upgrade and recovery path"
+    )]
+    UpgradeSourceUnsupported,
+    #[error("stable storage upgrade failed at {stage}: {source}")]
+    UpgradeStage {
+        stage: &'static str,
+        source: Box<LocalStorageError>,
+    },
     #[error("local storage I/O failed")]
     Io(#[from] std::io::Error),
     #[error("local SQLite operation failed")]
@@ -411,4 +504,13 @@ pub enum LocalStorageError {
     Crypto,
     #[error("encrypted local state is locked because its exact key binding is unavailable")]
     Locked,
+}
+
+impl LocalStorageError {
+    pub(crate) fn at_upgrade_stage(self, stage: &'static str) -> Self {
+        Self::UpgradeStage {
+            stage,
+            source: Box::new(self),
+        }
+    }
 }

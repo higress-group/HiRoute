@@ -8,8 +8,8 @@ use hiroute_application_api::{
     AgentSettingsStatusRequestV2,
 };
 use hiroute_domain::{
-    AgentFacetIntent, AgentSettingsSpecV2, CanonicalDigest, NativeAgentArtifactPort,
-    OperationState, OperationV1, WorkspaceId,
+    AgentFacetIntent, AgentOperationRead, AgentSettingsSpecV2, CanonicalDigest,
+    NativeAgentArtifactPort, OperationState, WorkspaceId,
 };
 
 impl LocalControlAdapter {
@@ -22,17 +22,19 @@ impl LocalControlAdapter {
             .ok_or(ControlReadError::NotFound)?;
         let mut status = empty_status();
         let stores = self.stores_lock().map_err(super::map_port)?;
-        let belongs = |operation: &OperationV1| -> Result<bool, ControlReadError> {
-            if operation.plan.spec().command_id != "agents.settings.apply"
-                || operation.plan.spec().resource_id.as_deref() != Some(&request.context_id)
-            {
-                return Ok(false);
-            }
-            let spec: AgentSettingsSpecV2 =
-                serde_json::from_value(operation.plan.spec().desired_state.clone())
-                    .map_err(|_| ControlReadError::Corrupt)?;
-            Ok(!matches!(spec.collaboration, AgentFacetIntent::Keep))
-        };
+        let belongs =
+            |operation: &dyn hiroute_domain::AgentOperationRead| -> Result<bool, ControlReadError> {
+                if operation.agent_input().spec.command_id != "agents.settings.apply"
+                    || operation.agent_input().spec.resource_id.as_deref()
+                        != Some(&request.context_id)
+                {
+                    return Ok(false);
+                }
+                let spec: AgentSettingsSpecV2 =
+                    serde_json::from_value(operation.agent_input().spec.desired_state.clone())
+                        .map_err(|_| ControlReadError::Corrupt)?;
+                Ok(!matches!(spec.collaboration, AgentFacetIntent::Keep))
+            };
         if let Some(pending) = stores
             .control()
             .writer_claim_operation()
@@ -50,7 +52,7 @@ impl LocalControlAdapter {
         }
         let operations = stores
             .control()
-            .succeeded_operations_for_kinds(
+            .succeeded_agent_operations_for_kinds(
                 &WorkspaceId::default(),
                 &["ApplyAgentConnectionChange", "ApplyAgentConnectionRestore"],
             )
@@ -66,7 +68,7 @@ impl LocalControlAdapter {
             return Ok(status);
         };
         let spec: AgentSettingsSpecV2 =
-            serde_json::from_value(operation.plan.spec().desired_state.clone())
+            serde_json::from_value(operation.agent_input().spec.desired_state.clone())
                 .map_err(|_| ControlReadError::Corrupt)?;
         status.operation_id = Some(operation.operation_id.to_string());
         status.operation_state = Some(operation.state.as_str().into());

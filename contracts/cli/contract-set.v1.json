@@ -13,7 +13,7 @@
     "delegation-start-request.v1.schema.json": "sha256:033885686bf77cb03344c8ccc5ae245e9407e5c8010bf94e59d2232fb0b3a7b4",
     "delegation-wait-request.v1.schema.json": "sha256:9aba6c969923f455ea376a5d8bc034efb4acd103d5b79df1d0d3aebb3d57b9e9",
     "empty-request.v1.schema.json": "sha256:44d40c4601343ddfb543fd04751cc0a0a994fe8d7963adc541fe4a245ceba2b1",
-    "local-control-hello.v2.schema.json": "sha256:001b164e383a50764d97d4cce01aa296ec821b01532c2f9e951d8da8e061fca1",
+    "local-control-hello.v2.schema.json": "sha256:169b944fd7d6a6c48e6615e875ec1dfe7b0045e09186312fd2c2b7cc92b56aa6",
     "local-control.v2.schema.json": "sha256:4b654de90cd6e333b3953379e5b2e1c5125f1dcbe307b7c7c73f12bb2032d18c",
     "machine-envelope.v2.schema.json": "sha256:5a0b47ce1fd80628f760a3da5a88de7dc01f6df83cb6eef47fd4a6c8289070ba",
     "manifest.v1.json": "sha256:c602e9b661621403bc05405674f5522604be0e716a886673776199492f686f75",

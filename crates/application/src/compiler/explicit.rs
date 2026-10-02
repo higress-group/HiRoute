@@ -148,8 +148,8 @@ pub fn compile_agent_plan_v2(
         .route_digest()
         .map_err(|_| AgentPlanCompilerError::InvalidCompiledPlan)?;
     CompiledAgentPlanV1::seal_current(CompiledAgentPlanBodyV1 {
-        schema: AGENT_PLAN_COMPILED_SCHEMA_V2.into(),
-        compiler_revision: AGENT_PLAN_COMPILER_REVISION_V2.into(),
+        schema: AGENT_PLAN_COMPILED_SCHEMA_V3.into(),
+        compiler_revision: AGENT_PLAN_COMPILER_REVISION_V3.into(),
         identity,
         agent_plan_revision: revision,
         materialized_route_digest,

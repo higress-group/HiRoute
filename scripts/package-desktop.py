@@ -31,6 +31,19 @@ BUILD_TIMINGS = []
 BINARIES = ("hiroute-desktop", "hirouted", "hiroute", "cliproxyapi")
 
 
+def validate_release_versions(version):
+    # Local Control uses the application-api package version for its exact
+    # same-release handshake. It must track the shipped clients and daemon.
+    for relative in ("crates/application-api/Cargo.toml", "crates/cli/Cargo.toml",
+                     "crates/daemon/Cargo.toml", "apps/desktop/src-tauri/Cargo.toml"):
+        section = re.search(r"(?ms)^\[package\]\s*\n(.*?)(?=^\[|\Z)",
+                            (REPO / relative).read_text())
+        declared = re.search(r'^version\s*=\s*"([^"]+)"\s*$', section[1], re.M) if section else None
+        actual = declared[1] if declared else None
+        if actual != version:
+            raise ValueError(f"release version mismatch: {relative} is {actual}, expected {version}")
+
+
 def run(*args, cwd=REPO, env=None, timeout=None):
     print(f"Running {Path(args[0]).name} {' '.join(args[1:3])}", file=sys.stderr, flush=True)
     started = time.monotonic()
@@ -244,6 +257,8 @@ def build(args):
         raise ValueError("external Cargo targets are forbidden")
     if args.identity != "-" and not args.notary_profile:
         raise ValueError("Developer ID distribution requires a notary profile")
+    config = json.loads((NATIVE / "tauri.conf.json").read_text())
+    validate_release_versions(config["version"])
     revision = run("git", "rev-parse", "HEAD")
     output = candidate_output(revision, architecture)
     BUILD_LOG = output / "build.log"
@@ -252,7 +267,6 @@ def build(args):
     resources = app / "Contents/Resources"
     macos.mkdir(parents=True)
     resources.mkdir()
-    config = json.loads((NATIVE / "tauri.conf.json").read_text())
     info = {"CFBundleIdentifier": config["identifier"], "CFBundleName": "HiRoute",
             "CFBundleDisplayName": "HiRoute", "CFBundleExecutable": "hiroute-desktop",
             "CFBundlePackageType": "APPL", "CFBundleIconFile": "HiRoute.icns",
@@ -283,6 +297,7 @@ def build(args):
     environment = os.environ.copy()
     environment["RUSTC_WRAPPER"] = "sccache"
     environment["CARGO_INCREMENTAL"] = "0"
+    environment["HIROUTE_BUILD_SOURCE_SHA"] = revision
     environment["MACOSX_DEPLOYMENT_TARGET"] = MINIMUM_MACOS
     environment["HIROUTE_CPA_MANIFEST"] = str(manifest_path)
     environment["TAURI_CONFIG"] = json.dumps({"build": {"frontendDist": str(REPO / "apps/desktop/dist")}})

@@ -12,7 +12,7 @@
       "type": "string"
     },
     "client_version": {
-      "const": "0.1.0"
+      "const": "0.2.0"
     },
     "machine_schema_version": {
       "$ref": "local-control.v2.schema.json#/properties/schema_version"

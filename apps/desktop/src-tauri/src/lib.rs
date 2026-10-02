@@ -23,6 +23,8 @@ pub mod operation_observation;
 #[cfg(unix)]
 mod resident_ownership;
 pub mod session;
+#[cfg(all(target_os = "macos", feature = "desktop-runtime"))]
+pub mod updates;
 
 pub fn random_id() -> Result<String, String> {
     let mut bytes = zeroize::Zeroizing::new([0u8; 32]);

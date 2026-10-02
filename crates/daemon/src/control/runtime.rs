@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hiroute_application::control::{
@@ -107,9 +108,26 @@ struct RuntimeOpenOverrides {
     scanner: Option<FilesystemAgentScannerV1>,
     model_transport: Option<Arc<dyn hiroute_integrations::ModelDirectoryTransportV1>>,
     codex_desktop_engine: Option<PathBuf>,
+    storage_startup: hiroute_local_storage::StorageStartupOptions,
 }
 
 impl ProductionControlRuntime {
+    pub(crate) fn upgrade_active_tasks(&self) -> Result<u64, String> {
+        let occupied = self
+            .adapter
+            .stores
+            .lock()
+            .map_err(|_| "upgrade task storage unavailable".to_owned())?
+            .runtime()
+            .upgrade_occupied_tasks()
+            .map_err(|_| "upgrade task storage unavailable".to_owned())?;
+        let executing = self
+            .delegation_executor
+            .upgrade_active_count()
+            .map_err(|_| "upgrade task executor unavailable".to_owned())?;
+        Ok(occupied.max(executing))
+    }
+
     pub fn open(storage_root: impl AsRef<Path>) -> Result<Self, String> {
         let catalog = crate::release_catalog::load_production_release_catalog()?;
         Self::open_inner(storage_root.as_ref(), catalog)
@@ -175,7 +193,13 @@ impl ProductionControlRuntime {
         catalog: TrustedReleaseCatalog,
         cpa: Option<Arc<ManagedCpaRuntime>>,
     ) -> Result<Self, String> {
-        Self::prepare_for_role_all_with_codex_desktop_engine(storage_root, catalog, cpa, None)
+        Self::prepare_for_role_all_with_codex_desktop_engine(
+            storage_root,
+            catalog,
+            cpa,
+            None,
+            Default::default(),
+        )
     }
 
     pub(crate) fn prepare_for_role_all_with_codex_desktop_engine(
@@ -183,6 +207,7 @@ impl ProductionControlRuntime {
         catalog: TrustedReleaseCatalog,
         cpa: Option<Arc<ManagedCpaRuntime>>,
         codex_desktop_engine: Option<PathBuf>,
+        storage_startup: hiroute_local_storage::StorageStartupOptions,
     ) -> Result<Self, String> {
         let sources = cpa
             .as_ref()
@@ -195,6 +220,7 @@ impl ProductionControlRuntime {
             false,
             RuntimeOpenOverrides {
                 codex_desktop_engine,
+                storage_startup,
                 ..RuntimeOpenOverrides::default()
             },
         )
@@ -248,8 +274,11 @@ impl ProductionControlRuntime {
         recover: bool,
         overrides: RuntimeOpenOverrides,
     ) -> Result<Self, String> {
-        let stores = LocalStorageSet::open_for_daemon_startup(storage_root)
-            .map_err(|error| error.to_string())?;
+        let stores = LocalStorageSet::open_for_daemon_startup_with_options(
+            storage_root,
+            &overrides.storage_startup,
+        )
+        .map_err(|error| error.to_string())?;
         stores
             .control()
             .begin_plan_version_recovery()
@@ -369,6 +398,7 @@ impl ProductionControlRuntime {
             subscription_maintenance: Mutex::new(subscriptions::SubscriptionMaintenance::new()?),
             managed_agent_runtime: Mutex::new(None),
             publication_target: Mutex::new(None),
+            startup_recovery_complete: AtomicBool::new(false),
             delegation_native_cleanup_cursor: Mutex::new(None),
             delegation_task_maintenance_cursor: Mutex::new(None),
         });
@@ -397,6 +427,9 @@ impl ProductionControlRuntime {
             adapter.reconcile_delegation_plan_versions()?;
             adapter.recover_delegation_authorizations()?;
             adapter.enable_subscription_maintenance();
+            adapter
+                .finish_startup_publication_recovery()
+                .map_err(|error| error.to_string())?;
         }
         Ok(Self {
             _observation_maintenance:
@@ -493,6 +526,19 @@ impl ProductionControlRuntime {
         publication_target: Option<Arc<dyn PublicationTargetPort + Send + Sync>>,
         resident_service_ready: bool,
     ) -> Result<(), String> {
+        self.adapter
+            .startup_recovery_complete
+            .store(false, Ordering::Release);
+        if let Some(target) = self
+            .adapter
+            .publication_target()
+            .map_err(|e| e.to_string())?
+        {
+            target.suspend_requests().map_err(|e| e.to_string())?;
+        }
+        if let Some(target) = &publication_target {
+            target.suspend_requests().map_err(|e| e.to_string())?;
+        }
         let worker_gateway = gateway_base_url
             .strip_prefix("http://")
             .and_then(|value| value.strip_suffix("/v1"))
@@ -502,7 +548,10 @@ impl ProductionControlRuntime {
         self.delegation_executor
             .set_gateway(worker_gateway)
             .map_err(|error| error.to_string())?;
-        let selection_source: Arc<dyn WorkerInstallationSelectionSource> = self.adapter.clone();
+        // Availability is retained by the adapter, so its selection callback must not
+        // own that adapter in return. The enclosing runtime owns the live adapter.
+        let selection_source: Arc<dyn WorkerInstallationSelectionSource> =
+            Arc::new(WorkerSelections(Arc::downgrade(&self.adapter)));
         let managed = managed_profile_source(
             &self.delegation_storage_root,
             selection_source,
@@ -547,13 +596,16 @@ impl ProductionControlRuntime {
             .publication_target
             .lock()
             .map_err(|_| "publication target is unavailable".to_owned())? = publication_target;
+        self.adapter
+            .restore_active_publication()
+            .map_err(|error| error.to_string())?;
         self.adapter.reconcile_startup_and_open()?;
         self.adapter.reconcile_cpa_runtime_from_management()?;
         self.adapter.reconcile_delegation_plan_versions()?;
         self.adapter.recover_delegation_authorizations()?;
         self.adapter.enable_subscription_maintenance();
         self.adapter
-            .reconcile_active_publication()
+            .finish_startup_publication_recovery()
             .map_err(|error| error.to_string())?;
         Ok(())
     }
@@ -653,6 +705,7 @@ struct LocalControlAdapter {
     subscription_maintenance: Mutex<subscriptions::SubscriptionMaintenance>,
     managed_agent_runtime: Mutex<Option<ManagedAgentRuntimeV1>>,
     publication_target: Mutex<Option<Arc<dyn PublicationTargetPort + Send + Sync>>>,
+    startup_recovery_complete: AtomicBool,
     delegation_native_cleanup_cursor:
         Mutex<Option<hiroute_observation::managed_text::ManagedTextNativeCleanupCursor>>,
     delegation_task_maintenance_cursor:
@@ -795,6 +848,21 @@ struct ManagedAgentRuntimeV1 {
     /// Standalone is already the installed resident user service. Desktop compositions leave
     /// this false and retain their native login-item confirmation contract.
     resident_service_ready: bool,
+}
+
+struct WorkerSelections(Weak<LocalControlAdapter>);
+
+impl WorkerInstallationSelectionSource for WorkerSelections {
+    fn selection(
+        &self,
+        harness: hiroute_domain::delegation::WorkerHarnessV1,
+    ) -> Result<Option<WorkerInstallationSelection>, hiroute_domain::delegation::DelegationErrorV1>
+    {
+        self.0
+            .upgrade()
+            .ok_or(hiroute_domain::delegation::DelegationErrorV1::StorageUnavailable)?
+            .selection(harness)
+    }
 }
 
 impl WorkerInstallationSelectionSource for LocalControlAdapter {

@@ -111,7 +111,7 @@ def control(product, operation, payload, protected_grant=None, expected_error=No
             'api_version': V2,
             'machine_schema_version': V2,
             'client_name': 'native-product-test',
-            'client_version': '0.1.0',
+            'client_version': product.release_version,
         }) + b'\n')
         stream.flush()
         hello = json.loads(stream.readline())
@@ -426,11 +426,11 @@ def publish_plan_and_agent(product, binding_id):
     preview = product.preview('routing preview', {'change': change})
     # The second source has the same upstream ID but unknown capabilities. Its facts must
     # not replace those of the explicitly selected binding.
-    candidate = preview['plan_version']['compiled']['body']['materialized']['attempt_owned']['groups'][0]['candidates'][0]
-    profile = next(profile for profile in candidate['protocol_profiles']
+    candidate = preview['plan_version']['compiled']['groups'][0]['candidates'][0]
+    profile = next(profile for profile in candidate['protocols']
                    if profile['ingress_protocol'] == 'responses')
     assert profile['capability']['native_model'] == MODEL
-    assert profile['capability']['request']['function_tools'] == 'exact'
+    assert profile['capability']['model_support']['tools'] == {'state': 'exact', 'value': True}
     assert profile['capability']['native_streaming'] == {'state': 'exact', 'value': True}
     product.apply('routing apply', 'ApplyAgentPlanChange', preview,
                   {'change': change}, 'native-product-plan')

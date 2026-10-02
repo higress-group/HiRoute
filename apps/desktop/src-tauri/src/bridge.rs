@@ -47,6 +47,9 @@ mod web_confirmation;
 use web_confirmation::*;
 mod window_behavior;
 use window_behavior::*;
+mod updates;
+use updates::*;
+mod shutdown;
 pub struct DesktopState(
     pub Arc<Mutex<Option<Session>>>,
     pub Arc<StartupState>,
@@ -837,6 +840,14 @@ pub fn run() {
             app.manage(diagnostics);
             app.manage(WebConfirmationState::default());
             app.manage(WorkerDependencyConfirmationState::default());
+            #[cfg(target_os = "macos")]
+            app.manage(crate::updates::UpdateState::new(
+                app.config()
+                    .version
+                    .clone()
+                    .unwrap_or_else(|| env!("CARGO_PKG_VERSION").into()),
+                root.clone().ok(),
+            ));
             // The single-host desktop.lock is taken synchronously, before any window exists:
             // a duplicate host hands off and exits here instead of presenting dead UI. Every
             // other acquisition failure keeps its existing async startup diagnostics.
@@ -889,13 +900,15 @@ pub fn run() {
             app.manage(start_session(
                 diagnostic_handle,
                 root.clone().ok(),
-                move |cancelled| {
+                move |cancelled, upgrade_progress| {
                     if duplicate {
                         // The duplicate never touches the lock or starts a daemon again; its only
                         // job was the handoff above.
                         return Err("DESKTOP_ALREADY_RUNNING".into());
                     }
                     let root = root?;
+                    let native_diagnostics =
+                        native_diagnostics.with_upgrade_progress(upgrade_progress);
                     let diagnostics = &native_diagnostics;
                     let binary = std::env::current_exe()
                         .map_err(|_| "DAEMON_BINARY_UNAVAILABLE")?
@@ -1009,6 +1022,11 @@ pub fn run() {
             diagnostic_status,
             startup_status,
             open_startup_recovery_directory,
+            update_status,
+            update_check,
+            update_download,
+            update_install,
+            update_cancel,
             set_diagnostic_level,
             open_diagnostic_directory,
             open_external_url,
@@ -1047,15 +1065,7 @@ pub fn run() {
                 }
             }
         }
-        if let tauri::RunEvent::Exit = event {
-            let state = handle.state::<DesktopState>();
-            state.1.cancelled.store(true, Ordering::SeqCst);
-            tauri::async_runtime::block_on(async {
-                drop(state.0.lock().await.take());
-            });
-            // The resident child is gone by now; flush this process's own bounded report.
-            handle.state::<DiagnosticsState>().shutdown();
-        }
+        shutdown::on_run_event(handle, &event);
     });
 }
 

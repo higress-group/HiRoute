@@ -87,7 +87,7 @@ pub fn start_control(
     application: ApplicationService,
     runtime_root: impl AsRef<Path>,
 ) -> Result<ManagedControlHandle, ManagedControlError> {
-    start_control_inner(application, runtime_root.as_ref(), None, false)
+    start_control_inner(application, runtime_root.as_ref(), None, false, None)
 }
 
 pub(crate) fn start_control_with_agent_grants(
@@ -95,12 +95,14 @@ pub(crate) fn start_control_with_agent_grants(
     runtime_root: impl AsRef<Path>,
     resolver: Arc<dyn AgentGrantResolverPort>,
     released_commands_only: bool,
+    upgrade: Option<Arc<hiroute_host_runtime::UpgradeDrain>>,
 ) -> Result<ManagedControlHandle, ManagedControlError> {
     start_control_inner(
         application,
         runtime_root.as_ref(),
         Some(resolver),
         released_commands_only,
+        upgrade,
     )
 }
 
@@ -109,6 +111,7 @@ fn start_control_inner(
     runtime_root: &Path,
     resolver: Option<Arc<dyn AgentGrantResolverPort>>,
     released_commands_only: bool,
+    upgrade: Option<Arc<hiroute_host_runtime::UpgradeDrain>>,
 ) -> Result<ManagedControlHandle, ManagedControlError> {
     let (listener, guard, endpoint) =
         bind_listener(runtime_root).map_err(ManagedControlError::Start)?;
@@ -129,6 +132,11 @@ fn start_control_inner(
         LocalControlDaemon::new(application).with_released_commands_only()
     } else {
         LocalControlDaemon::new(application)
+    };
+    let daemon = if let Some(upgrade) = upgrade {
+        daemon.with_upgrade_drain(upgrade)
+    } else {
+        daemon
     };
     let phase = Arc::new(std::sync::Mutex::new(ManagedControlPhase::Ready));
     let shutdown = Arc::new(AtomicBool::new(false));
@@ -401,6 +409,7 @@ mod tests {
             root.path(),
             Arc::new(FixtureGrantResolver),
             false,
+            None,
         )
         .unwrap();
         let protected = root.path().join("hiroute");

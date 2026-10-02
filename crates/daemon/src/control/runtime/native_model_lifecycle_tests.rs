@@ -98,13 +98,7 @@ fn settings_codex_daemon_stages_real_grant_reopens_and_restores_native_file() {
             .iter()
             .any(|grant| grant.grant_id == reference.grant_id())
     );
-    install.state = OperationState::Succeeded;
-    adapter
-        .stores_lock()
-        .unwrap()
-        .control()
-        .finish_operation(&mut install)
-        .unwrap();
+    super::finish_fixture_operation(adapter, &mut install);
     drop(runtime);
 
     let runtime = open(root.path());

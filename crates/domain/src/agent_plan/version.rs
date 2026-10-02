@@ -6,7 +6,7 @@ use thiserror::Error;
 use super::{AgentPlanId, ModelAlias};
 use crate::{AgentPlanAuthoringV2, CanonicalDigest, CompiledAgentPlanV1, WorkspaceId};
 
-pub const PLAN_VERSION_SCHEMA_V1: &str = "hiroute.plan-version/v1";
+pub const PLAN_VERSION_SCHEMA_V1: &str = "hiroute.plan-version/v2";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -36,6 +36,7 @@ pub struct PlanVersionV1 {
     pub schema: String,
     pub reference: PlanExecutionRef,
     pub configuration: AgentPlanAuthoringV2,
+    #[serde(with = "crate::plan_codec")]
     pub compiled: CompiledAgentPlanV1,
 }
 
@@ -45,11 +46,19 @@ impl PlanVersionV1 {
         configuration: AgentPlanAuthoringV2,
         compiled: CompiledAgentPlanV1,
     ) -> Result<Self, PlanVersionError> {
+        // Authenticated unversioned recovery retains candidate order, then removes the retired
+        // rating-order evidence before sealing the current stable representation.
+        let compiled = compiled
+            .into_current()
+            .map_err(|_| PlanVersionError::Invalid)?;
+        let compiled = crate::StoredPlanV1::freeze(&compiled)
+            .and_then(|p| p.build())
+            .map_err(|_| PlanVersionError::Invalid)?;
         let content_digest = CanonicalDigest::of(&(
             PLAN_VERSION_SCHEMA_V1,
             &workspace,
             &configuration,
-            &compiled,
+            &crate::StoredPlanV1::freeze(&compiled).map_err(|_| PlanVersionError::Invalid)?,
         ))
         .map_err(|_| PlanVersionError::Invalid)?;
         let value = Self {
@@ -79,7 +88,7 @@ impl PlanVersionV1 {
             PLAN_VERSION_SCHEMA_V1,
             &self.reference.workspace_id,
             &self.configuration,
-            &self.compiled,
+            &crate::StoredPlanV1::freeze(&self.compiled).map_err(|_| PlanVersionError::Invalid)?,
         ))
         .map_err(|_| PlanVersionError::Invalid)?;
         if self.schema != PLAN_VERSION_SCHEMA_V1

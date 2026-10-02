@@ -44,11 +44,11 @@ fn scope() -> ExecutionScope {
 fn gateway_ports_publication_installs_one_verified_aggregate_and_pins_it() {
     let golden = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../e2e/product/golden/routing/compiled-publication.v2.json"),
+            .join("../../e2e/product/fixtures/routing/current-publication.v3.json"),
     )
     .unwrap();
     let publication =
-        hiroute_domain::GatewayPublicationV1::decode_persisted(golden.as_bytes()).unwrap();
+        serde_json::from_str::<hiroute_domain::GatewayPublicationV1>(&golden).unwrap();
     let record = hiroute_domain::PublicationRecordV1::from_publication(
         publication.workspace_id.clone(),
         &publication,

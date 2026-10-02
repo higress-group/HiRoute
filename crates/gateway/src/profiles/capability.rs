@@ -76,6 +76,7 @@ pub struct CandidateCapabilityProfile {
     pub upstream_protocol: IngressProtocol,
     pub model_configuration_id: String,
     pub native_model: String,
+    pub model_support: hiroute_domain::StoredModelSupportV1,
     pub request: RequestFeatureProfile,
     pub response: ResponseFeatureProfile,
     pub reasoning_profiles: Vec<ReasoningProfileCapability>,
@@ -154,6 +155,10 @@ impl CandidateProtocolProfile {
                 upstream_protocol,
                 model_configuration_id: format!("fixture-model-config-{protocol_name}"),
                 native_model,
+                model_support: hiroute_domain::StoredModelSupportV1 {
+                    tools: hiroute_domain::GatewayCriticalFactV1::Exact(true),
+                    vision: hiroute_domain::GatewayCriticalFactV1::Exact(true),
+                },
                 request: RequestFeatureProfile {
                     text: exact,
                     initial_instructions: exact,

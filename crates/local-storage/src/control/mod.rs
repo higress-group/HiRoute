@@ -1,6 +1,6 @@
 use hiroute_diagnostics::publication::{PublicationStage, measure};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -8,14 +8,14 @@ use std::path::{Component, Path, PathBuf};
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use hiroute_domain::{
-    BeginOperationOutcome, CanonicalDigest, ChangeSpecV1, CompensationOutcome,
-    ControlRepositoryPort, CredentialPoolMutationV1, CredentialRefV1, EffectReconciliation,
-    ExternalEffectIntentV1, ExternalEffectPort, IdempotencyScopeV1, OperationId, OperationState,
-    OperationStepV1, OperationV1, OwnedEffectKind, OwnedEffectV1, PortError, PortErrorCode,
-    PortResult, ProtectedApplyCapability, RevisionMismatch, RevisionSetV1, RuntimeMutationV1,
-    SecretFingerprintAlgorithm, SecretMutationKind, SecretMutationV1, TransactionPlanV1,
-    VerifiedApplyAuthorizationV1, WorkerDependencySelectionChangeV1, WorkspaceId,
+    BeginOperationOutcome, CanonicalDigest, CompensationOutcome, ControlRepositoryPort,
+    EffectReconciliation, ExternalEffectIntentV1, ExternalEffectPort, IdempotencyScopeV1,
+    OperationId, OperationState, OperationStepV1, OperationV1, OwnedEffectKind, OwnedEffectV1,
+    PortError, PortErrorCode, PortResult, ProtectedApplyCapability, RevisionMismatch,
+    RevisionSetV1, VerifiedApplyAuthorizationV1, WorkerDependencySelectionChangeV1, WorkspaceId,
 };
+#[cfg(test)]
+use hiroute_domain::{ChangeSpecV1, TransactionPlanV1};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -32,6 +32,8 @@ mod surface_check_tests;
 mod transaction_v2_tests;
 
 mod agent_check;
+mod agent_read;
+pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
 mod compute;
@@ -61,7 +63,8 @@ pub use compute::{
 
 pub struct ControlStore {
     diagnostics: RefCell<hiroute_diagnostics::DiagnosticsPort>,
-    connection: RefCell<Connection>,
+    pub(crate) connection: RefCell<Connection>,
+    pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
 }
 
 /// One exact grant received over the daemon launcher's protected inherited channel. The raw
@@ -210,6 +213,7 @@ impl ControlStore {
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
+            startup_lock: None,
             connection: RefCell::new(open_database(
                 _authority,
                 path,
@@ -227,6 +231,7 @@ impl ControlStore {
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
+            startup_lock: None,
             connection: RefCell::new(open_database_from_set(
                 authority,
                 path,
@@ -1744,62 +1749,6 @@ fn load_operation_where<P: rusqlite::Params>(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DurableSecretMutation {
-    kind: SecretMutationKind,
-    credential: CredentialRefV1,
-    expected_generation: u64,
-    #[serde(default)]
-    fingerprint_algorithm: SecretFingerprintAlgorithm,
-    input_slot: Option<String>,
-    fingerprint: Option<CanonicalDigest>,
-    new_allowed_destinations: Option<BTreeSet<String>>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DurableRuntimeMutation {
-    key: String,
-    value: Value,
-    expected_generation: u64,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DurableExternalIntent {
-    effect_id: String,
-    kind: OwnedEffectKind,
-    target: String,
-    before_fingerprint: Option<CanonicalDigest>,
-    desired: Value,
-    #[serde(default = "default_artifact_mode")]
-    desired_mode: u32,
-    #[serde(default)]
-    sensitive: bool,
-}
-
-const fn default_artifact_mode() -> u32 {
-    0o644
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DurablePlan {
-    spec: ChangeSpecV1,
-    control: Value,
-    #[serde(default)]
-    credential_pool: Option<CredentialPoolMutationV1>,
-    #[serde(default)]
-    worker_dependency_selection: Option<WorkerDependencySelectionChangeV1>,
-    #[serde(default)]
-    secrets: Vec<DurableSecretMutation>,
-    #[serde(default)]
-    runtime: Vec<DurableRuntimeMutation>,
-    #[serde(default)]
-    external: Vec<DurableExternalIntent>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct DurableOperation {
     schema_version: u16,
     operation_id: OperationId,
@@ -1808,7 +1757,7 @@ struct DurableOperation {
     request_digest: CanonicalDigest,
     accepted_digest: CanonicalDigest,
     expected_revisions: RevisionSetV1,
-    plan: DurablePlan,
+    plan: hiroute_domain::StoredOperationInputV1,
     state: OperationState,
     generation: u64,
     steps: Vec<OperationStepV1>,
@@ -1845,150 +1794,16 @@ fn decode_operation(
                 Some(&operation_id),
                 Some(encoded.len()),
                 || {
-                    let secrets = durable
-                        .plan
-                        .secrets
-                        .into_iter()
-                        .map(|mutation| {
-                            if mutation.fingerprint_algorithm
-                                != SecretFingerprintAlgorithm::HmacSha256V1
-                            {
-                                return Err(port(
-                                    PortErrorCode::Corrupt,
-                                    "control.operation.secret_algorithm",
-                                ));
-                            }
-                            match mutation.kind {
-                                SecretMutationKind::Upsert => SecretMutationV1::upsert(
-                                    mutation.credential,
-                                    mutation.expected_generation,
-                                    mutation.input_slot.ok_or_else(|| {
-                                        port(
-                                            PortErrorCode::Corrupt,
-                                            "control.operation.secret_slot",
-                                        )
-                                    })?,
-                                    mutation.fingerprint,
-                                ),
-                                SecretMutationKind::Delete => {
-                                    if mutation.input_slot.is_some()
-                                        || mutation.fingerprint.is_some()
-                                    {
-                                        return Err(port(
-                                            PortErrorCode::Corrupt,
-                                            "control.operation.secret_delete",
-                                        ));
-                                    }
-                                    SecretMutationV1::delete(
-                                        mutation.credential,
-                                        mutation.expected_generation,
-                                    )
-                                }
-                                SecretMutationKind::Rebind => {
-                                    if mutation.input_slot.is_some() {
-                                        return Err(port(
-                                            PortErrorCode::Corrupt,
-                                            "control.operation.secret_rebind_slot",
-                                        ));
-                                    }
-                                    SecretMutationV1::rebind(
-                                        mutation.credential,
-                                        mutation.new_allowed_destinations.ok_or_else(|| {
-                                            port(
-                                                PortErrorCode::Corrupt,
-                                                "control.operation.secret_rebind_destinations",
-                                            )
-                                        })?,
-                                        mutation.fingerprint.ok_or_else(|| {
-                                            port(
-                                                PortErrorCode::Corrupt,
-                                                "control.operation.secret_rebind_fingerprint",
-                                            )
-                                        })?,
-                                    )
-                                }
-                            }
-                            .map_err(|_| port(PortErrorCode::Corrupt, "control.operation.secret"))
-                        })
-                        .collect::<PortResult<Vec<_>>>()?;
-                    let runtime = durable
-                        .plan
-                        .runtime
-                        .into_iter()
-                        .map(|mutation| {
-                            RuntimeMutationV1::from_registered_planner(
-                                mutation.key,
-                                mutation.value,
-                                mutation.expected_generation,
-                            )
-                            .map_err(|_| port(PortErrorCode::Corrupt, "control.operation.runtime"))
-                        })
-                        .collect::<PortResult<Vec<_>>>()?;
-                    let external = durable
-                        .plan
-                        .external
-                        .into_iter()
-                        .map(|intent| {
-                            ExternalEffectIntentV1::from_registered_adapter(
-                                intent.effect_id,
-                                intent.kind,
-                                intent.target,
-                                intent.before_fingerprint,
-                                intent.desired,
-                                intent.desired_mode,
-                                intent.sensitive,
-                            )
-                            .map_err(|_| port(PortErrorCode::Corrupt, "control.operation.external"))
-                        })
-                        .collect::<PortResult<Vec<_>>>()?;
                     let plan = measure(
                         diagnostics,
                         PublicationStage::OperationPlanValidate,
                         Some(&operation_id),
                         Some(encoded.len()),
                         || {
-                            if let Some(change) = durable.plan.worker_dependency_selection {
-                                if durable.plan.control != json!({})
-                                    || durable.plan.credential_pool.is_some()
-                                    || !secrets.is_empty()
-                                    || !runtime.is_empty()
-                                    || !external.is_empty()
-                                {
-                                    return Err(port(
-                                        PortErrorCode::Corrupt,
-                                        "control.operation.plan",
-                                    ));
-                                }
-                                let selection = WorkerDependencySelectionChangeV1::new(
-                                    change.before_revision,
-                                    hiroute_domain::WorkerDependencySelectionRecordV1::new(
-                                        change.after_selection.harness,
-                                        change.after_selection.adapter_path,
-                                        change.after_selection.cli_path,
-                                        change.after_selection.node_path,
-                                    )
-                                    .map_err(|_| {
-                                        port(PortErrorCode::Corrupt, "control.operation.plan")
-                                    })?,
-                                )
-                                .map_err(|_| {
-                                    port(PortErrorCode::Corrupt, "control.operation.plan")
-                                })?;
-                                TransactionPlanV1::from_worker_dependency_selection_planner(
-                                    durable.plan.spec,
-                                    selection,
-                                )
-                            } else {
-                                TransactionPlanV1::from_registered_typed_planner(
-                                    durable.plan.spec,
-                                    durable.plan.control,
-                                    durable.plan.credential_pool,
-                                    secrets,
-                                    runtime,
-                                    external,
-                                )
-                            }
-                            .map_err(|_| port(PortErrorCode::Corrupt, "control.operation.plan"))
+                            durable
+                                .plan
+                                .build()
+                                .map_err(|_| port(PortErrorCode::Corrupt, "control.operation.plan"))
                         },
                     )?;
                     let expected_id = OperationId::derive(

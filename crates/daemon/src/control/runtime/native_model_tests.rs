@@ -18,6 +18,8 @@ use std::{collections::BTreeSet, fs, os::unix::fs::PermissionsExt};
 mod codex_cache;
 #[path = "native_model_lifecycle_tests.rs"]
 mod lifecycle;
+#[path = "native_model_tests/recovery_admission.rs"]
+mod recovery_admission;
 
 #[test]
 fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
@@ -80,13 +82,7 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         "the activated configuration must point at the immutable catalog artifact: {configured}"
     );
     publish(adapter, &mut install);
-    install.state = OperationState::Succeeded;
-    adapter
-        .stores_lock()
-        .unwrap()
-        .control()
-        .finish_operation(&mut install)
-        .unwrap();
+    finish_fixture_operation(adapter, &mut install);
     let revision = adapter
         .stores_lock()
         .unwrap()
@@ -307,13 +303,7 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         .unwrap();
     adapter.activate_external(&update, &update_file).unwrap();
     publish(adapter, &mut update);
-    update.state = OperationState::Succeeded;
-    adapter
-        .stores_lock()
-        .unwrap()
-        .control()
-        .finish_operation(&mut update)
-        .unwrap();
+    finish_fixture_operation(adapter, &mut update);
     let next_revision = adapter
         .stores_lock()
         .unwrap()
@@ -673,6 +663,7 @@ fn open_with_codex_fixture_surfaces(
     root: &std::path::Path,
 ) -> (ProductionControlRuntime, std::path::PathBuf) {
     fs::set_permissions(root, fs::Permissions::from_mode(0o700)).unwrap();
+    drop(hiroute_local_storage::LocalStorageSet::open_for_daemon_startup(root).unwrap());
     let cli = root.join("codex-cli-fixture");
     let desktop = root.join("codex-desktop-fixture");
     write_codex_fixture(&cli);
@@ -722,30 +713,26 @@ fn open_without_fixture_grants(root: &std::path::Path) -> ProductionControlRunti
     )
 }
 
-/// The golden still carries its pre-migration executable sections and legacy Plan contract;
-/// their fixture/decoder convergence is a pending adjudication and this test needs only the
-/// compiled plans, so the disputed sections are emptied and the domain's own deterministic
-/// current-contract upgrade is applied in this in-test view instead of adjudicating here.
+/// Validate the complete frozen source before projecting a current plan-only publication.
 fn golden_publication_plans_only() -> GatewayPublicationV1 {
-    let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
-        "../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let source = serde_json::from_slice::<serde_json::Value>(include_bytes!(
+        "../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
-    let object = value.as_object_mut().unwrap();
-    object.insert("grants".into(), serde_json::json!([]));
-    object.insert("aliases".into(), serde_json::json!([]));
-    serde_json::from_value::<GatewayPublicationV1>(value)
-        .unwrap()
-        .into_current()
-        .unwrap()
+    let mut publication =
+        serde_json::from_value::<hiroute_domain::GatewayPublicationV1>(source.clone()).unwrap();
+    publication.grants.clear();
+    publication.aliases.clear();
+    publication.validate_current_contract().unwrap();
+    publication
 }
 
 fn configure_runtime(
     root: &std::path::Path,
     runtime: ProductionControlRuntime,
 ) -> ProductionControlRuntime {
-    let initial = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
+    let initial = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+        "../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
     ))
     .unwrap();
     configure_runtime_with_initial(root, runtime, initial)
@@ -756,6 +743,8 @@ fn configure_runtime_with_initial(
     runtime: ProductionControlRuntime,
     initial: GatewayPublicationV1,
 ) -> ProductionControlRuntime {
+    // This frozen V2 aggregate is test input; current producers publish stable facts.
+    let initial = initial.into_current().unwrap();
     *runtime.adapter.managed_agent_runtime.lock().unwrap() = Some(ManagedAgentRuntimeV1 {
         gateway_base_url: "http://127.0.0.1:5837/v1".into(),
         trusted_hiroute_executable: "/test/hiroute".into(),
@@ -879,6 +868,48 @@ fn record_agent_effect(
         .unwrap();
 }
 
+fn finish_fixture_operation(adapter: &LocalControlAdapter, operation: &mut OperationV1) {
+    // These adapter tests apply effects manually. Seal the same completed journal shape as
+    // the coordinator, so read-only status verifies all six steps and the service receipt.
+    let effect = operation
+        .step(OperationStepKind::CompilePublication)
+        .effects
+        .iter()
+        .find(|effect| effect.kind == OwnedEffectKind::Publication)
+        .unwrap();
+    let revision = effect.compensation["publication_revision"]
+        .as_u64()
+        .unwrap();
+    let digest = effect.after_fingerprint.clone().unwrap();
+    let receipt = SettingsServiceCompletionV1 {
+        schema: SETTINGS_SERVICE_COMPLETION_SCHEMA.into(),
+        publication_revision: revision,
+        publication_digest: digest.clone(),
+        completed_effects_digest: CanonicalDigest::of(&(
+            "hiroute.settings-service-proof/v2",
+            operation.operation_id.as_str(),
+            &operation.accepted_digest,
+            revision,
+            &digest,
+            operation.stable_input_digest().unwrap(),
+        ))
+        .unwrap(),
+    };
+    operation
+        .step_mut(OperationStepKind::Activate)
+        .terminal_result = Some(serde_json::to_string(&receipt).unwrap());
+    for step in &mut operation.steps {
+        step.status = OperationStepStatus::Applied;
+    }
+    operation.state = OperationState::Succeeded;
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .finish_operation(operation)
+        .unwrap();
+}
+
 fn operation(
     adapter: &LocalControlAdapter,
     key: &str,
@@ -886,9 +917,11 @@ fn operation(
     original: Option<&OperationId>,
 ) -> OperationV1 {
     ensure_target_cache(adapter);
-    let publication = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
+    let publication = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(
+        include_bytes!("../../../../../e2e/product/fixtures/routing/current-publication.v3.json"),
+    )
+    .unwrap()
+    .into_current()
     .unwrap();
     let plans = publication.published_agent_plans().unwrap();
     let plan = plans

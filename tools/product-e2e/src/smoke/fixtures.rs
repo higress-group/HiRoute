@@ -7,6 +7,53 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Establish current-format storage through the real daemon before injecting untrusted files.
+/// The subsequent start tests catalog authority, rather than unsupported-source admission.
+pub fn initialize_current_storage(
+    daemon: &Path,
+    storage: &Path,
+    logs: &Path,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    deadline: std::time::Instant,
+) -> Result<()> {
+    use std::os::unix::fs::FileTypeExt;
+    let isolated = tempfile::tempdir()?;
+    fs::set_permissions(isolated.path(), fs::Permissions::from_mode(0o700))?;
+    let endpoint = isolated.path().join("runtime/hiroute/control.sock");
+    let mut command = std::process::Command::new(daemon);
+    command
+        .env_clear()
+        .env("HOME", isolated.path())
+        .env("PATH", "/usr/bin:/bin")
+        .args(["--role", "control", "--storage-root"])
+        .arg(storage)
+        .arg("--runtime-root")
+        .arg(isolated.path().join("runtime"))
+        .args(["--diagnostic-level-override", "debug"]);
+    let mut child = super::process::Process::spawn(&mut command, logs, cancel)?;
+    loop {
+        if let Err(error) = child.check() {
+            let (_, stderr) = child.output(16 * 1024)?;
+            eprintln!(
+                "initial storage daemon: {}",
+                String::from_utf8_lossy(&stderr)
+            );
+            return Err(error);
+        }
+        if fs::symlink_metadata(&endpoint).is_ok_and(|m| m.file_type().is_socket()) {
+            break;
+        }
+        require(
+            std::time::Instant::now() < deadline,
+            "initial_storage_ready_timeout",
+        )?;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    child.stop()?;
+    let (_, stderr) = child.output(1024 * 1024)?;
+    require(stderr.is_empty(), "initial_storage_unexpected_stderr")
+}
+
 pub fn install_storage_catalog_tampering(storage: &Path) -> Result<()> {
     let release_facts = storage.join("release-facts");
     let root = release_facts.join("current");

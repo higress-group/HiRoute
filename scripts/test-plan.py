@@ -38,6 +38,9 @@ SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py"}
 INTEGRATION_SKILL = ".agents/skills/hiroute-integrate/SKILL.md"
 WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/release.yml"}
 WEBSITE_PREFIXES = ("apps/website/", ".github/scripts/")
+RELEASE_CONTRACT_TOOLING = {"scripts/release-contracts.py", "scripts/test-release-contracts.py",
+                          "scripts/test-release-contract-pr.py", ".github/scripts/release-contract-pr.sh",
+                          ".github/workflows/release.yml"}
 HOSTED_BACKEND_EXECUTION = {
     ".github/workflows/gateway-core.yml",
     "scripts/ci-run.py",
@@ -86,8 +89,12 @@ def select(paths, full=False):
     reasons = []
     selection_tooling = False
     validation_tooling = False
+    release_contract_tooling = False
     targets = set()
     for path in sorted(set(paths)):
+        if path in RELEASE_CONTRACT_TOOLING or path.startswith("contracts/releases/"):
+            release_contract_tooling = True
+            continue
         if path in SELECTION_TOOLING or path == INTEGRATION_SKILL:
             selection_tooling = True
         elif path in WEBSITE_TOOLING or path.startswith(WEBSITE_PREFIXES):
@@ -188,6 +195,10 @@ def select(paths, full=False):
                              "--", "--exact"])
     if selection_tooling:
         commands.append(["python3", "scripts/test-test-plan.py"])
+    if full or release_contract_tooling:
+        commands.extend([["python3", "scripts/test-release-contracts.py"],
+                         ["python3", "scripts/test-release-contract-pr.py"],
+                         ["python3", "scripts/release-contracts.py", "check"]])
     if validation_tooling:
         commands.extend([["python3", "scripts/" + name] for name in
                          ("test-validation.py", "test-validation-report.py", "test-local-rust.py", "test-remote-rust.py", "test-validation-schedule.py",
@@ -220,6 +231,9 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
         if selected:
             targets.update(selected)
             reasons.append("early boundary checks: " + path)
+    storage_startup = any(path.startswith("crates/local-storage/src/migrations/")
+                          or path == "crates/local-storage/src/lib.rs"
+                          for path in plan["paths"])
     # These already-selected cheap tooling gates run before Rust preparation.
     commands = [c[:] for c in plan["commands"] if c[:1] == ["python3"]]
     if targets:
@@ -240,6 +254,17 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
             commands.append([*context, *(["--no-fail-fast"] if collect_failures else []),
                              *[arg for target in behavior for arg in ("--test", target)],
                              "--", "--test-threads=1"])
+    if storage_startup:
+        targets.update({"publication_process", "pre_gateway_compute_routing"})
+        reasons.append("storage startup: exercise the production daemon initialization order")
+        broad = next((c for c in context_plan["commands"] if c[:2] == ["cargo", "test"]
+                      and "--test" not in c and "--lib" not in c), None)
+        context = broad[:] if broad else ["cargo", "test", "--locked", "-p", "hiroute-daemon", "--all-features"]
+        if "--workspace" not in context and "hiroute-daemon" not in context:
+            context.extend(["-p", "hiroute-daemon"])
+        if "--workspace" not in context and "hiroute-product-e2e" not in context:
+            context.extend(["-p", "hiroute-product-e2e"])
+        commands.append([*context, "--test", "publication_process", "--test", "pre_gateway_compute_routing"])
     return {"diagnostic_only": True, "targets": sorted(targets), "reasons": reasons,
             "commands": commands, "remote_exclusive": bool(targets) and context_plan["execution"]["remote_exclusive"],
             "collect_failures": collect_failures,

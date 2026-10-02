@@ -13,6 +13,16 @@ mod tests;
 
 type Result<T> = std::result::Result<T, DelegationErrorV1>;
 
+impl RuntimeStore {
+    pub fn upgrade_occupied_tasks(&self) -> std::result::Result<u64, crate::LocalStorageError> {
+        Ok(self.connection.borrow().query_row(
+            "SELECT count(*) FROM delegation_runs WHERE occupied=1",
+            [],
+            |row| row.get(0),
+        )?)
+    }
+}
+
 impl DelegationRuntimePort for RuntimeStore {
     fn worker_concurrency_settings(&self) -> Result<WorkerConcurrencySettingsV1> {
         read_worker_concurrency_settings(&self.connection.borrow())

@@ -141,6 +141,13 @@ impl DelegationRunExecutor {
 
     /// The process entry point installs the diagnostic port once the runtime exists; a
     /// missing port keeps worker/task diagnostics inert instead of failing execution.
+    pub(crate) fn upgrade_active_count(&self) -> Result<u64, DelegationErrorV1> {
+        self.active
+            .lock()
+            .map(|active| active.len() as u64)
+            .map_err(|_| DelegationErrorV1::StorageUnavailable)
+    }
+
     pub fn set_diagnostics(&self, diagnostics: DiagnosticsPort) {
         if let Ok(mut current) = self.diagnostics.write() {
             *current = diagnostics;

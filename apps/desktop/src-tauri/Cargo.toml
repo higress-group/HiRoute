@@ -1,6 +1,6 @@
 [package]
 name = "hiroute-desktop"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
@@ -22,6 +22,8 @@ tokio.workspace = true
 zeroize.workspace = true
 getrandom.workspace = true
 fs2.workspace = true
+reqwest = { version = "=0.13.4" }
+sha2.workspace = true
 tauri = { version = "2.11.1", optional = true }
 tauri-plugin-dialog = { version = "2.7.3", default-features = false, features = ["xdg-portal"], optional = true }
 tauri-plugin-pilot = { git = "https://github.com/mpiton/tauri-pilot", rev = "ed31926726b4cd7b3ffbc11f188e046f2b5e0faa", default-features = false, optional = true }

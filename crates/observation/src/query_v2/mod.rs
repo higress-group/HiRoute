@@ -46,7 +46,9 @@ pub enum ObservationV2Error {
 }
 
 impl From<rusqlite::Error> for ObservationV2Error {
-    fn from(_: rusqlite::Error) -> Self {
+    fn from(_error: rusqlite::Error) -> Self {
+        #[cfg(test)]
+        eprintln!("observation query SQLite failure: {_error:?}");
         Self::Unavailable
     }
 }
@@ -144,7 +146,11 @@ impl QueryDeadline {
                     }
                 }
             })
-            .map_err(|_| ObservationV2Error::Unavailable)?;
+            .map_err(|_error| {
+                #[cfg(test)]
+                eprintln!("observation query deadline thread failure: {_error:?}");
+                ObservationV2Error::Unavailable
+            })?;
         Ok(Self(send))
     }
 }

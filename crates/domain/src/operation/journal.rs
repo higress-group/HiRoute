@@ -38,7 +38,9 @@ impl OperationV1 {
         self.journal_checkpoint = Some(Arc::new(JournalCheckpoint {
             identity: self.immutable_identity()?,
             plan: self.plan.clone(),
-            plan_json: serde_json::to_string(self.plan.as_ref())?.into(),
+            plan_json: StoredOperationInputV1::freeze(&self.plan)?
+                .canonical_json()?
+                .into(),
             generation: self.generation,
             steps: self.steps.clone(),
             state: self.state,

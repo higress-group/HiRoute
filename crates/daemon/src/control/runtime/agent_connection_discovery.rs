@@ -1,5 +1,5 @@
 use hiroute_application::control::ControlReadError;
-use hiroute_domain::{ActiveAgentConnectionV1, OperationV1, WorkspaceId};
+use hiroute_domain::{ActiveAgentConnectionV1, WorkspaceId};
 use hiroute_integrations::{AgentDiscoveryOutcomeV1, FilesystemAgentDiscoveryV1};
 
 use super::{APPLY_OPERATION, LocalControlAdapter};
@@ -8,14 +8,20 @@ impl LocalControlAdapter {
     pub(super) fn latest_connection_operation(
         &self,
         connection_id: &str,
-    ) -> Result<(ActiveAgentConnectionV1, OperationV1), ControlReadError> {
+    ) -> Result<
+        (
+            ActiveAgentConnectionV1,
+            hiroute_local_storage::SucceededAgentOperationV1,
+        ),
+        ControlReadError,
+    > {
         let stores = self
             .stores
             .lock()
             .map_err(|_| ControlReadError::Unavailable)?;
         for operation in stores
             .control()
-            .succeeded_operations_for_kind(&WorkspaceId::default(), APPLY_OPERATION)
+            .succeeded_agent_operations_for_kind(&WorkspaceId::default(), APPLY_OPERATION)
             .map_err(super::super::map_port)?
         {
             let projection = operation

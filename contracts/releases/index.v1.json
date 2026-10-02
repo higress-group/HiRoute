@@ -1,0 +1,13 @@
+{
+  "latest_stable": "v0.1.0",
+  "releases": [
+    {
+      "channel": "stable",
+      "file": "v0.1.0.json",
+      "revision": "5f3ee7c96f4f6a02c1a730008055d413c28e1d5e",
+      "sha256": "bf13db620715f65ac3c893f87b264b66e79ff790b52e894e0ba0669a8f167880",
+      "tag": "v0.1.0"
+    }
+  ],
+  "schema": "hiroute.release-contract-index/v1"
+}

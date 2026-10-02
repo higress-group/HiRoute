@@ -16,7 +16,7 @@ const required = [
   'docs/decision-api/index.html', 'en/docs/decision-api/index.html',
   'docs/jev-decider/index.html', 'en/docs/jev-decider/index.html',
   'api/decision.openapi.json', 'api/jev-policy.default.json',
-  'install.sh', 'install/standalone.py', '404.html', 'sitemap-index.xml',
+  'install.sh', 'install/standalone.py', 'releases.json', '404.html', 'sitemap-index.xml',
 ];
 for (const relative of required) {
   if (!fs.existsSync(path.join(dist, relative))) throw new Error(`missing website output: ${relative}`);

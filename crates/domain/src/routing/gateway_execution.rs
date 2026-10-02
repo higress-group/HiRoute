@@ -444,6 +444,8 @@ pub struct GatewayCandidateCapabilityProfileV1 {
     /// candidate also carries it as `native_transport_model`; it is not the
     /// catalog-bound logical `upstream_model_id` for a managed CPA target.
     pub native_model: String,
+    /// Model evidence, independent of the current adapter's feature fidelity.
+    pub model_support: super::StoredModelSupportV1,
     pub request: GatewayRequestFeatureProfileV1,
     pub response: GatewayResponseFeatureProfileV1,
     pub reasoning_profiles: Vec<GatewayReasoningProfileCapabilityV1>,

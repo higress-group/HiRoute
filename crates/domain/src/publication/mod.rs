@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    AGENT_PLAN_COMPILED_SCHEMA_V2, AGENT_PLAN_COMPILER_REVISION_V1,
-    AGENT_PLAN_COMPILER_REVISION_V2, AgentIngressProtocolV1, AliasRegistryV1,
+    AGENT_PLAN_COMPILED_SCHEMA_V3, AGENT_PLAN_COMPILER_REVISION_V1,
+    AGENT_PLAN_COMPILER_REVISION_V3, AgentIngressProtocolV1, AliasRegistryV1,
     AttemptOwnedCandidateV1, CanonicalDigest, CompiledAgentPlanV1, ConnectorRuntimeKind,
     GatewayAccessGrantV1, GatewayCandidateProtocolProfileV1, GatewayOperationalTargetV1,
     MaterializedGroupId, ModelAlias, PortResult, PublishedAgentPlanV1, RequestOwnedRouteV1,
@@ -20,7 +20,9 @@ use crate::{
 mod plan_state;
 mod projection;
 mod record;
+mod stored;
 pub use record::PublicationRecordV1;
+pub use stored::*;
 mod snapshot;
 #[cfg(test)]
 mod validation_tests;
@@ -31,7 +33,7 @@ pub use snapshot::{
     GatewayPublicationSnapshotProjectionV3,
 };
 
-const LEGACY_GATEWAY_PUBLICATION_SCHEMA_V2: &str = "hiroute.gateway-publication/v2";
+pub(crate) const LEGACY_GATEWAY_PUBLICATION_SCHEMA_V2: &str = "hiroute.gateway-publication/v2";
 #[cfg(test)]
 const UNSUPPORTED_GATEWAY_PUBLICATION_SCHEMA_V1: &str = "hiroute.gateway-publication/v1";
 pub const GATEWAY_SNAPSHOT_SCHEMA_V3: &str = "hiroute.gateway.publication-snapshot/v3";
@@ -342,7 +344,7 @@ impl GatewayPublicationV1 {
         let aliases = materialize_aliases(&plans, &grants)?;
         let value = Self {
             schema: GATEWAY_PUBLICATION_SCHEMA_V3.to_owned(),
-            compiler_revision: AGENT_PLAN_COMPILER_REVISION_V2.to_owned(),
+            compiler_revision: AGENT_PLAN_COMPILER_REVISION_V3.to_owned(),
             workspace_id,
             authority_id,
             authority_epoch,
@@ -365,22 +367,21 @@ impl GatewayPublicationV1 {
             return Err(PublicationError::UnsupportedSchema);
         }
         let current_contract = self.schema == GATEWAY_PUBLICATION_SCHEMA_V3
-            && self.compiler_revision == AGENT_PLAN_COMPILER_REVISION_V2
+            && self.compiler_revision == AGENT_PLAN_COMPILER_REVISION_V3
             && self
                 .plans
                 .iter()
-                .all(|plan| plan.body.schema == AGENT_PLAN_COMPILED_SCHEMA_V2);
-        // Master retained aggregate compiler V1 while the explicit editor compiled V2 Plans.
-        // Unedited V1 Plans could coexist with edited V2 Plans in either persisted aggregate.
-        // Authenticate every nested Plan's own schema/compiler/digest below; new writes still
-        // require the sole V3/compiler V2/Plan V2 contract.
-        let persisted_compatibility = self.compiler_revision == AGENT_PLAN_COMPILER_REVISION_V1
-            && self.plans.iter().all(|plan| {
-                matches!(
-                    plan.body.schema.as_str(),
-                    crate::AGENT_PLAN_COMPILED_SCHEMA_V1 | AGENT_PLAN_COMPILED_SCHEMA_V2
-                )
-            });
+                .all(|plan| plan.body.schema == AGENT_PLAN_COMPILED_SCHEMA_V3);
+        // Preserve the separately registered unversioned publication recovery boundary.
+        let persisted_compatibility = matches!(
+            self.compiler_revision.as_str(),
+            AGENT_PLAN_COMPILER_REVISION_V1
+        ) && self.plans.iter().all(|plan| {
+            matches!(
+                plan.body.schema.as_str(),
+                crate::AGENT_PLAN_COMPILED_SCHEMA_V1 | AGENT_PLAN_COMPILED_SCHEMA_V3
+            )
+        });
         if !current_contract && !persisted_compatibility {
             return Err(PublicationError::UnsupportedCompilerRevision);
         }
@@ -464,11 +465,11 @@ impl GatewayPublicationV1 {
 
     fn check_current_schema(&self) -> Result<(), PublicationError> {
         if self.schema != GATEWAY_PUBLICATION_SCHEMA_V3
-            || self.compiler_revision != AGENT_PLAN_COMPILER_REVISION_V2
+            || self.compiler_revision != AGENT_PLAN_COMPILER_REVISION_V3
             || self
                 .plans
                 .iter()
-                .any(|plan| plan.body.schema != AGENT_PLAN_COMPILED_SCHEMA_V2)
+                .any(|plan| plan.body.schema != AGENT_PLAN_COMPILED_SCHEMA_V3)
         {
             return Err(PublicationError::UnsupportedSchema);
         }
@@ -512,7 +513,7 @@ impl GatewayPublicationV1 {
             return Ok(self);
         }
         self.schema = GATEWAY_PUBLICATION_SCHEMA_V3.to_owned();
-        self.compiler_revision = AGENT_PLAN_COMPILER_REVISION_V2.to_owned();
+        self.compiler_revision = AGENT_PLAN_COMPILER_REVISION_V3.to_owned();
         self.plans = self
             .plans
             .into_iter()
@@ -533,7 +534,8 @@ impl GatewayPublicationV1 {
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, PublicationError> {
         self.validate()?;
-        serde_json::to_vec(self).map_err(|_| PublicationError::Encoding)
+        serde_json::to_vec(&StoredPublicationV1::freeze(self)?)
+            .map_err(|_| PublicationError::Encoding)
     }
 
     /// Validates publication, authority, grant-generation, and per-Plan revision monotonicity
@@ -577,11 +579,12 @@ impl GatewayPublicationV1 {
                     return Err(PublicationError::InvalidTransition);
                 }
                 if plan.body.agent_plan_revision == previous.body.agent_plan_revision
-                    && plan.digest != previous.digest
-                    && previous
-                        .clone()
-                        .into_current()
-                        .map_or(true, |migrated| migrated != *plan)
+                    && crate::StoredPlanV1::freeze(plan).ok()
+                        != previous
+                            .clone()
+                            .into_current()
+                            .ok()
+                            .and_then(|p| crate::StoredPlanV1::freeze(&p).ok())
                 {
                     return Err(PublicationError::ImmutablePlanRevisionConflict);
                 }
@@ -625,18 +628,13 @@ impl GatewayPublicationV1 {
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, PublicationError> {
-        let value: Self = serde_json::from_slice(bytes).map_err(|_| PublicationError::Decoding)?;
-        value.validate()?;
-        // No mutation occurred after validation. Check canonical bytes without traversing all
-        // nested Plans a second time through canonical_bytes().
-        if serde_json::to_vec(&value)
-            .map_err(|_| PublicationError::Encoding)?
-            .as_slice()
-            != bytes
-        {
+        let stored: StoredPublicationV1 =
+            serde_json::from_slice(bytes).map_err(|_| PublicationError::Decoding)?;
+        let publication = stored.build()?;
+        if publication.canonical_bytes()?.as_slice() != bytes {
             return Err(PublicationError::NonCanonicalEncoding);
         }
-        Ok(value)
+        Ok(publication)
     }
 
     /// Recovery reader for a persisted publication aggregate. Current bodies use the strict
@@ -646,6 +644,17 @@ impl GatewayPublicationV1 {
     pub fn decode_persisted(bytes: &[u8]) -> Result<Self, PublicationError> {
         if let Ok(current) = Self::decode(bytes) {
             return Ok(current);
+        }
+        if let Ok(persisted) = serde_json::from_slice::<Self>(bytes) {
+            persisted.validate()?;
+            if serde_json::to_vec(&persisted)
+                .map_err(|_| PublicationError::Encoding)?
+                .as_slice()
+                != bytes
+            {
+                return Err(PublicationError::NonCanonicalEncoding);
+            }
+            return Ok(persisted);
         }
         let legacy: LegacyGatewayPublicationV2 =
             serde_json::from_slice(bytes).map_err(|_| PublicationError::Decoding)?;

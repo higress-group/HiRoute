@@ -17,6 +17,11 @@ fn real_gateway_requests_retain_their_publication_across_installation() {
 }
 
 #[test]
+fn real_gateway_upgrade_wait_cancels_and_rebuilds_untrusted_cache() {
+    run_script("upgrade_requests.py");
+}
+
+#[test]
 fn real_process_recovery_preserves_independent_agent_edits() {
     run_script("publication_agent_conflict.py");
 }

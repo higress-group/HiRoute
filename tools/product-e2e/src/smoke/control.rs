@@ -135,7 +135,7 @@ fn internal_call(
             api_version: LOCAL_CONTROL_SCHEMA_V2,
             machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
             client_name: "hiroute-smoke-internal".into(),
-            client_version: env!("CARGO_PKG_VERSION").into(),
+            client_version: hiroute_application_api::LOCAL_CONTROL_RELEASE_VERSION.into(),
         },
     )?;
     stream.write_all(b"\n")?;
@@ -385,7 +385,6 @@ pub(super) fn discover(ctx: &mut Context<'_>) -> Result<()> {
 
 pub(super) fn embedded_catalog(ctx: &mut Context<'_>) -> Result<()> {
     let (cli_artifact, daemon) = prepare(ctx)?;
-    fixtures::install_storage_catalog_tampering(&ctx.runtime.join("storage"))?;
     let endpoint = ctx.runtime.join("control-runtime/hiroute/control.sock");
     let mut c = command(&daemon.path, &ctx.runtime);
     c.args(["--role", "control", "--storage-root"])
@@ -393,6 +392,14 @@ pub(super) fn embedded_catalog(ctx: &mut Context<'_>) -> Result<()> {
         .arg("--runtime-root")
         .arg(ctx.runtime.join("control-runtime"))
         .args(["--diagnostic-level-override", "debug"]);
+    fixtures::initialize_current_storage(
+        &daemon.path,
+        &ctx.runtime.join("storage"),
+        &ctx.private.join("embedded-catalog-initialize"),
+        ctx.cancel.clone(),
+        ctx.step_deadline(),
+    )?;
+    fixtures::install_storage_catalog_tampering(&ctx.runtime.join("storage"))?;
     ctx.enter("embedded_catalog_ready");
     ctx.verify_artifact(&daemon)?;
     let mut child = Process::spawn(

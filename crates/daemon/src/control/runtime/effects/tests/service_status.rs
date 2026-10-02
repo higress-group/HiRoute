@@ -37,10 +37,11 @@ fn service_status_requires_resumed_target_and_no_retained_writer_claim() {
         runtime.adapter.service_status().unwrap().gateway,
         ClientGatewayStateV1::Empty
     );
-    let publication = GatewayPublicationV1::decode_persisted(include_bytes!(
-        "../../../../../../../e2e/product/golden/routing/compiled-publication.v2.json"
-    ))
-    .unwrap();
+    let publication =
+        serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(include_bytes!(
+            "../../../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+        ))
+        .unwrap();
     let record =
         PublicationRecordV1::from_publication(publication.workspace_id.clone(), &publication)
             .unwrap();

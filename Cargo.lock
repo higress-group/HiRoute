@@ -2133,7 +2133,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-application-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "hiroute-domain",
  "serde",
@@ -2144,7 +2144,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "getrandom 0.3.4",
  "hiroute-application",
@@ -2204,7 +2204,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-daemon"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "agent-client-protocol",
  "arc-swap",
@@ -2240,7 +2240,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "command-fds",
  "fs2",
@@ -2252,8 +2252,10 @@ dependencies = [
  "hiroute-domain",
  "hiroute-host-runtime",
  "nix",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -2387,8 +2389,10 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
  "nix",
+ "semver",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 2.0.20",
 ]
@@ -2418,11 +2422,14 @@ name = "hiroute-local-storage"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "base64 0.22.1",
+ "fs2",
  "getrandom 0.3.4",
  "hiroute-application",
  "hiroute-application-api",
  "hiroute-diagnostics",
  "hiroute-domain",
+ "hiroute-host-runtime",
  "hiroute-integrations",
  "hmac",
  "rusqlite",

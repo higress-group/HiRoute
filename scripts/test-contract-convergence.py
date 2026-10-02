@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -55,6 +56,22 @@ class ContractConvergenceTests(unittest.TestCase):
 
     def test_registered_recovery_path_is_green(self):
         self.assertEqual(self.run_audit({"legacy.rs": '"hiroute.sample/v1"'}), [])
+
+    def test_historical_release_inventory_is_not_a_current_reader_or_fixture(self):
+        snapshot = json.dumps({"schema": "hiroute.release-contract-snapshot/v1",
+                               "contracts": ["hiroute.sample/v1", "hiroute.forbidden/v1"]})
+        self.assertEqual(self.run_audit({"legacy.rs": '"hiroute.sample/v1"',
+                                        "contracts/releases/v1.0.0.json": snapshot}), [])
+        for path in ("contracts/releases/live.rs", "contracts/releases/other.json",
+                     "contracts/cli/v1.0.0.json"):
+            errors = self.run_audit({"legacy.rs": '"hiroute.sample/v1"', path: snapshot})
+            self.assertTrue(any("forbidden contract" in error for error in errors), errors)
+        errors = self.run_audit({"legacy.rs": '"hiroute.sample/v1"',
+                                "contracts/releases/v1.0.0.json": '{"value":"hiroute.forbidden/v1"}'})
+        self.assertTrue(any("forbidden contract" in error for error in errors), errors)
+        # A snapshot cannot make an absent real legacy reader look implemented.
+        errors = self.run_audit({"contracts/releases/v1.0.0.json": snapshot})
+        self.assertTrue(any("stale compatibility registration" in error for error in errors), errors)
 
     def test_legacy_escape_is_rejected(self):
         errors = self.run_audit(

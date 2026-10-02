@@ -205,7 +205,7 @@ impl NativeAgentArtifactPort for ManagedArtifactStore {
 }
 
 /// Bound allocation before reading and check the opened inode, not a following path lookup.
-fn read_native_file(
+pub(super) fn read_native_file(
     path: &Path,
     limit: usize,
 ) -> Result<Option<Zeroizing<Vec<u8>>>, LocalStorageError> {

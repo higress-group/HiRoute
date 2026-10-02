@@ -1,0 +1,828 @@
+{
+  "contracts": {
+    "cli_contract_set": {
+      "content": {
+        "descriptor_digest": "sha256:977c6c3de2ed68f4437db403b16db9b0684616acd41124abfe2ff06caf364022",
+        "files": {
+          "agent-check-request.v1.schema.json": "sha256:fbd9e9b19282a5ed8c3e30b5ae16538bc01318a70e4bb7c7a55e8e0472553feb",
+          "agent-launch-descriptor-request.v1.schema.json": "sha256:28f2f9d2d7f9a1618bea0f13383002429bc9e0ff56166cbee86958a245d0fd48",
+          "agent-plan-catalog-query.v2.schema.json": "sha256:c9dab9d3152c36449467f67de229836cff18cc3c5e7cdcdea719361aa9724676",
+          "coverage-manifest.v1.json": "sha256:76d8776f13d953fd0b1c0387ba877c30fba7ecf564d927d131cb7e76b3f5a822",
+          "delegation-cancel-request.v1.schema.json": "sha256:0822c53fc16acfcd618fbef66410939f33f634313389a6df4705f414a468b878",
+          "delegation-continue-request.v1.schema.json": "sha256:da2f81607f37d154a0fa698a107b37d4b0e9d5a03693dcbcc41e0b7e65db5b93",
+          "delegation-get-request.v1.schema.json": "sha256:85b29839c1c508018ebe40e4b2bb5c1dce7c3a87c27efa30b196b2d1b6658471",
+          "delegation-list-request.v1.schema.json": "sha256:b5f94da911750d9360f52ad9ca9d93e97950f77297dbbe2fb430eb1064077c52",
+          "delegation-result-request.v1.schema.json": "sha256:8b369bc1475707c537591ca0838e28bef382647996007c4fd2b8274629a7634f",
+          "delegation-start-request.v1.schema.json": "sha256:033885686bf77cb03344c8ccc5ae245e9407e5c8010bf94e59d2232fb0b3a7b4",
+          "delegation-wait-request.v1.schema.json": "sha256:9aba6c969923f455ea376a5d8bc034efb4acd103d5b79df1d0d3aebb3d57b9e9",
+          "empty-request.v1.schema.json": "sha256:44d40c4601343ddfb543fd04751cc0a0a994fe8d7963adc541fe4a245ceba2b1",
+          "local-control-hello.v2.schema.json": "sha256:001b164e383a50764d97d4cce01aa296ec821b01532c2f9e951d8da8e061fca1",
+          "local-control.v2.schema.json": "sha256:4b654de90cd6e333b3953379e5b2e1c5125f1dcbe307b7c7c73f12bb2032d18c",
+          "machine-envelope.v2.schema.json": "sha256:5a0b47ce1fd80628f760a3da5a88de7dc01f6df83cb6eef47fd4a6c8289070ba",
+          "manifest.v1.json": "sha256:c602e9b661621403bc05405674f5522604be0e716a886673776199492f686f75",
+          "operation-cancel-request.v1.schema.json": "sha256:0071cbcf27de3bfb7f6644478fe2b73bb5387ebe33db93629ff5672959e8495f",
+          "operation-lookup.v1.schema.json": "sha256:0fbaaa15b0e75b4186979bdd856bed0485d55a4bd33a33f3caf3bd92e01a7850",
+          "plan-content-change.v2.schema.json": "sha256:1706ccfd7aa0abe34b1253bcf43d746b01af059ded980cc2dc430633569c20ca",
+          "plan-draft-change.v1.schema.json": "sha256:8f3cf4a330260b241e8a751f99d706043e946b344f8d18e09d1081d47d3554b9",
+          "plan-editor.v2.schema.json": "sha256:8e1dc12e825826e1703664b7124d291ffd6ec2061dd49660f763609511319ff5",
+          "plan-lifecycle-change.v1.schema.json": "sha256:ff8ec4ff9bbf32fac6584b0a8dbd46e8724c4b55b6c09dd375ab2995af393132",
+          "planned-manifest.v1.json": "sha256:eac0c7583245a881de141f9b8d853a86efb3f9ef8fa9a3ffb3ed75d759467072",
+          "session-list-query.v1.schema.json": "sha256:1f71a89fc019b59c3499708c0760b694b8cb8532028b56d98702cd3b2721cd44",
+          "session-lookup.v1.schema.json": "sha256:0c9e0ea31bdde7f720a9a17e8dc175902a20b3fb92abc21ce4bdae9fc3d97587",
+          "setup-apply-request.v1.schema.json": "sha256:b44377ecb53e609574cd2e1d49624d6bc8e148f7b60a99c2ea9db861e0c2cabd",
+          "setup-request.v1.schema.json": "sha256:e7fb0a57d7cbe41caf90b4a57e56b8434aa01b91054935447666cb2af5bc98fd",
+          "value-query.v1.schema.json": "sha256:7dbc91344f1b1f9635a8b62c010567cad9e6f29207d8f1d89f5b4abb80fdbfae",
+          "work-plan-list-request.v1.schema.json": "sha256:d50adc8e139cbed719fcec6412c796a7cf4d4f280dd7a56c525619f72c26c58d",
+          "worker-cancel-request.v1.schema.json": "sha256:f731e6a6be762d409a53afe9697be105d0debb89fe5e28be96b15ae03b31dfdc",
+          "worker-continue-request.v1.schema.json": "sha256:cfe89487d3524061dd277a97b11291fcd0db4a0a0ca333118023628ab7d61b3b",
+          "worker-dependencies-discover-request.v1.schema.json": "sha256:cde9509210a2a2605fc95ed19d9c4a3aa754241dd49e6522124f77236dac44e4",
+          "worker-dependencies-select-request.v1.schema.json": "sha256:d6a0454d125ea368f6b205fe7f360b14963fdd6fc94080bc2e19daf2aef6b972",
+          "worker-exec-request.v1.schema.json": "sha256:78bfea83b08e595ad4d4b5a5a20884ad9ebb34bb05e5ceed966f9e8e16f4d0fa",
+          "worker-list-request.v1.schema.json": "sha256:f1a2b5900b0412d8d561a5925a6f9489b495e74c41f386a3504175b2be3aff64",
+          "worker-plans-request.v1.schema.json": "sha256:a7f2d13869ab542223bf51eef4f0c1a05a4c8afef43f202165fd3025a2ab72c1",
+          "worker-read-request.v1.schema.json": "sha256:9821ee686f0e6c58b187b7c1addf0d3703954995f6081389370c1b5f599922ba",
+          "worker-result-request.v1.schema.json": "sha256:af6a9f65eb32e9d85b95b8b643af8d9bbe3fe88d8093e7e06c4353fadf332c8f",
+          "worker-status-request.v1.schema.json": "sha256:d2a03db6c4e064c2b1948520a37143e2d224b2d9af4d1a015b009988be6473d2",
+          "worker-wait-request.v1.schema.json": "sha256:6d72ac0dcee361d7240cebbf02a6290a47c765a80d7dcd1c7d795b245923702b"
+        },
+        "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
+        "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
+        "schema_version": {
+          "major": 1,
+          "minor": 0
+        }
+      },
+      "path": "contracts/cli/contract-set.v1.json",
+      "sha256": "411753848cff5dba071c861f81440db21bf90a87686cecb51b499c601faad5de"
+    },
+    "compatibility_register": {
+      "content": {
+        "forbidden_contracts": [
+          "hiroute.agent-plan-catalog/v1",
+          "hiroute.gateway.port.execution-fact/v2",
+          "hiroute.local-control/v1",
+          "hiroute.machine-envelope/v1",
+          "hiroute.observation.product-execution-envelope/v1",
+          "hiroute.protected-apply-ack/v1",
+          "hiroute.routing-change/v1",
+          "hiroute.routing-control-preview/v1",
+          "hiroute.routing-preview/v1"
+        ],
+        "production_contracts": [
+          "hiroute.agent-access-grant-effect/v1",
+          "hiroute.agent-access-grant-entry/v1",
+          "hiroute.agent-check-request/v1",
+          "hiroute.agent-check/v1",
+          "hiroute.agent-collaboration-credential/v1",
+          "hiroute.agent-collaboration-grant/v1",
+          "hiroute.agent-collaboration-settings-status/v2",
+          "hiroute.agent-config-change/v1",
+          "hiroute.agent-config-permission-control/v1",
+          "hiroute.agent-config-permission-effect/v1",
+          "hiroute.agent-config-permission-marker/v1",
+          "hiroute.agent-config-restore/v1",
+          "hiroute.agent-connection-control/v1",
+          "hiroute.agent-connection-effect/v1",
+          "hiroute.agent-connection-preview/v1",
+          "hiroute.agent-connection-restore-point/v1",
+          "hiroute.agent-connection-status/v1",
+          "hiroute.agent-connection/v1",
+          "hiroute.agent-discovery-list/v1",
+          "hiroute.agent-launch-descriptor-request/v1",
+          "hiroute.agent-live-check-evidence/v1",
+          "hiroute.agent-live-check-receipt/v1",
+          "hiroute.agent-model-grant/v2",
+          "hiroute.agent-model-settings-status/v2",
+          "hiroute.agent-plan-alias-registry/v1",
+          "hiroute.agent-plan-catalog-query/v2",
+          "hiroute.agent-plan-catalog/v2",
+          "hiroute.agent-plan-desired/v1",
+          "hiroute.agent-plan-facts/v1",
+          "hiroute.agent-plan-grant/v1",
+          "hiroute.agent-plan-lookup/v1",
+          "hiroute.agent-plan-status/v2",
+          "hiroute.agent-profile/v1",
+          "hiroute.agent-profiles-artifact/v1",
+          "hiroute.agent-routing-catalog/v1",
+          "hiroute.agent-routing-overlay/v1",
+          "hiroute.agent-scan-observation/v1",
+          "hiroute.agent-settings-preview/v2",
+          "hiroute.agent-surface-check/v1",
+          "hiroute.borrowed-codex-access-lease/v1",
+          "hiroute.borrowed-codex-binding-evidence/v1",
+          "hiroute.borrowed-codex-evidence/v1",
+          "hiroute.borrowed-codex-revision/v1",
+          "hiroute.borrowed-codex-source-path/v1",
+          "hiroute.candidate-capability/v1",
+          "hiroute.candidate-protocol-profile/v1",
+          "hiroute.change-preview-consent/v1",
+          "hiroute.change-preview/v1",
+          "hiroute.classifier-decision-test-result/v1",
+          "hiroute.classifier-decision-test/v1",
+          "hiroute.claude-native-layers/v1",
+          "hiroute.claude-native-messages/v1",
+          "hiroute.client-protocol-profile/v1",
+          "hiroute.client-service-status/v1",
+          "hiroute.codex-catalog-artifact/v1",
+          "hiroute.codex-catalog/v1",
+          "hiroute.codex-collaboration/v1",
+          "hiroute.codex-field-restore/v1",
+          "hiroute.codex-native-files/v2",
+          "hiroute.codex-native-responses/v1",
+          "hiroute.codex-subscription-candidate/v1",
+          "hiroute.codex-subscription-discovery-evidence/v2",
+          "hiroute.codex-subscription-source/v1",
+          "hiroute.collaboration-credential/v1",
+          "hiroute.command-result/v1",
+          "hiroute.compiled-agent-plan/v1",
+          "hiroute.compiled-agent-plan/v2",
+          "hiroute.compiled-planner-policy/v1",
+          "hiroute.compute-connection-apply-request/v1",
+          "hiroute.compute-connection-authorization-request/v1",
+          "hiroute.compute-connection-change/v1",
+          "hiroute.compute-connection-options/v1",
+          "hiroute.compute-connection-preview/v1",
+          "hiroute.compute-connection-test-request/v1",
+          "hiroute.compute-control-projection/v1",
+          "hiroute.compute-discovery-evidence/v1",
+          "hiroute.compute-management-binding/v2",
+          "hiroute.compute-management-change/v2",
+          "hiroute.compute-management-key/v2",
+          "hiroute.compute-management-lineage/v2",
+          "hiroute.compute-management-mutation/v2",
+          "hiroute.compute-management-preview/v2",
+          "hiroute.compute-management-query/v2",
+          "hiroute.compute-management-snapshot/v2",
+          "hiroute.compute-management-source/v2",
+          "hiroute.compute-management-target/v2",
+          "hiroute.compute-probe-lease/v1",
+          "hiroute.compute-projection-control/v1",
+          "hiroute.compute-projection-effect-state/v1",
+          "hiroute.compute-projection-identity/v1",
+          "hiroute.compute-runtime-identity/v1",
+          "hiroute.compute-runtime-state/v1",
+          "hiroute.compute-scan-result/v1",
+          "hiroute.compute-scanner-evidence/v1",
+          "hiroute.compute-source-binding-identity/v1",
+          "hiroute.compute-source-control/v1",
+          "hiroute.compute-source-semantic-identity/v1",
+          "hiroute.compute-state/v1",
+          "hiroute.compute-subscription-check-result/v2",
+          "hiroute.compute-subscription-check/v2",
+          "hiroute.compute-subscription-checked-input/v2",
+          "hiroute.compute-subscription-control/v2",
+          "hiroute.compute-subscription-effect-marker/v1",
+          "hiroute.compute-subscription-effect/v2",
+          "hiroute.compute-subscription-preview/v2",
+          "hiroute.compute-subscription-target/v2",
+          "hiroute.compute-subscription-validation-record/v1",
+          "hiroute.connector-owned-credential/v1",
+          "hiroute.connector-owned-runtime-fallback/v1",
+          "hiroute.connector-profile/v1",
+          "hiroute.connector-registry/v1",
+          "hiroute.connector-runtime-fallback/v1",
+          "hiroute.control-compensation/v1",
+          "hiroute.control-desired/v1",
+          "hiroute.cpa-account-attestation/v1",
+          "hiroute.cpa-account-state/v1",
+          "hiroute.cpa-account/v1",
+          "hiroute.cpa-owner/v1",
+          "hiroute.cpa-source-binding-identity/v1",
+          "hiroute.cpa-subscription-catalog-capability/v1",
+          "hiroute.cpa-subscription-inventory/v1",
+          "hiroute.cpa-subscription-observed-model/v1",
+          "hiroute.cpa-subscription-runtime-fallback/v1",
+          "hiroute.cpa-subscription-validation/v1",
+          "hiroute.created-plan/v2",
+          "hiroute.daemon-ready/v1",
+          "hiroute.daemon-startup-failure/v1",
+          "hiroute.delegation-accepted/v1",
+          "hiroute.delegation-cancel-request/v1",
+          "hiroute.delegation-cancel/v1",
+          "hiroute.delegation-continue-request/v1",
+          "hiroute.delegation-get-request/v1",
+          "hiroute.delegation-get/v1",
+          "hiroute.delegation-list-request/v1",
+          "hiroute.delegation-list/v1",
+          "hiroute.delegation-native-root/v1",
+          "hiroute.delegation-persistent-journal/v1",
+          "hiroute.delegation-result-request/v1",
+          "hiroute.delegation-result/v1",
+          "hiroute.delegation-run/v1",
+          "hiroute.delegation-start-request/v1",
+          "hiroute.delegation-tool-continuation-scope/v1",
+          "hiroute.delegation-wait-request/v1",
+          "hiroute.delegation-wait/v1",
+          "hiroute.desktop-agent-settings-intent/v2",
+          "hiroute.desktop-model-save-intent/v1",
+          "hiroute.desktop-plan-intent/v1",
+          "hiroute.desktop-price-intent/v1",
+          "hiroute.desktop-rename-intent/v1",
+          "hiroute.desktop-subscription-check-intent/v1",
+          "hiroute.desktop-worker-dependency-selection-intent/v1",
+          "hiroute.desktop.cpa-artifacts/v1",
+          "hiroute.diagnostic-event/v1",
+          "hiroute.diagnostic-settings/v1",
+          "hiroute.diagnostic-status/v1",
+          "hiroute.discovered-model-candidate/v1",
+          "hiroute.empty-request/v1",
+          "hiroute.fixed-local-id/v2",
+          "hiroute.frozen-candidate-ledger/v1",
+          "hiroute.gateway-access-grant/v1",
+          "hiroute.gateway-candidate-local-id/v1",
+          "hiroute.gateway-catalog-renderer/v1",
+          "hiroute.gateway-listener-status/v1",
+          "hiroute.gateway-listener/v1",
+          "hiroute.gateway-operational-target/v1",
+          "hiroute.gateway-publication/v2",
+          "hiroute.gateway-publication/v3",
+          "hiroute.gateway.agent-plan-semantics/v1",
+          "hiroute.gateway.credential-leases/v1",
+          "hiroute.gateway.credentials/v1",
+          "hiroute.gateway.durable-publication/v1",
+          "hiroute.gateway.e2e-fixture/v2",
+          "hiroute.gateway.error/v1",
+          "hiroute.gateway.external-port-set/v2",
+          "hiroute.gateway.lifecycle-fact-envelope/v2",
+          "hiroute.gateway.port.conversation-content/v2",
+          "hiroute.gateway.port.credential/v1",
+          "hiroute.gateway.port.execution-fact/v3",
+          "hiroute.gateway.port.lifecycle-fact/v2",
+          "hiroute.gateway.port.runtime-publication/v1",
+          "hiroute.gateway.port.runtime-state/v1",
+          "hiroute.gateway.publication-snapshot/v1",
+          "hiroute.gateway.publication-snapshot/v3",
+          "hiroute.gateway.ready/v1",
+          "hiroute.gateway.ready/v2",
+          "hiroute.gateway.request-authority/v2",
+          "hiroute.gateway.sealed-candidate-execution/v1",
+          "hiroute.header-secret-lease-request/v1",
+          "hiroute.machine-envelope/v2",
+          "hiroute.managed-artifact-backup/v2",
+          "hiroute.managed-artifact-compensation/v1",
+          "hiroute.managed-artifact-marker/v2",
+          "hiroute.managed-artifact-marker/v3",
+          "hiroute.managed-artifact-marker/v4",
+          "hiroute.managed-claude-launch-descriptor/v2",
+          "hiroute.managed-collaboration-skill/v2",
+          "hiroute.managed-launch-observation/v1",
+          "hiroute.managed-launch-warning/v1",
+          "hiroute.materialized-route-digest/v1",
+          "hiroute.materialized-route-digest/v2",
+          "hiroute.migration-store/v1",
+          "hiroute.model-catalog-query/v1",
+          "hiroute.model-catalog-view/v1",
+          "hiroute.model-data/v1",
+          "hiroute.model-metadata-catalog/v1",
+          "hiroute.model-request-ir/v1",
+          "hiroute.model-stream-event/v1",
+          "hiroute.native-credential-lease-request/v1",
+          "hiroute.native-field-restore/v1",
+          "hiroute.native-files/v1",
+          "hiroute.native-observation/v2",
+          "hiroute.observation-retention/v1",
+          "hiroute.observation.ack/v2",
+          "hiroute.observation.conversation-content-envelope/v2",
+          "hiroute.observation.execution-fact-envelope/v1",
+          "hiroute.observation.execution-fact-envelope/v3",
+          "hiroute.observation.execution-pricing/v1",
+          "hiroute.observation.gap-heartbeat/v1",
+          "hiroute.observation.nack/v1",
+          "hiroute.observation.product-execution-envelope/v2",
+          "hiroute.observation.query/v2",
+          "hiroute.observation.run-link/v1",
+          "hiroute.observation.serialization-failure/v1",
+          "hiroute.observation.valuation-summary/v2",
+          "hiroute.operation-cancel-request/v1",
+          "hiroute.operation-event/v1",
+          "hiroute.operation-idempotency-lookup/v1",
+          "hiroute.operation-idempotency-result/v1",
+          "hiroute.operation-lookup/v1",
+          "hiroute.operation-step/v1",
+          "hiroute.operation-view/v1",
+          "hiroute.otel.gen-ai-mapping/v1",
+          "hiroute.plan-authoring/v2",
+          "hiroute.plan-content-change/v2",
+          "hiroute.plan-content-preview/v2",
+          "hiroute.plan-draft-change/v1",
+          "hiroute.plan-draft-control/v1",
+          "hiroute.plan-draft-preview/v1",
+          "hiroute.plan-draft/v1",
+          "hiroute.plan-editor-options-request/v1",
+          "hiroute.plan-editor-options/v1",
+          "hiroute.plan-editor/v2",
+          "hiroute.plan-lifecycle-change/v1",
+          "hiroute.plan-lifecycle-preview/v1",
+          "hiroute.plan-quality-samples-page/v1",
+          "hiroute.plan-version/v1",
+          "hiroute.planner-candidate-facts/v1",
+          "hiroute.planner-input-facts-digest/v1",
+          "hiroute.planner-input/v1",
+          "hiroute.planner-output/v1",
+          "hiroute.posix-artifact-fingerprint/v1",
+          "hiroute.prepared-discovery-input/v1",
+          "hiroute.product-publication-marker/v1",
+          "hiroute.product-publication-marker/v2",
+          "hiroute.protected-apply-ack/v2",
+          "hiroute.protected-apply-grant/v2",
+          "hiroute.protected-input-result/v1",
+          "hiroute.protected-input/v1",
+          "hiroute.rating-snapshot/v2",
+          "hiroute.registered-compute-discovery-fact/v1",
+          "hiroute.release-facts-compiler-input/v2",
+          "hiroute.release-facts-cross-reference/v2",
+          "hiroute.release-facts/v2",
+          "hiroute.release-model-data/v2",
+          "hiroute.routing-control/v1",
+          "hiroute.routing-control/v2",
+          "hiroute.routing-publication-effect/v1",
+          "hiroute.routing-publication-effect/v2",
+          "hiroute.routing-receipt/v1",
+          "hiroute.routing-skill/v1",
+          "hiroute.runtime-compensation/v1",
+          "hiroute.runtime-fallback-candidate/v1",
+          "hiroute.runtime-state/v1",
+          "hiroute.sealed-collaboration-bootstrap/v1",
+          "hiroute.secret-compensation/v1",
+          "hiroute.secret-entry/v1",
+          "hiroute.secret-entry/v2",
+          "hiroute.semantic-ledger/v1",
+          "hiroute.session-detail/v1",
+          "hiroute.session-list-query/v1",
+          "hiroute.session-list/v1",
+          "hiroute.session-lookup/v1",
+          "hiroute.session-store-status/v1",
+          "hiroute.settings-claude-model-file/v1",
+          "hiroute.settings-codex-model-file/v1",
+          "hiroute.settings-login-item/v1",
+          "hiroute.settings-model-publication/v1",
+          "hiroute.settings-service-completion/v1",
+          "hiroute.settings-skill-file/v1",
+          "hiroute.settings-skill-reference/v1",
+          "hiroute.setup-apply-request/v1",
+          "hiroute.setup-apply-result/v1",
+          "hiroute.setup-preview-digest/v1",
+          "hiroute.setup-request/v1",
+          "hiroute.setup-status/v1",
+          "hiroute.source-local-candidate/v2",
+          "hiroute.source-price-change/v2",
+          "hiroute.sqlite-backup-manifest/v2",
+          "hiroute.sqlite-backup-set/v2",
+          "hiroute.sqlite-logical-state/v1",
+          "hiroute.standalone-install/v1",
+          "hiroute.standalone-protected-input-request/v1",
+          "hiroute.standalone-protected-input-response/v1",
+          "hiroute.standalone-service-doctor/v1",
+          "hiroute.standalone-service-logs/v1",
+          "hiroute.standalone-service-status/v1",
+          "hiroute.subscription-maintenance/v2",
+          "hiroute.system-status/v1",
+          "hiroute.value-ledger-entry/v1",
+          "hiroute.value-query/v1",
+          "hiroute.value-view/v1",
+          "hiroute.web-confirmation/v1",
+          "hiroute.work-plan-list-request/v1",
+          "hiroute.work-plan-list/v1",
+          "hiroute.worker-cancel-request/v1",
+          "hiroute.worker-command-data/v1",
+          "hiroute.worker-continue-request/v1",
+          "hiroute.worker-dependencies-discover-request/v1",
+          "hiroute.worker-dependencies-select-request/v1",
+          "hiroute.worker-dependencies-view/v1",
+          "hiroute.worker-dependency-selection-compensation/v1",
+          "hiroute.worker-dependency-selection-confirmation/v1",
+          "hiroute.worker-exec-request/v1",
+          "hiroute.worker-executor-availability-list/v1",
+          "hiroute.worker-list-request/v1",
+          "hiroute.worker-plans-request/v1",
+          "hiroute.worker-read-data/v1",
+          "hiroute.worker-read-request/v1",
+          "hiroute.worker-receipt/v1",
+          "hiroute.worker-result-request/v1",
+          "hiroute.worker-settings/v1",
+          "hiroute.worker-status-request/v1",
+          "hiroute.worker-submission-receipt/v1",
+          "hiroute.worker-wait-request/v1"
+        ],
+        "rejection_paths": [
+          "crates/domain/src/publication/mod.rs",
+          "crates/gateway/src/publication/tests.rs",
+          "tools/e2e-harness/tests/p0_gateway_request_authority.rs"
+        ],
+        "schema": "hiroute.contract-compatibility-support/v1",
+        "subjects": [
+          {
+            "audited_prefixes": [
+              "hiroute.e2e.sut-build-attestation"
+            ],
+            "current_contracts": [
+              "hiroute.e2e.sut-build-attestation/v3"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "e2e/schema/p0-production-launcher.schema.json",
+                  "tools/e2e-harness/src/p0/production/types.rs",
+                  "tools/e2e-harness/tests/p0_gateway_oracle.rs"
+                ],
+                "contract": "hiroute.e2e.sut-build-attestation/v1",
+                "mode": "frozen_fixture",
+                "owner": "gateway-e2e-oracle",
+                "reason": "Keep the sealed historical Gateway Oracle build proof isolated from current candidate preparation.",
+                "removal_condition": "Remove only with the sealed Oracle launcher schema, frozen attestation type, and its dedicated historical test."
+              }
+            ],
+            "subject": "gateway_e2e_build_attestation"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.gateway.port.execution-fact",
+              "hiroute.observation.execution-fact-envelope",
+              "hiroute.observation.product-execution-envelope"
+            ],
+            "current_contracts": [
+              "hiroute.gateway.port.execution-fact/v3",
+              "hiroute.observation.execution-fact-envelope/v3",
+              "hiroute.observation.product-execution-envelope/v2"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "crates/domain/src/observation/execution_validation.rs",
+                  "crates/domain/src/observation/execution_tests.rs",
+                  "e2e/golden/p0-gateway-golden.json",
+                  "e2e/schema/p0-execution-fact.schema.json",
+                  "tools/e2e-harness/src/p0/types.rs"
+                ],
+                "contract": "hiroute.observation.execution-fact-envelope/v1",
+                "mode": "recovery_read_only",
+                "owner": "observation-storage",
+                "reason": "Authenticate already-persisted V1 observations during read and backfill; live ingestion rejects them.",
+                "removal_condition": "Remove only when an inventory of every active activity.db and every still-supported backup reports zero V1 observation rows; a backup containing V1 must either retain the authenticated reader or be explicitly retired by its retention owner."
+              },
+              {
+                "allowed_paths": [
+                  "e2e/schema/p0-production-collector.schema.json",
+                  "tools/e2e-harness/src/p0/production/collector.rs",
+                  "tools/e2e-harness/src/p0/production/types.rs",
+                  "tools/e2e-harness/tests/p0_gateway_oracle.rs"
+                ],
+                "contract": "hiroute.observation.execution-fact-envelope/v2",
+                "mode": "frozen_fixture",
+                "owner": "gateway-e2e-oracle",
+                "reason": "Preserve the prior production collector and its explicit incompatibility assertion outside current candidate smoke.",
+                "removal_condition": "Remove only in the same change that deletes the sealed Oracle collector schema, its frozen types, and its dedicated historical test."
+              }
+            ],
+            "subject": "execution_observation"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.gateway-publication",
+              "hiroute.gateway.publication-snapshot"
+            ],
+            "current_contracts": [
+              "hiroute.gateway-publication/v3",
+              "hiroute.gateway.publication-snapshot/v3"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "crates/domain/src/publication/mod.rs",
+                  "e2e/product/golden/routing/compiled-publication.v2.json",
+                  "e2e/product/golden/routing/routing-boundary.v1.json",
+                  "tools/product-e2e/tests/routing_plans.rs"
+                ],
+                "contract": "hiroute.gateway-publication/v2",
+                "mode": "recovery_read_only",
+                "owner": "routing-publication",
+                "reason": "Authenticate persisted Product publications and the frozen deterministic fixture, then convert them to V3 before a new write.",
+                "removal_condition": "Remove only when inventories of active, prepared, and last-known-good publication slots, recovery journals, and every still-supported backup report zero V2 aggregates; a backup containing V2 must retain conversion or be explicitly retired."
+              },
+              {
+                "allowed_paths": [
+                  "crates/gateway/src/server.rs",
+                  "e2e/schema/p0-gateway-publication.schema.json",
+                  "tools/e2e-harness/src/p0/types.rs"
+                ],
+                "contract": "hiroute.gateway.publication-snapshot/v1",
+                "mode": "frozen_fixture",
+                "owner": "gateway-e2e-oracle",
+                "reason": "Preserve the sealed historical Oracle launcher and its schema; current candidate smoke uses V3 inputs.",
+                "removal_condition": "Remove only in the same change that deletes the sealed Oracle launcher, the V1 publication schema, and the dedicated historical scenario; never remove it from current-smoke work alone."
+              },
+              {
+                "allowed_paths": [
+                  "tools/e2e-harness/src/p0/production/legacy_inputs.rs"
+                ],
+                "contract": "hiroute.gateway.publication-snapshot/v2",
+                "mode": "frozen_fixture",
+                "owner": "gateway-e2e-oracle",
+                "reason": "Seed only the historical sealed Oracle before its current-input adapter replaces the publication with V3.",
+                "removal_condition": "Remove only in the same change that deletes the historical Oracle input adapter and its sealed V2 seed fixture."
+              }
+            ],
+            "subject": "routing_publication"
+          },
+          {
+            "audited_prefixes": [
+              "agent-plan-compiler",
+              "hiroute.compiled-agent-plan",
+              "hiroute.materialized-route-digest",
+              "hiroute.plan-content-change",
+              "hiroute.routing-control-change",
+              "hiroute.routing-control",
+              "hiroute.routing-publication-effect"
+            ],
+            "current_contracts": [
+              "agent-plan-compiler/v2",
+              "hiroute.compiled-agent-plan/v2",
+              "hiroute.materialized-route-digest/v2",
+              "hiroute.plan-content-change/v2",
+              "hiroute.routing-control/v2",
+              "hiroute.routing-publication-effect/v2"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "crates/domain/src/routing/mod.rs",
+                  "e2e/product/golden/routing/compiled-publication.v2.json"
+                ],
+                "contract": "agent-plan-compiler/v1",
+                "mode": "recovery_read_only",
+                "owner": "routing-compiler",
+                "reason": "Authenticate and convert the frozen V1 compiled-plan fixture; current authoring emits compiler V2.",
+                "removal_condition": "Remove only when publication and recovery-journal inventories, including every still-supported backup, report zero compiler-V1 aggregates and zero compiled-plan-V1 bodies."
+              },
+              {
+                "allowed_paths": [
+                  "crates/domain/src/routing/mod.rs",
+                  "e2e/product/golden/routing/compiled-publication.v2.json"
+                ],
+                "contract": "hiroute.compiled-agent-plan/v1",
+                "mode": "recovery_read_only",
+                "owner": "routing-compiler",
+                "reason": "Authenticate persisted V1 plans and reseal their unchanged executable arrays as V2.",
+                "removal_condition": "Remove only when active, prepared, and last-known-good publications, recovery journals, and every still-supported backup report zero compiled-plan-V1 bodies."
+              },
+              {
+                "allowed_paths": [
+                  "crates/domain/src/routing/materialized.rs"
+                ],
+                "contract": "hiroute.materialized-route-digest/v1",
+                "mode": "recovery_read_only",
+                "owner": "routing-compiler",
+                "reason": "Verify a V1 compiled plan before converting it; current compilation uses the V2 executable-only digest.",
+                "removal_condition": "Remove only with the compiled-plan-V1 reader after the same publication, journal, and backup inventory reports zero V1 materialized-route digests."
+              },
+              {
+                "allowed_paths": [
+                  "crates/application/src/control_plane/tests.rs",
+                  "crates/daemon/tests/support/plan_content_process.py"
+                ],
+                "contract": "hiroute.routing-control-change/v1",
+                "mode": "rejection_fixture",
+                "owner": "routing-authoring",
+                "reason": "Prove direct Local Control and product clients reject the retired create/update authoring shape without reading facts or admitting an Operation.",
+                "removal_condition": "Remove only when the minimum supported client version can no longer emit the retired shape and the Local Control rejection assertion is deliberately retired in the same change."
+              },
+              {
+                "allowed_paths": [
+                  "crates/domain/src/operation/routing.rs"
+                ],
+                "contract": "hiroute.routing-control/v1",
+                "mode": "recovery_read_only",
+                "owner": "operation-journal",
+                "reason": "Decode and validate already-durable V1 routing operations during crash recovery.",
+                "removal_condition": "Remove only when active and retained operation journals plus every still-supported backup report zero V1 routing-control records; a backup containing one must retain recovery or be explicitly retired."
+              },
+              {
+                "allowed_paths": [
+                  "crates/domain/src/operation/routing.rs"
+                ],
+                "contract": "hiroute.routing-publication-effect/v1",
+                "mode": "recovery_read_only",
+                "owner": "operation-journal",
+                "reason": "Decode and validate the publication effect paired with a durable V1 routing operation.",
+                "removal_condition": "Remove only when the routing-control-V1 gate is satisfied and the same journal and backup inventory reports zero paired V1 publication effects."
+              }
+            ],
+            "subject": "compiled_routing"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.machine-envelope",
+              "hiroute.protected-apply-ack",
+              "hiroute.protected-apply-grant"
+            ],
+            "current_contracts": [
+              "hiroute.machine-envelope/v2",
+              "hiroute.protected-apply-ack/v2",
+              "hiroute.protected-apply-grant/v2"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "crates/daemon/src/control/bin.rs"
+                ],
+                "contract": "hiroute.protected-apply-grant/v1",
+                "mode": "rejection_fixture",
+                "owner": "local-control",
+                "reason": "Prove the protected launcher rejects an uncorrelated V1 grant.",
+                "removal_condition": "Remove only when the minimum supported protected launcher emits correlated V2 grants and the explicit V1 rejection assertion is retired in the same change."
+              }
+            ],
+            "subject": "protected_local_control"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.managed-artifact-marker"
+            ],
+            "current_contracts": [
+              "hiroute.managed-artifact-marker/v4"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "crates/local-storage/src/control/mod.rs",
+                  "crates/local-storage/src/control/agent_transaction_tests.rs"
+                ],
+                "contract": "hiroute.managed-artifact-marker/v2",
+                "mode": "recovery_read_only",
+                "owner": "local-storage",
+                "reason": "Authenticate legacy exists/write compensation and migrate its marker metadata to V4 before recovery.",
+                "removal_condition": "Remove only when every active restore directory contains zero V2 markers after open-time migration and each still-supported backup either restores through V4 successfully or is explicitly retired."
+              },
+              {
+                "allowed_paths": [
+                  "crates/local-storage/src/control/mod.rs",
+                  "crates/local-storage/src/control/agent_transaction_tests.rs"
+                ],
+                "contract": "hiroute.managed-artifact-marker/v3",
+                "mode": "recovery_read_only",
+                "owner": "local-storage",
+                "reason": "Authenticate legacy delete compensation and migrate its marker metadata to V4 before recovery.",
+                "removal_condition": "Remove only when every active restore directory contains zero V3 markers after open-time migration and each still-supported backup either restores through V4 successfully or is explicitly retired."
+              }
+            ],
+            "subject": "managed_artifact_marker"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.model-metadata-catalog",
+              "hiroute.rating-snapshot",
+              "hiroute.release-facts-compiler-input",
+              "hiroute.release-model-data"
+            ],
+            "current_contracts": [
+              "hiroute.model-metadata-catalog/v1",
+              "hiroute.rating-snapshot/v2",
+              "hiroute.release-facts-compiler-input/v2",
+              "hiroute.release-model-data/v2"
+            ],
+            "legacy_support": [],
+            "subject": "release_model_data"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.secret-entry"
+            ],
+            "current_contracts": [
+              "hiroute.secret-entry/v2"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "crates/local-storage/src/secrets/mod.rs"
+                ],
+                "contract": "hiroute.secret-entry/v1",
+                "mode": "recovery_read_only",
+                "owner": "secret-storage",
+                "reason": "Authenticate fully identified legacy entries and journal images inside the atomic V17 rewrap migration.",
+                "removal_condition": "Remove only when every active V17 store reports zero V1 secret-entry and before/staged journal slots, and every still-supported pre-V17 backup has either passed authenticated restore-to-V2 testing or been explicitly retired."
+              }
+            ],
+            "subject": "secret_entry_aad"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.product-publication-marker"
+            ],
+            "current_contracts": [
+              "hiroute.product-publication-marker/v2"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "crates/daemon/src/control/runtime/effects/tests/publication_validation.rs",
+                  "crates/daemon/src/control/runtime/publication.rs"
+                ],
+                "contract": "hiroute.product-publication-marker/v1",
+                "mode": "recovery_read_only",
+                "owner": "operation-journal",
+                "reason": "Authenticate an already-durable publication effect, reconstruct its exact Product record from the owning Operation and intent, and normalize it to V2 before the next recovery checkpoint.",
+                "removal_condition": "Remove only when active and retained operation journals report zero V1 publication markers and every still-supported backup has either passed exact V1-to-V2 recovery or been explicitly retired."
+              }
+            ],
+            "subject": "product_publication_marker"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.gateway.ready"
+            ],
+            "current_contracts": [
+              "hiroute.gateway.ready/v2"
+            ],
+            "legacy_support": [
+              {
+                "allowed_paths": [
+                  "crates/gateway/src/server.rs",
+                  "e2e/schema/p0-production-readiness.schema.json",
+                  "tools/e2e-harness/src/p0/types.rs"
+                ],
+                "contract": "hiroute.gateway.ready/v1",
+                "mode": "frozen_fixture",
+                "owner": "gateway-e2e-oracle",
+                "reason": "Keep the sealed pre-product Gateway Oracle readiness response isolated from the managed current runtime, which emits and probes V2 only.",
+                "removal_condition": "Remove only in the same change that deletes the sealed historical Oracle launcher, its V1 readiness schema, and the dedicated readiness assertion."
+              }
+            ],
+            "subject": "gateway_process_readiness"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.release-facts-cross-reference"
+            ],
+            "current_contracts": [
+              "hiroute.release-facts-cross-reference/v2"
+            ],
+            "legacy_support": [],
+            "subject": "release_facts_cross_reference"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.agent-routing-catalog"
+            ],
+            "current_contracts": [
+              "hiroute.agent-routing-catalog/v1"
+            ],
+            "legacy_support": [],
+            "subject": "agent_routing_catalog"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.web-confirmation"
+            ],
+            "current_contracts": [
+              "hiroute.web-confirmation/v1"
+            ],
+            "legacy_support": [],
+            "subject": "desktop_web_confirmation"
+          },
+          {
+            "audited_prefixes": [
+              "hiroute.worker-settings"
+            ],
+            "current_contracts": [
+              "hiroute.worker-settings/v1"
+            ],
+            "legacy_support": [],
+            "subject": "worker_settings"
+          }
+        ]
+      },
+      "path": "contracts/compatibility-support.v1.json",
+      "sha256": "5d79765b6e5c6ad39463e5e3747074b9c97226e27b5c5b9b36429514d439696b"
+    }
+  },
+  "release": {
+    "artifacts": [
+      {
+        "filename": "HiRoute-0.1.0-5f3ee7c96f4f-macos-arm64-trial.dmg",
+        "sha256": "6f3babf6ba3c16bb760cff6c5afa664c326dd651728f7cd36f54b27268a643b1",
+        "size": 73383351
+      },
+      {
+        "filename": "hiroute-0.1.0-5f3ee7c96f4f-x86_64-unknown-linux-gnu.tar.gz",
+        "sha256": "b54b62e48d9576d382a29e6c99e0903ecaed8cabd2b5a3d9c74f8f3ea19bdf94",
+        "size": 62812169
+      },
+      {
+        "filename": "hiroute-0.1.0-5f3ee7c96f4f-x86_64-unknown-linux-gnu.tar.gz.json",
+        "sha256": "d3e2b5a41d6624b48bf14c72670fd4c4ce6870a6247bdc785e7253cfc9935bba",
+        "size": 2123
+      }
+    ],
+    "channel": "stable",
+    "published_at": "2026-09-22T08:20:13Z",
+    "repository": "higress-group/HiRoute",
+    "revision": "5f3ee7c96f4f6a02c1a730008055d413c28e1d5e",
+    "tag": "v0.1.0"
+  },
+  "schema": "hiroute.release-contract-snapshot/v1",
+  "storage": {
+    "source_path": "crates/local-storage/src/migrations/mod.rs",
+    "source_sha256": "c020c555d67b739395c142cd073104232b244f10f3aeda44af3e9f8c97b51a52",
+    "sql_schema_version": 22
+  }
+}
