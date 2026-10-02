@@ -193,9 +193,35 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             claude["discovered_credential"]["field_selector"],
             "env.ANTHROPIC_AUTH_TOKEN"
         );
-        let encoded = internal.to_string();
-        assert!(!encoded.contains(secret_sentinel));
-        assert!(!encoded.contains(agent_home.to_string_lossy().as_ref()));
+        assert!(!internal.to_string().contains(secret_sentinel));
+        // Owner-only connection controls intentionally expose the exact directory
+        // used by copied commands. No other discovery field may expose paths.
+        let mut redacted = internal.clone();
+        let agents = redacted["data"]["agents"].as_array_mut().unwrap();
+        let codex = agents
+            .iter_mut()
+            .find(|agent| agent["agent_id"] == "agent_codex_default")
+            .unwrap();
+        let access = codex["codex_access"].as_object_mut().unwrap();
+        let home = agent_home.join(".codex");
+        assert_eq!(access.remove("codex_home").unwrap(), json!(home));
+        assert_eq!(
+            access.remove("target_file").unwrap(),
+            json!(home.join("hiroute.config.toml"))
+        );
+        let commands = access.remove("commands").unwrap();
+        let commands = commands.as_object().unwrap();
+        assert_eq!(commands.len(), 3);
+        for shell in ["bash/zsh", "fish", "PowerShell"] {
+            let command = commands[shell].as_str().unwrap();
+            assert!(command.contains(home.to_str().unwrap()));
+            assert!(command.contains("codex --profile hiroute"));
+        }
+        assert!(
+            !redacted
+                .to_string()
+                .contains(agent_home.to_string_lossy().as_ref())
+        );
     }
 
     for (command_id, arguments) in [
