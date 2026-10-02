@@ -107,10 +107,13 @@ fn observe_cli(
             && envelope.request_id.as_deref() == Some(&format!("{}-{id}", ctx.run_id)),
         "machine_identity_mismatch",
     )?;
-    let encoded = String::from_utf8_lossy(&stdout);
     require(
-        (secret.is_empty() || !encoded.contains(secret))
-            && !encoded.contains(ctx.runtime.to_string_lossy().as_ref()),
+        response_is_private(
+            &serde_json::to_value(&envelope)?,
+            &ctx.runtime,
+            secret,
+            matches!(args, ["agents", "scan"] | ["agents", "list"]),
+        ),
         "privacy_failure",
     )?;
     ctx.verify_artifact(artifact)?;
@@ -457,4 +460,105 @@ pub(super) fn embedded_catalog(ctx: &mut Context<'_>) -> Result<()> {
         &json!({"reaped":true,"mutable_storage_catalog_ignored":true}),
     )?;
     ctx.verify_artifact(&daemon)
+}
+
+// Only the owner-local connection controls may disclose their exact target.
+// Check secrets before removing these fields from the path-leak check.
+fn response_is_private(value: &Value, runtime: &Path, secret: &str, discovery: bool) -> bool {
+    if !secret.is_empty() && value.to_string().contains(secret) {
+        return false;
+    }
+    let mut redacted = value.clone();
+    if discovery {
+        let Some(agents) = redacted["data"]["agents"].as_array_mut() else {
+            return false;
+        };
+        let Some(agent) = agents
+            .iter_mut()
+            .find(|a| a["agent_id"] == "agent_codex_default")
+        else {
+            return false;
+        };
+        let Some(access) = agent["codex_access"].as_object_mut() else {
+            return false;
+        };
+        let home = runtime.join("agent-home/.codex");
+        if access.remove("codex_home") != Some(json!(home))
+            || access.remove("target_file") != Some(json!(home.join("hiroute.config.toml")))
+        {
+            return false;
+        }
+        let Some(Value::Object(commands)) = access.remove("commands") else {
+            return false;
+        };
+        if commands.len() != 3
+            || !["bash/zsh", "fish", "PowerShell"].iter().all(|shell| {
+                commands
+                    .get(*shell)
+                    .and_then(Value::as_str)
+                    .is_some_and(|command| {
+                        command.contains(home.to_string_lossy().as_ref())
+                            && command.contains("codex --profile hiroute")
+                    })
+            })
+        {
+            return false;
+        }
+    }
+    !redacted
+        .to_string()
+        .contains(runtime.to_string_lossy().as_ref())
+}
+
+#[cfg(test)]
+mod privacy_tests {
+    use super::*;
+
+    #[test]
+    fn only_connection_controls_allow_exact_paths_and_never_credentials() {
+        let runtime = Path::new("/private/smoke");
+        let home = runtime.join("agent-home/.codex");
+        let command = format!("CODEX_HOME={} codex --profile hiroute", home.display());
+        let value = json!({"data":{"agents":[{"agent_id":"agent_codex_default","codex_access":{
+            "codex_home":home,"target_file":home.join("hiroute.config.toml"),
+            "commands":{"bash/zsh":command,"fish":command,"PowerShell":command}
+        }}]}});
+        assert!(response_is_private(
+            &value,
+            runtime,
+            "sentinel-secret",
+            true
+        ));
+        assert!(!response_is_private(
+            &value,
+            runtime,
+            "sentinel-secret",
+            false
+        ));
+        let mut unrelated = value.clone();
+        unrelated["extra"] = json!(home);
+        assert!(!response_is_private(
+            &unrelated,
+            runtime,
+            "sentinel-secret",
+            true
+        ));
+        let mut secret = value.clone();
+        secret["data"]["agents"][0]["codex_access"]["commands"]["fish"] =
+            json!(format!("{command} sentinel-secret"));
+        assert!(!response_is_private(
+            &secret,
+            runtime,
+            "sentinel-secret",
+            true
+        ));
+        let mut wrong_target = value.clone();
+        wrong_target["data"]["agents"][0]["codex_access"]["target_file"] = json!(home);
+        assert!(!response_is_private(
+            &wrong_target,
+            runtime,
+            "sentinel-secret",
+            true
+        ));
+    }
 }
