@@ -40,6 +40,7 @@ use super::state::{
 
 mod materialization;
 mod response;
+mod response_diagnostics;
 mod selection;
 
 pub(crate) use materialization::resolve_target;
@@ -181,10 +182,8 @@ pub struct ProductionAttemptState {
     projector: Option<Box<adapters::NativeResponseProjector>>,
     prefix: Option<ChargedBodyQueue>,
     prefix_terminal_chunks: Option<usize>,
-    decoder_budget: Option<response::PrecommitDecoderBudget>,
     budget: StreamBudget,
     semantic_seen: bool,
-    terminal_seen: bool,
     semantic_terminal: Option<SemanticTerminalOutcome>,
     retry_after: Option<std::time::Duration>,
     runtime_state_authority: RuntimeStateAuthoritySignal,
@@ -206,7 +205,6 @@ pub struct ProductionReadiness {
     decoder: Option<adapters::NativeResponseDecoder>,
     renderer: Option<adapters::IncrementalClientSseRenderer>,
     projector: Option<Box<adapters::NativeResponseProjector>>,
-    _decoder_budget: Option<response::PrecommitDecoderBudget>,
     _chat_tool_projection_budget: Option<Reservation>,
     budget: StreamBudget,
     streaming: bool,

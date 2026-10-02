@@ -1,3 +1,7 @@
+use super::response_diagnostics;
+use hiroute_diagnostics::event::{
+    ResponseFailureReason as FailureReason, ResponseFailureStage as FailureStage,
+};
 use std::sync::Arc;
 
 use hiroute_gateway_core::core::filter::LocalReply;
@@ -5,7 +9,7 @@ use hiroute_gateway_core::runtime::attempt::{
     ChargedResponseHead, Disposition, PrecommitEvent, PublishedDisposition,
 };
 use hiroute_gateway_core::runtime::body::{
-    BodyMetadataOwner, ChargedBodyQueue, ChargedBytes, MemoryRole, Reservation, StreamBudget,
+    BodyMetadataOwner, ChargedBodyQueue, ChargedBytes, MemoryRole, StreamBudget,
 };
 use hiroute_gateway_core::runtime::driver::{
     AcceptedBodyFrame, ClassifiedAttemptResult, NormalizedAttemptLocalReply,
@@ -34,14 +38,6 @@ use super::{
     ProductionReadiness, SemanticTerminalOutcome, label, safe_error,
 };
 
-pub(super) struct PrecommitDecoderBudget {
-    budget: StreamBudget,
-    raw_bytes: usize,
-    charged_bytes: usize,
-    charges: Vec<Reservation>,
-    _metadata: Reservation,
-}
-
 fn note_response_reasoning_loss(removed: usize) {
     if removed > 0
         && let Some(observation) = crate::server::core_runtime::observation::active_request()
@@ -51,62 +47,6 @@ fn note_response_reasoning_loss(removed: usize) {
             removed,
             None,
         );
-    }
-}
-
-impl PrecommitDecoderBudget {
-    const MAX_CHARGE_STEPS: usize = usize::BITS as usize + 1;
-
-    pub(super) fn new(budget: &StreamBudget) -> Result<Self, Arc<str>> {
-        let metadata_bytes = Self::MAX_CHARGE_STEPS
-            .checked_mul(std::mem::size_of::<Reservation>())
-            .ok_or_else(|| Arc::from("native decoder metadata budget overflow"))?;
-        let metadata = budget
-            .reserve(MemoryRole::ResponsePrefix, metadata_bytes)
-            .map_err(safe_error)?;
-        let charges = Vec::with_capacity(Self::MAX_CHARGE_STEPS);
-        Ok(Self {
-            budget: budget.clone(),
-            raw_bytes: 0,
-            charged_bytes: 0,
-            charges,
-            _metadata: metadata,
-        })
-    }
-
-    fn charge_frame(&mut self, bytes: usize) -> Result<(), Arc<str>> {
-        let raw_bytes = self
-            .raw_bytes
-            .checked_add(bytes)
-            .ok_or_else(|| Arc::from("native precommit decoder byte limit overflow"))?;
-        // Vec's amortized retained capacity is strictly below twice the live
-        // byte length after its minimum allocation. Shadow-charge that upper
-        // bound before the native decoder is allowed to copy this frame.
-        let target_charge = if raw_bytes == 0 {
-            0
-        } else {
-            raw_bytes
-                .checked_mul(2)
-                .and_then(|bytes| bytes.checked_add(8))
-                .ok_or_else(|| Arc::from("native precommit decoder charge overflow"))?
-        };
-        if target_charge > self.charged_bytes {
-            // Transport chunk boundaries are arbitrary and must not become a
-            // correctness limit. Grow the accounting reservation geometrically
-            // so a long sequence of tiny chunks uses bounded metadata while the
-            // request memory budget remains enforced.
-            let next_charge = target_charge
-                .checked_next_power_of_two()
-                .unwrap_or(target_charge);
-            self.charges.push(
-                self.budget
-                    .reserve(MemoryRole::ResponsePrefix, next_charge - self.charged_bytes)
-                    .map_err(safe_error)?,
-            );
-            self.charged_bytes = next_charge;
-        }
-        self.raw_bytes = raw_bytes;
-        Ok(())
     }
 }
 
@@ -166,78 +106,29 @@ pub(super) fn classify_precommit(
                     .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
                 );
             }
+            if state.streaming && status.is_success() {
+                // HTTP acceptance, not the arrival of a recognized semantic event,
+                // closes the transparent retry window. Body parsing stays bounded
+                // and executes only on the accepted response path.
+                return Ok(PrecommitClassification::classified(
+                    ClassifiedAttemptResult {
+                        facts: ProviderClassificationFacts {
+                            http_status: Some(status),
+                            readiness: label("response_headers"),
+                            retryability: RetryabilityFact::NonRetryable,
+                            ..ProviderClassificationFacts::default()
+                        },
+                        readiness: take_readiness(state, status, "text/event-stream", false)?,
+                    },
+                ));
+            }
             Ok(PrecommitClassification::pending())
         }
         PrecommitEvent::Body(bytes) => {
-            state
-                .decoder_budget
-                .as_mut()
-                .ok_or_else(|| Arc::from("native decoder budget owner is unavailable"))?
-                .charge_frame(bytes.retained_capacity())?;
             let status = state
                 .response_status
                 .ok_or_else(|| Arc::from("provider body arrived before final response head"))?;
-            if state.streaming && status.is_success() {
-                let outcome = match if state.native_output {
-                    project_native_chunk_state(state, bytes.bytes(), false)
-                } else {
-                    decode_stream_chunk_state(state, bytes.bytes(), false)
-                } {
-                    Ok(outcome) => outcome,
-                    Err(_) => {
-                        drop(bytes);
-                        return classify_state_failure(
-                            state,
-                            RawAttemptFailure::Protocol,
-                            StatusCode::BAD_GATEWAY,
-                        );
-                    }
-                };
-                drop(bytes);
-                if let Some(error) = outcome.failure {
-                    return classify_model_error(state, error, status, true);
-                }
-                if !state.native_output && outcome.terminal && outcome.semantic {
-                    // Chat/Messages have already supplied their native terminal.
-                    // Validate this fragment's tail before publishing the
-                    // translated terminal, then close the downstream stream
-                    // with the last queued output rather than waiting for the
-                    // upstream transport to close as a separate event.
-                    if finish_native_stream_on_terminal(&mut state.decoder).is_err() {
-                        return classify_state_failure(
-                            state,
-                            RawAttemptFailure::Protocol,
-                            StatusCode::BAD_GATEWAY,
-                        );
-                    }
-                    let terminal_chunks = state.prefix.as_ref().map_or(0, ChargedBodyQueue::len);
-                    if terminal_chunks == 0 {
-                        return classify_state_failure(
-                            state,
-                            RawAttemptFailure::Protocol,
-                            StatusCode::BAD_GATEWAY,
-                        );
-                    }
-                    state.prefix_terminal_chunks = Some(terminal_chunks);
-                }
-                if outcome.semantic {
-                    return Ok(PrecommitClassification::classified(
-                        ClassifiedAttemptResult {
-                            facts: semantic_response_facts(status),
-                            readiness: take_readiness(
-                                state,
-                                StatusCode::OK,
-                                "text/event-stream",
-                                // Native protocol terminal metadata, rather
-                                // than upstream transport EOF, marks the
-                                // eventual downstream EOS frame.
-                                false,
-                            )?,
-                        },
-                    ));
-                }
-                Ok(PrecommitClassification::pending())
-            } else if state.native_output && status.is_success() {
+            if state.native_output && status.is_success() {
                 let projected = state
                     .projector
                     .as_mut()
@@ -278,51 +169,7 @@ pub(super) fn classify_precommit(
             let status = state
                 .response_status
                 .ok_or_else(|| Arc::from("provider ended before final response head"))?;
-            if state.streaming && status.is_success() {
-                let outcome = match if state.native_output {
-                    project_native_chunk_state(state, &[], true)
-                } else {
-                    decode_stream_chunk_state(state, &[], true)
-                } {
-                    Ok(outcome) => outcome,
-                    Err(_) => {
-                        return classify_state_failure(
-                            state,
-                            RawAttemptFailure::Protocol,
-                            StatusCode::BAD_GATEWAY,
-                        );
-                    }
-                };
-                if let Some(error) = outcome.failure {
-                    return classify_model_error(state, error, status, true);
-                }
-                if !state.semantic_seen {
-                    return classify_state_failure(
-                        state,
-                        RawAttemptFailure::Protocol,
-                        StatusCode::BAD_GATEWAY,
-                    );
-                }
-                if !state.native_output {
-                    state
-                        .decoder
-                        .take()
-                        .ok_or_else(|| Arc::from("native response decoder is unavailable"))?
-                        .finish()
-                        .map_err(|_| Arc::from("native response terminal is malformed"))?;
-                }
-                Ok(PrecommitClassification::classified(
-                    ClassifiedAttemptResult {
-                        facts: semantic_response_facts(status),
-                        readiness: take_readiness(
-                            state,
-                            StatusCode::OK,
-                            "text/event-stream",
-                            true,
-                        )?,
-                    },
-                ))
-            } else if state.native_output && status.is_success() {
+            if state.native_output && status.is_success() {
                 let units = match state
                     .projector
                     .as_mut()
@@ -348,7 +195,7 @@ pub(super) fn classify_precommit(
                     push_native_prefix_unit(state, unit.bytes, unit.terminal.is_some())?;
                 }
                 if let Some(error) = failure {
-                    return classify_model_error(state, error, status, false);
+                    return classify_model_error(state, error, status);
                 }
                 if !state.semantic_seen || state.semantic_terminal.is_none() {
                     return classify_state_failure(
@@ -393,7 +240,7 @@ pub(super) fn classify_precommit(
                 };
                 state.semantic_terminal = semantic_terminal_for_response(&decoded.response);
                 if let Some(error) = decoded.response.error.clone() {
-                    return classify_model_error(state, error, status, false);
+                    return classify_model_error(state, error, status);
                 }
                 if !decoded
                     .events
@@ -488,7 +335,13 @@ pub(super) fn finalize_attempt_facts(
     let usage = readiness
         .and_then(|readiness| readiness.projector.as_ref())
         .map(|projector| projector.usage())
-        .or_else(|| state.projector.as_ref().map(|projector| projector.usage()));
+        .or_else(|| state.projector.as_ref().map(|projector| projector.usage()))
+        .or_else(|| {
+            readiness
+                .and_then(|r| r.renderer.as_ref())
+                .map(|r| r.usage())
+        })
+        .or_else(|| state.renderer.as_ref().map(|r| r.usage()));
     if let Some(usage) = usage.filter(|usage| !usage.is_empty()) {
         facts.usage = Some(model_usage_fact(usage));
     }
@@ -806,21 +659,13 @@ fn classify_model_error(
     state: &mut ProductionAttemptState,
     error: ModelError,
     response_status: StatusCode,
-    stream: bool,
 ) -> Result<PrecommitClassification<ProductionReadiness, ProductionDecodedSse>, Arc<str>> {
     let kind = sanitized_provider_kind(&state.profile, &error);
     let status = error.status.unwrap_or(response_status.as_u16());
-    let raw = if stream && response_status.is_success() {
-        RawAttemptFailure::Stream {
-            kind,
-            retry_after: state.retry_after,
-        }
-    } else {
-        RawAttemptFailure::Http {
-            status,
-            kind,
-            retry_after: state.retry_after,
-        }
+    let raw = RawAttemptFailure::Http {
+        status,
+        kind,
+        retry_after: state.retry_after,
     };
     let local_status = StatusCode::from_u16(status)
         .ok()
@@ -885,7 +730,6 @@ fn take_readiness(
         decoder: state.decoder.take(),
         renderer: state.renderer.take(),
         projector: state.projector.take(),
-        _decoder_budget: state.decoder_budget.take(),
         _chat_tool_projection_budget: state.chat_tool_projection_budget.take(),
         budget: state.budget.clone(),
         streaming: state.streaming,
@@ -893,43 +737,6 @@ fn take_readiness(
         prefix_terminal_chunks: state.prefix_terminal_chunks.take(),
         semantic_terminal: state.semantic_terminal,
     })
-}
-
-#[derive(Default)]
-struct StreamDecodeOutcome {
-    semantic: bool,
-    terminal: bool,
-    failure: Option<ModelError>,
-}
-
-fn project_native_chunk_state(
-    state: &mut ProductionAttemptState,
-    bytes: &[u8],
-    end_stream: bool,
-) -> Result<StreamDecodeOutcome, Arc<str>> {
-    let units = state
-        .projector
-        .as_mut()
-        .ok_or_else(|| Arc::from("native response projector is unavailable"))?
-        .feed(bytes, end_stream)
-        .map_err(|_| Arc::from("native stream response is malformed"))?;
-    let mut outcome = StreamDecodeOutcome::default();
-    for unit in units {
-        let semantic_before = state.semantic_seen || outcome.semantic;
-        if let Some(terminal) = unit.terminal {
-            let terminal = native_terminal(terminal);
-            state.semantic_terminal = Some(terminal);
-            state.terminal_seen = true;
-            outcome.terminal = true;
-        }
-        if unit.failure.is_some() && !semantic_before {
-            outcome.failure = unit.failure;
-        }
-        outcome.semantic |= unit.semantic;
-        push_native_prefix_unit(state, unit.bytes, unit.terminal.is_some())?;
-    }
-    state.semantic_seen |= outcome.semantic;
-    Ok(outcome)
 }
 
 fn project_native_chunk_readiness(
@@ -942,12 +749,18 @@ fn project_native_chunk_readiness(
         .as_mut()
         .ok_or_else(|| Arc::from("accepted native projector is unavailable"))?
         .feed(bytes, end_stream)
-        .map_err(|_| Arc::from("accepted native stream is malformed"))?;
+        .map_err(|error| response_diagnostics::adapter(FailureStage::NativeProjection, error))?;
     let mut output = Vec::new();
     let mut terminal = false;
     for unit in units {
         if terminal {
             return Err(Arc::from("native stream emitted bytes after terminal"));
+        }
+        if unit.failure.is_some() {
+            response_diagnostics::note(
+                FailureStage::ProviderStream,
+                FailureReason::ProviderRejected,
+            );
         }
         if let Some(outcome) = unit.terminal {
             readiness.semantic_terminal = Some(native_terminal(outcome));
@@ -964,6 +777,7 @@ fn push_native_prefix_unit(
     terminal: bool,
 ) -> Result<(), Arc<str>> {
     if state.prefix_terminal_chunks.is_some() {
+        response_diagnostics::note(FailureStage::PrefixBuffer, FailureReason::InvalidLifecycle);
         return Err(Arc::from("native response emitted output after terminal"));
     }
     push_prefix_bytes(state, bytes)?;
@@ -974,6 +788,7 @@ fn push_native_prefix_unit(
             .ok_or_else(|| Arc::from("response prefix owner is unavailable"))?
             .len();
         if chunks == 0 {
+            response_diagnostics::note(FailureStage::PrefixBuffer, FailureReason::InvalidLifecycle);
             return Err(Arc::from("native terminal produced no wire bytes"));
         }
         state.prefix_terminal_chunks = Some(chunks);
@@ -1004,70 +819,6 @@ fn model_usage_fact(usage: &ModelUsage) -> UsageFact {
     }
 }
 
-fn decode_stream_chunk_state(
-    state: &mut ProductionAttemptState,
-    bytes: &[u8],
-    end_stream: bool,
-) -> Result<StreamDecodeOutcome, Arc<str>> {
-    let decoder = state
-        .decoder
-        .as_mut()
-        .ok_or_else(|| Arc::from("native stream decoder is unavailable"))?;
-    let renderer = state
-        .renderer
-        .as_mut()
-        .ok_or_else(|| Arc::from("client stream renderer is unavailable"))?;
-    let prefix = state
-        .prefix
-        .as_mut()
-        .ok_or_else(|| Arc::from("response prefix owner is unavailable"))?;
-    let mut status = decoder
-        .feed(bytes, end_stream)
-        .map_err(|_| Arc::from("native stream response is malformed"))?;
-    let mut outcome = StreamDecodeOutcome::default();
-    loop {
-        for event in decoder.take_events() {
-            observe_semantic_terminal(&mut state.semantic_terminal, &event.event);
-            let semantic = event.is_semantic_output();
-            if let ModelEvent::ResponseFailed { error } = &event.event
-                && !state.semantic_seen
-                && !outcome.semantic
-            {
-                outcome.failure = Some(error.clone());
-            }
-            let rendered_events = renderer
-                .push(&event)
-                .map_err(|_| Arc::from("client stream event is not representable"))?;
-            let emitted = !rendered_events.is_empty();
-            for rendered in rendered_events {
-                push_queue_bytes(
-                    prefix,
-                    &state.budget,
-                    rendered
-                        .wire_bytes()
-                        .map_err(|_| Arc::from("client stream event serialization failed"))?,
-                )?;
-            }
-            note_response_reasoning_loss(renderer.take_reasoning_loss());
-            outcome.semantic |= semantic && emitted;
-            let terminal = matches!(
-                event.event,
-                ModelEvent::ResponseCompleted { .. } | ModelEvent::ResponseFailed { .. }
-            );
-            outcome.terminal |= terminal;
-            state.terminal_seen |= terminal;
-        }
-        if status != adapters::ResponseDecodeStatus::NeedDrain {
-            break;
-        }
-        status = decoder
-            .resume()
-            .map_err(|_| Arc::from("native stream response drain failed"))?;
-    }
-    state.semantic_seen |= outcome.semantic;
-    Ok(outcome)
-}
-
 fn decode_stream_chunk_readiness(
     readiness: &mut ProductionReadiness,
     bytes: &[u8],
@@ -1083,14 +834,20 @@ fn decode_stream_chunk_readiness(
         .ok_or_else(|| Arc::from("accepted client renderer is unavailable"))?;
     let mut status = decoder
         .feed(bytes, end_stream)
-        .map_err(|_| Arc::from("accepted native stream is malformed"))?;
+        .map_err(|error| response_diagnostics::adapter(FailureStage::Decode, error))?;
     let mut output = Vec::new();
     loop {
         for event in decoder.take_events() {
             observe_semantic_terminal(&mut readiness.semantic_terminal, &event.event);
+            if matches!(event.event, ModelEvent::ResponseFailed { .. }) {
+                response_diagnostics::note(
+                    FailureStage::ProviderStream,
+                    FailureReason::ProviderRejected,
+                );
+            }
             for rendered in renderer
                 .push(&event)
-                .map_err(|_| Arc::from("accepted client stream event is not representable"))?
+                .map_err(|error| response_diagnostics::adapter(FailureStage::Render, error))?
             {
                 output.extend_from_slice(
                     &rendered
@@ -1174,7 +931,9 @@ fn push_prefix_bytes(state: &mut ProductionAttemptState, bytes: Vec<u8>) -> Resu
         .prefix
         .as_mut()
         .ok_or_else(|| Arc::from("response prefix owner is unavailable"))?;
-    push_queue_bytes(prefix, &state.budget, bytes)
+    push_queue_bytes(prefix, &state.budget, bytes).inspect_err(|_| {
+        response_diagnostics::note(FailureStage::PrefixBuffer, FailureReason::ResourceLimit);
+    })
 }
 
 fn push_queue_bytes(

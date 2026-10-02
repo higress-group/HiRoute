@@ -22,7 +22,7 @@ pub(super) fn feed_projected_sse(
     end_stream: bool,
 ) -> Result<Vec<NativeProjectedUnit>, ProtocolAdapterError> {
     let charged = ChargedBytes::copy_from_opaque(budget, MemoryRole::TransportInflight, bytes)
-        .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?;
+        .map_err(|_| ModelIrError::BufferLimit(bytes.len()))?;
     let mut metadata = VecDeque::new();
     let mut sink = ProjectedSink::default();
     let mut visitor = ProjectionVisitor {
@@ -41,7 +41,10 @@ pub(super) fn feed_projected_sse(
         )
         .into());
     }
-    outcome.map_err(|error| ModelIrError::InvalidSse(error.to_string()))?;
+    outcome.map_err(|error| match error {
+        SseError::BudgetExceeded => ModelIrError::BufferLimit(bytes.len()),
+        other => ModelIrError::InvalidSse(other.to_string()),
+    })?;
     if sink.output.len() != metadata.len() {
         return Err(
             ModelIrError::InvalidSse("native projector lost SSE output metadata".into()).into(),

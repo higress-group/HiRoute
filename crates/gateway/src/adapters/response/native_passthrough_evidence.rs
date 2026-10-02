@@ -259,7 +259,7 @@ impl ProjectionState {
                 .and_then(Value::as_str);
             let expected_type = match kind {
                 "output_text" | "refusal" => "message",
-                "reasoning_summary_text" => "reasoning",
+                "reasoning_summary_text" | "reasoning_text" => "reasoning",
                 "function_call_arguments" => "function_call",
                 "custom_tool_call_input" => "custom_tool_call",
                 _ => unreachable!("tracked delta kind"),
@@ -309,7 +309,12 @@ fn added_text_prefixes(item: &Map<String, Value>) -> Vec<AddedTextPrefix> {
     if let Some(content) = item.get("content").and_then(Value::as_array) {
         for (position, block) in content.iter().enumerate() {
             if let Some(text) = block.get("text").and_then(Value::as_str) {
-                capture(position, "output_text", text);
+                let kind = if item.get("type").and_then(Value::as_str) == Some("reasoning") {
+                    "reasoning_text"
+                } else {
+                    "output_text"
+                };
+                capture(position, kind, text);
             }
             if let Some(refusal) = block.get("refusal").and_then(Value::as_str) {
                 capture(position, "refusal", refusal);
@@ -341,6 +346,8 @@ fn delta_kind(event: &str) -> Option<(&'static str, &'static str, Option<&'stati
         Some(("refusal", "refusal", Some("content_index")))
     } else if event.starts_with("response.reasoning_summary_text.") {
         Some(("reasoning_summary_text", "text", Some("summary_index")))
+    } else if event.starts_with("response.reasoning_text.") {
+        Some(("reasoning_text", "text", Some("content_index")))
     } else if event.starts_with("response.function_call_arguments.") {
         Some(("function_call_arguments", "arguments", None))
     } else if event.starts_with("response.custom_tool_call_input.") {
@@ -352,15 +359,11 @@ fn delta_kind(event: &str) -> Option<(&'static str, &'static str, Option<&'stati
 
 fn final_text<'a>(item: &'a Map<String, Value>, position: usize, kind: &str) -> Option<&'a str> {
     match kind {
-        "output_text" | "refusal" => item
+        "output_text" | "refusal" | "reasoning_text" => item
             .get("content")?
             .as_array()?
             .get(position)?
-            .get(if kind == "output_text" {
-                "text"
-            } else {
-                "refusal"
-            })?
+            .get(if kind != "refusal" { "text" } else { "refusal" })?
             .as_str(),
         "reasoning_summary_text" => item
             .get("summary")?

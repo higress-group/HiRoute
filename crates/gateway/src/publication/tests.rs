@@ -37,9 +37,10 @@ fn domain_gateway_profile_roundtrip_preserves_model_evidence() {
 fn published_attempt_phases_default_to_ten_minutes() {
     let aggregate = super::compiler::compile(&snapshot(1, "renderer")).unwrap();
     #[cfg(feature = "e2e-test-control")]
-    let override_timeout = crate::server::test_control::attempt_timeout_override();
+    let expected_timeout = crate::server::test_control::attempt_timeout_override()
+        .unwrap_or(Duration::from_secs(10 * 60));
     #[cfg(not(feature = "e2e-test-control"))]
-    let override_timeout: Option<Duration> = None;
+    let expected_timeout = Duration::from_secs(10 * 60);
     let plans = aggregate
         .envelope
         .attempt_plan_index_handle
@@ -47,18 +48,9 @@ fn published_attempt_phases_default_to_ten_minutes() {
         .collect::<Vec<_>>();
     assert_eq!(plans.len(), 2);
     for (_, plan) in plans {
-        assert_eq!(
-            plan.timeouts.request_write,
-            override_timeout.unwrap_or(Duration::from_secs(10 * 60))
-        );
-        assert_eq!(
-            plan.timeouts.first_byte,
-            override_timeout.unwrap_or(Duration::from_secs(10 * 60))
-        );
-        assert_eq!(
-            plan.timeouts.stream_idle,
-            override_timeout.unwrap_or(Duration::from_secs(10 * 60))
-        );
+        assert_eq!(plan.timeouts.request_write, expected_timeout);
+        assert_eq!(plan.timeouts.first_byte, expected_timeout);
+        assert_eq!(plan.timeouts.stream_idle, expected_timeout);
     }
 }
 

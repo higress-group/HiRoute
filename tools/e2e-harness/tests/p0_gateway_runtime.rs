@@ -294,9 +294,9 @@ fn forged_generic_error_header_cannot_change_connector_classification() {
 }
 
 #[test]
-fn preoutput_native_sse_error_falls_back_but_semantic_output_is_rendered() {
+fn successful_sse_headers_commit_even_without_semantic_output_and_never_fallback() {
     for first_body in [
-        b"event: response.failed\ndata: {\"type\":\"response.failed\",\"error\":{\"type\":\"server_error\",\"message\":\"retry\"}}\n\n".as_slice(),
+        b"event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"id\":\"failed-stream\",\"model\":\"runtime-native\",\"status\":\"failed\",\"output\":[],\"error\":{\"type\":\"server_error\",\"message\":\"retry\"},\"usage\":{\"input_tokens\":7,\"output_tokens\":2}}}\n\n".as_slice(),
         b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"empty-stream\",\"model\":\"runtime-native\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"empty-stream\",\"model\":\"runtime-native\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":0,\"total_tokens\":1}}}\n\n".as_slice(),
         b": keepalive\n\nevent: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"control-only\",\"model\":\"runtime-native\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"control-only\",\"model\":\"runtime-native\",\"status\":\"completed\",\"output\":[]}}\n\n".as_slice(),
     ] {
@@ -308,15 +308,64 @@ fn preoutput_native_sse_error_falls_back_but_semantic_output_is_rendered() {
             status: 200,
             body: RESPONSES_STREAM_OK,
         }]);
-        let fixture = RuntimeFixture::launch(&[&first, &second], 2);
+        let fixture = RuntimeFixture::launch_with_observation(
+            &[&first, &second], 2, ObservationFaults::healthy());
 
         let response =
             fixture.request_body(br#"{"model":"runtime-model","input":"hello","stream":true}"#);
         assert_eq!(response.status, 200);
         assert_eq!(first.calls(), 1);
-        assert_eq!(second.calls(), 1);
-        assert!(String::from_utf8_lossy(&response.body).contains("response.output_text.delta"));
+        assert_eq!(second.calls(), 0);
+        assert!(!String::from_utf8_lossy(&response.body).contains("response.output_text.delta"));
+        assert!(String::from_utf8_lossy(&response.body).contains(
+            if first_body.starts_with(b"event: response.failed") {
+                "response.failed"
+            } else {
+                "response.completed"
+            }
+        ));
+        if first_body.starts_with(b"event: response.failed") {
+            let facts = wait_execution_facts(&fixture, 1);
+            assert!(facts.iter().any(|row|
+                row.pointer("/fact/kind").and_then(|v| v.as_str()) == Some("usage_and_cache")
+                && row.pointer("/fact/input_tokens").and_then(|v| v.as_u64()) == Some(7)
+                && row.pointer("/fact/output_tokens").and_then(|v| v.as_u64()) == Some(2)
+            ), "failed stream must retain reported usage: {facts:?}");
+        }
     }
+}
+
+#[test]
+fn successful_stream_forwards_unknown_events_before_any_semantic_output() {
+    use std::io::Read;
+    let unknown = b"event: response.vendor_extension\ndata: {\"opaque\":\"early-event\"}\n\n";
+    let provider = NativeProvider::start(vec![ProviderReply::StreamDrip {
+        status: 200,
+        chunks: vec![unknown.to_vec(), RESPONSES_STREAM_OK.to_vec()],
+        interval: Duration::from_secs(5),
+    }]);
+    let fixture = RuntimeFixture::launch(&[&provider], 1);
+    let mut stream = open_request(
+        fixture.address,
+        "POST",
+        "/v1/responses",
+        &[("X-HiRoute-Token", "runtime-token")],
+        br#"{"model":"runtime-model","input":"hello","stream":true}"#,
+    );
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut received = Vec::new();
+    let mut chunk = [0u8; 4096];
+    while !received.windows(unknown.len()).any(|part| part == unknown) {
+        let count = stream
+            .read(&mut chunk)
+            .expect("unknown event must arrive before the provider resumes");
+        assert!(count > 0, "stream ended before its unknown event");
+        received.extend_from_slice(&chunk[..count]);
+    }
+    assert!(received.starts_with(b"HTTP/1.1 200"));
+    assert_eq!(provider.calls(), 1);
 }
 
 #[test]

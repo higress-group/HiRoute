@@ -243,6 +243,32 @@ impl RequestObservation {
             .token(CorrelationDomain::Attempt, attempt_id)
     }
 
+    pub(crate) fn response_failure(
+        &self,
+        stage: hiroute_diagnostics::event::ResponseFailureStage,
+        reason: hiroute_diagnostics::event::ResponseFailureReason,
+    ) {
+        let state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        let attempt = state
+            .accepted_attempt
+            .as_ref()
+            .or(state.current_attempt.as_ref())
+            .or(state.pending_attempt.as_ref());
+        let ordinal = attempt
+            .map(|a| a.ordinal)
+            .filter(|n| *n != 0)
+            .unwrap_or(state.next_attempt_ordinal);
+        drop(state);
+        self.emit_diagnostic(DiagnosticEvent::ResponseFailure(
+            hiroute_diagnostics::event::ResponseFailure {
+                request_token: self.inner.request_token,
+                attempt_index: u64::from(ordinal),
+                stage,
+                reason,
+            },
+        ));
+    }
+
     pub(crate) fn reasoning_cleanup(
         &self,
         reason: hiroute_diagnostics::event::ReasoningCleanupReason,
