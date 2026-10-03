@@ -9,6 +9,7 @@
   "permissions": [
     "core:window:allow-set-theme",
     "core:window:allow-start-dragging",
+    "clipboard-manager:allow-write-text",
     "allow-desktop-snapshot",
     "allow-preview-rename",
     "allow-preview-restore-name",

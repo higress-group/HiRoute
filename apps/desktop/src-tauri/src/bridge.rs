@@ -838,7 +838,9 @@ pub fn run() {
     // An explicit background start runs the same Resident initialization and recovery chain;
     // only the window presentation differs.
     let background = std::env::args().any(|argument| argument == "--background");
-    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init());
     #[cfg(all(feature = "desktop-pilot", debug_assertions))]
     let builder = builder.plugin(tauri_plugin_pilot::init());
     let app = builder

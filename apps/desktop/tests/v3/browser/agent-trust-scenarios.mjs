@@ -80,7 +80,7 @@ const scenarios = [
     assert(Object.values(spec.preset_mappings).every(choice => choice.kind === 'plan' && choice.plan_id === route.value), 'Shared route did not cover all three presets');
     assert(!Object.hasOwn(spec, 'model'), 'Shortcut changed the native current model');
   }],
-  ['Codex copies the confirmed profile command when the native WebView clipboard API rejects', async () => {
+  ['Codex copies the confirmed profile command through native IPC when browser copying rejects', async () => {
     await freshCodex('cliOnly', true);
     const agent = c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default');
     const command = `CODEX_HOME='/path with spaces' codex --profile hiroute`;
@@ -94,10 +94,13 @@ const scenarios = [
     c().refresh(); await tick();
     const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
     const previousCopy = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const previousNative = Object.getOwnPropertyDescriptor(window, 'isTauri');
     const copied = [];
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { async writeText() { throw new Error('NotAllowedError'); } } });
-    Object.defineProperty(document, 'execCommand', { configurable: true, value: action => { assert(action === 'copy', 'Unexpected clipboard action'); copied.push(document.activeElement.value); return true; } });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => { throw new Error('Browser clipboard is unavailable'); } });
+    Object.defineProperty(window, 'isTauri', { configurable: true, value: true });
     try {
+      c().handlers['plugin:clipboard-manager|write_text'] = payload => { copied.push(payload.text); };
       c().handlers.preview_agent_settings = payload => {
         agent.context_id = agent.codex_access.profile_context_id;
         agent.codex_access.slot_occupied = true;
@@ -114,6 +117,7 @@ const scenarios = [
     } finally {
       if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard); else delete navigator.clipboard;
       if (previousCopy) Object.defineProperty(document, 'execCommand', previousCopy); else delete document.execCommand;
+      if (previousNative) Object.defineProperty(window, 'isTauri', previousNative); else delete window.isTauri;
     }
   }],
   ['Desktop-only Codex repairs an existing fixed-model binding without a surface selector', async () => {
