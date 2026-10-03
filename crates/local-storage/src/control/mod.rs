@@ -2904,10 +2904,10 @@ impl ManagedArtifactStore {
                     == Some(&CanonicalDigest::of(&marker).map_err(|_| {
                         port(PortErrorCode::InvalidData, "artifact.deletion.identity")
                     })?);
-            if let Some(snapshot) = &staged {
-                if snapshot.fingerprint != marker.after_digest {
-                    return Ok(CompensationOutcome::OwnershipLost);
-                }
+            if let Some(snapshot) = &staged
+                && snapshot.fingerprint != marker.after_digest
+            {
+                return Ok(CompensationOutcome::OwnershipLost);
             }
             // An intact rendered stage proves rename has not happened. Discard only our
             // stage and preserve a concurrent user edit; no target write needs undoing.
