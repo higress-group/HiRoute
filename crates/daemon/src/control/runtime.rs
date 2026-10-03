@@ -1128,11 +1128,6 @@ impl AgentDiscoveryPort for LocalControlAdapter {
                     } else {
                         access.root_context_id.clone()
                     });
-                    if access.selected_mode == "profile" {
-                        agent
-                            .available_surfaces
-                            .retain(|s| *s == hiroute_domain::AgentModelSurfaceV2::CodexCli);
-                    }
                     agent.codex_access = Some(access);
                 }
                 Ok(agent)

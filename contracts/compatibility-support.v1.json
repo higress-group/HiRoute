@@ -218,6 +218,7 @@
     "hiroute.native-field-restore/v1",
     "hiroute.native-files/v1",
     "hiroute.native-observation/v2",
+    "hiroute.native-restoration-ack/v1",
     "hiroute.observation-retention/v1",
     "hiroute.observation.ack/v2",
     "hiroute.observation.conversation-content-envelope/v2",

@@ -1,4 +1,5 @@
 use super::*;
+use hiroute_domain::ExternalEffectIntentV1;
 
 impl<'a, C, S, R, E, I> TransactionCoordinator<'a, C, S, R, E, I>
 where
@@ -173,7 +174,9 @@ where
             .plan
             .external()
             .iter()
-            .filter(|intent| intent.kind() == effect_kind)
+            .filter(|intent| {
+                intent.kind() == effect_kind && !deferred_settings_restoration(operation, intent)
+            })
             .cloned()
             .collect::<Vec<_>>();
         for intent in intents {
@@ -333,6 +336,17 @@ where
         {
             self.external
                 .prepare_agent_artifact_activation(operation, &intent)?;
+            // A revoke prepares the client file only after its service receipt. Even a conflict
+            // that predates the click must park cleanup with the access already withdrawn.
+            if deferred_settings_restoration(operation, &intent)
+                && matches!(
+                    self.external.observe_external(operation, &intent)?,
+                    EffectReconciliation::Missing
+                )
+            {
+                let effect = self.external.apply_external(operation, &intent)?;
+                self.record_effect(operation, OperationStepKind::ApplyAgentArtifacts, effect)?;
+            }
             let effect = match self.external.observe_external(operation, &intent)? {
                 EffectReconciliation::Staged(effect) => {
                     self.external.activate_external(operation, &effect)?
@@ -389,4 +403,13 @@ where
         self.control.save_operation(operation)?;
         Ok(())
     }
+}
+
+fn deferred_settings_restoration(operation: &OperationV1, intent: &ExternalEffectIntentV1) -> bool {
+    hiroute_domain::is_settings_managed_configuration(intent)
+        && operation
+            .plan
+            .agent_access_grants()
+            .iter()
+            .any(|mutation| mutation.kind() == AgentAccessGrantMutationKindV1::Revoke)
 }

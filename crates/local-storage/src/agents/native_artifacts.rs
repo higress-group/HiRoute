@@ -17,6 +17,16 @@ impl NativeAgentArtifactPort for ManagedArtifactStore {
         intent: &ExternalEffectIntentV1,
         expected: Option<&[u8]>,
     ) -> PortResult<OwnedEffectV1> {
+        if matches!(
+            self.observe_artifact(operation, intent)?,
+            EffectReconciliation::Missing
+        ) && self
+            .load_marker(operation, intent.effect_id())
+            .map_err(|_| port(PortErrorCode::Corrupt, "native.restoration.marker"))?
+            .is_none()
+        {
+            return self.acknowledge_unstaged_native_restoration(operation, intent, expected);
+        }
         // Observe authenticates the marker, intent binding and backup before any acknowledgment.
         if !matches!(
             self.observe_artifact(operation, intent)?,

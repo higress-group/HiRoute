@@ -571,3 +571,94 @@ fn native_restoration_acknowledgment_preserves_bytes_and_reopens() {
         EffectReconciliation::OwnershipLost(_)
     ));
 }
+
+#[test]
+fn unstaged_restoration_ack_is_protected_bound_and_never_rewrites() {
+    let original = OperationId::parse("op_11112222333344445555666677778888").unwrap();
+    let cleanup = |before| {
+        let spec = ChangeSpecV1 {
+            schema_version: hiroute_domain::CHANGE_SPEC_SCHEMA_V1,
+            command_id: "agents.settings.apply".into(),
+            resource_id: Some("agent-context/unstaged-cleanup".into()),
+            desired_state: json!({"schema_version":{"major":2,"minor":0},
+                "context_id":"agent-context/unstaged-cleanup",
+                "model":{"intent":"restore","restore_point_ref":"restore/original"}}),
+        };
+        let subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent_codex_default",
+            "codex-standalone-profile-v1",
+            "builtin/codex-responses/v1",
+        )
+        .unwrap();
+        let control = AgentConnectionControlIntentV1::from_settings_planner(
+            subject,
+            &spec,
+            false,
+            &json!({"revision":1}),
+        )
+        .unwrap();
+        settings_codex_model_file_intent(
+            &control,
+            "agent-context/unstaged-cleanup",
+            CanonicalDigest::of_bytes(b"original"),
+            before,
+            CodexModelFileAction::Restore {
+                original_operation: original.clone(),
+                native_model: None,
+            },
+        )
+        .unwrap()
+    };
+    let temp = crate::test_tempdir().unwrap();
+    let path = temp.path().join("hiroute.config.toml");
+    write(&path, b"original");
+    let prototype = cleanup(None);
+    let artifacts = store(temp.path(), prototype.target(), &path);
+    let intent = cleanup(
+        artifacts
+            .current_external_fingerprint(prototype.target())
+            .unwrap(),
+    );
+    let op = OperationId::parse("op_00112233445566778899aabbccddeeff").unwrap();
+    let cleaned = b"# user retained content\nuser_setting = true\n";
+    write(&path, cleaned);
+    assert!(
+        artifacts
+            .acknowledge_native_restoration(&op, &intent, Some(b"stale"))
+            .is_err()
+    );
+    let effect = artifacts
+        .acknowledge_native_restoration(&op, &intent, Some(cleaned))
+        .unwrap();
+    assert_eq!(fs::read(&path).unwrap(), cleaned);
+    drop(artifacts);
+    let reopened = store(temp.path(), prototype.target(), &path);
+    assert!(matches!(
+        reopened.observe_artifact(&op, &intent).unwrap(),
+        EffectReconciliation::Applied(_)
+    ));
+    assert!(matches!(
+        reopened.observe_artifact(&original, &intent).unwrap(),
+        EffectReconciliation::Missing
+    ));
+    assert_eq!(
+        reopened.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::OwnershipLost
+    );
+    let record = fs::read_dir(&reopened.restore_root)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.extension().is_some_and(|e| e == "native-restore"))
+        .unwrap();
+    let encrypted = fs::read(&record).unwrap();
+    let mut damaged = encrypted.clone();
+    *damaged.last_mut().unwrap() ^= 1;
+    fs::write(&record, damaged).unwrap();
+    assert!(reopened.observe_artifact(&op, &intent).is_err());
+    fs::write(&record, encrypted).unwrap();
+    write(&path, b"# changed after acknowledgment\n");
+    assert!(matches!(
+        reopened.observe_artifact(&op, &intent).unwrap(),
+        EffectReconciliation::OwnershipLost(_)
+    ));
+}

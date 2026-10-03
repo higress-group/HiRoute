@@ -42,6 +42,8 @@ mod journal;
 mod native_artifacts;
 #[path = "../agents/native_directories.rs"]
 mod native_directories;
+#[path = "../agents/native_restoration_ack.rs"]
+mod native_restoration_ack;
 mod operation_status;
 mod plans;
 mod prices;
@@ -2633,6 +2635,9 @@ impl ManagedArtifactStore {
             .load_marker(operation_id, intent.effect_id())
             .map_err(|_| port(PortErrorCode::Unavailable, "artifact.marker.observe"))?
         else {
+            if let Some(state) = self.observe_unstaged_native_restoration(operation_id, intent)? {
+                return Ok(state);
+            }
             return Ok(EffectReconciliation::Missing);
         };
         if marker.compensated {
@@ -2819,6 +2824,11 @@ impl ManagedArtifactStore {
     }
 
     pub fn compensate_artifact(&self, effect: &OwnedEffectV1) -> PortResult<CompensationOutcome> {
+        // A semantic acknowledgment did not write the client file; it never authorizes undoing
+        // the user's cleanup, including recovery of a failed enclosing operation.
+        if effect.compensation["schema"] == native_restoration_ack::ACK_SCHEMA {
+            return Ok(CompensationOutcome::OwnershipLost);
+        }
         let operation_id = effect
             .compensation
             .get("operation_id")

@@ -1,4 +1,5 @@
 import { CodexAccessPanel, type CodexAccess } from './features/agents/CodexAccessPanel';
+import { codexSurfaceFacts } from './features/agents/codex-surfaces';
 import { AgentCapabilityPreview } from './agent-capability-preview';
 import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon } from './ui';
 import { confirmDiscard, useDiscardGuard } from './ui/discard-guard';
@@ -663,8 +664,12 @@ export function Agents({
     : Boolean(selected?.settings?.collaboration?.restore_point_ref);
   const selectedPlansEnabled = editorValues.allowedPlanIds.every(id => enabledPlans.some(plan => plan.agent_plan_id === id));
   const defaultChoice = editorValues.defaultChoice;
-  const detectedCodexSurfaces = new Set<AgentModelSurface>((selected?.available_surfaces ?? [])
-    .filter(surface => surface === 'codex_cli' || surface === 'codex_desktop'));
+  const activeCodexMode = selected?.codex_access?.slot_occupied
+    ? selected.codex_access.selected_mode : codexMode;
+  const codexSurfaces = codexSurfaceFacts(activeCodexMode, selected?.available_surfaces ?? []);
+  const verificationSurfaces = (selected?.available_surfaces ?? []).filter(surface =>
+    selected?.agent_id !== 'agent_codex_default'
+      || codexSurfaces.some(fact => fact.surface === surface && fact.applicable));
   const catalogModels = (selected?.native_model_catalog?.models ?? [])
     .map(model => ({ ...model, source_options: model.source_options ?? [] }));
   const nativeRestoreOptions = catalogModels.filter(model =>
@@ -870,8 +875,8 @@ export function Agents({
                 <section className="detail-section v3-agent-section">
                   <div className="detail-section-head"><h3>{text('模型路由', 'Model routing')}</h3><button className="btn btn-quiet" data-agent-facet="model" disabled={busy || selectedPending || !selected.context_id || !mutable} onClick={event => open(selected, 'model', event.currentTarget)}>{modelSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button></div>
                   <p>{modelSelection ? <>{text('当前选择：', 'Current selection: ')}<strong>{modelSelectionSummary}</strong></> : text('为此 Agent 配置固定模型，或通过智能路由自动选择模型。', 'Configure a fixed model for this Agent, or use smart routing to choose a model automatically.')}</p>
-                  {modelSelection && (selected.available_surfaces ?? []).length > 0 && <div className="agent-surface-results" aria-label={text('当前客户端验证结果', 'Current client verification results')}>
-                    {selected.available_surfaces?.map(surface => {
+                  {modelSelection && verificationSurfaces.length > 0 && <div className="agent-surface-results" aria-label={text('当前客户端验证结果', 'Current client verification results')}>
+                    {verificationSurfaces.map(surface => {
                       const revision = selected.settings?.applied_revision;
                       const result = selected.settings?.surface_results?.find(item => item.surface === surface && item.applied_revision === revision);
                       const state = selected.settings?.state === 'configured' && !selected.status_error && revision != null
@@ -914,9 +919,10 @@ export function Agents({
                           <label className="check-row"><input type="radio" name="codex-native-mode" value="hiroute_only" checked={editorValues.nativeModelMode === 'hiroute_only'} onChange={() => selectNativeModelMode('hiroute_only')} /><div><strong>{text('只使用已配置的 HiRoute 模型', 'Use configured HiRoute models only')}</strong><small>{text('无需接入原 Codex 账号；关闭时恢复原配置。', 'No original Codex account connection required; disabling restores the original configuration.')}</small></div></label>
                           <label className="check-row"><input type="radio" name="codex-native-mode" value="preserve_available" checked={editorValues.nativeModelMode === 'preserve_available'} onChange={() => selectNativeModelMode('preserve_available')} /><div><strong>{text('同时保留 Codex 原有模型', 'Also keep native Codex models')}</strong><small>{text('先在“模型”接入原订阅账号或 API 来源；只保留能证明同账号可调用的模型。缓存目录不是账号权限。', 'Connect the original subscription account or API source under Models first. Only proven same-account models are kept; the cache is not entitlement.')}</small></div></label>
                         </fieldset>
-                        <div className="callout" data-codex-shared-scope><UiIcon name="info" /><div><strong>{text('一套共享配置', 'One shared configuration')}</strong><p>{text('保存一次即作用于共享此配置作用域与 CODEX_HOME 的 Codex CLI 和 Desktop。下面的发现结果是当前事实，不是配置范围开关。', 'One save applies to Codex CLI and Desktop when they share this configuration scope and CODEX_HOME. Detection below is a current fact, not a configuration-scope switch.')}</p>{(['codex_desktop', 'codex_cli'] as const).map(surface => {
-                          const detected = detectedCodexSurfaces.has(surface);
-                          return <span className="field-help" key={surface} data-agent-surface-fact={surface} data-agent-surface-detected={detected ? 'true' : 'false'}>{surfaceName(surface)} · {detected ? text('当前已发现可执行入口', 'currently detected as runnable') : text('当前未发现可执行入口；不影响保存', 'not currently detected as runnable; saving is unaffected')}</span>;
+                        <div className="callout" data-codex-shared-scope><UiIcon name="info" /><div><strong>{activeCodexMode === 'profile' ? text('独立 CLI 配置', 'Separate CLI configuration') : text('一套共享配置', 'One shared configuration')}</strong><p>{activeCodexMode === 'profile'
+                          ? text('本次保存只作用于指定 profile 的 Codex CLI。Desktop 继续使用原来的默认配置。', 'This save applies only to Codex CLI using the selected profile. Desktop keeps its original default configuration.')
+                          : text('保存一次即作用于共享此配置作用域与 CODEX_HOME 的 Codex CLI 和 Desktop。', 'One save applies to Codex CLI and Desktop when they share this configuration scope and CODEX_HOME.')}</p>{codexSurfaces.map(({surface, detected, applicable}) => {
+                          return <span className="field-help" key={surface} data-agent-surface-fact={surface} data-agent-surface-detected={detected ? 'true' : 'false'} data-agent-surface-applicable={applicable ? 'true' : 'false'}>{surfaceName(surface)} · {detected ? text('当前已发现可执行入口', 'currently detected as runnable') : text('当前未发现可执行入口', 'not currently detected as runnable')} · {applicable ? text('适用当前模式', 'applies to this mode') : text('不适用当前模式', 'does not apply to this mode')}</span>;
                         })}</div></div>
                         {fixedModelRows.length > 0 && <fieldset data-agent-fixed-models><legend className="field-label">{text('已配置的原生模型固定来源', 'Configured native model sources')}</legend>
                           {fixedModelRows.map(model => {

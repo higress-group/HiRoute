@@ -137,12 +137,16 @@ impl LocalControlAdapter {
                 .as_deref()
                 .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
                 .is_none()
-            || !matches!(
-                self.artifacts
-                    .observe_artifact(&operation.operation_id, intent)?,
-                EffectReconciliation::OwnershipLost(_)
-            )
         {
+            return Ok(());
+        }
+        let state = self
+            .artifacts
+            .observe_artifact(&operation.operation_id, intent)?;
+        if !matches!(
+            state,
+            EffectReconciliation::Missing | EffectReconciliation::OwnershipLost(_)
+        ) {
             return Ok(());
         }
         self.require_current_operation(operation)?;
@@ -198,6 +202,10 @@ impl LocalControlAdapter {
         // Only acknowledge complete cleanup. Remaining owned fields require user repair;
         // neither comments nor unrelated edits are overwritten or rebased by this path.
         if restored.as_str() != text {
+            // A first deferred preparation still needs to render and stage restoration.
+            if matches!(state, EffectReconciliation::Missing) {
+                return Ok(());
+            }
             return Err(conflict("codex.restore.ack.incomplete"));
         }
         self.artifacts.acknowledge_native_restoration(

@@ -46,7 +46,9 @@ pub fn codex_profile_dependency_digest(
                     .get("model_providers")
                     .and_then(|v| v.get("hiroute"))
                     .is_some()
-                    || doc.get("profiles").and_then(|v| v.get("hiroute")).is_some())
+                    || doc.get("profiles").and_then(|v| v.get("hiroute")).is_some()
+                    || doc.get("profile").and_then(|v| v.as_str())
+                        == Some(CODEX_MANAGED_PROFILE_NAME))
             {
                 return Err(AgentFilesystemScanError::InvalidConfig);
             }
@@ -166,6 +168,11 @@ mod tests {
         assert!(codex_profile_dependency_digest(&root, true).is_err());
         std::fs::write(&root, "[profiles.hiroute]\nmodel = 'legacy'\n").unwrap();
         assert!(codex_profile_dependency_digest(&root, true).is_err());
+        std::fs::write(&root, "profile = 'hiroute'\n").unwrap();
+        assert!(codex_profile_dependency_digest(&root, false).is_err());
+        assert!(codex_profile_dependency_digest(&root, true).is_err());
+        std::fs::write(&root, "profile = 'user_keep'\n").unwrap();
+        assert!(codex_profile_dependency_digest(&root, false).is_ok());
         std::fs::write(&root, "").unwrap();
         let profile = root.with_file_name("hiroute.config.toml");
         std::fs::write(&profile, "").unwrap();

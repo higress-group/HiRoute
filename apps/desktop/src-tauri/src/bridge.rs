@@ -18,6 +18,7 @@ use hiroute_diagnostics::event::{
     ConfirmationPhase, DiagnosticEvent, PreviewEvent, PreviewPhase,
 };
 use hiroute_diagnostics::identity::CorrelationToken;
+use serde_json::Value;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
