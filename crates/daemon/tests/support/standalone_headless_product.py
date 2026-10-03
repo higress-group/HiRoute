@@ -342,7 +342,7 @@ for line in sys.stdin:
             '--version', '0.1.0-headless-product', '--revision', self.sha,
             '--hiroute', str(candidate_hiroute),
             '--hirouted', str(candidate_hirouted),
-            '--cpa-binary', str(cpa), '--cpa-version', '8.0.4-hiroute.1',
+            '--cpa-binary', str(cpa), '--cpa-version', '8.0.4-hiroute.2',
             '--cpa-license', str(license_path),
             '--notices', str(package_source / 'notices'), '--output', str(self.package),
         ], cwd=self.repo, env=self.env, capture_output=True, timeout=90)
@@ -677,13 +677,13 @@ def run(repository):
         codex = next(agent for agent in scan['agents']
                      if agent['agent_id'] == 'agent_codex_default')
         assert codex['supported'], codex
-        context = codex['context_id']
+        context = codex['codex_access']['root_context_id']
         checked_agent = product.cli(
             'agents', 'check', 'agent_codex_default', '--scope', 'native-authentication')['data']
         assert checked_agent['native_authentication'] == 'proven'
         rescanned = next(agent for agent in product.cli('agents', 'scan')['data']['agents']
                          if agent['agent_id'] == 'agent_codex_default')
-        assert rescanned['supported'] and rescanned['context_id'] == context, rescanned
+        assert rescanned['supported'] and rescanned['codex_access']['root_context_id'] == context, rescanned
         spec = {
             'schema_version': {'major': 2, 'minor': 0},
             'context_id': context,

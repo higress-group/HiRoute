@@ -63,6 +63,8 @@ pub struct ControlStateSnapshotV1 {
 #[serde(deny_unknown_fields)]
 pub struct DiscoveredAgentV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_access: Option<CodexAccessViewV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_id: Option<String>,
     pub agent_id: String,
     pub profile_id: String,
@@ -83,6 +85,23 @@ pub struct DiscoveredAgentV1 {
     pub discovered_credential: Option<DiscoveredCredentialInputV1>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permission_hardening: Option<AgentConfigPermissionFindingV1>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodexAccessViewV1 {
+    pub codex_home: String,
+    pub slot_id: String,
+    pub profile_context_id: String,
+    pub root_context_id: String,
+    pub selected_mode: String,
+    pub slot_occupied: bool,
+    pub target_file: String,
+    pub profile_name: String,
+    pub commands: BTreeMap<String, String>,
+    pub pending_operation: Option<String>,
+    pub access_revoked: bool,
+    pub conflict_fields: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -295,6 +314,13 @@ pub trait ApplicationMutationPort: Send + Sync {
 /// Read-only facts needed by the typed AgentConnection planner and managed-launch endpoint.
 /// The daemon adapter owns filesystem/publication joins; Application owns every product decision.
 pub trait AgentConnectionControlPort: Send + Sync {
+    fn retry_settings_operation(
+        &self,
+        _request: &hiroute_application_api::AgentSettingsRetryV1,
+    ) -> Result<OperationV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+
     /// Explicit protected Check admission only; never called during discovery.
     fn check_native_authentication(&self, _agent_id: &str) -> Result<(), ControlReadError> {
         Err(ControlReadError::Unavailable)

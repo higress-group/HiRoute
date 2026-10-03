@@ -37,12 +37,12 @@ def fail(code: str) -> None:
     raise StageError(code)
 
 
-def read_manifest() -> dict[str, Any]:
+def read_manifest(path: Path = MANIFEST) -> dict[str, Any]:
     try:
-        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         fail("DEVELOPMENT_CPA_MANIFEST_INVALID")
-    if manifest.get("schema") != SCHEMA or manifest.get("development_only") is not True:
+    if manifest.get("schema") != SCHEMA or not isinstance(manifest.get("development_only"), bool):
         fail("DEVELOPMENT_CPA_MANIFEST_INVALID")
     return manifest
 
@@ -69,6 +69,9 @@ def selected_artifact(manifest: dict[str, Any]) -> dict[str, Any]:
         fail("DEVELOPMENT_CPA_MANIFEST_INVALID")
     if artifact["binary_name"] != "cliproxyapi" or not re.fullmatch(r"[0-9a-f]{64}", artifact["sha256"]):
         fail("DEVELOPMENT_CPA_MANIFEST_INVALID")
+    current = json.loads((MANIFEST.parents[3] / "vendor/cpa/source.json").read_text())
+    if artifact["version"] != current["version"] or artifact["commit"] != current["commit"]:
+        fail("DEVELOPMENT_CPA_PIN_STALE: generate a current CPA manifest with package-desktop.py; pass --manifest and build with the same HIROUTE_CPA_MANIFEST")
     return artifact
 
 
@@ -163,8 +166,8 @@ def copy_and_measure(source: Path, destination_dir: Path, artifact: dict[str, An
         raise
 
 
-def stage(source: Path, hirouted: Path) -> dict[str, Any]:
-    artifact = selected_artifact(read_manifest())
+def stage(source: Path, hirouted: Path, manifest: Path = MANIFEST) -> dict[str, Any]:
+    artifact = selected_artifact(read_manifest(manifest))
     source_stat = regular_owned_file(source, "DEVELOPMENT_CPA_SOURCE_UNTRUSTED")
     if source_stat.st_mode & 0o022:
         fail("DEVELOPMENT_CPA_SOURCE_UNTRUSTED")
@@ -204,9 +207,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpa", required=True, type=Path, help="explicit path to the pinned CPA artifact")
     parser.add_argument("--hirouted", required=True, type=Path, help="already-built hirouted that will own the adjacent CPA")
+    parser.add_argument("--manifest", type=Path, default=MANIFEST, help="manifest also selected by HIROUTE_CPA_MANIFEST when building Desktop")
     arguments = parser.parse_args()
     try:
-        result = stage(arguments.cpa.expanduser(), arguments.hirouted.expanduser())
+        result = stage(arguments.cpa.expanduser(), arguments.hirouted.expanduser(), arguments.manifest.expanduser())
     except StageError as error:
         print(json.dumps({"status": "error", "code": str(error)}, sort_keys=True), file=sys.stderr)
         return 1

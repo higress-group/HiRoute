@@ -154,7 +154,10 @@ pub fn decode_settings_codex_catalog(
         || intent.desired_mode() != 0o600
         || value["transaction"] != "settings"
         || value["subject"]["agent_id"] != "agent_codex_default"
-        || value["subject"]["profile_id"] != "codex-responses-v1"
+        || !matches!(
+            value["subject"]["profile_id"].as_str(),
+            Some("codex-responses-v1" | "codex-standalone-profile-v1")
+        )
         || value["subject"]["integration_profile_ref"] != "builtin/codex-responses/v1"
     {
         return Err(invalid());
@@ -201,7 +204,10 @@ pub fn decode_settings_codex_model_file(
         || intent.desired_mode() != 0o600
         || value["transaction"] != "settings"
         || value["subject"]["agent_id"] != "agent_codex_default"
-        || value["subject"]["profile_id"] != "codex-responses-v1"
+        || !matches!(
+            value["subject"]["profile_id"].as_str(),
+            Some("codex-responses-v1" | "codex-standalone-profile-v1")
+        )
         || value["subject"]["integration_profile_ref"] != "builtin/codex-responses/v1"
     {
         return Err(invalid());

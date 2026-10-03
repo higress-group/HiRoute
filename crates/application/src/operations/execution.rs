@@ -195,6 +195,13 @@ where
     }
 
     fn activate_exact_effects(&self, operation: &mut OperationV1) -> Result<(), TransactionError> {
+        // Disable restores the client before withdrawing its service access. A conflict
+        // therefore fails with the original connection intact, using ordinary rollback.
+        // Configure/edit retain their existing service-first activation contract.
+        let restoring_settings = is_settings_restoration(operation);
+        if restoring_settings {
+            self.activate_settings_file_tail(operation)?;
+        }
         self.external.begin_publication_activation(operation)?;
         for mutation in operation.plan.secrets().to_vec() {
             let effect = match self
@@ -233,8 +240,8 @@ where
         self.record_effect(operation, OperationStepKind::MaterializeSources, control)?;
 
         // Agent artifacts must become durable before an executable publication can expose them.
-        // The settings client model file is deliberately excluded here: it activates only after
-        // the publication below is serving, so a client file never precedes its own service.
+        // Settings files have their own activation boundary: restores ran above; configure/edit
+        // run only after the publication below is serving.
         for intent in operation
             .plan
             .external()
@@ -310,15 +317,16 @@ where
         if revokes_agent_access_grant {
             self.activate_agent_access_grants(operation)?;
         }
-        // The service segment is complete: seal the durable completion receipt before the only
-        // effects that may follow it, then switch the client file.
+        // Seal the completed service segment. Only configure/edit still have a file tail.
         self.seal_settings_service_completion(operation)?;
-        self.activate_settings_file_tail(operation)?;
+        if !restoring_settings {
+            self.activate_settings_file_tail(operation)?;
+        }
         Ok(())
     }
 
-    /// Activates the settings client model file effects, the sole segment that follows the
-    /// sealed service receipt. A failure here must park the tail instead of rolling back.
+    /// Restores settings files before service withdrawal, or completes a configure/edit or
+    /// previously sealed legacy file tail. Only a sealed service receipt permits parking.
     pub(super) fn activate_settings_file_tail(
         &self,
         operation: &mut OperationV1,
@@ -331,6 +339,20 @@ where
             .cloned()
             .collect::<Vec<_>>()
         {
+            self.external
+                .prepare_agent_artifact_activation(operation, &intent)?;
+            // Older builds may have sealed a revoke before preparing its file. Keep that
+            // existing recovery reader; new restores always stage and switch the file first.
+            if is_settings_restoration(operation)
+                && settings_service_receipt(operation).is_some()
+                && matches!(
+                    self.external.observe_external(operation, &intent)?,
+                    EffectReconciliation::Missing
+                )
+            {
+                let effect = self.external.apply_external(operation, &intent)?;
+                self.record_effect(operation, OperationStepKind::ApplyAgentArtifacts, effect)?;
+            }
             let effect = match self.external.observe_external(operation, &intent)? {
                 EffectReconciliation::Staged(effect) => {
                     self.external.activate_external(operation, &effect)?
@@ -387,4 +409,17 @@ where
         self.control.save_operation(operation)?;
         Ok(())
     }
+}
+
+pub(super) fn is_settings_restoration(operation: &OperationV1) -> bool {
+    operation
+        .plan
+        .external()
+        .iter()
+        .any(hiroute_domain::is_settings_managed_configuration)
+        && operation
+            .plan
+            .agent_access_grants()
+            .iter()
+            .any(|mutation| mutation.kind() == AgentAccessGrantMutationKindV1::Revoke)
 }

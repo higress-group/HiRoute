@@ -2,6 +2,14 @@
 use super::*;
 
 impl FilesystemAgentScannerV1 {
+    pub fn codex_profile_settings_discovery(&self) -> FilesystemAgentDiscoveryV1 {
+        // The profile owns its file capabilities; inherited root is independently sealed for
+        // configure, and must not make a safe revoke depend on the current root's validity.
+        let mut profile = self.clone();
+        profile.layout.codex_user_config = self.codex_profile_config_target();
+        profile.codex_settings_discovery(false)
+    }
+
     pub fn codex_settings_discovery(
         &self,
         include_collaboration_evidence: bool,

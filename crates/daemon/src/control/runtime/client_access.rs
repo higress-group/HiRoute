@@ -43,19 +43,30 @@ impl ClientAccessPort for LocalControlAdapter {
         let control = stores.control();
         let revisions = control.current_revisions(&workspace).map_err(map_port)?;
         let active = control.active_publication(&workspace).map_err(map_port)?;
-        let recovered = control
-            .recoverable_operations()
+        let pending = control.recoverable_operations().map_err(map_port)?;
+        let writer_released = control
+            .writer_claim_operation()
             .map_err(map_port)?
-            .is_empty()
-            && control
-                .writer_claim_operation()
-                .map_err(map_port)?
-                .is_none();
+            .is_none();
+        let recovered = pending.is_empty() && writer_released;
+        // A verified service segment can be read while its client file awaits cleanup.
+        // Ordinary mutations remain closed, and generic or displaced recovery stays blocked.
+        let reads_ready = recovered
+            || (writer_released
+                && active.as_ref().is_some_and(|publication| {
+                    pending.iter().all(|operation| {
+                        hiroute_application::settings_service_completion_is_current(
+                            operation,
+                            publication.publication_revision.get(),
+                            &publication.digest,
+                        )
+                    })
+                }));
         let composed = target.is_some();
         let gateway = match target.as_ref() {
             None => ClientGatewayStateV1::NotComposed,
             Some(target) => match target.observes_verified(active.as_ref()) {
-                Ok(true) if recovered => {
+                Ok(true) if reads_ready => {
                     if let Some(publication) = active
                         .as_ref()
                         .and_then(|p| p.verify().ok())
@@ -76,7 +87,7 @@ impl ClientAccessPort for LocalControlAdapter {
         Ok(ClientServiceStatusV1 {
             schema: "hiroute.client-service-status/v1".into(),
             daemon_role: if composed { "all" } else { "control_only" }.into(),
-            recovery_ready: recovered,
+            recovery_ready: reads_ready,
             mutation_available: recovered
                 && composed
                 && gateway != ClientGatewayStateV1::Unavailable,

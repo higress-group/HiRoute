@@ -186,7 +186,8 @@ test('Codex routing form only shows configured native overrides and explains the
   assert.match(agents, /defaultChoice\.kind === 'plan'[\s\S]*Codex 将默认使用所选智能路由/);
   assert.match(agents, /保留当前默认模型名称；请求仍经过 HiRoute/);
   assert.match(agents, /data-agent-service-responsibility/);
-  assert.match(agents, /保存不会设置登录项或保证 HiRoute 服务以后持续在线/);
+  assert.match(agents, /使用路由时请保持 HiRoute 运行/);
+  assert.match(agents, /启用不会自动设置开机启动/);
 });
 
 test('Agent home does not offer duplicate paid per-client live probes', () => {
@@ -198,7 +199,7 @@ test('Agent home does not offer duplicate paid per-client live probes', () => {
 test('Claude routing promises the normal CLI entry and does not ask for a special launcher', () => {
   const agents = read('src/agents.tsx');
   assert.match(agents, /直接启动 claude，使用 Opus、Sonnet、Haiku 原生预设/);
-  assert.match(agents, /账号 Default 仍未知；保存不会验证它/);
+  assert.match(agents, /账号 Default 仍需真实调用验证/);
   assert.match(agents, /路由已配置 · 调用未验证/);
   assert.doesNotMatch(agents, /hiroute agent launch --agent claude-code/);
 });

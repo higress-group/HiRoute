@@ -669,7 +669,7 @@ fn open_with_codex_fixture_surfaces(
     write_codex_fixture(&cli);
     write_codex_fixture(&desktop);
     let home = root.join("home");
-    fs::create_dir(&home).unwrap();
+    fs::create_dir_all(&home).unwrap();
     fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
     let mut layout = AgentFilesystemLayoutV1::from_process(&home, root);
     layout.codex_executable = cli.clone();

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { agentEditorSeed, codexDefaultChoiceValid, editorFingerprint } from '../src/agent-editor-state.ts';
+import { agentEditorSeed, codexDefaultChoiceValid, commonClaudePlan, sharedClaudePlan, editorFingerprint } from '../src/agent-editor-state.ts';
 
 const codexSelection = {
   mode: 'codex_default',
@@ -105,4 +105,54 @@ test('all model and collaboration choices participate in dirty tracking', () => 
     editorFingerprint(values),
     editorFingerprint({ ...values, allowedPlanIds: [...values.allowedPlanIds].reverse() }),
   );
+});
+
+test('first enable selects the sole route and a valid Codex default without changing the Agent', () => {
+  const fresh = { ...codex, settings: { state: 'not_configured', current_selection: null } };
+  const before = structuredClone(fresh);
+  const seed = agentEditorSeed(fresh, 'model', ['only-route']);
+  assert.deepEqual(seed.allowedPlanIds, ['only-route']);
+  assert.deepEqual(seed.defaultChoice, { kind: 'plan', plan_id: 'only-route' });
+  assert.equal(codexDefaultChoiceValid(seed.defaultChoice, seed.nativeModelMode, undefined, [], seed.allowedPlanIds), true);
+  assert.deepEqual(fresh, before);
+});
+
+test('first Claude enable maps the sole route to all three presets without setting a native default', () => {
+  const fresh = { ...claude, settings: { state: 'restored', current_selection: null } };
+  const seed = agentEditorSeed(fresh, 'model', ['only-route']);
+  assert.deepEqual(seed.claudePresets, sharedClaudePlan('only-route'));
+  assert.equal(commonClaudePlan(seed.claudePresets), 'only-route');
+  assert.deepEqual(seed.defaultChoice, { kind: 'preserve_native' });
+});
+
+test('zero or multiple routes require selection and do not silently authorize a route', () => {
+  for (const agent of [codex, claude]) {
+    const fresh = { ...agent, settings: { state: 'not_configured', current_selection: null } };
+    for (const choices of [[], ['a', 'b']]) {
+      const seed = agentEditorSeed(fresh, 'model', choices);
+      assert.deepEqual(seed.allowedPlanIds, []);
+      assert.equal(commonClaudePlan(seed.claudePresets), '');
+      assert.deepEqual(seed.defaultChoice, { kind: 'preserve_native' });
+    }
+  }
+});
+
+test('editing existing, unavailable or split mappings never applies first-enable shortcuts', () => {
+  assert.deepEqual(agentEditorSeed(codex, 'model', ['replacement']).allowedPlanIds, ['a', 'b']);
+  const oldClaude = agentEditorSeed(claude, 'model', ['replacement']);
+  assert.deepEqual(oldClaude.claudePresets, claude.settings.current_selection.preset_mappings);
+  assert.equal(commonClaudePlan(oldClaude.claudePresets), null);
+  assert.equal(commonClaudePlan(sharedClaudePlan('missing-route')), 'missing-route');
+  for (const state of ['drift', 'pending', 'needs_attention']) {
+    const seed = agentEditorSeed({ ...codex, settings: { state, current_selection: null } }, 'model', ['replacement']);
+    assert.equal(seed.known, false);
+    assert.deepEqual(seed.allowedPlanIds, []);
+  }
+});
+
+test('collaboration and unreadable initial settings do not pick model routes', () => {
+  assert.deepEqual(agentEditorSeed(codex, 'collaboration', ['only-route']).allowedPlanIds, []);
+  const seed = agentEditorSeed({ ...codex, status_error: 'UNAVAILABLE', settings: { state: 'not_configured' } }, 'model', ['only-route']);
+  assert.equal(seed.known, false);
+  assert.deepEqual(seed.allowedPlanIds, []);
 });

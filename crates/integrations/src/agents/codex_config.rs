@@ -149,6 +149,9 @@ pub(super) fn reconfigure_codex_native(
     if &CanonicalDigest::of_bytes(current.as_bytes()) != expected {
         return Err(CodexNativeError::SourceChanged);
     }
+    if !managed_provider_shape(&parse(current)?) {
+        return Err(CodexNativeError::FieldConflict);
+    }
     let base = restore_codex_native(current, previous)?;
     configure_codex_base(
         &base,
@@ -250,7 +253,7 @@ fn configure_codex_base(
         )?;
     }
     for (key, value) in [
-        ("requires_openai_auth", true),
+        ("requires_openai_auth", false),
         ("supports_websockets", false),
     ] {
         set(
@@ -283,23 +286,75 @@ fn configure_codex_base(
 impl CodexNativeRestore {
     /// Status follows the fields HiRoute wrote. Other native settings and TOML formatting
     /// may change independently after the configuration Operation succeeds.
+    pub fn conflicting_fields(&self, current: &str) -> Vec<String> {
+        let Ok(document) = parse(current) else {
+            return vec!["invalid TOML".into()];
+        };
+        self.fields
+            .iter()
+            .filter(|field| {
+                if field.passive_model {
+                    return false;
+                }
+                let Some((key, parent)) = field.path.split_last() else {
+                    return true;
+                };
+                let item = optional_table(&document, parent)
+                    .ok()
+                    .flatten()
+                    .and_then(|t| t.get(key));
+                item.map(fingerprint) != field.before.as_ref().map(fingerprint)
+                    && item.map(fingerprint).as_ref() != Some(&field.after)
+            })
+            .map(|field| field.path.join("."))
+            .collect()
+    }
+
+    /// Pending cleanup names are safe to display; no previous values or credentials escape.
+    pub fn pending_restoration_fields(&self, current: &str) -> Vec<String> {
+        let Ok(document) = parse(current) else {
+            return vec!["invalid TOML".into()];
+        };
+        self.fields
+            .iter()
+            .filter(|field| {
+                let Some((key, parent)) = field.path.split_last() else {
+                    return true;
+                };
+                let item = optional_table(&document, parent)
+                    .ok()
+                    .flatten()
+                    .and_then(|t| t.get(key));
+                if field.passive_model {
+                    return item.and_then(Item::as_str).is_some_and(|model| {
+                        self.managed_aliases.iter().any(|alias| alias == model)
+                    });
+                }
+                item.map(fingerprint) != field.before.as_ref().map(fingerprint)
+            })
+            .map(|field| field.path.join("."))
+            .collect()
+    }
+
     pub fn managed_fields_are_applied(&self, current: &str) -> bool {
         let Ok(document) = parse(current) else {
             return false;
         };
-        self.fields
-            .iter()
-            .filter(|field| !field.passive_model)
-            .all(|field| {
-                let Some((key, parent)) = field.path.split_last() else {
-                    return false;
-                };
-                optional_table(&document, parent)
-                    .ok()
-                    .flatten()
-                    .and_then(|table| table.get(key))
-                    .is_some_and(|item| fingerprint(item) == field.after)
-            })
+        managed_provider_shape(&document)
+            && self
+                .fields
+                .iter()
+                .filter(|field| !field.passive_model)
+                .all(|field| {
+                    let Some((key, parent)) = field.path.split_last() else {
+                        return false;
+                    };
+                    optional_table(&document, parent)
+                        .ok()
+                        .flatten()
+                        .and_then(|table| table.get(key))
+                        .is_some_and(|item| fingerprint(item) == field.after)
+                })
     }
 
     fn owns_provider(&self, provider_id: &str) -> bool {
@@ -587,3 +642,27 @@ fn set(
 
 #[cfg(test)]
 mod tests;
+
+fn managed_provider_shape(document: &DocumentMut) -> bool {
+    let Some(provider) = document
+        .get("model_providers")
+        .and_then(|v| v.get("hiroute"))
+        .and_then(Item::as_table)
+    else {
+        return false;
+    };
+    provider.iter().all(|(key, _)| {
+        matches!(
+            key,
+            "name"
+                | "base_url"
+                | "wire_api"
+                | "requires_openai_auth"
+                | "supports_websockets"
+                | "http_headers"
+        )
+    }) && provider
+        .get("http_headers")
+        .and_then(Item::as_table)
+        .is_some_and(|headers| headers.iter().all(|(key, _)| key == "X-HiRoute-Token"))
+}

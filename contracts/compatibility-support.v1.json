@@ -39,6 +39,7 @@
     "hiroute.agent-routing-overlay/v1",
     "hiroute.agent-scan-observation/v1",
     "hiroute.agent-settings-preview/v2",
+    "hiroute.agent-settings-retry/v1",
     "hiroute.agent-surface-check/v1",
     "hiroute.borrowed-codex-access-lease/v1",
     "hiroute.borrowed-codex-binding-evidence/v1",
@@ -217,6 +218,7 @@
     "hiroute.native-field-restore/v1",
     "hiroute.native-files/v1",
     "hiroute.native-observation/v2",
+    "hiroute.native-restoration-ack/v1",
     "hiroute.observation-retention/v1",
     "hiroute.observation.ack/v2",
     "hiroute.observation.conversation-content-envelope/v2",
@@ -887,6 +889,19 @@
     "tools/e2e-harness/tests/p0_gateway_request_authority.rs"
   ],
   "field_compatibility_support": [
+    {
+      "contract": "hiroute.settings-service-completion/v2",
+      "field": "service-first restore checkpoint with an unstaged client model file",
+      "mode": "recovery_read_only",
+      "owner": "agent-connections",
+      "reason": "Older admitted revokes can have a sealed service receipt before preparing the client file. Retain only their existing same-operation recovery reader and the frozen production-port fixture; current restores stage and switch the file before withdrawing service access.",
+      "removal_condition": "Retire only after every retained operation and supported backup has no service-first restore file tail, together with its frozen regression fixture.",
+      "allowed_paths": [
+        "crates/application/src/operations/execution.rs",
+        "crates/daemon/src/control/runtime/settings_profile_legacy_fixture.rs",
+        "crates/daemon/src/control/runtime/settings_profile_legacy_tests.rs"
+      ]
+    },
     {
       "contract": "hiroute.settings-claude-model-file/v1",
       "field": "snapshot.context_window_tokens",

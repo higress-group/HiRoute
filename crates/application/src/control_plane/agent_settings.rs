@@ -100,6 +100,29 @@ pub(crate) fn apply(
     if request.protected_grant.is_some() {
         return failed(ErrorCode::CapabilityDenied, request.request_id);
     }
+    if request.operation_id == "ApplyAgentConnectionChange"
+        && request.payload.get("schema").is_some()
+    {
+        let payload: hiroute_application_api::AgentSettingsRetryV1 =
+            match serde_json::from_value(request.payload) {
+                Ok(value) => value,
+                Err(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
+            };
+        if payload.schema != "hiroute.agent-settings-retry/v1" {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        }
+        let Some(port) = service
+            .ports
+            .as_ref()
+            .and_then(|p| p.agent_connection.as_ref())
+        else {
+            return failed(ErrorCode::DaemonUnavailable, request.request_id);
+        };
+        return match port.retry_settings_operation(&payload) {
+            Ok(operation) => super::accepted_apply(operation, request.request_id),
+            Err(error) => failed(map_control_error(error), request.request_id),
+        };
+    }
     let payload: AgentSettingsApplyV2 = match serde_json::from_value(request.payload) {
         Ok(payload) => payload,
         Err(_) => return failed(ErrorCode::InvalidArguments, request.request_id),

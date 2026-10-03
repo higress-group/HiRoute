@@ -18,6 +18,7 @@ use hiroute_diagnostics::event::{
     ConfirmationPhase, DiagnosticEvent, PreviewEvent, PreviewPhase,
 };
 use hiroute_diagnostics::identity::CorrelationToken;
+use serde_json::Value;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -352,7 +353,7 @@ enum NativeOutcome {
     Agent(Box<AgentOutcome>),
     Check(AgentCheckCompletion),
     ModelSave(ModelSaveAccepted),
-    SubscriptionCheck(hiroute_application_api::ComputeSubscriptionCheckResultV2),
+    SubscriptionCheck(Box<hiroute_application_api::ComputeSubscriptionCheckResultV2>),
 }
 impl NativeOutcome {
     fn mutation(self) -> Result<MutationOutcome, DesktopFailure> {
@@ -474,6 +475,22 @@ pub async fn agent_snapshot(
         .as_mut()
         .ok_or("RESIDENT_UNAVAILABLE")?
         .agent_snapshot()
+        .await
+}
+#[tauri::command]
+pub async fn retry_agent_settings(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: hiroute_application_api::AgentSettingsRetryV1,
+) -> Result<Value, DesktopFailure> {
+    main_window(&window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_mut()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .retry_agent_settings(input)
         .await
 }
 #[tauri::command]
@@ -705,6 +722,7 @@ async fn confirm(
             .ok_or("RESIDENT_UNAVAILABLE")?
             .finish_subscription_check_confirmation(completion)
             .await
+            .map(Box::new)
             .map(NativeOutcome::SubscriptionCheck)
     } else if let NativeConfirmation::Check(context) = context {
         let dispatch = {
@@ -821,7 +839,9 @@ pub fn run() {
     // An explicit background start runs the same Resident initialization and recovery chain;
     // only the window presentation differs.
     let background = std::env::args().any(|argument| argument == "--background");
-    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init());
     #[cfg(all(feature = "desktop-pilot", debug_assertions))]
     let builder = builder.plugin(tauri_plugin_pilot::init());
     let app = builder
@@ -993,6 +1013,7 @@ pub fn run() {
             resolve_web_confirmation,
             agent_snapshot,
             preview_agent_settings,
+            retry_agent_settings,
             check_agent_authentication,
             check_agent_live,
             worker_settings_get,

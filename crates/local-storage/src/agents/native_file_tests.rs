@@ -521,3 +521,355 @@ fn all_native_target_bindings_are_restored_together_before_marker_validation() {
     redirected[1].1 = root.path().join("replacement.toml");
     assert!(open(redirected).is_err());
 }
+
+#[test]
+fn native_restoration_acknowledgment_preserves_bytes_and_reopens() {
+    let temp = crate::test_tempdir().unwrap();
+    let path = temp.path().join("config.toml");
+    write(&path, b"owned = true\n");
+    let prototype = intent(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        None,
+    );
+    let artifacts = store(temp.path(), prototype.target(), &path);
+    let cleanup = intent(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        artifacts
+            .current_external_fingerprint(prototype.target())
+            .unwrap(),
+    );
+    let op = OperationId::parse("op_00112233445566778899aabbccddeeff").unwrap();
+    artifacts
+        .stage_native_target(&op, &cleanup, None, true)
+        .unwrap();
+    let cleaned = b"# new unrelated comment\nuser_setting = true\n";
+    write(&path, cleaned);
+    assert!(
+        artifacts
+            .acknowledge_native_restoration(&op, &cleanup, Some(b"stale"))
+            .is_err()
+    );
+    let effect = artifacts
+        .acknowledge_native_restoration(&op, &cleanup, Some(cleaned))
+        .unwrap();
+    assert_eq!(fs::read(&path).unwrap(), cleaned);
+    drop(artifacts);
+    let reopened = store(temp.path(), prototype.target(), &path);
+    assert!(matches!(
+        reopened.observe_artifact(&op, &cleanup).unwrap(),
+        EffectReconciliation::Applied(_)
+    ));
+    assert_eq!(
+        reopened.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::OwnershipLost
+    );
+    write(&path, b"# changed after acknowledgment\n");
+    assert!(matches!(
+        reopened.observe_artifact(&op, &cleanup).unwrap(),
+        EffectReconciliation::OwnershipLost(_)
+    ));
+}
+
+#[test]
+fn unstaged_restoration_ack_is_protected_bound_and_never_rewrites() {
+    let original = OperationId::parse("op_11112222333344445555666677778888").unwrap();
+    let cleanup = |before| {
+        let spec = ChangeSpecV1 {
+            schema_version: hiroute_domain::CHANGE_SPEC_SCHEMA_V1,
+            command_id: "agents.settings.apply".into(),
+            resource_id: Some("agent-context/unstaged-cleanup".into()),
+            desired_state: json!({"schema_version":{"major":2,"minor":0},
+                "context_id":"agent-context/unstaged-cleanup",
+                "model":{"intent":"restore","restore_point_ref":"restore/original"}}),
+        };
+        let subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent_codex_default",
+            "codex-standalone-profile-v1",
+            "builtin/codex-responses/v1",
+        )
+        .unwrap();
+        let control = AgentConnectionControlIntentV1::from_settings_planner(
+            subject,
+            &spec,
+            false,
+            &json!({"revision":1}),
+        )
+        .unwrap();
+        settings_codex_model_file_intent(
+            &control,
+            "agent-context/unstaged-cleanup",
+            CanonicalDigest::of_bytes(b"original"),
+            before,
+            CodexModelFileAction::Restore {
+                original_operation: original.clone(),
+                native_model: None,
+            },
+        )
+        .unwrap()
+    };
+    let temp = crate::test_tempdir().unwrap();
+    let path = temp.path().join("hiroute.config.toml");
+    write(&path, b"original");
+    let prototype = cleanup(None);
+    let artifacts = store(temp.path(), prototype.target(), &path);
+    let intent = cleanup(
+        artifacts
+            .current_external_fingerprint(prototype.target())
+            .unwrap(),
+    );
+    let op = OperationId::parse("op_00112233445566778899aabbccddeeff").unwrap();
+    let cleaned = b"# user retained content\nuser_setting = true\n";
+    write(&path, cleaned);
+    assert!(
+        artifacts
+            .acknowledge_native_restoration(&op, &intent, Some(b"stale"))
+            .is_err()
+    );
+    let effect = artifacts
+        .acknowledge_native_restoration(&op, &intent, Some(cleaned))
+        .unwrap();
+    assert_eq!(fs::read(&path).unwrap(), cleaned);
+    drop(artifacts);
+    let reopened = store(temp.path(), prototype.target(), &path);
+    assert!(matches!(
+        reopened.observe_artifact(&op, &intent).unwrap(),
+        EffectReconciliation::Applied(_)
+    ));
+    assert!(matches!(
+        reopened.observe_artifact(&original, &intent).unwrap(),
+        EffectReconciliation::Missing
+    ));
+    assert_eq!(
+        reopened.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::OwnershipLost
+    );
+    let record = fs::read_dir(&reopened.restore_root)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.extension().is_some_and(|e| e == "native-restore"))
+        .unwrap();
+    let encrypted = fs::read(&record).unwrap();
+    let mut damaged = encrypted.clone();
+    *damaged.last_mut().unwrap() ^= 1;
+    fs::write(&record, damaged).unwrap();
+    assert!(reopened.observe_artifact(&op, &intent).is_err());
+    fs::write(&record, encrypted).unwrap();
+    write(&path, b"# changed after acknowledgment\n");
+    assert!(matches!(
+        reopened.observe_artifact(&op, &intent).unwrap(),
+        EffectReconciliation::OwnershipLost(_)
+    ));
+}
+
+// Exercise ownership checks even when the caller permits group/world writes. Changing
+// a process-wide umask in the parallel parent would race fixtures, so isolate each case.
+fn run_with_permissive_umask(name: &str) -> bool {
+    const CHILD_CASE: &str = "HIROUTE_STORAGE_PERMISSIVE_UMASK_CASE";
+    if std::env::var(CHILD_CASE).as_deref() == Ok(name) {
+        rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o000));
+        return false;
+    }
+    let test = format!("control::native_file_tests::{name}");
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", &test, "--nocapture"])
+        .env(CHILD_CASE, name)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success()
+            && stdout.contains(&format!("test {test} ... ok"))
+            && stdout.contains("1 passed; 0 failed; 0 ignored;"),
+        "Permissive umask child did not pass the selected case: {name}\n{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
+#[test]
+fn settings_unactivated_target_race_discards_only_the_owned_rendered_stage() {
+    if run_with_permissive_umask(
+        "settings_unactivated_target_race_discards_only_the_owned_rendered_stage",
+    ) {
+        return;
+    }
+    let root = crate::test_tempdir().unwrap();
+    let target = root.path().join("config.toml");
+    write(&target, b"before = true\n");
+    let op = OperationId::parse("op_55555555555555555555555555555555").unwrap();
+    let i = intent(
+        AgentConnectionTransactionKindV1::Apply,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        None,
+    );
+    let artifact = store(root.path(), i.target(), &target);
+    let i = intent(
+        AgentConnectionTransactionKindV1::Apply,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        artifact.current_external_fingerprint(i.target()).unwrap(),
+    );
+    let effect = artifact
+        .stage_native_target(&op, &i, Some(b"after = true\n"), true)
+        .unwrap();
+    write(&target, b"user_edit = true\n");
+    assert!(matches!(
+        artifact.observe_artifact(&op, &i).unwrap(),
+        EffectReconciliation::OwnershipLost(_)
+    ));
+    assert_eq!(
+        artifact.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::Compensated
+    );
+    assert_eq!(fs::read(&target).unwrap(), b"user_edit = true\n");
+    assert_eq!(
+        artifact.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::AlreadyCompensated
+    );
+    assert!(matches!(
+        artifact.observe_artifact(&op, &i).unwrap(),
+        EffectReconciliation::Missing
+    ));
+}
+
+#[test]
+fn settings_missing_stage_does_not_prove_a_target_was_never_written() {
+    if run_with_permissive_umask("settings_missing_stage_does_not_prove_a_target_was_never_written")
+    {
+        return;
+    }
+    let root = crate::test_tempdir().unwrap();
+    let target = root.path().join("config.toml");
+    write(&target, b"before = true\n");
+    let op = OperationId::parse("op_66666666666666666666666666666666").unwrap();
+    let prototype = intent(
+        AgentConnectionTransactionKindV1::Apply,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        None,
+    );
+    let artifact = store(root.path(), prototype.target(), &target);
+    let i = intent(
+        AgentConnectionTransactionKindV1::Apply,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        artifact
+            .current_external_fingerprint(prototype.target())
+            .unwrap(),
+    );
+    let effect = artifact
+        .stage_native_target(&op, &i, Some(b"after = true\n"), true)
+        .unwrap();
+    let marker = artifact.load_marker(&op, i.effect_id()).unwrap().unwrap();
+    fs::rename(artifact.stage_path(&marker).unwrap(), &target).unwrap();
+    write(&target, b"user_edit_after_rename = true\n");
+    assert_eq!(
+        artifact.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::OwnershipLost
+    );
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        b"user_edit_after_rename = true\n"
+    );
+}
+
+#[test]
+fn settings_delete_with_intact_stage_does_not_prove_no_target_write() {
+    if run_with_permissive_umask("settings_delete_with_intact_stage_does_not_prove_no_target_write")
+    {
+        return;
+    }
+    let root = crate::test_tempdir().unwrap();
+    let target = root.path().join("profile.toml");
+    write(&target, b"managed = true\n");
+    let op = OperationId::parse("op_77777777777777777777777777777777").unwrap();
+    let prototype = intent(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        None,
+    );
+    let artifact = store(root.path(), prototype.target(), &target);
+    let i = intent(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        artifact
+            .current_external_fingerprint(prototype.target())
+            .unwrap(),
+    );
+    let effect = artifact.stage_native_target(&op, &i, None, true).unwrap();
+    let marker = artifact.load_marker(&op, i.effect_id()).unwrap().unwrap();
+    assert!(artifact.stage_path(&marker).unwrap().exists());
+    fs::remove_file(&target).unwrap();
+    // Model a crash after unlink: a reopened store must not regain in-process proof.
+    drop(artifact);
+    let artifact = store(root.path(), prototype.target(), &target);
+    assert_eq!(
+        artifact.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::OwnershipLost
+    );
+    assert!(!target.exists());
+}
+
+#[test]
+fn settings_delete_race_requires_live_untouched_target_proof() {
+    if run_with_permissive_umask("settings_delete_race_requires_live_untouched_target_proof") {
+        return;
+    }
+    for case in [
+        "fresh",
+        "reopen",
+        "missing_stage",
+        "tampered_stage",
+        "unlink_attempt",
+    ] {
+        let root = crate::test_tempdir().unwrap();
+        let target = root.path().join("profile.toml");
+        write(&target, b"managed = true\n");
+        let op = OperationId::parse("op_88888888888888888888888888888888").unwrap();
+        let prototype = intent(
+            AgentConnectionTransactionKindV1::Restore,
+            AgentConnectionEffectRoleV1::ManagedConfiguration,
+            None,
+        );
+        let mut artifact = store(root.path(), prototype.target(), &target);
+        let i = intent(
+            AgentConnectionTransactionKindV1::Restore,
+            AgentConnectionEffectRoleV1::ManagedConfiguration,
+            artifact
+                .current_external_fingerprint(prototype.target())
+                .unwrap(),
+        );
+        let effect = artifact.stage_native_target(&op, &i, None, true).unwrap();
+        let marker = artifact.load_marker(&op, i.effect_id()).unwrap().unwrap();
+        let stage = artifact.stage_path(&marker).unwrap();
+        if case == "unlink_attempt" {
+            // Execute the real unlink, then reconstruct the durable crash window before
+            // stage consumption/marker persistence. Live proof must already be consumed.
+            artifact.activate_artifact(&effect).unwrap();
+            assert!(!target.exists());
+            artifact.save_marker(&marker).unwrap();
+            write(&stage, b"");
+        }
+        write(&target, b"user_edit = true\n");
+        if case == "reopen" {
+            drop(artifact);
+            artifact = store(root.path(), prototype.target(), &target);
+        }
+        assert!(artifact.activate_artifact(&effect).is_err());
+        match case {
+            "missing_stage" => fs::remove_file(&stage).unwrap(),
+            "tampered_stage" => write(&stage, b"foreign stage"),
+            _ => {}
+        }
+        let expected = if case == "fresh" {
+            CompensationOutcome::Compensated
+        } else {
+            CompensationOutcome::OwnershipLost
+        };
+        assert_eq!(
+            artifact.compensate_artifact(&effect).unwrap(),
+            expected,
+            "{case}"
+        );
+        assert_eq!(fs::read(&target).unwrap(), b"user_edit = true\n", "{case}");
+    }
+}

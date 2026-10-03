@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { Agents, type AgentSnapshot } from '../../../src/agents';
+import type { OperationReference } from '../../../src/features/model-connections/types';
 import { PresentationRoot } from '../../../src/ui';
 import { readyAgents } from './product-fixtures';
 import '../../../src/occami/styles.css';
@@ -77,6 +78,12 @@ function protectedCodex(): AgentSnapshot {
 function splitCodexStatus(): AgentSnapshot {
   const snapshot = registered();
   const agent = codexOf(snapshot);
+  agent.codex_access = {
+    codex_home: '/fixture/codex', slot_id: 'slot/fixture',
+    profile_context_id: 'context/fixture/profile', root_context_id: agent.context_id!,
+    selected_mode: 'root', slot_occupied: true, target_file: '/fixture/codex/config.toml',
+    profile_name: 'hiroute', commands: {}, pending_operation: null, access_revoked: false, conflict_fields: [],
+  };
   agent.settings = {
     ...agent.settings!,
     model_verified: false,
@@ -131,6 +138,7 @@ mockIPC(async (command, payload) => {
 function Harness() {
   const [generation, setGeneration] = useState(0);
   const [refresh, setRefresh] = useState(0);
+  const [operation, setOperation] = useState<OperationReference | null>(null);
   control.refresh = () => setRefresh(value => value + 1);
   control.reset = () => {
     control.agents = registered();
@@ -138,13 +146,14 @@ function Harness() {
     control.handlers = {};
     control.mutations = 0;
     control.operations = [];
+    setOperation(null);
     setRefresh(0);
     setGeneration(value => value + 1);
   };
   return <PresentationRoot language="zh" theme="dark" textScale={1}>
     <div className="app-window"><main className="main" style={{ marginLeft: 0 }}>
       <div role="note">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实安装。</div>
-      <Agents key={generation} language="zh" refreshVersion={refresh} mutationAllowed onMutation={() => { control.mutations += 1; }} onOperation={(operation, presentation) => { control.operations.push({ operation, presentation }); }} />
+      <Agents key={generation} language="zh" refreshVersion={refresh} operation={operation} mutationAllowed onMutation={() => { control.mutations += 1; }} onOperation={(operation, presentation) => { control.operations.push({ operation, presentation }); setOperation(operation); }} />
     </main></div>
   </PresentationRoot>;
 }

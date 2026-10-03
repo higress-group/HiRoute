@@ -7,7 +7,7 @@ rust-version.workspace = true
 
 [features]
 default = []
-desktop-runtime = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog"]
+desktop-runtime = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "dep:tauri-plugin-clipboard-manager"]
 desktop-pilot = ["desktop-runtime", "dep:tauri-plugin-pilot"]
 
 [dependencies]
@@ -26,6 +26,7 @@ reqwest = { version = "=0.13.4" }
 sha2.workspace = true
 tauri = { version = "2.11.1", optional = true }
 tauri-plugin-dialog = { version = "2.7.3", default-features = false, features = ["xdg-portal"], optional = true }
+tauri-plugin-clipboard-manager = { version = "=2.3.2", optional = true }
 tauri-plugin-pilot = { git = "https://github.com/mpiton/tauri-pilot", rev = "ed31926726b4cd7b3ffbc11f188e046f2b5e0faa", default-features = false, optional = true }
 
 [target.'cfg(unix)'.dependencies]

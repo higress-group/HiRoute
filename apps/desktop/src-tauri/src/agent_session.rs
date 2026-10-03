@@ -11,6 +11,8 @@ pub struct AgentSettingsInput {
 }
 #[derive(Deserialize, Serialize)]
 pub struct AgentEntry {
+    #[serde(default)]
+    pub codex_access: Option<Value>,
     pub agent_id: String,
     pub version: String,
     pub configuration_state: String,
@@ -303,6 +305,12 @@ impl AgentConfirmation {
     }
 }
 impl Session {
+    pub async fn retry_agent_settings(
+        &mut self,
+        input: hiroute_application_api::AgentSettingsRetryV1,
+    ) -> Result<Value, DesktopFailure> {
+        query(&self.client, "ApplyAgentConnectionChange", &input).await
+    }
     pub async fn agent_snapshot(&mut self) -> Result<AgentSnapshot, DesktopFailure> {
         #[derive(Deserialize)]
         struct Scan {
@@ -333,7 +341,8 @@ impl Session {
         Ok(AgentSnapshot {
             agents: scan.agents,
             plans: snapshot.catalog,
-            trusted_authority: snapshot.trusted_authority && snapshot.service.mutation_available,
+            // Peer authority also permits same-operation recovery while new writes are closed.
+            trusted_authority: snapshot.trusted_authority,
         })
     }
 
@@ -374,10 +383,10 @@ impl Session {
             .preview_agent_settings_registered(input, candidate.clone())
             .await;
         #[cfg(unix)]
-        if !matches!(&result, Ok(AgentPreparation::Ready(_))) {
-            if let Some(candidate) = &candidate {
-                let _ = self.resident.release_model_input(candidate);
-            }
+        if !matches!(&result, Ok(AgentPreparation::Ready(_)))
+            && let Some(candidate) = &candidate
+        {
+            let _ = self.resident.release_model_input(candidate);
         }
         result
     }
@@ -599,11 +608,9 @@ impl Session {
                     .as_ref()
                     .is_some_and(|view| view.state == "rolled_back"),
             };
-            if definitively_failed {
-                if declaration.removes_resident_service() {
-                    // The rolled-back connection still needs its owned item at the next login.
-                    crate::login_item::compensate_resident_login_item_removal();
-                }
+            if definitively_failed && declaration.removes_resident_service() {
+                // The rolled-back connection still needs its owned item at the next login.
+                crate::login_item::compensate_resident_login_item_removal();
             }
         }
         let mutation = mutation?;

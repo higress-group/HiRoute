@@ -125,6 +125,97 @@ pub(super) fn codex_catalog_plan_for(
 }
 
 impl LocalControlAdapter {
+    pub(super) fn acknowledge_clean_codex_restoration(
+        &self,
+        operation: &hiroute_domain::OperationV1,
+        intent: &ExternalEffectIntentV1,
+    ) -> PortResult<()> {
+        if !is_settings_codex_model(intent)
+            || operation
+                .step(OperationStepKind::Activate)
+                .terminal_result
+                .as_deref()
+                .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
+                .is_none()
+        {
+            return Ok(());
+        }
+        let state = self
+            .artifacts
+            .observe_artifact(&operation.operation_id, intent)?;
+        if !matches!(
+            state,
+            EffectReconciliation::Missing | EffectReconciliation::OwnershipLost(_)
+        ) {
+            return Ok(());
+        }
+        self.require_current_operation(operation)?;
+        let payload = settings_codex_model_file_for_operation(operation, intent)?;
+        let CodexModelFileAction::Restore {
+            original_operation,
+            native_model,
+        } = payload.change
+        else {
+            return Ok(());
+        };
+        let stores = self.stores_lock()?;
+        let original = stores
+            .control()
+            .load_operation(&original_operation)?
+            .ok_or_else(|| conflict("codex.restore.ack.original"))?;
+        if original.workspace_id != operation.workspace_id
+            || original.state != OperationState::Succeeded
+        {
+            return Err(conflict("codex.restore.ack.owner"));
+        }
+        let original_intent = original
+            .plan
+            .external()
+            .iter()
+            .find(|i| is_settings_codex_model(i) && i.target() == intent.target())
+            .ok_or_else(|| conflict("codex.restore.ack.intent"))?;
+        let before = settings_codex_model_file_for_operation(&original, original_intent)?;
+        if before.context_id != payload.context_id
+            || !matches!(before.change, CodexModelFileAction::Configure { .. })
+        {
+            return Err(conflict("codex.restore.ack.context"));
+        }
+        drop(stores);
+        let record = self
+            .artifacts
+            .load_native_restore(&original_operation, original_intent)?
+            .ok_or_else(|| conflict("codex.restore.ack.record"))?;
+        if record.len() < 3 || record[0] != 1 || record[1] > 1 {
+            return Err(conflict("codex.restore.ack.schema"));
+        }
+        let restore = hiroute_integrations::CodexNativeRestore::decode_protected(&record[2..])
+            .map_err(|_| conflict("codex.restore.ack.decode"))?;
+        let current = self.artifacts.read_native_target(intent.target())?;
+        let text = std::str::from_utf8(current.as_deref().map_or(&[], |b| b.as_slice()))
+            .map_err(|_| conflict("codex.restore.ack.encoding"))?;
+        let restored = hiroute_integrations::restore_codex_native_with_model(
+            text,
+            &restore,
+            native_model.as_deref(),
+        )
+        .map_err(|_| conflict("codex.restore.ack.fields"))?;
+        // Only acknowledge complete cleanup. Remaining owned fields require user repair;
+        // neither comments nor unrelated edits are overwritten or rebased by this path.
+        if restored.as_str() != text {
+            // A first deferred preparation still needs to render and stage restoration.
+            if matches!(state, EffectReconciliation::Missing) {
+                return Ok(());
+            }
+            return Err(conflict("codex.restore.ack.incomplete"));
+        }
+        self.artifacts.acknowledge_native_restoration(
+            &operation.operation_id,
+            intent,
+            current.as_deref().map(|b| b.as_slice()),
+        )?;
+        Ok(())
+    }
+
     pub(super) fn stage_settings_codex_catalog(
         &self,
         operation: &hiroute_domain::OperationV1,
@@ -177,12 +268,17 @@ impl LocalControlAdapter {
             .find(|candidate| candidate.kind() == hiroute_domain::OwnedEffectKind::Publication)
             .ok_or_else(|| conflict("codex.catalog.publication.intent"))?
             .clone();
-        let baseline = codex_catalog_baseline(
+        let mut baseline = codex_catalog_baseline(
             stores.control(),
             &self.artifacts,
             previous_operation.as_ref(),
             model_intent.target(),
         )?;
+        if self.settings_agent_for_context(&payload.context_id)
+            == Some(super::settings_facts::SettingsAgentClass::CodexProfile)
+        {
+            baseline = CodexCatalogBaseline::Scope;
+        }
         drop(stores);
         let publication = self
             .publication_record_from_operation(operation, &publication_intent)?
@@ -236,10 +332,18 @@ impl LocalControlAdapter {
     ) -> PortResult<OwnedEffectV1> {
         let stores = self.stores_lock()?;
         let operation_id = &operation.operation_id;
-        if operation.state != OperationState::ApplyingAgentArtifacts {
+        let payload = settings_codex_model_file_for_operation(operation, intent)?;
+        let restoration_tail = operation.state == OperationState::Activating
+            && matches!(&payload.change, CodexModelFileAction::Restore { .. })
+            && operation
+                .step(OperationStepKind::Activate)
+                .terminal_result
+                .as_deref()
+                .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
+                .is_some();
+        if operation.state != OperationState::ApplyingAgentArtifacts && !restoration_tail {
             return Err(conflict("codex.settings.phase"));
         }
-        let payload = settings_codex_model_file_for_operation(operation, intent)?;
         match &payload.change {
             CodexModelFileAction::Configure {
                 previous_operation,

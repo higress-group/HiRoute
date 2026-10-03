@@ -51,6 +51,8 @@ pub struct AgentSettingsFacts {
     pub native_default_model: Option<String>,
     /// Original directory for a Codex restore, never the HiRoute merged catalog.
     pub restore_native_model_ids: Option<Vec<String>>,
+    /// A standalone file restores absence and inherits root; it never validates root's models.
+    pub restore_inherits_root: bool,
     /// Model that an unmodified restore would leave in the native configuration.
     pub restored_native_model: Option<String>,
     pub native_claude_presets: Option<hiroute_domain::AgentClaudePresetValuesV2>,
@@ -309,7 +311,7 @@ pub fn preview_agent_settings(
                 restore_point_ref,
                 &mut blockers,
             );
-            if facts.ingress == AgentIngressProtocolV1::Responses {
+            if facts.ingress == AgentIngressProtocolV1::Responses && !facts.restore_inherits_root {
                 let chosen = spec
                     .restore_native_model
                     .as_ref()

@@ -3,11 +3,12 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-pub(crate) use hiroute_host_runtime::{
-    GatewayListenerConfigV1, GatewayListenerDesiredV1, GatewayPortModeV1,
-};
+#[cfg(test)]
+pub(crate) use hiroute_host_runtime::GatewayPortModeV1;
+pub(crate) use hiroute_host_runtime::{GatewayListenerConfigV1, GatewayListenerDesiredV1};
 use hiroute_host_runtime::{GatewayListenerReservation, GatewayListenerStore};
 
+#[cfg(test)]
 pub(crate) fn path(root: &Path) -> PathBuf {
     GatewayListenerStore::new(root).path()
 }

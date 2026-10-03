@@ -148,13 +148,12 @@ impl Resident {
             .is_none();
         // A timed-out orderly stop is still in progress. Retrying waits for that child;
         // its protected channel is no longer usable after shutdown was requested.
-        if !shutdown_requested {
-            if !self
+        if !shutdown_requested
+            && !self
                 .upgrade_status(hiroute_host_runtime::UpgradeAction::Status)?
                 .drained()
-            {
-                return Err("UPGRADE_WORK_ACTIVE".into());
-            }
+        {
+            return Err("UPGRADE_WORK_ACTIVE".into());
         }
         let owned = self.owned.as_mut().ok_or("UPGRADE_RESIDENT_NOT_OWNED")?;
         drop(owned.shutdown.take());

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { agentActionErrorMessage, classifyAgentMutation } from '../src/agent-mutation-feedback.ts';
+import { agentActionErrorMessage, agentDisableMessage, classifyAgentMutation } from '../src/agent-mutation-feedback.ts';
 
 const operation = {
   operation_id: 'operation/agent-settings',
@@ -29,4 +29,13 @@ test('a pre-admission Agent conflict tells the user no save occurred and offers 
   }
   assert.match(agentActionErrorMessage('SERVICE_UNAVAILABLE', 'en'), /local service is unavailable/);
   assert.doesNotMatch(agentActionErrorMessage('SERVICE_UNAVAILABLE', 'en'), /enabled in Login Items/);
+});
+
+test('disable feedback reports success, verified rollback and uncertain recovery separately', () => {
+  assert.match(agentDisableMessage('succeeded', 'zh'), /连接已停用/);
+  assert.match(agentDisableMessage('rolled_back', 'zh'), /原连接仍有效/);
+  assert.match(agentDisableMessage('rolled_back', 'en'), /rolled back/);
+  assert.match(agentDisableMessage('needs_attention', 'zh'), /回滚尚未确认/);
+  assert.doesNotMatch(agentDisableMessage('needs_attention', 'zh'), /原连接仍有效|连接已停用/);
+  assert.doesNotMatch(agentDisableMessage('activating', 'en'), /is disabled|remains active/);
 });

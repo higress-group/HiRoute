@@ -13,7 +13,7 @@ use std::{
 use tauri::Manager;
 
 fn main() {
-    assert!(cfg!(debug_assertions), "development acceptance only");
+    const { assert!(cfg!(debug_assertions), "development acceptance only") };
     let root = std::path::PathBuf::from(
         std::env::var_os("HIROUTE_DESKTOP_TEST_ROOT").expect("isolated root required"),
     );

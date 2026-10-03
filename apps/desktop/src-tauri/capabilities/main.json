@@ -9,6 +9,7 @@
   "permissions": [
     "core:window:allow-set-theme",
     "core:window:allow-start-dragging",
+    "clipboard-manager:allow-write-text",
     "allow-desktop-snapshot",
     "allow-preview-rename",
     "allow-preview-restore-name",
@@ -48,6 +49,7 @@
     "allow-save-classifier-openapi",
     "allow-agent-snapshot",
     "allow-preview-agent-settings",
+    "allow-retry-agent-settings",
     "allow-check-agent-authentication",
     "allow-worker-settings-get",
     "allow-worker-settings-set",

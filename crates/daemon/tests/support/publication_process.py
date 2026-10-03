@@ -41,8 +41,12 @@ def configure_model_settings_v2(product, allowed_plan_ids, key, default_plan_id=
     context = getattr(product, 'agent_context_id', None)
     if context is None:
         scan = product.preview('agents scan')
-        context = next(agent['context_id'] for agent in scan['agents']
-                       if agent['agent_id'] == agent_id)
+        agent = next(agent for agent in scan['agents'] if agent['agent_id'] == agent_id)
+        # Existing product scenarios explicitly exercise default configuration takeover.
+        # Profile acceptance selects the separate context rather than copying root output.
+        access = agent.get('codex_access')
+        mode = getattr(product, 'codex_access_mode', 'root')
+        context = access[mode + '_context_id'] if access else agent['context_id']
         product.agent_context_id = context
     product.agent_settings_agent_id = agent_id
     product.agent_connection = 'agent-connection/' + context
@@ -56,7 +60,9 @@ def configure_model_settings_v2(product, allowed_plan_ids, key, default_plan_id=
             'operations get ' + applied['data']['operation_id'])[1]
         raise AssertionError({'apply': applied, 'operation': operation})
     product.agent_settings_path = (
-        product.codex_settings if agent_id == 'agent_codex_default' else product.settings)
+        (product.codex_settings.with_name('hiroute.config.toml')
+         if getattr(product, 'codex_access_mode', 'root') == 'profile'
+         else product.codex_settings) if agent_id == 'agent_codex_default' else product.settings)
     status = product.cli('agents connect status ' + context)[1]
     assert status['status'] == 'succeeded', status
     assert status['data']['current_selection'] == preview['spec']['model']['settings'], status

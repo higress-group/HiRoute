@@ -49,41 +49,47 @@ struct CodexRestoreModelFacts {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SettingsAgentClass {
     Codex,
+    CodexProfile,
     Claude,
 }
 
 impl SettingsAgentClass {
+    pub(super) fn is_codex(self) -> bool {
+        self != Self::Claude
+    }
+
     pub(super) fn agent_id(self) -> &'static str {
         match self {
-            Self::Codex => "agent_codex_default",
+            Self::Codex | Self::CodexProfile => "agent_codex_default",
             Self::Claude => "agent_claude_default",
         }
     }
 
     fn context_segment(self) -> &'static str {
         match self {
-            Self::Codex => "codex",
+            Self::Codex | Self::CodexProfile => "codex",
             Self::Claude => "claude",
         }
     }
 
-    fn native_path(self, scanner: &FilesystemAgentScannerV1) -> std::path::PathBuf {
+    pub(super) fn native_path(self, scanner: &FilesystemAgentScannerV1) -> std::path::PathBuf {
         match self {
             Self::Codex => scanner.codex_user_config_target(),
+            Self::CodexProfile => scanner.codex_profile_config_target(),
             Self::Claude => scanner.claude_user_settings_target(),
         }
     }
 
     pub(super) fn skill_root_ref(self) -> &'static str {
         match self {
-            Self::Codex => "skill-root/agent_codex_default",
+            Self::Codex | Self::CodexProfile => "skill-root/agent_codex_default",
             Self::Claude => "skill-root/agent_claude_default",
         }
     }
 
     pub(super) fn skill_target(self) -> Result<String, hiroute_domain::OperationValidationError> {
         let (profile_id, integration_profile_ref) = match self {
-            Self::Codex => (
+            Self::Codex | Self::CodexProfile => (
                 hiroute_integrations::CODEX_PROFILE_ID_V1,
                 hiroute_integrations::CODEX_INTEGRATION_PROFILE_REF_V1,
             ),
@@ -112,12 +118,16 @@ impl LocalControlAdapter {
     }
 
     pub(super) fn settings_agent_for_context(&self, context: &str) -> Option<SettingsAgentClass> {
-        [SettingsAgentClass::Codex, SettingsAgentClass::Claude]
-            .into_iter()
-            .find(|class| context == self.settings_context(*class))
+        [
+            SettingsAgentClass::Codex,
+            SettingsAgentClass::CodexProfile,
+            SettingsAgentClass::Claude,
+        ]
+        .into_iter()
+        .find(|class| context == self.settings_context(*class))
     }
 
-    fn settings_context(&self, class: SettingsAgentClass) -> String {
+    pub(super) fn settings_context(&self, class: SettingsAgentClass) -> String {
         let path = class.native_path(&self.scanner);
         let digest = CanonicalDigest::of_bytes(path.as_os_str().as_encoded_bytes());
         format!(
@@ -134,6 +144,7 @@ impl LocalControlAdapter {
         let class = self
             .settings_agent_for_context(&spec.context_id)
             .ok_or(ControlReadError::NotFound)?;
+        self.check_codex_slot(spec, class)?;
         let first = self.settings_snapshot(spec, class)?;
         let second = self.settings_snapshot(spec, class)?;
         if first.facts.dependency_digest != second.facts.dependency_digest {
@@ -180,6 +191,8 @@ impl LocalControlAdapter {
                 &spec.collaboration,
                 AgentFacetIntent::Configure { .. }
             ))
+        } else if class == SettingsAgentClass::CodexProfile {
+            self.scanner.codex_profile_settings_discovery()
         } else {
             self.scanner.codex_settings_discovery(matches!(
                 &spec.collaboration,
@@ -232,7 +245,11 @@ impl LocalControlAdapter {
         });
         let subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
             installation.agent_id.clone(),
-            installation.profile.profile_id.clone(),
+            if class == SettingsAgentClass::CodexProfile {
+                hiroute_integrations::CODEX_STANDALONE_PROFILE_ID.to_owned()
+            } else {
+                installation.profile.profile_id.clone()
+            },
             installation.profile.integration_profile_ref.clone(),
         )
         .map_err(|_| ControlReadError::Corrupt)?;
@@ -259,8 +276,9 @@ impl LocalControlAdapter {
         }
         drop(bytes);
 
-        let skill_target = AgentConnectionEffectRoleV1::RoutingSkill
-            .target_for(&subject)
+        // Collaboration belongs to the original home, not the standalone model profile.
+        let skill_target = class
+            .skill_target()
             .map_err(|_| ControlReadError::Corrupt)?;
         let skill_before_fingerprint = self
             .artifacts
@@ -339,7 +357,9 @@ impl LocalControlAdapter {
         // New settings saves do not manage startup. Keep the preview field for V2 clients;
         // only an older, journal-owned login item may require cleanup on final restore.
         let other_context = match class {
-            SettingsAgentClass::Codex => SettingsAgentClass::Claude,
+            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => {
+                SettingsAgentClass::Claude
+            }
             SettingsAgentClass::Claude => SettingsAgentClass::Codex,
         };
         let other_grant = stores
@@ -406,7 +426,7 @@ impl LocalControlAdapter {
                 selected_collaboration_restore = Some(original.operation_id.clone());
             }
             let model = match class {
-                SettingsAgentClass::Codex => original
+                SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => original
                     .plan
                     .external()
                     .iter()
@@ -526,7 +546,7 @@ impl LocalControlAdapter {
         };
         let mut fixed_candidate_facts = match &spec.model {
             AgentFacetIntent::Configure { settings }
-                if class == SettingsAgentClass::Codex || !settings.fixed_models().is_empty() =>
+                if class.is_codex() || !settings.fixed_models().is_empty() =>
             {
                 match self.routing_compilation_snapshot(&workspace) {
                     Ok(snapshot) => snapshot.facts.candidates,
@@ -552,13 +572,13 @@ impl LocalControlAdapter {
             && let Some(active) = active_configuration.as_ref()
         {
             self.codex_restore_model_facts(active, &target)?.catalog
-        } else if class == SettingsAgentClass::Codex {
+        } else if class.is_codex() {
             self.scanner.codex_catalog_summary().ok()
         } else {
             None
         };
         let native_default_model = match class {
-            SettingsAgentClass::Codex => codex_catalog_summary
+            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => codex_catalog_summary
                 .as_ref()
                 .map(|catalog| catalog.native_default_model.clone()),
             SettingsAgentClass::Claude => self
@@ -620,7 +640,7 @@ impl LocalControlAdapter {
             None
         };
         let collaboration_state = self.settings_collaboration_state(spec)?;
-        let original_native_ids = if class == SettingsAgentClass::Codex
+        let original_native_ids = if class.is_codex()
             && preserve_native_models
             && matches!(&spec.model, AgentFacetIntent::Configure { .. })
         {
@@ -643,7 +663,14 @@ impl LocalControlAdapter {
                     },
                     Some(catalog),
                 ) if preserve_native_models && active_protected_native_ids.is_empty() => self
-                    .preserved_codex_model_selections(catalog, &mut fixed_candidate_facts)
+                    .preserved_codex_model_selections(
+                        catalog,
+                        &mut fixed_candidate_facts,
+                        active_configuration
+                            .as_ref()
+                            .filter(|_| class == SettingsAgentClass::Codex)
+                            .map(|op| (op, target.as_str())),
+                    )
                     .unwrap_or_default(),
                 (AgentFacetIntent::Configure { .. }, _)
                     if preserve_native_models && !active_protected_native_ids.is_empty() =>
@@ -694,38 +721,40 @@ impl LocalControlAdapter {
             .filter(|name| !proven_native_model_ids.contains(name))
             .collect::<Vec<_>>();
         let native_default_must_be_original = preserve_native_models;
-        let mut model_catalog =
-            if let (SettingsAgentClass::Codex, AgentFacetIntent::Configure { settings }) =
-                (class, &spec.model)
+        let mut model_catalog = if let (
+            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile,
+            AgentFacetIntent::Configure { settings },
+        ) = (class, &spec.model)
+        {
+            let baseline = if class == SettingsAgentClass::CodexProfile {
+                hiroute_integrations::CodexCatalogBaseline::Scope
+            } else {
+                let stores = self.stores_lock().map_err(super::map_port)?;
+                super::native_model::codex_catalog_baseline(
+                    stores.control(),
+                    &self.artifacts,
+                    active_configuration.as_ref(),
+                    &target,
+                )
+                .map_err(super::map_port)?
+            };
+            let mut complete = settings.clone();
+            if let hiroute_domain::AgentModelSelectionV2::CodexDefault { fixed_models, .. } =
+                &mut complete
             {
-                let baseline = {
-                    let stores = self.stores_lock().map_err(super::map_port)?;
-                    super::native_model::codex_catalog_baseline(
-                        stores.control(),
-                        &self.artifacts,
-                        active_configuration.as_ref(),
-                        &target,
-                    )
-                    .map_err(super::map_port)?
-                };
-                let mut complete = settings.clone();
-                if let hiroute_domain::AgentModelSelectionV2::CodexDefault {
-                    fixed_models, ..
-                } = &mut complete
-                {
-                    for preserved in &preserved_codex_models {
-                        if !fixed_models
-                            .iter()
-                            .any(|model| model.client_model_id == preserved.client_model_id)
-                        {
-                            fixed_models.push(preserved.clone());
-                        }
+                for preserved in &preserved_codex_models {
+                    if !fixed_models
+                        .iter()
+                        .any(|model| model.client_model_id == preserved.client_model_id)
+                    {
+                        fixed_models.push(preserved.clone());
                     }
                 }
-                self.codex_catalog_facts(&complete, active.as_ref(), &baseline, &mut installation)
-            } else {
-                None
-            };
+            }
+            self.codex_catalog_facts(&complete, active.as_ref(), &baseline, &mut installation)
+        } else {
+            None
+        };
         if let Some(catalog) = model_catalog.as_mut() {
             let catalog_target = settings_codex_catalog_target(&subject, &spec.context_id, catalog)
                 .map_err(|_| ControlReadError::Corrupt)?;
@@ -763,7 +792,7 @@ impl LocalControlAdapter {
                         == hiroute_domain::CollaborationSkillFileOwnership::BorrowedIdentical
                         && record.contexts.contains(&spec.context_id)
                 });
-        let codex_context_override = class == SettingsAgentClass::Codex
+        let codex_context_override = class.is_codex()
             && matches!(&spec.model, AgentFacetIntent::Configure { settings } if !settings.allowed_plan_ids().is_empty())
             && hiroute_integrations::codex_has_context_override(
                 &hiroute_integrations::CodexConfigurationScope::user_file(
@@ -791,6 +820,7 @@ impl LocalControlAdapter {
                 .claude_context_override()
                 .map_err(|_| ControlReadError::Unavailable)?;
         let dependency_digest = CanonicalDigest::of(&serde_json::json!({
+            "codex_profile_dependencies": self.codex_profile_dependencies(class, spec, active_configuration.as_ref())?,
             "claude_context_override": claude_context_override,
             "claude_plan_capability_unavailable": claude_plan_capability_unavailable,
             "codex_context_override": codex_context_override,
@@ -814,6 +844,7 @@ impl LocalControlAdapter {
             "native_default_must_be_original":native_default_must_be_original,
             "native_claude_presets":native_claude_presets,
             "restore_native_model_ids":restore_native_model_ids,
+            "restore_inherits_root":class == SettingsAgentClass::CodexProfile,
             "restored_native_model":restored_native_model,
             "collaboration_file_conflict":collaboration_file_conflict,
             "model_catalog":&model_catalog,
@@ -834,10 +865,12 @@ impl LocalControlAdapter {
             ))
             .map_err(|_| ControlReadError::Corrupt)?;
         let model_target = match class {
-            SettingsAgentClass::Codex => SettingsModelTargetFacts::Codex {
-                provider_id: "hiroute".into(),
-                endpoint: runtime.gateway_base_url.clone(),
-            },
+            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => {
+                SettingsModelTargetFacts::Codex {
+                    provider_id: "hiroute".into(),
+                    endpoint: runtime.gateway_base_url.clone(),
+                }
+            }
             SettingsAgentClass::Claude => {
                 SettingsModelTargetFacts::Claude(SettingsClaudeModelFacts {
                     installation: installation.clone(),
@@ -896,6 +929,7 @@ impl LocalControlAdapter {
                 native_default_model,
                 native_claude_presets,
                 restore_native_model_ids,
+                restore_inherits_root: class == SettingsAgentClass::CodexProfile,
                 restored_native_model,
                 collaboration_file_conflict,
                 restore_points,

@@ -101,7 +101,9 @@ impl LocalControlAdapter {
     fn legacy_collaboration_artifact_path(&self, context: &str) -> PortResult<PathBuf> {
         let class = self.settings_agent_for_context(context).ok_or_else(error)?;
         let native = match class {
-            SettingsAgentClass::Codex => self.scanner.codex_user_config_target(),
+            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => {
+                self.scanner.codex_user_config_target()
+            }
             SettingsAgentClass::Claude => self.scanner.claude_user_settings_target(),
         };
         let home = native
@@ -112,7 +114,7 @@ impl LocalControlAdapter {
             .join(".hiroute")
             .join("credential-artifacts")
             .join(match class {
-                SettingsAgentClass::Codex => "codex.sealed",
+                SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => "codex.sealed",
                 SettingsAgentClass::Claude => "claude-code.sealed",
             }))
     }

@@ -1,10 +1,14 @@
-import { AgentCapabilityPreview } from './agent-capability-preview';
-import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon } from './ui';
+import { CodexAccessPanel, CodexAccessSettings, type CodexAccess } from './features/agents/CodexAccessPanel';
+import { confirmedCodexLaunchCommand, type PendingCodexLaunchCopy } from './features/agents/codex-launch';
+import { codexSurfaceFacts } from './features/agents/codex-surfaces';
+import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon, copyText } from './ui';
 import { confirmDiscard, useDiscardGuard } from './ui/discard-guard';
 import React, { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   agentEditorSeed,
+  commonClaudePlan,
+  sharedClaudePlan,
   codexDefaultChoiceValid,
   editorFingerprint,
   type AgentClaudePresetMappings,
@@ -19,6 +23,7 @@ import type { OperationReference } from './features/model-connections/types';
 import { safeDiagnosticCode } from './error-code';
 import {
   agentActionErrorMessage,
+  agentDisableMessage,
   classifyAgentMutation,
   type AgentMutationOutcome,
 } from './agent-mutation-feedback';
@@ -98,6 +103,7 @@ export type ModelStatus = {
   collaboration?: CollaborationStatus | null;
 };
 export type Agent = {
+  codex_access?: CodexAccess | null;
   agent_id: string;
   version: string;
   context_id: string | null;
@@ -157,6 +163,7 @@ export function Agents({
   language,
   onMutation,
   onOperation,
+  operation = null,
   onUnverifiedOperation,
   initialAgentId = null,
   initialFacet = 'model',
@@ -177,6 +184,7 @@ export function Agents({
   language: 'zh' | 'en';
   onMutation: () => void;
   onOperation?: (operation: OperationReference, presentation: { kind: 'agent-settings'; target: string }) => void;
+  operation?: OperationReference | null;
   onUnverifiedOperation?: (presentation: { kind: 'agent-settings'; target: string }) => void;
   initialAgentId?: string | null;
   initialFacet?: Facet;
@@ -205,6 +213,7 @@ export function Agents({
   const [tokenEditing, setTokenEditing] = useState(false);
   const [tokenDraft, setTokenDraft] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(initialAgentId);
+  const [codexMode, setCodexMode] = useState<'profile' | 'root'>('profile');
   const [showAgentList, setShowAgentList] = useState(false);
   const [tab, setTab] = useState<'configuration' | 'tasks'>(initialTab);
   const agentName = (agent: Agent) => agent.agent_id === 'agent_codex_default'
@@ -218,11 +227,12 @@ export function Agents({
   const [editorValues, setEditorValues] = useState<AgentEditorValues>(EMPTY_EDITOR_VALUES);
   const [restoreNativeModel, setRestoreNativeModel] = useState('');
   const [selectionKnown, setSelectionKnown] = useState(false);
-  const [facetEnabled, setFacetEnabled] = useState(false);
-  const [baselineEnabled, setBaselineEnabled] = useState(false);
+  const [baselineCodexMode, setBaselineCodexMode] = useState<'profile' | 'root'>('profile');
+  const [pendingLaunchCopy, setPendingLaunchCopy] = useState<PendingCodexLaunchCopy | null>(null);
+  const [pendingDisable, setPendingDisable] = useState<string | null>(null);
   const [baseline, setBaseline] = useState('');
   const fingerprint = editorFingerprint(editorValues);
-  const dirty = !!editor && (fingerprint !== baseline || facetEnabled !== baselineEnabled);
+  const dirty = !!editor && (fingerprint !== baseline || codexMode !== baselineCodexMode);
   useDiscardGuard('agents', dirty, language, confirmEditorReplacement);
   const queryGeneration = useRef(0);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -245,6 +255,35 @@ export function Agents({
   useEffect(() => {
     void refresh();
   }, [refreshVersion]);
+  useEffect(() => {
+    if (!pendingLaunchCopy || operation?.operation_id !== pendingLaunchCopy.operationId) return;
+    if (['failed', 'cancelled', 'compensated'].includes(operation.state)) { setPendingLaunchCopy(null); return; }
+    if (operation.state !== 'succeeded') return;
+    let cancelled = false;
+    const target = pendingLaunchCopy;
+    void (async () => {
+      try {
+        const current = await invoke<AgentSnapshot>('agent_snapshot');
+        if (cancelled) return;
+        const command = confirmedCodexLaunchCommand(target, operation, current.agents.find(agent => agent.agent_id === 'agent_codex_default'), navigator.platform);
+        if (!command) { setPendingLaunchCopy(null); setNotice(text('保存已完成，请在启动区域重新读取并复制命令。', 'Save completed. Read and copy the command in the launch section.')); return; }
+        await copyText(command);
+        if (!cancelled) { setPendingLaunchCopy(null); setNotice(text('启动命令已复制，粘贴到终端即可使用。', 'Launch command copied. Paste it into a terminal to start.')); }
+      } catch {
+        if (!cancelled) {
+          setPendingLaunchCopy(null);
+          setNotice(text('保存已完成，自动复制失败。请使用“复制启动命令”或手动复制。', 'Save completed, but automatic copy failed. Use Copy launch command or copy it manually.'));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pendingLaunchCopy, operation]);
+  useEffect(() => {
+    if (pendingDisable && operation?.operation_id === pendingDisable) {
+      setNotice(agentDisableMessage(operation.state, language));
+      if (['succeeded', 'rolled_back', 'needs_attention'].includes(operation.state)) setPendingDisable(null);
+    }
+  }, [pendingDisable, operation, language]);
   useEffect(() => {
     if (editor) firstField.current?.focus();
   }, [editor]);
@@ -295,12 +334,13 @@ export function Agents({
     setTokenDraft('');
     setSelectedAgent(agent.agent_id);
     setEditor({ context: agent.context_id, facet });
-    const { known, ...seed } = agentEditorSeed(agent, facet);
+    const { known, ...seed } = agentEditorSeed(agent, facet, enabledPlans.map(plan => plan.agent_plan_id));
     setSelectionKnown(known);
     setEditorValues(seed);
-    const enabled = facet === 'model' ? Boolean(agent.settings?.current_selection) : Boolean(agent.settings?.collaboration?.current_selection);
-    setFacetEnabled(enabled);
-    setBaselineEnabled(enabled);
+    const mode = agent.codex_access?.slot_occupied ? agent.codex_access.selected_mode : 'profile';
+    setCodexMode(mode);
+    setBaselineCodexMode(mode);
+    setPendingLaunchCopy(null);
     setBaseline(editorFingerprint(seed));
   }
   function spec(agent: Agent, facet: Facet, restore: boolean) {
@@ -323,8 +363,10 @@ export function Agents({
           };
       return {
         schema_version: { major: 2, minor: 0 },
-        context_id: agent.context_id,
-        restore_native_model: restore && agent.agent_id === 'agent_codex_default' && restoreNativeModel
+        context_id: agent.codex_access && !agent.codex_access.slot_occupied
+          ? (codexMode === 'root' ? agent.codex_access.root_context_id : agent.codex_access.profile_context_id)
+          : agent.context_id,
+        restore_native_model: restore && agent.agent_id === 'agent_codex_default' && agent.codex_access?.selected_mode !== 'profile' && restoreNativeModel
           ? restoreNativeModel : undefined,
         model: restore
           ? { intent: 'restore', restore_point_ref: agent.settings?.restore_point_ref }
@@ -335,7 +377,7 @@ export function Agents({
 
     return {
       schema_version: { major: 2, minor: 0 },
-      context_id: agent.context_id,
+      context_id: agent.codex_access?.root_context_id ?? agent.context_id,
       model: keep,
       collaboration: restore
         ? {
@@ -388,13 +430,19 @@ export function Agents({
           ? text('已取消，未提交变更。', 'Cancelled before submission.')
           : '');
         if (result.mutation.operation) {
+          if (restore && facet === 'model') {
+            setNotice(agentDisableMessage(result.mutation.operation.state, language));
+            if (!['succeeded', 'rolled_back', 'needs_attention'].includes(result.mutation.operation.state)) setPendingDisable(result.mutation.operation.operation_id);
+          }
+          if (!restore && facet === 'model' && agent.codex_access && activeCodexMode === 'profile' && !agent.settings?.current_selection) {
+            setPendingLaunchCopy({ operationId: result.mutation.operation.operation_id, contextId: input.spec.context_id });
+          }
           onOperation?.(result.mutation.operation, presentation);
         } else if (disposition === 'unverified') {
           onUnverifiedOperation?.(presentation);
         }
         if (disposition === 'submitted') {
           setBaseline(fingerprint);
-          setBaselineEnabled(facetEnabled);
           setEditor(null);
         }
         onMutation();
@@ -653,13 +701,14 @@ export function Agents({
   const selectedExecutableDiagnostic = selected
     ? executableDiagnostic(selected.configuration_state)
     : null;
-  const disableRestoreAvailable = editor?.facet === 'model'
-    ? Boolean(selected?.settings?.restore_point_ref)
-    : Boolean(selected?.settings?.collaboration?.restore_point_ref);
   const selectedPlansEnabled = editorValues.allowedPlanIds.every(id => enabledPlans.some(plan => plan.agent_plan_id === id));
   const defaultChoice = editorValues.defaultChoice;
-  const detectedCodexSurfaces = new Set<AgentModelSurface>((selected?.available_surfaces ?? [])
-    .filter(surface => surface === 'codex_cli' || surface === 'codex_desktop'));
+  const activeCodexMode = selected?.codex_access?.slot_occupied
+    ? selected.codex_access.selected_mode : codexMode;
+  const codexSurfaces = codexSurfaceFacts(activeCodexMode, selected?.available_surfaces ?? []);
+  const verificationSurfaces = (selected?.available_surfaces ?? []).filter(surface =>
+    selected?.agent_id !== 'agent_codex_default'
+      || codexSurfaces.some(fact => fact.surface === surface && fact.applicable));
   const catalogModels = (selected?.native_model_catalog?.models ?? [])
     .map(model => ({ ...model, source_options: model.source_options ?? [] }));
   const nativeRestoreOptions = catalogModels.filter(model =>
@@ -704,9 +753,17 @@ export function Agents({
       || !codexDefaultValid
     : claudePlanIds.length + editorValues.fixedModels.length === 0
       || claudePlanIds.some(id => !enabledPlans.some(plan => plan.agent_plan_id === id));
-  const formInvalid = facetEnabled
-    ? !selectionKnown || (editor?.facet === 'model' && modelFormInvalid)
-    : !disableRestoreAvailable;
+  const formInvalid = !selectionKnown || (editor?.facet === 'model' && modelFormInvalid);
+  const claudeSharedPlan = commonClaudePlan(editorValues.claudePresets);
+  const creatingModelConnection = editor?.facet === 'model' && !modelSelection;
+  const showCodexDefault = editorValues.nativeModelMode === 'preserve_available'
+    || editorValues.fixedModels.length > 0 || editorValues.allowedPlanIds.length > 1;
+  const submitLabel = creatingModelConnection
+    ? selected?.agent_id === 'agent_codex_default' && activeCodexMode === 'profile'
+      ? text('启用并复制启动命令', 'Enable and copy launch command')
+      : text('启用模型路由', 'Enable model routing')
+    : editor?.facet === 'collaboration' && !taskSelection
+      ? text('启用任务路由', 'Enable task routing') : text('保存配置', 'Save settings');
 
   const brand = (agent: Agent) => agent.agent_id === 'agent_codex_default' ? 'codex' : agent.agent_id === 'agent_claude_default' ? 'claude-code' : 'agent';
   const planName = (id: string) => plans.find(plan => plan.agent_plan_id === id)?.desired.display_name;
@@ -743,6 +800,7 @@ export function Agents({
     }
     return <label className="field"><span className="field-label">{text('思考预算', 'Reasoning budget')}</span><input className="input" type="number" min={reasoning.minimum_tokens} max={reasoning.maximum_tokens} step={reasoning.step_tokens} value={selection?.kind === 'budget' ? selection.tokens : ''} onChange={event => setFixedReasoning(model.client_model_id, { kind: 'budget', tokens: Number(event.target.value) })} /><span className="field-help">{reasoning.minimum_tokens}–{reasoning.maximum_tokens} tokens</span></label>;
   };
+  const savedClaudeSharedPlan = modelSelection?.mode === 'claude_launcher' ? commonClaudePlan(modelSelection.preset_mappings) : null;
   const modelSelectionSummary = modelSelection?.mode === 'codex_default'
     ? modelSelection.default_selection.kind === 'plan'
       ? planName(modelSelection.default_selection.plan_id) ?? text('当前路由不可用', 'Current route unavailable')
@@ -750,7 +808,9 @@ export function Agents({
         ? modelSelection.default_selection.client_model_id
         : text('使用 Codex 当前默认模型名称', 'Use the current Codex default model name')
     : modelSelection
-      ? text('Opus、Sonnet、Haiku 分别映射', 'Separate Opus, Sonnet, and Haiku mappings')
+      ? savedClaudeSharedPlan
+        ? text('三个档位共用：', 'All presets use: ') + (planName(savedClaudeSharedPlan) ?? text('当前路由不可用', 'Current route unavailable'))
+        : Object.entries(modelSelection.preset_mappings).map(([preset, choice]) => `${preset[0].toUpperCase() + preset.slice(1)}: ${choice.kind === 'plan' ? planName(choice.plan_id) ?? text('当前路由不可用', 'Current route unavailable') : text('保留原生', 'Native')}`).join(' · ')
       : '';
   const blockedCheckScope = preview && editor && selected
     ? prerequisiteCheck(preview, editor.facet, selected)
@@ -847,16 +907,26 @@ export function Agents({
               <div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => setShowAgentList(true)}><UiIcon name="arrowLeft" />{text('返回 Agent 列表', 'Back to Agents')}</button></div>
               {selected && snapshot && <div className="detail-inner" data-agent-id={selected.agent_id}>
                 <header className="detail-hero"><div className="detail-identity"><BrandIcon kind={brand(selected)} label={`${agentName(selected)} logo`} /><div><h2>{agentName(selected)}</h2><p>{text('选择你需要的路由能力', 'Choose the routing capabilities you need')}</p></div></div></header>
-                {!mutable && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('Agent 配置可以查看，暂时不能修改', 'Agent settings are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，连接恢复后即可保存配置。', 'The local service is not ready. Reconnect before saving.')}</p></div></div>}
+                {!mutable && !selected.codex_access?.pending_operation && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('Agent 配置可以查看，暂时不能修改', 'Agent settings are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，连接恢复后即可保存配置。', 'The local service is not ready. Reconnect before saving.')}</p></div></div>}
+                {selected.codex_access && <CodexAccessPanel access={selected.codex_access} language={language} retryDisabled={busy || Boolean(editor) || !snapshot.trusted_authority} onRetry={async () => {
+                  const access = selected.codex_access;
+                  if (!access?.pending_operation || !selected.context_id || busy) return;
+                  setBusy(true); setActionError('');
+                  try {
+                    await invoke('retry_agent_settings', { input: { schema: 'hiroute.agent-settings-retry/v1', context_id: selected.context_id, operation_id: access.pending_operation } });
+                    await refresh();
+                  } catch (error) { setActionError(desktopErrorCode(error)); }
+                  finally { onMutation(); setBusy(false); }
+                }} />}
                 {selected.status_error && <div className="callout warn" data-error-code={selected.status_error}><UiIcon name="warning" /><div><strong>{text('暂时无法核实 Agent 状态', 'Agent status is temporarily unavailable')}</strong><p>{text('当前仍显示已发现的 Agent；重新读取成功前不会把未知状态当作已接入。', 'The detected Agent remains visible. Unknown status is not treated as connected until it can be read again.')}</p><button className="btn" type="button" onClick={() => void refresh()}>{text('重新读取', 'Try again')}</button></div></div>}
                 {executableStatus}
                 {selectedHasDrift && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('接入配置已变化', 'Connection settings changed')}</strong><p>{text('HiRoute 不会覆盖已变化的设置。请在“连接详情与恢复”中恢复需要的路由配置。', 'HiRoute will not overwrite changed settings. Restore the required routing configuration under Connection details and recovery.')}</p></div></div>}
-                {selectedPending && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('路由配置正在应用，完成后会自动更新。', 'Routing settings are being applied and will update automatically.')}</p></div>}
+                {selectedPending && !selected.codex_access?.pending_operation && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('路由配置正在应用，完成后会自动更新。', 'Routing settings are being applied and will update automatically.')}</p></div>}
                 <section className="detail-section v3-agent-section">
-                  <div className="detail-section-head"><h3>{text('模型路由', 'Model routing')}</h3><button className="btn btn-quiet" data-agent-facet="model" disabled={busy || !selected.context_id || !mutable} onClick={event => open(selected, 'model', event.currentTarget)}>{modelSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button></div>
+                  <div className="detail-section-head"><h3>{text('模型路由', 'Model routing')}</h3><button className="btn btn-quiet" data-agent-facet="model" disabled={busy || selectedPending || !selected.context_id || !mutable} onClick={event => open(selected, 'model', event.currentTarget)}>{modelSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button>{selected.settings?.restore_point_ref && <button className="btn btn-quiet" disabled={busy || selectedPending || !mutable} onClick={event => void change(selected, 'model', true, event.currentTarget)}>{text('停用', 'Disable')}</button>}</div>
                   <p>{modelSelection ? <>{text('当前选择：', 'Current selection: ')}<strong>{modelSelectionSummary}</strong></> : text('为此 Agent 配置固定模型，或通过智能路由自动选择模型。', 'Configure a fixed model for this Agent, or use smart routing to choose a model automatically.')}</p>
-                  {modelSelection && (selected.available_surfaces ?? []).length > 0 && <div className="agent-surface-results" aria-label={text('当前客户端验证结果', 'Current client verification results')}>
-                    {selected.available_surfaces?.map(surface => {
+                  {modelSelection && verificationSurfaces.length > 0 && <div className="agent-surface-results" aria-label={text('当前客户端验证结果', 'Current client verification results')}>
+                    {verificationSurfaces.map(surface => {
                       const revision = selected.settings?.applied_revision;
                       const result = selected.settings?.surface_results?.find(item => item.surface === surface && item.applied_revision === revision);
                       const state = selected.settings?.state === 'configured' && !selected.status_error && revision != null
@@ -883,26 +953,34 @@ export function Agents({
                       : text('让此 Agent 将任务交给合适的执行 Agent，并获取结果。', 'Let this Agent delegate work to a suitable execution Agent and retrieve the results.')}</p>
                   <p className="field-help">{text('启用后，可在对话中说：“使用 HiRoute，将当前任务委派给【路由名称】执行。”路由名称见“智能路由”，也可让 Agent 选择合适的路由。', 'After enabling, ask in conversation: “Use HiRoute to delegate this task to [route name].” Find route names under Smart routing, or ask the Agent to choose a suitable route.')}</p>
                 </section>
-                <Disclosure className="native-details" label={text('连接详情与恢复', 'Connection details and recovery')} language={language}><dl>{selected.version && <div><dt>{text('版本', 'Version')}</dt><dd>{selected.version}</dd></div>}{selected.settings?.state === 'configured' && modelSelection && <div><dt>{text('本机接入令牌', 'Local access token')}</dt><dd><input className="input" type="password" value="••••••••••••••••" readOnly aria-label={text('当前令牌已隐藏', 'Current token hidden')} /></dd></div>}</dl>{selected.settings?.restore_point_ref && selected.agent_id === 'agent_codex_default' && <label className="field-label">{text('恢复时选择原生模型（可选）', 'Native model on restore (optional)')}<input list="codex-native-restore-models" value={restoreNativeModel} onChange={event => { setRestoreNativeModel(event.target.value); setPreview(null); }} placeholder={text('保留原设置', 'Keep original setting')} disabled={busy || !mutable} /><datalist id="codex-native-restore-models">{nativeRestoreOptions.map(model => <option key={model.client_model_id} value={model.client_model_id}>{model.display_name}</option>)}</datalist></label>}{selected.settings?.state === 'configured' && modelSelection && <div className="actions" data-agent-token-controls><button className="btn" disabled={busy || !mutable} onClick={() => { setTokenEditing(true); setTokenDraft(''); setActionError(''); }}>{text('修改令牌', 'Change token')}</button><button className="btn" disabled={busy || !mutable} onClick={event => void changeToken(selected, true, event.currentTarget)}>{text('重新生成', 'Regenerate')}</button></div>}{tokenEditing && selected.settings?.state === 'configured' && modelSelection && <form className="agent-token-form" onSubmit={event => { event.preventDefault(); void changeToken(selected, false, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}><label className="field"><span className="field-label">{text('新令牌', 'New token')}</span><input className="input" type="password" autoComplete="new-password" value={tokenDraft} onChange={event => setTokenDraft(event.target.value)} minLength={16} maxLength={128} pattern="[A-Za-z0-9._~\\-]{16,128}" required disabled={busy} /><span className="field-help">{text('16–128 位英文字母、数字及 . _ ~ -；保存后原令牌立即失效，无需重新接入。', 'Use 16–128 letters, numbers, or . _ ~ -. The old token stops working after save; reconnecting is unnecessary.')}</span></label><div className="actions"><button className="btn btn-primary" type="submit" disabled={busy || !mutable}>{text('保存令牌', 'Save token')}</button><button className="btn" type="button" disabled={busy} onClick={() => { setTokenEditing(false); setTokenDraft(''); }}>{text('取消', 'Cancel')}</button></div></form>}<div className="actions">{selected.settings?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'model', true, event.currentTarget)}>{text('恢复模型设置', 'Restore model settings')}</button>}{selectedCollaboration?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'collaboration', true, event.currentTarget)}>{text('停用任务路由', 'Disable task routing')}</button>}</div></Disclosure>
+                <Disclosure className="native-details" label={text('连接详情与恢复', 'Connection details and recovery')} language={language}><dl>{selected.version && <div><dt>{text('版本', 'Version')}</dt><dd>{selected.version}</dd></div>}{selected.settings?.state === 'configured' && modelSelection && <div><dt>{text('本机接入令牌', 'Local access token')}</dt><dd><input className="input" type="password" value="••••••••••••••••" readOnly aria-label={text('当前令牌已隐藏', 'Current token hidden')} /></dd></div>}</dl>{selected.settings?.restore_point_ref && selected.agent_id === 'agent_codex_default' && selected.codex_access?.selected_mode !== 'profile' && <label className="field-label">{text('恢复时选择原生模型（可选）', 'Native model on restore (optional)')}<input list="codex-native-restore-models" value={restoreNativeModel} onChange={event => { setRestoreNativeModel(event.target.value); setPreview(null); }} placeholder={text('保留原设置', 'Keep original setting')} disabled={busy || !mutable} /><datalist id="codex-native-restore-models">{nativeRestoreOptions.map(model => <option key={model.client_model_id} value={model.client_model_id}>{model.display_name}</option>)}</datalist></label>}{selected.settings?.state === 'configured' && modelSelection && <div className="actions" data-agent-token-controls><button className="btn" disabled={busy || !mutable} onClick={() => { setTokenEditing(true); setTokenDraft(''); setActionError(''); }}>{text('修改令牌', 'Change token')}</button><button className="btn" disabled={busy || !mutable} onClick={event => void changeToken(selected, true, event.currentTarget)}>{text('重新生成', 'Regenerate')}</button></div>}{tokenEditing && selected.settings?.state === 'configured' && modelSelection && <form className="agent-token-form" onSubmit={event => { event.preventDefault(); void changeToken(selected, false, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}><label className="field"><span className="field-label">{text('新令牌', 'New token')}</span><input className="input" type="password" autoComplete="new-password" value={tokenDraft} onChange={event => setTokenDraft(event.target.value)} minLength={16} maxLength={128} pattern="[A-Za-z0-9._~\\-]{16,128}" required disabled={busy} /><span className="field-help">{text('16–128 位英文字母、数字及 . _ ~ -；保存后原令牌立即失效，无需重新接入。', 'Use 16–128 letters, numbers, or . _ ~ -. The old token stops working after save; reconnecting is unnecessary.')}</span></label><div className="actions"><button className="btn btn-primary" type="submit" disabled={busy || !mutable}>{text('保存令牌', 'Save token')}</button><button className="btn" type="button" disabled={busy} onClick={() => { setTokenEditing(false); setTokenDraft(''); }}>{text('取消', 'Cancel')}</button></div></form>}<div className="actions">{selectedCollaboration?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'collaboration', true, event.currentTarget)}>{text('停用任务路由', 'Disable task routing')}</button>}</div></Disclosure>
                 {!editor && loadError && <div className="callout warn agent-feedback agent-inline-feedback" role="alert" data-error-code={loadError}><UiIcon name="warning" /><div><strong>{text('状态刷新失败', 'Status refresh failed')}</strong><p>{text('当前仍显示上次读取的结果。', 'The last loaded result is still shown.')}</p><button className="btn" type="button" onClick={() => void refresh()}>{text('重试', 'Retry')}</button></div></div>}
                 {!editor && blockedPreview}
                 {!editor && notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{notice}</span></div></div>}
                 {!editor && actionError && <div className="callout bad agent-feedback agent-inline-feedback" role="alert" data-error-code={actionError}><UiIcon name="warning" /><span>{agentActionErrorMessage(actionError, language)}</span></div>}
                 {!selected.context_id && <div className="callout"><UiIcon name="info" /><span>{text('此 Agent 的设置入口尚不可用。', 'Settings for this Agent are not available yet.')}</span></div>}
-                {editor?.context === selected.context_id && selected.context_id && <Dialog open title={`${agentName(selected)} · ${editor.facet === 'model' ? text('模型路由', 'Model routing') : text('任务路由', 'Task routing')}`} closeLabel={text('关闭配置', 'Close settings')} closeDisabled={busy} onClose={() => { if (!busy) close(); }} footer={<><button className="btn" type="button" disabled={busy} onClick={close}>{text('取消', 'Cancel')}</button><button className="btn btn-primary" type="submit" form="hr-agent-settings" disabled={busy || !mutable || Boolean(formInvalid)}>{busy ? busyText || text('正在保存…', 'Saving…') : text('保存配置', 'Save settings')}</button></>}>
-                  <form id="hr-agent-settings" className="agent-form" onSubmit={event => { event.preventDefault(); void change(selected, editor.facet, !facetEnabled, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}>
+                {editor?.context === selected.context_id && selected.context_id && <Dialog open title={`${agentName(selected)} · ${editor.facet === 'model' ? text('模型路由', 'Model routing') : text('任务路由', 'Task routing')}`} closeLabel={text('关闭配置', 'Close settings')} closeDisabled={busy} onClose={() => { if (!busy) close(); }} footer={<><button className="btn" type="button" disabled={busy} onClick={close}>{text('取消', 'Cancel')}</button><button className="btn btn-primary" type="submit" form="hr-agent-settings" disabled={busy || !mutable || Boolean(formInvalid)}>{busy ? busyText || text('正在保存…', 'Saving…') : submitLabel}</button></>}>
+                  <form id="hr-agent-settings" className="agent-form" ref={node => { firstField.current = node?.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), button:not([disabled])') ?? null; }} onSubmit={event => { event.preventDefault(); void change(selected, editor.facet, false, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}>
                     <fieldset disabled={busy || !mutable}>
-                      <div className="option-row agent-facet-toggle"><div><strong>{editor.facet === 'model' ? text('使用 HiRoute 模型路由', 'Use HiRoute model routing') : text('启用任务路由', 'Enable task routing')}</strong><span>{editor.facet === 'model' ? text('关闭后使用原有模型接入', 'Use the original model connection when disabled') : text('允许当前 Agent 将任务交给执行 Agent，并获取结果', 'Allow this Agent to delegate work to an execution Agent and retrieve the results')}</span></div><button ref={node => { firstField.current = node; }} className={`switch${facetEnabled ? ' on' : ''}`} type="button" role="switch" aria-checked={facetEnabled} aria-label={editor.facet === 'model' ? text('模型路由', 'Model routing') : text('任务路由', 'Task routing')} onClick={() => { setFacetEnabled(value => !value); setPreview(null); setActionError(''); setNotice(''); }} /></div>
-                      {facetEnabled && editor.facet === 'model' && <p className="field-help" data-agent-service-responsibility>{text('保存不会设置登录项或保证 HiRoute 服务以后持续在线；需要路由时请保持本机服务运行。', 'Saving does not configure a login item or guarantee that the HiRoute service stays online; keep the local service running when you need routing.')}</p>}
-                      {facetEnabled && editor.facet === 'model' && selected.agent_id === 'agent_codex_default' && <div className="worker-choices">
-                        <fieldset data-agent-native-mode><legend className="field-label">{text('Codex 可用模型', 'Models available in Codex')}</legend>
-                          <label className="check-row"><input type="radio" name="codex-native-mode" value="hiroute_only" checked={editorValues.nativeModelMode === 'hiroute_only'} onChange={() => selectNativeModelMode('hiroute_only')} /><div><strong>{text('只使用已配置的 HiRoute 模型', 'Use configured HiRoute models only')}</strong><small>{text('无需接入原 Codex 账号；关闭时恢复原配置。', 'No original Codex account connection required; disabling restores the original configuration.')}</small></div></label>
-                          <label className="check-row"><input type="radio" name="codex-native-mode" value="preserve_available" checked={editorValues.nativeModelMode === 'preserve_available'} onChange={() => selectNativeModelMode('preserve_available')} /><div><strong>{text('同时保留 Codex 原有模型', 'Also keep native Codex models')}</strong><small>{text('先在“模型”接入原订阅账号或 API 来源；只保留能证明同账号可调用的模型。缓存目录不是账号权限。', 'Connect the original subscription account or API source under Models first. Only proven same-account models are kept; the cache is not entitlement.')}</small></div></label>
+                      {editor.facet === 'model' && <p className="field-help" data-agent-service-responsibility>{text('使用路由时请保持 HiRoute 运行。启用不会自动设置开机启动。', 'Keep HiRoute running when using routing. Enabling does not set up automatic startup.')}</p>}
+                      {editor.facet === 'model' && selected.agent_id === 'agent_codex_default' && <div className="worker-choices">
+                        <p className="field-help" data-codex-shared-scope>{activeCodexMode === 'profile'
+                          ? text('按需使用 · 仅 Codex CLI。启用后将启动命令粘贴到终端，开启新会话。普通 Codex 和 Desktop 保持原配置。', 'On demand · Codex CLI only. After enabling, paste the launch command into a terminal to start a new session. Ordinary Codex and Desktop keep their settings.')
+                          : text('设为默认 · 修改同一配置目录下 Codex CLI 和 Desktop 的模型接入。保存后重新启动对应客户端即可生效。', 'Use by default · changes model access for Codex CLI and Desktop sharing this directory. Restart the client after saving to apply the settings.')}</p>
+                        <fieldset><legend className="field-label">{text('允许的智能路由', 'Allowed smart routes')}</legend>
+                          {enabledPlans.length === 1 && creatingModelConnection && <p className="field-help">{text('唯一可用路由已选为默认，可直接启用。', 'The only available route is selected as the default. Enable to continue.')}</p>}
+                          {enabledPlans.map(plan => <label className="check-row agent-route-choice" data-agent-plan-id={plan.agent_plan_id} key={plan.agent_plan_id}><input type="checkbox" checked={editorValues.allowedPlanIds.includes(plan.agent_plan_id)} onChange={() => toggleAllowedPlan(plan.agent_plan_id)} /><div><strong>{plan.desired.display_name}</strong></div></label>)}
+                          {!enabledPlans.length && <div className="callout"><UiIcon name="route" /><div><span>{text('先创建并启用一条智能路由。', 'Create and enable a smart route first.')}</span></div>{onCreatePlan && <button className="btn" type="button" onClick={createPlanFromEditor}>{text('创建路由', 'Create route')}</button>}</div>}
+                          {editorValues.allowedPlanIds.filter(id => !planEnabled(id)).map(id => <label className="check-row agent-route-choice" key={id}><input type="checkbox" checked onChange={() => toggleAllowedPlan(id)} /><span>{planName(id) ?? id} · {text('当前不可用', 'Currently unavailable')}</span></label>)}
+                          {editorValues.allowedPlanIds.some(id => !planEnabled(id)) && <span className="oc-inline-error">{text('已有路由已停用或不存在，请取消选择后再保存。', 'A previously allowed route is disabled or missing. Remove it before saving.')}</span>}
                         </fieldset>
-                        <div className="callout" data-codex-shared-scope><UiIcon name="info" /><div><strong>{text('一套共享配置', 'One shared configuration')}</strong><p>{text('保存一次即作用于共享此配置作用域与 CODEX_HOME 的 Codex CLI 和 Desktop。下面的发现结果是当前事实，不是配置范围开关。', 'One save applies to Codex CLI and Desktop when they share this configuration scope and CODEX_HOME. Detection below is a current fact, not a configuration-scope switch.')}</p>{(['codex_desktop', 'codex_cli'] as const).map(surface => {
-                          const detected = detectedCodexSurfaces.has(surface);
-                          return <span className="field-help" key={surface} data-agent-surface-fact={surface} data-agent-surface-detected={detected ? 'true' : 'false'}>{surfaceName(surface)} · {detected ? text('当前已发现可执行入口', 'currently detected as runnable') : text('当前未发现可执行入口；不影响保存', 'not currently detected as runnable; saving is unaffected')}</span>;
-                        })}</div></div>
+                        {showCodexDefault && <>
+                        <label className="field"><span className="field-label">{text('默认选择', 'Default selection')}</span><select className="select" data-agent-default value={defaultChoiceValue(editorValues.defaultChoice)} onChange={event => selectDefaultChoice(event.target.value)}>{editorValues.nativeModelMode === 'preserve_available' && <option value="native">{text('使用 Codex 当前默认模型名称', 'Use the current Codex default model name')}</option>}{editorValues.fixedModels.map(model => <option key={model.client_model_id} value={`fixed:${model.client_model_id}`}>{model.client_model_id}</option>)}{editorValues.allowedPlanIds.filter(planEnabled).map(id => <option key={id} value={`plan:${id}`}>{planName(id)}</option>)}</select><span className="field-help">{defaultChoice.kind === 'preserve_native'
+                          ? text('保留当前默认模型名称；请求仍经过 HiRoute。该名称须对应已勾选的路由或已绑定的固定模型。', 'Keep the current default model name; requests still pass through HiRoute. The name must match an enabled route or a bound fixed model.')
+                          : defaultChoice.kind === 'plan'
+                            ? editorValues.nativeModelMode === 'preserve_available' ? text('Codex 将默认使用所选智能路由；已证明可用的原生模型名称会继续自动保留。', 'Codex will use the selected smart route by default; proven native model names remain available automatically.') : text('Codex 将默认使用所选智能路由。', 'Codex will use the selected smart route by default.')
+                            : text('Codex 将默认使用所选固定模型来源。', 'Codex will use the selected fixed model source by default.')}</span>{editorValues.nativeModelMode === 'preserve_available' && defaultChoice.kind === 'preserve_native' && !codexDefaultValid && <span className="oc-inline-error">{text('当前无法读取 Codex 原生默认模型；请修复当前配置后重试。', 'The native Codex default model cannot be read. Repair the current configuration and try again.')}</span>}</label>
+                        </>}
                         {fixedModelRows.length > 0 && <fieldset data-agent-fixed-models><legend className="field-label">{text('已配置的原生模型固定来源', 'Configured native model sources')}</legend>
                           {fixedModelRows.map(model => {
                             const fixed = editorValues.fixedModels.find(item => item.client_model_id === model.client_model_id);
@@ -912,31 +990,39 @@ export function Agents({
                             </div>;
                           })}
                         </fieldset>}
-                        <fieldset><legend className="field-label">{text('允许的智能路由', 'Allowed smart routes')}</legend>
-                          <p className="field-help" data-agent-plan-compatibility>{text('Codex 使用 Codex Responses 入口。上游来源名称不决定路由能否接入；保存时会按当前发布核对所选路由。', 'Codex uses the Codex Responses ingress. An upstream source name does not determine route compatibility; saving checks selected routes against the current publication.')}</p>
-                          {enabledPlans.map(plan => <label className="check-row" data-agent-plan-id={plan.agent_plan_id} key={plan.agent_plan_id}><input type="checkbox" checked={editorValues.allowedPlanIds.includes(plan.agent_plan_id)} onChange={() => toggleAllowedPlan(plan.agent_plan_id)} /><div><strong>{plan.desired.display_name}</strong></div></label>)}
-                          {!enabledPlans.length && <div className="callout"><UiIcon name="route" /><div><span>{text('先创建并启用一条智能路由。', 'Create and enable a smart route first.')}</span></div>{onCreatePlan && <button className="btn" type="button" onClick={createPlanFromEditor}>{text('创建路由', 'Create route')}</button>}</div>}
-                          {editorValues.allowedPlanIds.some(id => !planEnabled(id)) && <span className="oc-inline-error">{text('已有路由已停用或不存在，请取消选择后再保存。', 'A previously allowed route is disabled or missing. Remove it before saving.')}</span>}
+                        <Disclosure label={text('高级设置', 'Advanced settings')} language={language}>
+                          {selected.codex_access && <CodexAccessSettings access={selected.codex_access} mode={activeCodexMode} language={language} disabled={busy || !mutable} onMode={mode => { setCodexMode(mode); setPreview(null); setActionError(''); }} />}
+                        <fieldset data-agent-native-mode><legend className="field-label">{text('Codex 可用模型', 'Models available in Codex')}</legend>
+                          <label className="check-row"><input type="radio" name="codex-native-mode" value="hiroute_only" checked={editorValues.nativeModelMode === 'hiroute_only'} onChange={() => selectNativeModelMode('hiroute_only')} /><div><strong>{text('只使用已配置的 HiRoute 模型', 'Use configured HiRoute models only')}</strong><small>{text('无需接入原 Codex 账号；关闭时恢复原配置。', 'No original Codex account connection required; disabling restores the original configuration.')}</small></div></label>
+                          <label className="check-row"><input type="radio" name="codex-native-mode" value="preserve_available" checked={editorValues.nativeModelMode === 'preserve_available'} onChange={() => selectNativeModelMode('preserve_available')} /><div><strong>{text('同时保留 Codex 原有模型', 'Also keep native Codex models')}</strong><small>{text('先在“模型”接入原订阅账号或 API 来源；只保留能证明同账号可调用的模型。缓存目录不是账号权限。', 'Connect the original subscription account or API source under Models first. Only proven same-account models are kept; the cache is not entitlement.')}</small></div></label>
                         </fieldset>
-                        <label className="field"><span className="field-label">{text('默认选择', 'Default selection')}</span><select className="select" data-agent-default value={defaultChoiceValue(editorValues.defaultChoice)} onChange={event => selectDefaultChoice(event.target.value)}>{editorValues.nativeModelMode === 'preserve_available' && <option value="native">{text('使用 Codex 当前默认模型名称', 'Use the current Codex default model name')}</option>}{editorValues.fixedModels.map(model => <option key={model.client_model_id} value={`fixed:${model.client_model_id}`}>{model.client_model_id}</option>)}{editorValues.allowedPlanIds.filter(planEnabled).map(id => <option key={id} value={`plan:${id}`}>{planName(id)}</option>)}</select><span className="field-help">{defaultChoice.kind === 'preserve_native'
-                          ? text('保留当前默认模型名称；请求仍经过 HiRoute。该名称须对应已勾选的路由或已绑定的固定模型。', 'Keep the current default model name; requests still pass through HiRoute. The name must match an enabled route or a bound fixed model.')
-                          : defaultChoice.kind === 'plan'
-                            ? editorValues.nativeModelMode === 'preserve_available' ? text('Codex 将默认使用所选智能路由；已证明可用的原生模型名称会继续自动保留。', 'Codex will use the selected smart route by default; proven native model names remain available automatically.') : text('Codex 将默认使用所选智能路由。', 'Codex will use the selected smart route by default.')
-                            : text('Codex 将默认使用所选固定模型来源。', 'Codex will use the selected fixed model source by default.')}</span>{defaultChoice.kind === 'preserve_native' && !codexDefaultValid && <span className="oc-inline-error">{text('当前无法读取 Codex 原生默认模型；请修复当前配置后重试。', 'The native Codex default model cannot be read. Repair the current configuration and try again.')}</span>}</label>
-                        {modelFormInvalid && <span className="oc-inline-error">{text('至少选择一项固定模型或智能路由，并修正不可用项。', 'Choose at least one fixed model or smart route and resolve unavailable selections.')}</span>}
+                        <div className="callout" data-codex-shared-scope><UiIcon name="info" /><div><strong>{activeCodexMode === 'profile' ? text('独立 CLI 配置', 'Separate CLI configuration') : text('一套共享配置', 'One shared configuration')}</strong><p>{activeCodexMode === 'profile'
+                          ? text('本次保存只作用于指定 profile 的 Codex CLI。Desktop 继续使用原来的默认配置。', 'This save applies only to Codex CLI using the selected profile. Desktop keeps its original default configuration.')
+                          : text('保存一次即作用于共享此配置作用域与 CODEX_HOME 的 Codex CLI 和 Desktop。', 'One save applies to Codex CLI and Desktop when they share this configuration scope and CODEX_HOME.')}</p>{codexSurfaces.map(({surface, detected, applicable}) => {
+                          return <span className="field-help" key={surface} data-agent-surface-fact={surface} data-agent-surface-detected={detected ? 'true' : 'false'} data-agent-surface-applicable={applicable ? 'true' : 'false'}>{surfaceName(surface)} · {detected ? text('当前已发现可执行入口', 'currently detected as runnable') : text('当前未发现可执行入口', 'not currently detected as runnable')} · {applicable ? text('适用当前模式', 'applies to this mode') : text('不适用当前模式', 'does not apply to this mode')}</span>;
+                        })}</div></div>
+                          <p className="field-help" data-agent-plan-compatibility>{text('保存时会核对路由的 Codex Responses 能力。不同入口的会话历史可能不同。', 'Saving checks the routes’ Codex Responses capabilities. History may differ between entry points.')}</p>
+                        </Disclosure>
+                        {modelFormInvalid && <span className="oc-inline-error">{text('请选择可用路由或固定模型，并修正不可用项。', 'Choose an available route or fixed model and resolve unavailable selections.')}</span>}
                       </div>}
-                      {facetEnabled && editor.facet === 'model' && selected.agent_id === 'agent_claude_default' && <div className="worker-choices">
-                        <p className="field-help">{text('普通 claude 入口会读取保存的三个原生预设映射；可重复选择同一路由。若未显式设置当前模型，账号 Default 仍未知；保存不会验证它，请选择已映射预设并做真实调用。', 'The normal claude entry reads the three saved native preset mappings, and routes may be reused. Without an explicit current model, the account Default remains unknown; saving does not verify it. Select a mapped preset and make a live call.')}</p>
+                      {editor.facet === 'model' && selected.agent_id === 'agent_claude_default' && <div className="worker-choices">
+                        <label className="field"><span className="field-label">{claudeSharedPlan === null ? text('模型档位路由', 'Preset routes') : text('共用一条路由', 'Use one route for all presets')}</span><select className="select" aria-label={text('Claude Code 路由', 'Claude Code route')} value={claudeSharedPlan ?? ''} onChange={event => { setEditorValues(value => ({ ...value, claudePresets: sharedClaudePlan(event.target.value) })); setPreview(null); setActionError(''); }}><option value="" disabled>{claudeSharedPlan === null ? text('已分别配置模型档位', 'Presets configured separately') : text('选择路由', 'Choose a route')}</option>{claudeSharedPlan && !planEnabled(claudeSharedPlan) && <option value={claudeSharedPlan} disabled>{text('原有路由当前不可用', 'Previous route unavailable')}</option>}{enabledPlans.map(plan => <option key={plan.agent_plan_id} value={plan.agent_plan_id}>{plan.desired.display_name}</option>)}</select><span className="field-help">{claudeSharedPlan === null
+                          ? text('当前按档位分别配置。选择同一条路由可统一 Opus、Sonnet、Haiku；不会修改 Claude 当前默认模型。', 'Presets are configured separately. Choose one route to unify Opus, Sonnet and Haiku; the current Claude default model is unchanged.')
+                          : text('应用于 Opus、Sonnet、Haiku；高级设置可分别配置。不会修改 Claude 当前默认模型。', 'Applies to Opus, Sonnet and Haiku; configure them separately under Advanced settings. The current Claude default model is unchanged.')}</span></label>
+                        {editorValues.fixedModels.length > 0 && <p className="field-help">{text('保留已有固定模型：', 'Existing fixed models retained: ')}{editorValues.fixedModels.map(model => model.client_model_id).join(' · ')}</p>}
+                        <p className="field-help" data-agent-activation>{text('保存后，重新启动 Claude Code 即可加载配置。', 'Restart Claude Code after saving to load the settings.')}</p>
+                        <Disclosure label={text('高级设置', 'Advanced settings')} language={language} defaultOpen={claudeSharedPlan === null || claudePlanIds.some(id => !planEnabled(id))}>
+                          <p className="field-help">{text('普通 claude 入口使用这些映射。账号 Default 仍需真实调用验证，可显式选择已映射的模型档位。', 'The ordinary claude entry uses these mappings. Account Default needs a live call to verify; explicitly choose a mapped preset.')}</p>
                         {(['opus', 'sonnet', 'haiku'] as const).map(preset => {
                           const choice = editorValues.claudePresets[preset];
                           const selectedPlan = choice.kind === 'plan' ? choice.plan_id : '';
                           return <label className="field" key={preset}><span className="field-label">{preset[0].toUpperCase() + preset.slice(1)}</span><select className="select" value={selectedPlan} onChange={event => selectClaudePreset(preset, event.target.value)}><option value="">{text('保留原生值或缺省关系', 'Preserve native value or default relationship')}</option>{selectedPlan && !planEnabled(selectedPlan) && <option value={selectedPlan} disabled>{text('原有路由当前不可用', 'Previous route unavailable')}</option>}{enabledPlans.map(plan => <option key={plan.agent_plan_id} value={plan.agent_plan_id}>{plan.desired.display_name}</option>)}</select></label>;
                         })}
+                        </Disclosure>
                         {modelFormInvalid && <span className="oc-inline-error">{text('至少将一个预设映射到可用智能路由，或保留已有固定模型。', 'Map at least one preset to an enabled smart route, or retain an existing fixed model.')}</span>}
                         {!enabledPlans.length && <div className="callout"><UiIcon name="route" /><div><span>{text('先创建并启用一条智能路由。', 'Create and enable a smart route first.')}</span></div>{onCreatePlan && <button className="btn" type="button" onClick={createPlanFromEditor}>{text('创建路由', 'Create route')}</button>}</div>}
                       </div>}
-                      {facetEnabled && editor.facet === 'model' && <AgentCapabilityPreview agent={selected.agent_id === 'agent_claude_default' ? 'claude' : 'codex'} language={language} plans={enabledPlans.filter(plan => selected.agent_id === 'agent_claude_default' ? Object.values(editorValues.claudePresets).some(choice => choice.kind === 'plan' && choice.plan_id === plan.agent_plan_id) : editorValues.allowedPlanIds.includes(plan.agent_plan_id))} />}
-                      {facetEnabled && editor.facet === 'collaboration' && <fieldset className="worker-choices"><legend className="field-label">{text('委派时机', 'When to delegate')}</legend><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="explicit" checked={editorValues.triggerMode === 'explicit'} onChange={() => setTriggerMode('explicit')} /><div><strong>{text('仅在明确要求时', 'Only when explicitly requested')}</strong><span>{text('只有当你要求执行、委派或交给 Worker 时，Agent 才会启动任务。', 'The Agent starts a task only when you ask it to execute, delegate, or hand work to a Worker.')}</span></div></label><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="delegate_by_default" checked={editorValues.triggerMode === 'delegate_by_default'} onChange={() => setTriggerMode('delegate_by_default')} /><div><strong>{text('默认由 Agent 判断', 'Let the Agent decide by default')}</strong><span>{text('Agent 可以主动委派适合执行的任务；明确要求只回答时不会启动任务。', 'The Agent may proactively delegate suitable work, but will not start a task when you explicitly ask for an answer only.')}</span></div></label><p className="field-help">{text('可委派的任务路由在“智能路由”中管理。', 'Manage routes available for task delegation under Smart routing.')}</p></fieldset>}
+                      {editor.facet === 'collaboration' && <fieldset className="worker-choices"><legend className="field-label">{text('委派时机', 'When to delegate')}</legend><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="explicit" checked={editorValues.triggerMode === 'explicit'} onChange={() => setTriggerMode('explicit')} /><div><strong>{text('仅在明确要求时', 'Only when explicitly requested')}</strong><span>{text('只有当你要求执行、委派或交给 Worker 时，Agent 才会启动任务。', 'The Agent starts a task only when you ask it to execute, delegate, or hand work to a Worker.')}</span></div></label><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="delegate_by_default" checked={editorValues.triggerMode === 'delegate_by_default'} onChange={() => setTriggerMode('delegate_by_default')} /><div><strong>{text('默认由 Agent 判断', 'Let the Agent decide by default')}</strong><span>{text('Agent 可以主动委派适合执行的任务；明确要求只回答时不会启动任务。', 'The Agent may proactively delegate suitable work, but will not start a task when you explicitly ask for an answer only.')}</span></div></label><p className="field-help">{text('可委派的任务路由在“智能路由”中管理。', 'Manage routes available for task delegation under Smart routing.')}</p></fieldset>}
                       {!selectionKnown && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{text('当前配置状态无法核实，不能覆盖保存。请刷新或处理配置变化。', 'The current setting cannot be verified. Refresh or resolve configuration changes before saving.')}</span></div>}
                     </fieldset>
                   </form>

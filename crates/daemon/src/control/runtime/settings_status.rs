@@ -38,9 +38,8 @@ impl LocalControlAdapter {
             || !request.allow_model_call
             || !request.valid_target()
             || self
-                .settings_context_for_agent(&request.agent_id)
-                .as_deref()
-                != Some(target.context_id.as_str())
+                .settings_agent_for_context(&target.context_id)
+                .is_none_or(|class| class.agent_id() != request.agent_id)
         {
             return Err(ControlReadError::Denied);
         }
@@ -69,7 +68,17 @@ impl LocalControlAdapter {
         request: &AgentSettingsStatusRequestV2,
     ) -> Result<AgentModelSettingsStatusV2, ControlReadError> {
         let (mut status, _, _) = self.evaluate_model_settings(request)?;
-        status.collaboration = Some(self.collaboration_settings_status(request)?);
+        let collaboration_request = if self.settings_agent_for_context(&request.context_id)
+            == Some(SettingsAgentClass::CodexProfile)
+        {
+            AgentSettingsStatusRequestV2 {
+                schema_version: request.schema_version,
+                context_id: self.settings_context(SettingsAgentClass::Codex),
+            }
+        } else {
+            request.clone()
+        };
+        status.collaboration = Some(self.collaboration_settings_status(&collaboration_request)?);
         Ok(status)
     }
 
@@ -146,9 +155,10 @@ impl LocalControlAdapter {
         };
         if let Some(pending) = stores
             .control()
-            .writer_claim_operation()
+            .recoverable_operations()
             .map_err(super::map_port)?
-            && belongs(&pending)
+            .into_iter()
+            .find(|op| belongs(op))
         {
             status.state = if pending.state == OperationState::NeedsAttention {
                 State::NeedsAttention
@@ -206,12 +216,18 @@ impl LocalControlAdapter {
                             .claude_native_routing_conflict()
                             .map_err(|_| ControlReadError::Corrupt)?
                 } else {
-                    hiroute_integrations::codex_native_configuration_is_applied(
-                        &self.artifacts,
-                        &operation.operation_id,
-                        intent,
-                    )
-                    .map_err(super::map_port)?
+                    (class != SettingsAgentClass::CodexProfile
+                        || hiroute_integrations::codex_profile_dependency_digest(
+                            &self.scanner.codex_user_config_target(),
+                            true,
+                        )
+                        .is_ok())
+                        && hiroute_integrations::codex_native_configuration_is_applied(
+                            &self.artifacts,
+                            &operation.operation_id,
+                            intent,
+                        )
+                        .map_err(super::map_port)?
                 };
                 let [mutation] = operation.plan.agent_access_grants() else {
                     return Err(ControlReadError::Corrupt);
@@ -273,6 +289,10 @@ impl LocalControlAdapter {
                             hiroute_domain::AgentModelSelectionV2::CodexDefault { .. },
                             SettingsAgentClass::Codex,
                         ) => self.scanner.available_model_surfaces(class.agent_id()),
+                        (
+                            hiroute_domain::AgentModelSelectionV2::CodexDefault { .. },
+                            SettingsAgentClass::CodexProfile,
+                        ) => [hiroute_domain::AgentModelSurfaceV2::CodexCli].into(),
                         (
                             hiroute_domain::AgentModelSelectionV2::ClaudeLauncher {
                                 surfaces, ..
@@ -405,7 +425,8 @@ fn model_intent(
         .external
         .iter()
         .find(|intent| match class {
-            super::settings_facts::SettingsAgentClass::Codex => {
+            super::settings_facts::SettingsAgentClass::Codex
+            | super::settings_facts::SettingsAgentClass::CodexProfile => {
                 super::native_model::is_settings_codex_model(intent)
             }
             super::settings_facts::SettingsAgentClass::Claude => {
@@ -420,7 +441,8 @@ fn model_action(
     intent: &hiroute_domain::ExternalEffectIntentV1,
 ) -> hiroute_domain::PortResult<ModelAction> {
     match class {
-        super::settings_facts::SettingsAgentClass::Codex => {
+        super::settings_facts::SettingsAgentClass::Codex
+        | super::settings_facts::SettingsAgentClass::CodexProfile => {
             match settings_codex_model_file_for_operation(operation, intent)?.change {
                 CodexModelFileAction::Configure { .. } => Ok(ModelAction::Configure),
                 CodexModelFileAction::Restore { .. } => Ok(ModelAction::Restore),

@@ -4,14 +4,7 @@ use hiroute_host_runtime::{
     DesktopRelease, MAX_RELEASE_FEED_BYTES, RELEASE_FEED, WebsiteReleasesV2, verify_desktop_app,
 };
 use sha2::{Digest, Sha256};
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::atomic::Ordering,
-    time::Duration,
-};
+use std::{fs, io::Write, path::Path, process::Command, sync::atomic::Ordering, time::Duration};
 
 fn url(production: &str) -> Result<String, String> {
     #[cfg(all(feature = "desktop-pilot", debug_assertions))]
@@ -163,7 +156,6 @@ pub(super) async fn prepare(
             release,
             current: app,
             staged,
-            stage_root: stage_root.clone(),
             download_root: download_root.clone(),
             old_identity,
             new_identity,
@@ -222,7 +214,7 @@ fn stage_dmg(
                 .into_iter()
                 .collect()
             || fs::read_link(mount.join("Applications")).map_err(|_| "UPGRADE_DMG_INVALID")?
-                != PathBuf::from("/Applications")
+                != Path::new("/Applications")
         {
             return Err("UPGRADE_DMG_INVALID".into());
         }

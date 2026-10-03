@@ -6,9 +6,7 @@ use tauri::AppHandle;
 /// formal bundle hands the reopen to the operating system; every other duplicate just
 /// reports the existing instance without claiming anything about its service health.
 pub(crate) fn duplicate_exit(background: bool, formal_bundle: bool, handed_off: bool) -> i32 {
-    if background {
-        0
-    } else if formal_bundle && handed_off {
+    if background || (formal_bundle && handed_off) {
         0
     } else {
         1

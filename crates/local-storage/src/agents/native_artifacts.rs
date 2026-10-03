@@ -11,6 +11,72 @@ impl NativeAgentArtifactPort for ManagedArtifactStore {
     ) -> PortResult<hiroute_domain::EffectReconciliation> {
         ManagedArtifactStore::observe_artifact(self, operation, intent)
     }
+    fn acknowledge_native_restoration(
+        &self,
+        operation: &OperationId,
+        intent: &ExternalEffectIntentV1,
+        expected: Option<&[u8]>,
+    ) -> PortResult<OwnedEffectV1> {
+        if matches!(
+            self.observe_artifact(operation, intent)?,
+            EffectReconciliation::Missing
+        ) && self
+            .load_marker(operation, intent.effect_id())
+            .map_err(|_| port(PortErrorCode::Corrupt, "native.restoration.marker"))?
+            .is_none()
+        {
+            return self.acknowledge_unstaged_native_restoration(operation, intent, expected);
+        }
+        // Observe authenticates the marker, intent binding and backup before any acknowledgment.
+        if !matches!(
+            self.observe_artifact(operation, intent)?,
+            hiroute_domain::EffectReconciliation::OwnershipLost(_)
+        ) {
+            return Err(port(PortErrorCode::Conflict, "native.restoration.state"));
+        }
+        let mut marker = self
+            .load_marker(operation, intent.effect_id())
+            .map_err(|_| port(PortErrorCode::Corrupt, "native.restoration.marker"))?
+            .ok_or_else(|| port(PortErrorCode::NotFound, "native.restoration.marker"))?;
+        if marker.compensated
+            || !marker.rendered
+            || marker.kind != OwnedEffectKind::AgentArtifact
+            || marker.after_mode != intent.desired_mode()
+            || marker.target != intent.target()
+            || marker.before_digest.as_ref() != intent.before_fingerprint()
+            || marker.intent_digest.as_ref()
+                != Some(
+                    &hiroute_domain::CanonicalDigest::of(intent.desired()).map_err(|_| {
+                        port(PortErrorCode::InvalidData, "native.restoration.intent")
+                    })?,
+                )
+        {
+            return Err(port(PortErrorCode::Conflict, "native.restoration.binding"));
+        }
+        self.validated_backup(&marker)
+            .map_err(|_| port(PortErrorCode::Corrupt, "native.restoration.backup"))?;
+        let path = self
+            .target_path(intent.target())
+            .map_err(|_| port(PortErrorCode::PermissionDenied, "native.restoration.target"))?;
+        let current = read_native_file(&path, MAX_NATIVE_BYTES)
+            .map_err(|_| port(PortErrorCode::Conflict, "native.restoration.file"))?;
+        if current.as_deref().map(|b| b.as_slice()) != expected {
+            return Err(port(PortErrorCode::Conflict, "native.restoration.changed"));
+        }
+        let snapshot = read_artifact(&path)
+            .map_err(|_| port(PortErrorCode::Conflict, "native.restoration.snapshot"))?;
+        if snapshot.as_ref().map(|s| s.bytes.as_slice()) != expected {
+            return Err(port(PortErrorCode::Conflict, "native.restoration.changed"));
+        }
+        marker.native_restoration = Some(NativeRestorationReceipt {
+            fingerprint: snapshot.map(|s| s.fingerprint),
+        });
+        marker.activated = true;
+        self.save_marker(&marker)
+            .map_err(|_| port(PortErrorCode::Unavailable, "native.restoration.persist"))?;
+        Ok(Self::effect(&marker))
+    }
+
     fn stage_native_skill_target(
         &self,
         operation: &OperationId,

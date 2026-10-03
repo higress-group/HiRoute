@@ -62,6 +62,23 @@ const HOST_SETTINGS_COMMANDS: &[&str] = &[
 ];
 
 #[test]
+fn native_clipboard_exposes_only_text_writes_in_the_local_main_window() {
+    let capability: serde_json::Value =
+        serde_json::from_str(include_str!("../capabilities/main.json")).unwrap();
+    assert_eq!(capability["local"], true);
+    assert_eq!(capability["windows"], serde_json::json!(["main"]));
+    assert!(capability.get("remote").is_none());
+    let clipboard: Vec<_> = capability["permissions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|value| value.as_str())
+        .filter(|permission| permission.starts_with("clipboard-manager:"))
+        .collect();
+    assert_eq!(clipboard, ["clipboard-manager:allow-write-text"]);
+}
+
+#[test]
 fn action_results_and_failures_classify_without_business_text() {
     use crate::failure::DesktopFailure;
     use hiroute_client_core::{ClientFailure, FailureCode};
@@ -195,4 +212,9 @@ fn worker_task_commands_are_exposed_to_the_main_window() {
 #[test]
 fn the_explicit_quit_command_is_exposed_to_the_main_window() {
     assert_commands(&["quit_desktop"]);
+}
+
+#[test]
+fn profile_restore_retry_is_limited_to_the_main_window_capability() {
+    assert_commands(&["retry_agent_settings"]);
 }

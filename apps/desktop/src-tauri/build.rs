@@ -3,6 +3,9 @@ fn main() {
     let manifest = match std::env::var_os("HIROUTE_CPA_MANIFEST") {
         Some(path) => std::path::PathBuf::from(path),
         None if std::env::var("PROFILE").as_deref() == Ok("debug") => {
+            println!(
+                "cargo:warning=The default development CPA pin is historical. For current subscriptions, generate CPA and cpa-artifacts.json with scripts/package-desktop.py, then set HIROUTE_CPA_MANIFEST to that manifest and stage its matching binary. See vendor/cpa/README.md."
+            );
             std::path::PathBuf::from("development-cpa-artifacts.v1.json")
         }
         None => panic!("release Desktop requires HIROUTE_CPA_MANIFEST from package-desktop.py"),
@@ -50,6 +53,7 @@ fn main() {
             "resolve_web_confirmation",
             "agent_snapshot",
             "preview_agent_settings",
+            "retry_agent_settings",
             "check_agent_authentication",
             "worker_settings_get",
             "worker_settings_set",

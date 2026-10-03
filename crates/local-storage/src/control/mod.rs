@@ -42,6 +42,8 @@ mod journal;
 mod native_artifacts;
 #[path = "../agents/native_directories.rs"]
 mod native_directories;
+#[path = "../agents/native_restoration_ack.rs"]
+mod native_restoration_ack;
 mod operation_status;
 mod plans;
 mod prices;
@@ -1880,6 +1882,11 @@ fn port(code: PortErrorCode, context: &'static str) -> PortError {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+struct NativeRestorationReceipt {
+    fingerprint: Option<CanonicalDigest>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct ArtifactMarker {
     schema: String,
     restore_store_uuid: String,
@@ -1907,6 +1914,8 @@ struct ArtifactMarker {
     backup_aad: ArtifactBackupAad,
     activated: bool,
     compensated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    native_restoration: Option<NativeRestorationReceipt>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     created_directories: Vec<CreatedNativeDirectory>,
 }
@@ -1931,6 +1940,8 @@ pub struct ManagedArtifactStore {
     restore_store_uuid: String,
     restore_key_id: CanonicalDigest,
     external_targets: BTreeMap<String, PathBuf>,
+    // Process-local proof only. Reopening/replaying a deletion never recreates it.
+    untouched_deletions: std::sync::Mutex<BTreeMap<(String, String), CanonicalDigest>>,
 }
 
 fn artifact_present() -> bool {
@@ -1968,6 +1979,7 @@ impl ManagedArtifactStore {
             restore_store_uuid: restore.store_uuid,
             restore_key_id: restore.key_id,
             external_targets: BTreeMap::new(),
+            untouched_deletions: std::sync::Mutex::new(BTreeMap::new()),
         };
         store.migrate_legacy_markers()?;
         store.validate_existing_marker_bindings()?;
@@ -2018,6 +2030,7 @@ impl ManagedArtifactStore {
             restore_store_uuid: restore.store_uuid,
             restore_key_id: restore.key_id,
             external_targets,
+            untouched_deletions: std::sync::Mutex::new(BTreeMap::new()),
         };
         // Validate every durable marker only after its native path binding is present. This is
         // the restart-safe counterpart to bind_external_target, which is used before first Apply.
@@ -2323,6 +2336,11 @@ impl ManagedArtifactStore {
             || !supported_artifact_mode(marker.after_mode)
             || (marker.sensitive && marker.after_mode != 0o600)
             || marker.external_path_digest != self.external_path_digest(&marker.target)?
+            || marker.native_restoration.is_some()
+                && (!marker.rendered
+                    || !marker.activated
+                    || marker.compensated
+                    || marker.kind != OwnedEffectKind::AgentArtifact)
             || marker.rendered != marker.intent_digest.is_some()
             || (marker.backup_name.is_none() && marker.backup_aad != ArtifactBackupAad::CurrentV4)
         {
@@ -2420,7 +2438,10 @@ impl ManagedArtifactStore {
             kind: marker.kind,
             target: marker.target.clone(),
             before_fingerprint: marker.before_digest.clone(),
-            after_fingerprint: marker.after_exists.then(|| marker.after_digest.clone()),
+            after_fingerprint: marker.native_restoration.as_ref().map_or_else(
+                || marker.after_exists.then(|| marker.after_digest.clone()),
+                |r| r.fingerprint.clone(),
+            ),
             compensation: json!({
                 "schema": "hiroute.managed-artifact-compensation/v1",
                 "operation_id": marker.operation_id,
@@ -2461,6 +2482,10 @@ impl ManagedArtifactStore {
         after_exists: bool,
         inherited_parents: Vec<CreatedNativeDirectory>,
     ) -> PortResult<OwnedEffectV1> {
+        let mut untouched = self
+            .untouched_deletions
+            .lock()
+            .map_err(|_| port(PortErrorCode::Unavailable, "artifact.deletion.lock"))?;
         if !matches!(
             intent.kind(),
             OwnedEffectKind::Publication | OwnedEffectKind::AgentArtifact
@@ -2553,6 +2578,7 @@ impl ManagedArtifactStore {
             backup_aad: ArtifactBackupAad::CurrentV4,
             activated: false,
             compensated: false,
+            native_restoration: None,
             created_directories,
         };
         if let (Some(snapshot), Some(name)) = (&before, &marker.backup_name) {
@@ -2574,6 +2600,14 @@ impl ManagedArtifactStore {
             .map_err(|_| port(PortErrorCode::InvalidData, "artifact.stage"))?;
         atomic_write(&stage, desired, marker.after_mode, marker.sensitive)
             .map_err(|_| port(PortErrorCode::Unavailable, "artifact.stage.write"))?;
+        if marker.rendered && !marker.after_exists && marker.kind == OwnedEffectKind::AgentArtifact
+        {
+            untouched.insert(
+                (marker.operation_id.clone(), marker.effect_id.clone()),
+                CanonicalDigest::of(&marker)
+                    .map_err(|_| port(PortErrorCode::InvalidData, "artifact.deletion.identity"))?,
+            );
+        }
         Ok(Self::effect(&marker))
     }
 }
@@ -2617,6 +2651,9 @@ impl ManagedArtifactStore {
             .load_marker(operation_id, intent.effect_id())
             .map_err(|_| port(PortErrorCode::Unavailable, "artifact.marker.observe"))?
         else {
+            if let Some(state) = self.observe_unstaged_native_restoration(operation_id, intent)? {
+                return Ok(state);
+            }
             return Ok(EffectReconciliation::Missing);
         };
         if marker.compensated {
@@ -2659,6 +2696,15 @@ impl ManagedArtifactStore {
         let current_digest = current
             .as_ref()
             .map(|snapshot| snapshot.fingerprint.clone());
+        if let Some(receipt) = &marker.native_restoration {
+            return Ok(
+                if marker.activated && current_digest == receipt.fingerprint {
+                    EffectReconciliation::Applied(Self::effect(&marker))
+                } else {
+                    EffectReconciliation::OwnershipLost(Self::effect(&marker))
+                },
+            );
+        }
         if marker.activated
             && current_digest.as_ref() == marker.after_exists.then_some(&marker.after_digest)
         {
@@ -2689,6 +2735,10 @@ impl ManagedArtifactStore {
     }
 
     pub fn activate_artifact(&self, effect: &OwnedEffectV1) -> PortResult<OwnedEffectV1> {
+        let mut untouched = self
+            .untouched_deletions
+            .lock()
+            .map_err(|_| port(PortErrorCode::Unavailable, "artifact.deletion.lock"))?;
         let operation_id = effect
             .compensation
             .get("operation_id")
@@ -2742,6 +2792,8 @@ impl ManagedArtifactStore {
                     "artifact.activate.stage_ownership",
                 ));
             }
+            // Clear before the first target mutation, including uncertain I/O failures.
+            untouched.remove(&(marker.operation_id.clone(), marker.effect_id.clone()));
             if marker.after_exists {
                 fs::rename(&stage, &target)
                     .map_err(|_| port(PortErrorCode::Unavailable, "artifact.activate.rename"))?;
@@ -2758,6 +2810,8 @@ impl ManagedArtifactStore {
             sync_parent(&target)
                 .map_err(|_| port(PortErrorCode::Unavailable, "artifact.activate.sync"))?;
         }
+        // Also consume proof when absence was already observed, before finalization.
+        untouched.remove(&(marker.operation_id.clone(), marker.effect_id.clone()));
         let activated = read_artifact(&target)
             .map_err(|_| port(PortErrorCode::Unavailable, "artifact.activate.verify"))?;
         if activated.as_ref().map(|snapshot| &snapshot.fingerprint)
@@ -2794,6 +2848,15 @@ impl ManagedArtifactStore {
     }
 
     pub fn compensate_artifact(&self, effect: &OwnedEffectV1) -> PortResult<CompensationOutcome> {
+        let mut untouched = self
+            .untouched_deletions
+            .lock()
+            .map_err(|_| port(PortErrorCode::Unavailable, "artifact.deletion.lock"))?;
+        // A semantic acknowledgment did not write the client file; it never authorizes undoing
+        // the user's cleanup, including recovery of a failed enclosing operation.
+        if effect.compensation["schema"] == native_restoration_ack::ACK_SCHEMA {
+            return Ok(CompensationOutcome::OwnershipLost);
+        }
         let operation_id = effect
             .compensation
             .get("operation_id")
@@ -2810,6 +2873,9 @@ impl ManagedArtifactStore {
             .load_marker(&operation_id, effect_id)
             .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.marker"))?
             .ok_or_else(|| port(PortErrorCode::NotFound, "artifact.compensate.marker"))?;
+        if marker.native_restoration.is_some() {
+            return Ok(CompensationOutcome::OwnershipLost);
+        }
         if marker.compensated {
             return Ok(CompensationOutcome::AlreadyCompensated);
         }
@@ -2827,25 +2893,41 @@ impl ManagedArtifactStore {
             let stage = self
                 .stage_path(&marker)
                 .map_err(|_| port(PortErrorCode::Corrupt, "artifact.compensate.stage"))?;
-            if let Some(snapshot) = read_artifact(&stage)
-                .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.stage"))?
+            let staged = read_artifact(&stage)
+                .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.stage"))?;
+            let stage_present = staged.is_some();
+            let key = (marker.operation_id.clone(), marker.effect_id.clone());
+            let fresh_delete = marker.rendered
+                && !marker.after_exists
+                && marker.kind == OwnedEffectKind::AgentArtifact
+                && untouched.get(&key)
+                    == Some(&CanonicalDigest::of(&marker).map_err(|_| {
+                        port(PortErrorCode::InvalidData, "artifact.deletion.identity")
+                    })?);
+            if let Some(snapshot) = &staged
+                && snapshot.fingerprint != marker.after_digest
             {
-                if snapshot.fingerprint != marker.after_digest {
-                    return Ok(CompensationOutcome::OwnershipLost);
-                }
+                return Ok(CompensationOutcome::OwnershipLost);
+            }
+            // An intact rendered stage proves rename has not happened. Discard only our
+            // stage and preserve a concurrent user edit; no target write needs undoing.
+            // Without the stage, a crash after rename remains uncertain and fails closed.
+            if !(marker.rendered && (marker.after_exists || fresh_delete) && stage_present)
+                && current_digest != marker.before_digest
+                && !(!marker.before_exists && current.is_none())
+            {
+                return Ok(CompensationOutcome::OwnershipLost);
+            }
+            if stage_present {
                 fs::remove_file(&stage)
                     .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.stage"))?;
                 sync_parent(&stage)
                     .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.sync"))?;
             }
-            if current_digest != marker.before_digest
-                && !(!marker.before_exists && current.is_none())
-            {
-                return Ok(CompensationOutcome::OwnershipLost);
-            }
             marker.compensated = true;
             self.save_marker(&marker)
                 .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.mark"))?;
+            untouched.remove(&key);
             return Ok(CompensationOutcome::Compensated);
         }
         if current_digest != marker.after_exists.then(|| marker.after_digest.clone()) {

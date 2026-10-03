@@ -13,13 +13,14 @@
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-clipboard-manager": "2.3.2",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "typescript": "7.0.2",
-    "vite": "8.2.2",
     "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3"
+    "@types/react-dom": "19.2.3",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
   }
 }

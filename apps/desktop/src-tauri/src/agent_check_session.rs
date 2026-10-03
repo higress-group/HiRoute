@@ -274,7 +274,7 @@ impl Session {
         })
     }
 
-    pub fn begin_agent_check(
+    pub(crate) fn begin_agent_check(
         &mut self,
         context: AgentCheckConfirmation,
         accepted: bool,
