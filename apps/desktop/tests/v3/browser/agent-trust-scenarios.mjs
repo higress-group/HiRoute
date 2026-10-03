@@ -64,6 +64,8 @@ const scenarios = [
     const route = dialog().querySelector('[data-agent-plan-id] input');
     assert(route?.checked && !submit().disabled, 'Sole route is not ready to submit');
     assert(!dialog().querySelector('details').open, 'Advanced settings are open on first enable');
+    assert(!dialog().querySelector('[data-agent-capability-preview]') && calls('plan_editor_options').length === 0, 'Enable still loads a read-only capacity preview');
+    assert(dialog().textContent.includes('开启新会话'), 'Profile activation step is missing');
     const cancel = [...dialog().querySelectorAll('button')].find(button => button.textContent.trim() === '取消');
     cancel.click(); await tick();
     assert(!dialog() && calls('preview_agent_settings').length === 0 && c().operations.length === 0, 'Cancel applied a draft');
@@ -75,6 +77,8 @@ const scenarios = [
     const route = dialog().querySelector('select[aria-label="Claude Code 路由"]');
     assert(route?.value && !submit().disabled, 'Sole Claude route is not ready to submit');
     assert(!dialog().querySelector('details').open, 'Advanced presets are open by default');
+    assert(!dialog().querySelector('[data-agent-capability-preview]') && calls('plan_editor_options').length === 0, 'Enable still loads a read-only capacity preview');
+    assert(dialog().textContent.includes('重新启动 Claude Code'), 'Claude activation step is missing');
     await save();
     const spec = configureSpecs().at(-1).model.settings;
     assert(Object.values(spec.preset_mappings).every(choice => choice.kind === 'plan' && choice.plan_id === route.value), 'Shared route did not cover all three presets');

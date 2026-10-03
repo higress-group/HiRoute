@@ -1,7 +1,6 @@
 import { CodexAccessPanel, CodexAccessSettings, type CodexAccess } from './features/agents/CodexAccessPanel';
 import { confirmedCodexLaunchCommand, type PendingCodexLaunchCopy } from './features/agents/codex-launch';
 import { codexSurfaceFacts } from './features/agents/codex-surfaces';
-import { AgentCapabilityPreview } from './agent-capability-preview';
 import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon, copyText } from './ui';
 import { confirmDiscard, useDiscardGuard } from './ui/discard-guard';
 import React, { useEffect, useRef, useState } from 'react';
@@ -954,8 +953,8 @@ export function Agents({
                       {editor.facet === 'model' && <p className="field-help" data-agent-service-responsibility>{text('使用路由时请保持 HiRoute 运行。启用不会自动设置开机启动。', 'Keep HiRoute running when using routing. Enabling does not set up automatic startup.')}</p>}
                       {editor.facet === 'model' && selected.agent_id === 'agent_codex_default' && <div className="worker-choices">
                         <p className="field-help" data-codex-shared-scope>{activeCodexMode === 'profile'
-                          ? text('按需使用 · 仅 Codex CLI。启用后用专用命令启动，普通 Codex 和 Desktop 保持原配置。', 'On demand · Codex CLI only. Start with the dedicated command after enabling; ordinary Codex and Desktop keep their settings.')
-                          : text('设为默认 · 修改同一配置目录下 Codex CLI 和 Desktop 的模型接入。', 'Use by default · changes model access for Codex CLI and Desktop sharing this directory.')}</p>
+                          ? text('按需使用 · 仅 Codex CLI。启用后将启动命令粘贴到终端，开启新会话。普通 Codex 和 Desktop 保持原配置。', 'On demand · Codex CLI only. After enabling, paste the launch command into a terminal to start a new session. Ordinary Codex and Desktop keep their settings.')
+                          : text('设为默认 · 修改同一配置目录下 Codex CLI 和 Desktop 的模型接入。保存后重新启动对应客户端即可生效。', 'Use by default · changes model access for Codex CLI and Desktop sharing this directory. Restart the client after saving to apply the settings.')}</p>
                         <fieldset><legend className="field-label">{text('允许的智能路由', 'Allowed smart routes')}</legend>
                           {enabledPlans.length === 1 && creatingModelConnection && <p className="field-help">{text('唯一可用路由已选为默认，可直接启用。', 'The only available route is selected as the default. Enable to continue.')}</p>}
                           {enabledPlans.map(plan => <label className="check-row agent-route-choice" data-agent-plan-id={plan.agent_plan_id} key={plan.agent_plan_id}><input type="checkbox" checked={editorValues.allowedPlanIds.includes(plan.agent_plan_id)} onChange={() => toggleAllowedPlan(plan.agent_plan_id)} /><div><strong>{plan.desired.display_name}</strong></div></label>)}
@@ -999,6 +998,7 @@ export function Agents({
                           ? text('当前按档位分别配置。选择同一条路由可统一 Opus、Sonnet、Haiku；不会修改 Claude 当前默认模型。', 'Presets are configured separately. Choose one route to unify Opus, Sonnet and Haiku; the current Claude default model is unchanged.')
                           : text('应用于 Opus、Sonnet、Haiku；高级设置可分别配置。不会修改 Claude 当前默认模型。', 'Applies to Opus, Sonnet and Haiku; configure them separately under Advanced settings. The current Claude default model is unchanged.')}</span></label>
                         {editorValues.fixedModels.length > 0 && <p className="field-help">{text('保留已有固定模型：', 'Existing fixed models retained: ')}{editorValues.fixedModels.map(model => model.client_model_id).join(' · ')}</p>}
+                        <p className="field-help" data-agent-activation>{text('保存后，重新启动 Claude Code 即可加载配置。', 'Restart Claude Code after saving to load the settings.')}</p>
                         <Disclosure label={text('高级设置', 'Advanced settings')} language={language} defaultOpen={claudeSharedPlan === null || claudePlanIds.some(id => !planEnabled(id))}>
                           <p className="field-help">{text('普通 claude 入口使用这些映射。账号 Default 仍需真实调用验证，可显式选择已映射的模型档位。', 'The ordinary claude entry uses these mappings. Account Default needs a live call to verify; explicitly choose a mapped preset.')}</p>
                         {(['opus', 'sonnet', 'haiku'] as const).map(preset => {
@@ -1010,7 +1010,6 @@ export function Agents({
                         {modelFormInvalid && <span className="oc-inline-error">{text('至少将一个预设映射到可用智能路由，或保留已有固定模型。', 'Map at least one preset to an enabled smart route, or retain an existing fixed model.')}</span>}
                         {!enabledPlans.length && <div className="callout"><UiIcon name="route" /><div><span>{text('先创建并启用一条智能路由。', 'Create and enable a smart route first.')}</span></div>{onCreatePlan && <button className="btn" type="button" onClick={createPlanFromEditor}>{text('创建路由', 'Create route')}</button>}</div>}
                       </div>}
-                      {editor.facet === 'model' && <AgentCapabilityPreview agent={selected.agent_id === 'agent_claude_default' ? 'claude' : 'codex'} language={language} plans={enabledPlans.filter(plan => selected.agent_id === 'agent_claude_default' ? Object.values(editorValues.claudePresets).some(choice => choice.kind === 'plan' && choice.plan_id === plan.agent_plan_id) : editorValues.allowedPlanIds.includes(plan.agent_plan_id))} />}
                       {editor.facet === 'collaboration' && <fieldset className="worker-choices"><legend className="field-label">{text('委派时机', 'When to delegate')}</legend><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="explicit" checked={editorValues.triggerMode === 'explicit'} onChange={() => setTriggerMode('explicit')} /><div><strong>{text('仅在明确要求时', 'Only when explicitly requested')}</strong><span>{text('只有当你要求执行、委派或交给 Worker 时，Agent 才会启动任务。', 'The Agent starts a task only when you ask it to execute, delegate, or hand work to a Worker.')}</span></div></label><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="delegate_by_default" checked={editorValues.triggerMode === 'delegate_by_default'} onChange={() => setTriggerMode('delegate_by_default')} /><div><strong>{text('默认由 Agent 判断', 'Let the Agent decide by default')}</strong><span>{text('Agent 可以主动委派适合执行的任务；明确要求只回答时不会启动任务。', 'The Agent may proactively delegate suitable work, but will not start a task when you explicitly ask for an answer only.')}</span></div></label><p className="field-help">{text('可委派的任务路由在“智能路由”中管理。', 'Manage routes available for task delegation under Smart routing.')}</p></fieldset>}
                       {!selectionKnown && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{text('当前配置状态无法核实，不能覆盖保存。请刷新或处理配置变化。', 'The current setting cannot be verified. Refresh or resolve configuration changes before saving.')}</span></div>}
                     </fieldset>
