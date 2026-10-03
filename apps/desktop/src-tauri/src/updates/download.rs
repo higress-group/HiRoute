@@ -4,14 +4,7 @@ use hiroute_host_runtime::{
     DesktopRelease, MAX_RELEASE_FEED_BYTES, RELEASE_FEED, WebsiteReleasesV2, verify_desktop_app,
 };
 use sha2::{Digest, Sha256};
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::atomic::Ordering,
-    time::Duration,
-};
+use std::{fs, io::Write, path::Path, process::Command, sync::atomic::Ordering, time::Duration};
 
 fn url(production: &str) -> Result<String, String> {
     #[cfg(all(feature = "desktop-pilot", debug_assertions))]
