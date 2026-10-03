@@ -355,7 +355,8 @@ fn preexisting_profile_conflict_revokes_before_file_preparation() {
     // The fixture composes a real suspended target; complete the production startup handoff.
     runtime
         .adapter
-        .required_publication_target()
+        .publication_target()
+        .unwrap()
         .unwrap()
         .resume_requests()
         .unwrap();
