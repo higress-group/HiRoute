@@ -34,7 +34,7 @@ use crate::server::core_runtime::profiles::{
     PlannerCandidateFactsV1,
 };
 
-use super::response::{PrecommitDecoderBudget, connector_error_profile, failure_facts};
+use super::response::{connector_error_profile, failure_facts};
 #[path = "materialization/lease_target.rs"]
 mod lease_target;
 
@@ -296,7 +296,6 @@ pub(super) async fn materialize_attempt(
         plan.precommit_event_capacity,
     )
     .map_err(safe_error)?;
-    let decoder_budget = PrecommitDecoderBudget::new(context.budget)?;
     let lease_target = lease_target::for_request(&execution, profile)?;
     let lease_target_digest = hiroute_domain::CanonicalDigest::of(&lease_target)
         .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
@@ -564,10 +563,8 @@ pub(super) async fn materialize_attempt(
             projector: None,
             prefix: Some(prefix),
             prefix_terminal_chunks: None,
-            decoder_budget: Some(decoder_budget),
             budget: context.budget.clone(),
             semantic_seen: false,
-            terminal_seen: false,
             semantic_terminal: None,
             retry_after: None,
             runtime_state_authority,

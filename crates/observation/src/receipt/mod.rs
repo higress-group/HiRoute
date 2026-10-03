@@ -1,5 +1,6 @@
 //! Immutable Receipt and Value projections derived from the durable execution-fact log.
 
+mod completeness;
 mod plan_quality;
 mod validation;
 
@@ -140,7 +141,7 @@ fn ensure_scope(
     if existing_correlation == "unproven" && correlation_name != "unproven" {
         transaction
             .execute(
-                "UPDATE sessions SET correlation=?3, facts_completeness='complete'
+                "UPDATE sessions SET correlation=?3
                  WHERE workspace_id=?1 AND session_id=?2",
                 params![
                     correlation.workspace_id.as_str(),
@@ -269,7 +270,7 @@ fn ensure_scope(
             )
             .map_err(|_| FactProjectionError::Storage)?;
     }
-    update_completeness(transaction, facts)
+    completeness::append(transaction, envelope)
 }
 
 fn classified_traffic(
@@ -292,32 +293,6 @@ fn classified_traffic(
         return Ok("normal");
     }
     Ok("unknown")
-}
-
-fn update_completeness(
-    transaction: &Transaction<'_>,
-    facts: &[ExecutionFactEnvelopeV1],
-) -> Result<(), FactProjectionError> {
-    let first = facts
-        .first()
-        .ok_or(FactProjectionError::MissingPrerequisite)?;
-    let completeness = session_facts_completeness(
-        transaction,
-        &first.correlation.workspace_id,
-        &first.correlation.conversation_id,
-    )?;
-    transaction
-        .execute(
-            "UPDATE sessions SET facts_completeness=?3
-             WHERE workspace_id=?1 AND session_id=?2",
-            params![
-                first.correlation.workspace_id.as_str(),
-                first.correlation.conversation_id.as_str(),
-                facts_completeness_str(completeness),
-            ],
-        )
-        .map_err(|_| FactProjectionError::Storage)?;
-    Ok(())
 }
 
 fn build_receipt(

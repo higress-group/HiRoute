@@ -16,6 +16,8 @@ mod wire;
 #[cfg(test)]
 #[path = "native_passthrough_tests.rs"]
 mod native_passthrough_tests;
+#[cfg(test)]
+mod native_reasoning_tests;
 
 #[cfg(test)]
 mod size_tests;

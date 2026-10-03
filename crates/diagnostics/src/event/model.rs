@@ -85,6 +85,43 @@ pub enum ReasoningCleanupReason {
     ResponseProtocolProjection,
 }
 
+/// Closed categories only: never serializes provider messages, payloads or field values.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResponseFailure {
+    pub request_token: Option<CorrelationToken>,
+    pub attempt_index: u64,
+    pub stage: ResponseFailureStage,
+    pub reason: ResponseFailureReason,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseFailureStage {
+    NativeProjection,
+    Decode,
+    Render,
+    PrefixBuffer,
+    ProviderStream,
+    EndOfStream,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseFailureReason {
+    ResourceLimit,
+    InvalidJson,
+    InvalidSse,
+    InvalidField,
+    InvalidLifecycle,
+    MissingTerminal,
+    DuplicateTerminal,
+    Unrepresentable,
+    NoSemanticOutput,
+    ProviderRejected,
+    OtherProtocol,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AttemptOutcome {

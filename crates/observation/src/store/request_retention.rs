@@ -77,6 +77,27 @@ impl LocalObservationStore {
             transaction.execute("DELETE FROM turns WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests r WHERE r.workspace_id=?1 AND r.turn_id=turns.turn_id)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
             transaction.execute("UPDATE sessions SET content_completeness='expired',facts_completeness='unknown',tombstone_reason='retention_expired',agent_id='',correlation='unproven' WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests WHERE workspace_id=?1 AND session_id=?2)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
         }
+        // Removing the only Partial/Unknown request may improve completeness.
+        // Rebuild once per affected session, never once per newly ingested fact.
+        let sessions: std::collections::BTreeSet<_> = requests
+            .iter()
+            .map(|(workspace, session, _)| (workspace, session))
+            .collect();
+        for (workspace, session) in sessions {
+            let completeness = crate::receipt::session_facts_completeness(
+                &transaction,
+                &WorkspaceId::parse(workspace).map_err(|_| Error::Corrupt)?,
+                &SessionId::parse(session).map_err(|_| Error::Corrupt)?,
+            )
+            .map_err(|_| Error::Unavailable)?;
+            let value = match completeness {
+                hiroute_domain::FactsCompleteness::Complete => "complete",
+                hiroute_domain::FactsCompleteness::Partial => "partial",
+                hiroute_domain::FactsCompleteness::Unknown => "unknown",
+            };
+            transaction.execute("UPDATE sessions SET facts_completeness=?3 WHERE workspace_id=?1 AND session_id=?2",
+                params![workspace, session, value]).map_err(|_| Error::Unavailable)?;
+        }
         if !requests.is_empty() || quality_changed {
             // Index cleanup is part of the same visibility barrier. Physical
             // blob GC is resumable and can follow this committed logical erase.

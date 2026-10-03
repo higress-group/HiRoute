@@ -189,6 +189,10 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
     assert!(request.accept_current("frame:test", 128).is_some());
     request.reasoning_cleanup(ReasoningCleanupReason::ResponseProtocolProjection, 1, None);
     request.reasoning_cleanup(ReasoningCleanupReason::ResponseProtocolProjection, 3, None);
+    request.response_failure(
+        hiroute_diagnostics::event::ResponseFailureStage::NativeProjection,
+        hiroute_diagnostics::event::ResponseFailureReason::ResourceLimit,
+    );
     assert_eq!(
         request
             .lock_state()
@@ -208,6 +212,7 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
         "semantic_commit",
         "request_end",
         "model_stage",
+        "response_failure",
     ] {
         assert!(
             log.contains(&format!("\"{kind}\":")),
