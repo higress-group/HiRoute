@@ -866,7 +866,7 @@ export function Agents({
                     await invoke('retry_agent_settings', { input: { schema: 'hiroute.agent-settings-retry/v1', context_id: selected.context_id, operation_id: access.pending_operation } });
                     await refresh();
                   } catch (error) { setActionError(desktopErrorCode(error)); }
-                  finally { setBusy(false); }
+                  finally { onMutation(); setBusy(false); }
                 }} />}
                 {selected.status_error && <div className="callout warn" data-error-code={selected.status_error}><UiIcon name="warning" /><div><strong>{text('暂时无法核实 Agent 状态', 'Agent status is temporarily unavailable')}</strong><p>{text('当前仍显示已发现的 Agent；重新读取成功前不会把未知状态当作已接入。', 'The detected Agent remains visible. Unknown status is not treated as connected until it can be read again.')}</p><button className="btn" type="button" onClick={() => void refresh()}>{text('重新读取', 'Try again')}</button></div></div>}
                 {executableStatus}
