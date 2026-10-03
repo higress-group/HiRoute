@@ -383,10 +383,10 @@ impl Session {
             .preview_agent_settings_registered(input, candidate.clone())
             .await;
         #[cfg(unix)]
-        if !matches!(&result, Ok(AgentPreparation::Ready(_))) {
-            if let Some(candidate) = &candidate {
-                let _ = self.resident.release_model_input(candidate);
-            }
+        if !matches!(&result, Ok(AgentPreparation::Ready(_)))
+            && let Some(candidate) = &candidate
+        {
+            let _ = self.resident.release_model_input(candidate);
         }
         result
     }
@@ -608,11 +608,9 @@ impl Session {
                     .as_ref()
                     .is_some_and(|view| view.state == "rolled_back"),
             };
-            if definitively_failed {
-                if declaration.removes_resident_service() {
-                    // The rolled-back connection still needs its owned item at the next login.
-                    crate::login_item::compensate_resident_login_item_removal();
-                }
+            if definitively_failed && declaration.removes_resident_service() {
+                // The rolled-back connection still needs its owned item at the next login.
+                crate::login_item::compensate_resident_login_item_removal();
             }
         }
         let mutation = mutation?;

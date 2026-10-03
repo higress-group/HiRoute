@@ -20,7 +20,6 @@ struct PreparedUpdate {
     release: DesktopRelease,
     current: PathBuf,
     staged: PathBuf,
-    stage_root: PathBuf,
     download_root: PathBuf,
     old_identity: DesktopPackageIdentity,
     new_identity: DesktopPackageIdentity,

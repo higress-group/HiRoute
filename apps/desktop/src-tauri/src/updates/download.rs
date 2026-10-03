@@ -163,7 +163,6 @@ pub(super) async fn prepare(
             release,
             current: app,
             staged,
-            stage_root: stage_root.clone(),
             download_root: download_root.clone(),
             old_identity,
             new_identity,
@@ -222,7 +221,7 @@ fn stage_dmg(
                 .into_iter()
                 .collect()
             || fs::read_link(mount.join("Applications")).map_err(|_| "UPGRADE_DMG_INVALID")?
-                != PathBuf::from("/Applications")
+                != Path::new("/Applications")
         {
             return Err("UPGRADE_DMG_INVALID".into());
         }

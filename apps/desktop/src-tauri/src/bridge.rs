@@ -353,7 +353,7 @@ enum NativeOutcome {
     Agent(Box<AgentOutcome>),
     Check(AgentCheckCompletion),
     ModelSave(ModelSaveAccepted),
-    SubscriptionCheck(hiroute_application_api::ComputeSubscriptionCheckResultV2),
+    SubscriptionCheck(Box<hiroute_application_api::ComputeSubscriptionCheckResultV2>),
 }
 impl NativeOutcome {
     fn mutation(self) -> Result<MutationOutcome, DesktopFailure> {
@@ -722,6 +722,7 @@ async fn confirm(
             .ok_or("RESIDENT_UNAVAILABLE")?
             .finish_subscription_check_confirmation(completion)
             .await
+            .map(Box::new)
             .map(NativeOutcome::SubscriptionCheck)
     } else if let NativeConfirmation::Check(context) = context {
         let dispatch = {

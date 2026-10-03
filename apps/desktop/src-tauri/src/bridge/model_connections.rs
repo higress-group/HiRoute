@@ -103,7 +103,7 @@ pub async fn check_subscription(
     )
     .await?
     {
-        NativeOutcome::SubscriptionCheck(result) => Ok(result.into()),
+        NativeOutcome::SubscriptionCheck(result) => Ok((*result).into()),
         _ => unreachable!(),
     }
 }

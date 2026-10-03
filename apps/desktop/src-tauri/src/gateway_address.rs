@@ -1,13 +1,16 @@
 //! Desktop ownership checks around the shared single-listener host contract.
 
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 #[cfg(test)]
 pub(crate) use hiroute_host_runtime::GatewayPortModeV1;
 pub(crate) use hiroute_host_runtime::{GatewayListenerConfigV1, GatewayListenerDesiredV1};
 use hiroute_host_runtime::{GatewayListenerReservation, GatewayListenerStore};
 
+#[cfg(test)]
 pub(crate) fn path(root: &Path) -> PathBuf {
     GatewayListenerStore::new(root).path()
 }
