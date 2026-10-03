@@ -158,7 +158,7 @@ impl LocalControlAdapter {
         let (owner, pending) = self.codex_slot_state()?;
         let class = owner.unwrap_or(SettingsAgentClass::CodexProfile);
         let context = self.settings_context(class);
-        let revoked = self
+        let grant = self
             .stores_lock()
             .map_err(super::map_port)?
             .secrets()
@@ -166,8 +166,14 @@ impl LocalControlAdapter {
                 WorkspaceId::DEFAULT,
                 &format!("agent-connection/{context}"),
             )
-            .map_err(super::map_port)?
-            .is_none();
+            .map_err(super::map_port)?;
+        let conflict_fields = if let Some(op) = pending.as_ref() {
+            self.codex_conflicts(op, true)?
+        } else if let Some(grant) = grant.as_ref() {
+            self.active_codex_conflicts(&context, grant)?
+        } else {
+            Vec::new()
+        };
         let commands = if class == SettingsAgentClass::CodexProfile {
             hiroute_integrations::codex_profile_commands(home)
                 .map_err(|_| ControlReadError::Corrupt)?
@@ -196,20 +202,61 @@ impl LocalControlAdapter {
             profile_name: hiroute_integrations::CODEX_MANAGED_PROFILE_NAME.into(),
             commands,
             pending_operation: pending.as_ref().map(|op| op.operation_id.to_string()),
-            access_revoked: revoked,
-            conflict_fields: pending
-                .as_ref()
-                .map(|op| self.codex_pending_conflicts(op))
-                .transpose()?
-                .unwrap_or_default(),
+            access_revoked: grant.is_none(),
+            conflict_fields,
         })
     }
 }
 
 impl LocalControlAdapter {
-    fn codex_pending_conflicts(
+    fn active_codex_conflicts(
+        &self,
+        context: &str,
+        grant: &hiroute_domain::AgentAccessGrantRefV1,
+    ) -> Result<Vec<String>, ControlReadError> {
+        let stores = self.stores_lock().map_err(super::map_port)?;
+        for original in stores
+            .control()
+            .succeeded_agent_operations_for_kind(
+                &WorkspaceId::default(),
+                "ApplyAgentConnectionChange",
+            )
+            .map_err(super::map_port)?
+        {
+            if original.plan.spec().resource_id.as_deref() != Some(context) {
+                continue;
+            }
+            let [mutation] = original.plan.agent_access_grants() else {
+                continue;
+            };
+            let Some(effect) = original
+                .step(hiroute_domain::OperationStepKind::ApplySecrets)
+                .effects
+                .iter()
+                .find(|effect| hiroute_domain::is_agent_access_grant_effect(effect))
+            else {
+                continue;
+            };
+            let reference =
+                hiroute_domain::AgentAccessGrantRefV1::from_ensure_effect(effect, mutation)
+                    .map_err(|_| ControlReadError::Corrupt)?;
+            if &reference == grant {
+                let op = stores
+                    .control()
+                    .load_operation(&original.operation_id)
+                    .map_err(super::map_port)?
+                    .ok_or(ControlReadError::Corrupt)?;
+                drop(stores);
+                return self.codex_conflicts(&op, false);
+            }
+        }
+        Ok(Vec::new())
+    }
+
+    fn codex_conflicts(
         &self,
         op: &hiroute_domain::OperationV1,
+        pending: bool,
     ) -> Result<Vec<String>, ControlReadError> {
         use hiroute_application::agent_connection::{
             CodexModelFileAction, settings_codex_model_file_for_operation,
@@ -266,7 +313,7 @@ impl LocalControlAdapter {
             return Ok(restore.pending_restoration_fields(text));
         }
         let mut fields = restore.conflicting_fields(text);
-        if fields.is_empty() {
+        if pending && fields.is_empty() {
             fields.push("configuration_snapshot".into());
         }
         Ok(fields)

@@ -23,6 +23,7 @@ import type { OperationReference } from './features/model-connections/types';
 import { safeDiagnosticCode } from './error-code';
 import {
   agentActionErrorMessage,
+  agentDisableMessage,
   classifyAgentMutation,
   type AgentMutationOutcome,
 } from './agent-mutation-feedback';
@@ -228,6 +229,7 @@ export function Agents({
   const [selectionKnown, setSelectionKnown] = useState(false);
   const [baselineCodexMode, setBaselineCodexMode] = useState<'profile' | 'root'>('profile');
   const [pendingLaunchCopy, setPendingLaunchCopy] = useState<PendingCodexLaunchCopy | null>(null);
+  const [pendingDisable, setPendingDisable] = useState<string | null>(null);
   const [baseline, setBaseline] = useState('');
   const fingerprint = editorFingerprint(editorValues);
   const dirty = !!editor && (fingerprint !== baseline || codexMode !== baselineCodexMode);
@@ -276,6 +278,12 @@ export function Agents({
     })();
     return () => { cancelled = true; };
   }, [pendingLaunchCopy, operation]);
+  useEffect(() => {
+    if (pendingDisable && operation?.operation_id === pendingDisable) {
+      setNotice(agentDisableMessage(operation.state, language));
+      if (['succeeded', 'rolled_back', 'needs_attention'].includes(operation.state)) setPendingDisable(null);
+    }
+  }, [pendingDisable, operation, language]);
   useEffect(() => {
     if (editor) firstField.current?.focus();
   }, [editor]);
@@ -422,6 +430,10 @@ export function Agents({
           ? text('已取消，未提交变更。', 'Cancelled before submission.')
           : '');
         if (result.mutation.operation) {
+          if (restore && facet === 'model') {
+            setNotice(agentDisableMessage(result.mutation.operation.state, language));
+            if (!['succeeded', 'rolled_back', 'needs_attention'].includes(result.mutation.operation.state)) setPendingDisable(result.mutation.operation.operation_id);
+          }
           if (!restore && facet === 'model' && agent.codex_access && activeCodexMode === 'profile' && !agent.settings?.current_selection) {
             setPendingLaunchCopy({ operationId: result.mutation.operation.operation_id, contextId: input.spec.context_id });
           }

@@ -18,6 +18,11 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     fs::write(&root, original).unwrap();
     fs::set_permissions(&root, fs::Permissions::from_mode(0o600)).unwrap();
     runtime.adapter.reconcile_startup_and_open().unwrap();
+    // Complete the same Gateway handoff as the production startup entry.
+    runtime
+        .adapter
+        .finish_startup_publication_recovery()
+        .unwrap();
     let service = LocalControlDaemon::new(ApplicationService::new(runtime.application_ports()));
     let scan = service
         .dispatch_wire(request("ScanAgents", json!({}), None))
@@ -108,6 +113,7 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     edit_ports.mutation = Some(Arc::new(fault::FileRace {
         adapter: runtime.adapter.clone(),
         path: profile.clone(),
+        fail_after_file: false,
     }));
     let editing = LocalControlDaemon::new(ApplicationService::new(edit_ports));
     let edit_preview = editing
@@ -144,6 +150,7 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     ports.mutation = Some(Arc::new(fault::FileRace {
         adapter: runtime.adapter.clone(),
         path: profile.clone(),
+        fail_after_file: false,
     }));
     let racing = LocalControlDaemon::new(ApplicationService::new(ports));
     let preview = racing
@@ -157,117 +164,46 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     assert_eq!(preview["applicable"], true, "{preview}");
     let pending = racing.dispatch_wire(request("ApplyAgentConnectionRestore", json!({"spec":restore,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],"expected_revisions":preview["expected_revisions"],"idempotency_key":"revoke-profile"}), None));
     assert!(pending.error.is_none(), "{pending:?}");
-    let pending = pending.data.unwrap();
-    assert_eq!(pending["state"], "activating", "{pending}");
+    let failed = pending.data.unwrap();
+    assert_eq!(failed["state"], "rolled_back", "{failed}");
     let access = runtime.adapter.codex_access_view().unwrap();
-    assert!(access.slot_occupied && access.access_revoked);
-    assert_eq!(
-        access.pending_operation.as_deref(),
-        pending["operation_id"].as_str()
-    );
-    assert!(!access.conflict_fields.is_empty());
-    // A damaged target must not hide all Agents or the original cleanup operation.
-    fs::write(&root, original).unwrap();
-    ensure_target_cache(&runtime.adapter);
-    let pending_bytes = fs::read(&profile).unwrap();
-    fs::write(&profile, [0xff, 0xfe]).unwrap();
-    let damaged = service.dispatch_wire(request("ScanAgents", json!({}), None));
-    assert!(damaged.error.is_none(), "{damaged:?}");
-    let damaged = damaged.data.unwrap();
-    let damaged_access = &damaged["agents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["agent_id"] == "agent_codex_default")
-        .unwrap()["codex_access"];
-    assert_eq!(damaged_access["pending_operation"], pending["operation_id"]);
-    assert_eq!(damaged_access["access_revoked"], true);
-    assert_eq!(
-        damaged_access["conflict_fields"],
-        json!(["configuration_encoding"])
-    );
-    fs::remove_file(&profile).unwrap();
-    std::os::unix::fs::symlink(&root, &profile).unwrap();
-    let unsafe_target = service.dispatch_wire(request("ScanAgents", json!({}), None));
-    assert!(unsafe_target.error.is_none(), "{unsafe_target:?}");
-    let unsafe_target = unsafe_target.data.unwrap();
-    let unsafe_access = &unsafe_target["agents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["agent_id"] == "agent_codex_default")
-        .unwrap()["codex_access"];
-    assert_eq!(unsafe_access["pending_operation"], pending["operation_id"]);
-    assert_eq!(
-        unsafe_access["conflict_fields"],
-        json!(["configuration_unreadable"])
-    );
-    assert_eq!(fs::read_to_string(&root).unwrap(), original);
-    fs::remove_file(&profile).unwrap();
-    fs::write(&profile, pending_bytes).unwrap();
-    fs::set_permissions(&profile, fs::Permissions::from_mode(0o600)).unwrap();
-    fs::write(&root, unavailable_root).unwrap();
-    fs::remove_file(root.parent().unwrap().join("models_cache.json")).unwrap();
-    assert!(
-        service
-            .dispatch_wire(request(
-                "PreviewAgentConnectionChange",
-                json!({"spec":root_spec}),
-                None
-            ))
-            .error
-            .is_some()
-    );
-    // Startup keeps the same home reserved and does not overwrite the concurrent edit.
-    runtime.adapter.reconcile_startup_and_open().unwrap();
+    assert!(access.slot_occupied && !access.access_revoked);
+    assert!(access.pending_operation.is_none());
+    assert!(runtime.adapter.guard_codex_pending_change(None).is_ok());
     assert!(
         fs::read_to_string(&profile)
             .unwrap()
             .starts_with("# user's concurrent edit")
     );
-    let retry = json!({"schema":"hiroute.agent-settings-retry/v1","context_id":context,"operation_id":pending["operation_id"]});
-    let mut wrong = retry.clone();
-    wrong["context_id"] = root_spec["context_id"].clone();
-    assert!(
-        service
-            .dispatch_wire(request("ApplyAgentConnectionChange", wrong, None))
-            .error
-            .is_some()
-    );
-    // The publication is pinned while the original cleanup is pending.
-    use hiroute_domain::ExternalEffectPort;
-    let pending_id: OperationId = serde_json::from_value(pending["operation_id"].clone()).unwrap();
-    let pending_op = runtime
-        .adapter
-        .stores_lock()
-        .unwrap()
-        .control()
-        .load_operation(&pending_id)
-        .unwrap()
+    // A concurrent edit is preserved while the unused staged restoration is discarded.
+    runtime.adapter.reconcile_startup_and_open().unwrap();
+    let status = service
+        .dispatch_wire(request("GetClientServiceStatus", json!({}), None))
+        .data
         .unwrap();
-    let publication_intent = pending_op
-        .plan
-        .external()
-        .iter()
-        .find(|i| i.kind() == hiroute_domain::OwnedEffectKind::Publication)
-        .unwrap();
-    assert!(
-        runtime
-            .adapter
-            .validate_external_admission(publication_intent)
-            .is_err()
-    );
-    assert!(runtime.adapter.guard_codex_pending_change(None).is_err());
-    assert!(
-        runtime
-            .adapter
-            .guard_codex_pending_change(Some(&pending_id))
-            .is_ok()
-    );
-    // Temporarily restore unrelated root discovery dependencies for the independent writer.
+    assert_eq!(status["mutation_available"], true, "{status}");
     fs::write(&root, original).unwrap();
     ensure_target_cache(&runtime.adapter);
-    // A real collaboration-only write has no publication but owns shared control state.
+    let preserved = fs::read(&profile).unwrap();
+    fs::write(&profile, [0xff, 0xfe]).unwrap();
+    let damaged = service.dispatch_wire(request("ScanAgents", json!({}), None));
+    assert!(damaged.error.is_none(), "{damaged:?}");
+    assert_eq!(
+        runtime.adapter.codex_access_view().unwrap().conflict_fields,
+        ["configuration_encoding"]
+    );
+    fs::remove_file(&profile).unwrap();
+    std::os::unix::fs::symlink(&root, &profile).unwrap();
+    let unsafe_target = service.dispatch_wire(request("ScanAgents", json!({}), None));
+    assert!(unsafe_target.error.is_none(), "{unsafe_target:?}");
+    assert_eq!(
+        runtime.adapter.codex_access_view().unwrap().conflict_fields,
+        ["configuration_unreadable"]
+    );
+    fs::remove_file(&profile).unwrap();
+    fs::write(&profile, &preserved).unwrap();
+    fs::set_permissions(&profile, fs::Permissions::from_mode(0o600)).unwrap();
+    // An unrelated real collaboration save remains available after the failed disable.
     let collaboration =
         LocalControlDaemon::new(ApplicationService::new(
             runtime.application_ports().with_agent_connection(Arc::new(
@@ -276,41 +212,33 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
         ));
     let skill_spec = json!({"schema_version":{"major":2,"minor":0},"context_id":root_spec["context_id"],
         "collaboration":{"intent":"configure","settings":{"trigger_mode":"delegate_by_default"}}});
-    let skill_preview = collaboration.dispatch_wire(request(
-        "PreviewAgentConnectionChange",
-        json!({"spec":skill_spec}),
-        None,
-    ));
-    assert!(skill_preview.error.is_none(), "{skill_preview:?}");
-    let skill_preview = skill_preview.data.unwrap();
-    assert_eq!(skill_preview["applicable"], true, "{skill_preview}");
-    let denied_skill = collaboration.dispatch_wire(request("ApplyAgentConnectionChange", json!({"spec":skill_spec,"accept_digest":skill_preview["accept_digest"],"dependency_digest":skill_preview["dependency_digest"],"expected_revisions":skill_preview["expected_revisions"],"idempotency_key":"pending-tail-skill"}), None));
-    assert!(denied_skill.error.is_some(), "{denied_skill:?}");
+    apply(
+        &collaboration,
+        &runtime,
+        skill_spec,
+        "skill-after-failed-disable",
+    );
+    // A fresh preview/operation completes restoration without metadata or a valid root.
     fs::write(&root, unavailable_root).unwrap();
     fs::remove_file(root.parent().unwrap().join("models_cache.json")).unwrap();
-    // User cleans the owned fields but keeps new comments and unrelated settings.
-    let cleaned = "# user's concurrent edit\nuser_edit = true\nanother_user_edit = 'retained'\n";
-    fs::write(&profile, cleaned).unwrap();
-    let completed = service.dispatch_wire(request("ApplyAgentConnectionChange", retry, None));
-    assert!(completed.error.is_none(), "{completed:?}");
-    let completed = completed.data.unwrap();
-    assert_eq!(completed["operation_id"], pending["operation_id"]);
-    assert_eq!(completed["state"], "succeeded", "{completed}");
-    assert_eq!(fs::read_to_string(&root).unwrap(), unavailable_root);
+    apply(&service, &runtime, restore, "retry-disable-after-race");
+    assert!(!runtime.adapter.codex_access_view().unwrap().slot_occupied);
     let remaining = fs::read_to_string(&profile).unwrap();
-    assert_eq!(remaining, cleaned);
-    assert!(runtime.adapter.guard_codex_pending_change(None).is_ok());
-    runtime.adapter.reconcile_startup_and_open().unwrap();
-    assert!(!remaining.contains("X-HiRoute-Token"));
-    assert!(!remaining.contains("model_provider ="));
+    assert!(
+        remaining.contains("# user's concurrent edit") && remaining.contains("user_edit = true")
+    );
+    assert!(!remaining.contains("X-HiRoute-Token") && !remaining.contains("model_provider ="));
+    assert_eq!(fs::read_to_string(&root).unwrap(), unavailable_root);
     fs::write(&root, original).unwrap();
     ensure_target_cache(&runtime.adapter);
-    // Switch is a fresh root configuration only after restoration has finished.
     apply(&service, &runtime, root_spec, "switch-after-revoke");
 }
 
 #[path = "settings_profile_fault.rs"]
 mod fault;
+
+#[path = "settings_profile_legacy_tests.rs"]
+mod legacy;
 
 #[test]
 fn codex_discovery_keeps_desktop_in_default_profile_mode() {
@@ -341,10 +269,10 @@ fn codex_discovery_keeps_desktop_in_default_profile_mode() {
 }
 
 #[test]
-fn preexisting_profile_conflict_revokes_before_file_preparation() {
+fn preexisting_profile_conflict_preserves_connection_and_other_writes() {
     use hiroute_domain::SecretStorePort;
     if crate::test_support::isolated_agent_home(
-        "control::runtime::native_model::tests::settings_entry_tests::settings_profile_tests::preexisting_profile_conflict_revokes_before_file_preparation",
+        "control::runtime::native_model::tests::settings_entry_tests::settings_profile_tests::preexisting_profile_conflict_preserves_connection_and_other_writes",
     ) {
         return;
     }
@@ -413,6 +341,24 @@ fn preexisting_profile_conflict_revokes_before_file_preparation() {
     let conflicted = configured.replace("name = \"HiRoute\"", "name = \"My Gateway\"");
     assert_ne!(conflicted, configured);
     fs::write(&profile, &conflicted).unwrap();
+    let publication_before = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .active_publication(&WorkspaceId::default())
+        .unwrap()
+        .unwrap();
+    let grant_before = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .secrets()
+        .inspect_agent_access_grant(
+            WorkspaceId::DEFAULT,
+            &format!("agent-connection/{}", context.as_str().unwrap()),
+        )
+        .unwrap();
     let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"restore","restore_point_ref":status["restore_point_ref"]}});
     let preview = service
         .dispatch_wire(request(
@@ -425,13 +371,18 @@ fn preexisting_profile_conflict_revokes_before_file_preparation() {
     assert_eq!(preview["applicable"], true);
     let response = service.dispatch_wire(request("ApplyAgentConnectionRestore", json!({"spec":restore,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],"expected_revisions":preview["expected_revisions"],"idempotency_key":"revoke-preexisting-conflict"}), None));
     assert!(response.error.is_none(), "{response:?}");
-    let pending = response.data.unwrap();
-    assert_eq!(pending["state"], "activating", "{pending}");
+    let failed = response.data.unwrap();
+    assert_eq!(failed["state"], "rolled_back", "{failed}");
     let access = runtime.adapter.codex_access_view().unwrap();
-    assert!(access.access_revoked && access.slot_occupied);
-    assert_eq!(
-        access.pending_operation.as_deref(),
-        pending["operation_id"].as_str()
+    assert!(!access.access_revoked && access.slot_occupied);
+    assert!(access.pending_operation.is_none());
+    assert!(
+        access
+            .conflict_fields
+            .iter()
+            .any(|field| field.contains("name")),
+        "{:?}",
+        access.conflict_fields
     );
     assert!(
         runtime
@@ -444,39 +395,79 @@ fn preexisting_profile_conflict_revokes_before_file_preparation() {
                 &format!("agent-connection/{}", context.as_str().unwrap())
             )
             .unwrap()
-            .is_none()
+            .is_some()
     );
     assert_eq!(fs::read_to_string(&profile).unwrap(), conflicted);
-    // Cleanup is still discoverable after a restart and cannot revive the grant.
-    runtime.adapter.reconcile_startup_and_open().unwrap();
-    let retry = json!({"schema":"hiroute.agent-settings-retry/v1","context_id":context,"operation_id":pending["operation_id"]});
-    // A sealed file tail keeps reads and recovery usable while ordinary writes stay closed.
-    let status = service.dispatch_wire(request("GetClientServiceStatus", json!({}), None));
-    assert!(status.error.is_none(), "{status:?}");
-    let status = status.data.unwrap();
-    assert_eq!(status["recovery_ready"], true, "{status}");
-    assert_eq!(status["mutation_available"], false, "{status}");
-    assert!(
-        matches!(status["gateway"].as_str(), Some("ready" | "no_new_calls")),
-        "{status}"
-    );
-    let catalog = service.dispatch_wire(request("ListAgentPlanCatalog", json!({}), None));
-    assert!(catalog.error.is_none(), "{catalog:?}");
-    assert!(
-        !catalog.data.unwrap()["plans"]
-            .as_array()
+    assert_eq!(
+        runtime
+            .adapter
+            .stores_lock()
             .unwrap()
-            .is_empty()
+            .control()
+            .active_publication(&WorkspaceId::default())
+            .unwrap()
+            .unwrap()
+            .digest,
+        publication_before.digest
     );
-    let blocked = service.dispatch_wire(request("ApplyAgentConnectionChange", retry.clone(), None));
-    assert_eq!(blocked.data.unwrap()["state"], "activating");
-    let cleaned = "# kept user comments\nuser_option = 'retained'\n";
-    fs::write(&profile, cleaned).unwrap();
-    let completed = service.dispatch_wire(request("ApplyAgentConnectionChange", retry, None));
-    assert!(completed.error.is_none(), "{completed:?}");
-    let completed = completed.data.unwrap();
-    assert_eq!(completed["state"], "succeeded", "{completed}");
-    assert_eq!(completed["operation_id"], pending["operation_id"]);
-    assert_eq!(fs::read_to_string(&profile).unwrap(), cleaned);
+    assert_eq!(
+        runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .secrets()
+            .inspect_agent_access_grant(
+                WorkspaceId::DEFAULT,
+                &format!("agent-connection/{}", context.as_str().unwrap())
+            )
+            .unwrap(),
+        grant_before
+    );
+    runtime.adapter.reconcile_startup_and_open().unwrap();
+    let available = service
+        .dispatch_wire(request("GetClientServiceStatus", json!({}), None))
+        .data
+        .unwrap();
+    assert_eq!(available["mutation_available"], true, "{available}");
+    assert!(runtime.adapter.guard_codex_pending_change(None).is_ok());
+    fs::write(
+        &profile,
+        format!("# kept user comments\nuser_option = 'retained'\n{configured}"),
+    )
+    .unwrap();
+    let repaired = fs::read(&profile).unwrap();
+    let mut fault_ports = runtime.application_ports();
+    fault_ports.mutation = Some(Arc::new(fault::FileRace {
+        adapter: runtime.adapter.clone(),
+        path: profile.clone(),
+        fail_after_file: true,
+    }));
+    let fault_service = LocalControlDaemon::new(ApplicationService::new(fault_ports));
+    let preview = fault_service
+        .dispatch_wire(request(
+            "PreviewAgentConnectionRestore",
+            json!({"spec":restore}),
+            None,
+        ))
+        .data
+        .unwrap();
+    let failed_service = fault_service.dispatch_wire(request("ApplyAgentConnectionRestore", json!({"spec":restore,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],"expected_revisions":preview["expected_revisions"],"idempotency_key":"service-failure-after-restoring-file"}), None));
+    assert!(failed_service.error.is_none(), "{failed_service:?}");
+    assert_eq!(failed_service.data.unwrap()["state"], "rolled_back");
+    assert_eq!(fs::read(&profile).unwrap(), repaired);
+    assert!(!runtime.adapter.codex_access_view().unwrap().access_revoked);
+    assert_eq!(
+        service
+            .dispatch_wire(request("GetClientServiceStatus", json!({}), None))
+            .data
+            .unwrap()["mutation_available"],
+        true
+    );
+    apply(&service, &runtime, restore, "retry-preexisting-conflict");
+    let cleaned = fs::read_to_string(&profile).unwrap();
+    assert!(
+        cleaned.contains("# kept user comments") && cleaned.contains("user_option = 'retained'")
+    );
+    assert!(!cleaned.contains("X-HiRoute-Token"));
     assert!(!runtime.adapter.codex_access_view().unwrap().slot_occupied);
 }

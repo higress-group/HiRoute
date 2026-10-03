@@ -60,6 +60,12 @@ export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
         catch { setCopyState(text('复制失败，请手动选择命令复制', 'Copy failed; select and copy the command manually')); }
       }}>{text('复制启动命令', 'Copy launch command')}</button><span role="status">{copyState}</span>
     </div>}
+    {!access.pending_operation && !access.access_revoked && access.conflict_fields.length > 0 && <div className="callout warn" role="alert" data-codex-restore-conflict>
+      <strong>{text('配置文件存在冲突', 'Configuration file conflict')}</strong>
+      <p>{text('文件冲突解决前无法完成停用，原连接仍有效。HiRoute 会保留你的修改；请处理以下字段后重新点击“停用”。其他配置仍可修改。', 'Disable cannot complete until the conflict is resolved; the original connection remains active. HiRoute preserves your edits. Resolve these fields, then click Disable again. Other settings remain editable.')}</p>
+      <p><code>{access.target_file}</code></p>
+      <ul>{access.conflict_fields.map(field => <li key={field}><code>{field}</code></li>)}</ul>
+    </div>}
     {access.pending_operation && <div className="callout warn" role="alert">
       <p>{access.access_revoked
         ? text('已停用，配置文件待清理。旧令牌已失效。', 'Disabled; configuration cleanup is pending. The old token is invalid.')

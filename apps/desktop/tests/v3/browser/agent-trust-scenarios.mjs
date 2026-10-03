@@ -57,6 +57,17 @@ function changeSelect(select, value) {
 const configureSpecs = () => calls('preview_agent_settings').map(item => item.payload.input.spec);
 
 const scenarios = [
+  ['Codex file conflicts preserve active access and allow other settings', async () => {
+    await freshCodex('splitCodexStatus');
+    const agent = c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default');
+    agent.codex_access.conflict_fields = ['model_providers.hiroute.name'];
+    c().refresh(); await tick();
+    await until(() => document.querySelector('[data-codex-restore-conflict]'), 'file conflict diagnosis');
+    const alert = document.querySelector('[data-codex-restore-conflict]');
+    assert(alert.textContent.includes('原连接仍有效') && alert.textContent.includes('model_providers.hiroute.name'), 'Conflict hides active access or fields');
+    assert(!alert.textContent.includes('旧令牌已失效') && !alert.textContent.includes('新的配置保存会暂停'), 'Ordinary conflict claims revoked access or globally blocked settings');
+    assert(!facet('model').disabled, 'Unrelated configuration action is blocked');
+  }],
   ['Codex first enable is a ready-to-submit draft and cancel does not apply', async () => {
     await freshCodex('cliOnly', true);
     await openEditor('model', false);

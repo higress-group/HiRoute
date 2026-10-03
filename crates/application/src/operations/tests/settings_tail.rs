@@ -44,11 +44,26 @@ fn settings_plan() -> TransactionPlanV1 {
 }
 
 fn settings_plan_with_login_item(host_login_item: bool) -> TransactionPlanV1 {
+    settings_plan_for_action(host_login_item, false)
+}
+
+fn settings_plan_for_action(host_login_item: bool, restoring: bool) -> TransactionPlanV1 {
+    let original = OperationId::derive(
+        &WorkspaceId::default(),
+        &IdempotencyScopeV1::new("interactive-user", "agents.settings.apply", "original").unwrap(),
+        &CanonicalDigest::of_bytes(b"original"),
+    );
+    let mut settings = settings_spec();
+    if restoring {
+        settings.model = AgentFacetIntent::Restore {
+            restore_point_ref: crate::agent_connection::codex_model_restore_point_ref(&original),
+        };
+    }
     let spec = hiroute_domain::ChangeSpecV1 {
         schema_version: CHANGE_SPEC_SCHEMA_V1,
         command_id: "agents.settings.apply".to_owned(),
         resource_id: Some(CONTEXT_ID.to_owned()),
-        desired_state: serde_json::to_value(settings_spec()).unwrap(),
+        desired_state: serde_json::to_value(settings).unwrap(),
     };
     let subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
         "agent_codex_default",
@@ -78,18 +93,29 @@ fn settings_plan_with_login_item(host_login_item: bool) -> TransactionPlanV1 {
     .unwrap();
     let scope =
         AgentAccessGrantScopeV1::new(format!("agent-connection/{CONTEXT_ID}"), grant).unwrap();
-    let mutation = AgentAccessGrantMutationV1::ensure(WorkspaceId::DEFAULT, scope, 0).unwrap();
+    let mutation = if restoring {
+        AgentAccessGrantMutationV1::revoke(WorkspaceId::DEFAULT, scope.connection_id(), 1).unwrap()
+    } else {
+        AgentAccessGrantMutationV1::ensure(WorkspaceId::DEFAULT, scope, 0).unwrap()
+    };
     let model_file = settings_codex_model_file_intent(
         &control,
         CONTEXT_ID,
         CanonicalDigest::of_bytes(b"model-file-content"),
         None,
-        CodexModelFileAction::Configure {
-            previous_operation: None,
-            provider_id: "hiroute".to_owned(),
-            endpoint: "http://127.0.0.1:8787/v1".to_owned(),
-            model: None,
-            model_catalog: None,
+        if restoring {
+            CodexModelFileAction::Restore {
+                original_operation: original,
+                native_model: None,
+            }
+        } else {
+            CodexModelFileAction::Configure {
+                previous_operation: None,
+                provider_id: "hiroute".to_owned(),
+                endpoint: "http://127.0.0.1:8787/v1".to_owned(),
+                model: None,
+                model_catalog: None,
+            }
         },
     )
     .unwrap();
@@ -507,4 +533,66 @@ fn settings_receipt_parse_accepts_only_the_registered_schema() {
     );
     assert_eq!(SettingsServiceCompletionV1::parse("applied"), None);
     assert_eq!(SettingsServiceCompletionV1::parse("{}"), None);
+}
+
+#[test]
+fn settings_disable_restores_file_before_publication_and_grant() {
+    let ports = MemoryPorts::default();
+    let admission = TransactionRuntime::default();
+    let id = inject_settings_operation_with_plan(&ports, settings_plan_for_action(false, true));
+    let finished = coordinator(&ports, &admission).run(&id).unwrap();
+    assert_eq!(finished.state, OperationState::Succeeded);
+    let log = &ports.state.borrow().activation_log;
+    let file = log.iter().position(|e| e == MODEL_FILE_EFFECT).unwrap();
+    let publication = log.iter().position(|e| e == PUBLICATION_EFFECT).unwrap();
+    let grant = log
+        .iter()
+        .position(|e| e.starts_with("agent-access-grant:"))
+        .unwrap();
+    assert!(file < publication && publication < grant, "{log:?}");
+}
+
+#[test]
+fn settings_disable_failures_roll_back_and_release_writer() {
+    for effect in [
+        MODEL_FILE_EFFECT.to_owned(),
+        PUBLICATION_EFFECT.to_owned(),
+        format!("agent-access-grant:agent-connection/{CONTEXT_ID}"),
+    ] {
+        let ports = MemoryPorts::default();
+        let admission = TransactionRuntime::default();
+        let id = inject_settings_operation_with_plan(&ports, settings_plan_for_action(false, true));
+        ports.state.borrow_mut().fail_activation = Some(effect.clone());
+        let failed = coordinator(&ports, &admission).run(&id).unwrap();
+        assert_eq!(failed.state, OperationState::RolledBack, "{effect}");
+        assert!(failed.safe_error_code.is_some());
+        assert!(
+            SettingsServiceCompletionV1::parse(
+                failed
+                    .step(OperationStepKind::Activate)
+                    .terminal_result
+                    .as_deref()
+                    .unwrap_or_default()
+            )
+            .is_none()
+        );
+        assert!(ports.state.borrow().writer.is_none(), "{effect}");
+        assert!(ports.state.borrow().effects.is_empty(), "{effect}");
+        if effect == MODEL_FILE_EFFECT {
+            assert!(ports.state.borrow().activation_log.is_empty());
+        } else {
+            assert!(
+                ports
+                    .state
+                    .borrow()
+                    .activation_log
+                    .iter()
+                    .any(|e| e == MODEL_FILE_EFFECT)
+            );
+        }
+        coordinator(&ports, &admission)
+            .reconcile_startup_and_open()
+            .unwrap();
+        assert!(admission.writes_open.load(Ordering::Acquire));
+    }
 }

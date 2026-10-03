@@ -2865,9 +2865,10 @@ impl ManagedArtifactStore {
             let stage = self
                 .stage_path(&marker)
                 .map_err(|_| port(PortErrorCode::Corrupt, "artifact.compensate.stage"))?;
-            if let Some(snapshot) = read_artifact(&stage)
-                .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.stage"))?
-            {
+            let staged = read_artifact(&stage)
+                .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.stage"))?;
+            let stage_present = staged.is_some();
+            if let Some(snapshot) = staged {
                 if snapshot.fingerprint != marker.after_digest {
                     return Ok(CompensationOutcome::OwnershipLost);
                 }
@@ -2876,7 +2877,11 @@ impl ManagedArtifactStore {
                 sync_parent(&stage)
                     .map_err(|_| port(PortErrorCode::Unavailable, "artifact.compensate.sync"))?;
             }
-            if current_digest != marker.before_digest
+            // An intact rendered stage proves rename has not happened. Discard only our
+            // stage and preserve a concurrent user edit; no target write needs undoing.
+            // Without the stage, a crash after rename remains uncertain and fails closed.
+            if !(marker.rendered && marker.after_exists && stage_present)
+                && current_digest != marker.before_digest
                 && !(!marker.before_exists && current.is_none())
             {
                 return Ok(CompensationOutcome::OwnershipLost);

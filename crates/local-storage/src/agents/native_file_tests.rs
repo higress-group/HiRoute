@@ -662,3 +662,108 @@ fn unstaged_restoration_ack_is_protected_bound_and_never_rewrites() {
         EffectReconciliation::OwnershipLost(_)
     ));
 }
+
+#[test]
+fn settings_unactivated_target_race_discards_only_the_owned_rendered_stage() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("config.toml");
+    write(&target, b"before = true\n");
+    let op = OperationId::parse("op_55555555555555555555555555555555").unwrap();
+    let i = intent(
+        AgentConnectionTransactionKindV1::Apply,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        None,
+    );
+    let artifact = store(root.path(), i.target(), &target);
+    let i = intent(
+        AgentConnectionTransactionKindV1::Apply,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        artifact.current_external_fingerprint(i.target()).unwrap(),
+    );
+    let effect = artifact
+        .stage_native_target(&op, &i, Some(b"after = true\n"), true)
+        .unwrap();
+    write(&target, b"user_edit = true\n");
+    assert!(matches!(
+        artifact.observe_artifact(&op, &i).unwrap(),
+        EffectReconciliation::OwnershipLost(_)
+    ));
+    assert_eq!(
+        artifact.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::Compensated
+    );
+    assert_eq!(fs::read(&target).unwrap(), b"user_edit = true\n");
+    assert_eq!(
+        artifact.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::AlreadyCompensated
+    );
+    assert!(matches!(
+        artifact.observe_artifact(&op, &i).unwrap(),
+        EffectReconciliation::Missing
+    ));
+}
+
+#[test]
+fn settings_missing_stage_does_not_prove_a_target_was_never_written() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("config.toml");
+    write(&target, b"before = true\n");
+    let op = OperationId::parse("op_66666666666666666666666666666666").unwrap();
+    let prototype = intent(
+        AgentConnectionTransactionKindV1::Apply,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        None,
+    );
+    let artifact = store(root.path(), prototype.target(), &target);
+    let i = intent(
+        AgentConnectionTransactionKindV1::Apply,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        artifact
+            .current_external_fingerprint(prototype.target())
+            .unwrap(),
+    );
+    let effect = artifact
+        .stage_native_target(&op, &i, Some(b"after = true\n"), true)
+        .unwrap();
+    let marker = artifact.load_marker(&op, i.effect_id()).unwrap().unwrap();
+    fs::rename(artifact.stage_path(&marker).unwrap(), &target).unwrap();
+    write(&target, b"user_edit_after_rename = true\n");
+    assert_eq!(
+        artifact.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::OwnershipLost
+    );
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        b"user_edit_after_rename = true\n"
+    );
+}
+
+#[test]
+fn settings_delete_with_intact_stage_does_not_prove_no_target_write() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("profile.toml");
+    write(&target, b"managed = true\n");
+    let op = OperationId::parse("op_77777777777777777777777777777777").unwrap();
+    let prototype = intent(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        None,
+    );
+    let artifact = store(root.path(), prototype.target(), &target);
+    let i = intent(
+        AgentConnectionTransactionKindV1::Restore,
+        AgentConnectionEffectRoleV1::ManagedConfiguration,
+        artifact
+            .current_external_fingerprint(prototype.target())
+            .unwrap(),
+    );
+    let effect = artifact.stage_native_target(&op, &i, None, true).unwrap();
+    let marker = artifact.load_marker(&op, i.effect_id()).unwrap().unwrap();
+    assert!(artifact.stage_path(&marker).unwrap().exists());
+    fs::remove_file(&target).unwrap();
+    assert_eq!(
+        artifact.compensate_artifact(&effect).unwrap(),
+        CompensationOutcome::OwnershipLost
+    );
+    assert!(!target.exists());
+}

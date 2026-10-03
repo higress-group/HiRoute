@@ -20,6 +20,20 @@ export function classifyAgentMutation(
   return 'unverified';
 }
 
+export function agentDisableMessage(state: string, language: 'zh' | 'en'): string {
+  const zh = language === 'zh';
+  if (state === 'succeeded') return zh
+    ? '模型配置已恢复，连接已停用。'
+    : 'Model settings restored; the connection is disabled.';
+  if (state === 'rolled_back') return zh
+    ? '停用未完成，本次变更已回滚，原连接仍有效。请处理冲突或失败原因后重新点击“停用”。'
+    : 'Disable did not complete. This change was rolled back; the original connection remains active. Resolve the conflict or failure, then click Disable again.';
+  if (state === 'needs_attention') return zh
+    ? '停用未完成，回滚尚未确认。请查看操作状态并处理恢复问题。'
+    : 'Disable did not complete and rollback is unconfirmed. Check the operation status and resolve the recovery issue.';
+  return zh ? '正在恢复模型配置并停用连接…' : 'Restoring model settings and disabling the connection…';
+}
+
 export function agentActionErrorMessage(code: string, language: 'zh' | 'en'): string {
   const zh = language === 'zh';
   if (code === 'AGENT_TOKEN_INVALID') return zh

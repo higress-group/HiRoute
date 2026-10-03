@@ -890,6 +890,19 @@
   ],
   "field_compatibility_support": [
     {
+      "contract": "hiroute.settings-service-completion/v2",
+      "field": "service-first restore checkpoint with an unstaged client model file",
+      "mode": "recovery_read_only",
+      "owner": "agent-connections",
+      "reason": "Older admitted revokes can have a sealed service receipt before preparing the client file. Retain only their existing same-operation recovery reader and the frozen production-port fixture; current restores stage and switch the file before withdrawing service access.",
+      "removal_condition": "Retire only after every retained operation and supported backup has no service-first restore file tail, together with its frozen regression fixture.",
+      "allowed_paths": [
+        "crates/application/src/operations/execution.rs",
+        "crates/daemon/src/control/runtime/settings_profile_legacy_fixture.rs",
+        "crates/daemon/src/control/runtime/settings_profile_legacy_tests.rs"
+      ]
+    },
+    {
       "contract": "hiroute.settings-claude-model-file/v1",
       "field": "snapshot.context_window_tokens",
       "mode": "recovery_read_only",

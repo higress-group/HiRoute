@@ -12,6 +12,7 @@ use hiroute_domain::{
 pub(super) struct FileRace {
     pub adapter: Arc<LocalControlAdapter>,
     pub path: std::path::PathBuf,
+    pub fail_after_file: bool,
 }
 impl ApplicationMutationPort for FileRace {
     fn preview_change(
@@ -66,6 +67,14 @@ impl ExternalEffectPort for FileRace {
         op: &OperationV1,
         e: &OwnedEffectV1,
     ) -> PortResult<OwnedEffectV1> {
+        if self.fail_after_file {
+            let restored = fs::read_to_string(&self.path).unwrap();
+            assert!(!restored.contains("X-HiRoute-Token"));
+            return Err(PortError::new(
+                PortErrorCode::Unavailable,
+                "test.profile.service_after_restore",
+            ));
+        }
         self.adapter.prepare_publication_activation(op, e)
     }
     fn prepare_publication_rollback(
@@ -103,10 +112,12 @@ impl ExternalEffectPort for FileRace {
         self.adapter.observe_external(op, i)
     }
     fn activate_external(&self, op: &OperationV1, e: &OwnedEffectV1) -> PortResult<OwnedEffectV1> {
-        if op.plan.external().iter().any(|i| {
-            i.target() == e.target
-                && crate::control::runtime::native_model::is_settings_codex_model(i)
-        }) {
+        if !self.fail_after_file
+            && op.plan.external().iter().any(|i| {
+                i.target() == e.target
+                    && crate::control::runtime::native_model::is_settings_codex_model(i)
+            })
+        {
             let original = fs::read_to_string(&self.path).unwrap();
             fs::write(&self.path, format!("# user's concurrent edit\n{original}")).unwrap();
             return Err(PortError::new(

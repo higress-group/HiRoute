@@ -584,8 +584,23 @@ where
             // Reconciliation uncertainty must not prevent best-effort compensation of the
             // other effects that still prove exact Operation ownership.
             let compensation = self.compensate_step(&operation, kind);
+            let restored_stage_discarded = execution::is_settings_restoration(&operation)
+                && kind == OperationStepKind::ApplyAgentArtifacts
+                && compensation.is_ok()
+                && operation
+                    .plan
+                    .external()
+                    .iter()
+                    .filter(|intent| intent.kind() == OwnedEffectKind::AgentArtifact)
+                    .all(|intent| {
+                        matches!(
+                            self.external.observe_external(&operation, intent),
+                            Ok(EffectReconciliation::Missing)
+                        )
+                    });
             let outcome = match (reconciliation, compensation) {
                 (Ok(()), Ok(())) => Ok(()),
+                (Err(_), Ok(())) if restored_stage_discarded => Ok(()),
                 _ => Err(TransactionError::EffectOwnershipLost),
             };
             match outcome {
