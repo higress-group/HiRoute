@@ -799,9 +799,77 @@ fn settings_delete_with_intact_stage_does_not_prove_no_target_write() {
     let marker = artifact.load_marker(&op, i.effect_id()).unwrap().unwrap();
     assert!(artifact.stage_path(&marker).unwrap().exists());
     fs::remove_file(&target).unwrap();
+    // Model a crash after unlink: a reopened store must not regain in-process proof.
+    drop(artifact);
+    let artifact = store(root.path(), prototype.target(), &target);
     assert_eq!(
         artifact.compensate_artifact(&effect).unwrap(),
         CompensationOutcome::OwnershipLost
     );
     assert!(!target.exists());
+}
+
+#[test]
+fn settings_delete_race_requires_live_untouched_target_proof() {
+    if run_with_permissive_umask("settings_delete_race_requires_live_untouched_target_proof") {
+        return;
+    }
+    for case in [
+        "fresh",
+        "reopen",
+        "missing_stage",
+        "tampered_stage",
+        "unlink_attempt",
+    ] {
+        let root = crate::test_tempdir().unwrap();
+        let target = root.path().join("profile.toml");
+        write(&target, b"managed = true\n");
+        let op = OperationId::parse("op_88888888888888888888888888888888").unwrap();
+        let prototype = intent(
+            AgentConnectionTransactionKindV1::Restore,
+            AgentConnectionEffectRoleV1::ManagedConfiguration,
+            None,
+        );
+        let mut artifact = store(root.path(), prototype.target(), &target);
+        let i = intent(
+            AgentConnectionTransactionKindV1::Restore,
+            AgentConnectionEffectRoleV1::ManagedConfiguration,
+            artifact
+                .current_external_fingerprint(prototype.target())
+                .unwrap(),
+        );
+        let effect = artifact.stage_native_target(&op, &i, None, true).unwrap();
+        let marker = artifact.load_marker(&op, i.effect_id()).unwrap().unwrap();
+        let stage = artifact.stage_path(&marker).unwrap();
+        if case == "unlink_attempt" {
+            // Execute the real unlink, then reconstruct the durable crash window before
+            // stage consumption/marker persistence. Live proof must already be consumed.
+            artifact.activate_artifact(&effect).unwrap();
+            assert!(!target.exists());
+            artifact.save_marker(&marker).unwrap();
+            write(&stage, b"");
+        }
+        write(&target, b"user_edit = true\n");
+        if case == "reopen" {
+            drop(artifact);
+            artifact = store(root.path(), prototype.target(), &target);
+        }
+        assert!(artifact.activate_artifact(&effect).is_err());
+        match case {
+            "missing_stage" => fs::remove_file(&stage).unwrap(),
+            "tampered_stage" => write(&stage, b"foreign stage"),
+            _ => {}
+        }
+        let expected = if case == "fresh" {
+            CompensationOutcome::Compensated
+        } else {
+            CompensationOutcome::OwnershipLost
+        };
+        assert_eq!(
+            artifact.compensate_artifact(&effect).unwrap(),
+            expected,
+            "{case}"
+        );
+        assert_eq!(fs::read(&target).unwrap(), b"user_edit = true\n", "{case}");
+    }
 }

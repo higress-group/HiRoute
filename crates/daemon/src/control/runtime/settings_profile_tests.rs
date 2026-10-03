@@ -471,3 +471,120 @@ fn preexisting_profile_conflict_preserves_connection_and_other_writes() {
     assert!(!cleaned.contains("X-HiRoute-Token"));
     assert!(!runtime.adapter.codex_access_view().unwrap().slot_occupied);
 }
+
+#[test]
+fn profile_delete_race_rolls_back_and_releases_writer() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::native_model::tests::settings_entry_tests::settings_profile_tests::profile_delete_race_rolls_back_and_releases_writer",
+    ) {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let (runtime, _) = open_with_codex_fixture_surfaces(dir.path());
+    ensure_target_cache(&runtime.adapter);
+    let root = runtime.adapter.scanner.codex_user_config_target();
+    fs::create_dir_all(root.parent().unwrap()).unwrap();
+    fs::set_permissions(root.parent().unwrap(), fs::Permissions::from_mode(0o700)).unwrap();
+    let original = "# ordinary entry remains native\nuser_option = true\n";
+    fs::write(&root, original).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o600)).unwrap();
+    runtime.adapter.reconcile_startup_and_open().unwrap();
+    // Complete the same Gateway handoff as the production startup entry.
+    runtime
+        .adapter
+        .finish_startup_publication_recovery()
+        .unwrap();
+    let service = LocalControlDaemon::new(ApplicationService::new(runtime.application_ports()));
+    let scan = service
+        .dispatch_wire(request("ScanAgents", json!({}), None))
+        .data
+        .unwrap();
+    let codex = scan["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["agent_id"] == "agent_codex_default")
+        .unwrap();
+    let access = &codex["codex_access"];
+    assert_eq!(access["selected_mode"], "profile");
+    assert_eq!(codex["context_id"], access["profile_context_id"]);
+    assert_ne!(access["root_context_id"], access["profile_context_id"]);
+    let context = access["profile_context_id"].clone();
+    let profile = runtime.adapter.scanner.codex_profile_config_target();
+    let publication = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .active_publication(&WorkspaceId::default())
+        .unwrap()
+        .unwrap()
+        .verify()
+        .unwrap();
+    let plans = publication.published_agent_plans().unwrap();
+    let plan = plans
+        .iter()
+        .find(|p| {
+            p.active
+                && p.supported_ingress
+                    .contains(&AgentIngressProtocolV1::Responses)
+        })
+        .unwrap();
+    let spec = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"configure","settings":{
+        "mode":"codex_default","native_model_mode":"hiroute_only","fixed_models":[],"allowed_plan_ids":[plan.agent_plan_id],"default_selection":{"kind":"plan","plan_id":plan.agent_plan_id}}}});
+
+    let configured = apply(&service, &runtime, spec.clone(), "create-delete-race");
+    let grant = || {
+        runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .secrets()
+            .inspect_agent_access_grant(
+                WorkspaceId::DEFAULT,
+                &format!("agent-connection/{}", context.as_str().unwrap()),
+            )
+            .unwrap()
+    };
+    let grant_before = grant();
+    assert!(grant_before.is_some());
+    let operation: OperationId =
+        serde_json::from_value(configured["operation_id"].clone()).unwrap();
+    let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&operation)}});
+    let before = fs::read_to_string(&profile).unwrap();
+    let mut ports = runtime.application_ports();
+    ports.mutation = Some(Arc::new(fault::FileRace {
+        adapter: runtime.adapter.clone(),
+        path: profile.clone(),
+        fail_after_file: false,
+    }));
+    let racing = LocalControlDaemon::new(ApplicationService::new(ports));
+    let preview = racing
+        .dispatch_wire(request(
+            "PreviewAgentConnectionRestore",
+            json!({"spec":restore}),
+            None,
+        ))
+        .data
+        .unwrap();
+    assert_eq!(preview["applicable"], true);
+    let failed = racing.dispatch_wire(request("ApplyAgentConnectionRestore", json!({"spec":restore,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],"expected_revisions":preview["expected_revisions"],"idempotency_key":"delete-race"}), None));
+    assert!(failed.error.is_none(), "{failed:?}");
+    assert_eq!(failed.data.unwrap()["state"], "rolled_back");
+    assert_eq!(grant(), grant_before);
+    assert_eq!(
+        fs::read_to_string(&profile).unwrap(),
+        format!("# user's concurrent edit\n{before}")
+    );
+    let access = runtime.adapter.codex_access_view().unwrap();
+    assert!(access.slot_occupied && !access.access_revoked);
+    assert!(access.pending_operation.is_none());
+    let status = service
+        .dispatch_wire(request("GetClientServiceStatus", json!({}), None))
+        .data
+        .unwrap();
+    assert_eq!(status["mutation_available"], true);
+    apply(&service, &runtime, restore, "retry-delete-race");
+    assert!(!runtime.adapter.codex_access_view().unwrap().slot_occupied);
+    assert!(!profile.exists());
+}

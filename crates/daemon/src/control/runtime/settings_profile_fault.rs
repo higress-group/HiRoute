@@ -120,10 +120,7 @@ impl ExternalEffectPort for FileRace {
         {
             let original = fs::read_to_string(&self.path).unwrap();
             fs::write(&self.path, format!("# user's concurrent edit\n{original}")).unwrap();
-            return Err(PortError::new(
-                PortErrorCode::Conflict,
-                "test.profile.file_race",
-            ));
+            return self.adapter.activate_external(op, e);
         }
         self.adapter.activate_external(op, e)
     }
