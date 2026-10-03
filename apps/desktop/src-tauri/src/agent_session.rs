@@ -341,7 +341,8 @@ impl Session {
         Ok(AgentSnapshot {
             agents: scan.agents,
             plans: snapshot.catalog,
-            trusted_authority: snapshot.trusted_authority && snapshot.service.mutation_available,
+            // Peer authority also permits same-operation recovery while new writes are closed.
+            trusted_authority: snapshot.trusted_authority,
         })
     }
 
