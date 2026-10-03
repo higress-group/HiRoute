@@ -4,9 +4,6 @@
 //! journaled ownership evidence; a pre-existing user login item is never touched.
 use hiroute_application_api::AgentLoginItemDeclarationV2;
 
-#[cfg(target_os = "macos")]
-use hiroute_application_api::AgentLoginItemStatusV2;
-
 const SERVICE_UNAVAILABLE: &str = "SERVICE_UNAVAILABLE";
 
 /// Unregisters the login item this feature owns when the last managed connection is restored.
