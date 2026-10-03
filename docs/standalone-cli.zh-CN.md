@@ -95,6 +95,20 @@ hiroute service autostart disable --output json
 
 登录自启与当前会话启动是两个动作。`SIGTERM`/`SIGINT` 会触发有序停机。
 
+### 订阅网络代理
+
+先在终端开启代理，再执行 `hiroute service start`、`restart` 或 `run`。
+这些命令读取 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` 及其小写形式，供订阅目录发现
+和推理使用。HTTPS 目标使用 `HTTPS_PROXY`，`NO_PROXY` 控制绕过目标。不读取
+`ALL_PROXY`、PAC 或操作系统网络设置，也不执行 shell 启动文件。
+
+CLI 将这六个变量保存到仅当前用户可读的
+`~/.local/share/hiroute/service/proxy-environment.json`，使单独启动的 systemd/launchd
+服务能使用终端配置，不修改其他服务的环境。只有 CPA 消费此配置，本地管理通信保持直连；
+登录自启复用已保存配置。修改代理后执行 `hiroute service restart`；对已运行服务执行
+`start` 不更新配置。清除代理时，先 unset 全部六个变量再重启。代理失败不会回退直连。
+代理地址可能包含密码，不要分享此私有文件。这不改变原生 Codex 的登录和 token 刷新归属。
+
 ## 先发现当前公开合同
 
 CLI 有两层公开合同：

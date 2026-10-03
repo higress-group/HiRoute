@@ -105,6 +105,24 @@ hiroute service autostart disable --output json
 Login autostart and starting the current session are separate actions. `SIGTERM` and `SIGINT`
 request an orderly shutdown.
 
+### Subscription network proxy
+
+Enable your proxy in the terminal before `hiroute service start`, `restart`, or `run`.
+These commands capture `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and their lowercase
+forms for managed subscription requests, including model discovery. HTTPS targets
+use `HTTPS_PROXY`; `NO_PROXY` excludes matching targets. `ALL_PROXY`, PAC and OS
+network settings are not read. HiRoute does not execute shell startup files.
+
+The CLI saves the six-variable snapshot in an owner-only file at
+`~/.local/share/hiroute/service/proxy-environment.json`. This lets a separately
+started systemd/launchd service use the terminal's configuration without modifying
+other services. Only CPA consumes it; local management stays direct. Login autostart
+reuses the saved snapshot. To change proxies, update your shell and run
+`hiroute service restart`; `start` on an already-running service leaves it unchanged.
+To clear a saved proxy, unset all six variables and restart. Proxy failure does not
+fall back to direct connections. Do not share the private snapshot: proxy URLs may
+contain credentials. This does not change native Codex login or token refresh ownership.
+
 ## Discover the current public contract first
 
 The CLI has two public-contract layers:

@@ -24,6 +24,9 @@ pub(crate) struct OwnerRecord {
     pub(crate) address: SocketAddr,
     pub(crate) binary_version: String,
     pub(crate) binary_sha256_hex: String,
+    /// Recovery-only omission: authenticate and replace pre-policy orphan processes.
+    #[serde(default)]
+    pub(crate) proxy_environment_sha256: Option<String>,
 }
 
 impl OwnerRecord {
@@ -41,6 +44,7 @@ impl OwnerRecord {
             address: "127.0.0.1:1".parse().expect("literal address"),
             binary_version: version,
             binary_sha256_hex: digest,
+            proxy_environment_sha256: None,
         };
         value.validate()?;
         Ok(value)
@@ -69,6 +73,12 @@ impl OwnerRecord {
             || self.binary_version.is_empty()
             || self.binary_version.len() > 64
             || self.binary_sha256_hex.len() != 64
+            || self
+                .proxy_environment_sha256
+                .as_ref()
+                .is_some_and(|digest| {
+                    digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
             || !self
                 .binary_sha256_hex
                 .bytes()

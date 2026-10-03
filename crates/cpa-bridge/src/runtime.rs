@@ -79,6 +79,7 @@ pub struct ManagedCpaRuntime {
     pub(crate) epochs: Arc<RuntimeEpochState>,
     /// Lifecycle diagnostics; a no-op port keeps library and test hosts unchanged.
     diagnostics: DiagnosticsPort,
+    proxy_environment: crate::proxy_environment::ProxyEnvironment,
 }
 
 /// Read-only discovery boundary exposed to Local Control. The returned values contain only
@@ -197,12 +198,25 @@ impl ManagedCpaRuntime {
             inner: Mutex::new(RuntimeInner::default()),
             epochs: Arc::new(RuntimeEpochState::new()),
             diagnostics: DiagnosticsPort::default(),
+            proxy_environment: crate::proxy_environment::ProxyEnvironment::capture(
+                std::env::vars_os(),
+            ),
         })
     }
 
     /// Record the CPA lifecycle without CPA stdout, command paths or credential locators.
     pub fn with_diagnostics(mut self, diagnostics: DiagnosticsPort) -> Self {
         self.diagnostics = diagnostics;
+        self
+    }
+
+    /// Override only the CPA child's proxy environment with a host-owned snapshot.
+    /// This must be configured before the runtime starts.
+    pub fn with_proxy_environment(
+        mut self,
+        values: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+    ) -> Self {
+        self.proxy_environment = crate::proxy_environment::ProxyEnvironment::capture(values);
         self
     }
 
@@ -301,13 +315,14 @@ impl ManagedCpaRuntime {
         );
         let layout = self.prepare_layout()?;
         let nonce = SecretText::generate()?.expose().to_owned();
-        let fresh_record = OwnerRecord::claim(
+        let mut fresh_record = OwnerRecord::claim(
             std::process::id(),
             nonce.clone(),
             artifact.version().to_string(),
             artifact.sha256_hex().to_owned(),
         )
         .map_err(|_| CpaLifecycleError::OwnerState)?;
+        fresh_record.proxy_environment_sha256 = Some(self.proxy_environment.digest());
         let claim = OwnerLease::acquire(&layout.lock_dir, &fresh_record, nonce.clone())
             .map_err(|_| CpaLifecycleError::OwnerState)?;
         let mut live = match claim {
@@ -329,8 +344,7 @@ impl ManagedCpaRuntime {
                     let lease =
                         OwnerLease::reclaim_stale(&layout.lock_dir, &record, &transferred, nonce)
                             .map_err(|_| CpaLifecycleError::OwnerState)?;
-                    // Adoption attaches to a live process: it never spawns, so it never
-                    // reports a spawn step.
+                    // Authenticate the orphan before adopting or replacing its launch policy.
                     self.adopt_orphan(
                         lease,
                         record,
@@ -604,13 +618,32 @@ impl ManagedCpaRuntime {
             Ok((transferred, secrets, process, accounts, auth_lease))
         })();
         match attempt {
-            Ok((transferred, secrets, process, accounts, auth_lease)) => {
+            Ok((mut transferred, secrets, mut process, accounts, auth_lease)) => {
                 self.emit_stage(
                     CpaStageKind::ReadyWait,
                     CpaStageOutcome::Completed,
                     ready_started.elapsed().as_millis() as u64,
                     generation,
                 );
+                let digest = self.proxy_environment.digest();
+                if transferred.proxy_environment_sha256.as_deref() != Some(digest.as_str()) {
+                    // The management capability has authenticated this exact orphan twice.
+                    // Never serve through an old/unknown proxy policy after owner recovery.
+                    if let Err(error) = process.shutdown(self.spec.shutdown_timeout) {
+                        let _ = lease.restore_stale(&stale_record);
+                        return Err(error.into());
+                    }
+                    drop(auth_lease);
+                    transferred.proxy_environment_sha256 = Some(digest);
+                    return self.start_fresh(
+                        lease,
+                        transferred,
+                        artifact,
+                        layout,
+                        expected,
+                        generation,
+                    );
+                }
                 Ok(LiveRuntime {
                     lease,
                     auth_lease: Some(auth_lease),
@@ -653,6 +686,7 @@ impl ManagedCpaRuntime {
                 config_path: layout.config_path.clone(),
                 work_dir: layout.work_dir.clone(),
                 management_password: secrets.management.clone(),
+                proxy_environment: self.proxy_environment.clone(),
             })
             .map_err(CpaLifecycleError::from)
     }

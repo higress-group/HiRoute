@@ -41,6 +41,9 @@ pub(crate) fn status() -> Result<ServiceStatus, ServiceFailure> {
 
 pub(crate) fn start(timeout: Duration) -> Result<ServiceStatus, ServiceFailure> {
     let (layout, _) = installed()?;
+    if !manager_active(&layout) {
+        capture_proxy_environment(&layout)?;
+    }
     manager_start(&layout)?;
     wait_ready(timeout)?;
     status()
@@ -55,9 +58,16 @@ pub(crate) fn stop(timeout: Duration) -> Result<ServiceStatus, ServiceFailure> {
 
 pub(crate) fn restart(timeout: Duration) -> Result<ServiceStatus, ServiceFailure> {
     let (layout, _) = installed()?;
+    capture_proxy_environment(&layout)?;
     manager_restart(&layout)?;
     wait_ready(timeout)?;
     status()
+}
+
+fn capture_proxy_environment(layout: &StandaloneLayout) -> Result<(), ServiceFailure> {
+    hiroute_host_runtime::ServiceProxyEnvironment::capture(std::env::vars_os())
+        .and_then(|environment| environment.store(&layout.home))
+        .map_err(|_| ServiceFailure::Unavailable)
 }
 
 pub(crate) fn set_autostart(enable: bool) -> Result<ServiceStatus, ServiceFailure> {
@@ -201,10 +211,14 @@ pub(crate) fn foreground_run() -> u8 {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        let Ok((_, record)) = installed() else {
+        let Ok((layout, record)) = installed() else {
             eprintln!("standalone installation is unavailable");
             return 6;
         };
+        if capture_proxy_environment(&layout).is_err() {
+            eprintln!("standalone proxy environment is unavailable");
+            return 6;
+        }
         let daemon = record.install_root.join("hirouted");
         if !executable(&daemon) {
             eprintln!("standalone daemon is unavailable");
@@ -320,7 +334,7 @@ fn service_definition(layout: &StandaloneLayout) -> PathBuf {
 #[cfg(target_os = "macos")]
 fn manager_start(layout: &StandaloneLayout) -> Result<(), ServiceFailure> {
     let domain = format!("gui/{}", nix::unistd::geteuid().as_raw());
-    if !manager_active(layout) {
+    if !manager_loaded(layout) {
         let template = launchd_template(layout);
         run_checked(Command::new("/bin/launchctl").args([
             "bootstrap",
@@ -337,7 +351,7 @@ fn manager_start(layout: &StandaloneLayout) -> Result<(), ServiceFailure> {
 
 #[cfg(target_os = "macos")]
 fn manager_stop(_layout: &StandaloneLayout) -> Result<(), ServiceFailure> {
-    if !manager_active(_layout) {
+    if !manager_loaded(_layout) {
         return Ok(());
     }
     let service = format!("gui/{}/{}", nix::unistd::geteuid().as_raw(), SERVICE_LABEL);
@@ -356,10 +370,34 @@ fn manager_active(_layout: &StandaloneLayout) -> bool {
             "print",
             &format!("gui/{}/{}", nix::unistd::geteuid().as_raw(), SERVICE_LABEL),
         ])
+        .stderr(std::process::Stdio::null())
+        .output()
+        .is_ok_and(|output| launchd_process_running(&output))
+}
+
+// A registered RunAtLoad=false job is loaded even when it has no process.
+// Keep registration separate from the activity check used to capture proxy policy.
+#[cfg(target_os = "macos")]
+fn manager_loaded(_layout: &StandaloneLayout) -> bool {
+    Command::new("/bin/launchctl")
+        .args([
+            "print",
+            &format!("gui/{}/{}", nix::unistd::geteuid().as_raw(), SERVICE_LABEL),
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .is_ok_and(|status| status.success())
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn launchd_process_running(output: &Output) -> bool {
+    output.status.success()
+        && String::from_utf8_lossy(&output.stdout).lines().any(|line| {
+            line.strip_prefix("\tpid = ")
+                .and_then(|pid| pid.parse::<u32>().ok())
+                .is_some_and(|pid| pid > 0)
+        })
 }
 
 #[cfg(target_os = "macos")]
@@ -471,6 +509,26 @@ fn check(checks: &mut Vec<serde_json::Value>, healthy: &mut bool, name: &str, ok
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loaded_launchd_job_without_process_is_inactive_for_proxy_capture() {
+        for stdout in [
+            "gui/501/ai.hiroute.cli = {\n\tstate = not running\n}\n",
+            "gui/501/ai.hiroute.cli = {\n\tstate = exited\n\tenvironment = {\n\t\tpid = 42\n\t}\n}\n",
+            "gui/501/ai.hiroute.cli = {\n\tpid = 0\n}\n",
+        ] {
+            assert!(!launchd_process_running(&Output {
+                status: success_status(),
+                stdout: stdout.as_bytes().to_vec(),
+                stderr: Vec::new(),
+            }));
+        }
+        assert!(launchd_process_running(&Output {
+            status: success_status(),
+            stdout: b"gui/501/ai.hiroute.cli = {\n\tstate = running\n\tpid = 42\n}\n".to_vec(),
+            stderr: Vec::new(),
+        }));
+    }
 
     #[test]
     fn log_output_is_bounded_from_the_tail() {

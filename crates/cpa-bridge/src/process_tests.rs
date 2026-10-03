@@ -13,6 +13,9 @@ fn bootstrap_secret_uses_a_closed_pipe_and_never_argv_or_environment() {
         format!(
             r#"#!/bin/sh
 test -z "$MANAGEMENT_PASSWORD" || exit 10
+test -z "$BASH_ENV" || exit 14
+test "$HTTPS_PROXY" = 'http://user:proxy-secret@127.0.0.1:1187' || exit 15
+test "$NO_PROXY" = 'localhost,127.0.0.1' || exit 16
 test "$4" = '--local-password-stdin' || exit 11
 test "$#" = 4 || exit 12
 value=$(cat)
@@ -34,8 +37,17 @@ printf 'pipe-eof-ok' > result
         management_password: Arc::new(
             crate::config::SecretText::from_owned(secret.into()).unwrap(),
         ),
+        proxy_environment: crate::proxy_environment::ProxyEnvironment::capture([
+            (
+                "HTTPS_PROXY".into(),
+                "http://user:proxy-secret@127.0.0.1:1187".into(),
+            ),
+            ("NO_PROXY".into(), "localhost,127.0.0.1".into()),
+            ("BASH_ENV".into(), "/must-not-run".into()),
+        ]),
     };
     assert!(!format!("{launch:?}").contains(secret));
+    assert!(!format!("{launch:?}").contains("proxy-secret"));
     // An executable script on the validation workbench can briefly report ETXTBSY
     // just after the fixture is written. Retry only that fixture/filesystem race;
     // every other launch error must still fail this pipe-contract regression.
@@ -82,11 +94,13 @@ fn proxy_environment_preserves_bypass_without_forwarding_credentials_or_hooks() 
         "BASH_ENV",
         "HOME",
     ];
-    let selected: Vec<_> =
-        proxy_environment(vars.map(|key| (key.into(), "sentinel".into()))).collect();
+    let environment = crate::proxy_environment::ProxyEnvironment::capture(
+        vars.map(|key| (key.into(), "sentinel".into())),
+    );
+    let selected: Vec<_> = environment.iter().collect();
     assert_eq!(selected.len(), 6);
-    for (i, (key, value)) in selected.iter().enumerate() {
-        assert_eq!(key, vars[i]);
+    for (key, value) in selected {
+        assert!(vars[..6].contains(&key.to_str().unwrap()));
         assert_eq!(value, "sentinel");
     }
 }

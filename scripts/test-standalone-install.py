@@ -35,7 +35,7 @@ class StandaloneFixture(unittest.TestCase):
         self.repo = self.root / "repo"
         self.home = self.root / "home"
         self.output = self.root / "output"
-        self.home.mkdir()
+        self.home.mkdir(mode=0o700)
         skill = self.repo / "assets/skills/hiroute-management/SKILL.md"
         docs = self.repo / "docs/standalone-cli.md"
         skill.parent.mkdir(parents=True)
@@ -178,6 +178,38 @@ class MacInstallerTests(StandaloneFixture):
 
 @unittest.skipUnless(os.name == "posix" and os.uname().sysname == "Linux", "Linux layout test")
 class InstallerTests(StandaloneFixture):
+    def test_unsafe_service_home_is_rejected_without_permission_changes(self):
+        manifest, archive = self.build()
+        self.home.chmod(0o775)
+        with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            with self.assertRaisesRegex(ValueError, "service HOME is unsafe"):
+                installer.install(self.install_args(manifest, archive))
+        self.assertEqual(self.home.stat().st_mode & 0o777, 0o775)
+        self.assertFalse((self.home / ".local").exists())
+
+    def test_service_parents_are_private_even_with_group_writable_umask(self):
+        manifest, archive = self.build()
+        previous = os.umask(0o002)
+        try:
+            with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+                installer.install(self.install_args(manifest, archive))
+            for relative in (".local", ".local/share", ".local/share/hiroute", ".local/share/hiroute/service"):
+                self.assertEqual((self.home / relative).stat().st_mode & 0o777, 0o700)
+        finally:
+            os.umask(previous)
+
+    def test_service_parent_rejects_symlinks_and_preserves_existing_permissions(self):
+        local = self.home / ".local"
+        local.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "service parent is unsafe"):
+            installer.prepare_service_directory(self.home)
+        local.unlink()
+        local.mkdir()
+        local.chmod(0o775)
+        with self.assertRaisesRegex(ValueError, "service parent is unsafe"):
+            installer.prepare_service_directory(self.home)
+        self.assertEqual(local.stat().st_mode & 0o777, 0o775)
+
     def test_install_lock_rejects_concurrent_mutation(self):
         with self.environment():
             paths = installer.layout(self.home)
@@ -271,6 +303,8 @@ class InstallerTests(StandaloneFixture):
         resource_root = self.home / ".local/share/hiroute/0.1.0"
         version_root.mkdir(parents=True)
         resource_root.mkdir(parents=True)
+        for relative in (".local", ".local/share", ".local/share/hiroute"):
+            (self.home / relative).chmod(0o700)
         (version_root / "stale").write_text("old\n")
         (resource_root / "stale").write_text("old\n")
         marker_path = self.home / ".local/share/hiroute/standalone.json"

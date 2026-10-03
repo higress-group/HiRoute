@@ -49,6 +49,8 @@ const VERSION: &str = crate::MANAGED_CPA_ARTIFACT_VERSION;
 
 #[path = "tests/borrowed_stock.rs"]
 mod borrowed_stock;
+#[path = "tests/proxy_recovery.rs"]
+mod proxy_recovery;
 #[path = "tests/routing_batch.rs"]
 mod routing_batch;
 
@@ -67,6 +69,7 @@ struct FakeBackend {
     spawn_count: AtomicUsize,
     attach_count: AtomicUsize,
     processes: Mutex<BTreeMap<u32, Arc<FakeProcess>>>,
+    proxy_environments: Mutex<Vec<crate::proxy_environment::ProxyEnvironment>>,
 }
 
 #[derive(Default)]
@@ -103,6 +106,9 @@ impl FakeBackend {
 
 impl CpaProcessBackend for FakeBackend {
     fn spawn(&self, launch: &CpaLaunch) -> Result<Box<dyn CpaProcessHandle>, CpaProcessError> {
+        self.proxy_environments
+            .lock()
+            .push(launch.proxy_environment.clone());
         let bytes = std::fs::read(&launch.config_path).map_err(CpaProcessError::Spawn)?;
         CpaManagedConfigContract::validate_rendered(&bytes)
             .map_err(|_| CpaProcessError::InvalidLaunch)?;

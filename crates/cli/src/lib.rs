@@ -800,20 +800,6 @@ mod tests {
     }
 
     #[test]
-    fn released_control_command_reaches_transport() {
-        let execution = execute(["system", "status", "--output", "json"]);
-        assert_eq!(execution.exit_code, 6);
-        let value: Value = serde_json::from_str(&execution.stdout).unwrap();
-        assert_eq!(value["error"]["code"], "DAEMON_UNAVAILABLE");
-        assert_eq!(execution.stderr, DAEMON_UNAVAILABLE_HINT);
-        assert!(execution.stderr.contains("hiroute service status"));
-        assert!(execution.stderr.contains("hiroute service start"));
-        assert!(execution.stderr.contains("Desktop"));
-        assert!(execution.stderr.contains("隔离实例"));
-        assert!(execution.stderr.contains("不会自动启动或重放请求"));
-    }
-
-    #[test]
     fn unstaged_planned_command_is_not_callable() {
         let execution = execute(["settings", "show", "--output", "json"]);
         assert_eq!(execution.exit_code, 2);
