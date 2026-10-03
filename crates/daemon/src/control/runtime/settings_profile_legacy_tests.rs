@@ -206,6 +206,7 @@ fn legacy_service_first_revoke_survives_restart_and_same_operation_retry() {
     ));
     assert!(preview.error.is_none(), "{preview:?}");
     let preview = preview.data.unwrap();
+    assert_eq!(preview["applicable"], true, "{preview}");
     let denied = collaboration.dispatch_wire(request("ApplyAgentConnectionChange", json!({"spec":skill_spec,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],"expected_revisions":preview["expected_revisions"],"idempotency_key":"legacy-pending-skill"}), None));
     assert!(denied.error.is_some(), "{denied:?}");
     // User-owned semantic cleanup is accepted without rewriting comments or unrelated fields.
