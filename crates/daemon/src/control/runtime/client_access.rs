@@ -55,7 +55,7 @@ impl ClientAccessPort for LocalControlAdapter {
             || (writer_released
                 && active.as_ref().is_some_and(|publication| {
                     pending.iter().all(|operation| {
-                        hiroute_application::operations::settings_service_completion_is_current(
+                        hiroute_application::settings_service_completion_is_current(
                             operation,
                             publication.publication_revision.get(),
                             &publication.digest,

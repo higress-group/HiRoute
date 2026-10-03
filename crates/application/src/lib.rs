@@ -36,7 +36,7 @@ pub use change::{
 };
 pub use operations::{
     AcceptedApply, PreparedTransactionV1, TransactionCoordinator, TransactionError,
-    TransactionRuntime, VerifiedPrincipal,
+    TransactionRuntime, VerifiedPrincipal, settings_service_completion_is_current,
 };
 
 // Typed planners remain private; the coordinator and its narrow ports are exported only so the
