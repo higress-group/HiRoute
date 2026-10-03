@@ -26,10 +26,18 @@ impl LocalControlAdapter {
     ) -> PortResult<OwnedEffectV1> {
         let stores = self.stores_lock()?;
         let operation_id = &operation.operation_id;
-        if operation.state != OperationState::ApplyingAgentArtifacts {
+        let payload = settings_claude_model_file_for_operation(operation, intent)?;
+        let restoration_tail = operation.state == OperationState::Activating
+            && matches!(&payload.change, ClaudeModelFileAction::Restore { .. })
+            && operation
+                .step(hiroute_domain::OperationStepKind::Activate)
+                .terminal_result
+                .as_deref()
+                .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
+                .is_some();
+        if operation.state != OperationState::ApplyingAgentArtifacts && !restoration_tail {
             return Err(conflict("claude.settings.phase"));
         }
-        let payload = settings_claude_model_file_for_operation(operation, intent)?;
         match &payload.change {
             ClaudeModelFileAction::Configure {
                 previous_operation,

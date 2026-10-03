@@ -442,6 +442,21 @@ fn preexisting_profile_conflict_revokes_before_file_preparation() {
     // Cleanup is still discoverable after a restart and cannot revive the grant.
     runtime.adapter.reconcile_startup_and_open().unwrap();
     let retry = json!({"schema":"hiroute.agent-settings-retry/v1","context_id":context,"operation_id":pending["operation_id"]});
+    // A sealed file tail keeps reads and recovery usable while ordinary writes stay closed.
+    let status = service.dispatch_wire(request("GetClientServiceStatus", json!({}), None));
+    assert!(status.error.is_none(), "{status:?}");
+    let status = status.data.unwrap();
+    assert_eq!(status["recovery_ready"], true, "{status}");
+    assert_eq!(status["mutation_available"], false, "{status}");
+    assert_eq!(status["gateway"], "ready", "{status}");
+    let catalog = service.dispatch_wire(request("ListAgentPlanCatalog", json!({}), None));
+    assert!(catalog.error.is_none(), "{catalog:?}");
+    assert!(
+        !catalog.data.unwrap()["plans"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     let blocked = service.dispatch_wire(request("ApplyAgentConnectionChange", retry.clone(), None));
     assert_eq!(blocked.data.unwrap()["state"], "activating");
     let cleaned = "# kept user comments\nuser_option = 'retained'\n";

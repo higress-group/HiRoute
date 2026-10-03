@@ -332,10 +332,18 @@ impl LocalControlAdapter {
     ) -> PortResult<OwnedEffectV1> {
         let stores = self.stores_lock()?;
         let operation_id = &operation.operation_id;
-        if operation.state != OperationState::ApplyingAgentArtifacts {
+        let payload = settings_codex_model_file_for_operation(operation, intent)?;
+        let restoration_tail = operation.state == OperationState::Activating
+            && matches!(&payload.change, CodexModelFileAction::Restore { .. })
+            && operation
+                .step(OperationStepKind::Activate)
+                .terminal_result
+                .as_deref()
+                .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
+                .is_some();
+        if operation.state != OperationState::ApplyingAgentArtifacts && !restoration_tail {
             return Err(conflict("codex.settings.phase"));
         }
-        let payload = settings_codex_model_file_for_operation(operation, intent)?;
         match &payload.change {
             CodexModelFileAction::Configure {
                 previous_operation,

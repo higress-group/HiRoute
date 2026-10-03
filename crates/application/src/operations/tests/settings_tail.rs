@@ -326,6 +326,39 @@ fn client_file_failure_parks_the_tail_without_rollback() {
     );
     assert_eq!(ports.state.borrow().writer, None);
 
+    let publication_digest = CanonicalDigest::of_bytes(PUBLICATION_EFFECT.as_bytes());
+    assert!(settings_service_completion_is_current(
+        &parked,
+        7,
+        &publication_digest
+    ));
+    assert!(!settings_service_completion_is_current(
+        &parked,
+        8,
+        &publication_digest
+    ));
+    assert!(!settings_service_completion_is_current(
+        &parked,
+        7,
+        &CanonicalDigest::of_bytes(b"displaced")
+    ));
+    let mut tampered = parked.clone();
+    tampered.accepted_digest = CanonicalDigest::of_bytes(b"another-accepted-change");
+    assert!(!settings_service_completion_is_current(
+        &tampered,
+        7,
+        &publication_digest
+    ));
+    let mut incomplete = parked.clone();
+    incomplete
+        .step_mut(OperationStepKind::CompilePublication)
+        .status = OperationStepStatus::Pending;
+    assert!(!settings_service_completion_is_current(
+        &incomplete,
+        7,
+        &publication_digest
+    ));
+
     ports.state.borrow_mut().fail_activation = None;
     let finished = coordinator(&ports, &admission).run(&operation_id).unwrap();
 

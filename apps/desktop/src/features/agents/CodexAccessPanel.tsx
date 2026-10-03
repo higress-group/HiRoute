@@ -15,8 +15,8 @@ export type CodexAccess = {
   conflict_fields: string[];
 };
 
-export function CodexAccessPanel({ access, mode, language, disabled, onMode, onRetry }: {
-  access: CodexAccess; mode: 'profile' | 'root'; language: string; disabled: boolean;
+export function CodexAccessPanel({ access, mode, language, disabled, retryDisabled, onMode, onRetry }: {
+  access: CodexAccess; mode: 'profile' | 'root'; language: string; disabled: boolean; retryDisabled: boolean;
   onMode: (mode: 'profile' | 'root') => void; onRetry: () => Promise<void>;
 }) {
   const [shell, setShell] = useState('bash/zsh');
@@ -56,7 +56,7 @@ export function CodexAccessPanel({ access, mode, language, disabled, onMode, onR
       <p>{access.access_revoked
         ? text('请修复所列冲突，或自行清理 HiRoute 受管字段后重新检查。无关设置和注释可以保留。清理完成前，新的配置保存会暂停。', 'Resolve the listed conflicts, or remove the HiRoute-managed fields and recheck. Unrelated settings and comments can remain. New configuration saves wait until cleanup finishes.')
         : text('请先保存自己的编辑，恢复操作开始后发生的文件改动，再重新检查。完成前新的配置保存会暂停。HiRoute 不会强制覆盖文件。', 'Save your edits, undo file changes made since this operation started, then recheck. New configuration saves wait until it finishes. HiRoute will not force an overwrite.')}</p>
-      <button className="btn" disabled={disabled} onClick={() => void onRetry()}>{text('重新检查并继续原操作', 'Recheck and resume operation')}</button>
+      <button className="btn" disabled={retryDisabled} onClick={() => void onRetry()}>{text('重新检查并继续原操作', 'Recheck and resume operation')}</button>
     </div>}
   </section>;
 }

@@ -242,6 +242,14 @@ impl LocalControlAdapter {
             .iter()
             .find(|i| i.target() == intent.target())
             .ok_or(ControlReadError::Corrupt)?;
+        // Diagnose the live path first: restore AAD validation also rejects unsafe targets.
+        let current = match self.artifacts.read_native_target(intent.target()) {
+            Ok(current) => current,
+            Err(_) => return Ok(vec!["configuration_unreadable".into()]),
+        };
+        let Ok(text) = std::str::from_utf8(current.as_deref().map_or(&[], |v| v.as_slice())) else {
+            return Ok(vec!["configuration_encoding".into()]);
+        };
         let record = self
             .artifacts
             .load_native_restore(&original_id, original_intent)
@@ -254,13 +262,6 @@ impl LocalControlAdapter {
         }
         let restore = hiroute_integrations::CodexNativeRestore::decode_protected(&record[2..])
             .map_err(|_| ControlReadError::Corrupt)?;
-        let current = match self.artifacts.read_native_target(intent.target()) {
-            Ok(current) => current,
-            Err(_) => return Ok(vec!["configuration_unreadable".into()]),
-        };
-        let Ok(text) = std::str::from_utf8(current.as_deref().map_or(&[], |v| v.as_slice())) else {
-            return Ok(vec!["configuration_encoding".into()]);
-        };
         if restoring {
             return Ok(restore.pending_restoration_fields(text));
         }

@@ -857,8 +857,8 @@ export function Agents({
               <div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => setShowAgentList(true)}><UiIcon name="arrowLeft" />{text('返回 Agent 列表', 'Back to Agents')}</button></div>
               {selected && snapshot && <div className="detail-inner" data-agent-id={selected.agent_id}>
                 <header className="detail-hero"><div className="detail-identity"><BrandIcon kind={brand(selected)} label={`${agentName(selected)} logo`} /><div><h2>{agentName(selected)}</h2><p>{text('选择你需要的路由能力', 'Choose the routing capabilities you need')}</p></div></div></header>
-                {!mutable && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('Agent 配置可以查看，暂时不能修改', 'Agent settings are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，连接恢复后即可保存配置。', 'The local service is not ready. Reconnect before saving.')}</p></div></div>}
-                {selected.codex_access && <CodexAccessPanel access={selected.codex_access} mode={selected.codex_access.slot_occupied ? selected.codex_access.selected_mode : codexMode} language={language} disabled={busy || Boolean(editor) || !mutable} onMode={setCodexMode} onRetry={async () => {
+                {!mutable && !selected.codex_access?.pending_operation && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('Agent 配置可以查看，暂时不能修改', 'Agent settings are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，连接恢复后即可保存配置。', 'The local service is not ready. Reconnect before saving.')}</p></div></div>}
+                {selected.codex_access && <CodexAccessPanel access={selected.codex_access} mode={selected.codex_access.slot_occupied ? selected.codex_access.selected_mode : codexMode} language={language} disabled={busy || Boolean(editor) || !mutable} retryDisabled={busy || Boolean(editor) || !snapshot.trusted_authority} onMode={setCodexMode} onRetry={async () => {
                   const access = selected.codex_access;
                   if (!access?.pending_operation || !selected.context_id || busy) return;
                   setBusy(true); setActionError('');

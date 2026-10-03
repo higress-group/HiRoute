@@ -818,6 +818,34 @@ fn settings_service_receipt(
         .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
 }
 
+/// Read readiness for a parked client-file tail. This does not authorize a new writer
+/// or a file retry: the current publication must still match the sealed service proof.
+pub fn settings_service_completion_is_current(
+    operation: &OperationV1,
+    publication_revision: u64,
+    publication_digest: &CanonicalDigest,
+) -> bool {
+    operation.state == OperationState::Activating
+        && operation.plan.spec().command_id == "agents.settings.apply"
+        && operation
+            .plan
+            .external()
+            .iter()
+            .any(hiroute_domain::is_settings_managed_configuration)
+        && operation.steps.iter().all(|step| {
+            step.kind == OperationStepKind::Activate
+                || step.status == OperationStepStatus::Applied
+        })
+        && settings_service_receipt(operation).is_some_and(|receipt| {
+            receipt.publication_revision == publication_revision
+                && receipt.publication_digest == *publication_digest
+                && matches!(
+                    settings_service_completion_digest(operation, publication_revision, publication_digest),
+                    Ok(expected) if expected == receipt.completed_effects_digest
+                )
+        })
+}
+
 fn settings_service_completion_digest(
     operation: &OperationV1,
     publication_revision: u64,
