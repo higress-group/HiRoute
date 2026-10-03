@@ -320,8 +320,8 @@ pub fn upgrade_backup_root(storage_root: &Path) -> Result<std::path::PathBuf, Lo
 mod startup_tests {
     use super::*;
     use hiroute_domain::{
-        CanonicalDigest, ControlRepositoryPort, ProtectedApplyCapability, RevisionSetV1,
-        WorkspaceId,
+        CanonicalDigest, ControlRepositoryPort, PortErrorCode, ProtectedApplyCapability,
+        RevisionSetV1, WorkspaceId,
     };
 
     #[test]
@@ -404,15 +404,17 @@ mod startup_tests {
             "ApplyComputeConnection",
             accepted,
             revisions,
-            now + 301,
+            // A stale now + 301 can enter the permitted 300-second window while the
+            // preceding registration/verification runs. An unbounded expiry cannot.
+            i64::MAX,
         )
         .unwrap();
-        assert!(
-            stores
-                .apply_capability_registrar()
-                .register(too_long)
-                .is_err()
-        );
+        let error = stores
+            .apply_capability_registrar()
+            .register(too_long)
+            .unwrap_err();
+        assert_eq!(error.code, PortErrorCode::PermissionDenied);
+        assert_eq!(error.context, "control.capability.expiry");
     }
 
     #[test]

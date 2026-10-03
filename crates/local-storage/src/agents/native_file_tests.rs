@@ -663,9 +663,38 @@ fn unstaged_restoration_ack_is_protected_bound_and_never_rewrites() {
     ));
 }
 
+// Exercise the actual ownership checks with hosted CI's umask. Changing a process-wide
+// umask in the parallel parent harness would race other fixtures, so isolate each case.
+fn run_with_ci_umask(name: &str) -> bool {
+    const CHILD_CASE: &str = "HIROUTE_STORAGE_CI_UMASK_CASE";
+    if std::env::var(CHILD_CASE).as_deref() == Ok(name) {
+        rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o022));
+        return false;
+    }
+    let test = format!("control::native_file_tests::{name}");
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", &test, "--nocapture"])
+        .env(CHILD_CASE, name)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success()
+            && stdout.contains(&format!("test {test} ... ok"))
+            && stdout.contains("1 passed; 0 failed; 0 ignored;"),
+        "CI umask child did not pass the selected case: {name}\n{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
 #[test]
 fn settings_unactivated_target_race_discards_only_the_owned_rendered_stage() {
-    let root = tempfile::tempdir().unwrap();
+    if run_with_ci_umask("settings_unactivated_target_race_discards_only_the_owned_rendered_stage")
+    {
+        return;
+    }
+    let root = crate::test_tempdir().unwrap();
     let target = root.path().join("config.toml");
     write(&target, b"before = true\n");
     let op = OperationId::parse("op_55555555555555555555555555555555").unwrap();
@@ -705,7 +734,10 @@ fn settings_unactivated_target_race_discards_only_the_owned_rendered_stage() {
 
 #[test]
 fn settings_missing_stage_does_not_prove_a_target_was_never_written() {
-    let root = tempfile::tempdir().unwrap();
+    if run_with_ci_umask("settings_missing_stage_does_not_prove_a_target_was_never_written") {
+        return;
+    }
+    let root = crate::test_tempdir().unwrap();
     let target = root.path().join("config.toml");
     write(&target, b"before = true\n");
     let op = OperationId::parse("op_66666666666666666666666666666666").unwrap();
@@ -740,7 +772,10 @@ fn settings_missing_stage_does_not_prove_a_target_was_never_written() {
 
 #[test]
 fn settings_delete_with_intact_stage_does_not_prove_no_target_write() {
-    let root = tempfile::tempdir().unwrap();
+    if run_with_ci_umask("settings_delete_with_intact_stage_does_not_prove_no_target_write") {
+        return;
+    }
+    let root = crate::test_tempdir().unwrap();
     let target = root.path().join("profile.toml");
     write(&target, b"managed = true\n");
     let op = OperationId::parse("op_77777777777777777777777777777777").unwrap();
