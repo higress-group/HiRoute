@@ -663,12 +663,12 @@ fn unstaged_restoration_ack_is_protected_bound_and_never_rewrites() {
     ));
 }
 
-// Exercise the actual ownership checks with hosted CI's umask. Changing a process-wide
-// umask in the parallel parent harness would race other fixtures, so isolate each case.
-fn run_with_ci_umask(name: &str) -> bool {
-    const CHILD_CASE: &str = "HIROUTE_STORAGE_CI_UMASK_CASE";
+// Exercise ownership checks even when the caller permits group/world writes. Changing
+// a process-wide umask in the parallel parent would race fixtures, so isolate each case.
+fn run_with_permissive_umask(name: &str) -> bool {
+    const CHILD_CASE: &str = "HIROUTE_STORAGE_PERMISSIVE_UMASK_CASE";
     if std::env::var(CHILD_CASE).as_deref() == Ok(name) {
-        rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o022));
+        rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o000));
         return false;
     }
     let test = format!("control::native_file_tests::{name}");
@@ -682,7 +682,7 @@ fn run_with_ci_umask(name: &str) -> bool {
         output.status.success()
             && stdout.contains(&format!("test {test} ... ok"))
             && stdout.contains("1 passed; 0 failed; 0 ignored;"),
-        "CI umask child did not pass the selected case: {name}\n{stdout}\n{}",
+        "Permissive umask child did not pass the selected case: {name}\n{stdout}\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     true
@@ -690,8 +690,9 @@ fn run_with_ci_umask(name: &str) -> bool {
 
 #[test]
 fn settings_unactivated_target_race_discards_only_the_owned_rendered_stage() {
-    if run_with_ci_umask("settings_unactivated_target_race_discards_only_the_owned_rendered_stage")
-    {
+    if run_with_permissive_umask(
+        "settings_unactivated_target_race_discards_only_the_owned_rendered_stage",
+    ) {
         return;
     }
     let root = crate::test_tempdir().unwrap();
@@ -734,7 +735,8 @@ fn settings_unactivated_target_race_discards_only_the_owned_rendered_stage() {
 
 #[test]
 fn settings_missing_stage_does_not_prove_a_target_was_never_written() {
-    if run_with_ci_umask("settings_missing_stage_does_not_prove_a_target_was_never_written") {
+    if run_with_permissive_umask("settings_missing_stage_does_not_prove_a_target_was_never_written")
+    {
         return;
     }
     let root = crate::test_tempdir().unwrap();
@@ -772,7 +774,8 @@ fn settings_missing_stage_does_not_prove_a_target_was_never_written() {
 
 #[test]
 fn settings_delete_with_intact_stage_does_not_prove_no_target_write() {
-    if run_with_ci_umask("settings_delete_with_intact_stage_does_not_prove_no_target_write") {
+    if run_with_permissive_umask("settings_delete_with_intact_stage_does_not_prove_no_target_write")
+    {
         return;
     }
     let root = crate::test_tempdir().unwrap();
