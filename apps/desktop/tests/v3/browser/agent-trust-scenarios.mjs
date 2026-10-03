@@ -16,27 +16,30 @@ async function until(predicate, label) {
   }
   await tick();
 }
-async function fresh(kind) {
+async function fresh(kind, singleRoute = false) {
   c().reset();
   c().agents = c()[kind]();
+  if (singleRoute) c().agents.plans.plans = c().agents.plans.plans.filter(plan => plan.head.status === 'enabled').slice(0, 1);
   await tick();
   await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Claude')), 'agents loaded');
   document.querySelectorAll('.native-list .list-row').forEach(row => { if (row.textContent.includes('Claude')) row.click(); });
   await until(() => document.querySelector('[data-agent-id="agent_claude_default"] .detail-hero'), 'Claude detail');
 }
-async function freshCodex(kind) {
+async function freshCodex(kind, singleRoute = false) {
   c().reset();
   c().agents = c()[kind]();
+  if (singleRoute) c().agents.plans.plans = c().agents.plans.plans.filter(plan => plan.head.status === 'enabled').slice(0, 1);
   await tick();
   await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Codex')), 'agents loaded');
   document.querySelectorAll('.native-list .list-row').forEach(row => { if (row.textContent.includes('Codex')) row.click(); });
   await until(() => document.querySelector('[data-agent-id="agent_codex_default"] .detail-hero'), 'Codex detail');
 }
-async function openEditor(kind = 'model') {
+async function openEditor(kind = 'model', advanced = true) {
   const trigger = facet(kind);
   assert(trigger && !trigger.disabled, `Facet button unavailable: ${kind}`);
   trigger.click();
   await until(() => visible(dialog()), 'editor open');
+  if (advanced) { const details = [...dialog().querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent.includes('高级设置')); if (details) details.open = true; await tick(); }
 }
 async function save() {
   const control = submit();
@@ -54,6 +57,65 @@ function changeSelect(select, value) {
 const configureSpecs = () => calls('preview_agent_settings').map(item => item.payload.input.spec);
 
 const scenarios = [
+  ['Codex first enable is a ready-to-submit draft and cancel does not apply', async () => {
+    await freshCodex('cliOnly', true);
+    await openEditor('model', false);
+    assert(!dialog().querySelector('[role="switch"]'), 'Redundant enable switch remains');
+    const route = dialog().querySelector('[data-agent-plan-id] input');
+    assert(route?.checked && !submit().disabled, 'Sole route is not ready to submit');
+    assert(!dialog().querySelector('details').open, 'Advanced settings are open on first enable');
+    const cancel = [...dialog().querySelectorAll('button')].find(button => button.textContent.trim() === '取消');
+    cancel.click(); await tick();
+    assert(!dialog() && calls('preview_agent_settings').length === 0 && c().operations.length === 0, 'Cancel applied a draft');
+  }],
+  ['Claude first enable shares one route while retaining independent advanced presets', async () => {
+    await fresh('notRunnable', true);
+    await openEditor('model', false);
+    assert(!dialog().querySelector('[role="switch"]'), 'Redundant enable switch remains');
+    const route = dialog().querySelector('select[aria-label="Claude Code 路由"]');
+    assert(route?.value && !submit().disabled, 'Sole Claude route is not ready to submit');
+    assert(!dialog().querySelector('details').open, 'Advanced presets are open by default');
+    await save();
+    const spec = configureSpecs().at(-1).model.settings;
+    assert(Object.values(spec.preset_mappings).every(choice => choice.kind === 'plan' && choice.plan_id === route.value), 'Shared route did not cover all three presets');
+    assert(!Object.hasOwn(spec, 'model'), 'Shortcut changed the native current model');
+  }],
+  ['Codex copies the confirmed profile command when the native WebView clipboard API rejects', async () => {
+    await freshCodex('cliOnly', true);
+    const agent = c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default');
+    const command = `CODEX_HOME='/path with spaces' codex --profile hiroute`;
+    agent.codex_access = {
+      codex_home: '/path with spaces', slot_id: 'slot/copy',
+      profile_context_id: 'context/copy/profile', root_context_id: agent.context_id,
+      selected_mode: 'profile', slot_occupied: false, target_file: '/path with spaces/hiroute.config.toml',
+      profile_name: 'hiroute', commands: { 'bash/zsh': command },
+      pending_operation: null, access_revoked: false, conflict_fields: [],
+    };
+    c().refresh(); await tick();
+    const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const previousCopy = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const copied = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { async writeText() { throw new Error('NotAllowedError'); } } });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: action => { assert(action === 'copy', 'Unexpected clipboard action'); copied.push(document.activeElement.value); return true; } });
+    try {
+      c().handlers.preview_agent_settings = payload => {
+        agent.context_id = agent.codex_access.profile_context_id;
+        agent.codex_access.slot_occupied = true;
+        agent.settings.state = 'configured';
+        agent.settings.current_selection = payload.input.spec.model.settings;
+        return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } };
+      };
+      await openEditor('model', false);
+      assert(copied.length === 0, 'Opening the draft copied a command');
+      await save();
+      await until(() => text().includes('启动命令已复制'), 'copy success after confirmed save');
+      assert(copied.length === 1 && copied[0] === command, 'Confirmed command was changed or copied twice');
+      assert(!document.querySelector('textarea'), 'Temporary clipboard field remains in the UI');
+    } finally {
+      if (previousClipboard) Object.defineProperty(navigator, 'clipboard', previousClipboard); else delete navigator.clipboard;
+      if (previousCopy) Object.defineProperty(document, 'execCommand', previousCopy); else delete document.execCommand;
+    }
+  }],
   ['Desktop-only Codex repairs an existing fixed-model binding without a surface selector', async () => {
     await freshCodex('desktopWithFixed');
     await openEditor('model');
@@ -79,16 +141,16 @@ const scenarios = [
   ['CLI-only Codex saves one shared plan configuration without selecting Desktop', async () => {
     await freshCodex('cliOnly');
     await openEditor('model');
-    document.querySelector('#hr-agent-settings [role="switch"]').click();
+    assert(!document.querySelector('#hr-agent-settings [role="switch"]'), 'Enable requires a redundant switch');
     await tick();
     assert(!document.querySelector('[data-agent-surface-option]'), 'Legacy surface selector is still rendered');
     assert(document.querySelector('[data-agent-surface-fact="codex_cli"]').getAttribute('data-agent-surface-detected') === 'true', 'CLI discovery fact missing');
     assert(document.querySelector('[data-agent-surface-fact="codex_desktop"]').getAttribute('data-agent-surface-detected') === 'false', 'Missing Desktop was not reported as a fact');
     const plan = document.querySelector('[data-agent-plan-id]');
-    plan.querySelector('input').click();
+    if (!plan.querySelector('input').checked) plan.querySelector('input').click();
     await tick();
     const planId = plan.getAttribute('data-agent-plan-id');
-    changeSelect(document.querySelector('[data-agent-default]'), `plan:${planId}`);
+    if (document.querySelector('[data-agent-default]')) changeSelect(document.querySelector('[data-agent-default]'), `plan:${planId}`);
     await tick();
     await save();
     const spec = configureSpecs().at(-1).model.settings;
@@ -100,7 +162,7 @@ const scenarios = [
     await openEditor('model');
     changeSelect(document.querySelector('[data-client-model-id="gpt-5.6-sol"] select'), 'binding/codex/gpt-5.6-sol');
     const plan = document.querySelector('[data-agent-plan-id]');
-    plan.querySelector('input').click();
+    if (!plan.querySelector('input').checked) plan.querySelector('input').click();
     await tick();
     assert(document.querySelector('[data-agent-default]').value === 'native', 'Native default was changed without user action');
     await save();
@@ -138,7 +200,7 @@ const scenarios = [
     cancel.click();
     await tick();
     assert(!details.querySelector('.agent-token-form'), 'Token edit form did not close');
-    const restore = [...details.querySelectorAll('button')].find(button => button.textContent.trim() === '恢复模型设置');
+    const restore = [...document.querySelectorAll('.detail-section-head button')].find(button => button.textContent.trim() === '停用');
     assert(restore && !restore.disabled, 'Model recovery became unavailable after token edit');
   }],
   ['a Codex plan rejected by Preview explains the Responses boundary without applying it', async () => {
@@ -148,12 +210,12 @@ const scenarios = [
       mutation: null,
     });
     await openEditor('model');
-    document.querySelector('#hr-agent-settings [role="switch"]').click();
+    assert(!document.querySelector('#hr-agent-settings [role="switch"]'), 'Enable requires a redundant switch');
     await tick();
     const plan = document.querySelector('[data-agent-plan-id]');
-    plan.querySelector('input').click();
+    if (!plan.querySelector('input').checked) plan.querySelector('input').click();
     await tick();
-    changeSelect(document.querySelector('[data-agent-default]'), `plan:${plan.getAttribute('data-agent-plan-id')}`);
+    if (document.querySelector('[data-agent-default]')) changeSelect(document.querySelector('[data-agent-default]'), `plan:${plan.getAttribute('data-agent-plan-id')}`);
     await tick();
     assert(text().includes('Codex Responses'), 'The form did not explain the required ingress');
     submit().click();
@@ -200,7 +262,7 @@ const scenarios = [
     const details = document.querySelector('.native-details');
     details.querySelector('summary').click();
     await tick();
-    const restore = [...details.querySelectorAll('button')].find(item => item.textContent.trim() === '恢复模型设置');
+    const restore = [...document.querySelectorAll('.detail-section-head button')].find(item => item.textContent.trim() === '停用');
     assert(restore && !restore.disabled, 'Managed recovery entry blocked by an executable diagnostic');
     restore.click();
     await until(() => calls('preview_agent_settings').length === 1, 'recovery request dispatched');
@@ -318,14 +380,16 @@ const scenarios = [
     await tick();
     assert(!document.querySelector('[data-client-model-id="gpt-5.6-sol"]'), 'Protected native binding leaked into HiRoute-only selection');
     const plan = document.querySelector('[data-agent-plan-id]');
-    plan.querySelector('input').click();
+    if (!plan.querySelector('input').checked) plan.querySelector('input').click();
     await tick();
-    assert(document.querySelector('[data-agent-default]').value.startsWith('plan:'), 'HiRoute-only default was not selected');
+    assert(!document.querySelector('[data-agent-default]') || document.querySelector('[data-agent-default]').value.startsWith('plan:'), 'HiRoute-only default was not selected');
     await save();
     const spec = configureSpecs().at(-1).model.settings;
     assert(spec.native_model_mode === 'hiroute_only' && spec.fixed_models.length === 0, 'Native model leaked into HiRoute-only save');
   }],
 ];
+
+export const agentTrustScenarioNames = scenarios.map(([name]) => name);
 
 export async function runAgentTrustScenarios(start = 0, end = Infinity) {
   const results = [];

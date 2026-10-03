@@ -53,6 +53,7 @@ export function codexDefaultChoiceValid(
 export function agentEditorSeed(
   agent: Agent,
   facet: 'model' | 'collaboration',
+  availablePlanIds: string[] = [],
 ): AgentEditorValues & { known: boolean } {
   const status = facet === 'model' ? agent.settings : agent.settings?.collaboration;
   const selection = status?.current_selection;
@@ -66,19 +67,35 @@ export function agentEditorSeed(
     && 'trigger_mode' in selection
     ? selection
     : undefined;
+  const initialPlan = facet === 'model' && initial && known && !currentModel && availablePlanIds.length === 1
+    ? availablePlanIds[0] : undefined;
   return {
     known: facet === 'model'
       ? known && (initial || (agent.agent_id === 'agent_codex_default' ? !!codex : !!claude))
       : known,
     fixedModels: currentModel?.fixed_models ?? [],
     nativeModelMode: codex?.native_model_mode ?? 'hiroute_only',
-    allowedPlanIds: codex?.allowed_plan_ids ?? [],
-    defaultChoice: codex?.default_selection ?? { kind: 'preserve_native' },
+    allowedPlanIds: codex?.allowed_plan_ids ?? (initialPlan && agent.agent_id === 'agent_codex_default' ? [initialPlan] : []),
+    defaultChoice: codex?.default_selection ?? (initialPlan && agent.agent_id === 'agent_codex_default'
+      ? { kind: 'plan', plan_id: initialPlan } : { kind: 'preserve_native' }),
     claudePresets: claude?.preset_mappings ?? {
-      opus: preserve(),
-      sonnet: preserve(),
-      haiku: preserve(),
+      opus: initialPlan && agent.agent_id === 'agent_claude_default' ? { kind: 'plan', plan_id: initialPlan } : preserve(),
+      sonnet: initialPlan && agent.agent_id === 'agent_claude_default' ? { kind: 'plan', plan_id: initialPlan } : preserve(),
+      haiku: initialPlan && agent.agent_id === 'agent_claude_default' ? { kind: 'plan', plan_id: initialPlan } : preserve(),
     },
     triggerMode: collaboration?.trigger_mode ?? 'explicit',
+  };
+}
+
+export function commonClaudePlan(mappings: AgentClaudePresetMappings): string | null {
+  const ids = Object.values(mappings).map(choice => choice.kind === 'plan' ? choice.plan_id : '');
+  return ids.every(id => id === ids[0]) ? ids[0] : null;
+}
+
+export function sharedClaudePlan(planId: string): AgentClaudePresetMappings {
+  return {
+    opus: { kind: 'plan', plan_id: planId },
+    sonnet: { kind: 'plan', plan_id: planId },
+    haiku: { kind: 'plan', plan_id: planId },
   };
 }

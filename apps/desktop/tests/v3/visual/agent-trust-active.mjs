@@ -20,7 +20,13 @@ try {
     if (!routeSaveOnly && !workerReplacementOnly) {
       await navigate(client, new URL('agent-trust.html', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.agentTrust)', { timeout: 7000 });
-      const batches = claudeCollaborationOnly ? [[11, 14]] : [[0, 5], [5, 10], [10, 17]];
+      const names = await evaluate(client, "import('/agent-trust-scenarios.mjs').then(module => module.agentTrustScenarioNames)");
+      if (!Array.isArray(names) || names.length === 0) throw new Error('Agent trust scenarios are missing');
+      const batches = claudeCollaborationOnly
+        ? names.flatMap((name, index) => name.startsWith('Claude collaboration') || name.startsWith('an unrelated Agent preview failure') ? [[index, index + 1]] : [])
+        : Array.from({ length: Math.ceil(names.length / 5) }, (_, index) => [index * 5, Math.min((index + 1) * 5, names.length)]);
+      if (claudeCollaborationOnly && batches.length !== 3) throw new Error('Required Claude collaboration scenarios are missing');
+      const firstCheck = checks.length;
       for (const [start, end] of batches) {
         const batch = await evaluate(client, `import('/agent-trust-scenarios.mjs').then(module => module.runAgentTrustScenarios(${start}, ${end}))`);
         checks.push(...batch.results);
@@ -28,6 +34,7 @@ try {
           process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
         }
       }
+      if (checks.length - firstCheck !== (claudeCollaborationOnly ? 3 : names.length)) throw new Error('Agent trust scenarios were not all executed');
     }
     if (!claudeCollaborationOnly) {
       await navigate(client, new URL('?page=routing&scenario=ready', baseUrl).href, { width: 1280, height: 900 });

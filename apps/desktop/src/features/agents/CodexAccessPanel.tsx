@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { Disclosure, copyText } from '../../ui';
+import { preferredCodexShell } from './codex-launch';
 
 export type CodexAccess = {
   codex_home: string;
@@ -15,41 +17,52 @@ export type CodexAccess = {
   conflict_fields: string[];
 };
 
-export function CodexAccessPanel({ access, mode, language, disabled, retryDisabled, onMode, onRetry }: {
-  access: CodexAccess; mode: 'profile' | 'root'; language: string; disabled: boolean; retryDisabled: boolean;
-  onMode: (mode: 'profile' | 'root') => void; onRetry: () => Promise<void>;
+export function CodexAccessSettings({ access, mode, language, disabled, onMode }: {
+  access: CodexAccess; mode: 'profile' | 'root'; language: 'zh' | 'en'; disabled: boolean;
+  onMode: (mode: 'profile' | 'root') => void;
 }) {
-  const [shell, setShell] = useState('bash/zsh');
-  const [copyState, setCopyState] = useState('');
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
-  const command = access.commands[shell];
-  return <section className="fact-section" data-codex-access-mode={mode}>
-    <h3>{text('Codex 接入方式', 'Codex connection mode')}</h3>
-    <label className="field-label">{text('接入目标', 'Connection target')}
-      <select aria-label={text('Codex 接入方式', 'Codex connection mode')} value={mode} disabled={disabled || access.slot_occupied} onChange={e => onMode(e.target.value as 'profile' | 'root')}>
-        <option value="profile">{text('独立 CLI profile（推荐）', 'Separate CLI profile (recommended)')}</option>
-        <option value="root">{text('默认配置接管（高级）', 'Take over default configuration (advanced)')}</option>
+  return <div data-codex-access-mode={mode}>
+    <label className="field"><span className="field-label">{text('接入方式', 'Connection mode')}</span>
+      <select className="select" aria-label={text('Codex 接入方式', 'Codex connection mode')} value={mode} disabled={disabled || access.slot_occupied} onChange={e => onMode(e.target.value as 'profile' | 'root')}>
+        <option value="profile">{text('按需使用 · 仅 CLI（推荐）', 'On demand · CLI only (recommended)')}</option>
+        <option value="root">{text('设为默认 · CLI 和 Desktop（高级）', 'Use by default · CLI and Desktop (advanced)')}</option>
       </select>
     </label>
-    <p>{mode === 'profile'
-      ? text('通过指定 profile 使用 HiRoute。普通 Codex 和 Desktop 默认入口继续使用原来的 root 配置；不支持指定此 profile 启动 Desktop。', 'Use HiRoute through the selected CLI profile. Ordinary Codex and Desktop entry points keep their root configuration. Launching Desktop with this profile is not supported.')
-      : text('此模式修改默认 provider，影响使用同一 CODEX_HOME 的普通 Codex CLI 和 Desktop。', 'This mode changes the default provider for ordinary Codex CLI and Desktop using the same CODEX_HOME.')}</p>
-    <p>{text('各入口不保证显示相同历史，也不提供跨 provider 历史恢复。', 'History may differ between entry points; cross-provider history restoration is not provided.')}</p>
-    <dl><div><dt>CODEX_HOME</dt><dd><code>{access.codex_home}</code></dd></div>
-      {access.slot_occupied && <div><dt>{text('目标文件', 'Target file')}</dt><dd><code>{access.target_file}</code></dd></div>}
-    </dl>
-    {access.slot_occupied && <p>{text('切换方式：先撤销当前模型接入，文件恢复完成后再选择另一模式。', 'To switch modes, revoke this model connection and finish file restoration, then select the other mode.')}</p>}
-    {mode === 'profile' && access.slot_occupied && !access.pending_operation && <div>
-      <label className="field-label">Shell <select value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label>
-      <pre><code>{command}</code></pre>
+    {access.slot_occupied && <p className="field-help">{text('切换接入方式前，请先停用并完成配置恢复。', 'Disable and finish restoring the configuration before switching modes.')}</p>}
+    <Disclosure label={text('配置位置与会话历史', 'Configuration location and history')} language={language}>
+      <dl><div><dt>CODEX_HOME</dt><dd><code>{access.codex_home}</code></dd></div>
+        {access.slot_occupied && <div><dt>{text('目标文件', 'Target file')}</dt><dd><code>{access.target_file}</code></dd></div>}
+      </dl>
+      <p className="field-help">{text('不同入口的会话历史可能不同；不提供跨 provider 历史恢复。独立 profile 不支持启动 Desktop。', 'History may differ between entry points; cross-provider recovery is not provided. The separate profile cannot launch Desktop.')}</p>
+    </Disclosure>
+  </div>;
+}
+
+export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
+  access: CodexAccess; language: 'zh' | 'en'; retryDisabled: boolean; onRetry: () => Promise<void>;
+}) {
+  const [shell, setShell] = useState(() => preferredCodexShell(typeof navigator === 'undefined' ? '' : navigator.platform, access.commands));
+  const [copyState, setCopyState] = useState('');
+  const text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  if (!access.slot_occupied && !access.pending_operation) return null;
+  const mode = access.selected_mode;
+  const command = access.commands[shell];
+  return <section className="fact-section" data-codex-access-mode={mode}>
+    <p className="field-help">{mode === 'profile'
+      ? text('按需使用 · Codex CLI：复制命令到终端启动。普通 Codex 与 Desktop 保持原配置。', 'On demand · Codex CLI: copy the command to start in a terminal. Ordinary Codex and Desktop keep their settings.')
+      : text('默认接入 · Codex CLI 和 Desktop：共享此配置目录的入口使用 HiRoute。', 'Default connection · Codex CLI and Desktop: entry points sharing this directory use HiRoute.')}</p>
+    {mode === 'profile' && access.slot_occupied && !access.pending_operation && !access.access_revoked && <div>
+      <div className="detail-section-head"><strong>{text('启动 Codex', 'Start Codex')}</strong><label className="field-label agent-launch-shell">Shell <select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label></div>
+      <pre className="agent-launch-command"><code>{command}</code></pre>
       <button className="btn" disabled={!command} onClick={async () => {
-        try { await navigator.clipboard.writeText(command); setCopyState(text('已复制', 'Copied')); }
+        try { await copyText(command); setCopyState(text('已复制', 'Copied')); }
         catch { setCopyState(text('复制失败，请手动选择命令复制', 'Copy failed; select and copy the command manually')); }
       }}>{text('复制启动命令', 'Copy launch command')}</button><span role="status">{copyState}</span>
     </div>}
     {access.pending_operation && <div className="callout warn" role="alert">
       <p>{access.access_revoked
-        ? text('访问权限已撤销，配置文件尚未清理。', 'Access has been revoked; configuration cleanup is still pending.')
+        ? text('已停用，配置文件待清理。旧令牌已失效。', 'Disabled; configuration cleanup is pending. The old token is invalid.')
         : text('当前操作尚未完成，不能切换接入模式。', 'The current operation is incomplete; mode switching is blocked.')}</p>
       <p><code>{access.target_file}</code></p>
       {access.conflict_fields.length > 0 && <ul>{access.conflict_fields.map(field => <li key={field}><code>{field}</code></li>)}</ul>}

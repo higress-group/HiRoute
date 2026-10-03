@@ -646,6 +646,7 @@ export function DesktopApp() {
             key={agentIntent.key}
             language={language}
             active={page === 'agents'}
+            operation={operation}
             initialAgentId={agentIntent.agentId}
             initialFacet={agentIntent.facet}
             initialTab={agentIntent.tab}
