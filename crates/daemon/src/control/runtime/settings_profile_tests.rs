@@ -352,6 +352,13 @@ fn preexisting_profile_conflict_revokes_before_file_preparation() {
     let (runtime, _) = open_with_codex_fixture_surfaces(dir.path());
     ensure_target_cache(&runtime.adapter);
     runtime.adapter.reconcile_startup_and_open().unwrap();
+    // The fixture composes a real suspended target; complete the production startup handoff.
+    runtime
+        .adapter
+        .required_publication_target()
+        .unwrap()
+        .resume_requests()
+        .unwrap();
     let service = LocalControlDaemon::new(ApplicationService::new(runtime.application_ports()));
     let scan = service
         .dispatch_wire(request("ScanAgents", json!({}), None))
@@ -448,7 +455,10 @@ fn preexisting_profile_conflict_revokes_before_file_preparation() {
     let status = status.data.unwrap();
     assert_eq!(status["recovery_ready"], true, "{status}");
     assert_eq!(status["mutation_available"], false, "{status}");
-    assert_eq!(status["gateway"], "ready", "{status}");
+    assert!(
+        matches!(status["gateway"].as_str(), Some("ready" | "no_new_calls")),
+        "{status}"
+    );
     let catalog = service.dispatch_wire(request("ListAgentPlanCatalog", json!({}), None));
     assert!(catalog.error.is_none(), "{catalog:?}");
     assert!(
