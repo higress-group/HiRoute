@@ -60,6 +60,7 @@ pub enum DiagnosticEvent {
     AttemptEnd(AttemptEnd),
     UpstreamWire(UpstreamWire),
     ReasoningCleanup(ReasoningCleanup),
+    ResponseFailure(ResponseFailure),
     Fallback(Fallback),
     SemanticCommit(SemanticCommit),
     RequestCancel(RequestCancel),
@@ -152,6 +153,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::SemanticCommit(_) => Info,
             DiagnosticEvent::ModelStage(_) | DiagnosticEvent::UpstreamWire(_) => Debug,
             DiagnosticEvent::ReasoningCleanup(_) => Warn,
+            DiagnosticEvent::ResponseFailure(_) => Warn,
             DiagnosticEvent::ContentCaptureEnd(end) => match end.outcome {
                 CaptureOutcome::Success => Info,
                 CaptureOutcome::Abort => Warn,
@@ -217,6 +219,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::AttemptEnd(_) => "attempt_end",
             DiagnosticEvent::UpstreamWire(_) => "upstream_wire",
             DiagnosticEvent::ReasoningCleanup(_) => "reasoning_cleanup",
+            DiagnosticEvent::ResponseFailure(_) => "response_failure",
             DiagnosticEvent::Fallback(_) => "fallback",
             DiagnosticEvent::SemanticCommit(_) => "semantic_commit",
             DiagnosticEvent::RequestCancel(_) => "request_cancel",

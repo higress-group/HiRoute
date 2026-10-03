@@ -79,20 +79,22 @@ fn protocol_prefix_grows_beyond_initial_queue_capacity_and_releases_memory() {
 }
 
 #[test]
-fn precommit_decoder_is_bounded_by_bytes_not_transport_chunk_count() {
+fn drained_output_does_not_charge_cumulative_stream_bytes() {
     let budget = BudgetTree::new(4 * 1024 * 1024, 4 * 1024 * 1024)
         .unwrap()
         .stream(4 * 1024 * 1024)
         .unwrap();
-    let mut decoder = PrecommitDecoderBudget::new(&budget).unwrap();
+    let plan = hiroute_gateway_core::runtime::body::BodyPlan::PassThrough {
+        max_chunk_bytes: 64 * 1024,
+    };
+    let mut queue =
+        ChargedBodyQueue::new(&budget, MemoryRole::ResponsePrefix, &plan, usize::MAX, 1).unwrap();
     for _ in 0..1_000 {
-        decoder.charge_frame(128).unwrap();
+        push_queue_bytes(&mut queue, &budget, vec![b'x'; 64 * 1024]).unwrap();
+        drop(queue.pop_front().unwrap());
     }
-    decoder.charge_frame(256 * 1024).unwrap();
-    assert!(
-        decoder.charge_frame(4 * 1024 * 1024).is_err(),
-        "the actual memory budget remains authoritative"
-    );
+    queue.clear_and_release();
+    assert_eq!(budget.snapshot().unwrap().live, 0);
 }
 
 #[test]

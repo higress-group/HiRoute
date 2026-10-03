@@ -57,6 +57,8 @@ pub(super) fn responses_semantic_event(event: &str) -> bool {
             | "response.refusal.done"
             | "response.reasoning_summary_text.delta"
             | "response.reasoning_summary_text.done"
+            | "response.reasoning_text.delta"
+            | "response.reasoning_text.done"
             | "response.function_call_arguments.delta"
             | "response.function_call_arguments.done"
             | "response.custom_tool_call_input.delta"
@@ -142,6 +144,16 @@ pub(super) fn response_item_is_semantic(item: &Map<String, Value>) -> bool {
             item.get("encrypted_content")
                 .and_then(Value::as_str)
                 .is_some_and(|value| !value.is_empty())
+                || item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .is_some_and(|content| {
+                        content.iter().any(|part| {
+                            part.get("text")
+                                .and_then(Value::as_str)
+                                .is_some_and(|text| !text.is_empty())
+                        })
+                    })
                 || item
                     .get("summary")
                     .and_then(Value::as_array)

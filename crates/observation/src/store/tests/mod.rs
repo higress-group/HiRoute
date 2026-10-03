@@ -2,6 +2,7 @@ mod blob_gc;
 mod content_v2;
 mod fact_regression;
 mod failure_isolation;
+mod incremental_completeness;
 mod plan_quality;
 mod retention;
 mod retention_matrix;

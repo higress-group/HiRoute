@@ -114,6 +114,8 @@ pub(crate) fn load_session(
     workspace_id: &WorkspaceId,
     session_id: &SessionId,
 ) -> Result<Vec<ExecutionFactEnvelopeV1>, ObservationStoreError> {
+    #[cfg(test)]
+    SESSION_LOADS.with(|count| count.set(count.get() + 1));
     let request_ids = {
         let mut statement = connection
             .prepare(
@@ -143,6 +145,11 @@ pub(crate) fn load_session(
         facts.extend(request_facts);
     }
     Ok(facts)
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(crate) static SESSION_LOADS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 fn sql_u64(value: u64) -> Result<i64, ObservationStoreError> {

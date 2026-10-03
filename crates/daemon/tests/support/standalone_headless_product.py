@@ -587,8 +587,19 @@ def run(repository):
         snapshot = product.cli('compute', 'list')['data']
         native_source = next(source for source in snapshot['sources']
                              if source['display_name'] == 'Headless Native API')
+        # Make the price presentation's seconds-resolution evaluation clock advance.
+        time.sleep(1.05)
         shown = product.cli('compute', 'show', native_source['source_id'])['data']
-        assert shown['sources'] == [native_source]
+        assert len(shown['sources']) == 1
+        comparable = json.loads(json.dumps(shown['sources'][0]))
+        assert len(comparable['models']) == len(native_source['models'])
+        for original, current in zip(native_source['models'], comparable['models']):
+            earlier = original['presentation']['evaluated_at_ms']
+            later = current['presentation']['evaluated_at_ms']
+            assert isinstance(earlier, int) and isinstance(later, int) and 0 < earlier < later
+            # Only query evaluation time changes; every saved/runtime field still matches.
+            current['presentation']['evaluated_at_ms'] = earlier
+        assert comparable == native_source
         binding_id = native_source['models'][0]['binding_id']
         product.cli('protected-input', 'release', '--candidate', candidate_ref)
 

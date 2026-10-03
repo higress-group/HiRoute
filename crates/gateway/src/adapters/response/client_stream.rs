@@ -61,6 +61,10 @@ pub struct IncrementalClientSseRenderer {
 }
 
 impl IncrementalClientSseRenderer {
+    pub(crate) fn usage(&self) -> &ModelUsage {
+        &self.usage
+    }
+
     pub(crate) fn with_budget(
         mut self,
         budget: hiroute_gateway_core::runtime::body::StreamBudget,
