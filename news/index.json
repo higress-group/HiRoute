@@ -7,8 +7,8 @@
       "en": "HiRoute Smart Routing in Action: GPT-6 Astra × Qwen-3.8 Flash, Same Quality at 90% Lower Cost"
     },
     "description": {
-      "zh": "HiRoute 如何连接 Agent 与模型服务，让 Qwen 处理大量明确工作、Astra 接住关键推理？查看路由配置、超过 90% 的降本结果，以及一次无人干预的长任务接力。",
-      "en": "How HiRoute connects agents to models: Qwen handles bulk work, Astra handles critical reasoning. Explore the routing setup, over 90% cost savings, and an unattended coding handoff."
+      "zh": "用真实 Desktop 配置，看看 HiRoute 如何让 Qwen 做常规工作、Astra 接住关键决策：同等交付标准下降本超 90%，长任务还能依据执行表现自主切换模型。",
+      "en": "See the real Desktop setup: Qwen handles routine work, Astra handles critical decisions. Over 90% lower cost at the same delivery standard, plus an unattended coding handoff."
     },
     "files": {
       "zh": "2026-10-04-astra-qwen.zh-CN.md",
