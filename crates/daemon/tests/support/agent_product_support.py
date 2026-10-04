@@ -10,7 +10,7 @@ def settings_status(product, context):
 
 
 def apply_settings(product, spec, key, facet):
-    """Apply the previewed intent and read its authoritative state through the public CLI."""
+    """Apply the previewed intent and read its authoritative state through the product settings entry."""
     assert facet in ('model', 'collaboration'), 'unknown settings facet'
     command = 'agents restore' if spec[facet]['intent'] == 'restore' else 'agents connect'
     preview = product.preview(command + ' preview', {'spec': spec})
