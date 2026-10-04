@@ -1,27 +1,85 @@
 # HiRoute Smart Routing in Action: GPT-6 Astra × Qwen-3.8 Flash, Same Quality at 90% Lower Cost
 
-A software iteration asks an agent to do many different jobs: read documentation, check configuration details, assemble evidence, implement changes, reason about failure sequences, and choose repairs. Using the most expensive model throughout means paying frontier reasoning rates for routine work too.
+**HiRoute: an open-source intelligent routing engine for long-running agent tasks. Spend less. Stay steady. Choose smarter.**
 
-We tested **GPT-6 Astra + Qwen-3.8 Flash** on an engineering research workload. In two paired deliveries that met the same whole-task acceptance criteria, HiRoute's mixed mode reduced **API-equivalent cost by 92.01% and 91.39%**. Across three repeats, the mixed mode and all-Astra mode each produced **3/3 critical memos without material errors**; all-Qwen produced **1/3**.
+The right agent for the task. The right model for each step.
 
-“Same quality” here means meeting the same predefined delivery standard, not identical answers or scores. The 90% figure concerns API-equivalent costs in this research case, including routing decisions and subject calls. It is not a subscription invoice reduction or a guarantee for every task. All repetitions and scoring rules are retained in the [experiment record](../experiments/cases/research-cost-quality/README.md).
+An agent working for tens of minutes may research a problem, reconcile constraints, implement changes, run tests, diagnose failures, and repair its work before delivery. Much of that work is well bounded; a few difficult judgments can determine the outcome. Model selection needs to keep pace with the task.
 
-![The two accepted pairs: HiRoute mixed costs less than one tenth of all-Astra](assets/research-cost-en.svg)
+We put **GPT-6 Astra + Qwen-3.8 Flash** through two kinds of practical work. In two engineering-research pairs meeting the same delivery standard, mixed routing reduced **API-equivalent cost by 92.01% and 91.39%**. In a separate real coding task, an agent **received no intermediate operator guidance and passed 343 independent assertions after automatic model handoff**. The first case tests cost-effective allocation; the second observes autonomous escalation and completion.
 
-## One workflow, different demands on the model
+## Why long tasks need intelligent routing
 
-Much of a research assignment involves finding answers already present in the supplied material. A smaller part may require combining the behavior of several systems and deriving a guarantee that no source states directly. Software implementation has the same variation: a bounded change and a subtle concurrency or recovery decision need different investments.
+A software iteration continually changes what it asks of a model. Research needs coverage and accuracy; architecture decisions need reasoning about constraints and failure boundaries; implementation needs tool execution and sustained verification. Even within one stage, straightforward edits and difficult debugging can alternate.
 
-| Stage | Typical work | A useful allocation principle |
+Model capabilities, reasoning settings, prices, and availability differ. Research, coding, and complex analysis can also benefit from different agent workflows. Longer tasks make three questions increasingly relevant: **Is the capability appropriate? Can execution continue? What does completing the entire task cost?**
+
+HiRoute brings those decisions into one engine:
+
+- **Task routing:** the primary agent selects an allowed work plan by purpose; that plan specifies an execution agent and its model route.
+- **Model routing:** within the plan's allowed scope, select a model combination, reasoning setting, and candidate order for the work.
+- **Execution observability:** associate actual models, attempts, usage, estimated costs, and available stage assessments for users and agents to inspect.
+
+Desktop provides configuration and observation, the CLI supports automation, and the Gateway handles model calls. Keep working in a familiar agent through a supported integration. Task decomposition remains the agent's or workflow's responsibility; this article tests model routing and long-task handoff.
+
+![HiRoute connects work plans, execution agents, model routes, and execution evidence](assets/long-horizon-engine-en.png)
+
+## Spend less. Stay steady. Choose smarter.
+
+**Spend less: reserve stronger reasoning for work that benefits from it.** Explicit extraction, verification, and organization can be candidates for economical models; deriving guarantees and analyzing complex failures justify stronger models. Configuring reasoning effort alongside models also avoids maximum effort on every task.
+
+**Stay steady: hand off at appropriate boundaries.** Ordinary tool continuations keep their existing route. A fresh decision opportunity allows reassessment. When a source is unavailable, failure recovery follows the plan, candidate order, and capability requirements; a response already being delivered does not transparently switch models midway. Capability escalation at a context boundary and recovery from a failed request have distinct triggers.
+
+**Choose smarter: use performance to calibrate the initial choice.** A task description provides an initial signal. Actual progress, repeated mistakes, and substantial corrections add evidence. HiRoute associates visible execution facts with stage assessments, making subsequent choices inspectable and helping users understand which work a model handles well.
+
+Together, these capabilities aim to **reduce the cost of reliably completing an entire task while reducing manual model selection, supervision, and switching.**
+
+## A cheaper model can create a more expensive task
+
+When an economical model completes most of the work and a stronger model handles a few difficult decisions, mixed routing can save substantially. But if the economical model repeatedly takes the wrong path, the stronger model may need to reconstruct context, diagnose mistakes, and redo the implementation. You have paid for the first attempt and for the cleanup.
+
+Extra attempts, growing context, and rework can consume the unit-price advantage. The relevant accounting is:
+
+> **Whole-task cost = productive execution + failed attempts and rework + routing evaluation.**
+
+HiRoute therefore distinguishes two questions:
+
+| Assessment | Question | Role in routing |
 | --- | --- | --- |
-| Research and preparation | Check documentation, normalize facts, collect evidence | Consider an economical model for explicit source-grounded work |
-| Design and decisions | Reconcile constraints, transaction boundaries, failure orderings | Reserve stronger reasoning for difficult judgments |
-| Implementation and verification | Make changes, execute checks, diagnose failures | Choose using the specific task and observed performance |
-| Long-running execution | Continue tool loops, compact context, resume repairs | Keep a stage stable; reassess at a handoff |
+| Task complexity | What capability does the next piece of work require? | Identify suitable opportunities to use economy |
+| Stage competence | How well did the selected model actually handle the preceding work? | Stop pursuing savings when observed performance is inadequate |
 
-These are allocation principles, not permanent labels for lifecycle stages. Implementation can require deep reasoning; research can include large amounts of straightforward work.
+The competence assessment used in this case considers answers and tool activity visible to the routing layer, failed and recovered attempts, and available user feedback. It looks back at an assessable stage of execution. Useful progress with an appropriate process and no material correction differs from repeated errors and limited progress.
 
-HiRoute puts model selection in the routing layer. The workflow or agent still decomposes the task. In this experiment, the delivery units were predefined, and HiRoute with the official Jev extension selected the model for each unit.
+**The score concerns a particular stage. It is neither a permanent model ranking nor a probability of success.** A missing assessment is not a zero; incomplete visible history must be interpreted alongside its coverage. Independent acceptance still determines whether the final delivery meets requirements.
+
+![Task complexity and observed competence inform the next choice at a decision opportunity](assets/competence-feedback-en.png)
+
+## Automatic model handoff for long tasks
+
+Assessment becomes useful when it informs the next action. HiRoute can reconsider at new user input and natural handoffs where the existing context can no longer be inherited. Compaction followed by rebuilding context is a common example during a long task.
+
+Ordinary tool continuations remain stable. At a handoff, assess the current task and the preceding stage. When the current competence assessment is below the configured floor, the policy used in this experiment blocks the economy branch and selects primary. A new decision can also keep the same model when it remains suitable.
+
+This does not depend on someone watching and asking for a stronger model. ContextHold checks context continuity without requiring a separate client compaction notification. **Feedback is evaluated at decision opportunities, not as a real-time error detector after every tool call**, and compaction does not automatically require an upgrade.
+
+Different models cannot share a KV cache. Switching builds a new prefix that subsequent calls may reuse. Choosing at a point where context already needs rebuilding helps preserve stability across ordinary continuations.
+
+## How this case was configured
+
+The smart-saving plan puts **Qwen-3.8 Flash** in economy and **GPT-6 Astra** in primary, with reasoning effort configured for each. The subject client uses the appropriate plan; actual execution models and usage are checked in the resulting records.
+
+| Setting | Research cost experiment | Long-task handoff experiment |
+| --- | --- | --- |
+| Economy model | Qwen-3.8 Flash, xhigh | Qwen-3.8 Flash, xhigh |
+| Primary model | GPT-6 Astra, medium | GPT-6 Astra, medium |
+| Simple-task threshold | 0.8 | 0, economy-first start |
+| Competence floor | 0.5 | 0.5 |
+| Outcome of interest | Whole-task cost at the same acceptance standard | Autonomous escalation and completion without intermediate guidance |
+
+The cases have different purposes and starting policies. Research reserves primary for consequential judgments; the long task observes whether execution starting with economy can hand off based on performance. These are not universal optimal settings. Exact versions, policies, and complete parameters remain in the [experiment directory](../experiments/README.md).
+
+To inspect the effect, first look at **actual execution models and attempts** in the session, then stage competence and assessment coverage, and finally independent delivery acceptance. Configuration, an assessment, and a completed deliverable provide different kinds of evidence.
 
 ## Experiment one: 360 research cards and one critical decision
 
@@ -37,9 +95,11 @@ We compared three modes:
 - **HiRoute mixed:** the same work enters smart routing. Actual records show Qwen handling six research components and Astra handling the critical memo.
 - **All Qwen:** Qwen handles the same delivery requirements through a fixed route.
 
-Jev used generic criteria: explicit extraction, translation, verification, and formatting could use economy; novel guarantees, conflicting evidence, or complex failure interactions required primary. Product names and hidden reference answers were not used to assign models. Subject models received the complete frozen sources; Jev saw the current task, claims, and source metadata.
+Routing used generic criteria: explicit extraction, translation, verification, and formatting could use economy; novel guarantees, conflicting evidence, or complex failure interactions required primary. Product names and hidden reference answers were not used to assign models. Subject models received the complete frozen sources; the routing evaluation saw the current task, claims, and source metadata.
 
 ## Where the savings come from, and where quality matters
+
+![The two pairs meeting the same whole-delivery gate: mixed cost is below one tenth of all-Astra](assets/research-cost-en.svg)
 
 The following pairs passed the original whole-delivery gate: all 360 cards delivered, at least 353 correct, and no material error anywhere in the critical memo.
 
@@ -48,7 +108,7 @@ The following pairs passed the original whole-delivery gate: all 360 cards deliv
 | Pair 2 | 357/360 | 359/360 | Pass / Pass | **92.01%** |
 | Pair 3 | 356/360 | 359/360 | Pass / Pass | **91.39%** |
 
-Costs include subject attempts and Jev decisions, using frozen API tariffs and exchange rates. The conservative reduction compares the mixed upper cost bound against the all-Astra lower bound. This table presents the two pairs that passed the original gate; all three pairs remain in the experiment record.
+Costs include subject attempts and routing evaluations, using frozen API tariffs and exchange rates. The conservative reduction compares the mixed upper cost bound against the all-Astra lower bound. This table presents the two pairs that passed the original gate; all three pairs remain in the experiment record.
 
 The critical recommendations are particularly revealing:
 
@@ -61,19 +121,6 @@ The critical recommendations are particularly revealing:
 The two all-Qwen failures were not JSON formatting mistakes. Some repair suggestions treated a local transaction binding SQL state and offsets, or an outbox, as a solution for atomic visibility across SQL and an independent Kafka output. Those techniques have legitimate uses, but do not alone remove the cross-system visibility window required by the task.
 
 That is the value of the allocation: economical models can perform much of the evidence work, while a small number of consequential judgments justify stronger reasoning. All-Qwen's research-card accuracy was itself close to the mixed mode; the meaningful gap appeared in the critical recommendations.
-
-## Automatic model handoff for long tasks
-
-A good initial choice is only the beginning. A long task invokes tools, encounters failures, repairs code, and eventually compacts its growing context. The model that fitted the beginning may not fit every later stage.
-
-HiRoute uses **automatic model handoff** at natural transitions:
-
-1. Ordinary tool continuations inherit the current route.
-2. When message history can no longer be inherited, such as after context compaction and rebuilding, routing can decide again.
-3. Jev uses the current task and visible execution history to select the next branch and optionally assess the previous stage's competence.
-4. If the current assessment falls below the configured floor, the Rules policy blocks the economy branch and selects primary.
-
-ContextHold provides the underlying continuity check. Clients do not need to emit a separate compaction notification, and reassessment can keep the same model. The score informs routing; final acceptance still determines quality. Models do not share KV caches: a handoff builds a new prefix, which subsequent calls can reuse.
 
 ## Experiment two: one instruction, about 32 minutes, 343 passing assertions
 
@@ -95,23 +142,27 @@ A native agent executed code and tools. The initial task required both implement
 
 Independent verification followed execution, with protected tests unchanged. This case demonstrates an actual automatic upgrade followed by accepted completion. It has no all-Astra cost control and does not support a 90% savings claim. [Task, parameters, and verification](../experiments/cases/unattended-engineering/README.md)
 
-## Try it in your workflow
+### Inspecting the handoff in Desktop
 
-Connect Astra and Qwen, then create a smart-saving plan with Qwen in the economy branch and Astra in primary. To select using complexity and execution evidence, configure the [official Jev extension](../decision-extensions/extensions/jev-decider/README.md).
+![Native HiRoute Desktop replaying stage competence and execution-evidence links from this task](assets/desktop-session-quality-en.png)
 
-The research case used a simple-task threshold of 0.8 and competence floor of 0.5. The long-task case used an economy-first threshold of 0 and the same 0.5 floor to observe autonomous escalation. These are different policies for different experiments, not a universal optimal configuration.
+This screenshot replays historical observation metadata from the experiment in an isolated native Desktop. It shows stage scores, assessed turns, and evidence links. It was captured after the experiment without rerunning the model task. Conversation content and agent connection configuration were not imported, so the incomplete-content and unlinked-agent indicators remain visible. The stage-level “Partial” badges describe the original assessment coverage, not failed delivery. The UI displays two decimal places; the escalation used the recorded value **0.485**.
 
-After connecting your agent, inspect the actual models, route decisions, and usage in HiRoute's session records. Configuration labels alone do not establish that the intended route ran.
+## Start with a long task of your own
 
-Start with [HiRoute installation](https://hiroute.ai/en/download/), or recalculate the published results without making model calls:
+Choose a familiar task with a clear acceptance standard. Connect model sources, create a route in Desktop, connect your preferred agent, and inspect actual execution in the session record. Your own execution evidence can help identify which work suits economy and which needs stronger reasoning.
+
+“Same quality” in this article means meeting the same predefined delivery standard, not identical answers or scores. The 90% figure concerns API-equivalent costs for two accepted research pairs, including subject calls and routing evaluation. It is not a subscription-invoice reduction or a promise for every task. The long-task case demonstrates autonomous handoff and completion, with no cost-savings claim.
+
+Start with [HiRoute installation](https://hiroute.ai/en/download/), or recalculate the published results without model calls:
 
 ```sh
 python3 experiments/reproduce.py verify
 python3 experiments/reproduce.py report
 ```
 
-The [experiments directory](../experiments/README.md) includes complete deliveries, item-level findings, cost provenance, tasks, and rerun entry points. Offline replay makes no model calls; fresh execution uses your own connections and writes separate results. Semantic review still requires reading every answer against its sources; structure checks alone are not quality grades.
+The [experiments directory](../experiments/README.md) preserves all nine research deliveries, item-level findings, cost provenance, tasks, and rerun entry points. Offline replay makes no model calls; fresh execution uses your own connections and writes separate results. Semantic review still requires reading every answer against its sources; structure checks alone are not quality grades.
 
-These are purpose-selected cases with three repeats per research mode and unblinded evaluation, not population-wide estimates. The complete original acceptance results, supplementary analysis, and transport-recovery records are published with the experiments.
+These are purpose-designed cases with three research repeats per mode and unblinded evaluation. Complete original records, supplementary analysis, and transport recovery remain available for inspection under the same definitions.
 
-Invest model capability where it matters, let economical models carry routine work, and let long tasks hand off when needed. That is the workflow HiRoute is built to support.
+**HiRoute. Spend less. Stay steady. Choose smarter. The right agent for the task. The right model for each step.**

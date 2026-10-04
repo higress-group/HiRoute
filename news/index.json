@@ -7,8 +7,8 @@
       "en": "HiRoute Smart Routing in Action: GPT-6 Astra × Qwen-3.8 Flash, Same Quality at 90% Lower Cost"
     },
     "description": {
-      "zh": "在达到相同验收标准的研究任务中降低 90% 以上的 API 等价成本，再用真实代码任务验证长任务自动模型接力。附实验数据与复现工具。",
-      "en": "Over 90% lower API-equivalent cost in accepted research deliveries, plus automatic model handoff in a real coding task. Includes results and reproduction tools."
+      "zh": "面向长程任务的智能路由引擎：更省、更稳、更懂。了解胜任度评估与自动模型接力，查看 Astra × Qwen 的降本实战和完整复现数据。",
+      "en": "Intelligent routing for long-running agent tasks. Spend less, stay steady, choose smarter—with competence assessment, automatic handoff, and reproducible Astra × Qwen results."
     },
     "files": {
       "zh": "2026-10-04-astra-qwen.zh-CN.md",

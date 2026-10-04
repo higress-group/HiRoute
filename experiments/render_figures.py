@@ -26,7 +26,7 @@ def render():
     ax.set_yticks([0,1],['Pair 2','Pair 3']);ax.invert_yaxis();ax.set_xlim(0,2.5)
     ax.set_xlabel('Complete-task API-equivalent cost (USD)');ax.spines[['top','right']].set_visible(False)
     ax.legend(frameon=False,loc='lower right');ax.set_title('Same acceptance gate. Over 90% lower cost.',loc='left',pad=20,fontsize=19)
-    fig.text(.08,.025,'Two of three primary pairs passed the original whole-delivery gate. All outcomes are in the experiment record.\nBounds include subject attempts and Jev; savings compare mixed upper against Astra lower. Not subscription invoices.',fontsize=9,color='#566078')
+    fig.text(.08,.025,'Two of three primary pairs passed the original whole-delivery gate. All outcomes are in the experiment record.\nBounds include subject attempts and routing evaluation; savings compare mixed upper against Astra lower. Not subscription invoices.',fontsize=9,color='#566078')
     fig.tight_layout(rect=[0,.13,1,1])
     for lang in ['zh','en']:
         target=out/f'research-cost-{lang}.svg'
