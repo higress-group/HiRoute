@@ -71,6 +71,22 @@ borrowed daily login for a read-only Worker journey is not authority to write it
 model providers. Reuse the same production control and upstream oracle, with a
 small native launch leaf for each distinct startup contract.
 
+For a new ecosystem, reuse [Agent product support](../../crates/daemon/tests/support/agent_product_support.py)
+for public settings Preview → Apply → current-status reads and bounded native CLI
+execution with private output capture. Keep native argv, configuration ownership,
+terminal-result parsing and independent business assertions in the ecosystem leaf.
+The process helper proves neither a model request nor a successful task by itself.
+[NativeContextUpstream](../../crates/daemon/tests/support/native_context_fixture.py)
+owns the Responses/Messages transport and counts every attempt, including rejected
+credentials; new journeys should not replace its HTTP handler to add observation.
+
+Before copying a native journey, identify which shared path already owns setup,
+source routing, exact Continue, cancellation and cleanup. Add a new native leaf
+only for an actual protocol/configuration difference. Keep native-history layout
+witnesses isolated and version-specific; do not share production code that computes
+the same expected answer with its test oracle. Register a new helper's actual
+consumers in the test planner, including its cheap fault/ownership checks.
+
 A conflict fixture also needs a positive control: establish that the native client
 would consume its provider, hook or auxiliary-model setting before claiming the
 managed launch defeats that setting. Keep this expensive native proof distinct

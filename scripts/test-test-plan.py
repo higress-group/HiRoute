@@ -116,6 +116,15 @@ class SelectionTests(unittest.TestCase):
             'crates/daemon/src/control/runtime/native_claude_model.rs',
         ])['product_checks'], [])
 
+    def test_shared_agent_journey_helper_selects_current_consumers_and_its_ownership_checks(self):
+        result = plan.select(['crates/daemon/tests/support/agent_product_support.py'])
+        self.assertEqual(result['mode'], 'affected')
+        self.assertEqual([check['command'][6] for check in result['product_checks']], ['qoder_delegation'])
+        self.assertIn(['python3', 'scripts/test-agent-product-support.py'], result['commands'])
+        tooling = plan.select(['scripts/test-agent-product-support.py'])
+        self.assertEqual(tooling['product_checks'], [])
+        self.assertIn(['python3', 'scripts/test-agent-product-support.py'], tooling['commands'])
+
     def test_shared_native_context_fixture_selects_both_real_consumer_targets(self):
         for path in ('crates/daemon/tests/support/native_context_product.py',
                      'crates/daemon/tests/support/native_context_fixture.py',

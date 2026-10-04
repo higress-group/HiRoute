@@ -513,7 +513,6 @@ class PersistedModelFixtureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = oracle.NativeContextUpstream(Path(directory))
             self.addCleanup(source.close)
-            model_fixture.observe_source_requests(source)
             host, port = source.server.server_address
             connection = http.client.HTTPConnection(host, port, timeout=2)
             try:

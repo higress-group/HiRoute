@@ -35,7 +35,8 @@ DIAGNOSTIC_CONTRACTS = (
     "crates/diagnostics/src/identity.rs", "crates/diagnostics/src/error.rs",
 )
 SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py"}
-WORKER_FIXTURE_TOOLING = {"scripts/test-native-context-product.py",
+WORKER_FIXTURE_TOOLING = {"scripts/test-agent-product-support.py",
+                          "scripts/test-native-context-product.py",
                           "scripts/test-native-context-boundaries.py",
                           "scripts/test-qoder-product.py"}
 WORKER_BOOTSTRAP_TEST = "crates/daemon/src/delegation/profile/claude_adapter_bootstrap.test.mjs"
@@ -180,7 +181,7 @@ def e2e_consumers(path):
         return [("hiroute-product-e2e", Path(path).stem)]
     if path.startswith("crates/daemon/tests/support/native_context_"):
         return [("hiroute-product-e2e", name) for name in ("worker_native_context", "qoder_delegation")]
-    if path.startswith("crates/daemon/tests/support/qoder_"):
+    if path == "crates/daemon/tests/support/agent_product_support.py" or path.startswith("crates/daemon/tests/support/qoder_"):
         return [("hiroute-product-e2e", "qoder_delegation")]
     if path == "tools/e2e-harness/tests/p0_gateway_runtime.rs" or path.startswith("tools/e2e-harness/tests/p0_gateway_runtime/"):
         return [("hiroute-e2e", "p0_gateway_runtime"), ("hiroute-e2e", "p0_gateway_protocol"),
@@ -351,10 +352,11 @@ def select(paths, full=False):
     if selection_tooling:
         commands.append(["python3", "scripts/test-test-plan.py"])
     product_checks = worker_product_checks(paths)
-    if worker_fixture_tooling or product_checks:
+    if full or worker_fixture_tooling or product_checks:
+        commands.append(["python3", "scripts/test-agent-product-support.py"])
         commands.append(["python3", "scripts/test-native-context-product.py"])
         commands.append(["python3", "scripts/test-native-context-boundaries.py"])
-    if worker_fixture_tooling or any(check["id"] == "qoder.delegation" for check in product_checks):
+    if full or worker_fixture_tooling or any(check["id"] == "qoder.delegation" for check in product_checks):
         commands.append(["python3", "scripts/test-qoder-product.py"])
     if full or any(path.startswith("crates/daemon/src/delegation/profile/") for path in paths):
         commands.append(["node", "--test", WORKER_BOOTSTRAP_TEST])

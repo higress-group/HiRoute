@@ -321,6 +321,7 @@ class NativeContextUpstream:
         self.controls = Path(controls)
         self.lock = threading.Lock()
         self.reply = decision
+        self.requests = 0
         self.proxy_trap = None
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -344,6 +345,8 @@ class NativeContextUpstream:
                 self.send({'error': 'directory not implemented'}, 404)
 
             def do_POST(self):
+                with owner.lock:
+                    owner.requests += 1
                 if self.headers.get('Authorization') != 'Bearer ' + owner.token:
                     return self.send({'error': 'incorrect synthetic source credential'}, 401)
                 if self.path not in ('/v1/responses', '/v1/messages'):
@@ -373,6 +376,11 @@ class NativeContextUpstream:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = 'http://%s:%d/v1' % self.server.server_address
+
+    def request_count(self):
+        """All source attempts, including rejected credentials; never record a secret."""
+        with self.lock:
+            return self.requests
 
     def close(self):
         try:

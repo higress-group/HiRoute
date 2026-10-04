@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 from model_connections_product import save_native_source
+from agent_product_support import apply_settings, settings_status
 from native_context_boundaries import source_events
 from native_context_fixture import NativeContextUpstream, NativeProxyTrap, digest
 from native_context_product import report_failure, selected_installation
@@ -20,13 +21,8 @@ from publication_process import plan_change
 from publication_product import Product, encoded
 from qoder_collaboration_product import AGENT, apply_collaboration, check_collaboration, restore_skill
 from qoder_model_fixture import (CASES, OwnedModelSettings, PersistedRouteOracle,
-                                 observe_source_requests, read_persisted_route, select_model_context)
+                                 read_persisted_route, select_model_context)
 import qoder_native_context
-
-
-def settings_status(product, context):
-    return product.preview('agents connect status', {
-        'schema_version': {'major': 2, 'minor': 0}, 'context_id': context})
 
 
 def model_spec(context, plans=None, restore_ref=None, regenerate=False):
@@ -38,20 +34,7 @@ def model_spec(context, plans=None, restore_ref=None, regenerate=False):
 
 
 def apply_models(product, spec, key):
-    command = 'agents restore' if spec['model']['intent'] == 'restore' else 'agents connect'
-    preview = product.preview(command + ' preview', {'spec': spec})
-    assert preview['applicable'], 'model operation Preview is blocked; inspect safe diagnostics'
-    body = {'spec': preview['spec'], 'accept_digest': preview['accept_digest'],
-            'dependency_digest': preview['dependency_digest'], 'expected_revisions': preview['expected_revisions'],
-            'idempotency_key': key}
-    resident = preview.get('resident_service', {})
-    if resident.get('login_item_required'):
-        body['login_item'] = {'before': 'not_registered', 'after': 'enabled', 'created': True}
-    elif resident.get('login_item_removal_required'):
-        body['login_item'] = {'before': 'enabled', 'after': 'not_registered', 'created': False}
-    _, applied = product.cli(command + ' apply', body)
-    assert applied['data']['state'] == 'succeeded', 'model settings operation did not succeed'
-    return preview, settings_status(product, spec['context_id'])
+    return apply_settings(product, spec, key, 'model')
 
 
 def publish_source_plan(product, source, index):
@@ -181,7 +164,6 @@ def run(repository, candidate):
             controls.mkdir(mode=0o700)
             (controls / 'native-context.json').write_text('{}')
             source = NativeContextUpstream(controls)
-            observe_source_requests(source)
             source.model, source.token = model, 'synthetic-persisted-source-' + secrets.token_hex(12)
             oracle = PersistedRouteOracle(model)
             source.reply = oracle.reply

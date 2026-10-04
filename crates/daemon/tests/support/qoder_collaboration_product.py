@@ -8,10 +8,10 @@ import json
 import os
 from pathlib import Path
 import secrets
-import signal
 import subprocess
 import sys
 
+from agent_product_support import apply_settings, run_native_command
 from delegation_product import configure_worker_installation
 from native_context_boundaries import source_events
 from native_context_fixture import NativeContextUpstream, assert_preserved, digest, write_new
@@ -36,15 +36,7 @@ def check_collaboration(product, key):
 
 def apply_collaboration(product, context, intent, key):
     spec = {'schema_version': {'major': 2, 'minor': 0}, 'context_id': context, 'collaboration': intent}
-    command = 'agents restore' if intent['intent'] == 'restore' else 'agents connect'
-    preview = product.preview(command + ' preview', {'spec': spec})
-    assert preview['applicable'], preview.get('blockers')
-    _, applied = product.cli(command + ' apply', {
-        'spec': spec, 'accept_digest': preview['accept_digest'], 'dependency_digest': preview['dependency_digest'],
-        'expected_revisions': preview['expected_revisions'], 'idempotency_key': key})
-    assert applied['data']['state'] == 'succeeded', applied
-    status = product.preview('agents connect status', {
-        'schema_version': {'major': 2, 'minor': 0}, 'context_id': context})
+    _, status = apply_settings(product, spec, key, 'collaboration')
     return status['collaboration']
 
 
@@ -62,21 +54,7 @@ def run_main_agent(product, binary, upstream, fixture):
             '--max-model-request-retries', '0', '--max-output-tokens', '2048', '--max-turns', '32',
             '-p', fixture['main_marker'] + ': Use hiroute-collaboration and explicitly delegate the native receipt task.']
     env = dict(product.env, HIROUTE_QODER_MAIN_TOKEN=upstream.token, TMPDIR=str(temporary))
-    process = subprocess.Popen(args, env=env, cwd=product.project, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, start_new_session=True)
-    try:
-        stdout, stderr = process.communicate(timeout=190)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGTERM)
-        try:
-            stdout, stderr = process.communicate(timeout=3)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            stdout, stderr = process.communicate(timeout=3)
-        product.outputs.extend((stdout, stderr))
-        raise AssertionError('native main Agent exceeded the full delegation deadline') from None
-    product.outputs.extend((stdout, stderr))
-    assert process.returncode == 0, 'native main Agent exited unsuccessfully; inspect retained private diagnostics'
+    stdout = run_native_command(product, args, env=env, timeout=190, label='native main Agent')
     assert ('MAIN-AGENT-COMPLETED-' + fixture['artifact']['receipt']).encode() in stdout, \
         'native main Agent did not return the independently verified completion'
 

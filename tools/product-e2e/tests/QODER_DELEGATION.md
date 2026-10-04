@@ -252,9 +252,18 @@ Plan, enable collaboration, observe a completed task and cancel real native work
 A Python `prepared` response or API setup is not Desktop acceptance. Record
 platform, product/fixture revisions and every selected case's outcome separately.
 
+The main-Agent and persisted-model journeys share
+[Agent product support](../../../crates/daemon/tests/support/agent_product_support.py)
+for process deadlines/private output and authoritative settings transactions. Qoder
+leaves retain launch arguments, native settings ownership and result/receipt checks.
+The same upstream counter rejects false credential-revocation proofs without
+per-journey handler replacement. A new ecosystem should reuse these mechanics;
+it still needs independent assertions for its native contract.
+
 ## Cheap oracle checks
 
 ```sh
+python3 scripts/test-agent-product-support.py
 python3 scripts/test-qoder-product.py
 python3 scripts/test-native-context-product.py
 python3 scripts/test-native-context-boundaries.py

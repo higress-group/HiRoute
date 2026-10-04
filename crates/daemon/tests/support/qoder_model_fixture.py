@@ -8,10 +8,9 @@ import json
 import os
 from pathlib import Path
 import secrets
-import signal
 import stat
-import subprocess
 
+from agent_product_support import run_native_command
 from native_context_fixture import native_text
 from qoder_native_context import selected_directory
 
@@ -19,26 +18,6 @@ from qoder_native_context import selected_directory
 CASES = ('agent.models.persisted-routes', 'agent.models.credential-rotation',
          'agent.models.independent-restore', 'agent.models.default-reference-guard')
 LIVE_PROMPT = 'Reply with exactly HIROUTE_LIVE_CHECK_OK. Do not use tools or perform any other action.'
-
-
-def observe_source_requests(source):
-    """Count even rejected requests on the existing SSE server; record no secrets."""
-    original = source.server.RequestHandlerClass
-    count = [0]
-
-    class CountedHandler(original):
-        def do_POST(self):
-            with source.lock:
-                count[0] += 1
-            super().do_POST()
-
-    source.server.RequestHandlerClass = CountedHandler
-
-    def observed():
-        with source.lock:
-            return count[0]
-
-    source.request_count = observed
 
 
 def select_model_context(product):
@@ -187,29 +166,7 @@ def read_persisted_route(product, binary, selector, source, oracle, label):
     command = native_command(product, binary, selector, prompt)
     # Product already strips inherited provider/auth variables. Only its selected
     # native config root and private runtime/receipt roots enter this process.
-    process = subprocess.Popen(command, env=dict(product.env), cwd=product.project,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
-    try:
-        stdout, stderr = process.communicate(timeout=60)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGTERM)
-        try:
-            stdout, stderr = process.communicate(timeout=3)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            stdout, stderr = process.communicate(timeout=3)
-        product.outputs.extend((stdout, stderr))
-        raise AssertionError('ordinary Qoder model invocation exceeded its deadline') from None
-    finally:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait(timeout=3)
-    product.outputs.extend((stdout, stderr))
-    assert process.returncode == 0, 'ordinary Qoder failed; inspect private diagnostics'
+    stdout = run_native_command(product, command, timeout=60, label='ordinary Qoder model invocation')
     assert oracle.calls[before:] == [label], 'ordinary Qoder did not make one actual persisted-route request'
     native_session_id = successful_native_result(stdout, oracle.receipt)
     return {'label': label, 'model': source.model, 'native_session_id': native_session_id, 'state': 'green'}
