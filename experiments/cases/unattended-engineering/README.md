@@ -4,8 +4,8 @@ The task adds synchronous/asynchronous streaming JSON iteration to pinned HTTPX
 `b5addb64f0161ff6bfe94c124ef76f6a1fba5254`. The task comes from DeepSWE's
 `datacurve/httpx-streaming-json-iteration` at source revision
 `0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea`. Task-derived test fixtures retain their
-[Apache-2.0 license](fixtures/LICENSE); HTTPX retains its own license in the cloned
-baseline. The initial prompt was adapted to request both interfaces in one run and
+[Apache-2.0 license](fixtures/LICENSE); the archived HTTPX source patch retains the upstream
+[BSD license notice](fixtures/HTTPX-LICENSE.md). The initial prompt was adapted to request both interfaces in one run and
 explicit incrementality. No upstream contribution is implied.
 
 ## Published result

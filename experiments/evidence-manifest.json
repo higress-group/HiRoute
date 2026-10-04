@@ -98,6 +98,7 @@
     "cases/research-cost-quality/tasks/rocketmq/source.json": "2fe752ff412aae8784fb60ec74e1d4fee67e65c2213c94da724bc1689b3b3b9b",
     "cases/unattended-engineering/TASK.md": "811ceefccf9f6c23c9b7d2c7cca39ed73e9655f64a82a491a194598f43a7ea14",
     "cases/unattended-engineering/case.json": "a39c1706ee5f15ca69571bb91970cfd57cee51eb40a937fbc6323eb2bac02b18",
+    "cases/unattended-engineering/fixtures/HTTPX-LICENSE.md": "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d",
     "cases/unattended-engineering/fixtures/LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
     "cases/unattended-engineering/fixtures/config.json": "c3c1d983f347e37c7b131039dc97590f5160303acb26ee541b9499f906c751a1",
     "cases/unattended-engineering/fixtures/environment.Dockerfile": "aa71466fa6f71fab7fc6df1278377549c57a1d6b74bfd270a70005ce0fede297",
