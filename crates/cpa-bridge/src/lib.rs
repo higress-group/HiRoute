@@ -15,6 +15,7 @@ mod errors;
 mod http;
 mod owner;
 mod process;
+mod proxy_environment;
 mod runtime;
 mod state;
 mod subscription;

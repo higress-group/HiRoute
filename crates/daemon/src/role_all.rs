@@ -286,6 +286,16 @@ pub fn start_role_all(config: RoleAllConfig) -> Result<RoleAllHandle, RoleAllErr
                 .stage_end(StartupStage::ArtifactValidate, StageOutcome::Completed);
             cpa
         }
+        Err(RoleAllError::StandaloneProxyUnavailable) => {
+            // Invalid proxy state disables subscription access, not unrelated control/API work.
+            config.diagnostics.stage_end(
+                StartupStage::ArtifactValidate,
+                StageOutcome::Failed {
+                    code: StartupFailureCode::DependencyUnavailable,
+                },
+            );
+            None
+        }
         Err(error) => {
             config.diagnostics.stage_end(
                 StartupStage::ArtifactValidate,
@@ -553,16 +563,23 @@ fn start_cpa(
         shutdown_timeout: Duration::from_secs(5),
         restart_policy: RestartPolicy::default(),
     };
-    let runtime = Arc::new(
-        ManagedCpaRuntime::new(
-            spec,
-            Arc::new(catalog),
-            Arc::new(PinnedCpaBinaryLocator::new(artifact)),
-        )
-        .map_err(|error| RoleAllError::Component("CPA", error.to_string()))?
-        .with_diagnostics(config.diagnostics.clone()),
-    );
-    Ok(runtime)
+    let mut runtime = ManagedCpaRuntime::new(
+        spec,
+        Arc::new(catalog),
+        Arc::new(PinnedCpaBinaryLocator::new(artifact)),
+    )
+    .map_err(|error| RoleAllError::Component("CPA", error.to_string()))?
+    .with_diagnostics(config.diagnostics.clone());
+    if config.released_commands_only {
+        let layout = hiroute_host_runtime::StandaloneLayout::from_environment()
+            .map_err(|_| RoleAllError::InvalidConfiguration)?;
+        if let Some(environment) = hiroute_host_runtime::ServiceProxyEnvironment::load(&layout.home)
+            .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?
+        {
+            runtime = runtime.with_proxy_environment(environment.variables());
+        }
+    }
+    Ok(Arc::new(runtime))
 }
 
 fn selected_codex_auth() -> Result<PathBuf, RoleAllError> {
@@ -623,6 +640,8 @@ impl CpaDownstreamCredentialPort for RoleAllCpaCredentials {
 
 #[derive(Clone, Debug, thiserror::Error, Eq, PartialEq)]
 pub enum RoleAllError {
+    #[error("standalone subscription proxy configuration is unavailable")]
+    StandaloneProxyUnavailable,
     #[error("role=all configuration is invalid")]
     InvalidConfiguration,
     #[error("{0} component failed: {1}")]

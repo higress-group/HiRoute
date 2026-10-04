@@ -147,6 +147,7 @@ fn diagnostics_elapsed_ms(diagnostics: &DiagnosticRuntime) -> u64 {
 fn classify_role_all_error(error: &RoleAllError) -> StartupFailureCode {
     match error {
         RoleAllError::InvalidConfiguration => StartupFailureCode::InvalidConfiguration,
+        RoleAllError::StandaloneProxyUnavailable => StartupFailureCode::DependencyUnavailable,
         RoleAllError::JoinTimeout(_) => StartupFailureCode::Internal,
         RoleAllError::Component(component, detail) => match *component {
             "Storage" if detail.starts_with("UPGRADE_SOURCE_UNSUPPORTED") => {

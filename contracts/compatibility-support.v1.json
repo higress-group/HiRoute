@@ -315,6 +315,7 @@
     "hiroute.standalone-install/v1",
     "hiroute.standalone-protected-input-request/v1",
     "hiroute.standalone-protected-input-response/v1",
+    "hiroute.standalone-proxy-environment/v1",
     "hiroute.standalone-service-doctor/v1",
     "hiroute.standalone-service-logs/v1",
     "hiroute.standalone-service-status/v1",
@@ -949,6 +950,19 @@
         "crates/integrations/src/agents/filesystem.rs",
         "crates/daemon/src/control/runtime/agent_connection.rs",
         "crates/integrations/src/agents/filesystem_config.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.cpa-owner/v1",
+      "field": "proxy_environment_sha256",
+      "mode": "recovery_read_only",
+      "owner": "cpa-bridge",
+      "reason": "Pre-policy orphan records omit the launch environment fingerprint. Authenticate the exact child and replace it before admission; current writers always record the selected policy.",
+      "removal_condition": "Remove after no retained live orphan or supported recovery state predates proxy-policy recording.",
+      "allowed_paths": [
+        "crates/cpa-bridge/src/owner.rs",
+        "crates/cpa-bridge/src/runtime.rs",
+        "crates/cpa-bridge/src/runtime/tests/proxy_recovery.rs"
       ]
     }
   ]

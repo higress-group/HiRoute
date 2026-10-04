@@ -334,6 +334,24 @@ def service_bytes(paths, daemon, cpa, cpa_digest):
     return paths["data"] / "service/ai.hiroute.cli.plist", plistlib.dumps(value, sort_keys=True)
 
 
+def prepare_service_directory(home):
+    """Make the fixed proxy snapshot path safe before any recursive mkdir uses umask."""
+    metadata = home.lstat()
+    if (not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o022):
+        raise ValueError("standalone service HOME is unsafe")
+    current = home
+    for part in (".local", "share", "hiroute", "service"):
+        current = current / part
+        if current.exists() or current.is_symlink():
+            metadata = current.lstat()
+            if (not stat.S_ISDIR(metadata.st_mode)
+                    or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o022):
+                raise ValueError(f"standalone service parent is unsafe: {current}")
+        else:
+            current.mkdir(mode=0o700)
+
+
 def current_owned_link(path, owned_root, expected_name):
     if not path.is_symlink():
         return False
@@ -536,6 +554,7 @@ def install(args):
 
         version_parent = version_root.parent
         resource_parent = resource_root.parent
+        prepare_service_directory(paths["home"])
         version_parent.mkdir(parents=True, exist_ok=True)
         resource_parent.mkdir(parents=True, exist_ok=True)
         staged_bin = Path(tempfile.mkdtemp(prefix=f".{version}.", dir=version_parent))
