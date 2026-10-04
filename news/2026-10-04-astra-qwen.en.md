@@ -22,7 +22,9 @@ HiRoute brings those decisions into one engine:
 
 Desktop provides configuration and observation, the CLI supports automation, and the Gateway handles model calls. Keep working in a familiar agent through a supported integration. Task decomposition remains the agent's or workflow's responsibility; this article tests model routing and long-task handoff.
 
-![HiRoute connects work plans, execution agents, model routes, and execution evidence](assets/long-horizon-engine-en.png)
+[![HiRoute connects work plans, execution agents, model routes, and execution evidence](assets/long-horizon-engine-en.png)](assets/long-horizon-engine-en.png)
+
+Open any figure to view it at full size.
 
 ## Spend less. Stay steady. Choose smarter.
 
@@ -53,7 +55,7 @@ The competence assessment used in this case considers answers and tool activity 
 
 **The score concerns a particular stage. It is neither a permanent model ranking nor a probability of success.** A missing assessment is not a zero; incomplete visible history must be interpreted alongside its coverage. Independent acceptance still determines whether the final delivery meets requirements.
 
-![Task complexity and observed competence inform the next choice at a decision opportunity](assets/competence-feedback-en.png)
+[![Task complexity and observed competence inform the next choice at a decision opportunity](assets/competence-feedback-en.png)](assets/competence-feedback-en.png)
 
 ## Automatic model handoff for long tasks
 
@@ -99,7 +101,7 @@ Routing used generic criteria: explicit extraction, translation, verification, a
 
 ## Where the savings come from, and where quality matters
 
-![The two pairs meeting the same whole-delivery gate: mixed cost is below one tenth of all-Astra](assets/research-cost-en.svg)
+[![The two pairs meeting the same whole-delivery gate: mixed cost is below one tenth of all-Astra](assets/research-cost-en.svg)](assets/research-cost-en.svg)
 
 The following pairs passed the original whole-delivery gate: all 360 cards delivered, at least 353 correct, and no material error anywhere in the critical memo.
 
@@ -128,7 +130,7 @@ To test autonomous handoff, we used a pinned HTTPX coding task: add synchronous 
 
 A native agent executed code and tools. The initial task required both implementation and verification; no operator guidance or product-code patches were supplied during execution.
 
-![Recorded long task: Qwen starts, Astra takes over after a context handoff, and all 343 independent assertions pass](assets/unattended-handoff-en.svg)
+[![Recorded long task: Qwen starts, Astra takes over after a context handoff, and all 343 independent assertions pass](assets/unattended-handoff-en.svg)](assets/unattended-handoff-en.svg)
 
 | Observation | Recorded result |
 | --- | --- |
@@ -144,7 +146,7 @@ Independent verification followed execution, with protected tests unchanged. Thi
 
 ### Inspecting the handoff in Desktop
 
-![Native HiRoute Desktop replaying stage competence and execution-evidence links from this task](assets/desktop-session-quality-en.png)
+[![Native HiRoute Desktop replaying stage competence and execution-evidence links from this task](assets/desktop-session-quality-en.png)](assets/desktop-session-quality-en.png)
 
 This screenshot replays historical observation metadata from the experiment in an isolated native Desktop. It shows stage scores, assessed turns, and evidence links. It was captured after the experiment without rerunning the model task. Conversation content and agent connection configuration were not imported, so the incomplete-content and unlinked-agent indicators remain visible. The stage-level “Partial” badges describe the original assessment coverage, not failed delivery. The UI displays two decimal places; the escalation used the recorded value **0.485**.
 

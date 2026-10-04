@@ -22,7 +22,9 @@ HiRoute 将这些选择放进同一套引擎：
 
 Desktop 提供配置与观测界面，CLI 支持自动化，Gateway 承载模型调用。你可以继续使用惯用的 Agent，通过支持的接入方式使用 HiRoute。任务拆解仍由 Agent 或工作流完成；本文重点验证模型路由与长任务接力。
 
-![HiRoute 产品关系图：任务方案选择执行 Agent，模型路由连接算力，执行事实支持后续评估](assets/long-horizon-engine-zh.png)
+[![HiRoute 产品关系图：任务方案选择执行 Agent，模型路由连接算力，执行事实支持后续评估](assets/long-horizon-engine-zh.png)](assets/long-horizon-engine-zh.png)
+
+点击配图可查看原图。
 
 ## 更省、更稳、更懂，分别解决什么问题
 
@@ -53,7 +55,7 @@ Desktop 提供配置与观测界面，CLI 支持自动化，Gateway 承载模型
 
 **评分针对具体阶段，不是模型的永久排名，也不是成功概率。** 缺失评分不等于零分；可见历史不完整时，评估覆盖范围也需要一起看。最终交付是否合格，仍由独立验收决定。
 
-![复杂度与胜任度共同参与选择：在决策机会回看执行表现，足够胜任才继续考虑经济分支](assets/competence-feedback-zh.png)
+[![复杂度与胜任度共同参与选择：在决策机会回看执行表现，足够胜任才继续考虑经济分支](assets/competence-feedback-zh.png)](assets/competence-feedback-zh.png)
 
 ## 长任务自动模型接力：把反馈用于下一段执行
 
@@ -99,7 +101,7 @@ Desktop 提供配置与观测界面，CLI 支持自动化，Gateway 承载模型
 
 ## 便宜在哪里，质量守在哪里
 
-![通过相同整单验收标准的两组配对：混合模式的成本低于全 Astra 的一成](assets/research-cost-zh.svg)
+[![通过相同整单验收标准的两组配对：混合模式的成本低于全 Astra 的一成](assets/research-cost-zh.svg)](assets/research-cost-zh.svg)
 
 两组通过原定整单验收的配对结果如下。验收要求是完整交付 360 条，其中至少 353 条正确，且关键备忘录无重大错误。
 
@@ -128,7 +130,7 @@ Desktop 提供配置与观测界面，CLI 支持自动化，Gateway 承载模型
 
 这次使用原生 Agent 执行代码和工具，而不是只提交一次文本请求。任务同时要求实现和验证，运行中不允许人工追加指导或修改产品代码。
 
-![长任务记录：Qwen 开始执行，上下文交接后 Astra 接续，最终通过 343 项独立验收](assets/unattended-handoff-zh.svg)
+[![长任务记录：Qwen 开始执行，上下文交接后 Astra 接续，最终通过 343 项独立验收](assets/unattended-handoff-zh.svg)](assets/unattended-handoff-zh.svg)
 
 | 观察项 | 实际结果 |
 | --- | --- |
@@ -144,7 +146,7 @@ Desktop 提供配置与观测界面，CLI 支持自动化，Gateway 承载模型
 
 ### 在 Desktop 里看到这次接力
 
-![原生 HiRoute Desktop 回放本次长任务的阶段胜任度与执行证据入口](assets/desktop-session-quality-zh.png)
+[![原生 HiRoute Desktop 回放本次长任务的阶段胜任度与执行证据入口](assets/desktop-session-quality-zh.png)](assets/desktop-session-quality-zh.png)
 
 上图是在隔离的原生 Desktop 中回放本次实验的历史观测元数据，展示阶段评分、覆盖轮次与证据入口。截图补拍于实验结束后，未重新执行模型任务。会话正文与 Agent 连接配置没有导入，因此保留了“内容不完整”和“未关联”提示；阶段上的“部分证据”则是原记录的评估覆盖标记，不是交付失败。界面保留两位小数，升级判断使用记录中的原始值 **0.485**。
 
