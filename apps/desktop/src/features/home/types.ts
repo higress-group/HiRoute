@@ -90,7 +90,7 @@ export type HomePlans = {
   drafts: HomeDraft[];
 };
 
-export type HomeFacetState = 'unconfigured' | 'configured' | 'verified' | 'pending' | 'degraded' | 'unavailable' | 'unknown';
+export type HomeFacetState = 'unconfigured' | 'configured' | 'verified' | 'pending' | 'degraded' | 'unavailable' | 'unsupported' | 'unknown';
 
 export type HomeAgent = {
   agentId: string;

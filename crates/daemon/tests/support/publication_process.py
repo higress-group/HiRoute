@@ -1,6 +1,8 @@
 """Operation recovery assertions over the real CLI, daemon and Gateway HTTP catalog."""
 import hashlib
 import json
+from pathlib import Path
+import stat
 import sys
 from publication_product import Product, encoded
 
@@ -313,7 +315,64 @@ def recovery(repository, boundary):
         product.close()
 
 
+def native_directory_snapshot(roots):
+    snapshot = {}
+    for root in roots:
+        for path in (root, *sorted(root.rglob('*'))):
+            metadata = path.lstat()
+            assert stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode), \
+                'startup fixture must contain only owned directories and files'
+            snapshot[str(path)] = {
+                'mode': stat.S_IMODE(metadata.st_mode), 'uid': metadata.st_uid,
+                'sha256': hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
+            }
+    return snapshot
+
+
+def unmanaged_native_permissions(repository):
+    """Unconfigured native targets cannot prevent the real local service from starting."""
+    cases = ('.agents', '.claude', '.qoder/skills')
+    completed = []
+    for selected in cases:
+        product = Product(repository)
+        try:
+            product.enable_debug_diagnostics()
+            home = Path(product.env['HOME'])
+            roots = [home / name for name in ('.agents', '.claude', '.qoder')]
+            for root in roots:
+                root.mkdir(mode=0o700, parents=True, exist_ok=True)
+                root.chmod(0o700)
+                neighbor = root / 'unmanaged-user-file'
+                neighbor.write_text('Preserve native contents: ' + str(root))
+                neighbor.chmod(0o600)
+            (home / '.qoder/skills').mkdir(mode=0o700)
+            # These are private fixture directories, never the caller's native HOME.
+            (home / selected).chmod(0o775)
+            before = native_directory_snapshot(roots)
+            product.start()
+            status = product.control('GetSystemStatus', {})['data']
+            assert status['daemon'] == 'role_all' and status['gateway'] == 'ready', status
+            product.control('GetClientServiceStatus', {})
+            product.stop()
+            assert native_directory_snapshot(roots) == before, \
+                'startup changed an unmanaged native directory, file or permission'
+            diagnostics = product.diagnostics_snapshot()
+            assert diagnostics['state'] == 'complete' and diagnostics['level_applied']['level'] == 'debug'
+            completed.append(selected)
+            print(json.dumps({'scenario': 'unmanaged-native-target-startup', 'state': 'green',
+                              'permissive_target': selected, 'role': 'all',
+                              'native_material_unchanged': True, 'diagnostics': diagnostics}), flush=True)
+        finally:
+            product.close()
+    assert tuple(completed) == cases, 'all three native target permission variants are required'
+
+
 if __name__ == '__main__':
-    for boundary in ('after_prepare', 'before_install', 'after_gateway_durable',
-                     'after_target', 'after_active', 'after_terminal'):
-        recovery(sys.argv[1], boundary)
+    if len(sys.argv) == 3:
+        assert sys.argv[2] == 'unmanaged-native-permissions', 'unknown publication scenario'
+        unmanaged_native_permissions(sys.argv[1])
+    else:
+        assert len(sys.argv) == 2, 'repository required'
+        for boundary in ('after_prepare', 'before_install', 'after_gateway_durable',
+                         'after_target', 'after_active', 'after_terminal'):
+            recovery(sys.argv[1], boundary)

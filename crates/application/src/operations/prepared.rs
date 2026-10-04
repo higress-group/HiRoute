@@ -271,10 +271,12 @@ where
         } else if plan.spec().command_id == hiroute_domain::COMPUTE_SUBSCRIPTION_CHECK_COMMAND_ID_V2
         {
             operation_kind == APPLY_SUBSCRIPTION_CHECK_OPERATION_V2
+        } else if settings_restore_plan(plan.spec()) {
+            // The internal settings command is shared, but restore-only plans must never
+            // reach the journal through Change authority, including internal callers.
+            operation_kind == "ApplyAgentConnectionRestore"
         } else {
             (registered_apply_operation_kind(&request.spec.command_id)? == operation_kind)
-                || (operation_kind == "ApplyAgentConnectionRestore"
-                    && settings_restore_plan(plan.spec()))
                 || (operation_kind == APPLY_COMPUTE_SAVE_OPERATION_V2
                     && plan.spec().command_id == "compute.connection.apply")
         };

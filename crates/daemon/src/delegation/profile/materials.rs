@@ -1,4 +1,4 @@
-//! Explicit run materials and a task-owned native storage reference. No launcher cleanup here.
+//! Explicit run materials and task-owned metadata. Borrowed native roots are never owned here.
 use super::*;
 use hiroute_domain::delegation::{
     DELEGATION_NATIVE_ROOT_MARKER_FILE_V1, DelegationNativeFilesystemIdentityV1,
@@ -8,6 +8,10 @@ use hiroute_domain::{CanonicalDigest, WorkspaceId};
 use std::fs;
 use std::path::Component;
 
+#[path = "native_history.rs"]
+mod history;
+pub use history::BorrowedNativeContext;
+
 /// Paths relative to a NEW private_root. The launcher creates/protects only this collection
 /// and its root. It must reject existing roots, traversal, links and unknown ownership.
 /// Do not derive additional directories or cleanup targets by inspecting env/session_meta.
@@ -16,10 +20,12 @@ pub struct RunMaterials {
     pub files: Vec<RunMaterialFile>,
 }
 
-/// Already rendered by 20; no template substitutions, executable permissions or secret logs.
+/// Already rendered by 20; the launcher applies 0700 to executables and 0600 to other files.
+/// No template substitutions or secret logs are allowed during materialization.
 pub struct RunMaterialFile {
     pub relative_path: PathBuf,
     pub contents: Zeroizing<Vec<u8>>,
+    pub executable: bool,
 }
 
 /// Prepared by 20, never created or removed by 18. No run token is stored by this helper.
@@ -28,6 +34,7 @@ pub struct TaskSessionRoot {
     path: PathBuf,
     harness: WorkerHarnessV1,
     workspace_root_identity: String,
+    newly_created: bool,
 }
 
 pub enum SessionRootUse<'a> {
@@ -65,6 +72,7 @@ impl TaskSessionRoot {
         ]))
         .map_err(|_| DelegationErrorV1::InvalidArguments)?;
         let path = base.join(digest.as_str().trim_start_matches("sha256:"));
+        let newly_created = matches!(usage, SessionRootUse::New);
         match usage {
             SessionRootUse::New => {
                 let mut builder = fs::DirBuilder::new();
@@ -86,6 +94,7 @@ impl TaskSessionRoot {
                 for relative in required_history {
                     check_history(&path, relative)?;
                 }
+                history::verify_continuation_materials(&path, harness, required_history)?;
             }
         }
         let actual = checked_directory(&path)?;
@@ -96,6 +105,7 @@ impl TaskSessionRoot {
             path: actual,
             harness,
             workspace_root_identity: workspace_root_identity.to_owned(),
+            newly_created,
         })
     }
 
@@ -349,14 +359,30 @@ impl TaskSessionRoot {
     }
 }
 
-/// Resolve the one adapter-owned append-only transcript for an exact native session. The
-/// relative result is suitable both for continuation retention and for the lifecycle's bounded
-/// post-turn flush observation; neither caller may infer a path from an unverified identifier.
+/// Retain exact continuation evidence beneath the task-owned root. Borrowed clients retain an
+/// immutable session binding, not a claim that their external history is HiRoute-owned. Claude
+/// additionally requires its precise transcript; Codex session/load checks native availability.
 pub(crate) fn native_history(
     root: &Path,
     harness: WorkerHarnessV1,
     native_session_id: &str,
 ) -> Result<Vec<String>, DelegationErrorV1> {
+    if history::read_context(root, harness)?.is_some() {
+        return history::retain_borrowed_session(root, harness, native_session_id);
+    }
+    legacy_native_history(root, harness, native_session_id)
+}
+
+/// Registered recovery reader for pre-native-context tasks with private native storage.
+fn legacy_native_history(
+    root: &Path,
+    harness: WorkerHarnessV1,
+    native_session_id: &str,
+) -> Result<Vec<String>, DelegationErrorV1> {
+    // Qoder has only the borrowed-context contract, never a private legacy reader.
+    if harness == WorkerHarnessV1::QoderCli {
+        return Err(DelegationErrorV1::ResumeUnavailable);
+    }
     if native_session_id.is_empty()
         || native_session_id.len() > 256
         || native_session_id
@@ -380,6 +406,7 @@ pub(crate) fn native_history(
     let durable_root = root.join(match harness {
         WorkerHarnessV1::CodexCli => "sessions",
         WorkerHarnessV1::ClaudeCode => "projects",
+        WorkerHarnessV1::QoderCli => return Err(DelegationErrorV1::ResumeUnavailable),
     });
     let metadata =
         fs::symlink_metadata(&durable_root).map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
@@ -420,6 +447,7 @@ pub(crate) fn native_history(
             let matches_session = match harness {
                 WorkerHarnessV1::CodexCli => file_name.ends_with(&codex_suffix),
                 WorkerHarnessV1::ClaudeCode => file_name == claude_name,
+                WorkerHarnessV1::QoderCli => return Err(DelegationErrorV1::ResumeUnavailable),
             };
             if !matches_session {
                 continue;

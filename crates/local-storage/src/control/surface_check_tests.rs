@@ -60,6 +60,53 @@ fn storage() -> (tempfile::TempDir, ControlStore) {
 }
 
 #[test]
+fn all_supported_native_surfaces_persist_current_verification_independently() {
+    let (_directory, store) = storage();
+    let workspace = WorkspaceId::default();
+    activate(&store, &workspace, 2);
+    let revision = GatewayPublicationRevision::new(2).unwrap();
+    let surfaces = [
+        AgentModelSurfaceV2::CodexCli,
+        AgentModelSurfaceV2::CodexDesktop,
+        AgentModelSurfaceV2::ClaudeCli,
+        AgentModelSurfaceV2::QoderCli,
+    ];
+    for surface in surfaces {
+        assert!(
+            store
+                .save_agent_surface_check(
+                    &workspace,
+                    &record(revision, surface, AgentSurfaceCheckStateV1::Passed)
+                )
+                .unwrap()
+        );
+    }
+    assert_eq!(
+        store
+            .agent_surface_checks(&workspace, "agent-context/surface-check")
+            .unwrap()
+            .len(),
+        surfaces.len()
+    );
+    let failed = record(
+        revision,
+        AgentModelSurfaceV2::QoderCli,
+        AgentSurfaceCheckStateV1::Failed,
+    );
+    assert!(store.save_agent_surface_check(&workspace, &failed).unwrap());
+    let checks = store
+        .agent_surface_checks(&workspace, "agent-context/surface-check")
+        .unwrap();
+    assert_eq!(checks.len(), surfaces.len());
+    assert!(checks.iter().all(|check| check.state
+        == if check.surface == AgentModelSurfaceV2::QoderCli {
+            AgentSurfaceCheckStateV1::Failed
+        } else {
+            AgentSurfaceCheckStateV1::Passed
+        }));
+}
+
+#[test]
 fn current_revision_results_are_kept_and_overwritten_per_surface() {
     let (_directory, store) = storage();
     let workspace = WorkspaceId::default();

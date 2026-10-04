@@ -116,3 +116,62 @@ pub struct AgentConnectionStatusV1 {
 pub struct AgentLaunchDescriptorRequestV1 {
     pub connection_id: String,
 }
+
+/// Closed public reasons for an explicitly requested native collaboration check. Native output,
+/// paths and credentials are never part of this diagnostic contract.
+pub const AGENT_COLLABORATION_CHECK_FAILURE_SCHEMA_V1: &str =
+    "hiroute.agent-collaboration-check-failure/v1";
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentCollaborationCheckFailureReasonV1 {
+    LoginRequired,
+    InstalledSkillMissing,
+    InstalledSkillChanged,
+    InstalledSkillInvalid,
+    NativeContextUnavailable,
+    NativeContextChanged,
+    DependencyUnavailable,
+    CheckTimedOut,
+    VerificationFailed,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCollaborationCheckFailureV1 {
+    pub schema: String,
+    pub reason: AgentCollaborationCheckFailureReasonV1,
+}
+
+impl AgentCollaborationCheckFailureV1 {
+    pub fn new(reason: AgentCollaborationCheckFailureReasonV1) -> Self {
+        Self {
+            schema: AGENT_COLLABORATION_CHECK_FAILURE_SCHEMA_V1.into(),
+            reason,
+        }
+    }
+    pub fn valid(&self) -> bool {
+        self.schema == AGENT_COLLABORATION_CHECK_FAILURE_SCHEMA_V1
+    }
+}
+
+#[cfg(test)]
+mod collaboration_check_failure_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn collaboration_failure_details_reject_native_output_and_unknown_reasons() {
+        let value = json!({"schema":"hiroute.agent-collaboration-check-failure/v1", "reason":"login_required"});
+        let failure: AgentCollaborationCheckFailureV1 =
+            serde_json::from_value(value.clone()).unwrap();
+        assert!(failure.valid());
+        assert_eq!(serde_json::to_value(failure).unwrap(), value);
+        let mut leaked = value.clone();
+        leaked["native_output"] = "secret native output".into();
+        assert!(serde_json::from_value::<AgentCollaborationCheckFailureV1>(leaked).is_err());
+        let mut unknown = value;
+        unknown["reason"] = "/private/path/token".into();
+        assert!(serde_json::from_value::<AgentCollaborationCheckFailureV1>(unknown).is_err());
+    }
+}

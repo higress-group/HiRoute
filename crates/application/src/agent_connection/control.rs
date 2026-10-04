@@ -56,11 +56,16 @@ pub(crate) fn check(
         let target = request.target.as_ref().ok_or(ControlReadError::Corrupt)?;
         if agent.context_id.as_deref() != Some(target.context_id.as_str())
             || match request.agent_id.as_str() {
-                "agent_codex_default" => {
-                    target.surface == hiroute_application_api::AgentModelSurfaceV2::ClaudeCli
-                }
+                "agent_codex_default" => !matches!(
+                    target.surface,
+                    hiroute_application_api::AgentModelSurfaceV2::CodexCli
+                        | hiroute_application_api::AgentModelSurfaceV2::CodexDesktop
+                ),
                 "agent_claude_default" => {
                     target.surface != hiroute_application_api::AgentModelSurfaceV2::ClaudeCli
+                }
+                "agent_qoder_default" => {
+                    target.surface != hiroute_application_api::AgentModelSurfaceV2::QoderCli
                 }
                 _ => true,
             }

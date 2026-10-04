@@ -34,15 +34,10 @@ test('all fixed product font declarations participate in text scaling', () => {
   }
 });
 
-test('the product settings expose all three persisted text scales', () => {
-  const settings = read('src/product/SettingsPage.tsx');
-  assert.match(settings, /\(\[1, 1\.5, 2\] as const\)/);
-  assert.match(settings, /onTextScaleChange\(scale\)/);
-  const app = read('src/product/DesktopApp.tsx');
-  assert.match(app, /textScale=\{preferences\.textScale\}/);
-  assert.match(app, /onTextScaleChange=\{preferences\.setTextScale\}/);
-  const pages = read('src/occami/styles/pages.css');
-  assert.doesNotMatch(pages, /height:\s*calc\(100%\s*-\s*(?:72|104|112)px\)/);
+// Interactive behavior is covered by stable IDs in v3/browser/*-scenarios.mjs.
+// Keep this file for stylesheet conventions, native capabilities and byte contracts.
+test('page layouts do not subtract fixed header heights from scaled content', () => {
+  assert.doesNotMatch(read('src/occami/styles/pages.css'), /height:\s*calc\(100%\s*-\s*(?:72|104|112)px\)/);
 });
 
 test('the shared sidebar keeps every navigation action reachable at high text scale', () => {
@@ -68,10 +63,6 @@ test('product collapsibles use the shared accessible Disclosure', () => {
   };
   visit(sourceRoot);
   assert.deepEqual(offenders, []);
-  const disclosure = read('src/ui/Disclosure.tsx');
-  assert.match(disclosure, /<summary aria-expanded=\{open\}>/);
-  assert.match(disclosure, /disclosureActionLabel\(open, language\)/);
-  assert.match(disclosure, /<div className="disclosure-body">\{children\}<\/div>/);
 });
 
 test('the routing connection name is direct and documents its stable Agent identity', () => {
@@ -81,43 +72,18 @@ test('the routing connection name is direct and documents its stable Agent ident
   assert.doesNotMatch(editor, /Agent 调用名称|稳定模型名/);
 });
 
-test('classifier choices expose an unmistakable selected state and left-aligned copy', () => {
-  const editor = read('src/plan-editor.tsx');
-  assert.match(editor, /className="option-row classifier-choice"/);
-  assert.match(editor, /任务判断/);
-  assert.match(editor, /内置规则/);
-  assert.match(editor, /自定义分类服务/);
-  assert.match(editor, /Jev、LLM 或其他自定义策略/);
-  assert.doesNotMatch(editor, /BERT/);
-  assert.match(editor, /aria-pressed=\{classifier\.kind === 'local_rules'\}/);
-  assert.match(editor, /aria-pressed=\{classifier\.kind === 'rest'\}/);
-  assert.match(editor, /classifier\.kind === 'local_rules' && <UiIcon name="check"/);
-  assert.match(editor, /classifier\.kind === 'rest' && <UiIcon name="check"/);
+test('selected classifier choices retain a distinct border and left-aligned copy', () => {
   const pages = read('src/occami/styles/pages.css');
   assert.match(pages, /button\.option-row\[aria-pressed='true'\]\s*\{[^}]*border-color:\s*var\(--accent\)/);
   assert.match(pages, /\.option-row > div\s*\{[^}]*text-align:\s*left/);
 });
 
-test('the custom classifier protocol dialog exposes curl and the native OpenAPI save action', () => {
-  const dialog = read('src/features/ClassifierProtocolDialog.tsx');
-  assert.match(dialog, /查看|接入协议/);
-  assert.match(dialog, /复制 curl/);
-  assert.match(dialog, /保存 OpenAPI/);
-  assert.match(dialog, /save_classifier_openapi/);
-  assert.match(dialog, /请选择保存位置/);
-  assert.match(dialog, /已取消保存/);
-  assert.doesNotMatch(dialog, /createObjectURL|document\.createElement\('a'\)/);
-  assert.match(dialog, /hiroute-decision\.openapi\.json/);
-  for (const field of ['branches', 'latest_user', 'visible_conversation', 'history_partial', 'assessment_from']) {
-    assert.match(dialog, new RegExp(`"${field}"`));
-  }
-
+test('the native classifier download embeds the public OpenAPI contract byte for byte', () => {
   const contractPath = join(desktop, '..', '..', 'decision-extensions', 'api', 'decision.openapi.json');
   const openapi = JSON.parse(readFileSync(contractPath, 'utf8'));
   assert.equal(openapi.openapi, '3.1.0');
   assert.equal(openapi.info.title, 'HiRoute Decision API');
   assert.deepEqual(Object.keys(openapi.paths), ['/v1/decisions']);
-  assert.match(dialog, /https:\/\/classifier\.example\/v1\/decisions/);
   const native = read('src-tauri/src/bridge/classifier.rs');
   assert.match(native, /hiroute-decision\.openapi\.json/);
   const embedded = native.match(/include_str!\("([^"]+)"\)/)[1];
@@ -143,13 +109,6 @@ test('the classifier diagnostic warning is fully localized', () => {
   assert.doesNotMatch(editor, /This is a synthetic connectivity test/);
 });
 
-test('plan performance automatically scopes model presentation without a typed model id', () => {
-  const editor = read('src/plan-editor.tsx');
-  const quality = read('src/features/PlanQuality.tsx');
-  assert.match(editor, /currentModels=\{activePlanQualityModels\(plan, options\?\.candidates \?\? \[\]\)\}/);
-  assert.match(quality, /当前生效版本模型/);
-  assert.doesNotMatch(quality, /quality-model-filter|实际模型 ID|Executed model ID/);
-});
 
 test('native window configuration keeps macOS controls and shared localization', () => {
   const config = JSON.parse(read('src-tauri/tauri.conf.json'));
@@ -170,81 +129,47 @@ test('native window configuration keeps macOS controls and shared localization',
   assert.match(plist, /<string>zh-Hans<\/string>/);
 });
 
-test('external links use the bounded native browser command and retain web preview behavior', () => {
-  const form = read('src/features/model-connections/ModelConnectionForm.tsx');
-  assert.match(form, /"__TAURI_INTERNALS__" in window/);
-  assert.match(form, /invoke\('open_external_url', \{ url \}\)/);
-  assert.match(form, /target="_blank"/);
-  assert.match(form, /当前表单内容已保留/);
+test('the native documentation browser command is explicitly permitted', () => {
   const capability = JSON.parse(read('src-tauri/capabilities/main.json'));
   assert.ok(capability.permissions.includes('allow-open-external-url'));
 });
 
-test('Codex routing form only shows configured native overrides and explains the chosen default', () => {
-  const agents = read('src/agents.tsx');
-  assert.match(agents, /const fixedModelRows = editorValues\.fixedModels\.map/);
-  assert.match(agents, /fixedModelRows\.length > 0 && <fieldset data-agent-fixed-models>/);
-  assert.doesNotMatch(agents, /hiddenCatalogModelCount/);
-  assert.match(agents, /defaultChoice\.kind === 'plan'[\s\S]*Codex 将默认使用所选智能路由/);
-  assert.match(agents, /保留当前默认模型名称；请求仍经过 HiRoute/);
-  assert.match(agents, /data-agent-service-responsibility/);
-  assert.match(agents, /使用路由时请保持 HiRoute 运行/);
-  assert.match(agents, /启用不会自动设置开机启动/);
-});
-
-test('Agent home does not offer duplicate paid per-client live probes', () => {
-  const agents = read('src/agents.tsx');
-  assert.doesNotMatch(agents, /check_agent_live|data-agent-surface-status|真实验证（最多/);
-  assert.match(agents, /data-codex-shared-scope/);
-});
-
-test('Claude routing promises the normal CLI entry and does not ask for a special launcher', () => {
-  const agents = read('src/agents.tsx');
-  assert.match(agents, /直接启动 claude，使用 Opus、Sonnet、Haiku 原生预设/);
-  assert.match(agents, /账号 Default 仍需真实调用验证/);
-  assert.match(agents, /路由已配置 · 调用未验证/);
-  assert.doesNotMatch(agents, /hiroute agent launch --agent claude-code/);
-});
-
-test('model readiness copy does not claim that an upstream call was verified', () => {
-  const models = read('src/features/models/Models.tsx');
-  assert.match(models, /available: \['good', zh \? '接入就绪' : 'Connection ready'\]/);
-  assert.match(models, /不代表上游推理或工具调用已验证/);
-});
-
-test('returning to the routing editor refreshes saved-model choices', () => {
-  const editor = read('src/plan-editor.tsx');
-  assert.match(editor, /if \(!active\) return;[\s\S]*'compute_management_snapshot'[\s\S]*\}, \[active, language\]\)/);
-  assert.match(editor, /'plan_editor_options'[\s\S]*\}, \[active, editor, language, optionsRetry\]\)/);
-});
-
-test('closing operation feedback does not stop or cancel observation', () => {
-  const app = read('src/product/DesktopApp.tsx');
-  const dismiss = app.slice(app.indexOf('function dismissOperation'), app.indexOf('function retryOperationObservation'));
-  assert.match(dismiss, /setDismissedOperationId/);
-  assert.doesNotMatch(dismiss, /setObserving|stop_observing|cancel/);
-});
-
-test('terminal success converges while an unknown result keeps an explicit retry', () => {
-  const app = read('src/product/DesktopApp.tsx');
-  assert.match(app, /operationView\.phase !== 'succeeded'/);
-  assert.match(app, /setTimeout\(\(\) => setDismissedOperationId\(feedbackId\), 4500\)/);
-  assert.match(app, /operationView\.phase === 'unverified'[\s\S]*retryOperationObservation/);
-  assert.match(app, /\['pending', 'unverified'\]\.includes\(operationView\.phase\) && <span className="oc-spinner"/);
-  assert.match(app, /OBSERVATION_GRACE_MS/);
-  assert.match(app, /noteUnconfirmed\('OPERATION_IDENTITY_MISMATCH'\)/);
-  assert.doesNotMatch(app, /setOperationError\(pendingOperationId \? '' : OPERATION_RESULT_UNVERIFIED\)/);
-  assert.match(app, /currentPendingHint\(snapshotPending, supersededPendingKey\.current\)/);
-  assert.match(app, /data-observation-error-code=\{presentedOperationError \|\| undefined\}/);
-  assert.doesNotMatch(app, /presentedOperationError && <div className="callout bad"/);
-});
-
-test('every accepted or unverified operation restarts the polling effect', () => {
-  const app = read('src/product/DesktopApp.tsx');
-  const accept = app.slice(app.indexOf('function acceptOperation'), app.indexOf('function dismissOperation'));
-  assert.match(accept, /setPollingRevision\(current => current \+ 1\)/);
-  assert.match(accept, /function acceptUnverifiedOperation/);
-  const pollingEffectEnd = app.indexOf('useEffect(() => {\n    const pendingOperationId');
-  const pollingEffect = app.slice(app.indexOf('const generation = ++pollingGeneration.current'), pollingEffectEnd);
-  assert.match(pollingEffect, /pollingRevision/);
+test('native command authority agrees across handlers, manifest and main-window permissions', () => {
+  const commandList = (source, pattern, itemPattern, label) => {
+    const blocks = [...source.matchAll(pattern)];
+    assert.equal(blocks.length, 1, `${label}: expected one command registry`);
+    const items = blocks[0][1].split(',').map(item => item.trim()).filter(Boolean);
+    const commands = items.map(item => {
+      const match = item.match(itemPattern);
+      assert.ok(match, `${label}: unrecognized registry item ${item}`);
+      return match[1];
+    });
+    assert.ok(commands.length > 0, `${label}: command registry must not be empty`);
+    assert.equal(new Set(commands).size, commands.length, `${label}: duplicate command`);
+    return commands.sort();
+  };
+  const handlers = commandList(
+    read('src-tauri/src/bridge.rs'), /tauri::generate_handler!\[([\s\S]*?)\]/g,
+    /^([a-z][a-z0-9_]*)$/, 'Tauri handlers',
+  );
+  const manifest = commandList(
+    read('src-tauri/build.rs'), /AppManifest::new\(\)\.commands\(&\[([\s\S]*?)\]\)/g,
+    /^"([a-z][a-z0-9_]*)"$/, 'AppManifest',
+  );
+  assert.deepEqual(manifest, handlers, 'every bundled command needs a generated ACL manifest entry');
+  const capability = JSON.parse(read('src-tauri/capabilities/main.json'));
+  const permissions = capability.permissions.filter(permission => permission.startsWith('allow-')).sort();
+  assert.deepEqual(permissions, handlers.map(command => `allow-${command.replaceAll('_', '-')}`).sort(),
+    'the main window must explicitly permit each bundled product command');
+  const generatedDirectory = 'src-tauri/permissions/autogenerated';
+  assert.deepEqual(readdirSync(join(desktop, generatedDirectory)).filter(name => name.endsWith('.toml')).sort(),
+    handlers.map(command => `${command}.toml`).sort(), 'generated permissions must cover the same commands');
+  for (const command of handlers) {
+    const permission = read(`${generatedDirectory}/${command}.toml`);
+    const name = command.replaceAll('_', '-');
+    assert.ok(permission.includes(`identifier = "allow-${name}"`), `${command}: missing allow permission`);
+    assert.ok(permission.includes(`commands.allow = ["${command}"]`), `${command}: wrong allowed command`);
+    assert.ok(permission.includes(`identifier = "deny-${name}"`), `${command}: missing deny permission`);
+    assert.ok(permission.includes(`commands.deny = ["${command}"]`), `${command}: wrong denied command`);
+  }
 });

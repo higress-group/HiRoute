@@ -3,8 +3,9 @@
 use super::acp::AcpNativeIdentityContract;
 use hiroute_domain::ProtectedSecret;
 use hiroute_domain::delegation::{
-    DelegationErrorV1, WorkerExecutionIntentV1, WorkerHarnessV1, WorkerNetworkV1,
-    WorkerPermissionPolicyV1, WorkerToolV1, WorkspaceAccessV1, WorkspaceExecutionPermitV1,
+    DelegationErrorV1, WorkerExecutionIntentV1, WorkerHarnessV1, WorkerLaunchFormV1,
+    WorkerNetworkV1, WorkerPermissionPolicyV1, WorkerToolV1, WorkspaceAccessV1,
+    WorkspaceExecutionPermitV1,
 };
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
@@ -13,22 +14,33 @@ use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 mod capabilities;
+mod claude;
+mod claude_runtime;
+mod codex;
+mod native_context;
+mod qoder;
+pub use native_context::NativeWorkerContext;
 
 mod materials;
 pub(crate) use materials::native_history;
-pub use materials::{RunMaterialFile, RunMaterials, SessionRootUse, TaskSessionRoot};
+pub use materials::{
+    BorrowedNativeContext, RunMaterialFile, RunMaterials, SessionRootUse, TaskSessionRoot,
+};
 
 pub struct ProfileInput<'a> {
-    pub claude_context_window: Option<u64>,
+    pub context_window_tokens: Option<u64>,
+    /// Qoder's frozen catalogue output upper bound; other Harness renderers are unchanged.
+    pub max_output_tokens: Option<u64>,
     pub harness: WorkerHarnessV1,
-    pub adapter: &'a Path,
+    pub adapter: Option<&'a Path>,
     pub harness_binary: &'a Path,
     pub node_binary: Option<&'a Path>,
     pub private_root: &'a Path,
     pub session_root: &'a TaskSessionRoot,
+    pub native_context: &'a NativeWorkerContext,
     pub workspace: &'a Path,
     pub alias: &'a str,
-    /// One alias entry derived from the exact frozen Plan for this private Codex target.
+    /// One alias entry derived from the exact frozen Plan, stored in the owned task root.
     pub codex_catalog: Option<&'a [u8]>,
     pub native_effort: Option<&'a str>,
     pub gateway: SocketAddr,
@@ -55,6 +67,8 @@ pub struct CandidateWorkerProfile {
     tools: Vec<WorkerToolV1>,
     permission_policy: WorkerPermissionPolicyV1,
     native_session_mode: String,
+    native_selected_model_id: String,
+    codex_initialization_root: Option<PathBuf>,
 }
 
 pub use super::platform::WorkerPlatformCapabilities;
@@ -67,14 +81,18 @@ impl CandidateWorkerProfile {
             input.permit.generation,
         )?;
         let identity_contract = capabilities::identity_contract(&input)?;
-        if ![
-            input.adapter,
-            input.harness_binary,
-            input.private_root,
-            input.workspace,
-        ]
-        .iter()
-        .all(|p| p.is_absolute())
+        let selection = hiroute_domain::WorkerDependencySelectionRecordV1 {
+            harness: input.harness,
+            adapter_path: input.adapter.map(path_string).transpose()?,
+            cli_path: path_string(input.harness_binary)?,
+            node_path: input.node_binary.map(path_string).transpose()?,
+        };
+        let launch = selection
+            .validated_launch()
+            .map_err(|_| DelegationErrorV1::InvalidArguments)?;
+        if ![input.harness_binary, input.private_root, input.workspace]
+            .iter()
+            .all(|p| p.is_absolute())
             || input.node_binary.is_some_and(|p| !p.is_absolute())
             || !input.gateway.is_ipv4()
             || input.gateway.ip().is_unspecified()
@@ -89,11 +107,7 @@ impl CandidateWorkerProfile {
         {
             return Err(DelegationErrorV1::InvalidArguments);
         }
-        let token = std::str::from_utf8(input.token.expose())
-            .map_err(|_| DelegationErrorV1::InvalidArguments)?;
-        if token.len() > 4096 || !token.bytes().all(|b| b.is_ascii_graphic()) {
-            return Err(DelegationErrorV1::InvalidArguments);
-        }
+        secret_str(&input.token)?;
         input
             .session_root
             .check_binding(input.harness, &input.execution.root_identity)?;
@@ -115,7 +129,24 @@ impl CandidateWorkerProfile {
             ),
         };
         let private_root = materials::checked_run_root(input.private_root, input.session_root)?;
-        let origin = format!("http://{}", input.gateway);
+        if input.native_context.is_borrowed() {
+            if input.native_context.home().starts_with(&private_root)
+                || input
+                    .native_context
+                    .config_root()
+                    .starts_with(&private_root)
+                || input
+                    .native_context
+                    .config_root()
+                    .starts_with(input.session_root.path())
+            {
+                return Err(DelegationErrorV1::InvalidArguments);
+            }
+        } else if input.native_context.home() != private_root.join("home")
+            || input.native_context.config_root() != input.session_root.path()
+        {
+            return Err(DelegationErrorV1::InvalidArguments);
+        }
         let native_session_mode = match (input.harness, input.permission_policy) {
             (WorkerHarnessV1::CodexCli, WorkerPermissionPolicyV1::ApproveAll) => {
                 "agent-full-access"
@@ -125,11 +156,13 @@ impl CandidateWorkerProfile {
                 "bypassPermissions"
             }
             (WorkerHarnessV1::ClaudeCode, _) => "default",
+            (WorkerHarnessV1::QoderCli, WorkerPermissionPolicyV1::ApproveAll) => "yolo",
+            (WorkerHarnessV1::QoderCli, _) => return Err(DelegationErrorV1::CapabilityUnavailable),
         };
         let mut env = BTreeMap::new();
         // This is a new child environment, never merged with std::env::vars().
         // Tool discovery is not authentication. Keep an explicit command search
-        // path while leaving ambient model credentials and configuration behind.
+        // path while leaving ambient model credentials behind. Native context selectors are explicit.
         env.insert(
             "PATH".into(),
             Zeroizing::new(worker_path(
@@ -140,129 +173,48 @@ impl CandidateWorkerProfile {
         );
         env.insert(
             "HOME".into(),
-            Zeroizing::new(path_string(&private_root.join("home"))?),
+            Zeroizing::new(path_string(input.native_context.home())?),
         );
         env.insert(
             "TMPDIR".into(),
             Zeroizing::new(path_string(&private_root.join("tmp"))?),
         );
-        let mut session_meta = Map::new();
-        match input.harness {
-            WorkerHarnessV1::CodexCli => {
-                let catalog_path = input
-                    .codex_catalog
-                    .map(|catalog| {
-                        input
-                            .session_root
-                            .prepare_codex_catalog(input.alias, catalog)
-                    })
-                    .transpose()?;
-                input
-                    .session_root
-                    .prepare_codex_provider(input.gateway, catalog_path.as_deref())?;
-                let (approval_policy, sandbox_mode) = match input.permission_policy {
-                    WorkerPermissionPolicyV1::ApproveAll => ("never", "danger-full-access"),
-                    WorkerPermissionPolicyV1::ApproveReads | WorkerPermissionPolicyV1::DenyAll => {
-                        ("on-request", "read-only")
-                    }
-                };
-                let mut config = json!({
-                    "model":input.alias, "model_provider":"hiroute", "approval_policy":approval_policy,
-                    "sandbox_mode":sandbox_mode,
-                    "model_providers":{"hiroute":{
-                        "name":"HiRoute managed run", "base_url":format!("{origin}/v1"),
-                        "wire_api":"responses", "supports_websockets":false,
-                        "env_key":"HIROUTE_RUN_TOKEN", "requires_openai_auth":false
-                    }},
-                    "features":{"multi_agent":false,"shell_tool":projected_tools.contains(&WorkerToolV1::Shell)},
-                    "web_search": if network == WorkerNetworkV1::Allowed { "live" } else { "disabled" },
-                    "mcp_servers":{},
-                    "sandbox_workspace_write":{"network_access":network == WorkerNetworkV1::Allowed},
-                });
-                if let Some(effort) = input.native_effort {
-                    config["model_reasoning_effort"] = json!(effort);
-                }
-                if let Some(path) = catalog_path {
-                    config["model_catalog_json"] = json!(path_string(&path)?);
-                }
-                env.insert("CODEX_CONFIG".into(), Zeroizing::new(config.to_string()));
-                // codex-acp owns a per-turn AgentMode that overrides the app-server defaults.
-                // Seed that exact native mode and verify it again over ACP before the prompt.
-                env.insert(
-                    "INITIAL_AGENT_MODE".into(),
-                    Zeroizing::new(native_session_mode.into()),
-                );
-                env.insert("MODEL_PROVIDER".into(), Zeroizing::new("hiroute".into()));
-                env.insert(
-                    "CODEX_PATH".into(),
-                    Zeroizing::new(path_string(input.harness_binary)?),
-                );
-                env.insert(
-                    "CODEX_HOME".into(),
-                    Zeroizing::new(path_string(input.session_root.path())?),
-                );
-                env.insert("HIROUTE_RUN_TOKEN".into(), Zeroizing::new(token.to_owned()));
-            }
-            WorkerHarnessV1::ClaudeCode => {
-                if let Some(window) = input.claude_context_window {
-                    let values = hiroute_domain::claude_context_environment(window)
-                        .ok_or(DelegationErrorV1::CapabilityUnavailable)?;
-                    for (key, value) in values {
-                        env.insert(key, Zeroizing::new(value));
-                    }
-                }
-                env.insert(
-                    "CLAUDE_CODE_EXECUTABLE".into(),
-                    Zeroizing::new(path_string(input.harness_binary)?),
-                );
-                env.insert(
-                    "CLAUDE_CONFIG_DIR".into(),
-                    Zeroizing::new(path_string(input.session_root.path())?),
-                );
-                // Claude Code may otherwise contact update, telemetry, and error-reporting
-                // endpoints independently of the selected model provider. A managed Worker
-                // process is allowed to reach its HiRoute Gateway (and projected tools may
-                // separately have network access), but ambient product traffic must stay off.
-                env.insert(
-                    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".into(),
-                    Zeroizing::new("1".into()),
-                );
-                env.insert("ANTHROPIC_BASE_URL".into(), Zeroizing::new(origin));
-                env.insert(
-                    "ANTHROPIC_AUTH_TOKEN".into(),
-                    Zeroizing::new(token.to_owned()),
-                );
-                env.insert(
-                    "ANTHROPIC_MODEL".into(),
-                    Zeroizing::new(input.alias.to_owned()),
-                );
-                let mut tools = vec![];
-                for tool in &projected_tools {
-                    match tool {
-                        WorkerToolV1::Read => tools.extend(["Read", "Glob", "Grep"]),
-                        WorkerToolV1::Edit => tools.extend(["Edit", "Write"]),
-                        WorkerToolV1::Shell => tools.push("Bash"),
-                    }
-                }
-                if input.permission_policy == WorkerPermissionPolicyV1::ApproveAll {
-                    tools.extend(["WebSearch", "WebFetch"]);
-                }
-                let mut options = json!({
-                    "settingSources":[], "model":input.alias, "tools":tools,
-                    "disallowedTools":["Agent","Task","AskUserQuestion"],
-                    "mcpServers":{}, "plugins":[], "hooks":{},
-                    "settings":{"apiKeyHelper":""},
-                });
-                if let Some(effort) = input.native_effort {
-                    options["effort"] = json!(effort);
-                }
-                session_meta.insert("claudeCode".into(), json!({"options":options}));
-            }
+        if input.harness == WorkerHarnessV1::ClaudeCode && input.native_context.is_borrowed() {
+            // Only the explicitly selected Node can establish the adapter environment guard.
+            // An executable adapter discovered without a runtime remains discoverable, but
+            // cannot silently start with unguarded borrowed settings.
+            input
+                .node_binary
+                .ok_or(DelegationErrorV1::CapabilityUnavailable)?;
+            claude_runtime::require_host_managed_provider(
+                input.harness_binary,
+                env["PATH"].as_str(),
+            )?;
         }
-        let (executable, args) = input.node_binary.map_or_else(
-            || (input.adapter.to_owned(), vec![]),
-            |node| (node.to_owned(), vec![input.adapter.to_owned()]),
-        );
+        let rendered = match input.harness {
+            WorkerHarnessV1::CodexCli => {
+                codex::render(&input, &projected_tools, network, native_session_mode)?
+            }
+            WorkerHarnessV1::ClaudeCode => claude::render(&input, &projected_tools)?,
+            WorkerHarnessV1::QoderCli => qoder::render(&input, &private_root)?,
+        };
+        env.extend(rendered.env);
+        let (executable, args) = match launch {
+            WorkerLaunchFormV1::NativeAcp { cli } => (PathBuf::from(cli), rendered.native_args),
+            WorkerLaunchFormV1::AdapterAcp { adapter, node, .. } => {
+                if let Some(bootstrap) = rendered.adapter_bootstrap {
+                    (
+                        PathBuf::from(node.ok_or(DelegationErrorV1::CapabilityUnavailable)?),
+                        vec![private_root.join(bootstrap), PathBuf::from(adapter)],
+                    )
+                } else {
+                    node.map_or_else(
+                        || (PathBuf::from(adapter), vec![]),
+                        |node| (PathBuf::from(node), vec![PathBuf::from(adapter)]),
+                    )
+                }
+            }
+        };
         Ok(Self {
             executable,
             args,
@@ -270,17 +222,25 @@ impl CandidateWorkerProfile {
             private_root,
             session_root: input.session_root.path().to_owned(),
             materials: RunMaterials {
-                directories: vec!["home".into(), "tmp".into()],
-                files: vec![],
+                directories: if input.native_context.is_borrowed() {
+                    vec!["tmp".into()]
+                } else {
+                    vec!["home".into(), "tmp".into()]
+                },
+                files: rendered.files,
             },
             env,
-            session_meta,
+            session_meta: rendered.session_meta,
             identity_contract,
             access,
             network,
             tools: projected_tools,
             permission_policy: input.permission_policy,
             native_session_mode: native_session_mode.to_owned(),
+            native_selected_model_id: rendered.native_model_id,
+            codex_initialization_root: (input.harness == WorkerHarnessV1::CodexCli
+                && input.native_context.is_borrowed())
+            .then(|| input.native_context.config_root().to_owned()),
         })
     }
 
@@ -297,6 +257,17 @@ impl CandidateWorkerProfile {
     /// Exact adapter-owned session mode that must be advertised and selected before prompting.
     pub fn native_session_mode(&self) -> &str {
         &self.native_session_mode
+    }
+
+    /// The exact native selector ID. Plan/Gateway authorization still uses the raw alias.
+    pub fn native_selected_model_id(&self) -> &str {
+        &self.native_selected_model_id
+    }
+
+    /// The installation owner has already bound the canonical effective native root.
+    /// Never derive this coordination key from cwd, a model alias, or mutable child env.
+    pub(crate) fn codex_initialization_root(&self) -> Option<&Path> {
+        self.codex_initialization_root.as_deref()
     }
 
     /// Compatibility check for callers that require a native Harness profile. Restricted
@@ -348,6 +319,29 @@ pub(crate) fn test_codex_catalog(alias: &str) -> Vec<u8> {
     .unwrap()
 }
 
+#[derive(Default)]
+struct RenderedHarnessProfile {
+    env: BTreeMap<String, Zeroizing<String>>,
+    session_meta: Map<String, Value>,
+    files: Vec<RunMaterialFile>,
+    adapter_bootstrap: Option<PathBuf>,
+    native_args: Vec<PathBuf>,
+    native_model_id: String,
+}
+
+fn secret_str(secret: &ProtectedSecret) -> Result<&str, DelegationErrorV1> {
+    let value =
+        std::str::from_utf8(secret.expose()).map_err(|_| DelegationErrorV1::InvalidArguments)?;
+    if value.len() > 4096 || !value.bytes().all(|b| b.is_ascii_graphic()) {
+        return Err(DelegationErrorV1::InvalidArguments);
+    }
+    Ok(value)
+}
+
+fn secret_string(secret: &ProtectedSecret) -> Result<String, DelegationErrorV1> {
+    secret_str(secret).map(str::to_owned)
+}
+
 fn path_string(path: &Path) -> Result<String, DelegationErrorV1> {
     path.to_str()
         .filter(|s| !s.contains(['\n', '\r', '\0']))
@@ -358,10 +352,10 @@ fn path_string(path: &Path) -> Result<String, DelegationErrorV1> {
 fn worker_path(
     harness: &Path,
     node: Option<&Path>,
-    adapter: &Path,
+    adapter: Option<&Path>,
 ) -> Result<String, DelegationErrorV1> {
     let mut paths = Vec::new();
-    for executable in [node, Some(harness), Some(adapter)].into_iter().flatten() {
+    for executable in [node, Some(harness), adapter].into_iter().flatten() {
         if let Some(parent) = executable.parent() {
             paths.push(parent.to_owned());
         }

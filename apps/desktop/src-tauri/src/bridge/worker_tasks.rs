@@ -156,10 +156,13 @@ fn normalize_worker_dependency_selection(
     if !request.valid() {
         return Err("REQUEST_INVALID".into());
     }
-    let adapter = normalize_required_path(
-        Path::new(&request.adapter_path),
-        request.node_path.is_none(),
-    )?;
+    // The shared launch form requires adapters for Codex/Claude and forbids them for
+    // native ACP clients. Only normalize components that the validated shape contains.
+    let adapter = request
+        .adapter_path
+        .as_deref()
+        .map(|path| normalize_required_path(Path::new(path), request.node_path.is_none()))
+        .transpose()?;
     let cli = normalize_required_path(Path::new(&request.cli_path), true)?;
     let node = request
         .node_path
@@ -168,7 +171,7 @@ fn normalize_worker_dependency_selection(
         .transpose()?;
     let normalized = WorkerDependenciesSelectRequestV1 {
         harness: request.harness,
-        adapter_path: normalized_path_string(adapter)?,
+        adapter_path: adapter.map(normalized_path_string).transpose()?,
         cli_path: normalized_path_string(cli)?,
         node_path: node.map(normalized_path_string).transpose()?,
         expected_selection_revision: request.expected_selection_revision,
@@ -557,83 +560,5 @@ pub async fn worker_task_continue(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use hiroute_domain::delegation::WorkerHarnessV1;
-
-    fn selection(root: &Path) -> WorkerDependenciesSelectRequestV1 {
-        WorkerDependenciesSelectRequestV1 {
-            harness: WorkerHarnessV1::CodexCli,
-            adapter_path: root.join("adapter.js").to_string_lossy().into_owned(),
-            cli_path: root.join("codex").to_string_lossy().into_owned(),
-            node_path: Some(root.join("node").to_string_lossy().into_owned()),
-            expected_selection_revision: 3,
-        }
-    }
-
-    fn make_file(path: &Path, mode: u32) {
-        fs::write(path, b"fixture").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
-        }
-    }
-
-    #[test]
-    fn preparation_canonicalizes_and_checks_each_selected_component() {
-        let root = tempfile::tempdir().unwrap();
-        make_file(&root.path().join("adapter.js"), 0o600);
-        make_file(&root.path().join("codex"), 0o700);
-        make_file(&root.path().join("node"), 0o700);
-        let normalized = normalize_worker_dependency_selection(&selection(root.path())).unwrap();
-        assert_eq!(
-            normalized.adapter_path,
-            fs::canonicalize(root.path().join("adapter.js"))
-                .unwrap()
-                .to_string_lossy()
-        );
-        let native_adapter = WorkerDependenciesSelectRequestV1 {
-            node_path: None,
-            ..normalized
-        };
-        assert!(normalize_worker_dependency_selection(&native_adapter).is_err());
-    }
-
-    #[test]
-    fn confirmation_is_window_bound_single_use_and_expiring() {
-        let root = tempfile::tempdir().unwrap();
-        make_file(&root.path().join("adapter.js"), 0o600);
-        make_file(&root.path().join("codex"), 0o700);
-        make_file(&root.path().join("node"), 0o700);
-        let state = WorkerDependencyConfirmationState::default();
-        let first = state.prepare("main", selection(root.path()), 1).unwrap();
-        assert!(state.take("other", &first.confirmation_id, 2).is_err());
-        let second = state.prepare("main", selection(root.path()), 3).unwrap();
-        assert!(state.take("main", &first.confirmation_id, 4).is_err());
-        assert_eq!(
-            state.take("main", &second.confirmation_id, 5).unwrap(),
-            selection(root.path())
-        );
-        assert!(state.take("main", &second.confirmation_id, 6).is_err());
-        let expired = state.prepare("main", selection(root.path()), 10).unwrap();
-        assert!(
-            state
-                .take(
-                    "main",
-                    &expired.confirmation_id,
-                    10 + WORKER_DEPENDENCY_CONFIRMATION_TTL_MS + 1,
-                )
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn cancellation_is_idempotent_for_the_owning_window() {
-        let root = tempfile::tempdir().unwrap();
-        let state = WorkerDependencyConfirmationState::default();
-        let confirmation = state.prepare("main", selection(root.path()), 1).unwrap();
-        state.cancel("main", &confirmation.confirmation_id).unwrap();
-        state.cancel("main", &confirmation.confirmation_id).unwrap();
-    }
-}
+#[path = "worker_dependencies_tests.rs"]
+mod tests;

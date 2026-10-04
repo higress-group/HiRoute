@@ -2,7 +2,7 @@
 use super::acp::{AcpRunInput, AcpRunJournal, AcpRunOutcome, run_acp_with_progress};
 use super::finalization::DelegationFinalizationLease;
 use super::platform::*;
-use super::profile::native_history;
+use super::profile::TaskSessionRoot;
 use super::progress::{ProgressBatchWriter, ProgressCapture};
 use hiroute_domain::delegation::DelegationErrorV1;
 use std::fs;
@@ -15,6 +15,8 @@ pub const STOP_WAIT_MS: u64 = 10_000;
 const CLAUDE_HISTORY_FLUSH_WAIT: Duration = Duration::from_secs(2);
 const CLAUDE_HISTORY_QUIET: Duration = Duration::from_millis(200);
 const CLAUDE_HISTORY_POLL: Duration = Duration::from_millis(25);
+
+mod startup;
 
 #[derive(Clone, Copy)]
 enum HistoryBaseline {
@@ -90,14 +92,13 @@ impl ClaudeHistoryCheckpoint {
 }
 
 fn claude_history_len(root: &std::path::Path, native_session_id: &str) -> Option<u64> {
-    let relative = native_history(
+    let transcript = TaskSessionRoot::native_transcript_path(
         root,
         hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode,
         native_session_id,
     )
-    .ok()?
-    .pop()?;
-    fs::symlink_metadata(root.join(relative))
+    .ok()?;
+    fs::symlink_metadata(transcript)
         .ok()
         .filter(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
         .map(|metadata| metadata.len())
@@ -191,6 +192,20 @@ pub(crate) async fn execute(
         return Err(DelegationErrorV1::DeadlineExceeded);
     }
     let history_checkpoint = ClaudeHistoryCheckpoint::capture(&request.profile, &input);
+    let startup = match startup::StartupPermit::acquire(
+        request.profile.codex_initialization_root(),
+        input.deadline,
+        &input.cancellation,
+    )
+    .await
+    {
+        Ok(permit) => permit,
+        Err(error) => {
+            let _ = journal.execution_failed(error);
+            return Err(error);
+        }
+    };
+    // Waiting for another native initializer does not preserve stale launch authority.
     journal.before_launch()?;
     // Dropped launch futures must finitely release acquired resources in the platform backend.
     let launch_nonce = request.launch_nonce.clone();
@@ -217,6 +232,9 @@ pub(crate) async fn execute(
             }
         }
     };
+    if let Some(startup) = &startup {
+        startup.bind_process(&worker.identity);
+    }
     let binding = if worker.identity.launch_nonce == launch_nonce {
         journal.process_spawned(&worker.identity)
     } else {
@@ -231,6 +249,10 @@ pub(crate) async fn execute(
         }
         Ok(()) => {
             let acp_journal: Arc<dyn AcpRunJournal> = journal.clone();
+            let acp_journal = startup.as_ref().map_or_else(
+                || acp_journal.clone(),
+                |startup| startup.journal(acp_journal.clone()),
+            );
             progress_capture = journal
                 .progress_writer()
                 .map(WorkerProgressWriter::into_inner)
@@ -331,6 +353,7 @@ pub async fn stop_owned(
     if evidence.scope_stopped && !matches!(evidence.observation, WorkerObservation::Exited { .. }) {
         return None;
     }
+    startup::observe_stopped(identity, &evidence);
     Some(evidence)
 }
 

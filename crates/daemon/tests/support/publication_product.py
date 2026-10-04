@@ -136,10 +136,17 @@ finally:
         self.diagnostics_root = self.storage / 'diagnostics'
         self.diagnostics_args = []
         self.env = {k: v for k, v in os.environ.items()
-                    if not k.startswith(('ANTHROPIC_', 'HIROUTE_', 'OPENAI_'))}
+                    if not k.startswith(('ANTHROPIC_', 'HIROUTE_', 'OPENAI_', 'AWS_', 'AZURE_',
+                                         'GOOGLE_', 'VERTEX_', 'QODER_'))
+                    and k not in ('CODEX_CONFIG', 'CODEX_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN',
+                                  'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'CLAUDE_CODE_USE_BEDROCK',
+                                  'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY')}
         self.env.update(HOME=str(home), CODEX_HOME=str(home / '.codex'),
+                        CLAUDE_CONFIG_DIR=str(home / '.claude'),
+                        QODER_CONFIG_DIR=str(home / '.qoder'),
                         PATH=str(bin_dir) + ':/usr/bin:/bin',
                         HIROUTE_RUNTIME_DIR=str(self.root / 'runtime'),
+                        HIROUTE_WORKER_RECEIPT_DIR=str(self.root / 'worker-receipts'),
                         HIROUTE_REPLAY_ROOT=str(self.root / 'replay'))
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))

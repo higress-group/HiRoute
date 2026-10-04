@@ -105,6 +105,91 @@ class Routing(unittest.TestCase):
         self.assertEqual(payload['name'], 'desktop')
         self.assertEqual(set(payload['bundle']), {'pilot-builds.py', 'local-rust.py', 'remote-rust.py', 'desktop-pilot.py', 'validation-report.py'})
 
+    def test_ssh_pilot_and_build_execute_same_caller_driver_instead_of_host_checkout(self):
+        caller = self.root / 'caller'
+        remote = self.root / 'remote-checkout'
+        account = self.root / 'remote-home'
+        for directory in (caller / 'scripts', remote / 'scripts', account):
+            directory.mkdir(parents=True)
+        events = self.root / 'driver-events.jsonl'
+        driver = f'''import json, sys
+from pathlib import Path
+def record(action):
+    with Path({str(events)!r}).open('a') as output:
+        output.write(json.dumps(dict(origin='caller', driver=__file__, action=action, arguments=sys.argv[1:])) + '\\n')
+if __name__ == '__main__':
+    record(sys.argv[1])
+'''
+        build_driver = '''import importlib.util, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('pilot', Path(__file__).with_name('desktop-pilot.py'))
+pilot = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(pilot)
+pilot.record('build:' + sys.argv[1])
+'''
+        (caller / 'scripts/desktop-pilot.py').write_text(driver)
+        (caller / 'scripts/pilot-builds.py').write_text(build_driver)
+        for name in ('local-rust.py', 'remote-rust.py', 'validation-report.py'):
+            (caller / 'scripts' / name).write_text('# unused fixture dependency\n')
+        (caller / 'scripts/validation-host.py').write_text(Path(host.__file__).read_text())
+        stale_driver = "raise SystemExit('stale host checkout driver was executed')\n"
+        for name in ('desktop-pilot.py', 'pilot-builds.py'):
+            (remote / 'scripts' / name).write_text(stale_driver)
+        target = {'transport': 'ssh', 'host': 'fixture-mac', 'repo': str(remote)}
+        real_run = subprocess.run
+        transport_calls = []
+
+        def ssh_or_child(argv, **kwargs):
+            if argv[0] != 'ssh':
+                return real_run(argv, **kwargs)
+            payload = json.loads(kwargs['input'])
+            transport_calls.append(payload)
+            with patch.object(host.sys, 'platform', 'darwin'), \
+                    patch.object(host.Path, 'home', return_value=account), \
+                    patch.object(host, 'gui_session', return_value={'available': True}):
+                return subprocess.CompletedProcess(argv, host.execute(payload))
+
+        actions = [('pilot-build', ['status', '--lease', 'a' * 32])]
+        actions += [('pilot', ['start', '--app', '/private/tmp/hiroute-desktop', '--build-run', 'b' * 32])]
+        actions += [('pilot', [action, '--session', '/private/tmp/owned-session'])
+                    for action in ('status', 'stop')]
+        actions += [('pilot', ['config', '--frontend-dist', '/private/tmp/frontend'])]
+        with patch.object(m, 'REPO', caller), patch.object(m.subprocess, 'run', side_effect=ssh_or_child):
+            for action, arguments in actions:
+                self.assertEqual(m.dispatch({'desktop': target}, action, arguments), 0)
+        records = [json.loads(line) for line in events.read_text().splitlines()]
+        self.assertEqual([record['action'] for record in records], ['build:status', 'start', 'status', 'stop', 'config'])
+        self.assertEqual({record['origin'] for record in records}, {'caller'})
+        self.assertEqual(len({record['driver'] for record in records}), 1)
+        bundled_driver = Path(records[0]['driver'])
+        self.assertTrue(bundled_driver.is_relative_to(account / '.cache/hiroute/validation-tools'))
+        self.assertEqual(bundled_driver.read_text(), driver)
+        self.assertEqual(records[-1]['arguments'][1:3], ['--repo', str(remote.resolve())])
+        self.assertTrue(all(payload['bundle'] == transport_calls[0]['bundle'] for payload in transport_calls))
+        self.assertEqual((remote / 'scripts/desktop-pilot.py').read_text(), stale_driver)
+
+    def test_pilot_actions_without_complete_bundle_fail_without_host_driver_fallback(self):
+        for action in ('pilot', 'pilot-build'):
+            for bundle in (None, {'desktop-pilot.py': '# incomplete\n'}):
+                p = self.payload(action, ['status'])
+                p.update(name='desktop', bundle=bundle)
+                with self.subTest(action=action, bundle=bundle), \
+                        patch.object(host.sys, 'platform', 'darwin'), \
+                        patch.object(host.subprocess, 'run') as run:
+                    with self.assertRaisesRegex(ValueError, 'Incomplete Pilot tooling bundle'):
+                        host.execute(p)
+                    run.assert_not_called()
+
+    def test_pilot_config_repository_comes_only_from_execution_target(self):
+        for override in (['--repo', '/different/repo'], ['--repo=/different/repo']):
+            p = self.payload('pilot', ['config', *override, '--frontend-dist', '/frontend'])
+            p['name'] = 'desktop'
+            with patch.object(host.sys, 'platform', 'darwin'), \
+                    patch.object(host.subprocess, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'Configure repo in validation.json'):
+                    host.execute(p)
+                run.assert_not_called()
+
     def test_bundle_is_content_addressed_immutable_and_private(self):
         sources = {name: '# fixture\n' for name in ('pilot-builds.py', 'local-rust.py', 'remote-rust.py', 'desktop-pilot.py', 'validation-report.py')}
         with patch.object(host.Path, 'home', return_value=self.root):

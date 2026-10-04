@@ -147,7 +147,49 @@ It returns:
 
 `assessment` is optional. Its score is competence in `[0,1]`, not model confidence. Jev's three-level `0..2` Score is divided by two. Jev does not provide a textual reason here, so this implementation omits the optional `reason` field.
 
-To implement a different strategy, keep the HTTP validation and response contract, then replace `questions()` and `decision_response()` in `jev_decider/server.py`. Do not add vendor fields to the HiRoute request or make a second scoring call: use the five protocol fields as state and return one allowed branch with an optional competence assessment.
+## Code and responsibility map
+
+The production entry remains `jev_decider.server:main` → `create_app()` →
+`POST /v1/decisions`. Read these modules in request order:
+
+| Module | Responsibility |
+| --- | --- |
+| [settings.py](jev_decider/settings.py) | Deployment environment, bounded key/policy files and configuration validation |
+| [protocol.py](jev_decider/protocol.py) | Strict JSON and the existing five-field HiRoute request contract |
+| [decision.py](jev_decider/decision.py) | `prepare_decision()` applies existing policy precedence, trims whole turns and builds one Jev request; `decision_response()` validates Choice/Score and returns a branch plus optional prior-segment assessment; `reported_usage()` retains reported billing facts |
+| [server.py](jev_decider/server.py) | Authentication, whole-request deadline, queue/concurrency, upstream HTTP, response bounds, error mapping, diagnostics and service lifecycle |
+
+The decision module has no HTTP, environment, file, credential or session dependency.
+Its narrow `DecisionSettings` protocol describes only the non-secret fields this
+Jev implementation consumes; it is not a new provider registry or a general
+inference API. Existing public imports from `jev_decider.server` remain available
+as reexports of the same implementations. There is one implementation per operation.
+
+To change the existing Jev strategy, start at `questions()` and
+`decision_response()` in `decision.py`. Prompts, thresholds, policy precedence and
+context trimming affect decisions and require deliberate behavior review. Keep
+the HTTP contract: use the five fields as state, return one allowed branch and
+an optional assessment, and do not add a second scoring call.
+
+The shared [decision foundation map](../../../docs/code-map/decision-foundation.md)
+records provider references and the future purpose-specific contract owners.
+
+Future integration must keep four owners separate: general inference represents
+a bounded question/answer operation; a purpose policy decides what is being
+selected (currently smart-saving branches); a provider transport owns endpoint,
+authentication and vendor wire format; the calling product owns allowed choices
+and execution authorization. Model selection and tool selection need their own
+purpose and authorization contracts. This extraction adds neither use case nor a
+multi-provider or embedded service implementation.
+
+For natural-language branch selection, the caller owns stable IDs, descriptions
+and the frozen allowed set. This service's existing generic auto path only returns
+an allowed ID; it does not authorize execution or define a new fallback policy.
+The existing binary policy override and rules thresholds remain unchanged. An
+assessment concerns the prior execution suffix, separately from the new choice.
+Routing-round identity, publication pinning, source cancellation and selected vs
+executed branch attribution remain owned by HiRoute's
+[Gateway](../../../crates/gateway/README.md).
 
 ## Offline tests
 
@@ -184,6 +226,11 @@ python -m unittest -v
 ```
 
 The suite covers auto/rules single-call behavior, the OAS route and rejection of old routes, first-round omission, standard proxy routing, formula boundaries, invalid optional Score, invalid probabilities and branch sets, whole-round trimming/partial marking, fixed-context rejection, strict input, inbound authentication, health isolation, upstream 401/402/429, timeout, oversized output, and concurrency. A real OpenRouter smoke test is intentionally opt-in and must not be placed in normal CI or retried automatically.
+
+Use the [capability test map](tests/README.md) to locate an assertion. Shared,
+independently expected decision cases run through both the HTTP service and the
+pure module. The pure contract can also run with only Python's standard library:
+`python -m unittest tests.test_decision -v`.
 
 ## Opt-in HiRoute → Jev smoke
 

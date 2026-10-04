@@ -1,10 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { selectScenarios, assertScenarioResults } from '../browser/scenario-selection.mjs';
+import { agentTrustRequired, routingWorkerRequired, productShellRequired, focusedRequirements } from '../browser/scenario-requirements.mjs';
 import { connectPage, evaluate, navigate, waitFor } from './cdp-client.mjs';
 
 const port = Number(process.argv[2]);
 const baseUrl = process.argv[3];
 const outputRoot = path.resolve(process.argv[4]);
+const shellOnly = process.argv[5] === '--shell-only';
 const routeSaveOnly = process.argv[5] === '--route-save-only';
 const workerReplacementOnly = process.argv[5] === '--worker-replacement-only';
 const claudeCollaborationOnly = process.argv[5] === '--claude-collaboration-only';
@@ -17,47 +20,66 @@ try {
   const client = await connectPage(port);
   try {
     const checks = [];
-    if (!routeSaveOnly && !workerReplacementOnly) {
+    if (!shellOnly && !routeSaveOnly && !workerReplacementOnly) {
       await navigate(client, new URL('agent-trust.html', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.agentTrust)', { timeout: 7000 });
-      const names = await evaluate(client, "import('/agent-trust-scenarios.mjs').then(module => module.agentTrustScenarioNames)");
-      if (!Array.isArray(names) || names.length === 0) throw new Error('Agent trust scenarios are missing');
-      const batches = claudeCollaborationOnly
-        ? names.flatMap((name, index) => name.startsWith('Claude collaboration') || name.startsWith('an unrelated Agent preview failure') ? [[index, index + 1]] : [])
-        : Array.from({ length: Math.ceil(names.length / 5) }, (_, index) => [index * 5, Math.min((index + 1) * 5, names.length)]);
-      if (claudeCollaborationOnly && batches.length !== 3) throw new Error('Required Claude collaboration scenarios are missing');
-      const firstCheck = checks.length;
-      for (const [start, end] of batches) {
-        const batch = await evaluate(client, `import('/agent-trust-scenarios.mjs').then(module => module.runAgentTrustScenarios(${start}, ${end}))`);
-        checks.push(...batch.results);
+      const catalog = await evaluate(client, "import('/agent-trust-scenarios.mjs').then(module => module.agentTrustScenarioCatalog)");
+      const selected = selectScenarios(catalog, claudeCollaborationOnly
+        ? { capability: 'claude-collaboration', requiredIds: focusedRequirements['claude-collaboration'] }
+        : { requiredIds: agentTrustRequired });
+      const results = [];
+      for (let offset = 0; offset < selected.length; offset += 5) {
+        const ids = selected.slice(offset, offset + 5).map(item => item.id);
+        const batch = await evaluate(client, `import('/agent-trust-scenarios.mjs').then(module => module.runAgentTrustScenarios(${JSON.stringify({ ids, requiredIds: ids })}))`);
+        results.push(...batch.results);
         for (const item of batch.results) {
-          process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
+          process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.id} · ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
         }
       }
-      if (checks.length - firstCheck !== (claudeCollaborationOnly ? 3 : names.length)) throw new Error('Agent trust scenarios were not all executed');
+      assertScenarioResults(selected, results);
+      checks.push(...results);
     }
-    if (!claudeCollaborationOnly) {
+    if (!shellOnly && !claudeCollaborationOnly) {
       await navigate(client, new URL('?page=routing&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
-      const routing = await evaluate(client, routeSaveOnly
-        ? "import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios(5, 6))"
-        : workerReplacementOnly
-          ? "import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios(3, 5))"
-          : "import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios())");
+      const catalog = await evaluate(client, "import('/routing-worker-scenarios.mjs').then(module => module.routingWorkerScenarioCatalog)");
+      const capability = routeSaveOnly ? 'route-save' : workerReplacementOnly ? 'worker-replacement' : undefined;
+      const selection = { capability, requiredIds: capability ? focusedRequirements[capability] : routingWorkerRequired };
+      const selected = selectScenarios(catalog, selection);
+      const routing = await evaluate(client, `import('/routing-worker-scenarios.mjs').then(module => module.runRoutingWorkerScenarios(${JSON.stringify(selection)}))`);
+      assertScenarioResults(selected, routing.results);
       checks.push(...routing.results);
       for (const item of routing.results) {
         process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
     }
-    if (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly) {
+    if (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly) {
       await navigate(client, new URL('?page=models&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
       const fromModel = await evaluate(client, "import('/model-to-route-scenarios.mjs').then(module => module.runModelToRouteScenarios())");
+      if (fromModel.tests !== 1 || fromModel.results?.length !== 1 || !['green', 'red'].includes(fromModel.results[0].state)) {
+        throw new Error('Required model-to-route scenario did not execute');
+      }
       checks.push(...fromModel.results);
       for (const item of fromModel.results) {
         process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
     }
+    if (shellOnly || (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly)) {
+      await navigate(client, new URL('product-shell.html', baseUrl).href, { width: 1280, height: 900 });
+      await waitFor(client, 'Boolean(window.productShell)', { timeout: 7000 });
+      const catalog = await evaluate(client, "import('/product-shell-scenarios.mjs').then(module => module.productShellScenarioCatalog)");
+      const selected = selectScenarios(catalog, { requiredIds: productShellRequired });
+      const results = [];
+      for (const { id } of selected) {
+        const batch = await evaluate(client, `import('/product-shell-scenarios.mjs').then(module => module.runProductShellScenarios(${JSON.stringify({ ids: [id], requiredIds: [id] })}))`);
+        results.push(...batch.results);
+        for (const item of batch.results) process.stdout.write(`${item.state}: ${item.id} · ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
+      }
+      assertScenarioResults(selected, results);
+      checks.push(...results);
+    }
+    if (checks.length === 0) throw new Error('No scenarios executed');
     const report = {
       generatedAt: new Date().toISOString(),
       evidence: 'React components + mock IPC only; not native/Tauri and not the real daemon',

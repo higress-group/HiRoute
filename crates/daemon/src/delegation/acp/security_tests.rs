@@ -34,6 +34,7 @@ fn input() -> AcpRunInput {
         identity_contract: AcpNativeIdentityContract::ExplicitResponseMetadata,
         session_meta: Map::new(),
         native_session_mode: None,
+        expected_model: None,
         authentication: None,
         deadline: Instant::now() + Duration::from_secs(3),
         cancellation: CancellationToken::new(),

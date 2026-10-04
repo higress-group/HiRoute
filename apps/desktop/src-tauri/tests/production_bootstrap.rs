@@ -227,6 +227,7 @@ async fn real_role_all_child_ack_and_read_only_lookup_use_shared_core() {
         agent
             .settings
             .as_ref()
+            .and_then(|status| status.model())
             .is_none_or(|status| !status.model_verified)
     }));
     drop(session);

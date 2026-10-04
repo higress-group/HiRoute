@@ -5,7 +5,7 @@ pub(super) fn archive_if_needed(
     previous: &BackupSet,
     paths: &[PathBuf; 3],
     backup_root: &Path,
-    _secret_binding: Option<&MigrationSecretBinding>,
+    secret_binding: Option<&MigrationSecretBinding>,
 ) -> Result<(), LocalStorageError> {
     if previous.phase() != BackupSetPhase::Completed
         || previous.target_schema_version() > LATEST_SCHEMA_VERSION
@@ -26,6 +26,17 @@ pub(super) fn archive_if_needed(
     {
         return Err(LocalStorageError::InvalidData);
     }
+    let binding = secret_binding.ok_or(LocalStorageError::Locked)?;
+    if previous.secrets.manifest().key_id.as_deref() != Some(binding.key_id.as_str()) {
+        return Err(LocalStorageError::InvalidData);
+    }
+    validate_live_set(
+        previous,
+        paths,
+        &target_store_uuid(previous, DatabaseKind::Control),
+        &target_store_uuid(previous, DatabaseKind::Runtime),
+        binding,
+    )?;
     let parent = backup_root.parent().ok_or(LocalStorageError::InvalidData)?;
     let archived = parent.join(format!("migration-set.{}", previous.set_id()));
     match fs::symlink_metadata(&archived) {

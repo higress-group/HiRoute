@@ -62,7 +62,7 @@ impl RunObservationMetadata {
         if value.plan_revision == 0
             || !valid_observation_reference(&value.plan_id)
             || !valid_observation_reference(&value.publication_ref)
-            || !matches!(value.harness_id.as_str(), "codex" | "claude")
+            || !matches!(value.harness_id.as_str(), "codex" | "claude" | "qoder")
             || [
                 &value.native_session_id,
                 &value.parent_context_ref,
@@ -326,12 +326,12 @@ mod tests {
         }
     }
 
-    fn observation_metadata() -> RunObservationMetadata {
+    fn observation_metadata(harness: &str) -> RunObservationMetadata {
         RunObservationMetadata::new(
             "plan/one",
             7,
             "publication/3/digest/sha256:abc",
-            "codex",
+            harness,
             Some("native/session-one".into()),
             Some("task/root".into()),
             Some("run/zero".into()),
@@ -340,6 +340,10 @@ mod tests {
     }
 
     fn verified(safety: Arc<Safety>) -> VerifiedRunRequestAuthority {
+        verified_for_harness(safety, "codex")
+    }
+
+    fn verified_for_harness(safety: Arc<Safety>, harness: &str) -> VerifiedRunRequestAuthority {
         let snapshot = GatewayPublicationSnapshotV3::seal(
             "workspace",
             "delegation-run/run-one",
@@ -383,7 +387,7 @@ mod tests {
                 "run/one",
                 "lease/one",
                 "plan/one/revision/7/digest/sha256:abc",
-                observation_metadata(),
+                observation_metadata(harness),
             )
             .unwrap(),
             publication,
@@ -391,6 +395,24 @@ mod tests {
             false,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn unknown_native_harness_cannot_enter_verified_run_observation() {
+        for harness in ["unknown", "", "qoder_cli", "Qoder"] {
+            assert!(matches!(
+                RunObservationMetadata::new(
+                    "plan/one",
+                    7,
+                    "publication/one",
+                    harness,
+                    None,
+                    None,
+                    None
+                ),
+                Err(RunRequestAuthorityError::Denied)
+            ));
+        }
     }
 
     #[test]
@@ -435,49 +457,53 @@ mod tests {
             }
         }
 
-        let authority = GatewayRequestAuthority::new(empty_global()).with_run_request_authority(
-            Arc::new(Authority(verified(Arc::new(Safety(AtomicUsize::new(0)))))),
-        );
-        let request = authority
-            .begin(IngressProtocol::Responses, Some(&format!("Bearer {TOKEN}")))
-            .unwrap()
-            .authorize_alias("worker-model", std::time::Instant::now())
-            .unwrap();
-        let (sender, receiver) = mpsc::channel();
-        let mut sinks = GatewayObservationSinks::discard();
-        sinks.run_relation = Arc::new(Capture(sender));
-        let observation = GatewayObservation::with_sinks_and_policy_and_workspace_key(
-            true,
-            64 * 1024,
-            sinks,
-            OtelContentPolicy::Disabled,
-            [7_u8; 32],
-        );
-        let _request_observation = observation.begin_request_with_content(
-            &request,
-            IngressProtocol::Responses,
-            &crate::context_hold::ContextIdentityFacts::request_scoped(),
-            true,
-        );
-        let link: RunObservationLink =
-            serde_json::from_slice(&receiver.recv_timeout(Duration::from_secs(1)).unwrap())
+        for harness in ["codex", "claude", "qoder"] {
+            let authority = GatewayRequestAuthority::new(empty_global())
+                .with_run_request_authority(Arc::new(Authority(verified_for_harness(
+                    Arc::new(Safety(AtomicUsize::new(0))),
+                    harness,
+                ))));
+            let request = authority
+                .begin(IngressProtocol::Responses, Some(&format!("Bearer {TOKEN}")))
+                .unwrap()
+                .authorize_alias("worker-model", std::time::Instant::now())
                 .unwrap();
-        assert_eq!(link.workspace_id.as_str(), "workspace");
-        assert_eq!(link.task_id, "task/one");
-        assert_eq!(link.run_id, "run/one");
-        assert_eq!(link.plan_id, "plan/one");
-        assert_eq!(link.plan_revision, "7");
-        assert_eq!(link.publication_ref, "publication/3/digest/sha256:abc");
-        assert_eq!(link.harness_id, "codex");
-        assert_eq!(link.protocol_kind, "responses");
-        assert_eq!(
-            link.native_session_id.as_deref(),
-            Some("native/session-one")
-        );
-        assert_eq!(link.parent_context_ref.as_deref(), Some("task/root"));
-        assert_eq!(link.continued_from_run_id.as_deref(), Some("run/zero"));
-        assert!(!link.producer_epoch.is_empty());
-        assert!(link.source_event_id.starts_with("relation-event-"));
+            let (sender, receiver) = mpsc::channel();
+            let mut sinks = GatewayObservationSinks::discard();
+            sinks.run_relation = Arc::new(Capture(sender));
+            let observation = GatewayObservation::with_sinks_and_policy_and_workspace_key(
+                true,
+                64 * 1024,
+                sinks,
+                OtelContentPolicy::Disabled,
+                [7_u8; 32],
+            );
+            let _request_observation = observation.begin_request_with_content(
+                &request,
+                IngressProtocol::Responses,
+                &crate::context_hold::ContextIdentityFacts::request_scoped(),
+                true,
+            );
+            let link: RunObservationLink =
+                serde_json::from_slice(&receiver.recv_timeout(Duration::from_secs(1)).unwrap())
+                    .unwrap();
+            assert_eq!(link.workspace_id.as_str(), "workspace");
+            assert_eq!(link.task_id, "task/one");
+            assert_eq!(link.run_id, "run/one");
+            assert_eq!(link.plan_id, "plan/one");
+            assert_eq!(link.plan_revision, "7");
+            assert_eq!(link.publication_ref, "publication/3/digest/sha256:abc");
+            assert_eq!(link.harness_id, harness);
+            assert_eq!(link.protocol_kind, "responses");
+            assert_eq!(
+                link.native_session_id.as_deref(),
+                Some("native/session-one")
+            );
+            assert_eq!(link.parent_context_ref.as_deref(), Some("task/root"));
+            assert_eq!(link.continued_from_run_id.as_deref(), Some("run/zero"));
+            assert!(!link.producer_epoch.is_empty());
+            assert!(link.source_event_id.starts_with("relation-event-"));
+        }
     }
 
     #[cfg(unix)]

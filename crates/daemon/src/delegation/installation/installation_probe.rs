@@ -26,7 +26,8 @@ use crate::delegation::lifecycle::{self, WorkerRunJournal};
 use crate::delegation::local_worker::LocalWorkerPlatform;
 use crate::delegation::platform::WorkerLaunchRequest;
 use crate::delegation::profile::{
-    CandidateWorkerProfile, ProfileInput, SessionRootUse, TaskSessionRoot, test_codex_catalog,
+    CandidateWorkerProfile, NativeWorkerContext, ProfileInput, SessionRootUse, TaskSessionRoot,
+    test_codex_catalog,
 };
 
 const PROBE_MODEL: &str = "hiroute/0011223344556677";
@@ -99,7 +100,10 @@ fn run_installation_acceptance_inner(
     }
     check_installation(config)?;
     checkpoint!(EntriesChecked);
-    let adapter = &config.adapter;
+    let adapter = config
+        .adapter
+        .as_deref()
+        .ok_or(DelegationErrorV1::CapabilityUnavailable)?;
     let harness = &config.harness_binary;
     let node = config
         .node_binary
@@ -253,6 +257,8 @@ fn harness_kind(harness: WorkerHarnessV1) -> HarnessKind {
     match harness {
         WorkerHarnessV1::CodexCli => HarnessKind::Codex,
         WorkerHarnessV1::ClaudeCode => HarnessKind::Claude,
+        // This historical adapter-only, private-HOME probe is not Qoder acceptance.
+        WorkerHarnessV1::QoderCli => HarnessKind::Unknown,
     }
 }
 
@@ -291,13 +297,15 @@ fn build_profile(
     };
     let catalog = (worker == WorkerHarnessV1::CodexCli).then(|| test_codex_catalog(PROBE_MODEL));
     CandidateWorkerProfile::build(ProfileInput {
-        claude_context_window: None,
+        context_window_tokens: None,
+        max_output_tokens: None,
         harness: worker,
-        adapter,
+        adapter: Some(adapter),
         harness_binary: harness,
         node_binary: Some(node),
         private_root,
         session_root: session,
+        native_context: &NativeWorkerContext::isolated(private_root, session.path())?,
         workspace,
         alias: PROBE_MODEL,
         codex_catalog: catalog.as_deref(),
@@ -373,6 +381,7 @@ fn run_normal(
     let identity_contract = profile.identity_contract.clone();
     let session_meta = profile.session_meta.clone();
     let native_session_mode = Some(profile.native_session_mode().to_owned());
+    let expected_model = Some(profile.native_selected_model_id().to_owned());
     let nonce = nonce.to_owned();
     let outcome = block_on(async move {
         let deadline = Instant::now() + PROBE_DEADLINE;
@@ -390,6 +399,7 @@ fn run_normal(
                 identity_contract,
                 session_meta,
                 native_session_mode,
+                expected_model,
                 authentication: None,
                 deadline,
                 cancellation: CancellationToken::new(),
@@ -435,6 +445,7 @@ fn run_cancel(
     let identity_contract = profile.identity_contract.clone();
     let session_meta = profile.session_meta.clone();
     let native_session_mode = Some(profile.native_session_mode().to_owned());
+    let expected_model = Some(profile.native_selected_model_id().to_owned());
     let nonce = nonce.to_owned();
     let expected_request = server.begin_stall();
     block_on(async move {
@@ -454,6 +465,7 @@ fn run_cancel(
                 identity_contract,
                 session_meta,
                 native_session_mode,
+                expected_model,
                 authentication: None,
                 deadline,
                 cancellation: cancellation.clone(),

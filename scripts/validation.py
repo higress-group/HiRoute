@@ -106,7 +106,7 @@ def dispatch(targets, action, arguments, frontend_dist=None, dry_run=False):
     if dry_run:
         print(json.dumps(payload, indent=2))
         return 0
-    if action == "pilot-build":
+    if action in ("pilot", "pilot-build"):
         payload["bundle"] = {name: (REPO / "scripts" / name).read_text() for name in
                              ("pilot-builds.py", "local-rust.py", "remote-rust.py", "desktop-pilot.py", "validation-report.py")}
     if target["transport"] == "local":

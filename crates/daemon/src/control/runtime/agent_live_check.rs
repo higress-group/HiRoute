@@ -5,10 +5,9 @@ use hiroute_application_api::{AgentCheckRequestV1, AgentLaunchDescriptorRequestV
 use hiroute_domain::{
     AGENT_SURFACE_CHECK_SCHEMA, AgentModelSurfaceV2, AgentSurfaceCheckRecordV1,
     AgentSurfaceCheckStateV1, CanonicalDigest, ContentMode, ControlRepositoryPort,
-    FactsCompleteness, FrozenExecutionTrustV1, GatewayModelRouteV2,
-    GatewayPublicationSnapshotProjectionV3, IngressProtocolV1, ModelRequestRouteV2,
+    FactsCompleteness, FrozenExecutionTrustV1, GatewayPublicationSnapshotProjectionV3,
     ObservationQueryError, ObservationQueryPort, PublicationRepositoryPort, RequestOutcome,
-    SelectorSourceV1, WorkspaceId,
+    WorkspaceId,
 };
 use hiroute_gateway::server::core_runtime::observation::{
     NativeAgentObservationIdentityV1, derive_native_agent_observation_session_id,
@@ -20,6 +19,9 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+
+#[path = "agent_live_check_qoder.rs"]
+mod qoder;
 
 const LIVE_CHECK_BUDGET: Duration = Duration::from_secs(120);
 const RECEIPT_WAIT_BUDGET: Duration = Duration::from_secs(5);
@@ -99,6 +101,9 @@ impl LocalControlAdapter {
 
         for (model, trust) in target.client_model_ids.iter().zip(&expected) {
             let result = match target.surface {
+                AgentModelSurfaceV2::QoderCli => {
+                    self.execute_qoder_live_attempt(&target.context_id, model, trust, deadline)
+                }
                 AgentModelSurfaceV2::ClaudeCli => {
                     let (descriptor, trusted_hiroute_executable) =
                         claude.as_ref().ok_or(ControlReadError::Corrupt)?;
@@ -398,72 +403,14 @@ fn expected_trust(
     grant_id: &str,
     served_model_id: &str,
 ) -> Result<FrozenExecutionTrustV1, ControlReadError> {
-    let grant = snapshot
-        .grants
-        .iter()
-        .find(|grant| grant.grant_id == grant_id)
-        .ok_or(ControlReadError::Corrupt)?;
-    let projected = grant
-        .routes
-        .get(served_model_id)
-        .ok_or(ControlReadError::Corrupt)?;
-    let (agent_plan_id, route, plan_display_name) = match projected {
-        GatewayModelRouteV2::Plan {
-            plan_id,
-            alias,
-            revision,
-            semantic_digest,
-        } => {
-            let projected_alias = snapshot
-                .aliases
-                .iter()
-                .find(|candidate| &candidate.served_model_id == alias)
-                .ok_or(ControlReadError::Corrupt)?;
-            let routing = projected_alias
-                .routing
-                .as_ref()
-                .ok_or(ControlReadError::Corrupt)?;
-            if routing.agent_plan_id != plan_id.as_str() {
-                return Err(ControlReadError::Corrupt);
-            }
-            (
-                Some(plan_id.clone()),
-                ModelRequestRouteV2::Plan {
-                    revision: *revision,
-                    semantic_digest: semantic_digest.clone(),
-                },
-                routing.plan_display_name.clone(),
-            )
-        }
-        GatewayModelRouteV2::Fixed { binding_digest, .. } => (
-            None,
-            ModelRequestRouteV2::Fixed {
-                binding_digest: binding_digest.clone(),
-            },
-            None,
-        ),
-    };
-    let ingress_protocol = match grant.protocol {
-        hiroute_domain::AgentIngressProtocolV1::Responses => IngressProtocolV1::Responses,
-        hiroute_domain::AgentIngressProtocolV1::Messages => IngressProtocolV1::Messages,
-    };
-    let trust = FrozenExecutionTrustV1 {
-        authority_id: snapshot.authority_id.clone(),
-        authority_epoch: snapshot.authority_epoch,
-        served_model_id: served_model_id.to_owned(),
-        selector_source: SelectorSourceV1::TrustedModelAlias,
-        agent_plan_id,
-        route,
-        plan_display_name,
-        gateway_publication_revision: snapshot.publication_revision.to_string(),
-        gateway_publication_digest: CanonicalDigest::parse(snapshot.payload_digest.clone())
-            .map_err(|_| ControlReadError::Corrupt)?,
-        grant_id: grant.grant_id.clone(),
-        grant_generation: grant.generation,
-        ingress_protocol,
-    };
-    trust.validate().map_err(|_| ControlReadError::Corrupt)?;
-    Ok(trust)
+    let snapshot: hiroute_gateway::server::publication::GatewayPublicationSnapshotV3 =
+        serde_json::from_value(
+            serde_json::to_value(snapshot).map_err(|_| ControlReadError::Corrupt)?,
+        )
+        .map_err(|_| ControlReadError::Corrupt)?;
+    snapshot
+        .native_agent_execution_trust(grant_id, served_model_id)
+        .map_err(|_| ControlReadError::Corrupt)
 }
 
 fn run_bounded(command: &mut Command, deadline: Instant) -> Result<ProcessOutput, AttemptFailure> {

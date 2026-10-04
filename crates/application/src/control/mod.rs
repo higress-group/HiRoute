@@ -28,6 +28,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod collaboration_check;
+pub use collaboration_check::CollaborationCheckError;
 mod status;
 
 pub use status::system_status;
@@ -325,8 +327,8 @@ pub trait AgentConnectionControlPort: Send + Sync {
     fn check_native_authentication(&self, _agent_id: &str) -> Result<(), ControlReadError> {
         Err(ControlReadError::Unavailable)
     }
-    fn check_collaboration(&self, _agent_id: &str) -> Result<(), ControlReadError> {
-        Err(ControlReadError::Unavailable)
+    fn check_collaboration(&self, _agent_id: &str) -> Result<(), CollaborationCheckError> {
+        Err(ControlReadError::Unavailable.into())
     }
     fn validate_live_check_target(
         &self,
@@ -353,7 +355,7 @@ pub trait AgentConnectionControlPort: Send + Sync {
     fn settings_status(
         &self,
         _request: &hiroute_application_api::AgentSettingsStatusRequestV2,
-    ) -> Result<hiroute_application_api::AgentModelSettingsStatusV2, ControlReadError> {
+    ) -> Result<hiroute_application_api::AgentSettingsStatusV2, ControlReadError> {
         Err(ControlReadError::Unavailable)
     }
 

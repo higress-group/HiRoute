@@ -10,10 +10,11 @@ import { fixture as legacyHomeFixture } from '../../mvp16/browser/fixtures';
 
 export type ProductScenario = 'fresh' | 'ready' | 'collaboration' | 'gap' | 'configured_no_sessions' | 'drift' | 'cooling' | 'free_exhausted' | 'api_failure' | 'unknown_model' | 'agent_blocked' | 'task_cancelled';
 
-export const fixtureTrace: { commands: string[]; clipboard: string[] } = { commands: [], clipboard: [] };
+export const fixtureTrace: { commands: string[]; requests: { command: string; payload: Record<string, any> | undefined }[]; clipboard: string[]; planPublicationError: string | null } = { commands: [], requests: [], clipboard: [], planPublicationError: null };
 let agentPrerequisiteChecked = false;
 let preparedWorkerSelection: Record<string, any> | null = null;
-export function resetFixtureTrace() { fixtureTrace.commands.length = 0; fixtureTrace.clipboard.length = 0; agentPrerequisiteChecked = false; preparedWorkerSelection = null; }
+const workerSelections = new Map<string, Record<string, any>>();
+export function resetFixtureTrace() { fixtureTrace.commands.length = 0; fixtureTrace.requests.length = 0; fixtureTrace.clipboard.length = 0; fixtureTrace.planPublicationError = null; agentPrerequisiteChecked = false; preparedWorkerSelection = null; workerSelections.clear(); }
 
 const fixtureNow = new Date();
 fixtureNow.setHours(14, 28, 0, 0);
@@ -166,6 +167,7 @@ const discoveredClaudeCandidate: ComputeCandidateView = {
     upstream_model_id: 'glm-5.3',
     display_name: 'GLM-5.3',
     membership: 'catalog',
+    fact_basis: 'registered_catalog',
     selectable: true,
   }],
   input_state: 'provided',
@@ -374,18 +376,18 @@ export function productTaskRead(scenario: ProductScenario): AgentTaskRead {
   const cancelled = scenario === 'task_cancelled';
   return { status: 'ready', tasks: [
     {
-      taskId: 'task/code-boundaries', runId: 'run/code-boundaries/1', title: '补齐边界条件测试', mainAgent: 'Claude Code', executor: 'Codex', routeName: '代码实现', createdAtMs: now - 8 * 60_000, status: 'complete',
-      brief: '只修改路由编译器测试，覆盖空候选和不支持的能力。不要修改生产逻辑。', result: '已补齐两个边界测试，测试范围内通过；未修改生产逻辑。', sessionId: 'session/boundary-test', nativeSessionId: 'codex-thread-code', mainUsesOriginalModel: true,
-      facts: [{ model: 'GPT-5.6-Sol', reasoning: 'max', tokens: '8.1K' }], scope: { directory: '~/Projects/HiRoute', files: '读写项目文件', network: '未授予网络访问' },
+      taskId: 'task/code-boundaries', runId: 'run/code-boundaries/1', title: '补齐边界条件测试', executor: 'Codex', routeName: '代码实现', createdAtMs: now - 8 * 60_000, status: 'complete',
+      brief: '只修改路由编译器测试，覆盖空候选和不支持的能力。不要修改生产逻辑。', result: '已补齐两个边界测试，测试范围内通过；未修改生产逻辑。', sessionId: 'session/boundary-test',
+      facts: [{ model: 'GPT-5.6-Sol', reasoning: 'max', tokens: '8.1K' }],
     },
     {
-      taskId: 'task/route-review', runId: 'run/route-review/1', title: '评审路由编译边界', mainAgent: 'Codex', executor: 'Claude Code', routeName: '日常编码', createdAtMs: now - 40 * 60_000, status: 'complete',
-      brief: '检查请求级与 Attempt 级作用域是否正确，给出证据，不修改文件。', result: '完成评审并给出两处代码定位。执行期间发生提交前模型接力，详见会话。', sessionId: 'session/route-review', nativeSessionId: 'claude-session-review',
-      facts: [{ model: 'Claude Sonnet', reasoning: '16,000 tokens' }, { model: 'GPT-5.6-Sol', reasoning: 'max', tokens: '42.8K' }], scope: { directory: '~/Projects/HiRoute', files: '只读项目文件', network: '未授予网络访问' },
+      taskId: 'task/route-review', runId: 'run/route-review/1', title: '评审路由编译边界', executor: 'Claude Code', routeName: '日常编码', createdAtMs: now - 40 * 60_000, status: 'complete',
+      brief: '检查请求级与 Attempt 级作用域是否正确，给出证据，不修改文件。', result: '完成评审并给出两处代码定位。执行期间发生提交前模型接力，详见会话。', sessionId: 'session/route-review',
+      facts: [{ model: 'Claude Sonnet', reasoning: '16,000 tokens' }, { model: 'GPT-5.6-Sol', reasoning: 'max', tokens: '42.8K' }],
     },
     {
-      taskId: 'task/fix-empty-list', runId: 'run/fix-empty-list/1', title: '修复空列表显示', mainAgent: 'Claude Code', executor: 'Codex', routeName: '代码实现', createdAtMs: now - 46 * 60_000, status: cancelled ? 'cancelled' : 'running',
-      brief: '按现有组件修复空列表显示，不修改路由规则。', result: null, sessionId: null, nativeSessionId: null, mainUsesOriginalModel: true, facts: [], scope: { directory: '~/Projects/HiRoute', files: '读写项目文件', network: '未授予网络访问' },
+      taskId: 'task/fix-empty-list', runId: 'run/fix-empty-list/1', title: '修复空列表显示', executor: 'Codex', routeName: '代码实现', createdAtMs: now - 46 * 60_000, status: cancelled ? 'cancelled' : 'running',
+      brief: '按现有组件修复空列表显示，不修改路由规则。', result: null, sessionId: null, facts: [],
     },
   ] };
 }
@@ -456,6 +458,7 @@ function agentSnapshotFor(scenario: ProductScenario): AgentSnapshot {
 
 export function mockProductInvoke(command: string, payload: Record<string, any> | undefined, scenario: ProductScenario) {
   fixtureTrace.commands.push(command);
+  fixtureTrace.requests.push({ command, payload: structuredClone(payload) });
   const fresh = scenario === 'fresh';
   if (command === 'compute_management_snapshot') return fresh ? { ...readyManagement, sources: [] } : readyManagement;
   if (command === 'compute_connection_options') return {
@@ -504,6 +507,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
       executors: fresh ? [
         { harness: 'codex_cli', state: 'unavailable', reason: 'installation_not_configured', start_approve_all: unavailable, cancel: unavailable, continue_session: unavailable, restricted_policy: unavailable },
         { harness: 'claude_code', state: 'unavailable', reason: 'installation_not_configured', start_approve_all: unavailable, cancel: unavailable, continue_session: unavailable, restricted_policy: unavailable },
+        { harness: 'qoder_cli', state: 'unavailable', reason: 'installation_not_configured', start_approve_all: unavailable, cancel: unavailable, continue_session: unavailable, restricted_policy: unavailable },
       ] : [
         {
           harness: 'codex_cli', state: 'ready',
@@ -516,27 +520,37 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
           continue_session: { state: 'unavailable', reason: 'resume_unavailable' },
           restricted_policy: { state: 'unknown', reason: 'restricted_policy_unverified' },
         },
+        { harness: 'qoder_cli', state: 'unavailable', reason: workerSelections.has('qoder_cli') ? 'runtime_unverified' : 'installation_not_configured', start_approve_all: unavailable, cancel: unavailable, continue_session: unavailable, restricted_policy: unavailable },
       ],
     };
   }
   if (command === 'worker_dependencies_discover' || command === 'worker_dependencies_select_confirm') {
     const confirmed = command === 'worker_dependencies_select_confirm' ? preparedWorkerSelection : null;
     const harness = confirmed?.harness ?? payload?.input?.harness ?? 'claude_code';
-    const name = harness === 'codex_cli' ? 'codex' : 'claude';
-    const selection = confirmed ?? {
+    const name = harness === 'codex_cli' ? 'codex' : harness === 'qoder_cli' ? 'qoder' : 'claude';
+    if (confirmed) {
+      const { expected_selection_revision: _revision, ...installation } = confirmed;
+      workerSelections.set(harness, installation);
+    }
+    const selected = workerSelections.get(harness);
+    const selection = selected ?? {
       harness,
       cli_path: `/usr/local/bin/${name}`,
-      adapter_path: `/usr/local/lib/${name}-acp/adapter.js`,
-      node_path: '/usr/local/bin/node',
+      ...(harness === 'qoder_cli' ? {} : {
+        adapter_path: `/usr/local/lib/${name}-acp/adapter.js`,
+        node_path: '/usr/local/bin/node',
+      }),
     };
     const data = {
       schema: 'hiroute.worker-dependencies-view/v1',
       selection_revisions: [{ harness, revision: 1 }],
-      selected: [selection],
+      selected: harness === 'qoder_cli' && !selected ? [] : [selection],
       candidates: [
         { harness, component: 'cli', path: selection.cli_path, source: 'selected', state: 'found' },
-        { harness, component: 'adapter', path: selection.adapter_path, source: 'selected', state: 'found' },
-        { harness, component: 'node', path: selection.node_path, source: 'selected', state: 'found' },
+        ...(harness === 'qoder_cli' ? [] : [
+          { harness, component: 'adapter', path: selection.adapter_path, source: 'selected', state: 'found' },
+          { harness, component: 'node', path: selection.node_path, source: 'selected', state: 'found' },
+        ]),
       ],
       install_hints: [],
     };
@@ -601,7 +615,12 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     : { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { state: 'succeeded' } } };
   if (command === 'check_agent_authentication') { agentPrerequisiteChecked = true; return true; }
   if (command === 'check_agent_live') return { accepted: true, scope: 'live', model_call: true, state: 'passed', call_count: 1, requested_call_count: 1 };
-  if (command === 'preview_plan_editor') return { state: 'succeeded', operation: { state: 'succeeded' } };
+  if (command === 'preview_plan_editor') {
+    if (payload?.input?.action === 'publish' && fixtureTrace.planPublicationError) {
+      throw { source: 'backend', envelope: { error: { code: fixtureTrace.planPublicationError } } };
+    }
+    return { state: 'succeeded', operation: { state: 'succeeded' } };
+  }
   if (command === 'preview_restore_name') return { operation: { state: 'succeeded' } };
   if (command === 'preview_compute_save') return {
     candidate: payload?.change?.subject?.candidate,

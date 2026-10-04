@@ -15,9 +15,9 @@ fn change(
         before_revision,
         WorkerDependencySelectionRecordV1::new(
             harness,
-            format!("/opt/{suffix}/adapter.js"),
+            (harness != WorkerHarnessV1::QoderCli).then(|| format!("/opt/{suffix}/adapter.js")),
             format!("/opt/{suffix}/cli"),
-            Some(format!("/opt/{suffix}/node")),
+            (harness != WorkerHarnessV1::QoderCli).then(|| format!("/opt/{suffix}/node")),
         )
         .unwrap(),
     )
@@ -32,6 +32,7 @@ fn selection_operation(
     let harness = match change.after_selection.harness {
         WorkerHarnessV1::CodexCli => "codex_cli",
         WorkerHarnessV1::ClaudeCode => "claude_code",
+        WorkerHarnessV1::QoderCli => "qoder_cli",
     };
     let expected_revisions = RevisionSetV1 {
         target: change.before_revision,
@@ -159,22 +160,25 @@ fn selection_stage_is_invisible_and_harness_revisions_are_independent_and_durabl
         finish_succeeded(&store, &mut codex_operation);
         completed_operations.push(codex_operation);
 
-        let claude = change(WorkerHarnessV1::ClaudeCode, 0, "claude");
-        let mut claude_operation = begin_selection(&store, &workspace, "claude", &claude);
-        let claude_effect = store
-            .stage_worker_dependency_selection(&claude_operation.operation_id, &workspace, &claude)
-            .unwrap();
-        store
-            .activate_worker_dependency_selection(&claude_effect)
-            .unwrap();
-        assert_eq!(
-            store
-                .worker_dependency_selection_revision(&workspace, WorkerHarnessV1::ClaudeCode,)
-                .unwrap(),
-            1
-        );
-        finish_succeeded(&store, &mut claude_operation);
-        completed_operations.push(claude_operation);
+        for (harness, suffix) in [
+            (WorkerHarnessV1::ClaudeCode, "claude"),
+            (WorkerHarnessV1::QoderCli, "qoder"),
+        ] {
+            let selection = change(harness, 0, suffix);
+            let mut operation = begin_selection(&store, &workspace, suffix, &selection);
+            let effect = store
+                .stage_worker_dependency_selection(&operation.operation_id, &workspace, &selection)
+                .unwrap();
+            store.activate_worker_dependency_selection(&effect).unwrap();
+            assert_eq!(
+                store
+                    .worker_dependency_selection(&workspace, harness)
+                    .unwrap(),
+                Some((selection.after_selection, 1))
+            );
+            finish_succeeded(&store, &mut operation);
+            completed_operations.push(operation);
+        }
 
         let stale = change(WorkerHarnessV1::CodexCli, 0, "stale");
         let stale_operation = selection_operation(&workspace, "stale", &stale);
@@ -192,7 +196,11 @@ fn selection_stage_is_invisible_and_harness_revisions_are_independent_and_durabl
     }
     let reopened =
         ControlStore::open(&crate::test_storage_authority(), &database, &backups).unwrap();
-    for harness in [WorkerHarnessV1::CodexCli, WorkerHarnessV1::ClaudeCode] {
+    for harness in [
+        WorkerHarnessV1::CodexCli,
+        WorkerHarnessV1::ClaudeCode,
+        WorkerHarnessV1::QoderCli,
+    ] {
         let (_, revision) = reopened
             .worker_dependency_selection(&workspace, harness)
             .unwrap()

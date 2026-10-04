@@ -239,7 +239,7 @@ pub(super) fn dependencies_discover() -> Value {
         "$id": "hiroute://contracts/cli/worker-dependencies-discover-request.v1.schema.json",
         "type": "object",
         "additionalProperties": false,
-        "properties": {"harness": {"enum": ["codex_cli", "claude_code"]}}
+        "properties": {"harness": {"enum": ["codex_cli", "claude_code", "qoder_cli"]}}
     })
 }
 
@@ -249,13 +249,16 @@ pub(super) fn dependencies_select() -> Value {
         "$id": "hiroute://contracts/cli/worker-dependencies-select-request.v1.schema.json",
         "type": "object",
         "additionalProperties": false,
-        "required": ["harness", "adapter_path", "cli_path", "expected_selection_revision"],
+        "required": ["harness", "cli_path", "expected_selection_revision"],
         "properties": {
-            "harness": {"enum": ["codex_cli", "claude_code"]},
+            "harness": {"enum": ["codex_cli", "claude_code", "qoder_cli"]},
             "adapter_path": {"type": "string", "minLength": 1, "maxLength": 4096},
             "cli_path": {"type": "string", "minLength": 1, "maxLength": 4096},
             "node_path": {"type": "string", "minLength": 1, "maxLength": 4096},
             "expected_selection_revision": {"type": "integer", "minimum": 0, "maximum": u64::MAX}
-        }
+        },
+        "if": {"properties": {"harness": {"const": "qoder_cli"}}},
+        "then": {"properties": {"adapter_path": false, "node_path": false}},
+        "else": {"required": ["adapter_path"]}
     })
 }

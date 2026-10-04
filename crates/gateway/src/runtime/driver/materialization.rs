@@ -108,8 +108,7 @@ impl ProductionProvider {
                 inner: Arc::clone(&ports.runtime_state),
             }),
             cooldowns: RuntimeCooldownPolicy::default(),
-            #[cfg(feature = "e2e-test-control")]
-            test_dial: crate::server::test_control::E2eDialMap::from_environment(),
+            target_resolver: TargetResolver::new(),
         }
     }
 }
@@ -429,7 +428,7 @@ pub(super) async fn materialize_attempt(
                 return Err(Arc::from(MATERIALIZATION_AUTHORITY_FAILED));
             }
             let target = transport_target_for_profile(plan, &lease_target)?;
-            resolve_target(provider, target, &scope).await?
+            provider.target_resolver.resolve(target, &scope).await?
         }
     };
     validate_attempt_permits(provider.state.as_ref(), permits.borrowed(), &scope)
@@ -800,51 +799,66 @@ async fn confirm_mechanical_state(
     Ok(Some((classified, facts)))
 }
 
-pub(crate) async fn resolve_target(
-    provider: &ProductionProvider,
-    target: TransportTarget,
-    scope: &ExecutionScope,
-) -> Result<TransportTarget, Arc<str>> {
+/// DNS resolution and the optional controlled dial mapping. Constructed at the
+/// caller's original configuration boundary, independently of model credentials
+/// and runtime-state ownership.
+pub(crate) struct TargetResolver {
     #[cfg(feature = "e2e-test-control")]
-    {
-        let test_dial = provider
-            .test_dial
-            .as_ref()
-            .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
-        if test_dial
-            .as_ref()
-            .is_some_and(|dial| dial.fails_dns(&target))
+    test_dial: Result<Option<crate::server::test_control::E2eDialMap>, ()>,
+}
+
+impl TargetResolver {
+    pub(crate) fn new() -> Self {
+        Self {
+            #[cfg(feature = "e2e-test-control")]
+            test_dial: crate::server::test_control::E2eDialMap::from_environment(),
+        }
+    }
+
+    pub(crate) async fn resolve(
+        &self,
+        target: TransportTarget,
+        scope: &ExecutionScope,
+    ) -> Result<TransportTarget, Arc<str>> {
+        #[cfg(feature = "e2e-test-control")]
         {
+            let test_dial = self
+                .test_dial
+                .as_ref()
+                .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+            if test_dial
+                .as_ref()
+                .is_some_and(|dial| dial.fails_dns(&target))
+            {
+                return Err(Arc::from(MATERIALIZATION_DNS_FAILED));
+            }
+            if let Some(mapped) = test_dial
+                .as_ref()
+                .map(|dial| dial.apply(target.clone()))
+                .transpose()
+                .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+                .flatten()
+            {
+                return Ok(mapped);
+            }
+        }
+        let Some(authority) = target.unresolved_authority().map(ToOwned::to_owned) else {
+            return Ok(target);
+        };
+        let (host, port) = dns_lookup_target(&authority, target.scheme)?;
+        let addresses = scope
+            .run(tokio::net::lookup_host((host.as_str(), port)))
+            .await
+            .map_err(|_| Arc::from(MATERIALIZATION_DNS_FAILED))?
+            .map_err(|_| Arc::from(MATERIALIZATION_DNS_FAILED))?
+            .collect::<Vec<SocketAddr>>();
+        if addresses.is_empty() {
             return Err(Arc::from(MATERIALIZATION_DNS_FAILED));
         }
-        if let Some(mapped) = test_dial
-            .as_ref()
-            .map(|dial| dial.apply(target.clone()))
-            .transpose()
-            .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
-            .flatten()
-        {
-            return Ok(mapped);
-        }
+        target
+            .with_resolved_addresses(addresses.into())
+            .map_err(|_| Arc::from(MATERIALIZATION_DNS_FAILED))
     }
-    #[cfg(not(feature = "e2e-test-control"))]
-    let _ = provider;
-    let Some(authority) = target.unresolved_authority().map(ToOwned::to_owned) else {
-        return Ok(target);
-    };
-    let (host, port) = dns_lookup_target(&authority, target.scheme)?;
-    let addresses = scope
-        .run(tokio::net::lookup_host((host.as_str(), port)))
-        .await
-        .map_err(|_| Arc::from(MATERIALIZATION_DNS_FAILED))?
-        .map_err(|_| Arc::from(MATERIALIZATION_DNS_FAILED))?
-        .collect::<Vec<SocketAddr>>();
-    if addresses.is_empty() {
-        return Err(Arc::from(MATERIALIZATION_DNS_FAILED));
-    }
-    target
-        .with_resolved_addresses(addresses.into())
-        .map_err(|_| Arc::from(MATERIALIZATION_DNS_FAILED))
 }
 
 fn transport_target_for_profile(

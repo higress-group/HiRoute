@@ -115,7 +115,8 @@ impl ExternalEffectPort for FileRace {
         if !self.fail_after_file
             && op.plan.external().iter().any(|i| {
                 i.target() == e.target
-                    && crate::control::runtime::native_model::is_settings_codex_model(i)
+                    && (crate::control::runtime::native_model::is_settings_codex_model(i)
+                        || crate::control::runtime::native_qoder_model::is_settings_qoder_model(i))
             })
         {
             let original = fs::read_to_string(&self.path).unwrap();

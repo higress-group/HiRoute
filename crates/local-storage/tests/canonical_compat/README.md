@@ -14,11 +14,12 @@ current-producer test preserves Operation identities and business inputs across
 cold reopen, and verifies the original collaboration grant's positive and negative
 authorization cases.
 
-This pre-MVP agents.connect.apply sample predates the supported schema22 upgrade
-sources and lacks their complete Plan/grant facts. It is registered as a frozen
-canonical fixture, not a production migration reader. Injecting its journal into
-a schema23 store without migration must be rejected; source22 migration is covered
-by the separately frozen upgrade-schema22 fixtures.
+This pre-MVP agents.connect.apply sample lacks the complete current Plan/grant
+facts. It is a frozen canonical fixture, not a production migration reader.
+Injecting its journal into a current store must be rejected. Production
+[startup admission](../../src/migrations/startup_format.rs) rejects unsupported
+source formats (including schema22) before mutation. Historical migration
+component tests do not establish a supported user-store upgrade path.
 
 This fixture proves compatibility with the previous normal default graph; it is
 not an inventory of user stores written by experimental order-sensitive binaries.

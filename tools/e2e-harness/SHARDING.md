@@ -15,6 +15,11 @@ cargo run --locked -p hiroute-e2e -- validate \
   --profile e2e/profiles/local-process.json
 ```
 
+Managed validation uses the complete CLI definition test through `cargo test`, as
+shown in [test selection](../../docs/test-selection.md#keep-these-quality-boundaries).
+It checks all 17 steps and 10 declared shards without choosing a case or starting the
+business processes. Passing definition validation is not production smoke evidence.
+
 Give each isolated black-box process a unique result file:
 
 ```sh

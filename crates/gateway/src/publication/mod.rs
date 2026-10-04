@@ -5,6 +5,7 @@ mod compiler;
 mod installer;
 mod run;
 mod schema;
+mod trust;
 
 pub use catalog::{CatalogError, CatalogResponse, GatewayCatalog};
 pub(crate) use compiler::{CompiledGrant, CompiledGrantRoute, compile_classifier_mode_authority};

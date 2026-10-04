@@ -940,10 +940,17 @@ impl FixtureFacts {
 }
 
 impl AgentConnectionControlPort for FixtureFacts {
+    fn retry_settings_operation(
+        &self,
+        request: &api::AgentSettingsRetryV1,
+    ) -> Result<OperationV1, ControlReadError> {
+        self.adapter.retry_settings_operation(request)
+    }
+
     fn settings_status(
         &self,
         request: &api::AgentSettingsStatusRequestV2,
-    ) -> Result<api::AgentModelSettingsStatusV2, ControlReadError> {
+    ) -> Result<api::AgentSettingsStatusV2, ControlReadError> {
         self.adapter.settings_status(request)
     }
 
@@ -964,8 +971,10 @@ impl AgentConnectionControlPort for FixtureFacts {
         let mut capabilities = vec![
             AgentCapability::EffectiveConfiguration,
             AgentCapability::AtomicManagedReplace,
-            AgentCapability::IngressAuthentication,
         ];
+        if input.facts.model.is_some() {
+            capabilities.push(AgentCapability::IngressAuthentication);
+        }
         if self.fixture_worker_metadata {
             capabilities.extend([
                 AgentCapability::SkillLoading,
@@ -1011,3 +1020,9 @@ mod facets;
 
 #[path = "settings_profile_tests.rs"]
 mod settings_profile_tests;
+
+#[path = "settings_entry_qoder_tests.rs"]
+mod qoder;
+
+#[path = "settings_profile_fault.rs"]
+mod fault;

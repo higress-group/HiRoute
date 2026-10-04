@@ -219,15 +219,18 @@ impl AgentConnectionPlanner {
             .require_action(hiroute_domain::AgentAction::ConfigureModel)
             .map_err(AgentConnectionPlanningError::UnprovenCapabilities)?;
         let profile = &facts.installation.profile;
+        let protocol = profile
+            .model_connection()
+            .map_err(|_| AgentConnectionPlanningError::InvalidGrant)?
+            .ok_or(AgentConnectionPlanningError::InvalidGrant)?
+            .ingress_protocol;
         let allowed_agent_plan_ids = match spec.allowed_scope {
             AgentPlanAllowedScopeV1::Selected => spec.allowed_agent_plan_ids.clone(),
             AgentPlanAllowedScopeV1::AllPublished if spec.allowed_agent_plan_ids.is_empty() => {
                 facts
                     .plans
                     .iter()
-                    .filter(|plan| {
-                        plan.active && plan.supported_ingress.contains(&profile.client_protocol())
-                    })
+                    .filter(|plan| plan.active && plan.supported_ingress.contains(&protocol))
                     .map(|plan| plan.agent_plan_id.clone())
                     .collect()
             }
@@ -236,7 +239,7 @@ impl AgentConnectionPlanner {
             }
         };
         let grant = AgentPlanGrantV1::derive_with_scope(
-            profile.client_protocol(),
+            protocol,
             spec.allowed_scope,
             spec.default_agent_plan_id.clone(),
             allowed_agent_plan_ids,
@@ -267,8 +270,7 @@ impl AgentConnectionPlanner {
                 ))
             })
             .collect::<Result<BTreeMap<_, _>, AgentConnectionPlanningError>>()?;
-        let model_grant =
-            hiroute_domain::AgentModelGrantV2::seal(profile.client_protocol(), routes)?;
+        let model_grant = hiroute_domain::AgentModelGrantV2::seal(protocol, routes)?;
 
         let (catalog, overlay, catalog_delivery) = if spec.native_subagent_routing {
             if !profile.native_subagent_routing {
@@ -277,8 +279,7 @@ impl AgentConnectionPlanner {
             let delivery = profile
                 .catalog_delivery(spec.dynamic_catalog_available)
                 .ok_or(AgentConnectionPlanningError::CatalogUnavailable)?;
-            let catalog =
-                AgentPlanCatalogV1::from_grant(&grant, profile.client_protocol(), &facts.plans)?;
+            let catalog = AgentPlanCatalogV1::from_grant(&grant, protocol, &facts.plans)?;
             let overlay = RoutingInstructionOverlayV1::render(&catalog)?;
             (Some(catalog), Some(overlay), Some(delivery))
         } else {
@@ -286,13 +287,9 @@ impl AgentConnectionPlanner {
         };
 
         let desired_config = match facts.activation_mode {
-            AgentActivationModeV1::ManagedConfiguration => desired_config(
-                profile.client_protocol(),
-                &facts,
-                &grant,
-                catalog.as_ref(),
-                catalog_delivery,
-            )?,
+            AgentActivationModeV1::ManagedConfiguration => {
+                desired_config(protocol, &facts, &grant, catalog.as_ref(), catalog_delivery)?
+            }
             AgentActivationModeV1::ManagedLaunch => BTreeMap::new(),
         };
         let writable = facts.installation.writable_values(&desired_config)?;
@@ -324,7 +321,7 @@ impl AgentConnectionPlanner {
             agent_id: spec.agent_id.clone(),
             profile_id: profile.profile_id.clone(),
             integration_profile_ref: profile.integration_profile_ref.clone(),
-            protocol: profile.client_protocol(),
+            protocol,
             activation_mode: facts.activation_mode,
             grant: grant.clone(),
             native_subagent_routing: spec.native_subagent_routing,
@@ -365,7 +362,7 @@ impl AgentConnectionPlanner {
                 "guidance_result_digest": guidance_result_digest,
                 "config_change_digest": config_change.digest,
                 "integration_profile_ref": profile.integration_profile_ref,
-                "protocol": profile.client_protocol(),
+                "protocol": protocol,
                 "activation_mode": facts.activation_mode,
                 "grant_digest": grant.digest,
                 "model_grant_digest": model_grant.digest,

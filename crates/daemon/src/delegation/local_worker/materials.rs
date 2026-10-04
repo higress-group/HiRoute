@@ -131,7 +131,9 @@ pub(super) fn prepare(
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
+            // The profile may provide a token-free native launcher. Only that explicitly
+            // declared material is executable; ordinary configuration stays private data.
+            options.mode(if file.executable { 0o700 } else { 0o600 });
         }
         let mut output = options
             .open(owned.path.join(file.relative_path))

@@ -234,9 +234,6 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     apply(&service, &runtime, root_spec, "switch-after-revoke");
 }
 
-#[path = "settings_profile_fault.rs"]
-mod fault;
-
 #[path = "settings_profile_legacy_tests.rs"]
 mod legacy;
 

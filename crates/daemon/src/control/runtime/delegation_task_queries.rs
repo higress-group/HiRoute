@@ -256,6 +256,7 @@ pub(super) fn run_view(task: &DelegationTaskV1, run: &DelegationRunV1) -> Delega
     let display_name = match task.plan.harness {
         hiroute_domain::delegation::WorkerHarnessV1::CodexCli => "Codex",
         hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode => "Claude Code",
+        hiroute_domain::delegation::WorkerHarnessV1::QoderCli => "Qoder",
     };
     DelegationRunViewV1 {
         task_id: run.task_id.clone(),

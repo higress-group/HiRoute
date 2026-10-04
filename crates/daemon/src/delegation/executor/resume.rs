@@ -57,7 +57,11 @@ impl DelegationRunExecutor {
             .as_ref()
             .and_then(|session| session.native_session_id.as_deref())
             .ok_or(DelegationErrorV1::ResumeUnavailable)?;
-        let native_history = native_history(session_root, task.plan.harness, native_session_id)?;
+        // These are owned continuation materials. A borrowed Codex/Qoder binding is an exact-ID
+        // witness, not a rollout path or proof that the native client can still load its history.
+        // Body visibility/retention remains authoritative even while native history survives.
+        let continuation_materials =
+            native_history(session_root, task.plan.harness, native_session_id)?;
         let now = now_ms()?;
         let retention =
             u64::try_from(RETENTION_MS).map_err(|_| DelegationErrorV1::StorageUnavailable)?;
@@ -120,7 +124,7 @@ impl DelegationRunExecutor {
             &run.run_id,
             until,
             &task.body_refs,
-            &native_history,
+            &continuation_materials,
         );
         if stored.is_err() {
             let _ = self.versions.release(&run.workspace_id, &owner);

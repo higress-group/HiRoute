@@ -474,7 +474,7 @@ impl ApplicationService {
                             "agent_id":check.agent_id, "skill_loading":"proven",
                             "trusted_cli_execution":"proven", "model_call":false,
                         }), request.request_id),
-                        Err(error) => failed(map_control_error(error), request.request_id),
+                        Err(error) => agent_connection::collaboration_check::failed(error, request.request_id),
                     };
                 }
                 if disposition == agent_connection::control::CheckDisposition::NativeAuthenticationRequested {

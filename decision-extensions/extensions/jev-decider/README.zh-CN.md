@@ -136,7 +136,16 @@ HiRoute 投影不含系统/开发者指令、reasoning、模型/计划身份或�
 
 评分是胜任度，不是置信度；Jev 的 `0..2` Score 除以二映射到 `[0,1]`。Jev 不提供文字 reason，本实现直接省略，不追加生成调用。无合法 Score 时仍可保留合法分支；模式必需输出非法则失败，不补调。
 
-修改 `jev_decider/server.py` 中上下文准备、`questions()` 和 `decision_response()` 即可实现自己的策略或供应商适配，保持 HiRoute 请求/响应合同不变。无需增加插件注册框架、会话库或第二个评分接口。
+生产入口仍为 `jev_decider.server:main` → `create_app()` → `POST /v1/decisions`。职责按以下入口分开：
+
+- [settings.py](jev_decider/settings.py)：环境配置、受限凭据/策略文件读取及校验。
+- [protocol.py](jev_decider/protocol.py)：严格 JSON 和现有五字段请求校验。
+- [decision.py](jev_decider/decision.py)：无 I/O 的策略优先级、整轮裁剪、Jev 问题构造、Choice/Score 解释及实际用量提取。
+- [server.py](jev_decider/server.py)：HTTP、认证、总超时、并发、响应上限、错误映射、日志及生命周期。原公开导入保留为同一实现的转导出。
+
+修改现有策略从 `decision.py` 的 `questions()` 和 `decision_response()` 开始；提示、阈值、覆盖优先级和裁剪变化都影响行为。保持 HiRoute 请求/响应合同，不增加第二个评分调用。本次职责拆分没有实现内置服务、多 provider 或工具选择。
+
+后续应区分通用推断、用途策略、provider 传输和调用方执行授权。自然语言条件由模型评估；稳定分支 ID、允许集合、发布版本及默认回退由调用方政策拥有，合法分支不直接授予执行能力。现有二分 policy 覆盖及 rules 阈值保持不变；上一段 assessment 与本次选择分开。完整阅读入口见 [English architecture map](README.md#code-and-responsibility-map)。
 
 ## 测试
 
@@ -147,6 +156,8 @@ python -m unittest -v
 ```
 
 测试使用真实 HTTP handler 和受控上游，不读真实 key、不访问付费供应商。覆盖 auto/rules 单次调用、首轮无评分、公式边界、非法输出、裁剪、认证、代理、上游失败、超时及并发。
+
+按用户能力定位断言见 [English test map](tests/README.md)。HTTP 和纯模块共用独立预期的输入输出案例；纯模块合同也可仅使用 Python 标准库运行：`python -m unittest tests.test_decision -v`。
 
 需要真实冒烟时，先启动持有真实 key 的本地服务，再从仓库根目录按仓库验证路由要求显式运行：
 

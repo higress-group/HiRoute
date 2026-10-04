@@ -115,6 +115,63 @@ pub enum AgentModelSettingsStateV2 {
     NeedsAttention,
 }
 
+/// Settings status follows the actual facets supported by an installation. The model variant
+/// serializes exactly as the existing V2 response, without an added envelope or discriminator.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum AgentSettingsStatusV2 {
+    Model(Box<AgentModelSettingsStatusV2>),
+    CollaborationOnly(AgentCollaborationOnlySettingsStatusV2),
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCollaborationOnlySettingsStatusV2 {
+    pub schema: String,
+    pub context_id: String,
+    pub collaboration: AgentCollaborationSettingsStatusV2,
+}
+
+impl AgentSettingsStatusV2 {
+    pub fn model(&self) -> Option<&AgentModelSettingsStatusV2> {
+        match self {
+            Self::Model(model) => Some(model.as_ref()),
+            Self::CollaborationOnly(_) => None,
+        }
+    }
+    pub fn collaboration(&self) -> Option<&AgentCollaborationSettingsStatusV2> {
+        match self {
+            Self::Model(model) => model.collaboration.as_ref(),
+            Self::CollaborationOnly(status) => Some(&status.collaboration),
+        }
+    }
+    pub fn context_id(&self) -> &str {
+        match self {
+            Self::Model(model) => &model.context_id,
+            Self::CollaborationOnly(status) => &status.context_id,
+        }
+    }
+    pub fn valid(&self) -> bool {
+        let context = self.context_id();
+        !context.is_empty()
+            && context.len() <= 256
+            && !context.contains(char::is_control)
+            && match self {
+                Self::Model(model) => {
+                    model.schema == "hiroute.agent-model-settings-status/v2"
+                        && model.collaboration.as_ref().is_none_or(|collaboration| {
+                            collaboration.schema == "hiroute.agent-collaboration-settings-status/v2"
+                        })
+                }
+                Self::CollaborationOnly(status) => {
+                    status.schema == "hiroute.agent-collaboration-only-settings-status/v2"
+                        && status.collaboration.schema
+                            == "hiroute.agent-collaboration-settings-status/v2"
+                }
+            }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentModelSettingsStatusV2 {
@@ -185,6 +242,9 @@ impl AgentModelSettingsStatusV2 {
                 AgentModelSurfaceV2::CodexCli | AgentModelSurfaceV2::CodexDesktop
             ),
             AgentModelSelectionV2::ClaudeLauncher { surfaces, .. } => surfaces.contains(surface),
+            AgentModelSelectionV2::QoderAdditional { .. } => {
+                *surface == AgentModelSurfaceV2::QoderCli
+            }
         };
         let mut seen = std::collections::BTreeSet::new();
         self.surface_results.iter().all(|result| {
@@ -320,6 +380,22 @@ mod tests {
     }
 
     #[test]
+    fn qoder_model_verification_cannot_inherit_another_clients_success() {
+        let mut value = status();
+        value.current_selection = Some(AgentModelSelectionV2::QoderAdditional {
+            allowed_plan_ids: [AgentPlanId::parse("plan/test").unwrap()].into(),
+        });
+        assert!(!value.derive_model_verified(value.applied_revision));
+        value.surface_results.truncate(1);
+        value.surface_results[0].surface = AgentModelSurfaceV2::QoderCli;
+        assert!(value.derive_model_verified(value.applied_revision));
+        value.surface_results[0].state = AgentModelCheckStateV2::Failed;
+        assert!(!value.derive_model_verified(value.applied_revision));
+        value.surface_results[0].state = AgentModelCheckStateV2::Passed;
+        assert!(!value.derive_model_verified(Some(GatewayPublicationRevision::new(8).unwrap())));
+    }
+
+    #[test]
     fn pending_missing_or_duplicate_results_cannot_inherit_success() {
         let mut value = status();
         value.model_verified = true;
@@ -371,7 +447,8 @@ mod tests {
     }
 }
 
-/// Resume the original already-authorized Codex settings Operation; never creates a new intent.
+/// Resume an original already-authorized settings Operation for a supported native client;
+/// never creates a new intent or changes the original context.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsRetryV1 {
@@ -379,3 +456,7 @@ pub struct AgentSettingsRetryV1 {
     pub context_id: String,
     pub operation_id: hiroute_domain::OperationId,
 }
+
+#[cfg(test)]
+#[path = "agent_settings_status_tests.rs"]
+mod status_contract_tests;

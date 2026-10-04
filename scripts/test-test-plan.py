@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest import mock
 import sys
 import json
 import subprocess
@@ -13,8 +14,215 @@ spec = importlib.util.spec_from_file_location("test_plan", Path(__file__).with_n
 plan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plan)
 
+runner_spec = importlib.util.spec_from_file_location("remote_rust", Path(__file__).with_name("remote-rust.py"))
+runner = importlib.util.module_from_spec(runner_spec)
+runner_spec.loader.exec_module(runner)
+
 
 class SelectionTests(unittest.TestCase):
+    def test_worker_contract_alone_requires_feature_enabled_mac_consumers(self):
+        for path in ('crates/application-api/src/worker.rs',
+                     'crates/domain/src/delegation/mod.rs',
+                     'crates/domain/src/delegation/installation.rs'):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertTrue(result['native_required'])
+                self.assertEqual(len(result['native_checks']), 1)
+                check = result['native_checks'][0]
+                self.assertEqual(check['id'], 'desktop.compile')
+                self.assertEqual(check['platform'], 'macos')
+                self.assertEqual(check['command_template'], [
+                    'python3', 'scripts/validation.py',
+                    '--frontend-dist', '<candidate-frontend-dist>', 'desktop', 'run',
+                    '--ref', '<pushed-branch-ref>', '--sha', '<candidate-sha>',
+                    '--plan', '<feature-plan>', '--phase', 'focused', '--cargo-only', '--',
+                    'cargo', 'check', '--locked', '-p', 'hiroute-desktop',
+                    '--features', 'desktop-pilot', '--all-targets'])
+                self.assertEqual(set(check['required_inputs']),
+                                 {'pushed-branch-ref', 'candidate-sha', 'candidate-frontend-dist',
+                                  'feature-plan'})
+                self.assertNotIn(check['command_template'], result['commands'])
+                # Existing backend coverage stays independent of the Mac obligation.
+                self.assertTrue(any('--exclude' in c and 'hiroute-desktop' in c
+                                    for c in result['commands']))
+
+    def test_native_and_shared_consumer_changes_deduplicate_compile_obligation(self):
+        paths = ['apps/desktop/src-tauri/src/bridge/worker_tasks.rs',
+                 'crates/application-api/src/worker.rs']
+        result = plan.select(paths + paths)
+        self.assertEqual(len(result['native_checks']), 1)
+        self.assertEqual(result['native_checks'][0]['trigger_paths'], sorted(paths))
+
+    def test_unrelated_shared_frontend_and_docs_do_not_require_native_compile(self):
+        for paths in (['crates/domain/src/routing.rs'], ['apps/desktop/src/App.tsx'],
+                      ['docs/test-selection.md'], ['crates/diagnostics/src/level.rs'], []):
+            with self.subTest(paths=paths):
+                result = plan.select(paths)
+                self.assertFalse(result['native_required'])
+                self.assertEqual(result['native_checks'], [])
+
+    def test_qoder_product_gate_requires_delegation_and_persisted_models_without_environment(self):
+        # Selection must retain a required gate even on a machine unable to run it.
+        with mock.patch.dict(plan.os.environ, {}, clear=True):
+            result = plan.select(['tools/product-e2e/tests/qoder_delegation.rs'])
+        self.assertEqual(len(result['product_checks']), 1)
+        check = result['product_checks'][0]
+        self.assertEqual(check['harnesses'], ['qoder'])
+        self.assertEqual(check['required_tests'], [
+            'qoder_main_agent_uses_installed_user_skill_to_delegate_real_work',
+            'qoder_worker_uses_native_skills_and_continues_the_frozen_task',
+            'qoder_workers_route_independently_and_cancel_only_owned_work',
+            'qoder_worker_compaction_keeps_the_frozen_managed_route',
+            'qoder_main_agent_uses_persisted_additional_model_routes'])
+        self.assertEqual(check['required_environment'], [
+            'HIROUTE_PRODUCT_CANDIDATE_SHA', 'HIROUTE_WORKER_QODER_BINARY',
+            'HIROUTE_QODER_CONTEXT_HOME', 'HIROUTE_QODER_CONFIG_DIR',
+            'HIROUTE_QODER_MODEL_CONTEXT_HOME', 'HIROUTE_QODER_MODEL_CONFIG_DIR'])
+        self.assertEqual(check['missing_environment'], 'fail')
+        self.assertEqual(check['command'], [
+            'cargo', 'test', '--locked', '-p', 'hiroute-product-e2e', '--test',
+            'qoder_delegation', '--', '--ignored', '--nocapture', '--test-threads=1'])
+        self.assertFalse(result['native_required'])
+        self.assertFalse(any('--ignored' in command for command in result['commands']))
+
+    def test_qoder_leaf_and_shared_collaboration_changes_select_only_qoder_gate(self):
+        for path in (
+            'crates/daemon/tests/support/qoder_native_context.py',
+            'crates/daemon/tests/support/qoder_collaboration_product.py',
+            'crates/daemon/tests/support/qoder_collaboration_fixture.py',
+            'crates/daemon/tests/support/qoder_compaction_product.py',
+            'crates/integrations/src/agents/qoder/probe.rs',
+            'crates/application/src/agent_connection/qoder_model_journal.rs',
+            'crates/domain/src/agents/qoder_model.rs',
+            'crates/daemon/src/control/runtime/qoder_model.rs',
+            'crates/daemon/src/delegation/profile/qoder.rs',
+            'crates/daemon/src/control/runtime/settings_facts/qoder.rs',
+            'crates/daemon/src/control/runtime/settings_facts.rs',
+            'crates/daemon/src/control/runtime/settings_status.rs',
+            'crates/daemon/src/control/runtime.rs',
+            'crates/application/src/control_plane/agent_settings.rs',
+            'crates/daemon/src/control/runtime/collaboration_installation.rs',
+            'crates/application/src/agent_connection/settings_input.rs',
+            'crates/application/src/agent_connection/skill_reference.rs',
+        ):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertEqual([check['command'][6] for check in result['product_checks']],
+                                 ['qoder_delegation'])
+                self.assertIn(['python3', 'scripts/test-qoder-product.py'], result['commands'])
+        # Model-specific settings are not consumers of the independent Qoder Skill path.
+        self.assertEqual(plan.select([
+            'crates/daemon/src/control/runtime/settings_codex_profile.rs',
+            'crates/daemon/src/control/runtime/native_claude_model.rs',
+        ])['product_checks'], [])
+
+    def test_shared_agent_journey_helper_selects_current_consumers_and_its_ownership_checks(self):
+        result = plan.select(['crates/daemon/tests/support/agent_product_support.py'])
+        self.assertEqual(result['mode'], 'affected')
+        self.assertEqual([check['command'][6] for check in result['product_checks']], ['qoder_delegation'])
+        self.assertIn(['python3', 'scripts/test-agent-product-support.py'], result['commands'])
+        tooling = plan.select(['scripts/test-agent-product-support.py'])
+        self.assertEqual(tooling['product_checks'], [])
+        self.assertIn(['python3', 'scripts/test-agent-product-support.py'], tooling['commands'])
+
+    def test_shared_native_context_fixture_selects_both_real_consumer_targets(self):
+        for path in ('crates/daemon/tests/support/native_context_product.py',
+                     'crates/daemon/tests/support/native_context_fixture.py',
+                     'crates/daemon/tests/support/native_context_boundaries.py'):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertEqual(result['mode'], 'affected')
+                self.assertEqual({check['command'][6] for check in result['product_checks']},
+                                 {'worker_native_context', 'qoder_delegation'})
+
+    def test_qoder_production_gates_preserve_ordinary_owner_checks_and_deduplicate(self):
+        result = plan.select(['crates/integrations/src/agents/qoder.rs',
+                              'crates/daemon/src/control/runtime/settings_facts/qoder.rs',
+                              'crates/daemon/tests/support/qoder_native_context.py'])
+        self.assertEqual(result['groups'], ['daemon', 'integrations'])
+        self.assertEqual([check['command'][6] for check in result['product_checks']],
+                         ['qoder_delegation'])
+        self.assertTrue(any('smoke_cli' in command for command in result['commands']))
+        shared = plan.select(['crates/daemon/tests/support/publication_product.py'])
+        self.assertEqual(shared['mode'], 'affected')
+        self.assertEqual({check['command'][6] for check in shared['product_checks']},
+                         plan.OPT_IN_WORKER_TARGETS)
+        self.assertEqual(plan.select(['scripts/test-qoder-product.py'])['product_checks'], [])
+
+    def test_qoder_guide_and_settings_docs_do_not_expand_product_scope(self):
+        result = plan.select(['tools/product-e2e/tests/QODER_DELEGATION.md',
+                              'docs/test-selection.md'])
+        self.assertFalse(result['rust'])
+        self.assertFalse(result['frontend'])
+        self.assertEqual(result['product_checks'], [])
+
+    def test_worker_context_changes_require_explicit_real_harness_cases(self):
+        for path in ('crates/daemon/src/delegation/profile/mod.rs',
+                     'crates/daemon/src/delegation/executor/resume.rs',
+                     'tools/product-e2e/tests/worker_native_context.rs'):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                required = result['product_checks']
+                self.assertEqual(len(required), 1 if path.endswith('worker_native_context.rs') else 4)
+                self.assertEqual(required[0]['id'], 'worker.native-context')
+                self.assertEqual(required[0]['harnesses'], ['codex', 'claude'])
+                self.assertIn('--ignored', required[0]['command'])
+                self.assertEqual(len(required[0]['business_cases']), 6)
+                self.assertEqual(required[0]['automated_cases'], [
+                    'worker.context.native-skills', 'worker.context.exact-continue',
+                    'worker.context.concurrent-routing', 'worker.context.cancel-owned-work'])
+                self.assertIn('native Desktop', required[0]['evidence_limit'])
+
+    def test_changed_worker_journey_is_explicitly_selected(self):
+        for target in plan.OPT_IN_WORKER_TARGETS:
+            checks = plan.select(['tools/product-e2e/tests/' + target + '.rs'])['product_checks']
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(checks[0]['command'][6], target)
+            self.assertIn('--ignored', checks[0]['command'])
+        shared = plan.select(['tools/product-e2e/tests/worker_product_support/mod.rs'])
+        self.assertEqual({check['command'][6] for check in shared['product_checks']},
+                         plan.OPT_IN_WORKER_TARGETS)
+
+    def test_native_bootstrap_has_its_own_executable_check(self):
+        command = ['node', '--test', plan.WORKER_BOOTSTRAP_TEST]
+        for path in ('crates/daemon/src/delegation/profile/mod.rs',
+                     'crates/daemon/src/delegation/profile/claude_adapter_bootstrap.mjs',
+                     plan.WORKER_BOOTSTRAP_TEST):
+            self.assertIn(command, plan.select([path])['commands'])
+        self.assertIn(command, plan.select([], full=True)['commands'])
+        selected = plan.select(['crates/daemon/src/delegation/profile/mod.rs'])
+        self.assertIn(command, plan.integration_preflight(selected)['commands'])
+
+    def test_worker_fixture_oracle_has_a_tooling_only_entry(self):
+        result = plan.select(sorted(plan.WORKER_FIXTURE_TOOLING))
+        self.assertFalse(result['rust'])
+        self.assertFalse(result['frontend'])
+        self.assertIn(['python3', 'scripts/test-native-context-product.py'], result['commands'])
+        self.assertIn(['python3', 'scripts/test-native-context-boundaries.py'], result['commands'])
+
+    def test_worker_support_selects_all_registered_consumers_without_full_workspace(self):
+        result = plan.select(['tools/product-e2e/tests/worker_product_support/mod.rs'])
+        self.assertEqual(result['mode'], 'affected')
+        self.assertFalse(result['frontend'])
+        targets = plan.e2e_consumers('tools/product-e2e/tests/worker_product_support/mod.rs')
+        self.assertEqual({target for _, target in targets},
+                         {'worker_delegation', 'worker_read', 'worker_native_context', 'qoder_delegation'})
+        self.assertIn(['cargo', 'clippy', '--locked', '-p', 'hiroute-product-e2e',
+                       '--all-targets', '--all-features', '--', '-D', 'warnings'], result['commands'])
+        self.assertFalse(any(command[:2] == ['cargo', 'test'] for command in result['commands']))
+        # Ignored-only targets must not become misleading zero-selected test commands.
+        self.assertFalse(any('--ignored' in command for command in result['commands']))
+
+    def test_native_context_guide_is_navigation_only(self):
+        result = plan.select(['tools/product-e2e/tests/WORKER_NATIVE_CONTEXT.md'])
+        self.assertFalse(result['rust'])
+        self.assertFalse(result['frontend'])
+
+    def test_unrelated_and_docs_changes_do_not_request_real_agents(self):
+        for path in ('docs/code-map/worker-context.md', 'crates/diagnostics/src/level.rs',
+                     'apps/desktop/src/product/Models.tsx'):
+            self.assertEqual(plan.select([path])['product_checks'], [])
+
     def test_validation_tooling_selects_runner_consumers_without_product_builds(self):
         result = plan.select(['scripts/validation.py', 'scripts/local-rust.py', 'scripts/pilot-builds.py',
                               'scripts/desktop-pilot.py', 'docs/validation-routing.md'])
@@ -107,6 +315,23 @@ class SelectionTests(unittest.TestCase):
         result = plan.select(["crates/gateway/src/lib.rs"])
         self.assertTrue(any("--no-default-features" in command for command in result["commands"]))
         self.assertIn("hiroute-e2e", result["commands"][2])
+
+    def test_full_and_gateway_contract_checks_are_admitted_by_the_managed_runner(self):
+        for paths, full in [([], True), (["crates/gateway/src/lib.rs"], False)]:
+            with self.subTest(paths=paths, full=full):
+                commands = plan.select(paths, full=full)["commands"]
+                for command in commands:
+                    if command[0] == "cargo":
+                        # local-rust delegates to this same validator before starting Cargo.
+                        runner.validate("refs/heads/codex/selected-contract-check", "a" * 40, command)
+                self.assertIn([
+                    "cargo", "test", "--locked", "-p", "hiroute-e2e", "--test", "case_shards",
+                    "core_routing_validation_covers_the_complete_unsharded_scenario",
+                    "--", "--exact", "--nocapture",
+                ], commands)
+        with self.assertRaisesRegex(ValueError, "Expected cargo"):
+            runner.validate("refs/heads/codex/selected-contract-check", "a" * 40,
+                            ["cargo", "run", "--locked", "-p", "hiroute-e2e", "--", "validate"])
 
     def test_full_does_not_repeat_product_smoke(self):
         result = plan.select([], full=True)
@@ -423,6 +648,19 @@ class RevisionPlans(unittest.TestCase):
         self.assertEqual(value['iteration']['mode'], 'affected')
         self.assertTrue(value['iteration']['diagnostic_only'])
         self.assertEqual(value['iteration']['since'], self.shared)
+
+    def test_native_consumer_obligation_survives_docs_only_iteration(self):
+        self.write('crates/application-api/src/worker.rs', 'changed public contract')
+        checkpoint = self.commit('worker contract')
+        self.write('docs/testing.md', 'navigation repair')
+        self.commit('docs')
+        result = self.invoke('--base', self.base, '--since', checkpoint, '--integration')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        value = json.loads(result.stdout)
+        self.assertTrue(value['native_required'])
+        self.assertEqual([check['id'] for check in value['native_checks']], ['desktop.compile'])
+        self.assertEqual(value['iteration']['native_checks'], [])
+        self.assertEqual(value['integration']['scope'], 'iteration')
 
     def test_rename_staged_unstaged_and_untracked_are_included(self):
         old = 'tools/product-e2e/tests/routing_plans.rs'

@@ -157,6 +157,9 @@ respective environments; a source build alone is not product acceptance.
 
 ### Repository map
 
+The [code map](docs/code-map/README.md) connects user capabilities to architecture,
+production owners and representative tests.
+
 | Path | Responsibility |
 | --- | --- |
 | `apps/desktop` | Desktop UI and Tauri host |

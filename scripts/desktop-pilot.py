@@ -106,7 +106,21 @@ def launch_environment(
         HIROUTE_DESKTOP_TEST_ROOT=str(data),
     )
     if process_home is not None:
+        # The explicit synthetic context must not authenticate through a caller's
+        # inherited provider variables. Leave ordinary non-isolated launches alone.
+        for key in list(environment):
+            if key.startswith(("OPENAI_", "ANTHROPIC_", "AZURE_", "AWS_", "GOOGLE_", "VERTEX_", "QODER_")) or key in (
+                "CODEX_CONFIG", "CODEX_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY",
+                "OPENROUTER_API_KEY", "HIROUTE_RUN_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
+                "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+            ):
+                environment.pop(key)
         environment["HOME"] = str(process_home)
+        # Workers borrow the product instance's native context. An isolated HOME must
+        # not retain native config locators pointing into the caller's daily account.
+        environment["CODEX_HOME"] = str(process_home / ".codex")
+        environment["CLAUDE_CONFIG_DIR"] = str(process_home / ".claude")
+        environment["QODER_CONFIG_DIR"] = str(process_home / ".qoder")
     if diagnostic_override is not None:
         environment[DIAGNOSTIC_LEVEL_ENV] = diagnostic_override
     return environment
@@ -617,23 +631,43 @@ def record_started_processes(row: dict) -> list[int]:
     return [item["pid"] for item in members]
 
 
-def owned_process_group(row: dict) -> list[int]:
+def owned_process_group(row: dict, *, stopping: bool = False) -> list[int]:
     pid = int(row["pid"])
     pgid = int(row["pgid"])
-    members = [item for item in process_rows() if item["pgid"] == pgid]
-    if not members:
-        return []
-    if pgid != pid:
-        raise ValueError("recorded process group is not led by the launched Desktop PID")
+    snapshot = process_rows()
     recorded = {int(item["pid"]): item for item in row.get("process_identities", [])}
-    if not recorded:
-        raise ValueError("session has no process start identities; refusing to signal")
-    for item in members:
-        expected = recorded.get(item["pid"])
-        if expected is None:
-            raise ValueError(f"process group contains unrecorded PID {item['pid']}; refusing to signal")
-        verify_process_identity(row, item, expected)
-    return [item["pid"] for item in members]
+    exited = set()
+    while True:
+        if any(item["pid"] in exited for item in snapshot):
+            raise ValueError("an exited PID reappeared during stop; refusing to signal")
+        members = [item for item in snapshot if item["pgid"] == pgid]
+        if not members:
+            return []
+        if pgid != pid:
+            raise ValueError("recorded process group is not led by the launched Desktop PID")
+        if not recorded:
+            raise ValueError("session has no process start identities; refusing to signal")
+        for item in members:
+            expected = recorded.get(item["pid"])
+            if expected is None:
+                raise ValueError(f"process group contains unrecorded PID {item['pid']}; refusing to signal")
+            try:
+                verify_process_identity(row, item, expected)
+            except ProcessLookupError:
+                if not stopping:
+                    raise
+                latest = process_rows()
+                if any(current["pid"] == item["pid"] for current in latest):
+                    raise
+                # TERM/KILL can win between ps and the native identity query. Only
+                # confirmed absence is normal exit; revalidate the complete fresh
+                # snapshot before another signal, including any newly seen member.
+                # Each retry removes a different recorded PID, so this is bounded.
+                exited.add(item["pid"])
+                snapshot = latest
+                break
+        else:
+            return [item["pid"] for item in members]
 
 
 def stop_group(row: dict, timeout: float = 12.0) -> list[int]:
@@ -644,16 +678,16 @@ def stop_group(row: dict, timeout: float = 12.0) -> list[int]:
     os.killpg(pgid, signal.SIGTERM)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if not owned_process_group(row):
+        if not owned_process_group(row, stopping=True):
             return members
         time.sleep(0.1)
-    remaining = owned_process_group(row)
+    remaining = owned_process_group(row, stopping=True)
     if remaining:
         os.killpg(pgid, signal.SIGKILL)
         deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline and owned_process_group(row):
+        while time.monotonic() < deadline and owned_process_group(row, stopping=True):
             time.sleep(0.05)
-        remaining = owned_process_group(row)
+        remaining = owned_process_group(row, stopping=True)
         if remaining:
             raise RuntimeError(f"process group still has verified members after SIGKILL: {remaining}")
     return members
@@ -663,7 +697,7 @@ def pilot_config(args: argparse.Namespace) -> int:
     frontend = Path(args.frontend_dist).resolve(strict=True)
     if not frontend.is_dir() or not (frontend / "index.html").is_file():
         raise ValueError(f"frontend dist must contain index.html: {frontend}")
-    repository = Path(__file__).resolve().parent.parent
+    repository = Path(args.repo).resolve(strict=True) if args.repo else Path(__file__).resolve().parent.parent
     config_path = repository / "apps/desktop/src-tauri/tauri.pilot.conf.json"
     production_path = repository / "apps/desktop/src-tauri/tauri.conf.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -849,9 +883,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="action", required=True)
     configure = subparsers.add_parser(
-        "config", help="print the isolated TAURI_CONFIG merge for an already-built frontend"
+        "config", allow_abbrev=False,
+        help="print the isolated TAURI_CONFIG merge for an already-built frontend"
     )
     configure.add_argument("--frontend-dist", required=True)
+    configure.add_argument("--repo", help="repository containing the Desktop config; defaults to this script's checkout")
     configure.set_defaults(function=pilot_config)
     launch = subparsers.add_parser("start", help="start one isolated instrumented Desktop")
     launch.add_argument("--app", required=True, help="absolute or relative path to hiroute-desktop")
