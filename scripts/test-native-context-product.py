@@ -295,6 +295,7 @@ class NativeContextOracleTests(unittest.TestCase):
 
     def test_frozen_route_requires_old_source_traffic_and_rejects_new_route_traffic(self):
         replacement = Mock(controls=self.root)
+        replacement.request_count.return_value = 0
         continued = {'state': 'green', 'continued': True}
         with self.assertRaisesRegex(AssertionError, 'original source'):
             assert_frozen_route([continued], 1, replacement)
@@ -302,6 +303,29 @@ class NativeContextOracleTests(unittest.TestCase):
         (self.root / 'native-context-events.jsonl').write_text(json.dumps(continued) + '\n')
         with self.assertRaisesRegex(AssertionError, 'newly published route'):
             assert_frozen_route([continued], 0, replacement)
+
+    def test_frozen_route_rejects_attempts_even_when_the_new_source_rejects_them(self):
+        continued = {'state': 'green', 'continued': True}
+        for protocol in ('responses', 'messages'):
+            for rejection, status in (('credential', 401), ('endpoint', 404), ('model', 400)):
+                with self.subTest(protocol=protocol, rejection=rejection):
+                    source = fixture.NativeContextUpstream(self.root)
+                    connection = http.client.HTTPConnection(*source.server.server_address, timeout=3)
+                    try:
+                        assert_frozen_route([continued], 0, source)
+                        connection.request('POST', '/v1/' + ('wrong' if rejection == 'endpoint' else protocol),
+                            json.dumps({'model': 'wrong' if rejection == 'model' else source.model}),
+                            {'Authorization': 'Bearer ' + ('wrong' if rejection == 'credential' else source.token)})
+                        response = connection.getresponse()
+                        response.read()
+                        self.assertEqual(response.status, status)
+                        self.assertEqual(source.request_count(), 1)
+                        self.assertFalse((self.root / 'native-context-events.jsonl').exists())
+                        with self.assertRaisesRegex(AssertionError, 'newly published route'):
+                            assert_frozen_route([continued], 0, source)
+                    finally:
+                        connection.close()
+                        source.close()
 
     def test_failed_journey_preserves_diagnostics_even_if_stop_fails(self):
         product = Mock(repo=self.root)

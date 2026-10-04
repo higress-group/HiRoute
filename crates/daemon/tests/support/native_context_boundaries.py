@@ -146,7 +146,7 @@ def missing_history_refuses_new_session(product, fixture, task, upstreams):
     original = path.read_bytes()
     removed = path.with_suffix('.native-context-held')
     assert not removed.exists(), 'missing-history fixture would overwrite a neighboring file'
-    before_calls = [len(source_events(upstream)) for upstream in upstreams]
+    before_calls = [upstream.request_count() for upstream in upstreams]
     path.rename(removed)
     before_histories = transcript_snapshot(fixture)
     try:
@@ -164,7 +164,7 @@ def missing_history_refuses_new_session(product, fixture, task, upstreams):
             # The public envelope intentionally projects ResumeUnavailable to this
             # capability code; do not assert an internal domain enum on the CLI wire.
             assert error == 'CAPABILITY_UNAVAILABLE', response
-        assert [len(source_events(upstream)) for upstream in upstreams] == before_calls, \
+        assert [upstream.request_count() for upstream in upstreams] == before_calls, \
             'missing history sent a model prompt'
         assert transcript_snapshot(fixture) == before_histories, \
             'missing native history created or changed another session'

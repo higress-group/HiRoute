@@ -77,8 +77,13 @@ execution with private output capture. Keep native argv, configuration ownership
 terminal-result parsing and independent business assertions in the ecosystem leaf.
 The process helper proves neither a model request nor a successful task by itself.
 [NativeContextUpstream](../../crates/daemon/tests/support/native_context_fixture.py)
-owns the Responses/Messages transport and counts every attempt, including rejected
-credentials; new journeys should not replace its HTTP handler to add observation.
+owns the Responses/Messages transport and counts every model POST attempt, including
+rejected credentials, endpoints and models. Zero-request assertions use this count
+(zero for an unused source, or no increase across an operation); an empty event
+ledger cannot detect requests rejected before recording. Keep the ledger for
+positive route/history assertions. New journeys should not replace the HTTP handler
+to add observation, and regressions must prove the business assertion rejects a
+real rejected HTTP attempt, not just that the counter increments.
 
 Before copying a native journey, identify which shared path already owns setup,
 source routing, exact Continue, cancellation and cleanup. Add a new native leaf

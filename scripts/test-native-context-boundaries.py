@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Focused oracle/owned-shell checks, not real Agent acceptance."""
+import http.client
 import json
 import os
 from pathlib import Path
@@ -146,6 +147,47 @@ class NativeBoundaryTests(unittest.TestCase):
                 object(), self.fixture, {'task_id': 'task', 'run_id': 'run'}, [])
         self.assertEqual(wait.call_args.kwargs['expected'], 'failed')
         self.assertEqual(history.read_bytes(), original)
+
+    def test_missing_history_rejects_new_attempts_even_when_the_source_rejects_them(self):
+        history = self.history()
+        original = history.read_bytes()
+        task = {'task_id': 'task', 'run_id': 'run'}
+        for protocol in ('responses', 'messages'):
+            for rejection, status in (('credential', 401), ('endpoint', 404), ('model', 400)):
+                source = boundary.NativeContextUpstream(self.root)
+                try:
+                    def rejected_request():
+                        connection = http.client.HTTPConnection(*source.server.server_address, timeout=3)
+                        try:
+                            connection.request('POST', '/v1/' + ('wrong' if rejection == 'endpoint' else protocol),
+                                json.dumps({'model': 'wrong' if rejection == 'model' else source.model}),
+                                {'Authorization': 'Bearer ' + ('wrong' if rejection == 'credential' else source.token)})
+                            response = connection.getresponse()
+                            response.read()
+                            self.assertEqual(response.status, status)
+                        finally:
+                            connection.close()
+
+                    rejected_request()  # A pre-existing attempt is not a new prompt from Continue.
+                    for outcome in ((6, {'error': {'code': 'CAPABILITY_UNAVAILABLE'}}),
+                                    (0, {'data': {'run_id': 'failed-load'}})):
+                        with self.subTest(protocol=protocol, rejection=rejection, accepted=outcome[0] == 0), \
+                                patch.object(boundary, 'wait_for_worker_result', return_value={'result': None}):
+                            with patch.object(boundary, 'worker_cli', return_value=outcome):
+                                boundary.missing_history_refuses_new_session(object(), self.fixture, task, [source])
+                            before = source.request_count()
+                            def leaked_prompt(*args, **kwargs):
+                                rejected_request()
+                                return outcome
+                            with patch.object(boundary, 'worker_cli', side_effect=leaked_prompt):
+                                with self.assertRaisesRegex(AssertionError, 'missing history sent a model prompt'):
+                                    boundary.missing_history_refuses_new_session(object(), self.fixture, task, [source])
+                            self.assertEqual(source.request_count(), before + 1)
+                            self.assertEqual(boundary.source_events(source), [])
+                            self.assertEqual(history.read_bytes(), original)
+                            self.assertFalse(history.with_suffix('.native-context-held').exists())
+                finally:
+                    source.close()
 
     def test_unrelated_rejection_does_not_satisfy_missing_history(self):
         history = self.history()

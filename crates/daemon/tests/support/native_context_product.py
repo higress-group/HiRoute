@@ -142,6 +142,7 @@ def assert_frozen_route(original_events, before, replacement):
     replacement_log = replacement.controls / 'native-context-events.jsonl'
     assert not replacement_log.exists() or not replacement_log.read_text().strip(), \
         'existing task used the newly published route'
+    assert replacement.request_count() == 0, 'existing task sent a model request to the newly published route'
 
 
 def exact_history(fixture):
@@ -294,10 +295,10 @@ def run(repository, candidate):
                 report['cases'].append({'id': CORE_CASES[0], 'state': 'green'})
             assert_preserved(fixture)
             report['run_ids'].append(continued['run_id'])
-            before = len(events(product))
+            before = upstream.request_count()
             _, replay = worker_cli(product, command, CONTINUE_PROMPT)
             assert replay['data']['replayed'] and replay['data']['run_id'] == continued['run_id']
-            assert len(events(product)) == before, 'Continue replay sent another model request'
+            assert upstream.request_count() == before, 'Continue replay sent another model request'
         report['cases'].append({'id': CORE_CASES[1], 'state': 'green'})
         attempts = events(product)
         if fixture.get('proxy_trap_events'):
