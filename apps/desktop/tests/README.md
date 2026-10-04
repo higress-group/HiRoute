@@ -35,6 +35,12 @@ it does not call private component callbacks. In particular, browser checks of
 `save_classifier_openapi` and `open_external_url` verify UI dispatch/outcomes, not
 the native OS action.
 
+## Session quality presentation
+
+Session quality names come from the exact retained execution request (same session and request ID), then the current configuration display name when available. Opaque configuration/branch IDs belong in diagnostic tooltips, not primary labels. Mixed or unknown attribution must not be presented as one model. History gaps and partial assessment evidence remain separate visible flags; an unrated stage is not assigned a score.
+
+`plan-quality-models.test.mjs` protects evidence identity, missing evidence and request deduplication. The session-window browser scenarios exercise the real Sessions/PlanQuality wiring, both model stages, coverage flags, unrated copy and evidence navigation; these are mock IPC checks, not native or model-quality evidence.
+
 ## Run levels
 
 From `apps/desktop`, with the repository's Node 24 and installed dependencies:
