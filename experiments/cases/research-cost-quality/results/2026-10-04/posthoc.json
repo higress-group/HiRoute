@@ -1,0 +1,523 @@
+{
+  "schema": "hiroute.research-layered-quality-posthoc/v1",
+  "posthoc": true,
+  "method": "Reclassify existing reviewed findings into content/verdict defects and citation-support-only defects; do not repair outputs or change original scores. Content usability requires all 360 cards, at most 7 content/verdict defects, and the unchanged zero-material-error M2 gate. Citation defects remain outstanding and original strict acceptance remains authoritative.",
+  "limitations": [
+    "Same purpose-selected case, three repeats per group; not independent task samples or evidence of statistical equivalence.",
+    "Classification and content-usability metric introduced after observing results; exploratory only.",
+    "No new independent blind audit; projection of existing unblinded full-review findings.",
+    "Qwen repeat 3 includes registered transport recovery; original completeness gate failed and failed-attempt cost remains unknown.",
+    "Content usability is not publication readiness; all citation-only defects remain unresolved.",
+    "Original three-pair formal success gate remains false."
+  ],
+  "source_sha256": {
+    "research-draft98-formal-assessment.json": "a132b043b9f642341658fe4bcd1788ce135d42f75b12423c6bc500ae71426489",
+    "research-qwen-transport-recovery-v1-assessment.json": "738246ac551a7712933b994371b2925339dc187d4d7b698c07d4a191590306b3"
+  },
+  "summary": {
+    "mixed": {
+      "content_correct": 1071,
+      "original_correct": 1065,
+      "total_cards": 1080,
+      "citation_only_errors": 6,
+      "content_usable": 3,
+      "critical_passes": 3,
+      "original_whole_passes": 2
+    },
+    "strong": {
+      "content_correct": 1077,
+      "original_correct": 1077,
+      "total_cards": 1080,
+      "citation_only_errors": 0,
+      "content_usable": 3,
+      "critical_passes": 3,
+      "original_whole_passes": 3
+    },
+    "cheap": {
+      "content_correct": 1070,
+      "original_correct": 1067,
+      "total_cards": 1080,
+      "citation_only_errors": 3,
+      "content_usable": 1,
+      "critical_passes": 1,
+      "original_whole_passes": 1
+    }
+  },
+  "deliveries": [
+    {
+      "prefix": "formal-draft98-v1-p01",
+      "group": "mixed",
+      "original_correct": 352,
+      "content_correct": 357,
+      "citation_only_errors": [
+        "redis-56",
+        "rocketmq-14",
+        "rocketmq-16",
+        "rocketmq-17",
+        "rocketmq-19"
+      ],
+      "content_errors": [
+        "nats-30",
+        "pulsar-45",
+        "rocketmq-13"
+      ],
+      "critical_pass": true,
+      "original_whole_pass": false,
+      "posthoc_content_usable": true
+    },
+    {
+      "prefix": "formal-draft98-v1-p01",
+      "group": "strong",
+      "original_correct": 359,
+      "content_correct": 359,
+      "citation_only_errors": [],
+      "content_errors": [
+        "pulsar-45"
+      ],
+      "critical_pass": true,
+      "original_whole_pass": true,
+      "posthoc_content_usable": true
+    },
+    {
+      "prefix": "formal-draft98-v1-p02",
+      "group": "mixed",
+      "original_correct": 357,
+      "content_correct": 357,
+      "citation_only_errors": [],
+      "content_errors": [
+        "kafka-59",
+        "nats-30",
+        "pulsar-45"
+      ],
+      "critical_pass": true,
+      "original_whole_pass": true,
+      "posthoc_content_usable": true
+    },
+    {
+      "prefix": "formal-draft98-v1-p02",
+      "group": "strong",
+      "original_correct": 359,
+      "content_correct": 359,
+      "citation_only_errors": [],
+      "content_errors": [
+        "pulsar-45"
+      ],
+      "critical_pass": true,
+      "original_whole_pass": true,
+      "posthoc_content_usable": true
+    },
+    {
+      "prefix": "formal-draft98-v1-p03",
+      "group": "mixed",
+      "original_correct": 356,
+      "content_correct": 357,
+      "citation_only_errors": [
+        "pulsar-25"
+      ],
+      "content_errors": [
+        "nats-30",
+        "nats-50",
+        "pulsar-45"
+      ],
+      "critical_pass": true,
+      "original_whole_pass": true,
+      "posthoc_content_usable": true
+    },
+    {
+      "prefix": "formal-draft98-v1-p03",
+      "group": "strong",
+      "original_correct": 359,
+      "content_correct": 359,
+      "citation_only_errors": [],
+      "content_errors": [
+        "pulsar-45"
+      ],
+      "critical_pass": true,
+      "original_whole_pass": true,
+      "posthoc_content_usable": true
+    },
+    {
+      "prefix": "formal-qwen-v1-r01",
+      "group": "cheap",
+      "original_correct": 356,
+      "content_correct": 356,
+      "citation_only_errors": [],
+      "content_errors": [
+        "nats-30",
+        "nats-50",
+        "pulsar-45",
+        "redis-10"
+      ],
+      "critical_pass": false,
+      "original_whole_pass": false,
+      "posthoc_content_usable": false
+    },
+    {
+      "prefix": "formal-qwen-v1-r02",
+      "group": "cheap",
+      "original_correct": 356,
+      "content_correct": 357,
+      "citation_only_errors": [
+        "pulsar-56"
+      ],
+      "content_errors": [
+        "nats-30",
+        "nats-50",
+        "rocketmq-13"
+      ],
+      "critical_pass": false,
+      "original_whole_pass": false,
+      "posthoc_content_usable": false
+    },
+    {
+      "prefix": "formal-qwen-v1-r03",
+      "group": "cheap",
+      "original_correct": 355,
+      "content_correct": 357,
+      "citation_only_errors": [
+        "rocketmq-19",
+        "rocketmq-29"
+      ],
+      "content_errors": [
+        "nats-30",
+        "pulsar-42",
+        "pulsar-45"
+      ],
+      "critical_pass": true,
+      "original_whole_pass": true,
+      "posthoc_content_usable": true
+    }
+  ],
+  "findings": [
+    {
+      "component": "formal-draft98-v1-p01-mixed-nats",
+      "id": "nats-30",
+      "artifact_sha256": "c035f848ed696c75bf77a3af434caeea91ddd0a98b5fe3809be62f0d73c0662b",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "The additional statement says consumers without InactiveThreshold remain even through idle periods without preserving the same-page ephemeral cleanup exception. Ephemeral consumers are explicitly automatically deleted after inactivity with no bound subscriptions, so the broad retention statement cannot safely be applied to all consumers."
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p01-mixed-pulsar",
+      "id": "pulsar-45",
+      "artifact_sha256": "db94c5f6c0926f659674dab26e18cea34d82e8dc70df19349aa2e2e3fef73d94",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "verdict: expected not_documented"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p01-mixed-redis",
+      "id": "redis-56",
+      "artifact_sha256": "f97efd5d2aca167968dfec95201668d70aa5db371bd1d96e7b2896dee0ceefa7",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "The fact about Redis 8.2 XDELEX ACKED/DELREF/KEEPREF modes is supported elsewhere in the snapshot, but its actual citation L524-L528 describes XAUTOCLAIM cursors and delivery counters, not XDELEX or the stated deletion/reference modes. It is not equivalent support; the citation therefore fails the same source-card quality rubric."
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p01-mixed-rocketmq",
+      "id": "rocketmq-13",
+      "artifact_sha256": "a0394cd2043beb77f6b044bbb20a18732d7ea9fd17fca56d899fe1002bfd7595",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "The extra unqualified claim that PushConsumer retry is triggered only by a consumption-failure status omits the same-source timeout/queue-delay triggers. The source-conflict rubric requires qualification rather than reproducing one contradicted source sentence as a universal guarantee."
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p01-mixed-rocketmq",
+      "id": "rocketmq-14",
+      "artifact_sha256": "a0394cd2043beb77f6b044bbb20a18732d7ea9fd17fca56d899fe1002bfd7595",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "The citation covers InvisibleDuration configuration at L32, but the second locator L78 describes DLQ, not reuse of InvisibleDuration on retries. The added reuse/no-reconfiguration conclusion is not supported by the actual cited spans."
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p01-mixed-rocketmq",
+      "id": "rocketmq-16",
+      "artifact_sha256": "a0394cd2043beb77f6b044bbb20a18732d7ea9fd17fca56d899fe1002bfd7595",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "The citation L84 only states that consumption status has not been returned. It does not support the stated immediate effect or recalculation from the API-call time."
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p01-mixed-rocketmq",
+      "id": "rocketmq-17",
+      "artifact_sha256": "a0394cd2043beb77f6b044bbb20a18732d7ea9fd17fca56d899fe1002bfd7595",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "The citation L86 is only the Maximum number of retries heading. It does not establish configuration in consumer-group creation metadata."
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p01-mixed-rocketmq",
+      "id": "rocketmq-19",
+      "artifact_sha256": "a0394cd2043beb77f6b044bbb20a18732d7ea9fd17fca56d899fe1002bfd7595",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "正文还建议稍后获取并消费消息，但引用仅为 rocketmq L105–108；该正确建议实际在 L109，所引区间没有覆盖这部分正文。按原冻结的引用支持规则计一次引用不完整错误。"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p01-strong-pulsar",
+      "id": "pulsar-45",
+      "artifact_sha256": "b4032091ce277ff61091f016ea7b320c6fa3518e6332f28941471ce3945a7cfc",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "verdict: expected not_documented"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p02-mixed-kafka",
+      "id": "kafka-59",
+      "artifact_sha256": "74ce075526f677594c4b08b122849c449a26e3fc84c5f998d87e748e98d0f3ff",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "The added claim that transaction.timeout.ms is the maximum open-transaction lifetime omits the direct transaction.two.phase.commit.enable=true exception at source line 751, under which this client's transactions never expire. Lines 745 and 751 must be read together before stating an unconditional maximum lifetime. The first mixed artifact stated only timer origin and broker-bound configuration rejection, without adding this lifetime guarantee."
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p02-mixed-nats",
+      "id": "nats-30",
+      "artifact_sha256": "fb1e054e991ffe83a36389fd00d7865edf4456b8297e08bdee8a594b3b2e7e2c",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "“未显式设置时默认在闲置期间仍保留”没有限定消费者类型，漏掉源文档 27–28 行对 ephemeral 自动清理的明确例外。同一交付的第 20 项也说明无订阅者后的自动移除；将一般性保留描述推广到全部消费者会产生冲突。按首轮相同标准计为一条实质性错误。"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p02-mixed-pulsar",
+      "id": "pulsar-45",
+      "artifact_sha256": "5a26c7ed2004e77515bfea06b112ccadec73ec587520f1c4f3d07477f1a4eb32",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "verdict: expected not_documented"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p02-strong-pulsar",
+      "id": "pulsar-45",
+      "artifact_sha256": "c5519e08644d14ec0cd336a5e59448058a3b24b0e1c13cd20f77754e96467165",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "verdict: expected not_documented"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p03-mixed-nats",
+      "id": "nats-30",
+      "artifact_sha256": "adc8fa43c515f7a5b30d35ec323d7544b175a914b582f0a1dce9f1534befefb6",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "将默认闲置保留推广到全部 consumer，漏掉源文档 27-28 行对 ephemeral 自动清理的例外。同一交付第 20 项也描述无订阅者后经 grace period 自动移除。按前两轮相同标准计为实质性错误。"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p03-mixed-nats",
+      "id": "nats-50",
+      "artifact_sha256": "adc8fa43c515f7a5b30d35ec323d7544b175a914b582f0a1dce9f1534befefb6",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "未限定为该段文档表述，直接声称 MaxAckPending 是 push consumer 唯一流控，忽略源文档 98 行同时提供每 subscription 的 FlowControl；同一交付第 58 项也明确另一种流控。按开发阶段相同规则，不能把存在冲突的文档段落推广成无条件产品限制。"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p03-mixed-pulsar",
+      "id": "pulsar-25",
+      "artifact_sha256": "421745904645e84a0815f10f4fc485d772d06ffa989379afa5a027e596dd25d4",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "所引 267 行只有 note 标题，未包含同步 send 立即发送未满 batch 或单线程使用 sendAsync 的依据；实际支持文字在 268 行。按前述各组相同的引用支持标准，该条引用未通过。"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p03-mixed-pulsar",
+      "id": "pulsar-45",
+      "artifact_sha256": "421745904645e84a0815f10f4fc485d772d06ffa989379afa5a027e596dd25d4",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "verdict: expected not_documented",
+        "在显式创建要求后加入创建时必须指定 partition 数的表述，引用 683 行只说分区数量 can be specified，未给出这一强制要求。与该条有限判定错误合并，仅计一条错误。"
+      ]
+    },
+    {
+      "component": "formal-draft98-v1-p03-strong-pulsar",
+      "id": "pulsar-45",
+      "artifact_sha256": "17165a0789d18bb8d708db9cbe39f9bf6d24e01528d4cb2ac26f07f47dfb160a",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "verdict: expected not_documented"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r01-cheap-nats",
+      "id": "nats-30",
+      "artifact_sha256": "c124ba0def1f73995dc50ea77cff933c2cdeca02860de0311ca8e784f9cb0095",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "无条件称 consumer 默认在闲置期间保持存在，却未在该条保留 ephemeral 的默认闲置清理例外；源文档 27–28 行及同一交付第 29 项明确无绑定订阅且闲置后自动清理。与三个混合批次中的同类错误按相同规则计分。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r01-cheap-nats",
+      "id": "nats-50",
+      "artifact_sha256": "c124ba0def1f73995dc50ea77cff933c2cdeca02860de0311ca8e784f9cb0095",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "将 MaxAckPending 是 push 唯一流控作为整篇文档的结论，未限定为第 77 行的有冲突段落；源文档第 98 行和同一交付第 58 项均明确另一种每订阅者 FlowControl。泛称“文档说明”不解决这一相互冲突的产品范围结论，沿用开发与主实验的同一规则。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r01-cheap-pulsar",
+      "id": "pulsar-45",
+      "artifact_sha256": "ab22344a49f365ec99ed38039a241cb1ca6f944afe0e3dd21fa7d963ad265b47",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "verdict: expected not_documented"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r01-cheap-redis",
+      "id": "redis-10",
+      "artifact_sha256": "6830faca06769616bc071c470dd50e9a66b5d1bc4d7dc16dfbc097766b86e4c3",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "在正确说明 XPENDING 只读后，额外声称转移故障消费者的 pending 消息“需显式使用 XCLAIM”，把具体命令写成必要条件。引用的 440–442 行只证明 XPENDING 只读；同一冻结来源 500–503 行明确 XAUTOCLAIM 也实现认领并转移所有权，因此不支持这一额外必要性限制。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r02-cheap-nats",
+      "id": "nats-30",
+      "artifact_sha256": "df53996c9454e75a0235236aa05c52a2147fea5908a33dd699668e7e52a3e94c",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "将消费者默认空闲仍保留表述为无条件通用行为，未保留 ephemeral 在无绑定订阅后自动清理的限制。该快照 nats-consumers L0027–L0028 明确 ephemeral 删除，与所引 L0029–L0030 的一般说法存在冲突；相邻卡片 29 提到删除不修复本条无条件保证。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r02-cheap-nats",
+      "id": "nats-50",
+      "artifact_sha256": "df53996c9454e75a0235236aa05c52a2147fea5908a33dd699668e7e52a3e94c",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "无条件声称 MaxAckPending 是 push consumers 唯一形式的 flow control，遗漏同一快照 L0098 的 per-subscription FlowControl；本交付卡片 58 也明确其与 MaxAckPending 共同作用。没有将“唯一”限制为所引段落的说法或保留文档冲突。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r02-cheap-pulsar",
+      "id": "pulsar-56",
+      "artifact_sha256": "f5a5afaa1788ddde0040e918b355f496a5b27a311a65ac45ef2b7267e7d7b342",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "正文声称消息去重可在 namespace 或 topic 层管理，但引用 L0771–L0775 只说明去重、示例及 tip 标记；支持管理层级的原文在 L0776，未被引用覆盖。核验项主要询问的管理层级因此没有引用支持。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r02-cheap-rocketmq",
+      "id": "rocketmq-13",
+      "artifact_sha256": "a48b7d46fa11c8ff3293ff5fc28af2bce6deae99399232fbf432cec49f4acbf6",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "无条件声称 PushConsumer 重试“仅由消费失败状态码触发”，将示例说明扩展成唯一触发限制。冻结原文 L0022–L0023 还列出超时与 push 队列停留过久触发，L0039 也允许超时触发；同交付卡片 02 说明这些触发并不能修复本条无条件唯一性保证。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r03-cheap-nats",
+      "id": "nats-30",
+      "artifact_sha256": "9b237798a052008501b9fa08f46376bf122b81013f83a343da808b672c93f7d4",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "将消费者在默认配置下保留并且仅显式设置 InactiveThreshold 才清理表述为通用保证，未保留 ephemeral 在无绑定订阅后自动清理的限制。冻结原文 nats-consumers L0027–L0028 说明未持久化的 ephemeral 状态及自动删除，与所引 L0029–L0030 的一般说法存在冲突。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r03-cheap-pulsar",
+      "id": "pulsar-42",
+      "artifact_sha256": "54eb6b047c5352cb6125b0bba7bfa4038fa9d8093e6d222b53176bc33c241346",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "正文在否定跨 topic 顺序后，额外声称“资料称只有单 topic 内保证读取顺序”，未保留同一快照 Shared subscription 不保证顺序（L0360）以及 producer/key/routing 条件（L0693–L0696）。泛称“资料称”没有将保证限制在所引注释段落；这一无条件单 topic 顺序保证与此前开发样本按同一规则判错。"
+      ]
+    },
+    {
+      "component": "formal-qwen-v1-r03-cheap-pulsar",
+      "id": "pulsar-45",
+      "artifact_sha256": "54eb6b047c5352cb6125b0bba7bfa4038fa9d8093e6d222b53176bc33c241346",
+      "classification": "content_or_verdict",
+      "original_reasons": [
+        "verdict: expected not_documented"
+      ]
+    },
+    {
+      "component": "recovery-qwen-v1-r03-cheap-rocketmq",
+      "id": "rocketmq-19",
+      "artifact_sha256": "79fd9f8eb5e18ba69da746c1d614b2e868c692e3315aca05ccc894fac4360d81",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "正文建议限流时延后获取和消费消息，该建议在 rocketmq L109；实际引用 L106–108 仅覆盖禁止用重试限流及错误示例，未支持这部分补充正文。与首轮混合组相同规则计一次引用不完整错误。"
+      ]
+    },
+    {
+      "component": "recovery-qwen-v1-r03-cheap-rocketmq",
+      "id": "rocketmq-29",
+      "artifact_sha256": "79fd9f8eb5e18ba69da746c1d614b2e868c692e3315aca05ccc894fac4360d81",
+      "classification": "citation_support_only",
+      "original_reasons": [
+        "滚动删除最早消息的事实在 rocketmq-transactions L50；实际唯一引用 L51 只是 Usage limits 标题，不支持该事实。"
+      ]
+    }
+  ],
+  "threshold_sensitivity": [
+    {
+      "max_content_errors": 0,
+      "passes": {
+        "mixed": 0,
+        "strong": 0,
+        "cheap": 0
+      }
+    },
+    {
+      "max_content_errors": 1,
+      "passes": {
+        "mixed": 0,
+        "strong": 3,
+        "cheap": 0
+      }
+    },
+    {
+      "max_content_errors": 2,
+      "passes": {
+        "mixed": 0,
+        "strong": 3,
+        "cheap": 0
+      }
+    },
+    {
+      "max_content_errors": 3,
+      "passes": {
+        "mixed": 3,
+        "strong": 3,
+        "cheap": 1
+      }
+    },
+    {
+      "max_content_errors": 4,
+      "passes": {
+        "mixed": 3,
+        "strong": 3,
+        "cheap": 1
+      }
+    },
+    {
+      "max_content_errors": 7,
+      "passes": {
+        "mixed": 3,
+        "strong": 3,
+        "cheap": 1
+      }
+    }
+  ]
+}

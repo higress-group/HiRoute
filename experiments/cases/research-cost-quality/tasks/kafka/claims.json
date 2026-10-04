@@ -1,0 +1,302 @@
+[
+  {
+    "id": "kafka-01",
+    "claim": "消息提交到日志要求该分区所有 ISR 副本均已写入。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-02",
+    "claim": "发送者遇到网络错误足以确定消息尚未提交。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-03",
+    "claim": "0.11.0.0 起的幂等发送用生产者 ID 和序列号对重发去重。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-04",
+    "claim": "Kafka 事务只支持单分区，不能原子写入多个 topic partition。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-05",
+    "claim": "发送者可以选择完全异步发送或仅等待 leader 收到消息。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-06",
+    "claim": "消费者控制其在日志中的位置。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-07",
+    "claim": "先保存消费位置、后处理消息可能造成故障后的消息未处理。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-08",
+    "claim": "先处理、后保存位置可能在故障恢复时重复处理。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-09",
+    "claim": "具有主键的幂等覆盖更新是文档举出的处理重复消息方式。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-10",
+    "claim": "Kafka 输出记录与输入消费偏移可以写入同一个 Kafka 事务。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-11",
+    "claim": "事务 abort 后，消费者内存位置会自动倒退，无需重新获取偏移。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-12",
+    "claim": "read_committed 会排除所有非事务消息。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-13",
+    "claim": "任何外部输出系统无需参与协调，就自动获得 Kafka 事务的端到端恰好一次保证。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-14",
+    "claim": "把偏移与输出保存在同一目标系统是文档讨论的外部输出协调方法。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-15",
+    "claim": "Kafka 消费者对象本身设置 transactional.id 来成为事务性对象。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-16",
+    "claim": "消费者组分区分配用于确保组内每个分区由一个消费者处理。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-17",
+    "claim": "处理事务与 rebalance 时，文档建议每个消费者配一个生产者实例。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-18",
+    "claim": "文档所列直接事务处理配置包含 enable.auto.commit=false。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-19",
+    "claim": "AbortableException 要求应用 abort 事务并重置消费者位置。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-20",
+    "claim": "ApplicationRecoverableException 的应用恢复策略须包含重启生产者。",
+    "source": "kafka"
+  },
+  {
+    "id": "kafka-21",
+    "source": "kafka-producer",
+    "claim": "bootstrap.servers 必须包含集群全部 broker 才能完成发现。"
+  },
+  {
+    "id": "kafka-22",
+    "source": "kafka-producer",
+    "claim": "生产速度超过发送能力且缓冲不足时，生产者最多阻塞 max.block.ms 后失败。"
+  },
+  {
+    "id": "kafka-23",
+    "source": "kafka-producer",
+    "claim": "buffer.memory 是生产者总内存用量的严格上限。"
+  },
+  {
+    "id": "kafka-24",
+    "source": "kafka-producer",
+    "claim": "compression.type 对完整批次压缩，批处理程度会影响压缩比。"
+  },
+  {
+    "id": "kafka-25",
+    "source": "kafka-producer",
+    "claim": "retries=0 禁用自动重试，文档通常建议用 delivery.timeout.ms 控制重试行为。"
+  },
+  {
+    "id": "kafka-26",
+    "source": "kafka-producer",
+    "claim": "关闭幂等且单连接在途请求超过1时，失败重试可能改变同一分区的记录顺序。"
+  },
+  {
+    "id": "kafka-27",
+    "source": "kafka-producer",
+    "claim": "未设置 truststore 密码仍会使用配置的文件，但会关闭完整性检查。"
+  },
+  {
+    "id": "kafka-28",
+    "source": "kafka-producer",
+    "claim": "生产者尝试把发往同一分区的记录组成更少的批量请求。"
+  },
+  {
+    "id": "kafka-29",
+    "source": "kafka-producer",
+    "claim": "batch.size=0 会完全禁用批处理。"
+  },
+  {
+    "id": "kafka-30",
+    "source": "kafka-producer",
+    "claim": "linger.ms 默认值从 Kafka4.0 起由0改为5毫秒。"
+  },
+  {
+    "id": "kafka-31",
+    "source": "kafka-producer",
+    "claim": "默认 DNS 策略是 use_all_dns_ips，按返回IP依次尝试建立连接。"
+  },
+  {
+    "id": "kafka-32",
+    "source": "kafka-producer",
+    "claim": "client.id 用于让服务器请求日志能识别逻辑应用来源。"
+  },
+  {
+    "id": "kafka-33",
+    "source": "kafka-producer",
+    "claim": "gzip 压缩级别配置仅用于 gzip，允许1至9或默认-1。"
+  },
+  {
+    "id": "kafka-34",
+    "source": "kafka-producer",
+    "claim": "lz4 压缩级别默认9，有效范围1至17。"
+  },
+  {
+    "id": "kafka-35",
+    "source": "kafka-producer",
+    "claim": "zstd 压缩级别默认3，该配置仅在选择zstd时使用。"
+  },
+  {
+    "id": "kafka-36",
+    "source": "kafka-producer",
+    "claim": "connections.max.idle.ms 默认540000毫秒，用于关闭空闲连接。"
+  },
+  {
+    "id": "kafka-37",
+    "source": "kafka-producer",
+    "claim": "delivery.timeout.ms 应至少等于 request.timeout.ms 与 linger.ms 之和。"
+  },
+  {
+    "id": "kafka-38",
+    "source": "kafka-producer",
+    "claim": "生产者在 delivery.timeout.ms 到期前绝不会提前报告发送失败。"
+  },
+  {
+    "id": "kafka-39",
+    "source": "kafka-producer",
+    "claim": "即使某分区批次已达到 batch.size，仍必须等待完整 linger.ms 才发送。"
+  },
+  {
+    "id": "kafka-40",
+    "source": "kafka-producer",
+    "claim": "max.block.ms 的 send 超时预算包含用户 serializer 或 partitioner 的阻塞时间。"
+  },
+  {
+    "id": "kafka-41",
+    "source": "kafka-producer",
+    "claim": "max.request.size 实际还限制未压缩记录批次大小，服务器另有可能不同的压缩后大小限制。"
+  },
+  {
+    "id": "kafka-42",
+    "source": "kafka-producer",
+    "claim": "默认分区逻辑在没有显式分区但有key时按key哈希选择分区。"
+  },
+  {
+    "id": "kafka-43",
+    "source": "kafka-producer",
+    "claim": "无分区且无key时，默认逻辑使用达到至少batch.size后才变化的sticky partition。"
+  },
+  {
+    "id": "kafka-44",
+    "source": "kafka-producer",
+    "claim": "RoundRobinPartitioner 按记录轮流选分区，不论是否提供key。"
+  },
+  {
+    "id": "kafka-45",
+    "source": "kafka-producer",
+    "claim": "使用自定义 partitioner 时，partitioner.ignore.keys 配置不生效。"
+  },
+  {
+    "id": "kafka-46",
+    "source": "kafka-producer",
+    "claim": "receive.buffer.bytes=-1 使用操作系统默认TCP接收缓冲区大小。"
+  },
+  {
+    "id": "kafka-47",
+    "source": "kafka-producer",
+    "claim": "request.timeout.ms 默认30000毫秒，控制等待单次请求响应的最长时间。"
+  },
+  {
+    "id": "kafka-48",
+    "source": "kafka-producer",
+    "claim": "acks=0 仍能保证服务器收到了记录，且重试配置正常生效。"
+  },
+  {
+    "id": "kafka-49",
+    "source": "kafka-producer",
+    "claim": "acks=1 时leader确认后、followers复制前发生leader故障可能丢失记录。"
+  },
+  {
+    "id": "kafka-50",
+    "source": "kafka-producer",
+    "claim": "acks=all 与 acks=-1 等价。"
+  },
+  {
+    "id": "kafka-51",
+    "source": "kafka-producer",
+    "claim": "启用幂等要求在途请求不超过5、retries大于0、acks为all。"
+  },
+  {
+    "id": "kafka-52",
+    "source": "kafka-producer",
+    "claim": "显式启用幂等同时设置冲突配置会抛出 ConfigException。"
+  },
+  {
+    "id": "kafka-53",
+    "source": "kafka-producer",
+    "claim": "enable.metrics.push 的推送以集群存在匹配该客户端的指标订阅为条件。"
+  },
+  {
+    "id": "kafka-54",
+    "source": "kafka-producer",
+    "claim": "ProducerInterceptor 可以在记录发布前拦截并修改记录，默认没有interceptor。"
+  },
+  {
+    "id": "kafka-55",
+    "source": "kafka-producer",
+    "claim": "metadata.max.age.ms 即使未观察到leader变化也强制刷新元数据，默认5分钟。"
+  },
+  {
+    "id": "kafka-56",
+    "source": "kafka-producer",
+    "claim": "metadata.max.idle.ms 到期会忘记空闲topic的元数据，下次访问强制抓取。"
+  },
+  {
+    "id": "kafka-57",
+    "source": "kafka-producer",
+    "claim": "metadata.recovery.strategy 的 rebootstrap 会重新使用 bootstrap.servers，默认采用该策略。"
+  },
+  {
+    "id": "kafka-58",
+    "source": "kafka-producer",
+    "claim": "重连最大退避按主机指数增长并加入20%随机抖动，默认上限1秒。"
+  },
+  {
+    "id": "kafka-59",
+    "source": "kafka-producer",
+    "claim": "事务超时从首个分区加入事务时起算，配置超过broker上限会失败。"
+  },
+  {
+    "id": "kafka-60",
+    "source": "kafka-producer",
+    "claim": "配置 transactional.id 隐含启用幂等；默认未配置该ID时不能使用事务。"
+  }
+]

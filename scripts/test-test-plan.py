@@ -39,7 +39,7 @@ class SelectionTests(unittest.TestCase):
                 self.assertIn(['python3', 'scripts/test-ci-shards.py'], result['commands'])
 
     def test_docs_do_not_build_rust(self):
-        result = plan.select(["docs/testing.md", "README.md", "AGENTS.md"])
+        result = plan.select(["docs/testing.md", "README.md", "README.zh-CN.md", "AGENTS.md"])
         self.assertFalse(result["rust"])
         self.assertFalse(result["frontend"])
 
@@ -53,6 +53,10 @@ class SelectionTests(unittest.TestCase):
         result = plan.select([
             "apps/website/src/pages/index.astro",
             "apps/website/package-lock.json",
+            "news/index.json",
+            "news/article.zh-CN.md",
+            "experiments/reproduce.py",
+            "experiments/cases/example/results/evidence.json",
             ".github/workflows/website.yml",
             ".github/workflows/release.yml",
             ".github/scripts/deploy-website-oss.sh",

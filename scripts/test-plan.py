@@ -37,7 +37,7 @@ DIAGNOSTIC_CONTRACTS = (
 SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py"}
 INTEGRATION_SKILL = ".agents/skills/hiroute-integrate/SKILL.md"
 WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/release.yml"}
-WEBSITE_PREFIXES = ("apps/website/", ".github/scripts/")
+WEBSITE_PREFIXES = ("apps/website/", ".github/scripts/", "news/", "experiments/")
 RELEASE_CONTRACT_TOOLING = {"scripts/release-contracts.py", "scripts/test-release-contracts.py",
                           "scripts/test-release-contract-pr.py", ".github/scripts/release-contract-pr.sh",
                           ".github/workflows/release.yml"}
@@ -130,7 +130,7 @@ def select(paths, full=False):
             frontend = True
         elif (path.endswith(".md") and not path.startswith(".agents/")):
             # Runtime Markdown embeds and product Skills must not be treated as docs-only.
-            if path.startswith(("docs/", "issue-spec/specs/")) or path in ("README.md", "AGENTS.md"):
+            if path.startswith(("docs/", "issue-spec/specs/")) or path in ("README.md", "README.zh-CN.md", "AGENTS.md"):
                 continue
             full = True
             reasons.append("possible embedded Markdown: " + path)

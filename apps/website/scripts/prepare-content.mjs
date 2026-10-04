@@ -31,3 +31,9 @@ await fs.copyFile(path.join(repository, 'scripts/install-standalone.py'), path.j
 await fs.writeFile(path.join(publicDirectory, 'install.sh'), generateLinuxInstallScript(releaseManifest), { mode: 0o755 });
 await fs.writeFile(path.join(publicDirectory, 'releases.json'), JSON.stringify(releaseManifest, null, 2) + '\n');
 console.log('Prepared canonical Decision API, illustrations, and Linux installer entry.');
+
+const newsAssets = path.join(publicDirectory, 'news-assets');
+await fs.mkdir(newsAssets, { recursive: true });
+for (const entry of await fs.readdir(path.join(repository, 'news/assets'), { withFileTypes: true })) {
+  if (entry.isFile() && /\.(png|svg)$/.test(entry.name)) await fs.copyFile(path.join(repository, 'news/assets', entry.name), path.join(newsAssets, entry.name));
+}

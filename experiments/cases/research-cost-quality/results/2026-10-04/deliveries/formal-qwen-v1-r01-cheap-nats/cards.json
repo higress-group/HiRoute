@@ -1,0 +1,744 @@
+{
+  "cards": [
+    {
+      "id": "nats-01",
+      "verdict": "supported",
+      "fact": "在 WorkQueuePolicy 和 InterestPolicy 中，MaxMsgs、MaxBytes、MaxAge 仍作为消息数、大小和时间的上限继续生效；这些策略还可以让消息在满足确认条件后更早移除。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 11,
+          "end": 13
+        }
+      ]
+    },
+    {
+      "id": "nats-02",
+      "verdict": "refuted",
+      "fact": "WorkQueuePolicy 不允许重叠消费者：文档说明在该模式下，stream 捕获的每个 subject 同一时间只能有一个消费者匹配，因此不能允许多个匹配相同 subject 的重叠消费者。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 9,
+          "end": 9
+        }
+      ]
+    },
+    {
+      "id": "nats-03",
+      "verdict": "supported",
+      "fact": "InterestPolicy 会保留消息，直到该 subject 的所有当前定义消费者都已收到并显式确认；全部确认后消息才从 stream 移除，且计数、大小和年龄上限仍作为上限适用。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 10,
+          "end": 12
+        }
+      ]
+    },
+    {
+      "id": "nats-04",
+      "verdict": "supported",
+      "fact": "Stream 可以通过 MaxMsgSize 对单条消息设置更低的上限；文档示例说明 NATS 默认最大消息大小为 1 MiB，而 stream 可只接受最多 1024 字节的消息。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 14,
+          "end": 14
+        }
+      ]
+    },
+    {
+      "id": "nats-05",
+      "verdict": "supported",
+      "fact": "DiscardOld 在达到限制时移除旧消息以腾出空间；DiscardNew 在达到限制时拒绝新消息。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 15,
+          "end": 15
+        }
+      ]
+    },
+    {
+      "id": "nats-06",
+      "verdict": "refuted",
+      "fact": "错误；JetStream 发布去重依据 Nats-Msg-Id 头来识别重复消息，文档明确说只咨询消息 ID 而不咨询消息 body 内容。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 18,
+          "end": 25
+        }
+      ]
+    },
+    {
+      "id": "nats-07",
+      "verdict": "supported",
+      "fact": "文档中的默认发布去重跟踪窗口为 2 分钟；该窗口可在创建 stream 时通过 --dupe-window 配置，但文档提醒避免设置过大的窗口。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 36,
+          "end": 36
+        }
+      ]
+    },
+    {
+      "id": "nats-08",
+      "verdict": "refuted",
+      "fact": "错误；Request 到受 stream 覆盖的 subject 后，服务会在消息存储后回复；普通 publish 不会收到该持久化 ack。此外，stream 设置 NoAck 为 true 也会关闭这些 ack。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 38,
+          "end": 38
+        }
+      ]
+    },
+    {
+      "id": "nats-09",
+      "verdict": "supported",
+      "fact": "Stream 可以通过将 NoAck 设置为 true 来禁用 ack；文档中的这一 ack 指发布消息后是否由 JetStream 回复存储确认。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 38,
+          "end": 38
+        }
+      ]
+    },
+    {
+      "id": "nats-10",
+      "verdict": "supported",
+      "fact": "该文档的 Ack 模式表确实把 AckExplicit 描述为 pull-based consumer 唯一支持的选项；但同一文档后面的 pull consumer 示例使用了 --ack none，因此文内存在冲突，不能将“只支持 AckExplicit”作为无条件普遍事实。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 42,
+          "end": 42
+        },
+        {
+          "source": "nats",
+          "start": 200,
+          "end": 200
+        }
+      ]
+    },
+    {
+      "id": "nats-11",
+      "verdict": "supported",
+      "fact": "在 AckAll 模式下，确认消息 100 也会同时确认消息 1 到 99；文档将该模式描述为适合批量处理并降低 ack 开销。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 43,
+          "end": 43
+        }
+      ]
+    },
+    {
+      "id": "nats-12",
+      "verdict": "supported",
+      "fact": "文档在 AckFlowControl 条目中明确标注 2.14，并说明它基于 flow control 进行确认，主要用于 stream sourcing 或 mirroring，且文档提到使用 durable consumer。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 45,
+          "end": 45
+        }
+      ]
+    },
+    {
+      "id": "nats-13",
+      "verdict": "supported",
+      "fact": "AckAck 表示消息已被完全处理，是文档示例中常见的成功确认类型。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 175,
+          "end": 175
+        }
+      ]
+    },
+    {
+      "id": "nats-14",
+      "verdict": "supported",
+      "fact": "AckNak 表示该消息现在不会被处理，处理可以继续下一条；文档说明被 NAK 的消息会被重试。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 176,
+          "end": 176
+        }
+      ]
+    },
+    {
+      "id": "nats-15",
+      "verdict": "supported",
+      "fact": "AckProgress 需在 AckWait 期限到期前发送；文档说明服务器据此认为处理仍在继续，并将等待期再延长一个等于 AckWait 的时长。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 177,
+          "end": 177
+        }
+      ]
+    },
+    {
+      "id": "nats-16",
+      "verdict": "refuted",
+      "fact": "错误；AckTerm 是指示服务器停止该消息的重投，但不表示消息已成功处理，也不是成功确认。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 179,
+          "end": 179
+        }
+      ]
+    },
+    {
+      "id": "nats-17",
+      "verdict": "refuted",
+      "fact": "错误；文档明确说明除 AckNext 外这些 ack 模式支持 double acknowledgement，AckNext 不在该支持范围内。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 181,
+          "end": 181
+        }
+      ]
+    },
+    {
+      "id": "nats-18",
+      "verdict": "supported",
+      "fact": "文档将 JetStream exactly-once 发布与消费描述为组合使用 message deduplication 和 double ack：发布端用消息去重避免重复写入，消费端通过 AckSync 等 double ack 方式确认服务器收到 ack。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 184,
+          "end": 186
+        }
+      ]
+    },
+    {
+      "id": "nats-19",
+      "verdict": "supported",
+      "fact": "DeliverPolicy 只决定消费者首次开始读取的起点；文档说明一旦开始，它会交付尚未看到或未 ack 的消息，因此不是持续重置的重放过滤器。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 196,
+          "end": 196
+        }
+      ]
+    },
+    {
+      "id": "nats-20",
+      "verdict": "supported",
+      "fact": "Durable consumer 在断开连接后仍存在；ephemeral consumer 只在 delivery subject 有订阅时存在，当没有订阅者后，会经过短暂宽限期自动移除，文档说明该宽限期用于处理重启。",
+      "citations": [
+        {
+          "source": "nats",
+          "start": 247,
+          "end": 249
+        }
+      ]
+    },
+    {
+      "id": "nats-21",
+      "verdict": "supported",
+      "fact": "消费者文档对比 Core NATS 与 JetStream：Core NATS 提供 at most once 投递保证，JetStream consumer 则可提供 at least once 投递保证。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 4,
+          "end": 4
+        }
+      ]
+    },
+    {
+      "id": "nats-22",
+      "verdict": "supported",
+      "fact": "Push consumer 会将消息交付到指定 subject；pull consumer 允许客户端按需请求一批消息。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 9,
+          "end": 10
+        }
+      ]
+    },
+    {
+      "id": "nats-23",
+      "verdict": "supported",
+      "fact": "文档建议新项目优先使用 pull consumer，尤其当可扩展性、细粒度 flow control 或 error handling 是关注点时。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 14,
+          "end": 15
+        }
+      ]
+    },
+    {
+      "id": "nats-24",
+      "verdict": "refuted",
+      "fact": "错误；ordered consumer 总是 ephemeral，而不是 durable。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 19,
+          "end": 20
+        }
+      ]
+    },
+    {
+      "id": "nats-25",
+      "verdict": "supported",
+      "fact": "Ordered consumer 不使用 ack；如果检测到 gap，消费者会被重建。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 20,
+          "end": 20
+        }
+      ]
+    },
+    {
+      "id": "nats-26",
+      "verdict": "supported",
+      "fact": "Ordered consumer 使用单线程分发，并且没有 load balancing。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 22,
+          "end": 23
+        }
+      ]
+    },
+    {
+      "id": "nats-27",
+      "verdict": "refuted",
+      "fact": "错误；consumer 被视为 durable 的条件是创建时显式设置 Durable 字段；只设置 Name 而不设置 Durable 仍会被服务器视为 ephemeral。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 26,
+          "end": 26
+        }
+      ]
+    },
+    {
+      "id": "nats-28",
+      "verdict": "refuted",
+      "fact": "错误；设置 InactiveThreshold 不会让 consumer 变成 durable。它只控制 inactive consumer 的自动清理，并适用于 durable 与 ephemeral，文档还说明 2.9 之前仅适用于 ephemeral consumer。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 26,
+          "end": 26
+        }
+      ]
+    },
+    {
+      "id": "nats-29",
+      "verdict": "supported",
+      "fact": "Ephemeral consumer 没有持久状态或 fault tolerance，状态仅存在于服务器内存中；当没有订阅者绑定且经过一段闲置后会被自动清理删除。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 27,
+          "end": 28
+        }
+      ]
+    },
+    {
+      "id": "nats-30",
+      "verdict": "supported",
+      "fact": "默认情况下，consumer 使用与所消费 stream 相同的复制因子，并在闲置期间保持存在；显式设置 InactiveThreshold 会启用对 inactive consumer 的自动清理。该阈值适用于 durable 和 ephemeral，文档说明 2.9 之前仅适用于 ephemeral。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 26,
+          "end": 30
+        }
+      ]
+    },
+    {
+      "id": "nats-31",
+      "verdict": "supported",
+      "fact": "Durable 名称不能包含空白、点、星号、大于号、路径分隔符，正斜杠或反斜杠，也不能包含不可打印字符。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 39,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "id": "nats-32",
+      "verdict": "refuted",
+      "fact": "错误；FilterSubject 不能与 FilterSubjects 同时使用，文档对这两个字段都注明不能与另一个字段一起使用。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 40,
+          "end": 40
+        },
+        {
+          "source": "nats-consumers",
+          "start": 56,
+          "end": 56
+        }
+      ]
+    },
+    {
+      "id": "nats-33",
+      "verdict": "supported",
+      "fact": "AckWait 只在未配置 BackOff 时生效；如果配置了 BackOff，BackOff 会完全覆盖 AckWait，并由 BackOff 列表的第一个值决定 AckWait。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 42,
+          "end": 42
+        },
+        {
+          "source": "nats-consumers",
+          "start": 50,
+          "end": 50
+        }
+      ]
+    },
+    {
+      "id": "nats-34",
+      "verdict": "supported",
+      "fact": "Description 自 2.3.3 引入且可编辑；文档说明它对 ephemeral consumer 特别有用，因为 ephemeral consumer 不能提供 durable 名称，可用 Description 表明用途。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 46,
+          "end": 46
+        }
+      ]
+    },
+    {
+      "id": "nats-35",
+      "verdict": "supported",
+      "fact": "文档说明 InactiveThreshold 在 2.9 以前只适用于 ephemeral consumer；当前文档描述它适用于 durable 和 ephemeral consumer。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 26,
+          "end": 26
+        },
+        {
+          "source": "nats-consumers",
+          "start": 47,
+          "end": 47
+        }
+      ]
+    },
+    {
+      "id": "nats-36",
+      "verdict": "supported",
+      "fact": "MaxAckPending 默认值为 1000，限制跨越该 consumer 所有绑定订阅的未确认消息数量；达到上限后消息交付会挂起，值为 -1 时允许任意数量 pending acknowledgement。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 48,
+          "end": 48
+        }
+      ]
+    },
+    {
+      "id": "nats-37",
+      "verdict": "refuted",
+      "fact": "错误；文档说明达到 MaxDeliver 的消息会留在 stream 中，而不是因为达到 MaxDeliver 而自动从 stream 删除。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 49,
+          "end": 49
+        }
+      ]
+    },
+    {
+      "id": "nats-38",
+      "verdict": "refuted",
+      "fact": "错误；BackOff 不应用于被 nak 的消息。文档说明 nak 会导致立即重投，除非使用 nakWithDelay 明确设置重投延迟。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 50,
+          "end": 50
+        }
+      ]
+    },
+    {
+      "id": "nats-39",
+      "verdict": "supported",
+      "fact": "BackOff 序列长度必须小于或等于 MaxDeliver；如果 MaxDeliver 大于 BackOff 列表长度，剩余重投会使用列表最后一个延迟。该延迟机制适用于 acknowledgement timeout，不适用于 nak。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 50,
+          "end": 50
+        }
+      ]
+    },
+    {
+      "id": "nats-40",
+      "verdict": "supported",
+      "fact": "当 BackOff 被设置时，它会完全覆盖 AckWait；文档说明 BackOff 列表的第一个值确定 AckWait。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 50,
+          "end": 50
+        }
+      ]
+    },
+    {
+      "id": "nats-41",
+      "verdict": "supported",
+      "fact": "ReplayOriginal 会按消息原始接收速率推送给客户端；默认 ReplayInstant 会尽可能快推送，但仍须遵守 acknowledgement policy、MaxAckPending 和客户端消费能力。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 51,
+          "end": 51
+        }
+      ]
+    },
+    {
+      "id": "nats-42",
+      "verdict": "supported",
+      "fact": "Replicas 默认值为零；当值设为零时，consumer 继承 stream 的副本数。文档说明该字段自 2.8.3 引入且可编辑。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 52,
+          "end": 52
+        }
+      ]
+    },
+    {
+      "id": "nats-43",
+      "verdict": "supported",
+      "fact": "MemoryStorage 若被设置，会强制 consumer 状态保存在内存中，而不是继承 stream 的存储类型；文档说明这减少 acknowledgement 造成的 I/O，对 ephemeral consumer 有用。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 53,
+          "end": 53
+        }
+      ]
+    },
+    {
+      "id": "nats-44",
+      "verdict": "supported",
+      "fact": "SampleFrequency 是字符串类型，文档说明 30 和 30% 都是有效值，表示对 acknowledgement 进行 30% 采样。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 54,
+          "end": 54
+        }
+      ]
+    },
+    {
+      "id": "nats-45",
+      "verdict": "supported",
+      "fact": "Metadata 是一组应用定义的 key-value 键值对，用于为 consumer 关联元数据；文档版本列为 2.10.0，且可编辑。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 55,
+          "end": 55
+        }
+      ]
+    },
+    {
+      "id": "nats-46",
+      "verdict": "supported",
+      "fact": "HeadersOnly 会只投递消息头部，并添加 Nats-Msg-Size 头部，其值表示被移除的 payload 大小。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 57,
+          "end": 57
+        }
+      ]
+    },
+    {
+      "id": "nats-47",
+      "verdict": "refuted",
+      "fact": "错误；文档不是绝对拒绝超过确认时间窗到达的 ACK，而是警告服务器可能考虑超窗到达的 acknowledgement，例如 queue 场景中原消费者超窗且消息已重投时，服务器仍可能考虑该 ACK。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 67,
+          "end": 67
+        }
+      ]
+    },
+    {
+      "id": "nats-48",
+      "verdict": "supported",
+      "fact": "DeliverLastPerSubject 会从每个已过滤 subject 当前在 stream 中的最新一条消息开始。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 72,
+          "end": 72
+        }
+      ]
+    },
+    {
+      "id": "nats-49",
+      "verdict": "supported",
+      "fact": "DeliverByStartTime 会从指定时间或之后的消息开始，并要求 consumer 设置 OptStartTime 以提供起始时间。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 75,
+          "end": 75
+        }
+      ]
+    },
+    {
+      "id": "nats-50",
+      "verdict": "supported",
+      "fact": "MaxAckPending 同时适用于 push 和 pull consumer；文档说明它对 push consumer 是唯一形式的流控，而 pull consumer 的客户端驱动投递本身会形成隐式的一对一流控。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 77,
+          "end": 77
+        }
+      ]
+    },
+    {
+      "id": "nats-51",
+      "verdict": "supported",
+      "fact": "文档警告：单个 filter 可使用包含 filter token 的创建权限主题，但多个 FilterSubjects 使用不含 filter token 的通用创建权限主题，因此需要细粒度权限时必须采用不同策略。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 83,
+          "end": 83
+        }
+      ]
+    },
+    {
+      "id": "nats-52",
+      "verdict": "supported",
+      "fact": "MaxWaiting 是 pull-specific 字段，用于限制等待中的 pull request 数量；文档版本为 2.2.0，且不可编辑。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 88,
+          "end": 88
+        }
+      ]
+    },
+    {
+      "id": "nats-53",
+      "verdict": "supported",
+      "fact": "MaxRequestExpires 限制单个 pull request 等待可用消息的最长时间；文档版本为 2.7.0，且可编辑。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 89,
+          "end": 89
+        }
+      ]
+    },
+    {
+      "id": "nats-54",
+      "verdict": "supported",
+      "fact": "当同时设置 MaxRequestBatch 和 MaxRequestMaxBytes 时，批次大小由先触及的那个限制决定。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 90,
+          "end": 91
+        }
+      ]
+    },
+    {
+      "id": "nats-55",
+      "verdict": "supported",
+      "fact": "DeliverAll 是 DeliverPolicy 的默认策略，会从 stream 中最早可用的消息开始交付。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 70,
+          "end": 70
+        }
+      ]
+    },
+    {
+      "id": "nats-56",
+      "verdict": "supported",
+      "fact": "DeliverSubject 指定消息交付目标 subject；文档说明设置该字段会决定 consumer 是 push 还是 pull 模式，并在有 DeliverSubject 时由服务器向订阅该 subject 的客户端推送消息。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 96,
+          "end": 96
+        }
+      ]
+    },
+    {
+      "id": "nats-57",
+      "verdict": "supported",
+      "fact": "DeliverGroup 指定 queue group 名称，用于在多个订阅者之间分配消息。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 97,
+          "end": 97
+        }
+      ]
+    },
+    {
+      "id": "nats-58",
+      "verdict": "supported",
+      "fact": "FlowControl 启用基于滑动窗口的每订阅者流控，并与由 MaxAckPending 在所有绑定订阅之间施加的一对多流控协同工作。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 98,
+          "end": 98
+        }
+      ]
+    },
+    {
+      "id": "nats-59",
+      "verdict": "supported",
+      "fact": "IdleHeartbeat 在空闲期间让服务器定期发送 status message 表明 JetStream 服务运行；文档说明该 status message 的 code 为 100，且没有 reply address。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 99,
+          "end": 99
+        }
+      ]
+    },
+    {
+      "id": "nats-60",
+      "verdict": "refuted",
+      "fact": "错误；RateLimit 的文档单位是 bits per second，即每秒比特数，而不是每秒字节数。",
+      "citations": [
+        {
+          "source": "nats-consumers",
+          "start": 100,
+          "end": 100
+        }
+      ]
+    }
+  ]
+}

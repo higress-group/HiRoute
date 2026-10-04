@@ -1,0 +1,27 @@
+[
+  {
+    "id": "rabbitmq",
+    "url": "https://www.rabbitmq.com/docs/confirms",
+    "resolved_url": "https://www.rabbitmq.com/docs/confirms",
+    "title": "RabbitMQ 4.3 consumer acknowledgements and publisher confirms",
+    "fetch_utc": "2026-10-03T14:00:51.128144+00:00",
+    "raw_sha256": "668c6b21dac5353a0e797f26b8c6ac1bc0210afe6af06be26d23958b5badb8df",
+    "text_sha256": "d9c6b6993af0b5c6e2cca686a45b0a81959210e7e24bfde0ae92bdea8431a7ab",
+    "lines": 533,
+    "characters": 30890,
+    "reuse": "Earlier frozen primary snapshot; overlapping subject matter is disclosed, not a held-out benchmark."
+  },
+  {
+    "id": "rabbitmq-queues",
+    "url": "https://raw.githubusercontent.com/rabbitmq/rabbitmq-website/main/docs/queues.md",
+    "resolved_url": "https://raw.githubusercontent.com/rabbitmq/rabbitmq-website/main/docs/queues.md",
+    "fetch_utc": "2026-10-03T18:32:03.054629+00:00",
+    "raw_sha256": "70a81800b3df6e9e0295391a2fae37f67421af5b097d112e06a3ac9ba3087025",
+    "text_sha256": "a9ebe0d12e26fc368f26d9744e3f31095814940ff6cabe252cd50ec8f0d5ef6e",
+    "lines": 426,
+    "role": "expanded research input",
+    "version": "frozen main branch source",
+    "provenance_note": "Website fetch returned 403; official repository source used. Apache-2.0 header retained.",
+    "title": "rabbitmq-queues official frozen documentation"
+  }
+]

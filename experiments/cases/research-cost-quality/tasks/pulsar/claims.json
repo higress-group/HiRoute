@@ -1,0 +1,302 @@
+[
+  {
+    "id": "pulsar-01",
+    "claim": "消息 key 是可选项，可用于 topic compaction 等功能。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-02",
+    "claim": "未指定 producer name 时会生成全局唯一名字，同一 topic 同名生产者并发发布受限制。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-03",
+    "claim": "Sequence ID 由 bookie 在持久化时首次分配。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-04",
+    "claim": "启用 brokerDeduplicationEnabled 时，去重序列号作用域是 topic/partition 中的 producer。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-05",
+    "claim": "Message ID 由 bookie 在消息持久存储后赋予，并表示 ledger 位置。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-06",
+    "claim": "Event time 是应用可选时间戳，未设置时为 0。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-07",
+    "claim": "文档列出的默认最大消息大小为 5 MB，提供 broker 与 bookkeeper 配置项。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-08",
+    "claim": "保留已经被确认的消息需要配置消息 retention policy。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-09",
+    "claim": "Batch index acknowledgment 可以避免再次分发已确认的批内消息。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-10",
+    "claim": "累计确认覆盖直到给定消息的所有消息。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-11",
+    "claim": "Shared 与 Key_Shared 支持累计确认。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-12",
+    "claim": "负确认可以触发重投，但 ordered subscription 上的失败消息可能乱序到达。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-13",
+    "claim": "使用负确认时应在 acknowledgement timeout 前发送。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-14",
+    "claim": "示例注释列出的默认 negativeAckRedeliveryDelay 是 1 分钟。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-15",
+    "claim": "负确认重投可配置随重试次数变化的 backoff。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-16",
+    "claim": "此处文档警告 batching 开启时整个 batch 的消息会被重投。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-17",
+    "claim": "negativeAcknowledge 的重投计数在 broker 重启后可靠保留。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-18",
+    "claim": "需要可靠重试上限时，文档建议 reconsumeLater 配合 enableRetry(true)。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-19",
+    "claim": "acknowledge timeout 默认开启。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-20",
+    "claim": "超过 ackTimeout 后客户端请求 broker 重投未确认消息，并可配置不同重投延迟。",
+    "source": "pulsar"
+  },
+  {
+    "id": "pulsar-21",
+    "source": "pulsar",
+    "claim": "压缩以CPU开销换取更小消息，压缩类型记录在元数据中供消费者自动适配。"
+  },
+  {
+    "id": "pulsar-22",
+    "source": "pulsar",
+    "claim": "开启batching后，批大小受消息数及最大发布延迟控制，该段backlog按批次计数。"
+  },
+  {
+    "id": "pulsar-23",
+    "source": "pulsar",
+    "claim": "开启batching后，deliverAt或deliverAfter指定的定时消息也总是加入批次。"
+  },
+  {
+    "id": "pulsar-24",
+    "source": "pulsar",
+    "claim": "batch index ACK默认关闭，须在broker与consumer两端启用，并增加内存开销。"
+  },
+  {
+    "id": "pulsar-25",
+    "source": "pulsar",
+    "claim": "同步send会立即发送未满批次；单线程批量发送应使用sendAsync。"
+  },
+  {
+    "id": "pulsar-26",
+    "source": "pulsar",
+    "claim": "chunking由生产者拆分大消息，消费者收到全部chunk后重组交给客户端。"
+  },
+  {
+    "id": "pulsar-27",
+    "source": "pulsar",
+    "claim": "chunking可在非持久topic中与batching同时开启。"
+  },
+  {
+    "id": "pulsar-28",
+    "source": "pulsar",
+    "claim": "多个生产者的chunk可交错，同一消息的chunk仍有序但不必连续。"
+  },
+  {
+    "id": "pulsar-29",
+    "source": "pulsar",
+    "claim": "maxPendingChunkedMessage限制并行重组数量，达到阈值可确认丢弃或请求稍后重投。"
+  },
+  {
+    "id": "pulsar-30",
+    "source": "pulsar",
+    "claim": "chunking默认关闭，创建生产者时可用chunkingEnabled启用。"
+  },
+  {
+    "id": "pulsar-31",
+    "source": "pulsar",
+    "claim": "不完整chunk消息默认一分钟后过期，该时限可配置。"
+  },
+  {
+    "id": "pulsar-32",
+    "source": "pulsar",
+    "claim": "topic名称包含持久类型、tenant、namespace及topic，省略类型默认persistent。"
+  },
+  {
+    "id": "pulsar-33",
+    "source": "pulsar",
+    "claim": "namespace是tenant内的主题管理分组，多数topic配置在namespace层进行。"
+  },
+  {
+    "id": "pulsar-34",
+    "source": "pulsar",
+    "claim": "无consumer时订阅类型未定义，重启全部消费者并改配置可改变类型。"
+  },
+  {
+    "id": "pulsar-35",
+    "source": "pulsar",
+    "claim": "Exclusive默认允许多个消费者同时附着在同一订阅。"
+  },
+  {
+    "id": "pulsar-36",
+    "source": "pulsar",
+    "claim": "Failover每个非分区topic或分区选主消费者，切换重叠时可能重复或乱序。"
+  },
+  {
+    "id": "pulsar-37",
+    "source": "pulsar",
+    "claim": "durable订阅cursor持久化到BookKeeper，可在broker故障后恢复，它也是默认模式。"
+  },
+  {
+    "id": "pulsar-38",
+    "source": "pulsar",
+    "claim": "Reader的订阅模式固定为NonDurable，且不阻止topic数据被删除。"
+  },
+  {
+    "id": "pulsar-39",
+    "source": "pulsar",
+    "claim": "durable与non-durable订阅不能使用相同名字。"
+  },
+  {
+    "id": "pulsar-40",
+    "source": "pulsar",
+    "claim": "没有durable订阅的topic默认将消息标记为可删除，可创建durable订阅改变保留行为。"
+  },
+  {
+    "id": "pulsar-41",
+    "source": "pulsar",
+    "claim": "多topic订阅可用显式列表或正则，使用正则时所有topic须位于同一namespace。"
+  },
+  {
+    "id": "pulsar-42",
+    "source": "pulsar",
+    "claim": "多topic订阅保证跨topic读取顺序与生产者发送顺序完全一致。"
+  },
+  {
+    "id": "pulsar-43",
+    "source": "pulsar",
+    "claim": "普通topic由单broker服务，分区topic由多个内部topic组成并可分布到多个broker。"
+  },
+  {
+    "id": "pulsar-44",
+    "source": "pulsar",
+    "claim": "routing决定发布到哪个分区，subscription type决定分发给哪些消费者。"
+  },
+  {
+    "id": "pulsar-45",
+    "source": "pulsar",
+    "claim": "分区topic需要通过admin API显式创建并指定分区数量。"
+  },
+  {
+    "id": "pulsar-46",
+    "source": "pulsar",
+    "claim": "无key的RoundRobinPartition严格逐消息轮换分区，与batch延迟无关。"
+  },
+  {
+    "id": "pulsar-47",
+    "source": "pulsar",
+    "claim": "SinglePartition无key时随机选择一个分区持续发送，有key时按key散列路由。"
+  },
+  {
+    "id": "pulsar-48",
+    "source": "pulsar",
+    "claim": "Java客户端可实现MessageRouter接口定义CustomPartition。"
+  },
+  {
+    "id": "pulsar-49",
+    "source": "pulsar",
+    "claim": "SinglePartition或RoundRobinPartition加key提供按key分区；SinglePartition无key对应按producer有序。"
+  },
+  {
+    "id": "pulsar-50",
+    "source": "pulsar",
+    "claim": "默认散列为JavaStringHash，多语言生产者场景推荐Murmur3_32Hash。"
+  },
+  {
+    "id": "pulsar-51",
+    "source": "pulsar",
+    "claim": "非持久topic仍把所有消息可靠写入BookKeeper，因此broker崩溃不会丢在途消息。"
+  },
+  {
+    "id": "pulsar-52",
+    "source": "pulsar",
+    "claim": "非持久topic立即转发给已连接消费者，断连期间的在途消息不能稍后恢复。"
+  },
+  {
+    "id": "pulsar-53",
+    "source": "pulsar",
+    "claim": "非持久topic默认在broker启用，可以通过broker配置关闭。"
+  },
+  {
+    "id": "pulsar-54",
+    "source": "pulsar",
+    "claim": "非持久topic支持exclusive、shared、key_shared与failover四种订阅类型。"
+  },
+  {
+    "id": "pulsar-55",
+    "source": "pulsar",
+    "claim": "retention保留已确认消息，expiry为未确认消息设置TTL，两者在namespace层管理。"
+  },
+  {
+    "id": "pulsar-56",
+    "source": "pulsar",
+    "claim": "消息去重可在namespace或topic层管理。"
+  },
+  {
+    "id": "pulsar-57",
+    "source": "pulsar",
+    "claim": "延迟消息存入BookKeeper，DelayedDeliveryTracker维护内存中的时间索引。"
+  },
+  {
+    "id": "pulsar-58",
+    "source": "pulsar",
+    "claim": "Exclusive和Failover也会等待指定延迟后再分发消息。"
+  },
+  {
+    "id": "pulsar-59",
+    "source": "pulsar",
+    "claim": "长延迟消息可能阻止前部ledger清理，并使backlog quota拒绝后续发送。"
+  },
+  {
+    "id": "pulsar-60",
+    "source": "pulsar",
+    "claim": "TTL到期会将延迟消息标记为已确认，不会等待其原定延迟时间。"
+  }
+]

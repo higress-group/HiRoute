@@ -1,0 +1,789 @@
+{
+  "cards": [
+    {
+      "id": "rocketmq-01",
+      "verdict": "supported",
+      "fact": "成立。在 RocketMQ 消费重试特性启用时，消息在达到指定最大重试次数后仍消费失败，会被发送到死信队列。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 20,
+          "end": 20
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-02",
+      "verdict": "supported",
+      "fact": "成立。消费重试触发条件包括消费者返回失败状态或系统抛出异常、发生超时错误，以及消息在 PushConsumer 队列中停留过久。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 22,
+          "end": 23
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-03",
+      "verdict": "supported",
+      "fact": "成立。PushConsumer 与 SimpleConsumer 的重试机制不同，且配置方式不同；PushConsumer 重试间隔由元数据配置，SimpleConsumer 由 InvisibleDuration 参数控制。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 29,
+          "end": 32
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-04",
+      "verdict": "supported",
+      "fact": "成立。Ready 表示消息在 Broker 上等待消费；Inflight 表示消息已被消费者获取、正在处理但消费结果尚未返回。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 37,
+          "end": 38
+        },
+        {
+          "source": "rocketmq",
+          "start": 75,
+          "end": 76
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-05",
+      "verdict": "refuted",
+      "fact": "不成立。WaitingRetry 是 PushConsumer 状态机中的独有状态；SimpleConsumer 的重试状态机为 Ready、Inflight、Commit、DLQ，不包含 WaitingRetry。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 39,
+          "end": 39
+        },
+        {
+          "source": "rocketmq",
+          "start": 74,
+          "end": 78
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-06",
+      "verdict": "supported",
+      "fact": "成立。消费者返回成功响应后，消息进入 Commit 状态，状态机可结束。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 40,
+          "end": 40
+        },
+        {
+          "source": "rocketmq",
+          "start": 77,
+          "end": 77
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-07",
+      "verdict": "supported",
+      "fact": "成立。消息达到最大重试次数后不再重试并进入 DLQ；可以消费死信队列中的消息来恢复业务。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 41,
+          "end": 41
+        },
+        {
+          "source": "rocketmq",
+          "start": 78,
+          "end": 78
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-08",
+      "verdict": "supported",
+      "fact": "成立。PushConsumer 消息重试时，两次消费之间的间隔等于实际消费耗时与重试间隔之和；该最大消费间隔由 Broker 系统参数限定且不可超过。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 42,
+          "end": 42
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-09",
+      "verdict": "supported",
+      "fact": "成立。若最大重试数为 3，消息总共可投递 4 次，即 1 次初始投递加 3 次重试。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 45,
+          "end": 45
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-10",
+      "verdict": "supported",
+      "fact": "成立。PushConsumer 对无序消息使用递增式重试间隔。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 47,
+          "end": 47
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-11",
+      "verdict": "supported",
+      "fact": "成立，但前提是所指为 PushConsumer 的无序消息；在无序消息重试间隔中，若重试次数超过 16，后续每次重试间隔为 2 小时。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 47,
+          "end": 47
+        },
+        {
+          "source": "rocketmq",
+          "start": 58,
+          "end": 58
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-12",
+      "verdict": "supported",
+      "fact": "成立。PushConsumer 对有序消息使用固定重试间隔；本页未给出具体数值，仅提示参见参数限制。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 59,
+          "end": 59
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-13",
+      "verdict": "supported",
+      "fact": "成立。PushConsumer 示例说明消息重试仅由消费失败状态码触发；SDK 也会捕获意外异常。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 61,
+          "end": 61
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-14",
+      "verdict": "supported",
+      "fact": "成立。SimpleConsumer 的重试间隔由 API 中的 InvisibleDuration 参数指定；消息重试时复用该值，无需为后续重试另行配置间隔。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 32,
+          "end": 32
+        },
+        {
+          "source": "rocketmq",
+          "start": 79,
+          "end": 79
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-15",
+      "verdict": "supported",
+      "fact": "成立。修改 InvisibleDuration 前必须满足：当前消息尚未发生超时错误，且尚未返回消费状态。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 82,
+          "end": 84
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-16",
+      "verdict": "refuted",
+      "fact": "不成立。修改 InvisibleDuration 后立即生效，新的 InvisibleDuration 从调用 API 的时间点重新计算，而不是从最初获取消息的时刻继续计算。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 85,
+          "end": 85
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-17",
+      "verdict": "supported",
+      "fact": "成立。SimpleConsumer 的最大重试次数在创建消费者组时由元数据指定。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 87,
+          "end": 87
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-18",
+      "verdict": "supported",
+      "fact": "成立。示例中 InvisibleDuration 为 30 ms、消息在处理 10 ms 后返回消费失败时，距离下次重试为 20 ms。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 90,
+          "end": 90
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-19",
+      "verdict": "refuted",
+      "fact": "不成立。官方资料明确反对把返回消费失败并进入重试作为限流手段；限流应让消息暂时堆积，稍后以更合适速率拉取消费。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 107,
+          "end": 109
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-20",
+      "verdict": "supported",
+      "fact": "成立。官方建议设置少量重试和较长重试间隔，以减少系统负担，并避免大量重试或无限重试。",
+      "citations": [
+        {
+          "source": "rocketmq",
+          "start": 110,
+          "end": 111
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-21",
+      "verdict": "supported",
+      "fact": "成立。在普通消息与本地订单事务异步组合的方案中，可能出现消息已发送但订单未执行，或订单已执行但消息未发送的结果不一致。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 17,
+          "end": 20
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-22",
+      "verdict": "supported",
+      "fact": "成立。RocketMQ 事务消息的定义目标是保证消息生产与本地事务之间的最终一致性。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 28,
+          "end": 28
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-23",
+      "verdict": "supported",
+      "fact": "成立。流程包括生产者发送半消息、Broker 保存半消息并返回 ACK，随后生产者执行本地事务，再发送第二次 ACK 提交 Commit 或 Rollback 结果。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 31,
+          "end": 34
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-24",
+      "verdict": "refuted",
+      "fact": "不成立。Broker 收到半消息时将其标记为不可投递；只有后续提交 Commit 后，半消息才被标记为可投递给消费者。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 32,
+          "end": 32
+        },
+        {
+          "source": "rocketmq-transactions",
+          "start": 35,
+          "end": 35
+        },
+        {
+          "source": "rocketmq-transactions",
+          "start": 43,
+          "end": 43
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-25",
+      "verdict": "supported",
+      "fact": "成立。Commit 使半消息变为可投递并交给消费者；Rollback 使事务回滚且不向消费者投递该半消息。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 35,
+          "end": 36
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-26",
+      "verdict": "supported",
+      "fact": "成立。若网络断开、生产者重启、Broker 未收到第二次 ACK 或半消息状态为 Unknown，Broker 会等待一段时间后向生产者集群查询本地事务状态。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 37,
+          "end": 37
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-27",
+      "verdict": "supported",
+      "fact": "成立。在 Transaction pending 阶段，半消息存储在事务存储系统中，尚未提交，且对下游消费者不可见。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 43,
+          "end": 43
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-28",
+      "verdict": "refuted",
+      "fact": "不成立。消费者提交成功结果后，消息数据只是被逻辑标记为已消费，不会立即删除；需等到保留期到期或存储不足才删除。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 49,
+          "end": 50
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-29",
+      "verdict": "supported",
+      "fact": "成立。当消息保留期到期或存储空间不足时，Apache RocketMQ 从物理文件中以滚动方式删除最早保存的消息。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 50,
+          "end": 50
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-30",
+      "verdict": "refuted",
+      "fact": "不成立。事务消息只能用于 MessageType 为 Transaction 的 topic；Normal topic 不支持投递 TRANSACTION 消息，发送到 NORMAL topic 会报错。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 53,
+          "end": 53
+        },
+        {
+          "source": "rocketmq-transactions",
+          "start": 69,
+          "end": 69
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-31",
+      "verdict": "supported",
+      "fact": "成立。事务消息不保证消息消费结果与上游执行结果一致；下游业务必须确保消息被正确处理，并建议在失败时正确重试消费。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 55,
+          "end": 55
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-32",
+      "verdict": "refuted",
+      "fact": "不成立。事务消息只保证最终一致性，在消息投递给消费者之前不保证上游交易与下游分支状态一致，因此只适合接受异步执行的交易场景。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 57,
+          "end": 57
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-33",
+      "verdict": "supported",
+      "fact": "成立。若 Broker 在指定超时时间后仍无法确定提交或回滚，会默认回滚该消息。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 59,
+          "end": 59
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-34",
+      "verdict": "supported",
+      "fact": "成立。发送事务消息前必须启用 transaction checker，并使其与本地事务执行关联。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 66,
+          "end": 66
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-35",
+      "verdict": "supported",
+      "fact": "成立。示例中的 transaction checker 读取消息的 OrderId 属性并按 OrderId 检查本地订单；若 OrderId 为空，则返回 ROLLBACK。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 91,
+          "end": 99
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-36",
+      "verdict": "supported",
+      "fact": "成立。示例指出若发送半消息失败，可以终止事务并回滚该消息。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 126,
+          "end": 127
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-37",
+      "verdict": "supported",
+      "fact": "成立。示例注释说明未知异常时暂不处理，等待半消息状态查询响应；提交阶段异常时可按业务决定重试，也可通过半消息状态查询提交事务状态。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 133,
+          "end": 133
+        },
+        {
+          "source": "rocketmq-transactions",
+          "start": 141,
+          "end": 141
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-38",
+      "verdict": "supported",
+      "fact": "成立。大量本地事务返回 Unknown 会引发大量事务回查，从而拖慢事务处理并使系统性能下降；资料建议生产者尽量避免这种情况。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 155,
+          "end": 155
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-39",
+      "verdict": "refuted",
+      "fact": "不成立。在回查遇到仍在执行的本地事务时，不应返回 Rollback 或 Commit，而应保持 Unknown 状态。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 157,
+          "end": 157
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-40",
+      "verdict": "supported",
+      "fact": "成立。增大首次查询间隔可缓解慢事务导致频繁回查，但会增加依赖回查结果的消息延迟。",
+      "citations": [
+        {
+          "source": "rocketmq-transactions",
+          "start": 159,
+          "end": 159
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-41",
+      "verdict": "refuted",
+      "fact": "不成立。RocketMQ 有序消息按 message group 保证组内 FIFO；不同 message group 或未归入 message group 的消息不保证顺序，因此不是同一 topic 的全局 FIFO。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 18,
+          "end": 18
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-42",
+      "verdict": "supported",
+      "fact": "成立。message group 决定有序消息的排序范围；按业务细粒度配置 message group 可实现局部有序，并提升并发度和吞吐。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 18,
+          "end": 19
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-43",
+      "verdict": "supported",
+      "fact": "成立。保证生产顺序需要单一生产者和串行传输；若生产者使用多个线程并发发送，RocketMQ 不能确定不同线程之间消息的顺序。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 24,
+          "end": 25
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-44",
+      "verdict": "refuted",
+      "fact": "不成立。生产顺序仅适用于单个生产者；不同系统的生产者即使配置同一 message group，RocketMQ 也不能确定它们的发送顺序。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 24,
+          "end": 24
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-45",
+      "verdict": "supported",
+      "fact": "成立。满足单一生产和串行传输后，属于同一 message group 的消息按发送顺序写入同一队列；不同 message group 即使写入同一队列，彼此之间也没有特定顺序。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 26,
+          "end": 27
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-46",
+      "verdict": "supported",
+      "fact": "成立。消费应用必须遵循接收、处理、响应的路径，以防止异步处理造成消息乱序。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 31,
+          "end": 31
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-47",
+      "verdict": "supported",
+      "fact": "成立。PushConsumer 按消息存储顺序逐条投递；SimpleConsumer 可能一次拉取多条消息，应用需要自行实现消息消费顺序。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 33,
+          "end": 34
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-48",
+      "verdict": "supported",
+      "fact": "成立。RocketMQ 限制有序消息的投递重试次数；达到最大重试次数后停止重试，以避免队列中的其他消息持续等待投递。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 35,
+          "end": 35
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-49",
+      "verdict": "supported",
+      "fact": "成立。若要让消息按 FIFO 原则处理，需要同时满足生产顺序和消费顺序；资料通过组合表说明只配置一侧不足以形成完整有序处理。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 38,
+          "end": 38
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-50",
+      "verdict": "supported",
+      "fact": "成立。未配置 message group 且使用顺序消费时，顺序在队列级别保证；RocketMQ 保证消费顺序等于队列中的存储顺序，但不一定等于消息发送顺序。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 42,
+          "end": 42
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-51",
+      "verdict": "supported",
+      "fact": "成立。有序消息消费成功提交结果后只是被逻辑标记为已消费，不会被立即删除；消费者可在因保留期到期或空间不足被删除前回退并重新消费。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 50,
+          "end": 50
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-52",
+      "verdict": "supported",
+      "fact": "成立。该页说明消费失败或超时触发重试后，原消息到达生命周期终点并被当作具有新消息 ID 的新消息；在有序消息以 message group 为有序范围的语境下，被重试消息之后的消息需等待其消费完成后才能处理。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 18,
+          "end": 18
+        },
+        {
+          "source": "rocketmq-ordering",
+          "start": 53,
+          "end": 54
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-53",
+      "verdict": "refuted",
+      "fact": "不成立。有序消息仅支持 MessageType 为 FIFO 的 topic。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 56,
+          "end": 56
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-54",
+      "verdict": "supported",
+      "fact": "成立。5.0 示例使用 mqadmin updateSubGroup 创建订阅组，并通过将 -o 设置为 true 来配置有序消费组。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 62,
+          "end": 63
+        },
+        {
+          "source": "rocketmq-ordering",
+          "start": 73,
+          "end": 77
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-55",
+      "verdict": "supported",
+      "fact": "成立。有序消息必须配置 message group；资料建议按业务需求进行细粒度分组，以实现负载解耦和并发扩展。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 18,
+          "end": 18
+        },
+        {
+          "source": "rocketmq-ordering",
+          "start": 65,
+          "end": 65
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-56",
+      "verdict": "supported",
+      "fact": "成立。示例要求确保对消费组启用有序投递；否则消息会被并发投递且没有特定顺序。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 98,
+          "end": 98
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-57",
+      "verdict": "supported",
+      "fact": "成立。对 SimpleConsumer，如果某 message group 内前一条消息尚未完成消费，调用 Receive 不能获取该 message group 的下一条消息。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 109,
+          "end": 109
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-58",
+      "verdict": "supported",
+      "fact": "成立。SimpleConsumer 完成消费后必须显式调用 ACK 提交消费结果。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 115,
+          "end": 115
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-59",
+      "verdict": "supported",
+      "fact": "成立。该页建议使用串行消费而非批量消费；若批量消费中部分消息失败并重试，可能重复处理消息并导致消费顺序错乱。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 127,
+          "end": 129
+        }
+      ]
+    },
+    {
+      "id": "rocketmq-60",
+      "verdict": "supported",
+      "fact": "成立。包含大量消息的 message group 会使对应队列过载，影响性能并阻碍扩展；资料建议按订单 ID、用户 ID 等拆分消息组，以保证同一用户相关消息有序。",
+      "citations": [
+        {
+          "source": "rocketmq-ordering",
+          "start": 130,
+          "end": 132
+        }
+      ]
+    }
+  ]
+}

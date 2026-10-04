@@ -32,6 +32,11 @@ HiRoute 不是在每次工具调用时随意换模型的代理。一次执行阶
 输入或上下文压缩后的自然重建时机重新选择。这样既能按阶段使用合适的模型，也能让阶段内前缀持续
 复用，对模型供应商的 KV cache 友好。
 
+## News · 最新动态
+
+- **2026-10-04** — [HiRoute 智能路由实战：GPT-6 Astra × Qwen-3.8 Flash，同等质量下成本降低 90%](news/2026-10-04-astra-qwen.zh-CN.md)。[官网阅读](https://hiroute.ai/news/astra-qwen-smart-routing/) · [复现实验](experiments/README.md)
+- [全部新闻](news/README.md)
+
 ## 为什么使用 HiRoute
 
 | | |

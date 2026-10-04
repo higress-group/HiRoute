@@ -1,0 +1,26 @@
+[
+  {
+    "id": "nats",
+    "url": "https://raw.githubusercontent.com/nats-io/nats.docs/master/using-nats/jetstream/model_deep_dive.md",
+    "resolved_url": "https://raw.githubusercontent.com/nats-io/nats.docs/master/using-nats/jetstream/model_deep_dive.md",
+    "title": "NATS JetStream model deep dive; frozen default-branch snapshot",
+    "fetch_utc": "2026-10-03T14:00:51.845311+00:00",
+    "raw_sha256": "12df476cf59908abea5b104ca1bfea5c04c319d63d1b6016f7e9e8cccd42a6a8",
+    "text_sha256": "bedb3750f83f5b0b59f18ed9e2dc25682750f99032f88c621e515005f13857d1",
+    "lines": 330,
+    "characters": 19304,
+    "reuse": "Earlier frozen primary snapshot; overlapping subject matter is disclosed, not a held-out benchmark."
+  },
+  {
+    "id": "nats-consumers",
+    "url": "https://raw.githubusercontent.com/nats-io/nats.docs/master/nats-concepts/jetstream/consumers.md",
+    "resolved_url": "https://raw.githubusercontent.com/nats-io/nats.docs/master/nats-concepts/jetstream/consumers.md",
+    "fetch_utc": "2026-10-03T17:53:16.472107+00:00",
+    "raw_sha256": "6dc4f2dc9a6f4c3ffffb6e45b6fb88314195404e7d10dde43e4e9142763e9543",
+    "text_sha256": "004369d29c110845a7873c48020d6337f425cae12b35d750b754e7a9c1ac16fe",
+    "lines": 101,
+    "characters": 15710,
+    "role": "expanded research input",
+    "title": "nats-consumers official frozen documentation"
+  }
+]

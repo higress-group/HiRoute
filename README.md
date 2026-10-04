@@ -35,6 +35,11 @@ default; an operator can enable re-selection on each follow-up. A context rebuil
 can also start a new decision. This preserves reusable prefixes within a stage
 and makes model switching friendly to provider KV caches.
 
+## News
+
+- **2026-10-04** — [GPT-6 Astra × Qwen-3.8 Flash: same quality at 90% lower cost](news/2026-10-04-astra-qwen.en.md). [Website article](https://hiroute.ai/en/news/astra-qwen-smart-routing/) · [Experiments](experiments/README.md)
+- [All news](news/README.md)
+
 ## Why HiRoute
 
 | | |

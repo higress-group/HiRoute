@@ -1,0 +1,37 @@
+[
+  {
+    "id": "rocketmq",
+    "url": "https://rocketmq.apache.org/docs/featureBehavior/10consumerretrypolicy/",
+    "resolved_url": "https://rocketmq.apache.org/docs/featureBehavior/10consumerretrypolicy/",
+    "title": "Apache RocketMQ consumer retry policy; frozen website snapshot",
+    "fetch_utc": "2026-10-03T16:21:41.393977+00:00",
+    "raw_sha256": "6a0e3cbc4211f852d56d6b224f48e9ecaf7d31096242f15c5fdcd44cf701f957",
+    "text_sha256": "2abd3fc621c78ac38316116aeb62b60d08ffbbe045b334e5925c720d64fea8c1",
+    "lines": 118,
+    "characters": 12280
+  },
+  {
+    "id": "rocketmq-ordering",
+    "url": "https://rocketmq.apache.org/docs/featureBehavior/03fifomessage/",
+    "resolved_url": "https://rocketmq.apache.org/docs/featureBehavior/03fifomessage/",
+    "fetch_utc": "2026-10-03T17:53:18.350609+00:00",
+    "raw_sha256": "c3d86cb5dfae524f2cd367f0873a59437893fad3bf7b1637f35900c006227334",
+    "text_sha256": "279837deef87ca0724037be90d67838d048589a8159767c539a512b0d7e780a4",
+    "lines": 138,
+    "characters": 15630,
+    "role": "expanded research input",
+    "title": "rocketmq-ordering official frozen documentation"
+  },
+  {
+    "id": "rocketmq-transactions",
+    "url": "https://rocketmq.apache.org/docs/featureBehavior/04transactionmessage/",
+    "resolved_url": "https://rocketmq.apache.org/docs/featureBehavior/04transactionmessage/",
+    "fetch_utc": "2026-10-03T17:53:17.422809+00:00",
+    "raw_sha256": "9369d99a950486691cc9cdc688bec05b26ef31556b63be580008e4a39d929f97",
+    "text_sha256": "6f709ce0e15874936cd9c76380bdc217b2bbfed754282371234f5cdf93b2d8d2",
+    "lines": 166,
+    "characters": 15620,
+    "role": "expanded research input",
+    "title": "rocketmq-transactions official frozen documentation"
+  }
+]

@@ -1,0 +1,385 @@
+{
+  "cards": [
+    {
+      "id": "redis-01",
+      "verdict": "supported",
+      "fact": "Redis Stream 是追加日志式的数据结构，每个条目有唯一 ID，可用该 ID 定位条目或读取其后的条目。",
+      "citations": [{"source": "redis", "start": 25, "end": 32}]
+    },
+    {
+      "id": "redis-02",
+      "verdict": "supported",
+      "fact": "该快照将多消费组引用处理增强标注为 Redis 8.2 起提供，涉及带裁剪选项的 XADD、XTRIM、XDELEX 和 XACKDEL。",
+      "citations": [{"source": "redis", "start": 550, "end": 560}]
+    },
+    {
+      "id": "redis-03",
+      "verdict": "refuted",
+      "fact": "该快照将生产端幂等消息处理标注为 Redis 8.6 起提供，而非 Redis 7.0；其描述为通过自动去重防止至少一次投递模式下产生重复条目，实现至多一次生产。",
+      "citations": [{"source": "redis", "start": 34, "end": 34}]
+    },
+    {
+      "id": "redis-04",
+      "verdict": "supported",
+      "fact": "消费组用于将同一流中的不同消息子集分配给组内多个工作者，从而分担消息处理工作，而不是让每个工作者都接收全部消息。",
+      "citations": [{"source": "redis", "start": 279, "end": 292}]
+    },
+    {
+      "id": "redis-05",
+      "verdict": "supported",
+      "fact": "同一个 stream 可以关联多个消费组，也可以同时由不使用消费组的客户端通过 XREAD 读取。",
+      "citations": [{"source": "redis", "start": 313, "end": 313}]
+    },
+    {
+      "id": "redis-06",
+      "verdict": "supported",
+      "fact": "XREADGROUP 必须提供 GROUP 选项，其两个参数分别是消费组名和发起读取的消费者名。",
+      "citations": [{"source": "redis", "start": 333, "end": 333}]
+    },
+    {
+      "id": "redis-07",
+      "verdict": "supported",
+      "fact": "XREADGROUP 使用普通有效数字 ID 时，读取的是指定消费者自己的 pending 历史，即已投递给该消费者但尚未通过 XACK 确认的消息，而不是组内的新消息。",
+      "citations": [{"source": "redis", "start": 355, "end": 357}]
+    },
+    {
+      "id": "redis-08",
+      "verdict": "refuted",
+      "fact": "在文中介绍的普通读取方式下，XREADGROUP 的 > 请求组内尚未投递的新消息，并更新组的最后投递 ID，不是读取所有消费者的 pending 历史；普通数字 ID 才用于读取指定消费者自己的 pending 历史。",
+      "citations": [{"source": "redis", "start": 354, "end": 357}]
+    },
+    {
+      "id": "redis-09",
+      "verdict": "supported",
+      "fact": "消费者崩溃恢复时可先重读已投递给自己但未确认的 pending 历史，这可能导致重复处理；历史读取完并返回空列表后，可改用 > 获取新消息。",
+      "citations": [{"source": "redis", "start": 435, "end": 436}]
+    },
+    {
+      "id": "redis-10",
+      "verdict": "refuted",
+      "fact": "XPENDING 是只读观察命令，不会改变消息所有权；故障消费者的 pending 消息需要通过认领操作转移给其他消费者。",
+      "citations": [{"source": "redis", "start": 437, "end": 442}]
+    },
+    {
+      "id": "redis-11",
+      "verdict": "supported",
+      "fact": "在文中永久故障恢复场景下，服务器不会仅因消费者停止而自动转移其 pending 消息，需要显式触发认领以变更所有权；这也可通过调用 XAUTOCLAIM 完成，不限于逐条使用 XCLAIM。",
+      "citations": [
+        {"source": "redis", "start": 437, "end": 439},
+        {"source": "redis", "start": 499, "end": 506}
+      ]
+    },
+    {
+      "id": "redis-12",
+      "verdict": "supported",
+      "fact": "XPENDING 的简要输出包含组内 pending 消息总数、其中最小和最大的消息 ID，以及各消费者及其 pending 消息数量。",
+      "citations": [{"source": "redis", "start": 442, "end": 451}]
+    },
+    {
+      "id": "redis-13",
+      "verdict": "supported",
+      "fact": "XPENDING 的详细结果包含消息 ID、所属消费者、距离上次投递的空闲毫秒数，以及该消息的投递次数。",
+      "citations": [{"source": "redis", "start": 457, "end": 469}]
+    },
+    {
+      "id": "redis-14",
+      "verdict": "supported",
+      "fact": "XACK 移除指定消费组的 PEL 引用，但不删除流中的条目，也不替其他消费组确认；Redis 8.2 起的 XACKDEL 将确认与删除组合为原子操作，并提供消费组引用处理控制。",
+      "citations": [{"source": "redis", "start": 549, "end": 560}]
+    },
+    {
+      "id": "redis-15",
+      "verdict": "supported",
+      "fact": "Redis 8.2 起提供的 KEEPREF 模式在裁剪或删除条目时保留各消费组 PEL 中已有的相关引用。",
+      "citations": [
+        {"source": "redis", "start": 550, "end": 557},
+        {"source": "redis", "start": 680, "end": 686}
+      ]
+    },
+    {
+      "id": "redis-16",
+      "verdict": "supported",
+      "fact": "Redis 8.2 起提供的 DELREF 模式会在处理相关条目时移除所有消费组 PEL 中对这些条目的引用。",
+      "citations": [{"source": "redis", "start": 550, "end": 558}]
+    },
+    {
+      "id": "redis-17",
+      "verdict": "refuted",
+      "fact": "Redis 8.2 的 ACKED 模式要求条目已被所有消费组确认，才允许删除或裁剪，而不是任一消费组确认即可。",
+      "citations": [{"source": "redis", "start": 550, "end": 560}]
+    },
+    {
+      "id": "redis-18",
+      "verdict": "refuted",
+      "fact": "MAXLEN ~ 1000 是近似裁剪，不保证长度严格不超过 1000；文中明确允许保留 1010 或 1030 等超过阈值的条目数，以便按完整节点裁剪。",
+      "citations": [{"source": "redis", "start": 663, "end": 667}]
+    },
+    {
+      "id": "redis-19",
+      "verdict": "supported",
+      "fact": "Stream 数据及完整消费组状态会传播到 AOF、RDB 和副本，但默认复制是异步的；故障切换时，未及时复制的 XADD 更新或消费组状态变化可能丢失。",
+      "citations": [{"source": "redis", "start": 699, "end": 703}]
+    },
+    {
+      "id": "redis-20",
+      "verdict": "refuted",
+      "fact": "WAIT 可促使变更传播到一组副本，降低数据丢失的可能性，但不能消除所有故障条件下的数据丢失；Sentinel 或 Redis Cluster 的故障切换仍可能在特定情况下提升缺少部分数据的副本。",
+      "citations": [{"source": "redis", "start": 704, "end": 705}]
+    },
+    {
+      "id": "redis-21",
+      "verdict": "supported",
+      "fact": "文中单条访问复杂度 O(n) 的 n 是 ID 长度；由于 stream ID 通常短且长度固定，实际查询可视为常量时间。",
+      "citations": [{"source": "redis", "start": 74, "end": 75}]
+    },
+    {
+      "id": "redis-22",
+      "verdict": "supported",
+      "fact": "XADD 向指定 stream 追加条目，每个条目由一个或多个 field-value 对组成。",
+      "citations": [{"source": "redis", "start": 80, "end": 81}]
+    },
+    {
+      "id": "redis-23",
+      "verdict": "supported",
+      "fact": "XADD 使用 * 时由服务器自动生成条目 ID，每个新 ID 都严格大于该 stream 之前条目的 ID。",
+      "citations": [{"source": "redis", "start": 86, "end": 86}]
+    },
+    {
+      "id": "redis-24",
+      "verdict": "supported",
+      "fact": "XLEN 返回 stream 中的条目数量。",
+      "citations": [{"source": "redis", "start": 87, "end": 90}]
+    },
+    {
+      "id": "redis-25",
+      "verdict": "supported",
+      "fact": "条目 ID 由毫秒时间和序列号组成，序列号用于区分同一毫秒内创建的条目。",
+      "citations": [{"source": "redis", "start": 92, "end": 97}]
+    },
+    {
+      "id": "redis-26",
+      "verdict": "refuted",
+      "fact": "本地时钟回拨不会使自动生成的 stream ID 回退：若当前毫秒时间小于前一条目的时间部分，就沿用前一条目的时间部分，以维持 ID 单调递增。",
+      "citations": [{"source": "redis", "start": 97, "end": 97}]
+    },
+    {
+      "id": "redis-27",
+      "verdict": "supported",
+      "fact": "XADD 可以使用显式 ID，最小有效 ID 为 0-1；指定 ID 必须大于该 stream 已有的最大 ID，等于或小于它都会被拒绝。",
+      "citations": [{"source": "redis", "start": 99, "end": 109}]
+    },
+    {
+      "id": "redis-28",
+      "verdict": "supported",
+      "fact": "Redis 7 起支持通过“毫秒部分-*”的形式显式指定毫秒部分，并由服务器自动生成序列号。",
+      "citations": [{"source": "redis", "start": 111, "end": 114}]
+    },
+    {
+      "id": "redis-29",
+      "verdict": "supported",
+      "fact": "该页区分了三种读取模式：向多个客户端广播新消息、按时间范围或游标访问历史，以及通过消费组将不同消息分给多个消费者。",
+      "citations": [{"source": "redis", "start": 116, "end": 120}]
+    },
+    {
+      "id": "redis-30",
+      "verdict": "refuted",
+      "fact": "XRANGE 默认包含起止 ID 对应的条目，而非排除它们；文中也展示了在边界 ID 前加 ( 来使用排他边界。",
+      "citations": [
+        {"source": "redis", "start": 121, "end": 122},
+        {"source": "redis", "start": 197, "end": 199}
+      ]
+    },
+    {
+      "id": "redis-31",
+      "verdict": "supported",
+      "fact": "XRANGE 返回的每个条目包含 ID 和 field-value 列表；stream 复制使用带完整指定 ID 的 XADD，因此副本条目的 ID 与主节点一致。",
+      "citations": [{"source": "redis", "start": 162, "end": 162}]
+    },
+    {
+      "id": "redis-32",
+      "verdict": "supported",
+      "fact": "XRANGE 的边界 ID 省略序列号时，起点的序列号按 0 处理，终点按最大序列号处理，因此包含起止毫秒范围内的全部条目。",
+      "citations": [{"source": "redis", "start": 162, "end": 162}]
+    },
+    {
+      "id": "redis-33",
+      "verdict": "supported",
+      "fact": "XRANGE 的 COUNT 可限制本次返回的条目数；继续遍历时可将上次最后返回的 ID 作为依据，文中展示了给它加 ( 前缀作为下一次的排他起点。",
+      "citations": [
+        {"source": "redis", "start": 175, "end": 177},
+        {"source": "redis", "start": 197, "end": 199}
+      ]
+    },
+    {
+      "id": "redis-34",
+      "verdict": "supported",
+      "fact": "XREVRANGE 逆序返回条目，其 start 和 stop 参数相对于 XRANGE 按相反顺序提供。",
+      "citations": [{"source": "redis", "start": 225, "end": 238}]
+    },
+    {
+      "id": "redis-35",
+      "verdict": "supported",
+      "fact": "普通 stream 读取可将新条目广播给多个等待消费者，读取本身不会像列表 pop 那样移除条目；条目可另行删除或裁剪。",
+      "citations": [
+        {"source": "redis", "start": 240, "end": 242},
+        {"source": "redis", "start": 33, "end": 33}
+      ]
+    },
+    {
+      "id": "redis-36",
+      "verdict": "refuted",
+      "fact": "XREAD 的 COUNT 是可选项，并非必填；文中指出其必须提供的选项是 STREAMS。",
+      "citations": [{"source": "redis", "start": 267, "end": 267}]
+    },
+    {
+      "id": "redis-37",
+      "verdict": "supported",
+      "fact": "XREAD 的 STREAMS 部分先列出所有 key，再列出各自对应的 ID；STREAMS 必须位于其他选项之后。",
+      "citations": [{"source": "redis", "start": 268, "end": 269}]
+    },
+    {
+      "id": "redis-38",
+      "verdict": "refuted",
+      "fact": "XREAD BLOCK 0 表示等待不设超时，而不是立即超时返回；若已有符合请求的数据，仍可直接返回而无需阻塞。",
+      "citations": [{"source": "redis", "start": 272, "end": 275}]
+    },
+    {
+      "id": "redis-39",
+      "verdict": "supported",
+      "fact": "若只想从开始监听时的新条目读起，首次 XREAD 可使用 $ 表示流当前的最大 ID；之后使用上次收到的最后一个消息 ID 继续读取，而不是每次重新使用 $。",
+      "citations": [{"source": "redis", "start": 274, "end": 275}]
+    },
+    {
+      "id": "redis-40",
+      "verdict": "supported",
+      "fact": "XREAD 即使带 BLOCK，也可以使用普通有效 ID；若请求可立即满足，就直接返回，否则才阻塞。",
+      "citations": [{"source": "redis", "start": 275, "end": 275}]
+    },
+    {
+      "id": "redis-41",
+      "verdict": "supported",
+      "fact": "阻塞 XREAD 可以同时监听多个 stream；若任一流已有大于其对应 ID 的条目，就立即返回，否则等待最先出现符合条件新数据的流并返回其条目。",
+      "citations": [{"source": "redis", "start": 276, "end": 276}]
+    },
+    {
+      "id": "redis-42",
+      "verdict": "supported",
+      "fact": "文中将阻塞 stream 读取的唤醒顺序描述为 FIFO：对同一个 stream，先阻塞的客户端会在新条目可用时先解除阻塞。",
+      "citations": [{"source": "redis", "start": 277, "end": 277}]
+    },
+    {
+      "id": "redis-43",
+      "verdict": "supported",
+      "fact": "XINFO 以字段名和值报告信息，可观察流的内部编码、首尾消息以及消费组信息；这种输出形式允许未来增加字段而不破坏旧客户端兼容性。",
+      "citations": [{"source": "redis", "start": 586, "end": 598}]
+    },
+    {
+      "id": "redis-44",
+      "verdict": "supported",
+      "fact": "XINFO CONSUMERS 可观察指定消费组中各消费者的 pending 数量和 idle 值。",
+      "citations": [{"source": "redis", "start": 600, "end": 620}]
+    },
+    {
+      "id": "redis-45",
+      "verdict": "supported",
+      "fact": "XINFO HELP 可列出该命令的子命令及用途，文中示例包括 CONSUMERS、GROUPS、STREAM 和 HELP。",
+      "citations": [{"source": "redis", "start": 621, "end": 633}]
+    },
+    {
+      "id": "redis-46",
+      "verdict": "supported",
+      "fact": "消费组根据消费者是否准备好处理新消息来分配消息，而非根据固定分区分配；处理更快的消费者可在相同时间内收到更多消息。",
+      "citations": [{"source": "redis", "start": 635, "end": 636}]
+    },
+    {
+      "id": "redis-47",
+      "verdict": "refuted",
+      "fact": "单个 Redis Stream 不会自动分片到多个 Redis 实例；若要跨实例划分消息，需要使用多个 key，并配合 Redis Cluster 或应用专用的分片机制。",
+      "citations": [{"source": "redis", "start": 637, "end": 637}]
+    },
+    {
+      "id": "redis-48",
+      "verdict": "supported",
+      "fact": "单 stream 通过消费组分配给多个消费者可实现负载均衡，但不同消费者的处理进度不同，同一逻辑对象的消息可能被乱序处理。",
+      "citations": [{"source": "redis", "start": 638, "end": 642}]
+    },
+    {
+      "id": "redis-49",
+      "verdict": "supported",
+      "fact": "XADD 的 MAXLEN 可在追加时自动淘汰旧条目以限制 stream 长度；若使用 Redis 8.2 起提供的 ACKED 裁剪模式，则只有已被所有消费组确认的条目才可被裁剪。",
+      "citations": [
+        {"source": "redis", "start": 644, "end": 662},
+        {"source": "redis", "start": 680, "end": 689}
+      ]
+    },
+    {
+      "id": "redis-50",
+      "verdict": "supported",
+      "fact": "近似裁剪只在能够移除完整宏节点时执行，以提高效率，因此不逐条精确控制裁剪后的长度。",
+      "citations": [{"source": "redis", "start": 663, "end": 667}]
+    },
+    {
+      "id": "redis-51",
+      "verdict": "supported",
+      "fact": "XTRIM 可以独立执行裁剪，其 MINID 策略用于淘汰 ID 小于给定阈值的条目；若同时使用 Redis 8.2 起的 ACKED 模式，还要求条目已被所有消费组确认。",
+      "citations": [
+        {"source": "redis", "start": 668, "end": 679},
+        {"source": "redis", "start": 680, "end": 689}
+      ]
+    },
+    {
+      "id": "redis-52",
+      "verdict": "supported",
+      "fact": "XRANGE 中的 - 和 + 分别表示可能的最小 ID 和最大 ID，而不是某个流实际已有的首尾条目 ID。",
+      "citations": [{"source": "redis", "start": 693, "end": 695}]
+    },
+    {
+      "id": "redis-53",
+      "verdict": "refuted",
+      "fact": "$ 表示某个给定 stream 当前已有条目中的最大 ID，+ 表示所有可能 ID 中的最大值，两者语义不同。",
+      "citations": [{"source": "redis", "start": 694, "end": 695}]
+    },
+    {
+      "id": "redis-54",
+      "verdict": "supported",
+      "fact": "该页明确指出，如果应用重视消息持久性，就必须使用 AOF 并配合较强的 fsync 策略。",
+      "citations": [{"source": "redis", "start": 701, "end": 702}]
+    },
+    {
+      "id": "redis-55",
+      "verdict": "supported",
+      "fact": "XDEL 可以根据指定 ID 删除 stream 中间的条目，参数为 stream 名及要删除的条目 ID。",
+      "citations": [{"source": "redis", "start": 706, "end": 707}]
+    },
+    {
+      "id": "redis-56",
+      "verdict": "supported",
+      "fact": "Redis 8.2 起的 XDELEX 支持 ACKED、KEEPREF 和 DELREF，可仅删除已被所有消费组确认的条目，或选择保留、移除相关消费组引用。",
+      "citations": [{"source": "redis", "start": 723, "end": 728}]
+    },
+    {
+      "id": "redis-57",
+      "verdict": "refuted",
+      "fact": "删除最后一条记录不会必然删除 stream 键及消费组状态：stream 允许保持零条目，以保留消费组状态；文中还明确指出，即使没有关联消费组，空 stream 也不会因此被删除。",
+      "citations": [{"source": "redis", "start": 729, "end": 731}]
+    },
+    {
+      "id": "redis-58",
+      "verdict": "supported",
+      "fact": "阻塞客户端通过按 key 索引的等待列表登记；写入时将 key 标记为 ready，返回事件循环前扫描这些 key 的等待客户端，并为可满足请求的客户端提供数据。",
+      "citations": [{"source": "redis", "start": 735, "end": 739}]
+    },
+    {
+      "id": "redis-59",
+      "verdict": "supported",
+      "fact": "文中的 push 模型会在返回事件循环前，将 XADD 调用者的响应和可服务的阻塞消费者所需的新消息放入各自输出缓冲；这不等于客户端实际接收时间完全相同。",
+      "citations": [{"source": "redis", "start": 739, "end": 741}]
+    },
+    {
+      "id": "redis-60",
+      "verdict": "supported",
+      "fact": "99.9% 请求延迟不超过 2 毫秒是文中 Ruby 生产与消费程序基准的结果，不是无条件的产品保证；测试通过比较消息时间戳与处理时的计算机时间测量延迟，使用 COUNT=10000，且文中称测试机器相对当时标准较慢。",
+      "citations": [{"source": "redis", "start": 743, "end": 756}]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+---
+import NewsPage from '../../components/NewsPage.astro';
+import { posts } from '../../lib/news.mjs';
+export function getStaticPaths() { return posts.map(post => ({ params: { slug: post.slug } })); }
+---
+<NewsPage language="zh" slug={Astro.params.slug} />

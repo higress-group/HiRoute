@@ -1,0 +1,724 @@
+{
+  "cards": [
+    {
+      "id": "rabbitmq-01",
+      "verdict": "refuted",
+      "fact": "不正确。Publisher confirms 与消费者确认正交且 unaware consumers，只证明发布方与所连节点及队列或 stream leader 副本交互完成，不证明消费者已完成业务处理。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 40,
+          "end": 42
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-02",
+      "verdict": "supported",
+      "fact": "支持。delivery tag 按 channel 范围，消息必须在接收它的同一 channel 上确认；在别的 channel 确认会产生 unknown delivery tag 异常并关闭 channel。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 68,
+          "end": 77
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-03",
+      "verdict": "supported",
+      "fact": "支持。资料明确 basic.nack 是 RabbitMQ 对 AMQP 0-9-1 的协议扩展。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 90,
+          "end": 92
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-04",
+      "verdict": "refuted",
+      "fact": "不正确。自动确认模式在消息写出后立即视为成功交付，不等待客户端明确确认。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 99,
+          "end": 101
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-05",
+      "verdict": "supported",
+      "fact": "支持。手动确认通常配合有界 prefetch 限制未确认投递；自动确认按定义没有此限制，消费者可能因接收速率超过处理速率而过载。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 111,
+          "end": 116
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-06",
+      "verdict": "supported",
+      "fact": "支持。multiple 为 true 时，RabbitMQ 会确认同一 channel 中直到并包括指定 delivery tag 的全部未确认投递。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 161,
+          "end": 168
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-07",
+      "verdict": "supported",
+      "fact": "支持。requeue 为 false 时，若配置了 Dead Letter Exchange 则路由到死信，否则丢弃。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 206,
+          "end": 210
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-08",
+      "verdict": "refuted",
+      "fact": "不正确。重新入队仅在可能时放回原位置；多消费者并发投递和确认可能使消息被放到更靠近队首的位置。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 267,
+          "end": 271
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-09",
+      "verdict": "supported",
+      "fact": "支持。所有消费者因瞬态错误持续 requeue 会形成重投循环，消耗网络带宽和 CPU。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 272,
+          "end": 279
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-10",
+      "verdict": "supported",
+      "fact": "支持。basic.nack 可通过 multiple 参数一次拒绝或重新入队多个未确认投递，这是 basic.reject 不具备的。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 280,
+          "end": 282
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-11",
+      "verdict": "supported",
+      "fact": "支持。prefetch count 限制 channel 上未确认投递数；达到数量后 RabbitMQ 停止投递，直到至少一个被确认。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 320,
+          "end": 325
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-12",
+      "verdict": "refuted",
+      "fact": "不正确。prefetch 为 0 在 AMQP 0-9-1 中表示无限制、允许任意数量未确认消息，而不是完全不投递。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 326,
+          "end": 327
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-13",
+      "verdict": "supported",
+      "fact": "支持。在已有消息 in flight 时动态修改 prefetch 会产生自然竞态，channel 上短期未确认数可能超过新设置值。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 338,
+          "end": 342
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-14",
+      "verdict": "supported",
+      "fact": "支持。文档在说明无限 prefetch 的来源限制时称，quorum queue 将消费者 prefetch 最大值限制为 2,000，以限制 Raft log 增长。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 350,
+          "end": 352
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-15",
+      "verdict": "refuted",
+      "fact": "不正确。QoS prefetch 对 basic.get 拉取的消息没有效果，即使处于手动确认模式。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 363,
+          "end": 364
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-16",
+      "verdict": "supported",
+      "fact": "支持。使用手动确认时，未 ack 的 delivery 会在其所在 channel 或 connection 关闭时自动重新入队，包括 TCP 断线、消费者进程失败和 channel 异常。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 386,
+          "end": 391
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-17",
+      "verdict": "supported",
+      "fact": "支持。重复确认同一 delivery tag 或使用未知 tag 会产生 channel 级错误。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 399,
+          "end": 401
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-18",
+      "verdict": "refuted",
+      "fact": "不正确。事务 channel 不能进入 confirm mode；已处于 confirm mode 的 channel 也不能变为事务模式。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 423,
+          "end": 425
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-19",
+      "verdict": "supported",
+      "fact": "支持。持久消息路由到 durable queue 的 basic.ack 在消息持久化到磁盘后发出；quorum queue 要求 quorum 副本接受并向选出的 leader 确认。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 461,
+          "end": 465
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-20",
+      "verdict": "refuted",
+      "fact": "不正确。Publisher confirms 通常在单 channel 会按发布顺序确认，但确认异步发出、可能按组或单条，不同消息确认时间可能不同，因而可能乱序，应用不应依赖其顺序。",
+      "citations": [
+        {
+          "source": "rabbitmq",
+          "start": 479,
+          "end": 492
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-21",
+      "verdict": "refuted",
+      "fact": "不正确。队列名称上限是 255 个 UTF-8 字节，而不是与 UTF-8 字节数无关的 255 个 Unicode 字符。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 54,
+          "end": 55
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-22",
+      "verdict": "supported",
+      "fact": "支持。以 amq. 开头的名称保留给 broker 内部使用；声明违反名称将导致 reply code 403 的 channel-level exception。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 56,
+          "end": 59
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-23",
+      "verdict": "supported",
+      "fact": "支持。在 AMQP 0-9-1 中，同一 channel 后续在需要队列名处传空字符串可引用该 channel 记住的最后一个服务器生成队列名。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 61,
+          "end": 66
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-24",
+      "verdict": "refuted",
+      "fact": "不正确。Exclusive queue 只由其 declaring connection 使用，不是可由多个连接或同一应用的多个连接共用。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 78,
+          "end": 81
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-25",
+      "verdict": "supported",
+      "fact": "支持。使用静态名称的 exclusive queue 在客户端断线并立即重连时，节点删除队列与客户端重声明之间可能发生竞态，导致恢复失败或异常。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 88,
+          "end": 92
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-26",
+      "verdict": "supported",
+      "fact": "支持。若队列已存在且属性与声明相同，重复声明不会产生效果。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 100,
+          "end": 102
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-27",
+      "verdict": "supported",
+      "fact": "支持。已有队列属性与声明不同会引发 406 异常；但 queue type 属性的等价检查可放宽或配置默认队列类型。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 103,
+          "end": 106
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-28",
+      "verdict": "refuted",
+      "fact": "不正确。x-max-priority 与 x-queue-type 必须在声明时设置，之后不能改变；不能通过策略在创建后动态修改。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 128,
+          "end": 131
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-29",
+      "verdict": "supported",
+      "fact": "支持。对于可通过 policy 设置的可选参数，资料推荐优先使用 policy，因为它更灵活、侵入性更低，无需修改和重新部署应用。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 124,
+          "end": 137
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-30",
+      "verdict": "supported",
+      "fact": "支持。同一键同时由 client x-arguments 和用户 policy 提供时，client 提供的值优先；但 operator policy 若存在会进一步覆盖两者。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 145,
+          "end": 149
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-31",
+      "verdict": "supported",
+      "fact": "支持。operator policy 会覆盖客户端和用户 policy 值；对于数值限制，应用可选择更低值，但高于 operator policy 的值不能使用。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 147,
+          "end": 153
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-32",
+      "verdict": "supported",
+      "fact": "支持。当消息在单个 channel 上发布时，消息按发布顺序进入其路由到的每个队列。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 159,
+          "end": 160
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-33",
+      "verdict": "refuted",
+      "fact": "不正确。多个 connection 或 channel 发布的消息序列会并发路由并交错；文档没有保证多个 channel 之间存在统一全局发布顺序。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 160,
+          "end": 161
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-34",
+      "verdict": "supported",
+      "fact": "支持。优先级消息可能先于低优先级投递，且多消费者并发时 redelivery 会改变有效投递顺序。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 164,
+          "end": 169
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-35",
+      "verdict": "supported",
+      "fact": "支持。stream 是不可变 append-only log，每条消息在发布时分配 offset，且该 offset 不会改变。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 174,
+          "end": 175
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-36",
+      "verdict": "supported",
+      "fact": "支持。该页保序队列建议包括启用 Single Active Consumer 或每队列一个消费者、消费者按接收顺序退回消息、避免使用 basic.get。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 177,
+          "end": 184
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-37",
+      "verdict": "supported",
+      "fact": "支持。若需并发处理并保持每实体有序，可用 x-modulus-hash exchange 将消息分区到多个队列，每个队列一个单活消费者。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 185,
+          "end": 186
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-38",
+      "verdict": "refuted",
+      "fact": "不正确。durable queue 只恢复以 persistent 发布为持久化的消息；即使位于 durable queue 的 transient 消息在恢复时会被丢弃。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 194,
+          "end": 196
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-39",
+      "verdict": "supported",
+      "fact": "支持。transient 队列会在 node boot 时删除、不能按设计存活节点重启，其中消息也会被丢弃。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 197,
+          "end": 198
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-40",
+      "verdict": "supported",
+      "fact": "支持。从 RabbitMQ 4.3.0 起，non-durable、non-exclusive classic queues 默认不能声明；可通过配置弃用功能许可暂时允许。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 200,
+          "end": 212
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-41",
+      "verdict": "refuted",
+      "fact": "不正确。大多数情况下队列持久性不影响吞吐和延迟；只有高队列或绑定变更环境才可能改善某些 binding 操作延迟，并非改非持久即可显著提高吞吐。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 217,
+          "end": 221
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-42",
+      "verdict": "supported",
+      "fact": "支持。Quorum queue 必须 durable，因为其底层复制协议的假设和要求。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 226,
+          "end": 228
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-43",
+      "verdict": "supported",
+      "fact": "支持。auto-delete queue 在最后一个 consumer 取消或消失时删除；若从未有 consumer，例如仅通过 polling 消费，不会因此自动删除。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 245,
+          "end": 250
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-44",
+      "verdict": "supported",
+      "fact": "支持。Exclusive queue 只能由 declaring connection 使用；声明为 exclusive 的队列总会按 classic queue 创建。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 270,
+          "end": 277
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-45",
+      "verdict": "supported",
+      "fact": "支持。从另一 connection 使用 exclusive queue 会产生 RESOURCE_LOCKED channel-level exception。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 282,
+          "end": 285
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-46",
+      "verdict": "supported",
+      "fact": "支持。Exclusive queue 在 declaring connection 关闭或消失时删除，并声明在客户端连接的 client-local 节点上。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 286,
+          "end": 291
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-47",
+      "verdict": "supported",
+      "fact": "支持。Classic queue 的历史 replication 功能已在 RabbitMQ 4.x 移除。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 293,
+          "end": 294
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-48",
+      "verdict": "supported",
+      "fact": "支持。普通队列操作可由任何客户端连接透明路由到目标节点；stream 是例外，客户端必须连接到持有该 stream 副本的节点。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 295,
+          "end": 306
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-49",
+      "verdict": "refuted",
+      "fact": "不正确。Federation 与 intra-cluster replication 是正交特性，不应视为直接替代方案。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 307,
+          "end": 310
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-50",
+      "verdict": "supported",
+      "fact": "支持。队列长度限制和队列或消息 TTL 可用于数据过期，并限制队列最多使用的资源。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 326,
+          "end": 331
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-51",
+      "verdict": "refuted",
+      "fact": "不正确。在现代 RabbitMQ 中，quorum 和 classic v2 队列会把数据主动移到磁盘；transient 消息仍会落盘，只是节点重启时会被丢弃。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 333,
+          "end": 336
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-52",
+      "verdict": "supported",
+      "fact": "支持。优先级是 opt-in，只有声明时配置最大优先级数的队列才做 prioritisation，且资料称当前使用更多优先级会消耗更多资源。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 343,
+          "end": 349
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-53",
+      "verdict": "supported",
+      "fact": "支持。单个 queue replica 在热路径上限于单个 CPU core，因此设计假设多数系统实际使用多个队列。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 351,
+          "end": 353
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-54",
+      "verdict": "supported",
+      "fact": "支持。多数队列指标可通过 HTTP API 和 management UI 获取；运行时指标如 scheduler、GC、RAM 和 mailbox 可用 rabbitmq-top 插件及队列页面查看。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 361,
+          "end": 370
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-55",
+      "verdict": "supported",
+      "fact": "支持。该页称自动 ACK 通常提高吞吐并减少网络带宽，但失败保证最少，并建议一般优先考虑手动 ACK。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 378,
+          "end": 381
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-56",
+      "verdict": "supported",
+      "fact": "支持。自动 ACK 可能压垮处理慢的消费者；手动 ACK 可通过 channel QoS 或 prefetch 限制未确认投递。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 383,
+          "end": 388
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-57",
+      "verdict": "refuted",
+      "fact": "不正确。使用几千或更高的 prefetch 仍可能产生与自动 ACK 相同的消费者过载问题，大量未确认消息也会增加 broker 内存。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 389,
+          "end": 392
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-58",
+      "verdict": "supported",
+      "fact": "支持。该页将队列中入队消息状态分为 ready for delivery 与 delivered but not yet acknowledged。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 394,
+          "end": 396
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-59",
+      "verdict": "supported",
+      "fact": "支持。队列长度定义为 ready for delivery 的消息数，可从 AMQP queue.declare-ok 的 message_count、HTTP API 或 rabbitmqctl list_queues 获取。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 399,
+          "end": 406
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq-60",
+      "verdict": "supported",
+      "fact": "支持。对于 well-known name 的临时或共享队列恢复竞态，资料给出的方案是引入连接恢复延迟，或使用 server-named queues。",
+      "citations": [
+        {
+          "source": "rabbitmq-queues",
+          "start": 406,
+          "end": 426
+        }
+      ]
+    }
+  ]
+}

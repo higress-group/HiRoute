@@ -1,0 +1,3 @@
+# Preserve frozen task bytes and unified-diff context whitespace.
+cases/**/TASK.md -whitespace
+*.patch -whitespace

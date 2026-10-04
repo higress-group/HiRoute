@@ -1,0 +1,4362 @@
+{
+  "schema": "hiroute.experiment.deliveries/v1",
+  "rows": [
+    {
+      "id": "formal-draft98-v1-p01-mixed",
+      "group": "mixed",
+      "correct_cards": 352,
+      "critical_pass": true,
+      "whole_pass": false,
+      "usd": {
+        "lower": "0.1358484239879154078549848943",
+        "upper": "0.1447453075817680283725206883"
+      },
+      "cost_complete": true,
+      "components": [
+        {
+          "id": "formal-draft98-v1-p01-mixed-kafka",
+          "artifact": "deliveries/formal-draft98-v1-p01-mixed-kafka/cards.json",
+          "sha256": "09d6ad7fd588c8cd9a2d72f62d609d1345add586bf66d5b1b26588f647a207e4",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 347.842,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-10fe710d13a47442e6b1fd4139d6ea314dfd0b1cfa7b83952215b1b59054dc47",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22391,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 23803,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 17322,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0821809",
+                  "upper": "0.09225685",
+                  "usd_lower": "0.01225750846578221463286483647",
+                  "usd_upper": "0.01376036426835675817680283725",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.00024402",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01250152846578221463286483647",
+            "delivery_usd_upper": "0.01400438426835675817680283725",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-mixed-rabbitmq",
+          "artifact": "deliveries/formal-draft98-v1-p01-mixed-rabbitmq/cards.json",
+          "sha256": "a941e40446af489fccaf99a3958913c564bea633190c9e0e38f553e510182de1",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 255.653,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-91797e09cbf54e1ba38408b215e9e5ae18ad037008e65055854d113a2224e0d2",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 21881,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 25286,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 18649,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.085777",
+                  "upper": "0.09562345",
+                  "usd_lower": "0.01279387672402469460133981348",
+                  "usd_upper": "0.01426250196703008012610009195",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000248094",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01304197072402469460133981348",
+            "delivery_usd_upper": "0.01451059596703008012610009195",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-mixed-nats",
+          "artifact": "deliveries/formal-draft98-v1-p01-mixed-nats/cards.json",
+          "sha256": "c035f848ed696c75bf77a3af434caeea91ddd0a98b5fe3809be62f0d73c0662b",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 365.62,
+          "kind": "bulk",
+          "error_ids": [
+            "nats-30"
+          ],
+          "error_reasons": {
+            "nats-30": [
+              "The additional statement says consumers without InactiveThreshold remain even through idle periods without preserving the same-page ephemeral cleanup exception. Ephemeral consumers are explicitly automatically deleted after inactivity with no bound subscriptions, so the broad retention statement cannot safely be applied to all consumers."
+            ]
+          },
+          "findings": [
+            {
+              "id": "nats-30",
+              "severity": "material",
+              "problem": "The additional statement says consumers without InactiveThreshold remain even through idle periods without preserving the same-page ephemeral cleanup exception. Ephemeral consumers are explicitly automatically deleted after inactivity with no bound subscriptions, so the broad retention statement cannot safely be applied to all consumers.",
+              "evidence": "nats-consumers L27-L30: L27-L28 ephemeral automatic cleanup versus broad wording at L29-L30; delivered nats-29 itself acknowledges idle cleanup. The frozen task requires preserving conflicting source qualifications."
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-3da11058d10ed5d121596bfd84a5a43206f95582718ca7f3d383dc02e8531e92",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 14420,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 23283,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 16873,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0744001",
+                  "upper": "0.0808891",
+                  "usd_lower": "0.01109698063181400236437672403",
+                  "usd_upper": "0.01206483292394588204387232366",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000240954",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01133793463181400236437672403",
+            "delivery_usd_upper": "0.01230578692394588204387232366",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-mixed-pulsar",
+          "artifact": "deliveries/formal-draft98-v1-p01-mixed-pulsar/cards.json",
+          "sha256": "db94c5f6c0926f659674dab26e18cea34d82e8dc70df19349aa2e2e3fef73d94",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 304.938,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-45"
+          ],
+          "error_reasons": {
+            "pulsar-45": [
+              "verdict: expected not_documented"
+            ]
+          },
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-3aa52174afc8a5df19cfa4f750ec197dfed946d5e2c9ead7474ad7762f1eaa64",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 25641,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 22965,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 16479,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0825183",
+                  "upper": "0.09405675",
+                  "usd_lower": "0.01230783260869565217391304348",
+                  "usd_upper": "0.01402882433009326152633652962",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000229236",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01253706860869565217391304348",
+            "delivery_usd_upper": "0.01425806033009326152633652962",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-mixed-redis",
+          "artifact": "deliveries/formal-draft98-v1-p01-mixed-redis/cards.json",
+          "sha256": "f97efd5d2aca167968dfec95201668d70aa5db371bd1d96e7b2896dee0ceefa7",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 397.763,
+          "kind": "bulk",
+          "error_ids": [
+            "redis-56"
+          ],
+          "error_reasons": {
+            "redis-56": [
+              "The fact about Redis 8.2 XDELEX ACKED/DELREF/KEEPREF modes is supported elsewhere in the snapshot, but its actual citation L524-L528 describes XAUTOCLAIM cursors and delivery counters, not XDELEX or the stated deletion/reference modes. It is not equivalent support; the citation therefore fails the same source-card quality rubric."
+            ]
+          },
+          "findings": [
+            {
+              "id": "redis-56",
+              "severity": "material",
+              "problem": "The fact about Redis 8.2 XDELEX ACKED/DELREF/KEEPREF modes is supported elsewhere in the snapshot, but its actual citation L524-L528 describes XAUTOCLAIM cursors and delivery counters, not XDELEX or the stated deletion/reference modes. It is not equivalent support; the citation therefore fails the same source-card quality rubric.",
+              "evidence": "Actual redis L524-L528 versus canonical redis L724-L728 (XDELEX8.2 and the three modes)."
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-83d811a26229461dcf5101fcd247e39fafe490d9b020423268226b2edd8167d6",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 27823,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 26439,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 20373,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0936437",
+                  "upper": "0.10616405",
+                  "usd_lower": "0.01396721678050702745304085118",
+                  "usd_upper": "0.01583466160186523052673059241",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000221886",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01418910278050702745304085118",
+            "delivery_usd_upper": "0.01605654760186523052673059241",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-mixed-rocketmq",
+          "artifact": "deliveries/formal-draft98-v1-p01-mixed-rocketmq/cards.json",
+          "sha256": "a0394cd2043beb77f6b044bbb20a18732d7ea9fd17fca56d899fe1002bfd7595",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 563.46,
+          "kind": "bulk",
+          "error_ids": [
+            "rocketmq-13",
+            "rocketmq-14",
+            "rocketmq-16",
+            "rocketmq-17",
+            "rocketmq-19"
+          ],
+          "error_reasons": {
+            "rocketmq-13": [
+              "The extra unqualified claim that PushConsumer retry is triggered only by a consumption-failure status omits the same-source timeout/queue-delay triggers. The source-conflict rubric requires qualification rather than reproducing one contradicted source sentence as a universal guarantee."
+            ],
+            "rocketmq-14": [
+              "The citation covers InvisibleDuration configuration at L32, but the second locator L78 describes DLQ, not reuse of InvisibleDuration on retries. The added reuse/no-reconfiguration conclusion is not supported by the actual cited spans."
+            ],
+            "rocketmq-16": [
+              "The citation L84 only states that consumption status has not been returned. It does not support the stated immediate effect or recalculation from the API-call time."
+            ],
+            "rocketmq-17": [
+              "The citation L86 is only the Maximum number of retries heading. It does not establish configuration in consumer-group creation metadata."
+            ],
+            "rocketmq-19": [
+              "正文还建议稍后获取并消费消息，但引用仅为 rocketmq L105–108；该正确建议实际在 L109，所引区间没有覆盖这部分正文。按原冻结的引用支持规则计一次引用不完整错误。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "rocketmq-13",
+              "severity": "material",
+              "problem": "The extra unqualified claim that PushConsumer retry is triggered only by a consumption-failure status omits the same-source timeout/queue-delay triggers. The source-conflict rubric requires qualification rather than reproducing one contradicted source sentence as a universal guarantee.",
+              "evidence": "rocketmq L61 versus L21-L23/L39; card02 itself retains timeout/queue-delay triggers."
+            },
+            {
+              "id": "rocketmq-14",
+              "severity": "material",
+              "problem": "The citation covers InvisibleDuration configuration at L32, but the second locator L78 describes DLQ, not reuse of InvisibleDuration on retries. The added reuse/no-reconfiguration conclusion is not supported by the actual cited spans.",
+              "evidence": "rocketmq actual L32/L78 versus L79, which explicitly states the fixed/preallocated retry duration and value reuse."
+            },
+            {
+              "id": "rocketmq-16",
+              "severity": "material",
+              "problem": "The citation L84 only states that consumption status has not been returned. It does not support the stated immediate effect or recalculation from the API-call time.",
+              "evidence": "rocketmq actual L84 versus L85 (immediate effect and start-time recalculation)."
+            },
+            {
+              "id": "rocketmq-17",
+              "severity": "material",
+              "problem": "The citation L86 is only the Maximum number of retries heading. It does not establish configuration in consumer-group creation metadata.",
+              "evidence": "rocketmq actual L86 versus L87, which states that fact."
+            },
+            {
+              "id": "rocketmq-19",
+              "severity": "material",
+              "problem": "正文还建议稍后获取并消费消息，但引用仅为 rocketmq L105–108；该正确建议实际在 L109，所引区间没有覆盖这部分正文。按原冻结的引用支持规则计一次引用不完整错误。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-3f22cfa2a3beb4d08c5fd6f96f5cef6bf82f2a3352802fa004c6c39f6c4fd234",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 15072,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 37768,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 31048,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1140312",
+                  "upper": "0.1208136",
+                  "usd_lower": "0.01700806877709181662944962564",
+                  "usd_upper": "0.01801968249047681597267831341",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000262122",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01727019077709181662944962564",
+            "delivery_usd_upper": "0.01828180449047681597267831341",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-mixed-critical",
+          "artifact": "deliveries/formal-draft98-v1-p01-mixed-critical/decision.json",
+          "sha256": "837799fffeeb1a3b5c6fc586ae2e0818e0e33004b2cabb0a524eca9d253121de",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 44.539,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-e1879f5af3ab20e31045800605804224b572830231772d2ebdbb02552e77dd63",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 2688,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2831,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 1014,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.054818",
+                  "upper": "0.0551755",
+                  "usd_lower": "0.054818",
+                  "usd_upper": "0.0551755",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000152628",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.054970628",
+            "delivery_usd_upper": "0.055328128",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "formal-draft98-v1-p01-strong",
+      "group": "strong",
+      "correct_cards": 359,
+      "critical_pass": true,
+      "whole_pass": true,
+      "usd": {
+        "lower": "2.083912",
+        "upper": "2.1559895"
+      },
+      "cost_complete": true,
+      "components": [
+        {
+          "id": "formal-draft98-v1-p01-strong-kafka",
+          "artifact": "deliveries/formal-draft98-v1-p01-strong-kafka/cards.json",
+          "sha256": "b67d6e3813eff261790172ddd97ba169a34f0337fe3dc1e27266c1ca839d323d",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 219.647,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-0f21b7ee3d8e22ceec1041bcc0f6b7d53f472f67b376a3c1d87708416a52f795",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 19968,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 20104,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5415,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.292078",
+                  "upper": "0.292418",
+                  "usd_lower": "0.292078",
+                  "usd_upper": "0.292418",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.292078",
+            "delivery_usd_upper": "0.292418",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-strong-rabbitmq",
+          "artifact": "deliveries/formal-draft98-v1-p01-strong-rabbitmq/cards.json",
+          "sha256": "11d1fe6732cf73351c31c031308d44f5a7f4a335e13391e4beda80dc8c785621",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 232.641,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-4877c0e4eca3c37c6fb60da31982cc33e0c09ed8ccb40affc93d41f8b0324542",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 19072,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 19304,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5726,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.307692",
+                  "upper": "0.308272",
+                  "usd_lower": "0.307692",
+                  "usd_upper": "0.308272",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.307692",
+            "delivery_usd_upper": "0.308272",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-strong-nats",
+          "artifact": "deliveries/formal-draft98-v1-p01-strong-nats/cards.json",
+          "sha256": "3159e53cd6766c8d59f3ac29fd8a26e1da83f2e43c72694d643e0e950788d409",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 218.7,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-46afd5ca95bdc44494bfe11c4d894184a7283d8e45027f45ce05a690ccfe4cf5",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 12672,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 12900,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5388,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 63,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.284352",
+                  "upper": "0.284922",
+                  "usd_lower": "0.284352",
+                  "usd_upper": "0.284922",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.284352",
+            "delivery_usd_upper": "0.284922",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-strong-pulsar",
+          "artifact": "deliveries/formal-draft98-v1-p01-strong-pulsar/cards.json",
+          "sha256": "b4032091ce277ff61091f016ea7b320c6fa3518e6332f28941471ce3945a7cfc",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 231.458,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-45"
+          ],
+          "error_reasons": {
+            "pulsar-45": [
+              "verdict: expected not_documented"
+            ]
+          },
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-31a4f6f627b160ed57afdcf8cc915285b33587a8767f34c25556e27533d1510e",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 22400,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22639,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5631,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 40,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.30634",
+                  "upper": "0.3069375",
+                  "usd_lower": "0.30634",
+                  "usd_upper": "0.3069375",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.30634",
+            "delivery_usd_upper": "0.3069375",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-strong-redis",
+          "artifact": "deliveries/formal-draft98-v1-p01-strong-redis/cards.json",
+          "sha256": "e5ac2eda696d69cba98184fbb82c6d93c6a6ebae55beb81823195935632114b5",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 222.242,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-be12d9e85c82b31090452d660e0a91308da440e39c63a6efcd190685034d4797",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 24957,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5491,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 62,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.52412",
+                  "upper": "0.5865125",
+                  "usd_lower": "0.52412",
+                  "usd_upper": "0.5865125",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.52412",
+            "delivery_usd_upper": "0.5865125",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-strong-rocketmq",
+          "artifact": "deliveries/formal-draft98-v1-p01-strong-rocketmq/cards.json",
+          "sha256": "437d1b2bdbf0a5482f9beb399dc9898b754adf35b7e566581242746fffe22721",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 224.712,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-bc5d1bf8e147ed36ac0e0819d089aa2dd3acb8688f7930026ba62417f68b2a4a",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 13440,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 13648,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5477,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.28937",
+                  "upper": "0.28989",
+                  "usd_lower": "0.28937",
+                  "usd_upper": "0.28989",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.28937",
+            "delivery_usd_upper": "0.28989",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p01-strong-critical",
+          "artifact": "deliveries/formal-draft98-v1-p01-strong-critical/decision.json",
+          "sha256": "98e3487f059a1b1a4bf86939fac25d7943a315aa14fd34a980d2d0f782abb0bb",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 43.303,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-c98bc86b280d3730a0c115783af45113f47354a1e3b98360504d24146f5942da",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2831,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 1033,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.07996",
+                  "upper": "0.0870375",
+                  "usd_lower": "0.07996",
+                  "usd_upper": "0.0870375",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.07996",
+            "delivery_usd_upper": "0.0870375",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "formal-draft98-v1-p02-mixed",
+      "group": "mixed",
+      "correct_cards": 357,
+      "critical_pass": true,
+      "whole_pass": true,
+      "usd": {
+        "lower": "0.1379091465414422698016550637",
+        "upper": "0.1468060301352948903191908578"
+      },
+      "cost_complete": true,
+      "components": [
+        {
+          "id": "formal-draft98-v1-p02-mixed-kafka",
+          "artifact": "deliveries/formal-draft98-v1-p02-mixed-kafka/cards.json",
+          "sha256": "74ce075526f677594c4b08b122849c449a26e3fc84c5f998d87e748e98d0f3ff",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 298.502,
+          "kind": "bulk",
+          "error_ids": [
+            "kafka-59"
+          ],
+          "error_reasons": {
+            "kafka-59": [
+              "The added claim that transaction.timeout.ms is the maximum open-transaction lifetime omits the direct transaction.two.phase.commit.enable=true exception at source line 751, under which this client's transactions never expire. Lines 745 and 751 must be read together before stating an unconditional maximum lifetime. The first mixed artifact stated only timer origin and broker-bound configuration rejection, without adding this lifetime guarantee."
+            ]
+          },
+          "findings": [
+            {
+              "id": "kafka-59",
+              "severity": "material",
+              "problem": "The added claim that transaction.timeout.ms is the maximum open-transaction lifetime omits the direct transaction.two.phase.commit.enable=true exception at source line 751, under which this client's transactions never expire. Lines 745 and 751 must be read together before stating an unconditional maximum lifetime. The first mixed artifact stated only timer origin and broker-bound configuration rejection, without adding this lifetime guarantee."
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-df178d640b7bca5f30645f20de0a022b78a49796b59898fb856dc139664f5ceb",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22391,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 28328,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 21497,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0943984",
+                  "upper": "0.10447435",
+                  "usd_lower": "0.01407978237225797977144358335",
+                  "usd_upper": "0.01558263817483252331538158414",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.00024402",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01432380237225797977144358335",
+            "delivery_usd_upper": "0.01582665817483252331538158414",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-mixed-rabbitmq",
+          "artifact": "deliveries/formal-draft98-v1-p02-mixed-rabbitmq/cards.json",
+          "sha256": "0e5a8f57d85d4f7e20710ccae021e0397df5578ac8f2d8bffcbbce7f05af3324",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 438.997,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-840f14d52277af59657b14764f1c50115bc4df2af1953cd2a71c727e1c2ec109",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 21881,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 31038,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 24489,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1013074",
+                  "upper": "0.11115385",
+                  "usd_lower": "0.01511027882569289373440168134",
+                  "usd_upper": "0.01657890406869827925916195981",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000248094",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01535837282569289373440168134",
+            "delivery_usd_upper": "0.01682699806869827925916195981",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-mixed-nats",
+          "artifact": "deliveries/formal-draft98-v1-p02-mixed-nats/cards.json",
+          "sha256": "fb1e054e991ffe83a36389fd00d7865edf4456b8297e08bdee8a594b3b2e7e2c",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 276.768,
+          "kind": "bulk",
+          "error_ids": [
+            "nats-30"
+          ],
+          "error_reasons": {
+            "nats-30": [
+              "“未显式设置时默认在闲置期间仍保留”没有限定消费者类型，漏掉源文档 27–28 行对 ephemeral 自动清理的明确例外。同一交付的第 20 项也说明无订阅者后的自动移除；将一般性保留描述推广到全部消费者会产生冲突。按首轮相同标准计为一条实质性错误。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "nats-30",
+              "severity": "material",
+              "problem": "“未显式设置时默认在闲置期间仍保留”没有限定消费者类型，漏掉源文档 27–28 行对 ephemeral 自动清理的明确例外。同一交付的第 20 项也说明无订阅者后的自动移除；将一般性保留描述推广到全部消费者会产生冲突。按首轮相同标准计为一条实质性错误。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-4b6493dd3b8b876649df1d163a6080f0fcb0687a6395cda4e6f0ab84be98d73d",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 14420,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 20709,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 14365,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0674503",
+                  "upper": "0.0739393",
+                  "usd_lower": "0.01006039874556679364245369762",
+                  "usd_upper": "0.01102825103769867332194929726",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000240954",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01030135274556679364245369762",
+            "delivery_usd_upper": "0.01126920503769867332194929726",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-mixed-pulsar",
+          "artifact": "deliveries/formal-draft98-v1-p02-mixed-pulsar/cards.json",
+          "sha256": "5a26c7ed2004e77515bfea06b112ccadec73ec587520f1c4f3d07477f1a4eb32",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 402.546,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-45"
+          ],
+          "error_reasons": {
+            "pulsar-45": [
+              "verdict: expected not_documented"
+            ]
+          },
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-baf07a843eac0c0917137d245e9dac1437db4f0340ebc8d38807c20fd80cd9ae",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 25641,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 25698,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 21382,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0898974",
+                  "upper": "0.10143585",
+                  "usd_lower": "0.01340844577696046236700380928",
+                  "usd_upper": "0.01512943749835807171942729542",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000229236",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01363768177696046236700380928",
+            "delivery_usd_upper": "0.01535867349835807171942729542",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-mixed-redis",
+          "artifact": "deliveries/formal-draft98-v1-p02-mixed-redis/cards.json",
+          "sha256": "13f83470a07573dcdc1d1c31176a35ad651a364402cdf18985902572fec887f0",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 234.323,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-d4203e766f7e26513f821abb3aac5557a9b7a159af5fc4838deaabebf07135b2",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 27823,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 17749,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 10978,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0701807",
+                  "upper": "0.08270105",
+                  "usd_lower": "0.01046764545514251937475371076",
+                  "usd_upper": "0.01233509027650072244844345199",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000221886",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01068953145514251937475371076",
+            "delivery_usd_upper": "0.01255697627650072244844345199",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-mixed-rocketmq",
+          "artifact": "deliveries/formal-draft98-v1-p02-mixed-rocketmq/cards.json",
+          "sha256": "09b02aca2522397ce11f906dd366a19eb7d1cabc3c90e421a83b31ac81f85f1a",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 614.547,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-dc6a0e2ac743577103823fec7561d1dff450f966b58ae59e8b28f0b675b2be50",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 15072,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 40270,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 33116,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1207866",
+                  "upper": "0.127569",
+                  "usd_lower": "0.01801565536582162091159858138",
+                  "usd_upper": "0.01902726907920662025482726915",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000262122",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01827777736582162091159858138",
+            "delivery_usd_upper": "0.01928939107920662025482726915",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-mixed-critical",
+          "artifact": "deliveries/formal-draft98-v1-p02-mixed-critical/decision.json",
+          "sha256": "449d533ea9b30daf20c65cdbfcf8caf58352a999c95d84753ab30a263ef9df83",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 44.849,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-a1563665ca55f41505ee28659c639e32cae8ed476ab36c388cba0524e50cc817",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 2688,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2831,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 1021,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.055168",
+                  "upper": "0.0555255",
+                  "usd_lower": "0.055168",
+                  "usd_upper": "0.0555255",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000152628",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.055320628",
+            "delivery_usd_upper": "0.055678128",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "formal-draft98-v1-p02-strong",
+      "group": "strong",
+      "correct_cards": 359,
+      "critical_pass": true,
+      "whole_pass": true,
+      "usd": {
+        "lower": "1.838882",
+        "upper": "1.8421595"
+      },
+      "cost_complete": true,
+      "components": [
+        {
+          "id": "formal-draft98-v1-p02-strong-kafka",
+          "artifact": "deliveries/formal-draft98-v1-p02-strong-kafka/cards.json",
+          "sha256": "975afd7568b331338c6a63bebb418e823ad9e6ec9d3a4693610736abe416ad59",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 218.637,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-7be4793a5d2ed45cd7bad45e13b42e42b9521e14232dcd2e1f7e879cb9920125",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 19968,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 20104,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5404,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.291528",
+                  "upper": "0.291868",
+                  "usd_lower": "0.291528",
+                  "usd_upper": "0.291868",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.291528",
+            "delivery_usd_upper": "0.291868",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-strong-rabbitmq",
+          "artifact": "deliveries/formal-draft98-v1-p02-strong-rabbitmq/cards.json",
+          "sha256": "f50ec22a47a7c0d57e7f92aef6e1da746df5051d5e9cad39b47f3b567e669d4e",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 231.614,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-69d5f4246794a9490f68490cd25322891c5c82fe05eec633da01e99a980f1022",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 19072,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 19304,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5715,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.307142",
+                  "upper": "0.307722",
+                  "usd_lower": "0.307142",
+                  "usd_upper": "0.307722",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.307142",
+            "delivery_usd_upper": "0.307722",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-strong-nats",
+          "artifact": "deliveries/formal-draft98-v1-p02-strong-nats/cards.json",
+          "sha256": "251a6c4aa404b07c084b2ffe909c541f4314aa90ead2334e9d288792c1e80cfb",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 216.492,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-74b3a839b9111ddcd5955d7400adebea26bffa135c9c5adb20d09b6848582a35",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 12672,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 12900,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5329,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 62,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.281402",
+                  "upper": "0.281972",
+                  "usd_lower": "0.281402",
+                  "usd_upper": "0.281972",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.281402",
+            "delivery_usd_upper": "0.281972",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-strong-pulsar",
+          "artifact": "deliveries/formal-draft98-v1-p02-strong-pulsar/cards.json",
+          "sha256": "c5519e08644d14ec0cd336a5e59448058a3b24b0e1c13cd20f77754e96467165",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 227.949,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-45"
+          ],
+          "error_reasons": {
+            "pulsar-45": [
+              "verdict: expected not_documented"
+            ]
+          },
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-19e2a42cf8f916259b5cf6d026b5e037931c399275a13bc86310615976195c8b",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 22400,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22639,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5578,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 45,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.30369",
+                  "upper": "0.3042875",
+                  "usd_lower": "0.30369",
+                  "usd_upper": "0.3042875",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.30369",
+            "delivery_usd_upper": "0.3042875",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-strong-redis",
+          "artifact": "deliveries/formal-draft98-v1-p02-strong-redis/cards.json",
+          "sha256": "9d7522bd9712d259708fcf9099c541efe53e038724ec7b16b350a4b729d936bc",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 225.147,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-6d178541bddc3a696eb2cd202ea5359317ad20752205bf0af21e6b6f1dd11ca6",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 24832,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 24957,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5556,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 81,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.303882",
+                  "upper": "0.3041945",
+                  "usd_lower": "0.303882",
+                  "usd_upper": "0.3041945",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.303882",
+            "delivery_usd_upper": "0.3041945",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-strong-rocketmq",
+          "artifact": "deliveries/formal-draft98-v1-p02-strong-rocketmq/cards.json",
+          "sha256": "0c0c250f71a12d2df3d63bd4c8deb17f6c86539db6e351ba5e82be7d6c6b7331",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 228.611,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-bc6381896bd0b2dae86b27735110e1c7d705bf910555e7dc7bfd0929b1749b27",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 13440,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 13648,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5545,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 31,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.29277",
+                  "upper": "0.29329",
+                  "usd_lower": "0.29277",
+                  "usd_upper": "0.29329",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.29277",
+            "delivery_usd_upper": "0.29329",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p02-strong-critical",
+          "artifact": "deliveries/formal-draft98-v1-p02-strong-critical/decision.json",
+          "sha256": "991f22a0caaf809ce0256fec8e3857e19415013b98ab14fc7610315b9cb1c75d",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 47.509,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-6e7042aeeb462ac24c027a23e7229d080b8b3907c12aba14d102ddac7b114507",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 2688,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2831,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 1087,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.058468",
+                  "upper": "0.0588255",
+                  "usd_lower": "0.058468",
+                  "usd_upper": "0.0588255",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.058468",
+            "delivery_usd_upper": "0.0588255",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "formal-draft98-v1-p03-mixed",
+      "group": "mixed",
+      "correct_cards": 356,
+      "critical_pass": true,
+      "whole_pass": true,
+      "usd": {
+        "lower": "0.1623405720832786023906475765",
+        "upper": "0.1779574556771312229081833706"
+      },
+      "cost_complete": true,
+      "components": [
+        {
+          "id": "formal-draft98-v1-p03-mixed-kafka",
+          "artifact": "deliveries/formal-draft98-v1-p03-mixed-kafka/cards.json",
+          "sha256": "6a0699259984fdf1219f7bd74f083e9e424ee41382f92d0cf626b4bca606a102",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 325.087,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-03d8a0f54f7d1df7b316177cfbf173072e87b27e702d705c750993ac938590a0",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22391,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 22018,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 15404,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0773614",
+                  "upper": "0.08743735",
+                  "usd_lower": "0.01153866671482989623013266781",
+                  "usd_upper": "0.01304152251740443977407066860",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.00024402",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01178268671482989623013266781",
+            "delivery_usd_upper": "0.01328554251740443977407066860",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-mixed-rabbitmq",
+          "artifact": "deliveries/formal-draft98-v1-p03-mixed-rabbitmq/cards.json",
+          "sha256": "ead4299d0cedfbcee896555a0c645e32499d2bbe0c6ece1cca524bf29cf29188",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 352.102,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-01c99b0c731da397822ebd6f7ad2623f7db93d2e323412841f5c69d6b1a07173",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 21881,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 23690,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 17358,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0814678",
+                  "upper": "0.09131425",
+                  "usd_lower": "0.01215114762905556285301458033",
+                  "usd_upper": "0.01361977287206094837777485880",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000248094",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01239924162905556285301458033",
+            "delivery_usd_upper": "0.01386786687206094837777485880",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-mixed-nats",
+          "artifact": "deliveries/formal-draft98-v1-p03-mixed-nats/cards.json",
+          "sha256": "adc8fa43c515f7a5b30d35ec323d7544b175a914b582f0a1dce9f1534befefb6",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 420.991,
+          "kind": "bulk",
+          "error_ids": [
+            "nats-30",
+            "nats-50"
+          ],
+          "error_reasons": {
+            "nats-30": [
+              "将默认闲置保留推广到全部 consumer，漏掉源文档 27-28 行对 ephemeral 自动清理的例外。同一交付第 20 项也描述无订阅者后经 grace period 自动移除。按前两轮相同标准计为实质性错误。"
+            ],
+            "nats-50": [
+              "未限定为该段文档表述，直接声称 MaxAckPending 是 push consumer 唯一流控，忽略源文档 98 行同时提供每 subscription 的 FlowControl；同一交付第 58 项也明确另一种流控。按开发阶段相同规则，不能把存在冲突的文档段落推广成无条件产品限制。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "nats-30",
+              "severity": "material",
+              "problem": "将默认闲置保留推广到全部 consumer，漏掉源文档 27-28 行对 ephemeral 自动清理的例外。同一交付第 20 项也描述无订阅者后经 grace period 自动移除。按前两轮相同标准计为实质性错误。"
+            },
+            {
+              "id": "nats-50",
+              "severity": "material",
+              "problem": "未限定为该段文档表述，直接声称 MaxAckPending 是 push consumer 唯一流控，忽略源文档 98 行同时提供每 subscription 的 FlowControl；同一交付第 58 项也明确另一种流控。按开发阶段相同规则，不能把存在冲突的文档段落推广成无条件产品限制。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-3c94de9109d5ccd55032e2a84642f34a69c7ccc9f12563eb110302bb16b3db3e",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 14420,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 28083,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 21729,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0873601",
+                  "upper": "0.0938491",
+                  "usd_lower": "0.01303000046630763168264810193",
+                  "usd_upper": "0.01399785275843951136214370157",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000240954",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01327095446630763168264810193",
+            "delivery_usd_upper": "0.01423880675843951136214370157",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-mixed-pulsar",
+          "artifact": "deliveries/formal-draft98-v1-p03-mixed-pulsar/cards.json",
+          "sha256": "421745904645e84a0815f10f4fc485d772d06ffa989379afa5a027e596dd25d4",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 508.387,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-25",
+            "pulsar-45"
+          ],
+          "error_reasons": {
+            "pulsar-45": [
+              "verdict: expected not_documented",
+              "在显式创建要求后加入创建时必须指定 partition 数的表述，引用 683 行只说分区数量 can be specified，未给出这一强制要求。与该条有限判定错误合并，仅计一条错误。"
+            ],
+            "pulsar-25": [
+              "所引 267 行只有 note 标题，未包含同步 send 立即发送未满 batch 或单线程使用 sendAsync 的依据；实际支持文字在 268 行。按前述各组相同的引用支持标准，该条引用未通过。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "pulsar-25",
+              "severity": "material",
+              "problem": "所引 267 行只有 note 标题，未包含同步 send 立即发送未满 batch 或单线程使用 sendAsync 的依据；实际支持文字在 268 行。按前述各组相同的引用支持标准，该条引用未通过。"
+            },
+            {
+              "id": "pulsar-45",
+              "severity": "material",
+              "problem": "在显式创建要求后加入创建时必须指定 partition 数的表述，引用 683 行只说分区数量 can be specified，未给出这一强制要求。与该条有限判定错误合并，仅计一条错误。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-f77d6a42de6edeec4bb0404609f902efd454e733b9ae21f83ca238cfd04e6d88",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 25641,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 36791,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 30997,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1198485",
+                  "upper": "0.13138695",
+                  "usd_lower": "0.01787573515696834362275055826",
+                  "usd_upper": "0.01959672687836595297517404440",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000229236",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01810497115696834362275055826",
+            "delivery_usd_upper": "0.01982596287836595297517404440",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-mixed-redis",
+          "artifact": "deliveries/formal-draft98-v1-p03-mixed-redis/cards.json",
+          "sha256": "bdc8c0db3e4dd551c26e3d4103d542dbc3581f43526cf991891985e5a2045af5",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 295.675,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-0eb79be5c5a2ba83358fe96ea56e89cd8371a4c1536da6c1dca4151d90517e2a",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 27823,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 22341,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 18250,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0825791",
+                  "upper": "0.09509945",
+                  "usd_lower": "0.01231690109680809142256666229",
+                  "usd_upper": "0.01418434591816629449625640352",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000221886",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01253878709680809142256666229",
+            "delivery_usd_upper": "0.01440623191816629449625640352",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-mixed-rocketmq",
+          "artifact": "deliveries/formal-draft98-v1-p03-mixed-rocketmq/cards.json",
+          "sha256": "518f4d33ae0b0af844f52faecfbf44c006b5a5050089399c88c968eb1f58e23e",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 388.112,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-508859b5d9a816c969c748720bcb76a6165a43b352455984031910b3e23d8c24",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 15072,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 27118,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 20193,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0852762",
+                  "upper": "0.0920586",
+                  "usd_lower": "0.01271918101930907657953500591",
+                  "usd_upper": "0.01373079473269407592276369368",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000262122",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01298130301930907657953500591",
+            "delivery_usd_upper": "0.01399291673269407592276369368",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-mixed-critical",
+          "artifact": "deliveries/formal-draft98-v1-p03-mixed-critical/decision.json",
+          "sha256": "5f99826a2b73a11306c598134b94ecc306d489eb02c4f6f1f5c036289b84d3b7",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 45.516,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-5a5c11db1cf5a507f6bab6cbbfaa50379cab1d677914d14e5ac0e14d3c749a6b",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2831,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 1056,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 23,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.08111",
+                  "upper": "0.0881875",
+                  "usd_lower": "0.08111",
+                  "usd_upper": "0.0881875",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 1,
+            "jev_reported_usd": "0.000152628",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.081262628",
+            "delivery_usd_upper": "0.088340128",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "formal-draft98-v1-p03-strong",
+      "group": "strong",
+      "correct_cards": 359,
+      "critical_pass": true,
+      "whole_pass": true,
+      "usd": {
+        "lower": "2.067170",
+        "upper": "2.1325275"
+      },
+      "cost_complete": true,
+      "components": [
+        {
+          "id": "formal-draft98-v1-p03-strong-kafka",
+          "artifact": "deliveries/formal-draft98-v1-p03-strong-kafka/cards.json",
+          "sha256": "a0327e5ba42ca58c8462a7988299202d1f06a07b055639a11b11ca3892aee16d",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 216.232,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-88d271749cb89536f3327ef646b38cc2af14a2f08c0572c80f1c708df0e3e513",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 19968,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 20104,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5341,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.288378",
+                  "upper": "0.288718",
+                  "usd_lower": "0.288378",
+                  "usd_upper": "0.288718",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.288378",
+            "delivery_usd_upper": "0.288718",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-strong-rabbitmq",
+          "artifact": "deliveries/formal-draft98-v1-p03-strong-rabbitmq/cards.json",
+          "sha256": "977428965ae971eeb8a5ed470cdfdcfd174b82b99efffa20cce914eab17cb31d",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 241.071,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-9d3f7b49f662aea525a1b6bb9d711845256f58e20be3b3f2fdb92dbf2913cc05",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 19072,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 19304,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5878,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.315292",
+                  "upper": "0.315872",
+                  "usd_lower": "0.315292",
+                  "usd_upper": "0.315872",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.315292",
+            "delivery_usd_upper": "0.315872",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-strong-nats",
+          "artifact": "deliveries/formal-draft98-v1-p03-strong-nats/cards.json",
+          "sha256": "cb1b633abbe254d0b7104f59de21ffbdd8335e659bb14682cda70ced9924ce1e",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 232.078,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-225f822b7fea672271dc7f6aff5cd98e9502d7090452088c87507f4cab3607b4",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 12672,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 12900,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5370,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 47,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.283452",
+                  "upper": "0.284022",
+                  "usd_lower": "0.283452",
+                  "usd_upper": "0.284022",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.283452",
+            "delivery_usd_upper": "0.284022",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-strong-pulsar",
+          "artifact": "deliveries/formal-draft98-v1-p03-strong-pulsar/cards.json",
+          "sha256": "17165a0789d18bb8d708db9cbe39f9bf6d24e01528d4cb2ac26f07f47dfb160a",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 236.937,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-45"
+          ],
+          "error_reasons": {
+            "pulsar-45": [
+              "verdict: expected not_documented"
+            ]
+          },
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-1d8abfc0093db36a8c3e2451bc5a5963c00a30cc7823c4e627c3c72fbf443a19",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 22400,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22639,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5650,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 35,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.30729",
+                  "upper": "0.3078875",
+                  "usd_lower": "0.30729",
+                  "usd_upper": "0.3078875",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.30729",
+            "delivery_usd_upper": "0.3078875",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-strong-redis",
+          "artifact": "deliveries/formal-draft98-v1-p03-strong-redis/cards.json",
+          "sha256": "5383ceae30fa123003291a346af488261d1b5e4b06796facb424638b9f516a43",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 221.514,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-8a30fecc5be9edc6adbaa0d5b4e33c1f855a4c438308c54f222c5af5216b890b",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 24957,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5470,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.52307",
+                  "upper": "0.5854625",
+                  "usd_lower": "0.52307",
+                  "usd_upper": "0.5854625",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.52307",
+            "delivery_usd_upper": "0.5854625",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-strong-rocketmq",
+          "artifact": "deliveries/formal-draft98-v1-p03-strong-rocketmq/cards.json",
+          "sha256": "6853a371102d35d8c70de59dc327106304f0a7a7f6580b933ca947cdca6d7323",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 224.769,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-573952b97207d8a746971d68ab912631b65148f7a53c25351056291b23f644a3",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 13440,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 13648,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 5547,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.29287",
+                  "upper": "0.29339",
+                  "usd_lower": "0.29287",
+                  "usd_upper": "0.29339",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.29287",
+            "delivery_usd_upper": "0.29339",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-draft98-v1-p03-strong-critical",
+          "artifact": "deliveries/formal-draft98-v1-p03-strong-critical/decision.json",
+          "sha256": "810e05ea35a88b802ad402955e44d32cb63bc3f0d65d54bd5187fc67e05036d0",
+          "models": [
+            "gpt-6-astra"
+          ],
+          "seconds": 44.075,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-5afe9c31afe6868d5d182470fd58e1a52ad79e91594f7f3e124fed66d54ef1ea",
+                "ordinal": 1,
+                "model": "gpt-6-astra",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 2688,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2831,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 1054,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 0,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "USD",
+                  "lower": "0.056818",
+                  "upper": "0.0571755",
+                  "usd_lower": "0.056818",
+                  "usd_upper": "0.0571755",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.056818",
+            "delivery_usd_upper": "0.0571755",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "formal-qwen-v1-r01-cheap",
+      "group": "cheap",
+      "correct_cards": 356,
+      "critical_pass": false,
+      "whole_pass": false,
+      "usd": {
+        "lower": "0.09032502024825955602259293316",
+        "upper": "0.09904005359582293445422303956"
+      },
+      "cost_complete": true,
+      "components": [
+        {
+          "id": "formal-qwen-v1-r01-cheap-kafka",
+          "artifact": "deliveries/formal-qwen-v1-r01-cheap-kafka/cards.json",
+          "sha256": "2995c974100d13ebb51039178fd28358bf72aa5ebb09cab6348ca409e103cad4",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 389.625,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-5d2e663b4d2fa6d4e9e8b5ab78932a2b14b1c5e05534fa72d3503ea74c164a0a",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22391,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 28190,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 21808,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0940258",
+                  "upper": "0.10410175",
+                  "usd_lower": "0.01402420805201628792854328123",
+                  "usd_upper": "0.01552706385459083147248128202",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01402420805201628792854328123",
+            "delivery_usd_upper": "0.01552706385459083147248128202",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r01-cheap-rabbitmq",
+          "artifact": "deliveries/formal-qwen-v1-r01-cheap-rabbitmq/cards.json",
+          "sha256": "dab2927fc8a9dac09f50de2e0da406a5690bc7884beaf41998c62aeb18c36ebf",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 444.143,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-2f5d02fa77b30f629e315d6751ebe7bf3864b04323a21ff5352a1a94911b7540",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 21881,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 33634,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 26697,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1083166",
+                  "upper": "0.11816305",
+                  "usd_lower": "0.01615572038618153159070011822",
+                  "usd_upper": "0.01762434562918691711546039669",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01615572038618153159070011822",
+            "delivery_usd_upper": "0.01762434562918691711546039669",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r01-cheap-nats",
+          "artifact": "deliveries/formal-qwen-v1-r01-cheap-nats/cards.json",
+          "sha256": "c124ba0def1f73995dc50ea77cff933c2cdeca02860de0311ca8e784f9cb0095",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 349.027,
+          "kind": "bulk",
+          "error_ids": [
+            "nats-30",
+            "nats-50"
+          ],
+          "error_reasons": {
+            "nats-30": [
+              "无条件称 consumer 默认在闲置期间保持存在，却未在该条保留 ephemeral 的默认闲置清理例外；源文档 27–28 行及同一交付第 29 项明确无绑定订阅且闲置后自动清理。与三个混合批次中的同类错误按相同规则计分。"
+            ],
+            "nats-50": [
+              "将 MaxAckPending 是 push 唯一流控作为整篇文档的结论，未限定为第 77 行的有冲突段落；源文档第 98 行和同一交付第 58 项均明确另一种每订阅者 FlowControl。泛称“文档说明”不解决这一相互冲突的产品范围结论，沿用开发与主实验的同一规则。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "nats-30",
+              "severity": "material",
+              "problem": "无条件称 consumer 默认在闲置期间保持存在，却未在该条保留 ephemeral 的默认闲置清理例外；源文档 27–28 行及同一交付第 29 项明确无绑定订阅且闲置后自动清理。与三个混合批次中的同类错误按相同规则计分。"
+            },
+            {
+              "id": "nats-50",
+              "severity": "material",
+              "problem": "将 MaxAckPending 是 push 唯一流控作为整篇文档的结论，未限定为第 77 行的有冲突段落；源文档第 98 行和同一交付第 58 项均明确另一种每订阅者 FlowControl。泛称“文档说明”不解决这一相互冲突的产品范围结论，沿用开发与主实验的同一规则。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-a8d44206f25e90a55c50fa5d70e17ae95027335bca2dc8e9c98ce4d4174e4733",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 14420,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 24124,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 17203,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0766708",
+                  "upper": "0.0831598",
+                  "usd_lower": "0.01143566181531590700118218836",
+                  "usd_upper": "0.01240351410744778668067778800",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01143566181531590700118218836",
+            "delivery_usd_upper": "0.01240351410744778668067778800",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r01-cheap-pulsar",
+          "artifact": "deliveries/formal-qwen-v1-r01-cheap-pulsar/cards.json",
+          "sha256": "ab22344a49f365ec99ed38039a241cb1ca6f944afe0e3dd21fa7d963ad265b47",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 338.919,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-45"
+          ],
+          "error_reasons": {
+            "pulsar-45": [
+              "verdict: expected not_documented"
+            ]
+          },
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-7dfdbe5a7d8bc023a6115faf2cbd8bda5294acc0f10db6b4323bd3abc0b945bf",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 25641,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 24334,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 17308,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0862146",
+                  "upper": "0.09775305",
+                  "usd_lower": "0.01285914597399185603572835939",
+                  "usd_upper": "0.01458013769538946538815184553",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01285914597399185603572835939",
+            "delivery_usd_upper": "0.01458013769538946538815184553",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r01-cheap-redis",
+          "artifact": "deliveries/formal-qwen-v1-r01-cheap-redis/cards.json",
+          "sha256": "6830faca06769616bc071c470dd50e9a66b5d1bc4d7dc16dfbc097766b86e4c3",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 340.183,
+          "kind": "bulk",
+          "error_ids": [
+            "redis-10"
+          ],
+          "error_reasons": {
+            "redis-10": [
+              "在正确说明 XPENDING 只读后，额外声称转移故障消费者的 pending 消息“需显式使用 XCLAIM”，把具体命令写成必要条件。引用的 440–442 行只证明 XPENDING 只读；同一冻结来源 500–503 行明确 XAUTOCLAIM 也实现认领并转移所有权，因此不支持这一额外必要性限制。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "redis-10",
+              "severity": "material",
+              "problem": "在正确说明 XPENDING 只读后，额外声称转移故障消费者的 pending 消息“需显式使用 XCLAIM”，把具体命令写成必要条件。引用的 440–442 行只证明 XPENDING 只读；同一冻结来源 500–503 行明确 XAUTOCLAIM 也实现认领并转移所有权，因此不支持这一额外必要性限制。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-ecd50dcae3318ebbb44fe0a84d05ed72e5af6e100bd4a413d11ba8c87130774a",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 27823,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 28891,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 22029,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1002641",
+                  "upper": "0.11278445",
+                  "usd_lower": "0.01495466774596085642979114673",
+                  "usd_upper": "0.01682211256731905950348088796",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01495466774596085642979114673",
+            "delivery_usd_upper": "0.01682211256731905950348088796",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r01-cheap-rocketmq",
+          "artifact": "deliveries/formal-qwen-v1-r01-cheap-rocketmq/cards.json",
+          "sha256": "2b1b7af52358a093d10f565d3ae104adfb8d3bbafee707807cc584660b126173",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 478.605,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-f095b967a232eaf8dfe8fdda4419f5c1f1d41b7d48d28f77c6cb66407adabc2b",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 15072,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 38300,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 31580,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1154676",
+                  "upper": "0.12225",
+                  "usd_lower": "0.01722231180874819387889137003",
+                  "usd_upper": "0.01823392552213319322212005780",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01722231180874819387889137003",
+            "delivery_usd_upper": "0.01823392552213319322212005780",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r01-cheap-critical",
+          "artifact": "deliveries/formal-qwen-v1-r01-cheap-critical/decision.json",
+          "sha256": "28fe1f546025c7b36dfa50f7128e3cf56a4688302390b33833fb232bfb11df99",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 167.373,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [
+            {
+              "id": "M2",
+              "severity": "material",
+              "problem": "修复 C 在“要求 SQL 状态与 Kafka 输出/偏移跨系统原子可见”的条件下，将“把业务状态与偏移同存于一个可事务系统”列为可替代方案，却未将独立 Kafka 输出 topic 纳入该事务。这只原子绑定 SQL 状态和所存偏移，不能保证题设全部输出跨系统原子可见；SQL 事务提交后、Kafka 输出事务提交前仍有可见性窗口。正文正确承认原窗口，未能使这一额外修复建议成立。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-f9acfe0d53fd47651c081c68ce8b2dd276d362398c9ad9bfa29152837c93579f",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2617,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 8346,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 7528,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0246278",
+                  "upper": "0.02580545",
+                  "usd_lower": "0.003673304466044923157756469198",
+                  "usd_upper": "0.003848954219755681071850781559",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.003673304466044923157756469198",
+            "delivery_usd_upper": "0.003848954219755681071850781559",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "formal-qwen-v1-r02-cheap",
+      "group": "cheap",
+      "correct_cards": 356,
+      "critical_pass": false,
+      "whole_pass": false,
+      "usd": {
+        "lower": "0.08270207598844082490476815975",
+        "upper": "0.09141710933600420333639826613"
+      },
+      "cost_complete": true,
+      "components": [
+        {
+          "id": "formal-qwen-v1-r02-cheap-kafka",
+          "artifact": "deliveries/formal-qwen-v1-r02-cheap-kafka/cards.json",
+          "sha256": "92d70fb1e84a7a9369e0dc1a4d79581a711ced2edfb7f39753131a6f7816fe52",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 243.861,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-f8a1fa3e31d4463758b7235df24158b576eebb5d4c69f626d29ef665d23dc569",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22391,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 24808,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 18227,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0848944",
+                  "upper": "0.09497035",
+                  "usd_lower": "0.01266223449362931827137790622",
+                  "usd_upper": "0.01416509029620386181531590700",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01266223449362931827137790622",
+            "delivery_usd_upper": "0.01416509029620386181531590700",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r02-cheap-rabbitmq",
+          "artifact": "deliveries/formal-qwen-v1-r02-cheap-rabbitmq/cards.json",
+          "sha256": "78121c67beff1125a283ea33b38624e904d26f68358380f0f9e4f1f64e70405f",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 379.004,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-0003b4534772c824377f17772d5a26141ed2b5c9acfe92dacfcab8cffcd10894",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 21881,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 27626,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 23280,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.092095",
+                  "upper": "0.10194145",
+                  "usd_lower": "0.01373622389334033889399711021",
+                  "usd_upper": "0.01520484913634572441875738868",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01373622389334033889399711021",
+            "delivery_usd_upper": "0.01520484913634572441875738868",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r02-cheap-nats",
+          "artifact": "deliveries/formal-qwen-v1-r02-cheap-nats/cards.json",
+          "sha256": "df53996c9454e75a0235236aa05c52a2147fea5908a33dd699668e7e52a3e94c",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 386.631,
+          "kind": "bulk",
+          "error_ids": [
+            "nats-30",
+            "nats-50"
+          ],
+          "error_reasons": {
+            "nats-30": [
+              "将消费者默认空闲仍保留表述为无条件通用行为，未保留 ephemeral 在无绑定订阅后自动清理的限制。该快照 nats-consumers L0027–L0028 明确 ephemeral 删除，与所引 L0029–L0030 的一般说法存在冲突；相邻卡片 29 提到删除不修复本条无条件保证。"
+            ],
+            "nats-50": [
+              "无条件声称 MaxAckPending 是 push consumers 唯一形式的 flow control，遗漏同一快照 L0098 的 per-subscription FlowControl；本交付卡片 58 也明确其与 MaxAckPending 共同作用。没有将“唯一”限制为所引段落的说法或保留文档冲突。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "nats-30",
+              "severity": "material",
+              "problem": "将消费者默认空闲仍保留表述为无条件通用行为，未保留 ephemeral 在无绑定订阅后自动清理的限制。该快照 nats-consumers L0027–L0028 明确 ephemeral 删除，与所引 L0029–L0030 的一般说法存在冲突；相邻卡片 29 提到删除不修复本条无条件保证。"
+            },
+            {
+              "id": "nats-50",
+              "severity": "material",
+              "problem": "无条件声称 MaxAckPending 是 push consumers 唯一形式的 flow control，遗漏同一快照 L0098 的 per-subscription FlowControl；本交付卡片 58 也明确其与 MaxAckPending 共同作用。没有将“唯一”限制为所引段落的说法或保留文档冲突。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-4bf19e879dc429da82c8743396b366552080bf69a9a6103422d068be0820b816",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 14420,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 27601,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 20907,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0860587",
+                  "upper": "0.0925477",
+                  "usd_lower": "0.01283589305792722973860501774",
+                  "usd_upper": "0.01380374535005910941810061737",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01283589305792722973860501774",
+            "delivery_usd_upper": "0.01380374535005910941810061737",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r02-cheap-pulsar",
+          "artifact": "deliveries/formal-qwen-v1-r02-cheap-pulsar/cards.json",
+          "sha256": "f5a5afaa1788ddde0040e918b355f496a5b27a311a65ac45ef2b7267e7d7b342",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 407.049,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-56"
+          ],
+          "error_reasons": {
+            "pulsar-56": [
+              "正文声称消息去重可在 namespace 或 topic 层管理，但引用 L0771–L0775 只说明去重、示例及 tip 标记；支持管理层级的原文在 L0776，未被引用覆盖。核验项主要询问的管理层级因此没有引用支持。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "pulsar-56",
+              "severity": "material",
+              "problem": "正文声称消息去重可在 namespace 或 topic 层管理，但引用 L0771–L0775 只说明去重、示例及 tip 标记；支持管理层级的原文在 L0776，未被引用覆盖。核验项主要询问的管理层级因此没有引用支持。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-88708b4cc497893bd7a951dd4e3b6c19b9d7c4dff6a61db07977e0246acc085e",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 25641,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 31918,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 25169,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1066914",
+                  "upper": "0.11822985",
+                  "usd_lower": "0.01591331731249179035859713648",
+                  "usd_upper": "0.01763430903388939971102062262",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01591331731249179035859713648",
+            "delivery_usd_upper": "0.01763430903388939971102062262",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r02-cheap-redis",
+          "artifact": "deliveries/formal-qwen-v1-r02-cheap-redis/cards.json",
+          "sha256": "ca3e628757aeb287d0ef1e6091801f4fac074821e2dad0869d4e15ebf22f9ae8",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 274.005,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-e1fe8ae0b2afde8ffabeb5e0d2ebcb04814486fa18a418736f3f4e58323c69ba",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 27823,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 19966,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 14100,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0761666",
+                  "upper": "0.08868695",
+                  "usd_lower": "0.01136045899119926441613030343",
+                  "usd_upper": "0.01322790381255746748982004466",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01136045899119926441613030343",
+            "delivery_usd_upper": "0.01322790381255746748982004466",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r02-cheap-rocketmq",
+          "artifact": "deliveries/formal-qwen-v1-r02-cheap-rocketmq/cards.json",
+          "sha256": "a48b7d46fa11c8ff3293ff5fc28af2bce6deae99399232fbf432cec49f4acbf6",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 377.483,
+          "kind": "bulk",
+          "error_ids": [
+            "rocketmq-13"
+          ],
+          "error_reasons": {
+            "rocketmq-13": [
+              "无条件声称 PushConsumer 重试“仅由消费失败状态码触发”，将示例说明扩展成唯一触发限制。冻结原文 L0022–L0023 还列出超时与 push 队列停留过久触发，L0039 也允许超时触发；同交付卡片 02 说明这些触发并不能修复本条无条件唯一性保证。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "rocketmq-13",
+              "severity": "material",
+              "problem": "无条件声称 PushConsumer 重试“仅由消费失败状态码触发”，将示例说明扩展成唯一触发限制。冻结原文 L0022–L0023 还列出超时与 push 队列停留过久触发，L0039 也允许超时触发；同交付卡片 02 说明这些触发并不能修复本条无条件唯一性保证。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-ebc2b373173c01db6f5dc2084013244065e4970b8ae5a25b85d3c5cca867d99f",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 15072,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 28937,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 22304,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0901875",
+                  "upper": "0.0969699",
+                  "usd_lower": "0.01345171499408905818993826350",
+                  "usd_upper": "0.01446332870747405753316695127",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01345171499408905818993826350",
+            "delivery_usd_upper": "0.01446332870747405753316695127",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r02-cheap-critical",
+          "artifact": "deliveries/formal-qwen-v1-r02-cheap-critical/decision.json",
+          "sha256": "8ad2a984765d76478086df46e4bd8ac9cae8291daf4dc03e0f4856198e1acff6",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 119.404,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [
+            {
+              "id": "M2",
+              "severity": "material",
+              "problem": "修复 C 在要求“SQL 与 Kafka 所有输出对外原子可见”时，将 SQL 内保存 offset 或 outbox 列为可替代的跨系统机制。SQL 内共存业务状态与 offset 仍未包含独立 Kafka 输出 topic；SQL 事务中的 outbox 也只保证本地提交与后续发布协调，不能消除 SQL 已提交而 Kafka 尚未发布/提交的可见性窗口。共同事务可以定义共同原子范围，但所列另外两项自身不能满足这里增加的跨系统原子可见要求。正文的 SQL 局部恰好一次论证正确，未使这一修复建议成立。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-d7b1d8cc31a04209d9af92a900f4ce39e8fcdf1d89b77c21e670cde0239f46e5",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2617,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 6034,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 5299,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0183854",
+                  "upper": "0.01956305",
+                  "usd_lower": "0.002742233245763825036122422173",
+                  "usd_upper": "0.002917882999474582950216734534",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.002742233245763825036122422173",
+            "delivery_usd_upper": "0.002917882999474582950216734534",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "formal-qwen-v1-r03-cheap",
+      "group": "cheap",
+      "correct_cards": 355,
+      "critical_pass": true,
+      "whole_pass": true,
+      "usd": {
+        "lower": "0.08342333401418626034414816763",
+        "upper": "0.09213836736174963877577827404"
+      },
+      "cost_complete": false,
+      "components": [
+        {
+          "id": "formal-qwen-v1-r03-cheap-kafka",
+          "artifact": "deliveries/formal-qwen-v1-r03-cheap-kafka/cards.json",
+          "sha256": "efecff7893548204cd592b52f4b2e284a638d21c2562a5dcaba724ee037f73ae",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 258.997,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-9793b4eaa3b64d46dfa9a1ec3fba39e3b7e66c949cffe2da2b523c3773fafe9c",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 22391,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 21102,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 14675,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0748882",
+                  "upper": "0.08496415",
+                  "usd_lower": "0.01116978209641402863522921319",
+                  "usd_upper": "0.01267263789898857217916721398",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01116978209641402863522921319",
+            "delivery_usd_upper": "0.01267263789898857217916721398",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r03-cheap-rabbitmq",
+          "artifact": "deliveries/formal-qwen-v1-r03-cheap-rabbitmq/cards.json",
+          "sha256": "11752f244c8394f4cb0b5e8ae74b4e3dc71f323e48b01761178db840afd2ed3e",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 203.235,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-3b048edaeb6846dd7af4ae53b82a89f4e7e16fce2674667efc082e5e40d226cc",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 21881,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 20868,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 14195,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0738484",
+                  "upper": "0.08369485",
+                  "usd_lower": "0.01101469305135951661631419940",
+                  "usd_upper": "0.01248331829436490214107447787",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01101469305135951661631419940",
+            "delivery_usd_upper": "0.01248331829436490214107447787",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r03-cheap-nats",
+          "artifact": "deliveries/formal-qwen-v1-r03-cheap-nats/cards.json",
+          "sha256": "9b237798a052008501b9fa08f46376bf122b81013f83a343da808b672c93f7d4",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 320.941,
+          "kind": "bulk",
+          "error_ids": [
+            "nats-30"
+          ],
+          "error_reasons": {
+            "nats-30": [
+              "将消费者在默认配置下保留并且仅显式设置 InactiveThreshold 才清理表述为通用保证，未保留 ephemeral 在无绑定订阅后自动清理的限制。冻结原文 nats-consumers L0027–L0028 说明未持久化的 ephemeral 状态及自动删除，与所引 L0029–L0030 的一般说法存在冲突。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "nats-30",
+              "severity": "material",
+              "problem": "将消费者在默认配置下保留并且仅显式设置 InactiveThreshold 才清理表述为通用保证，未保留 ephemeral 在无绑定订阅后自动清理的限制。冻结原文 nats-consumers L0027–L0028 说明未持久化的 ephemeral 状态及自动删除，与所引 L0029–L0030 的一般说法存在冲突。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-4be0c5bb4b66c5e4fadcd4b64a61097e096005401771c05f8a98e09f732a73b8",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 14420,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 22393,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 16212,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0719971",
+                  "upper": "0.0784861",
+                  "usd_lower": "0.01073856653750164192828057271",
+                  "usd_upper": "0.01170641882963352160777617234",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01073856653750164192828057271",
+            "delivery_usd_upper": "0.01170641882963352160777617234",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r03-cheap-pulsar",
+          "artifact": "deliveries/formal-qwen-v1-r03-cheap-pulsar/cards.json",
+          "sha256": "54eb6b047c5352cb6125b0bba7bfa4038fa9d8093e6d222b53176bc33c241346",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 483.863,
+          "kind": "bulk",
+          "error_ids": [
+            "pulsar-42",
+            "pulsar-45"
+          ],
+          "error_reasons": {
+            "pulsar-45": [
+              "verdict: expected not_documented"
+            ],
+            "pulsar-42": [
+              "正文在否定跨 topic 顺序后，额外声称“资料称只有单 topic 内保证读取顺序”，未保留同一快照 Shared subscription 不保证顺序（L0360）以及 producer/key/routing 条件（L0693–L0696）。泛称“资料称”没有将保证限制在所引注释段落；这一无条件单 topic 顺序保证与此前开发样本按同一规则判错。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "pulsar-42",
+              "severity": "material",
+              "problem": "正文在否定跨 topic 顺序后，额外声称“资料称只有单 topic 内保证读取顺序”，未保留同一快照 Shared subscription 不保证顺序（L0360）以及 producer/key/routing 条件（L0693–L0696）。泛称“资料称”没有将保证限制在所引注释段落；这一无条件单 topic 顺序保证与此前开发样本按同一规则判错。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-7b955e28a63c885625b9dacc84b3469be3ec4da30e016895cb37e446a6a57146",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 25641,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 35042,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 28036,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1151262",
+                  "upper": "0.12666465",
+                  "usd_lower": "0.01717139105477472743990542493",
+                  "usd_upper": "0.01889238277617233679232891108",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01717139105477472743990542493",
+            "delivery_usd_upper": "0.01889238277617233679232891108",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r03-cheap-redis",
+          "artifact": "deliveries/formal-qwen-v1-r03-cheap-redis/cards.json",
+          "sha256": "d8820f868cd29676215978ed84919aa34ce62937837fcd68c09f2ef9f81e6c6a",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 349.725,
+          "kind": "bulk",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-60c579915d4264c60c853be4993447ad5f86e1c808c26d85c05e16b494b24cef",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 27823,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 30067,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 24128,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.1034393",
+                  "upper": "0.11595965",
+                  "usd_lower": "0.01542825760541179561276763431",
+                  "usd_upper": "0.01729570242676999868645737555",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01542825760541179561276763431",
+            "delivery_usd_upper": "0.01729570242676999868645737555",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "recovery-qwen-v1-r03-cheap-rocketmq",
+          "artifact": "deliveries/recovery-qwen-v1-r03-cheap-rocketmq/cards.json",
+          "sha256": "79fd9f8eb5e18ba69da746c1d614b2e868c692e3315aca05ccc894fac4360d81",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 425.001,
+          "kind": "bulk",
+          "error_ids": [
+            "rocketmq-19",
+            "rocketmq-29"
+          ],
+          "error_reasons": {
+            "rocketmq-19": [
+              "正文建议限流时延后获取和消费消息，该建议在 rocketmq L109；实际引用 L106–108 仅覆盖禁止用重试限流及错误示例，未支持这部分补充正文。与首轮混合组相同规则计一次引用不完整错误。"
+            ],
+            "rocketmq-29": [
+              "滚动删除最早消息的事实在 rocketmq-transactions L50；实际唯一引用 L51 只是 Usage limits 标题，不支持该事实。"
+            ]
+          },
+          "findings": [
+            {
+              "id": "rocketmq-19",
+              "severity": "material",
+              "problem": "正文建议限流时延后获取和消费消息，该建议在 rocketmq L109；实际引用 L106–108 仅覆盖禁止用重试限流及错误示例，未支持这部分补充正文。与首轮混合组相同规则计一次引用不完整错误。"
+            },
+            {
+              "id": "rocketmq-29",
+              "severity": "material",
+              "problem": "滚动删除最早消息的事实在 rocketmq-transactions L50；实际唯一引用 L51 只是 Usage limits 标题，不支持该事实。"
+            }
+          ],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-022915d330330414c7ecc05ead94ca146189116ac4c3a166c2972a3f3b0469d9",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 15072,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 29893,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 23286,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0927687",
+                  "upper": "0.0995511",
+                  "usd_lower": "0.01383670811112570602916064627",
+                  "usd_upper": "0.01484832182451070537238933404",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.01383670811112570602916064627",
+            "delivery_usd_upper": "0.01484832182451070537238933404",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        },
+        {
+          "id": "formal-qwen-v1-r03-cheap-critical",
+          "artifact": "deliveries/formal-qwen-v1-r03-cheap-critical/decision.json",
+          "sha256": "2ea75a5450aac203e7c69680cb6051353f50d8d95a547c688c341664ca6034a4",
+          "models": [
+            "qwen3.8-flash"
+          ],
+          "seconds": 185.734,
+          "kind": "critical",
+          "error_ids": [],
+          "error_reasons": {},
+          "findings": [],
+          "accounting": {
+            "attempts": [
+              {
+                "request_id": "request-c2f494c1c63780d5c42f9b93b148f4cd3c999c71e6c492e32f0f678eeb90d4fd",
+                "ordinal": 1,
+                "model": "qwen3.8-flash",
+                "outcome": "accepted",
+                "usage": {
+                  "billable_provenance": "unknown",
+                  "billable_tokens": null,
+                  "cache_read_provenance": "reported",
+                  "cache_read_tokens": 0,
+                  "cache_status": "confirmed_usage",
+                  "cache_write_provenance": "unknown",
+                  "cache_write_tokens": null,
+                  "cost_class": "free",
+                  "effective_cost_micros": null,
+                  "input_provenance": "reported",
+                  "input_tokens": 2617,
+                  "kind": "usage_and_cache",
+                  "ordinal": 1,
+                  "output_provenance": "reported",
+                  "output_tokens": 9316,
+                  "reasoning_provenance": "reported",
+                  "reasoning_tokens": 8628,
+                  "source": "provider_completion"
+                },
+                "cost": {
+                  "status": "bounded_reference",
+                  "currency": "CNY",
+                  "lower": "0.0272468",
+                  "upper": "0.02842445",
+                  "usd_lower": "0.004063935557598844082490476817",
+                  "usd_upper": "0.004239585311309601996584789177",
+                  "missing_cache": [
+                    "cache_write_tokens"
+                  ],
+                  "long_context": false
+                }
+              }
+            ],
+            "jev_calls": 0,
+            "jev_reported_usd": "0",
+            "jev_unknown": 0,
+            "delivery_usd_lower": "0.004063935557598844082490476817",
+            "delivery_usd_upper": "0.004239585311309601996584789177",
+            "unknown_attempts": 0,
+            "client_usage_reconciled": true
+          }
+        }
+      ]
+    }
+  ],
+  "original_three_pair_gate_passed": false,
+  "qwen_original_execution_complete": false,
+  "qwen_recovery_requests": 1,
+  "qwen_failed_request_cost_unknown": true,
+  "evaluator": "Unblinded external analyst; all cards and complete memos reviewed. Offline replay reuses recorded judgments, not a new semantic evaluation."
+}

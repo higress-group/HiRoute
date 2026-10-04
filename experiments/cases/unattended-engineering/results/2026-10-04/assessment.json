@@ -1,0 +1,70 @@
+{
+  "name": "unattended-httpx-formal-r02",
+  "assessed_utc": "2026-10-03T21:47:01.854239+00:00",
+  "stage": "formal_single_case",
+  "scenario": "green",
+  "formal_case_accepted": true,
+  "product_revision": "42f2a1542d6dfdc707eef170f3940db559a1e498",
+  "native_seconds": 1896.015,
+  "independent_assertions": {
+    "feature": 108,
+    "existing_regression": 229,
+    "additional_incrementality": 6,
+    "total_passed": 343
+  },
+  "native_selected_validation": "487 passed,3 predeclared transport exclusions; Ruff/format/mypy/diff checks pass in native trace",
+  "protected_changes": [],
+  "initial_task_prompts": 1,
+  "startup_environment_message": {
+    "count": 1,
+    "before_task": true,
+    "role": "Native CLI generated environment context, not an operator intervention"
+  },
+  "intermediate_operator_prompts": 0,
+  "operator_product_patches": 0,
+  "context_boundaries": [
+    {
+      "timestamp": "2026-10-03T21:22:18.318Z",
+      "window_number": 1
+    },
+    {
+      "timestamp": "2026-10-03T21:35:11.774Z",
+      "window_number": 2
+    }
+  ],
+  "upgrade": {
+    "after_second_compaction": true,
+    "competence": 0.485,
+    "floor": 0.5,
+    "actual_astra_tool_calls": 13,
+    "first_astra_tool_timestamp": "2026-10-03T21:35:18.991Z"
+  },
+  "actual_request_models": {
+    "qwen3.8-flash": 25,
+    "gpt-6-astra": 15
+  },
+  "usage_complete": true,
+  "api_equivalent_usd_lower": "1.715671817590700118218836201",
+  "api_equivalent_usd_upper": "1.917889010862078024431892815",
+  "savings_claim": false,
+  "limits": [
+    "One frozen historical isolated case; economy-first policy configured simple_threshold0 and competence_floor0.5.",
+    "Boundary attribution combines native compaction timestamps, receipt model/tool metadata and exact product code; no fictitious explicit ContextHold receipt flag.",
+    "No claim that Qwen could never finish or that upgrades guarantee all tasks converge.",
+    "Prior aborted formal-r01 and development evidence retained separately."
+  ],
+  "evidence_sha256": {
+    "case/unattended-formal-r02-freeze.json": "87faa590286539a67b084619425f9df5e1f3662f42ce836a8baf9b65d3c76090",
+    "case/context-boundary-code-evidence.json": "b2136261a0cd1db88b6d823971a6f5f6c313516276a16d7a1145b0b0931a357f",
+    "evidence/unattended-httpx-formal-r02-evidence.json": "7f60b30cda66632453c5d443e38b1a19ec61e5c9ee77620c3b2c826d25ce61a1",
+    "evidence/unattended-httpx-formal-r02-grade/assessment.json": "45237a75583b074aa1cf9dbece06c78d45a04266b6e636e74c6437306f45e54d",
+    "evidence/unattended-httpx-formal-r02/result.json": "0fafb8df08577d8076caf6cbfa1128e761f95d6ac8e8898cacc9dfe4939a2932",
+    "evidence/unattended-httpx-formal-r02/prompt.txt": "2bf30908f4d17b8205b6e62bfa481c020ab6621584e1c1d18579f06338866813",
+    "evidence/unattended-httpx-formal-r02/stdout.jsonl": "4ca0b69a69a95136468f905312a786c35b8e61a2528e1ea909fc46dd306d66d5",
+    "evidence/unattended-httpx-formal-r02/subject-after-native/native-final.txt": "f9f9437a05ef0b01281c0ae1e65ec6e5662bd6cc59edb338e9deeaaaa78fc5d9"
+  },
+  "projection": {
+    "scope": "Whitelisted metadata only; no runtime credentials, request wire or hidden reasoning.",
+    "source_sha256": "01e633331c5be08ff4dcda64b9a480fbb016cbe01c6f6951b929f4ce882ffa03"
+  }
+}

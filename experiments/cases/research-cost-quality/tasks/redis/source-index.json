@@ -1,0 +1,13 @@
+[
+  {
+    "id": "redis",
+    "url": "https://raw.githubusercontent.com/redis/docs/main/content/develop/data-types/streams/_index.md",
+    "resolved_url": "https://raw.githubusercontent.com/redis/docs/main/content/develop/data-types/streams/_index.md",
+    "title": "Redis Streams documentation; frozen main-branch snapshot, retain explicit version qualifiers",
+    "fetch_utc": "2026-10-03T16:21:40.560798+00:00",
+    "raw_sha256": "1c5e8d1235ef7bdfd004ca31417c3b9ec2d4f25b268bfd067c724b6bdaaa735f",
+    "text_sha256": "fabd18e7fa9e743871fa2da7e576c4e184e2f441e7f9727e5927235fdfa57810",
+    "lines": 759,
+    "characters": 81245
+  }
+]

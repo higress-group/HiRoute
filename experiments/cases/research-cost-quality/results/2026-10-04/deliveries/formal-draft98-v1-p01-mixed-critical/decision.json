@@ -1,0 +1,68 @@
+{
+  "memos": [
+    {
+      "id": "M2",
+      "answers": {
+        "a_safety": true,
+        "a_liveness": false,
+        "b_safety": false,
+        "b_liveness": true,
+        "c_safety": true,
+        "c_liveness": true,
+        "c_requires_distributed_transaction_for_sql_once": false
+      },
+      "reason": {
+        "premises": "按题设初始待处理的事件 e 判断，仅计已提交的 SQL 余额增加。依赖永久唯一事件键、SQL 串行化事务及可靠持久性、SQL 成功后才提交 Kafka 偏移、消息保留至恢复以及最终存在无故障重试；恢复须正确重新读取未提交偏移的事件。",
+        "A": "inbox 一旦提交，重放便不再更新余额，因此至多增加一次；但标记和余额分属两个事务，标记已提交而余额尚未提交时崩溃，会永久漏加，无故障重试也不能补救。",
+        "B": "唯一键只限制 inbox 行数，不限制无条件余额更新。SQL 已提交而 Kafka 尚未提交时重放，会再次增加余额，故不满足 safety。每次成功的 SQL 事务都会增加余额，结合最终无故障重试，满足 liveness。",
+        "C": "首次实际插入 inbox 与余额增加同事务提交或回滚。永久唯一键与串行化保证最多一个事务能实际插入并提交余额增加；若事务未提交，重试仍可插入并更新；若已提交，重放只跳过余额更新。因此最终 SQL 余额恰好增加一次，不必引入 SQL/Kafka 两阶段提交。",
+        "boundary": "C 的结论仅是 SQL 局部业务效果恰好一次，不是 SQL、Kafka 输出与输入偏移跨系统原子可见。SQL 提交后、Kafka 提交前仍可观察到二者状态不同步。Kafka 事务覆盖其输出 topic 与偏移，事务输出的可见性还取决于消费者隔离级别；不能由此推导邮件、外部扣款或任意其他系统的一次副作用保证。"
+      },
+      "counterexample": {
+        "A_liveness": [
+          "SQL 提交 inbox(e)。",
+          "余额事务开始前崩溃。",
+          "恢复重放 e，因 inbox 已存在而跳过余额并提交 Kafka。",
+          "余额增加次数为 0。"
+        ],
+        "B_safety": [
+          "SQL 同一事务插入 inbox(e)、余额 +10 并提交。",
+          "Kafka 事务提交前崩溃。",
+          "恢复重放 e，INSERT 冲突未插入，但仍余额 +10 并提交 SQL，随后提交 Kafka。",
+          "余额增加次数为 2。"
+        ],
+        "C_cross_system_atomic_visibility": [
+          "SQL 提交 inbox(e) 与余额 +10。",
+          "Kafka 事务提交前崩溃。",
+          "SQL 增加已生效，但对应 Kafka 输出与偏移尚未提交；这不违反 C 的 SQL 恰好一次结论。"
+        ]
+      },
+      "repair": {
+        "A": "将 inbox 插入与余额更新合并到同一个 SQL 事务，并仅在本次实际插入时更新余额，即采用 C。",
+        "B": "保留同一 SQL 事务，但以本次 INSERT 是否实际插入为余额更新条件，即采用 C。",
+        "C": "本题目标无需增加分布式事务。保留永久去重键与条件更新；SQL 失败时不得推进 Kafka 偏移，Kafka 事务中止后须显式恢复消费位置并重放。不要把去重命中理解成可以丢弃尚未提交的必要 Kafka 输出。",
+        "validation": {
+          "status": "尚未执行",
+          "suggestion": "在 SQL 提交前后及 Kafka 提交前后注入崩溃，并测试同一事件的重复重放；核对 A 的漏加、B 的重复增加及 C 最终仅增加一次。"
+        }
+      },
+      "citations": [
+        {
+          "source": "kafka",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "source": "kafka",
+          "start": 22,
+          "end": 25
+        },
+        {
+          "source": "kafka",
+          "start": 27,
+          "end": 27
+        }
+      ]
+    }
+  ]
+}

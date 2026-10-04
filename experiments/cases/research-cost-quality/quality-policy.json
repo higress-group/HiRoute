@@ -1,0 +1,27 @@
+{
+  "version": "research-draft98/v1",
+  "created_utc": "2026-10-04T00:01:26.372775+00:00",
+  "stage": "prospective protocol after development diagnosis; not registered formal evidence",
+  "task": "Complete 360 source verification cards and one Kafka/SQL consistency memo",
+  "intended_use": "Source-grounded research draft for human review; not deployment guidance or certified product guarantees",
+  "bulk_entries": 360,
+  "minimum_correct_entries": 353,
+  "maximum_incorrect_entries": 7,
+  "minimum_accuracy_percent": 98,
+  "bulk_error_rule": "Count each distinct card with any incorrect verdict, unsupported/contradicted factual prose, omitted necessary qualification, or invalid/non-supporting citation once. Editorial issues that do not change meaning remain recorded, not factual errors.",
+  "coverage_gate": "All 360 distinct requested cards delivered; valid required fields and nonempty prose; missing or duplicate cards reject the whole task regardless of percentage.",
+  "critical_gate": "All seven M2 answers and complete reason/counterexample/repair must pass the unchanged source-and-assumption rubric. No material error in the critical memo is allowed.",
+  "quality_symmetry": "Use the exact same threshold, corrected reference, full artifact review and counting rule for mixed and all-Astra arms.",
+  "review": "Root analyst reads every delivered card and full memo against frozen inputs; unblinded evaluation and evaluator effort are disclosed. Finite checks alone cannot establish semantic quality.",
+  "economic_gate": "For every fully accepted fresh formal pair, mixed complete delivery USD upper bound <= 0.112 * all-Astra complete delivery USD lower bound; include all subject attempts/retries and Jev. Three pre-registered pairs must all pass. User relaxed the prior 90% objective to 88.8%.",
+  "allowed_claim": "At least 98% source-card accuracy, fully correct critical memo, and measured complete-task API-equivalent savings if all formal gates pass; publish actual scores of both arms and all known error IDs.",
+  "forbidden_claims": [
+    "Every card is correct",
+    "Quality is exactly identical to all-Astra",
+    "90% measured savings before complete matched formal evidence",
+    "API-equivalent costs are subscription invoices",
+    "Errors can be patched without counting the repair model call"
+  ],
+  "minimum_savings_percent": 88.8,
+  "maximum_mixed_fraction": "0.112"
+}

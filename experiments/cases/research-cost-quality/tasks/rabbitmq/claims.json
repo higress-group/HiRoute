@@ -1,0 +1,302 @@
+[
+  {
+    "id": "rabbitmq-01",
+    "claim": "Publisher confirms 本身证明消费者已完成业务处理。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-02",
+    "claim": "投递 tag 按 channel 定义，确认必须在接收它的同一 channel 上。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-03",
+    "claim": "basic.nack 是 RabbitMQ 对 AMQP 0-9-1 的扩展。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-04",
+    "claim": "自动确认模式等待客户端明确确认后才认为消息已送达。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-05",
+    "claim": "自动确认不具有手动确认模式下未完成投递的 prefetch 限制，可能使消费者过载。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-06",
+    "claim": "multiple=true 可确认同一 channel 中直到指定 tag 的全部未确认投递。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-07",
+    "claim": "负确认的 requeue=false 在配置了死信交换器时走死信，否则丢弃。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-08",
+    "claim": "并发消费者存在时，requeue 总能把消息精确放回原队列位置。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-09",
+    "claim": "反复 requeue 可以产生耗费网络和 CPU 的重投循环。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-10",
+    "claim": "basic.nack 支持一次拒绝或重新入队多个消息。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-11",
+    "claim": "prefetch count 限制未确认投递数，达到限制后暂停更多投递。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-12",
+    "claim": "prefetch=0 表示完全不投递消息。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-13",
+    "claim": "动态改变 prefetch 时存在竞态，短期未确认数可能超过新值。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-14",
+    "claim": "文档说明 quorum queue 的消费者 prefetch 上限为 2000。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-15",
+    "claim": "QoS prefetch 对 basic.get 同样生效。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-16",
+    "claim": "手动确认下，channel 或连接关闭会使尚未确认的消息自动重新入队。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-17",
+    "claim": "重复确认相同 tag 或确认未知 tag 会导致 channel 异常。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-18",
+    "claim": "同一个 channel 可同时使用事务模式和 publisher confirm 模式。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-19",
+    "claim": "持久消息到 durable queue 的确认与落盘相关，quorum queue 确认要求 quorum 接受。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-20",
+    "claim": "Publisher confirms 必定与发布顺序完全一致。",
+    "source": "rabbitmq"
+  },
+  {
+    "id": "rabbitmq-21",
+    "source": "rabbitmq-queues",
+    "claim": "队列名称长度上限是255个Unicode字符，与UTF-8字节数无关。"
+  },
+  {
+    "id": "rabbitmq-22",
+    "source": "rabbitmq-queues",
+    "claim": "以amq.开头的名称保留给broker内部使用，违规声明导致channel级403。"
+  },
+  {
+    "id": "rabbitmq-23",
+    "source": "rabbitmq-queues",
+    "claim": "同一channel可用空字符串引用该channel最后一个服务器生成的队列名。"
+  },
+  {
+    "id": "rabbitmq-24",
+    "source": "rabbitmq-queues",
+    "claim": "Exclusive队列允许多个连接共同使用，只要它们属于同一应用。"
+  },
+  {
+    "id": "rabbitmq-25",
+    "source": "rabbitmq-queues",
+    "claim": "静态名称exclusive队列在断线立即恢复时可能发生删除与重声明竞态。"
+  },
+  {
+    "id": "rabbitmq-26",
+    "source": "rabbitmq-queues",
+    "claim": "已存在队列的属性与声明相同时，重复声明不产生效果。"
+  },
+  {
+    "id": "rabbitmq-27",
+    "source": "rabbitmq-queues",
+    "claim": "属性不等价通常导致406，但队列类型的等价检查可放宽或配置默认值。"
+  },
+  {
+    "id": "rabbitmq-28",
+    "source": "rabbitmq-queues",
+    "claim": "队列创建后可以通过策略动态改变x-max-priority。"
+  },
+  {
+    "id": "rabbitmq-29",
+    "source": "rabbitmq-queues",
+    "claim": "对支持策略的可选参数，该页优先推荐策略以避免应用改动与重新部署。"
+  },
+  {
+    "id": "rabbitmq-30",
+    "source": "rabbitmq-queues",
+    "claim": "同名参数同时出现在客户端x-arguments与用户policy时，客户端参数优先。"
+  },
+  {
+    "id": "rabbitmq-31",
+    "source": "rabbitmq-queues",
+    "claim": "operator policy也约束客户端参数；数值限制允许应用选择更低值。"
+  },
+  {
+    "id": "rabbitmq-32",
+    "source": "rabbitmq-queues",
+    "claim": "在单一channel发布时，消息按发布顺序进入各自路由到的队列。"
+  },
+  {
+    "id": "rabbitmq-33",
+    "source": "rabbitmq-queues",
+    "claim": "多个channel的消息仍具有统一的全局发布顺序。"
+  },
+  {
+    "id": "rabbitmq-34",
+    "source": "rabbitmq-queues",
+    "claim": "消息优先级与多消费者情况下的重投可改变有效投递顺序。"
+  },
+  {
+    "id": "rabbitmq-35",
+    "source": "rabbitmq-queues",
+    "claim": "stream是追加日志，消息发布时分配的offset不会变化。"
+  },
+  {
+    "id": "rabbitmq-36",
+    "source": "rabbitmq-queues",
+    "claim": "该页保序队列建议包括单活消费者、按接收顺序退回消息和避免basic.get。"
+  },
+  {
+    "id": "rabbitmq-37",
+    "source": "rabbitmq-queues",
+    "claim": "可用x-modulus-hash将实体消息分区到各自单活的队列，兼顾并行与实体内有序。"
+  },
+  {
+    "id": "rabbitmq-38",
+    "source": "rabbitmq-queues",
+    "claim": "消息只要进入durable队列，即使标记为transient也会在重启后恢复。"
+  },
+  {
+    "id": "rabbitmq-39",
+    "source": "rabbitmq-queues",
+    "claim": "transient队列及其中消息按设计在节点重启时被丢弃。"
+  },
+  {
+    "id": "rabbitmq-40",
+    "source": "rabbitmq-queues",
+    "claim": "非持久且非exclusive的classic队列自4.3.0默认不可声明，可通过弃用功能配置暂时允许。"
+  },
+  {
+    "id": "rabbitmq-41",
+    "source": "rabbitmq-queues",
+    "claim": "把队列改为非持久通常就能显著提高其消息吞吐率。"
+  },
+  {
+    "id": "rabbitmq-42",
+    "source": "rabbitmq-queues",
+    "claim": "quorum队列因其复制协议要求必须持久。"
+  },
+  {
+    "id": "rabbitmq-43",
+    "source": "rabbitmq-queues",
+    "claim": "从未有消费者且仅通过轮询读取的auto-delete队列不会因此自动删除。"
+  },
+  {
+    "id": "rabbitmq-44",
+    "source": "rabbitmq-queues",
+    "claim": "exclusive队列绑定声明连接，其类型始终为classic。"
+  },
+  {
+    "id": "rabbitmq-45",
+    "source": "rabbitmq-queues",
+    "claim": "另一连接使用exclusive队列会收到RESOURCE_LOCKED channel异常。"
+  },
+  {
+    "id": "rabbitmq-46",
+    "source": "rabbitmq-queues",
+    "claim": "exclusive队列在声明连接关闭或消失后删除，且声明在客户端所连接的节点。"
+  },
+  {
+    "id": "rabbitmq-47",
+    "source": "rabbitmq-queues",
+    "claim": "classic队列的复制功能在RabbitMQ 4.x已移除。"
+  },
+  {
+    "id": "rabbitmq-48",
+    "source": "rabbitmq-queues",
+    "claim": "普通队列操作可跨集群节点透明路由，但stream客户端须连接持有该stream副本的节点。"
+  },
+  {
+    "id": "rabbitmq-49",
+    "source": "rabbitmq-queues",
+    "claim": "跨集群federation是集群内复制的直接替代品。"
+  },
+  {
+    "id": "rabbitmq-50",
+    "source": "rabbitmq-queues",
+    "claim": "队列长度限制及队列或消息TTL可用于限制资源和过期数据。"
+  },
+  {
+    "id": "rabbitmq-51",
+    "source": "rabbitmq-queues",
+    "claim": "现代RabbitMQ中的transient消息永远只存内存，不会落盘。"
+  },
+  {
+    "id": "rabbitmq-52",
+    "source": "rabbitmq-queues",
+    "claim": "队列优先级是可选功能，更多优先级会消耗更多资源。"
+  },
+  {
+    "id": "rabbitmq-53",
+    "source": "rabbitmq-queues",
+    "claim": "单个队列副本热路径受限于单个CPU核心，设计假设实际使用多个队列。"
+  },
+  {
+    "id": "rabbitmq-54",
+    "source": "rabbitmq-queues",
+    "claim": "HTTP API与管理界面提供队列指标，rabbitmq-top还可观察队列进程运行时指标。"
+  },
+  {
+    "id": "rabbitmq-55",
+    "source": "rabbitmq-queues",
+    "claim": "自动ACK通常提高吞吐并减少带宽，但失败保证最弱，该页建议优先考虑手动ACK。"
+  },
+  {
+    "id": "rabbitmq-56",
+    "source": "rabbitmq-queues",
+    "claim": "自动ACK可压垮慢消费者，手动ACK配合prefetch可限制未确认投递。"
+  },
+  {
+    "id": "rabbitmq-57",
+    "source": "rabbitmq-queues",
+    "claim": "将prefetch提高到几千以上就能消除消费者内存过载。"
+  },
+  {
+    "id": "rabbitmq-58",
+    "source": "rabbitmq-queues",
+    "claim": "队列内消息按状态分为待投递与已投递但尚未确认。"
+  },
+  {
+    "id": "rabbitmq-59",
+    "source": "rabbitmq-queues",
+    "claim": "该页定义的队列长度只计待投递消息，可从declare响应或管理接口获取。"
+  },
+  {
+    "id": "rabbitmq-60",
+    "source": "rabbitmq-queues",
+    "claim": "对静态临时队列恢复竞态，该页给出的办法是恢复延迟或采用服务器生成名称。"
+  }
+]

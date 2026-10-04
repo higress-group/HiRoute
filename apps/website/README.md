@@ -27,6 +27,16 @@ Chinese lives at `/`; English lives at `/en/`. Language is an explicit link, not
 an IP-based redirect. All pages are static directory indexes; `/releases/*` is
 never part of the website build and must remain a real object/404 boundary.
 
+## News and experiment articles
+
+The repository-root `news/index.json` indexes bilingual articles in `news/`.
+Both GitHub and the website use those same Markdown sources. Add an entry with a
+unique slug, date, title, description, and file for each language; the news lists,
+language links and newest-article homepage entry follow the index automatically.
+Article images live in `news/assets/` and are copied to ignored `public/news-assets/`
+at build time. Evidence and reproduction commands belong in the public
+`experiments/` directory. Keep these directories self-contained.
+
 ## Public release contract
 
 `data/releases.json` is the single source for the download page and changelog.

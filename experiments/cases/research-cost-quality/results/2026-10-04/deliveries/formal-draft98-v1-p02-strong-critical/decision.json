@@ -1,0 +1,72 @@
+{
+  "memos": [
+    {
+      "id": "M2",
+      "answers": {
+        "a_safety": true,
+        "a_liveness": false,
+        "b_safety": false,
+        "b_liveness": true,
+        "c_safety": true,
+        "c_liveness": true,
+        "c_requires_distributed_transaction_for_sql_once": false
+      },
+      "reason": {
+        "premises": "按题设，对事件 e 使用永久唯一键；SQL 事务串行化且提交可靠持久；SQL 与 Kafka 无共同事务；Kafka 保留消息供恢复，最终存在一次无故障重试。增加次数指已提交的 SQL 余额 +10，不计回滚更新。",
+        "A": "inbox 一旦提交，重放便跳过余额更新，因此至多增加一次。但 inbox 与余额分开提交，可能永久留下只有标记、没有余额更新的状态；无故障重试也会跳过，故不保证至少一次。",
+        "B": "余额更新不受 INSERT 是否成功插入约束。SQL 提交后、Kafka 提交前的崩溃会使重放再次增加余额，故不满足至多一次。未推进 Kafka 偏移的事件仍可重试，而推进偏移前已有余额提交，结合最终无故障重试，保证至少一次。",
+        "C": "唯一键使本次 INSERT 实际插入至多成功提交一次；插入与条件余额更新同属一个 SQL 事务，二者只能共同提交或共同回滚。SQL 未提交就崩溃时可重试插入并更新；SQL 已提交而 Kafka 未提交时，重放插入冲突，不再更新。因此在全部给定前提下，SQL 余额最终恰好增加一次，不必引入 SQL/Kafka 两阶段提交。",
+        "boundary": "C 的结论仅是 SQL 内该余额副作用最终恰好一次，不是 SQL 与 Kafka 所有输出原子可见。SQL 已提交而 Kafka 事务尚未提交时，两系统状态可暂时不一致。Kafka 输出与输入偏移的同事务原子性不包含 SQL；Kafka 事务输出的可见性还取决于消费隔离级别。不能据此推导邮件、外部扣款或任意其他系统的副作用恰好一次。"
+      },
+      "counterexample": {
+        "a_liveness": [
+          "SQL 提交 inbox(e)。",
+          "余额事务执行前崩溃。",
+          "恢复重放发现 inbox(e)，跳过余额更新并提交 Kafka 事务。",
+          "余额增加次数永久为 0。"
+        ],
+        "b_safety": [
+          "SQL 事务提交 inbox(e) 与余额 +10。",
+          "Kafka 事务提交前崩溃。",
+          "恢复重放，INSERT 冲突，但仍提交余额 +10。",
+          "余额增加次数为 2。"
+        ],
+        "c_cross_system_atomic_visibility": [
+          "C 的 SQL 事务提交 inbox(e) 与余额 +10。",
+          "Kafka 事务提交前崩溃。",
+          "SQL 更新已可见，而相应 Kafka 事务输出尚未提交；这不违反 C 的 SQL 恰好一次结论。"
+        ]
+      },
+      "repair": {
+        "A": "将 inbox 插入与余额更新合并为一个 SQL 事务，并仅在本次实际插入时更新余额，即改为 C。",
+        "B": "保留同一 SQL 事务，将余额更新改为仅在本次 INSERT 实际插入时执行，即改为 C。",
+        "C": "在本题边界内无需分布式事务。保留永久唯一键、插入结果判断及 SQL 同事务提交；仅在 SQL 成功提交后推进 Kafka 事务。恢复或 Kafka 事务中止后应从已提交偏移正确重放，不把内存读取位置当成已完成处理。",
+        "validation": {
+          "status": "尚未执行",
+          "suggested_checks": [
+            "分别在 SQL 提交前、提交后但 Kafka 提交前、Kafka 提交后注入崩溃并恢复，核对余额增加次数。",
+            "重放同一事件并验证 C 的冲突分支不更新余额、未提交事务不留下 inbox 标记。",
+            "验证 Kafka 事务中止后正确重置消费位置；如检查事务输出可见性，使用 read_committed 消费者。"
+          ]
+        }
+      },
+      "citations": [
+        {
+          "source": "kafka",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "source": "kafka",
+          "start": 22,
+          "end": 25
+        },
+        {
+          "source": "kafka",
+          "start": 27,
+          "end": 27
+        }
+      ]
+    }
+  ]
+}

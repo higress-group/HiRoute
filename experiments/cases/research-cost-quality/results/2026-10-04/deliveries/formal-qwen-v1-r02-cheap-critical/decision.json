@@ -1,0 +1,38 @@
+{
+  "memos": [
+    {
+      "id": "M2",
+      "answers": {
+        "a_safety": true,
+        "a_liveness": false,
+        "b_safety": false,
+        "b_liveness": true,
+        "c_safety": true,
+        "c_liveness": true,
+        "c_requires_distributed_transaction_for_sql_once": false
+      },
+      "reason": "在题目前提下，Kafka 对业务事件 e 的投递与重放至少一次可见，而 Kafka 事务只原子提交输出 topic 和输入偏移，不覆盖独立 SQL 事务。A 先单独提交 inbox(e)，再单独提交余额；若崩溃发生在两步 SQL 提交之间，恢复重放按 inbox 已存在而跳过余额，导致余额一次也不增加，所以 liveness 不成立；该方案不会重复增加余额，所以 safety 成立。B 在 SQL 事务内无论 INSERT 是否实际插入都执行余额 +10，因此 Kafka offset 未提交时的重放会重复增加余额，safety 不成立；在最终无故障重试存在时至少会成功执行一次 SQL 事务，所以 liveness 成立。C 将 INSERT inbox(e) ON CONFLICT DO NOTHING 与实际插入时的余额 +10 放入同一 SQL 事务，重复重放时第二次不插入，因而不再更新余额；同时首次成功或最终无故障重试会插入并更新一次，所以 SQL 余额恰好增加一次。C 不要求 SQL/Kafka 两阶段提交来保证 SQL 余额恰好一次；该结论仅限 SQL 余额副作用，不表示 SQL 与 Kafka 输出对所有消费者原子可见。",
+      "counterexample": {
+        "A": "处理 e：SQL 事务1 提交 inbox(e) -> 崩溃在 SQL 事务1 后、SQL 事务2 前 -> 恢复重放发现 inbox 已有 e -> 跳过余额 +10 并提交 Kafka -> 余额增加次数为 0。",
+        "B": "处理 e：SQL 事务提交 INSERT inbox(e) + 余额 +10 -> 崩溃在 Kafka 提交前 -> 恢复重放再次执行 SQL 事务 -> 无论 INSERT 是否插入都余额 +10 -> 余额至少增加 2 次。"
+      },
+      "repair": {
+        "A": "将 inbox(e) 和余额 +10 合并进同一 SQL 事务，并仅在本次 INSERT 实际插入时更新余额；重放时不插入则不更新。",
+        "B": "将余额 +10 从无条件执行改为仅当本次 INSERT 实际插入时执行。",
+        "C": "针对 SQL 余额恰好一次无需修复；若要 SQL 与 Kafka 所有输出对外原子可见，则需另行采用共同事务、SQL 内保存 offset 或 outbox 等跨系统机制，但这不是 SQL 余额恰好一次的必要前提。"
+      },
+      "citations": [
+        {
+          "source": "kafka",
+          "start": 12,
+          "end": 16
+        },
+        {
+          "source": "kafka",
+          "start": 19,
+          "end": 24
+        }
+      ]
+    }
+  ]
+}

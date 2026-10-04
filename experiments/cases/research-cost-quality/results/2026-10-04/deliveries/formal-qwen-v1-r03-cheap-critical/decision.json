@@ -1,0 +1,26 @@
+{
+  "memos": [
+    {
+      "id": "M2",
+      "answers": {
+        "a_safety": true,
+        "a_liveness": false,
+        "b_safety": false,
+        "b_liveness": true,
+        "c_safety": true,
+        "c_liveness": true,
+        "c_requires_distributed_transaction_for_sql_once": false
+      },
+      "reason": "仅依据给定前提：Kafka与SQL无共同事务，崩溃可在任意步骤之间，未提交偏移导致事件e可能被再次投递，SQL事务原子且事件键永久。候选A先独立SQL事务写inbox，再另一SQL事务更新余额；崩溃于两步SQL之间时inbox已存在但余额未更新，恢复按规则跳过余额，因此liveness为false；同一事件不会重复加10，safety为true。候选B在一个SQL事务内无论INSERT是否冲突都加10，崩溃于SQL提交后、Kafka提交前会导致同一e重放并再次加10，safety为false；至少一次加10在最终无故障重试下成立，liveness为true。候选C在一个SQL事务内仅在INSERT实际插入时加10；若SQL未提交则无持久效果并重试，若SQL已提交则重放因唯一键冲突不再加10，最终Kafka提交可推进，因此SQL余额恰好一次，c_requires_distributed_transaction_for_sql_once为false。该结论只证明SQL余额这一项在题设内恰好一次，不证明SQL、Kafka输出和偏移对所有观察方跨系统原子可见；若要求外部系统副作用或全输出原子可见，才需要共同事务、两阶段提交或把状态与输出放在同一事务。本推理为静态分析，建议验证尚未执行。",
+      "counterexample": "A不满足liveness：初始无e；执行SQL事务1提交inbox(e)；崩溃于SQL事务2余额+10之前；恢复重放e，因inbox已有e而跳过余额并推进Kafka；最终余额增加0次。B不满足safety：初始无e；执行一个SQL事务且因无冲突插入e并余额+10，SQL提交；崩溃于Kafka提交之前；恢复重放e，再次执行该SQL事务，ON CONFLICT不插入但仍余额+10；最终余额增加2次。",
+      "repair": "A最小修复：把inbox插入与余额更新合并为一个SQL事务，并采用实际插入判据，等价候选C。B最小修复：仅当本次INSERT实际插入时才余额+10。C在本问题SQL余额恰好一次上无需SQL/Kafka两阶段提交；如需Kafka输出、偏移与SQL对所有观察方原子可见，必须把跨系统共同状态纳入同一事务机制或采用两阶段提交等价物，不能把C的SQL幂等结论外推到邮件或外部扣款。建议验证：尚未执行。",
+      "citations": [
+        {
+          "source": "kafka",
+          "start": 12,
+          "end": 16
+        }
+      ]
+    }
+  ]
+}

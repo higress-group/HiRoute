@@ -1,4 +1,5 @@
 ---
+import { posts, newsRoute } from '../lib/news.mjs';
 import SiteLayout from '../layouts/SiteLayout.astro';
 import { artifactUrl, formatBytes, latestRelease } from '../lib/releases.mjs';
 const { language = 'zh' } = Astro.props;
@@ -34,6 +35,12 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
     </div>
   </section>
   <div class="trust-line wrap"><span><b>{t('更省', 'Efficient')}</b> · {t('按需投入算力', 'Compute where it counts')}</span><span><b>{t('更稳', 'Reliable')}</b> · {t('有边界地接力', 'Bounded failover')}</span><span><b>{t('更懂', 'Adaptive')}</b> · {t('用执行事实改进选择', 'Decisions grounded in execution')}</span></div>
+
+  {posts[0] && <aside class="wrap news-feature" aria-label={t('最新文章', 'Latest article')}>
+    <span class="news-feature-label">{t('最新实战', 'NEW CASE STUDY')}</span>
+    <div><a href={newsRoute(posts[0].slug, language)}><strong>{posts[0].title[language]}</strong><span aria-hidden="true"> ↗</span></a><p>{posts[0].description[language]}</p></div>
+    <a class="text-link" href={newsRoute('', language)}>{t('全部新闻', 'All news')} →</a>
+  </aside>}
 
   <section class="section wrap lifecycle-section" id="boundaries">
     <div class="section-title"><div><div class="eyebrow section-label">{t('长任务不只做一次模型选择', 'A long task is not one model choice')}</div><h2>{t('阶段内保持稳定，', 'Stay stable within a stage.')}<br>{t('在自然边界重新选择。', 'Choose again at natural boundaries.')}</h2></div><p>{t('不必等用户再次提问。长会话压缩并重建上下文时，也能成为重新选模的自然机会；普通工具续轮保持当前模型。', 'A new user prompt is not the only boundary. When a long session compacts and rebuilds its context, HiRoute gets another natural chance to choose; ordinary tool continuations stay on the current model.')}</p></div>

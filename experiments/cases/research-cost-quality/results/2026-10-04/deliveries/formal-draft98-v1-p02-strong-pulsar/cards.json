@@ -1,0 +1,383 @@
+{
+  "cards": [
+    {
+      "id": "pulsar-01",
+      "verdict": "supported",
+      "fact": "消息 key 是可选项，可用于 topic compaction 等功能。",
+      "citations": [{"source": "pulsar", "start": 11, "end": 11}]
+    },
+    {
+      "id": "pulsar-02",
+      "verdict": "supported",
+      "fact": "未指定 producer name 时，Pulsar 自动生成全局唯一名字；broker 限制同一 topic 在任一时刻只能有一个同名生产者发布消息。",
+      "citations": [{"source": "pulsar", "start": 13, "end": 13}]
+    },
+    {
+      "id": "pulsar-03",
+      "verdict": "refuted",
+      "fact": "Sequence ID 最初由生产者分配，也可以自定义；由 bookie 在消息持久存储时赋予的是 Message ID。",
+      "citations": [{"source": "pulsar", "start": 16, "end": 18}]
+    },
+    {
+      "id": "pulsar-04",
+      "verdict": "supported",
+      "fact": "启用 brokerDeduplicationEnabled 后，可用于去重的 Sequence ID 在非分区 topic 或单个分区内的某个生产者范围中唯一。",
+      "citations": [{"source": "pulsar", "start": 16, "end": 17}]
+    },
+    {
+      "id": "pulsar-05",
+      "verdict": "supported",
+      "fact": "Message ID 在消息持久存储时由 bookie 赋予，表示消息在 ledger 中的具体位置。",
+      "citations": [{"source": "pulsar", "start": 18, "end": 18}]
+    },
+    {
+      "id": "pulsar-06",
+      "verdict": "supported",
+      "fact": "Event time 是应用附加的可选时间戳，未设置时其值为 0。",
+      "citations": [{"source": "pulsar", "start": 20, "end": 20}]
+    },
+    {
+      "id": "pulsar-07",
+      "verdict": "supported",
+      "fact": "文档列出的默认最大消息大小为 5 MB，并提供 broker.conf 中的 maxMessageSize 和 bookkeeper.conf 中的 nettyMaxFrameSizeBytes 配置项；后者限制接收的网络帧大小。",
+      "citations": [{"source": "pulsar", "start": 21, "end": 27}]
+    },
+    {
+      "id": "pulsar-08",
+      "verdict": "supported",
+      "fact": "若要在消息确认后继续保留消息，需要配置消息 retention policy；删除条件涉及所有订阅均已确认，而不是任一消费者确认后就必然删除。",
+      "citations": [{"source": "pulsar", "start": 30, "end": 30}]
+    },
+    {
+      "id": "pulsar-09",
+      "verdict": "supported",
+      "fact": "启用 batch index acknowledgment 可以跟踪批内各消息的确认状态，避免再次分发已确认的批内消息；该功能需要在 broker 和 consumer 两端启用。",
+      "citations": [{"source": "pulsar", "start": 257, "end": 259}]
+    },
+    {
+      "id": "pulsar-10",
+      "verdict": "supported",
+      "fact": "累计确认覆盖消息流中截至给定消息且包含该消息的所有消息，使其不再向该消费者重投；Shared 和 Key_Shared 不允许使用累计确认。",
+      "citations": [{"source": "pulsar", "start": 35, "end": 42}]
+    },
+    {
+      "id": "pulsar-11",
+      "verdict": "refuted",
+      "fact": "Shared 和 Key_Shared 不支持累计确认，应逐条确认消息。",
+      "citations": [{"source": "pulsar", "start": 42, "end": 42}]
+    },
+    {
+      "id": "pulsar-12",
+      "verdict": "supported",
+      "fact": "负确认会触发 broker 重投消息；在 Exclusive、Failover 和 Key_Shared 等有序订阅类型中，失败消息可能不按原始顺序到达。",
+      "citations": [{"source": "pulsar", "start": 44, "end": 48}]
+    },
+    {
+      "id": "pulsar-13",
+      "verdict": "supported",
+      "fact": "如果准备对消息使用负确认，应在该消息的确认超时之前发送负确认。",
+      "citations": [{"source": "pulsar", "start": 49, "end": 49}]
+    },
+    {
+      "id": "pulsar-14",
+      "verdict": "supported",
+      "fact": "示例注释列出的 negativeAckRedeliveryDelay 默认值为 1 分钟，示例本身将其设置为 2 秒。",
+      "citations": [{"source": "pulsar", "start": 55, "end": 55}]
+    },
+    {
+      "id": "pulsar-15",
+      "verdict": "supported",
+      "fact": "负确认重投可以配置 backoff，根据重试次数使用不同的重投延迟。",
+      "citations": [{"source": "pulsar", "start": 62, "end": 73}]
+    },
+    {
+      "id": "pulsar-16",
+      "verdict": "supported",
+      "fact": "负确认和确认超时段落均警告，开启 batching 时会重投整个 batch 的消息；但 batching 段落另有明确限定：启用 batch index acknowledgment 可以避免再次分发已确认的批内消息。",
+      "citations": [
+        {"source": "pulsar", "start": 85, "end": 85},
+        {"source": "pulsar", "start": 114, "end": 114},
+        {"source": "pulsar", "start": 256, "end": 259}
+      ]
+    },
+    {
+      "id": "pulsar-17",
+      "verdict": "refuted",
+      "fact": "negativeAcknowledge 的重投计数仅保存在内存中，不会在 broker 重启后可靠保留；broker 重启等导致订阅 dispatcher 关闭的事件会将计数重置为零。",
+      "citations": [{"source": "pulsar", "start": 86, "end": 88}]
+    },
+    {
+      "id": "pulsar-18",
+      "verdict": "supported",
+      "fact": "需要可靠重试上限时，文档建议使用 reconsumeLater 配合 enableRetry(true)，将重试次数持久化为消息属性；文档限定 retry letter topic 当前用于 Shared 订阅。",
+      "citations": [
+        {"source": "pulsar", "start": 89, "end": 89},
+        {"source": "pulsar", "start": 185, "end": 186}
+      ]
+    },
+    {
+      "id": "pulsar-19",
+      "verdict": "refuted",
+      "fact": "确认超时默认关闭。文档另记载，Pulsar 2.3.x 至 2.10.x 的 Java SDK 在配置 dead letter policy 且用户未指定确认超时时会设置 30 秒超时，但该默认策略自 3.0.x 起已移除。",
+      "citations": [
+        {"source": "pulsar", "start": 92, "end": 92},
+        {"source": "pulsar", "start": 205, "end": 205}
+      ]
+    },
+    {
+      "id": "pulsar-20",
+      "verdict": "supported",
+      "fact": "启用确认超时后，超过 ackTimeout 时客户端会请求 broker 重投未确认消息；还可以配置 backoff，使重投延迟随重试次数变化。",
+      "citations": [{"source": "pulsar", "start": 93, "end": 102}]
+    },
+    {
+      "id": "pulsar-21",
+      "verdict": "supported",
+      "fact": "消息压缩以一定 CPU 开销换取更小的消息体积；压缩类型记录在消息元数据中，消费者可以据此自动适配。",
+      "citations": [{"source": "pulsar", "start": 242, "end": 247}]
+    },
+    {
+      "id": "pulsar-22",
+      "verdict": "supported",
+      "fact": "开启 batching 后，批大小由最大消息数和最大发布延迟决定；该段所述 backlog 大小表示批次数，而不是消息总数。",
+      "citations": [{"source": "pulsar", "start": 254, "end": 254}]
+    },
+    {
+      "id": "pulsar-23",
+      "verdict": "refuted",
+      "fact": "通过 deliverAt 或 deliverAfter 配置的定时消息始终单独发送，即使已开启 batching 也不会加入批次。",
+      "citations": [{"source": "pulsar", "start": 255, "end": 255}]
+    },
+    {
+      "id": "pulsar-24",
+      "verdict": "supported",
+      "fact": "Batch index acknowledgment 默认关闭，须在 broker 端设置 acknowledgmentAtBatchIndexLevelEnabled，并在 consumer 端启用 enableBatchIndexAcknowledgment；开启后会增加内存开销。",
+      "citations": [{"source": "pulsar", "start": 258, "end": 259}]
+    },
+    {
+      "id": "pulsar-25",
+      "verdict": "supported",
+      "fact": "同步 send 会立即发送批次，即使批次尚未填满；文档建议单线程生产消息时使用 sendAsync 实现批量发送。",
+      "citations": [{"source": "pulsar", "start": 268, "end": 268}]
+    },
+    {
+      "id": "pulsar-26",
+      "verdict": "supported",
+      "fact": "开启 chunking 后，生产者将超过允许最大 payload 大小的消息拆成 chunks；消费者收到该消息的全部 chunks 后重组，将重组消息放入接收队列供客户端消费。",
+      "citations": [{"source": "pulsar", "start": 270, "end": 275}]
+    },
+    {
+      "id": "pulsar-27",
+      "verdict": "refuted",
+      "fact": "Chunking 仅适用于持久 topic，且不能与 batching 同时开启；启用 chunking 前必须关闭 batching。",
+      "citations": [{"source": "pulsar", "start": 277, "end": 278}]
+    },
+    {
+      "id": "pulsar-28",
+      "verdict": "supported",
+      "fact": "多个生产者向同一 topic 发布分块消息时，不同消息的 chunks 可以在同一 managed ledger 中交错；同一消息的 chunks 仍保持顺序，但不必连续。",
+      "citations": [{"source": "pulsar", "start": 282, "end": 282}]
+    },
+    {
+      "id": "pulsar-29",
+      "verdict": "supported",
+      "fact": "maxPendingChunkedMessage 限制消费者并行维护的分块消息数量；达到阈值时，消费者可通过静默确认丢弃待处理消息，或请求 broker 稍后重投。",
+      "citations": [{"source": "pulsar", "start": 284, "end": 284}]
+    },
+    {
+      "id": "pulsar-30",
+      "verdict": "supported",
+      "fact": "Chunking 默认关闭，可以在创建生产者时将 chunkingEnabled 设为 true 启用；前提是关闭 batching，且使用持久 topic。",
+      "citations": [
+        {"source": "pulsar", "start": 277, "end": 278},
+        {"source": "pulsar", "start": 285, "end": 288}
+      ]
+    },
+    {
+      "id": "pulsar-31",
+      "verdict": "supported",
+      "fact": "消费者若未在指定时间内收到消息的全部 chunks，会使不完整 chunks 过期；该时限默认为 1 分钟，可通过 expireTimeOfIncompleteChunkedMessage 配置。",
+      "citations": [{"source": "pulsar", "start": 290, "end": 290}]
+    },
+    {
+      "id": "pulsar-32",
+      "verdict": "supported",
+      "fact": "Topic 完整名称的结构为 {persistent|non-persistent}://tenant/namespace/topic；省略持久类型时默认为 persistent。",
+      "citations": [{"source": "pulsar", "start": 292, "end": 298}]
+    },
+    {
+      "id": "pulsar-33",
+      "verdict": "supported",
+      "fact": "Namespace 是 tenant 内用于分组相关 topic 的管理单元，多数 topic 配置在 namespace 层进行。",
+      "citations": [{"source": "pulsar", "start": 297, "end": 303}]
+    },
+    {
+      "id": "pulsar-34",
+      "verdict": "supported",
+      "fact": "订阅没有消费者时，其订阅类型未定义；消费者连接时确定类型，也可以通过重启全部消费者并使用不同配置来改变类型。",
+      "citations": [{"source": "pulsar", "start": 318, "end": 318}]
+    },
+    {
+      "id": "pulsar-35",
+      "verdict": "refuted",
+      "fact": "Exclusive 是默认订阅类型，但同一订阅只允许一个消费者连接；多个消费者使用同一订阅连接会报错。",
+      "citations": [{"source": "pulsar", "start": 320, "end": 323}]
+    },
+    {
+      "id": "pulsar-36",
+      "verdict": "supported",
+      "fact": "Failover 为非分区 topic 或分区 topic 的每个分区选择一个主消费者。切换时若旧活跃消费者仍在处理消息而新活跃消费者开始接收消息，可能出现重复或乱序。",
+      "citations": [{"source": "pulsar", "start": 325, "end": 329}]
+    },
+    {
+      "id": "pulsar-37",
+      "verdict": "supported",
+      "fact": "Durable 订阅的 cursor 持久化当前位置，可在 broker 故障重启后从 BookKeeper 恢复；Durable 也是默认订阅模式。",
+      "citations": [{"source": "pulsar", "start": 625, "end": 626}]
+    },
+    {
+      "id": "pulsar-38",
+      "verdict": "supported",
+      "fact": "Reader 的订阅模式固定为 NonDurable，不能更改，且不会阻止 topic 中的数据被删除。",
+      "citations": [{"source": "pulsar", "start": 627, "end": 628}]
+    },
+    {
+      "id": "pulsar-39",
+      "verdict": "refuted",
+      "fact": "Durable 与 non-durable 订阅可以使用相同名字，二者彼此独立。",
+      "citations": [{"source": "pulsar", "start": 629, "end": 629}]
+    },
+    {
+      "id": "pulsar-40",
+      "verdict": "supported",
+      "fact": "默认情况下，没有 durable 订阅的 topic 中的消息会被标记为可删除；创建 durable 订阅可改变这一默认行为，使该订阅下只有已确认消息被标记为可删除。另行配置的消息 TTL 仍可使未确认消息过期删除。",
+      "citations": [
+        {"source": "pulsar", "start": 631, "end": 631},
+        {"source": "pulsar", "start": 765, "end": 769}
+      ]
+    },
+    {
+      "id": "pulsar-41",
+      "verdict": "supported",
+      "fact": "多 topic 订阅可以使用显式 topic 列表或正则表达式；使用正则表达式时，所有 topic 必须位于同一个 namespace。",
+      "citations": [{"source": "pulsar", "start": 648, "end": 652}]
+    },
+    {
+      "id": "pulsar-42",
+      "verdict": "refuted",
+      "fact": "多 topic 订阅不提供跨 topic 的顺序保证，读取顺序不保证与生产者向这些 topic 发送消息的顺序一致。",
+      "citations": [{"source": "pulsar", "start": 655, "end": 656}]
+    },
+    {
+      "id": "pulsar-43",
+      "verdict": "supported",
+      "fact": "普通 topic 由单个 broker 服务；分区 topic 由 N 个内部 topic 实现，可以分布在多个 broker 上，分区在 broker 间的分布由 Pulsar 自动处理。",
+      "citations": [{"source": "pulsar", "start": 676, "end": 679}]
+    },
+    {
+      "id": "pulsar-44",
+      "verdict": "supported",
+      "fact": "Routing mode 决定消息发布到哪个分区，subscription type 决定消息分发给哪些消费者。",
+      "citations": [{"source": "pulsar", "start": 680, "end": 680}]
+    },
+    {
+      "id": "pulsar-45",
+      "verdict": "supported",
+      "fact": "文档说明分区 topic 需要通过 admin API 显式创建，创建时可以指定分区数量；原文未将“可以指定”表述为必须显式填写分区数量。",
+      "citations": [{"source": "pulsar", "start": 683, "end": 683}]
+    },
+    {
+      "id": "pulsar-46",
+      "verdict": "refuted",
+      "fact": "无 key 的 RoundRobinPartition 会轮换分区，但不是严格逐消息轮换，而是按 batching 延迟边界轮换，以保证 batching 有效。",
+      "citations": [{"source": "pulsar", "start": 688, "end": 688}]
+    },
+    {
+      "id": "pulsar-47",
+      "verdict": "supported",
+      "fact": "SinglePartition 在消息无 key 时随机选定一个分区，并将所有消息发送到该分区；消息有 key 时则按 key 的散列值路由到对应分区。",
+      "citations": [{"source": "pulsar", "start": 689, "end": 689}]
+    },
+    {
+      "id": "pulsar-48",
+      "verdict": "supported",
+      "fact": "Java 客户端可以通过实现 MessageRouter 接口定义 CustomPartition 路由，由自定义路由器决定消息的分区。",
+      "citations": [{"source": "pulsar", "start": 690, "end": 690}]
+    },
+    {
+      "id": "pulsar-49",
+      "verdict": "supported",
+      "fact": "在文档的路由顺序保证中，SinglePartition 或 RoundRobinPartition 配合每条消息的 key，使同 key 消息有序进入同一分区；SinglePartition 且每条消息无 key 时，对应同一生产者的消息有序。这不等于所有消费场景均有序，例如 Shared 不保证消息顺序。",
+      "citations": [
+        {"source": "pulsar", "start": 691, "end": 696},
+        {"source": "pulsar", "start": 360, "end": 360}
+      ]
+    },
+    {
+      "id": "pulsar-50",
+      "verdict": "supported",
+      "fact": "生产者默认散列函数为 JavaStringHash；对于不同语言客户端共同生产消息的场景，文档推荐使用 Murmur3_32Hash。",
+      "citations": [{"source": "pulsar", "start": 698, "end": 703}]
+    },
+    {
+      "id": "pulsar-51",
+      "verdict": "refuted",
+      "fact": "非持久 topic 的消息仅存在于内存，不会持久化到 BookKeeper；broker 被终止或订阅者断连会导致该 topic 的在途消息丢失。",
+      "citations": [{"source": "pulsar", "start": 706, "end": 710}]
+    },
+    {
+      "id": "pulsar-52",
+      "verdict": "supported",
+      "fact": "非持久 topic 将消息立即转发给已连接的消费者，不在 BookKeeper 中持久化；订阅者断连时无法收到的在途消息也不能在之后恢复接收。",
+      "citations": [{"source": "pulsar", "start": 710, "end": 711}]
+    },
+    {
+      "id": "pulsar-53",
+      "verdict": "supported",
+      "fact": "非持久 topic 默认在 broker 上启用，可以通过 broker 配置关闭。",
+      "citations": [{"source": "pulsar", "start": 712, "end": 712}]
+    },
+    {
+      "id": "pulsar-54",
+      "verdict": "supported",
+      "fact": "非持久 topic 支持 Exclusive、Shared、Key_Shared 和 Failover 四种订阅类型。",
+      "citations": [{"source": "pulsar", "start": 717, "end": 717}]
+    },
+    {
+      "id": "pulsar-55",
+      "verdict": "supported",
+      "fact": "Retention 用于保留已确认消息，expiry 为未确认消息设置 TTL；文档说明二者在 namespace 层管理。",
+      "citations": [{"source": "pulsar", "start": 763, "end": 769}]
+    },
+    {
+      "id": "pulsar-56",
+      "verdict": "supported",
+      "fact": "消息去重可以在 namespace 层或 topic 层管理。",
+      "citations": [{"source": "pulsar", "start": 776, "end": 776}]
+    },
+    {
+      "id": "pulsar-57",
+      "verdict": "supported",
+      "fact": "延迟消息机制将消息存入 BookKeeper，由 DelayedDeliveryTracker 在内存中维护时间到 Message ID 的索引；延迟投递仅受 Shared 和 Key_Shared 订阅支持。",
+      "citations": [{"source": "pulsar", "start": 783, "end": 787}]
+    },
+    {
+      "id": "pulsar-58",
+      "verdict": "refuted",
+      "fact": "只有 Shared 和 Key_Shared 支持延迟投递；Exclusive 和 Failover 等其他订阅类型会立即分发延迟消息，不等待指定延迟。",
+      "citations": [{"source": "pulsar", "start": 785, "end": 785}]
+    },
+    {
+      "id": "pulsar-59",
+      "verdict": "supported",
+      "fact": "Pulsar 只从 topic 前部删除 ledger，不从中间删除；长时间未消费的延迟消息可能阻碍 ledger 清理，即使后续 ledger 已全部消费。延迟消息还可能因长期未消费而触发 backlog quota 策略，导致后续发送被拒绝。",
+      "citations": [{"source": "pulsar", "start": 789, "end": 790}]
+    },
+    {
+      "id": "pulsar-60",
+      "verdict": "supported",
+      "fact": "配置的 TTL 到期时，Pulsar 会将延迟消息转为已确认状态，使其具备删除条件，而不会等待消息原定的延迟投递时间。",
+      "citations": [{"source": "pulsar", "start": 791, "end": 791}]
+    }
+  ]
+}

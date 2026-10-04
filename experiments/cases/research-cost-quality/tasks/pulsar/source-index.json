@@ -1,0 +1,13 @@
+[
+  {
+    "id": "pulsar",
+    "url": "https://pulsar.apache.org/docs/4.0.x/concepts-messaging/",
+    "resolved_url": "https://pulsar.apache.org/docs/4.0.x/concepts-messaging/",
+    "title": "Apache Pulsar 4.0.x messaging documentation; frozen website snapshot",
+    "fetch_utc": "2026-10-03T16:21:39.061512+00:00",
+    "raw_sha256": "b8d845cbfdf28bb5f016ea8818c8a1aee66a3a227e8a8aef4f47d9c1b5d23fc5",
+    "text_sha256": "aa5e7d36828b8b1bbaf0eef8564f2bc4bd9c400f7b5fd2f3ce9b6b2843f00fc2",
+    "lines": 847,
+    "characters": 79508
+  }
+]
