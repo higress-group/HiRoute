@@ -1,4 +1,5 @@
 import type { Agent, AgentSnapshot } from '../agents';
+import { agentHasNoModelConnection, agentModelStatus } from '../features/agents/status.ts';
 import type {
   HomeActivity,
   HomeAgents,
@@ -169,8 +170,7 @@ export function projectHomeCompute(snapshot: ManagementSnapshot): HomeCompute {
   };
 }
 
-function facet(state: string | undefined, verified = false): HomeFacetState {
-  if (verified) return 'verified';
+function facet(state: string | undefined): HomeFacetState {
   if (!state || state === 'not_configured' || state === 'restored') return 'unconfigured';
   if (state === 'configured') return 'configured';
   if (state === 'pending') return 'pending';
@@ -180,21 +180,21 @@ function facet(state: string | undefined, verified = false): HomeFacetState {
 }
 
 function projectAgent(agent: Agent): HomeAgents['agents'][number] {
+  const model = agentModelStatus(agent);
   const normalized = agent.agent_id.toLowerCase();
   const brand = normalized.includes('codex')
     ? 'codex'
-    : normalized.includes('claude') ? 'claude-code' : 'agent';
+    : normalized.includes('claude') ? 'claude-code' : normalized.includes('qoder') ? 'qoder' : 'agent';
   return {
     agentId: agent.agent_id,
     contextId: agent.context_id ?? undefined,
     displayName: agent.agent_id === 'agent_codex_default'
       ? 'Codex'
-      : agent.agent_id === 'agent_claude_default' ? 'Claude Code' : agent.agent_id,
+      : agent.agent_id === 'agent_claude_default' ? 'Claude Code'
+        : agent.agent_id === 'agent_qoder_default' ? 'Qoder' : agent.agent_id,
     brand,
-    model: facet(
-      agent.settings?.state ?? agent.configuration_state,
-      agent.settings?.model_verified === true,
-    ),
+    model: agentHasNoModelConnection(agent) ? 'unsupported'
+      : model ? facet(model.state) : 'unknown',
     collaboration: facet(agent.settings?.collaboration?.state),
     safeIssue: agent.status_error ?? undefined,
   };

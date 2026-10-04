@@ -4,6 +4,11 @@ HiRoute accepts issues and pull requests through
 [higress-group/HiRoute](https://github.com/higress-group/HiRoute). Please search existing
 issues before opening a new one and keep each pull request focused on one coherent change.
 
+Use the [code map](docs/code-map/README.md) to find each capability's production
+owner and representative tests. Read [tests as product documentation](docs/code-map/testing.md)
+before reorganizing coverage; preserve unique failure assertions while reducing
+coupling to internal file layout.
+
 ## Development environment
 
 The Rust version is pinned by `rust-toolchain.toml`. The Desktop UI uses Node.js 24 and

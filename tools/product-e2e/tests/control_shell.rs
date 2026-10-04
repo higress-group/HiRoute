@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::FileTypeExt;
@@ -99,6 +99,7 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
         .env("HOME", &agent_home)
         .env_remove("CODEX_HOME")
         .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("QODER_CONFIG_DIR")
         .env("PATH", agent_path)
         .env_remove("ANTHROPIC_BASE_URL")
         .env_remove("ANTHROPIC_MODEL")
@@ -154,13 +155,7 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
         let observed = run_cli(&binaries.hiroute, &runtime_root, &command);
         let command_id = format!("{}.{}", command[0], command[1]);
         assert_cli(&observed, expected[command_id.as_str()]);
-        assert_eq!(
-            observed.envelope["data"]["agents"]
-                .as_array()
-                .unwrap()
-                .len(),
-            2
-        );
+        assert_discovery_agent_ids(observed.envelope["data"]["agents"].as_array().unwrap());
         let internal = desktop_call(
             &endpoint,
             ClientHelloV1 {
@@ -179,7 +174,7 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
         );
         assert_eq!(internal["status"], "succeeded");
         let agents = internal["data"]["agents"].as_array().unwrap();
-        assert_eq!(agents.len(), 2);
+        assert_discovery_agent_ids(agents);
         let claude = agents
             .iter()
             .find(|agent| agent["agent_id"] == "agent_claude_default")
@@ -193,6 +188,12 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             claude["discovered_credential"]["field_selector"],
             "env.ANTHROPIC_AUTH_TOKEN"
         );
+        let qoder = agents
+            .iter()
+            .find(|agent| agent["agent_id"] == "agent_qoder_default")
+            .unwrap();
+        assert!(qoder["registered_configuration"].is_null());
+        assert!(qoder["discovered_credential"].is_null());
         assert!(!internal.to_string().contains(secret_sentinel));
         // Owner-only connection controls intentionally expose the exact directory
         // used by copied commands. No other discovery field may expose paths.
@@ -338,6 +339,21 @@ struct CliObservation {
     envelope: Value,
     stdout_lines: usize,
     stderr: Vec<u8>,
+}
+
+fn assert_discovery_agent_ids(agents: &[Value]) {
+    let ids = agents
+        .iter()
+        .map(|agent| agent["agent_id"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(ids.len(), agents.len(), "duplicate Agent IDs");
+    for required in [
+        "agent_codex_default",
+        "agent_claude_default",
+        "agent_qoder_default",
+    ] {
+        assert!(ids.contains(required), "missing required Agent: {required}");
+    }
 }
 
 fn run_cli(binary: &Path, runtime_root: &Path, arguments: &[&str]) -> CliObservation {

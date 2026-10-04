@@ -26,7 +26,10 @@ fn agent_profiles_freeze_protocol_precedence_and_owned_fields_without_version_ga
         .find(|profile| profile.kind == AgentKindV1::Codex)
         .unwrap();
     assert!(codex.legacy_exact_versions.is_empty());
-    assert_eq!(codex.ingress_protocol, AgentIngressProtocolV1::Responses);
+    assert_eq!(
+        codex.ingress_protocol,
+        Some(AgentIngressProtocolV1::Responses)
+    );
     assert_eq!(
         codex.config_precedence,
         [
@@ -46,7 +49,10 @@ fn agent_profiles_freeze_protocol_precedence_and_owned_fields_without_version_ga
         .find(|profile| profile.kind == AgentKindV1::ClaudeCode)
         .unwrap();
     assert!(claude.legacy_exact_versions.is_empty());
-    assert_eq!(claude.ingress_protocol, AgentIngressProtocolV1::Messages);
+    assert_eq!(
+        claude.ingress_protocol,
+        Some(AgentIngressProtocolV1::Messages)
+    );
     assert!(claude.field("base_endpoint").is_some());
     assert!(claude.supports_managed_launch());
     assert_eq!(

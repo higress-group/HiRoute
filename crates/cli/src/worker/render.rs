@@ -371,12 +371,20 @@ pub(super) fn render_erased(
         for selected in dependencies.selected {
             if output == OutputMode::Quiet {
                 lines.push(worker_harness_wire_name(selected.harness).to_owned());
+            } else if selected.harness == WorkerHarnessV1::QoderCli {
+                lines.push(format!(
+                    "selected\t{:?}\t{}",
+                    selected.harness, selected.cli_path
+                ));
             } else {
+                let Some(adapter_path) = selected.adapter_path.as_deref() else {
+                    return invalid_response();
+                };
                 lines.push(format!(
                     "selected\t{:?}\t{}\t{}\t{}",
                     selected.harness,
                     selected.cli_path,
-                    selected.adapter_path,
+                    adapter_path,
                     selected.node_path.as_deref().unwrap_or("-")
                 ));
             }
@@ -702,6 +710,7 @@ fn worker_harness_wire_name(harness: WorkerHarnessV1) -> &'static str {
     match harness {
         WorkerHarnessV1::CodexCli => "codex_cli",
         WorkerHarnessV1::ClaudeCode => "claude_code",
+        WorkerHarnessV1::QoderCli => "qoder_cli",
     }
 }
 
@@ -773,16 +782,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn dependency_quiet_output_contains_only_stable_selected_harness_names() {
+    fn dependency_view() -> WorkerDependenciesViewV1 {
         let root = std::env::current_dir().unwrap();
         let selection = |harness, name: &str| WorkerDependencySelectionV1 {
             harness,
-            adapter_path: root.join(format!("{name}-adapter")).display().to_string(),
+            adapter_path: (harness != WorkerHarnessV1::QoderCli)
+                .then(|| root.join(format!("{name}-adapter")).display().to_string()),
             cli_path: root.join(format!("{name}-cli")).display().to_string(),
-            node_path: None,
+            node_path: (harness == WorkerHarnessV1::CodexCli)
+                .then(|| root.join("node").display().to_string()),
         };
-        let view = WorkerDependenciesViewV1 {
+        WorkerDependenciesViewV1 {
             schema: "hiroute.worker-dependencies-view/v1".into(),
             selection_revisions: vec![
                 WorkerDependencySelectionRevisionV1 {
@@ -793,22 +803,57 @@ mod tests {
                     harness: WorkerHarnessV1::ClaudeCode,
                     revision: 2,
                 },
+                WorkerDependencySelectionRevisionV1 {
+                    harness: WorkerHarnessV1::QoderCli,
+                    revision: 3,
+                },
             ],
             candidates: Vec::new(),
             selected: vec![
                 selection(WorkerHarnessV1::CodexCli, "codex"),
                 selection(WorkerHarnessV1::ClaudeCode, "claude"),
+                selection(WorkerHarnessV1::QoderCli, "qoder"),
             ],
             install_hints: Vec::new(),
-        };
+        }
+    }
+
+    #[test]
+    fn dependency_quiet_output_contains_only_stable_selected_harness_names() {
         let rendered = render_transport(
-            Ok::<_, ClientFailure>(MachineEnvelopeV2::succeeded(view, None)),
+            Ok::<_, ClientFailure>(MachineEnvelopeV2::succeeded(dependency_view(), None)),
             OutputMode::Quiet,
             "worker.dependencies.discover",
             None,
         );
         assert_eq!(rendered.exit_code, 0);
-        assert_eq!(rendered.stdout, "codex_cli\nclaude_code\n");
+        assert_eq!(rendered.stdout, "codex_cli\nclaude_code\nqoder_cli\n");
+        assert!(rendered.stderr.is_empty());
+    }
+
+    #[test]
+    fn dependency_text_preserves_adapter_columns_only_for_adapter_harnesses() {
+        let view = dependency_view();
+        let codex = &view.selected[0];
+        let claude = &view.selected[1];
+        let qoder = &view.selected[2];
+        let expected = format!(
+            "selected\tCodexCli\t{}\t{}\t{}\nselected\tClaudeCode\t{}\t{}\t-\nselected\tQoderCli\t{}\n",
+            codex.cli_path,
+            codex.adapter_path.as_deref().unwrap(),
+            codex.node_path.as_deref().unwrap(),
+            claude.cli_path,
+            claude.adapter_path.as_deref().unwrap(),
+            qoder.cli_path,
+        );
+        let rendered = render_transport(
+            Ok::<_, ClientFailure>(MachineEnvelopeV2::succeeded(view, None)),
+            OutputMode::Text,
+            "worker.dependencies.discover",
+            None,
+        );
+        assert_eq!(rendered.exit_code, 0);
+        assert_eq!(rendered.stdout, expected);
         assert!(rendered.stderr.is_empty());
     }
 }

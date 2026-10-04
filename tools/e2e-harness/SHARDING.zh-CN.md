@@ -14,6 +14,10 @@ cargo run --locked -p hiroute-e2e -- validate \
   --profile e2e/profiles/local-process.json
 ```
 
+受管验证通过 `cargo test` 执行完整的 CLI 定义测试，命令见
+[测试选择](../../docs/test-selection.md#keep-these-quality-boundaries)。它不选择分片，
+检查全部 17 个步骤、10 个声明分片，但不启动业务进程。定义校验通过不代表生产 smoke 通过。
+
 为一个分片运行独立的黑盒进程时，给每次运行唯一结果文件：
 
 ```sh

@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(here, '../../..');
 const outputRoot = path.resolve(process.argv[2] ?? path.join(desktopRoot, 'test-results/v3-agent-trust'));
+const shellOnly = process.argv[3] === '--shell-only';
+if (process.argv[3] && !['--shell-only', '--route-save-only', '--worker-replacement-only', '--claude-collaboration-only'].includes(process.argv[3])) throw new Error(`Unknown scenario selection: ${process.argv[3]}`);
 const routeSaveOnly = process.argv[3] === '--route-save-only';
 const workerReplacementOnly = process.argv[3] === '--worker-replacement-only';
 const claudeCollaborationOnly = process.argv[3] === '--claude-collaboration-only';
@@ -59,11 +61,18 @@ let vite;
 let chrome;
 try {
   vite = spawn(path.join(desktopRoot, 'node_modules/.bin/vite'), ['tests/v3/browser', '--host', '127.0.0.1', '--port', String(httpPort), '--strictPort'], { cwd: desktopRoot, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  vite.stdout.resume();
+  vite.stderr.on('data', data => process.stderr.write(data));
   await waitFor(`http://127.0.0.1:${httpPort}/`);
   const chromeExecutable = process.env.CHROME_BIN || (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome');
   chrome = spawn(chromeExecutable, ['--headless=new', '--disable-gpu', `--remote-debugging-port=${cdpPort}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1280,900', 'about:blank'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  await waitFor(`http://127.0.0.1:${cdpPort}/json/version`);
-  const runner = spawn(process.execPath, [path.join(here, 'agent-trust-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...(routeSaveOnly ? ['--route-save-only'] : workerReplacementOnly ? ['--worker-replacement-only'] : claudeCollaborationOnly ? ['--claude-collaboration-only'] : [])], { cwd: desktopRoot, stdio: 'inherit' });
+  chrome.stdout.resume();
+  // Drain the diagnostic pipe: repeated platform warnings can otherwise block Chrome.
+  let chromeErrors = '';
+  chrome.stderr.on('data', data => { chromeErrors = (chromeErrors + data).slice(-8000); });
+  try { await waitFor(`http://127.0.0.1:${cdpPort}/json/version`); }
+  catch (error) { throw new Error(`${error.message}\n${chromeErrors}`); }
+  const runner = spawn(process.execPath, [path.join(here, 'agent-trust-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...(shellOnly ? ['--shell-only'] : routeSaveOnly ? ['--route-save-only'] : workerReplacementOnly ? ['--worker-replacement-only'] : claudeCollaborationOnly ? ['--claude-collaboration-only'] : [])], { cwd: desktopRoot, stdio: 'inherit' });
   const outcome = await waitForExit(runner);
   if (outcome.code !== 0) process.exitCode = outcome.code ?? 1;
 } finally {

@@ -15,3 +15,13 @@ test('stale route and draft revisions have actionable messages', () => {
  assert.match(planErrorMessage('PLAN_HEAD_STALE', 'zh'), /生效配置/);
  assert.match(planErrorMessage('DRAFT_REVISION_STALE', 'en'), /latest draft/);
 });
+test('a Qoder budget conflict requires model reconnection and preserves independent task collaboration', () => {
+ const failure = { source: 'backend', envelope: { error: {
+  code: 'QODER_MODEL_BUDGET_CONFLICT', message_key: 'agent.error.qoder_model_budget_conflict', details: 'private-native-config',
+ } } };
+ assert.equal(planErrorCode(failure), 'QODER_MODEL_BUDGET_CONFLICT');
+ assert.match(planErrorMessage(failure, 'zh'), /停用 Qoder 的模型路由.*再发布此计划并重新配置模型路由/);
+ assert.match(planErrorMessage(failure, 'zh'), /任务协作无需停用/);
+ assert.match(planErrorMessage(failure, 'en'), /Disable Qoder model routing.*publish this plan.*configure model routing again/);
+ assert.ok(!planErrorMessage(failure, 'zh').includes('private-native-config'));
+});

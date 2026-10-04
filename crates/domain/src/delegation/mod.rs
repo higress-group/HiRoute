@@ -2,6 +2,8 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod installation;
+pub use installation::*;
 mod progress;
 pub use progress::*;
 mod process;
@@ -45,6 +47,7 @@ impl WorkerConcurrencySettingsV1 {
 pub enum WorkerHarnessV1 {
     CodexCli,
     ClaudeCode,
+    QoderCli,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

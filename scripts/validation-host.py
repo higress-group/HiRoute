@@ -157,7 +157,12 @@ def execute(payload):
             raise ValueError("pilot requires config/start/status/stop")
         if arguments[0] == "start" and not gui_session()["available"]:
             raise ValueError("Desktop GUI login session unavailable for the execution user")
-        argv = [sys.executable, str(repo / "scripts/desktop-pilot.py"), *arguments]
+        if arguments[0] == "config":
+            if any(a == "--repo" or a.startswith("--repo=") for a in arguments):
+                raise ValueError("Configure repo in validation.json")
+            arguments[1:1] = ["--repo", str(repo)]
+        bundle = tooling_bundle(payload.get("bundle"))
+        argv = [sys.executable, str(bundle / "desktop-pilot.py"), *arguments]
     elif action == "pilot-cli":
         if "--socket" not in arguments and not any(a.startswith("--socket=") for a in arguments):
             raise ValueError("pilot-cli requires an explicit execution-host --socket")

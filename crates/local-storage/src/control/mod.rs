@@ -230,6 +230,7 @@ impl ControlStore {
         path: &Path,
         migration_backup_root: &Path,
         expected_store_uuid: &str,
+        target_schema_version: u32,
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
             diagnostics: RefCell::new(Default::default()),
@@ -241,6 +242,7 @@ impl ControlStore {
                 migration_backup_root,
                 Some(expected_store_uuid),
                 None,
+                target_schema_version,
             )?),
         })
     }
@@ -1694,10 +1696,10 @@ fn store_step(
     operation: &OperationV1,
     step: &OperationStepV1,
 ) -> PortResult<()> {
-    let encoded = serde_json::to_string(&json!({
+    let encoded = serde_json::to_string(&hiroute_domain::canonicalize_json(json!({
         "schema": "hiroute.operation-step/v1",
         "step": step,
-    }))
+    })))
     .map_err(|_| port(PortErrorCode::InvalidData, "control.step.encode"))?;
     transaction
         .execute(
@@ -2009,7 +2011,9 @@ impl ManagedArtifactStore {
     ) -> Result<Self, LocalStorageError> {
         let mut external_targets = BTreeMap::new();
         for (target, path) in targets {
-            validate_external_target_path(&path)?;
+            // Startup registers potential targets, including Agents never configured here.
+            // Native permissions are checked on use and for every durable recovery marker.
+            validate_external_target_location(&path)?;
             if external_targets.contains_key(&target)
                 || external_targets.values().any(|existing| existing == &path)
             {
@@ -2032,11 +2036,8 @@ impl ManagedArtifactStore {
             external_targets,
             untouched_deletions: std::sync::Mutex::new(BTreeMap::new()),
         };
-        // Validate every durable marker only after its native path binding is present. This is
-        // the restart-safe counterpart to bind_external_target, which is used before first Apply.
-        for target in store.external_targets.keys() {
-            let _ = store.target_path(target)?;
-        }
+        // Register all exact bindings before validating the targets actually owned by markers.
+        // A never-managed Agent's directory cannot prevent unrelated service startup.
         store.migrate_legacy_markers()?;
         store.validate_existing_marker_bindings()?;
         Ok(store)
@@ -2241,6 +2242,11 @@ impl ManagedArtifactStore {
                 || marker.external_path_digest != self.external_path_digest(&marker.target)?
             {
                 return Err(LocalStorageError::Locked);
+            }
+            if self.external_targets.contains_key(&marker.target) {
+                // A durable effect is a real recovery consumer, not an unused registration.
+                // Validate before touching even a legacy marker's internal representation.
+                let _ = self.target_path(&marker.target)?;
             }
             let changed = match marker.schema.as_str() {
                 "hiroute.managed-artifact-marker/v2" => {
@@ -3003,14 +3009,20 @@ fn prepare_owner_directory(path: &Path) -> Result<(), LocalStorageError> {
     Ok(())
 }
 
-fn validate_external_target_path(path: &Path) -> Result<(), LocalStorageError> {
+fn validate_external_target_location(path: &Path) -> Result<(), LocalStorageError> {
     if !path.is_absolute()
+        || path.parent().is_none()
         || path
             .components()
             .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
     {
         return Err(LocalStorageError::InvalidData);
     }
+    Ok(())
+}
+
+fn validate_external_target_path(path: &Path) -> Result<(), LocalStorageError> {
+    validate_external_target_location(path)?;
     let parent = path.parent().ok_or(LocalStorageError::InvalidData)?;
     native_directories::validate_parent(parent)?;
     match fs::symlink_metadata(path) {

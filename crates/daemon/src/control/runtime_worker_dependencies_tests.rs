@@ -37,7 +37,7 @@ fn select_request(root: &std::path::Path, suffix: &str) -> WorkerDependenciesSel
     executable(&node);
     WorkerDependenciesSelectRequestV1 {
         harness: WorkerHarnessV1::CodexCli,
-        adapter_path: adapter.to_string_lossy().into_owned(),
+        adapter_path: Some(adapter.to_string_lossy().into_owned()),
         cli_path: cli.to_string_lossy().into_owned(),
         node_path: Some(node.to_string_lossy().into_owned()),
         expected_selection_revision: 0,
@@ -92,7 +92,7 @@ fn local_worker_dependency_selection_is_cas_durable_and_replays_before_metadata(
     assert_eq!(selected.revision, 1);
     assert_eq!(
         selected.config.adapter,
-        std::path::PathBuf::from(&request.adapter_path)
+        request.adapter_path.as_ref().map(std::path::PathBuf::from)
     );
 
     std::fs::remove_dir_all(directory.path().join("first")).unwrap();
@@ -100,8 +100,8 @@ fn local_worker_dependency_selection_is_cas_durable_and_replays_before_metadata(
     assert!(replay.error.is_none(), "{replay:?}");
     assert_eq!(replay.operation, applied.operation);
     assert_eq!(
-        replay.data.as_ref().unwrap()["selected"][0]["adapter_path"],
-        request.adapter_path
+        replay.data.as_ref().unwrap()["selected"][0]["adapter_path"].as_str(),
+        request.adapter_path.as_deref()
     );
     assert!(
         replay.data.as_ref().unwrap()["candidates"]

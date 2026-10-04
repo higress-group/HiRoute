@@ -35,7 +35,7 @@ use hiroute_integrations::{
     CLAUDE_PROFILE_ID_V1, CODEX_INTEGRATION_PROFILE_REF_V1, CODEX_PROFILE_ID_V1,
     ClaudeRegistrationIndexV1, DiscoveredCredentialRefV1, FilesystemAgentDiscoveryV1,
     FilesystemAgentScannerV1, PermissionHardeningRequiredV1, ProtectedAgentSubscriptionSourceV1,
-    TrustedReleaseCatalog,
+    QODER_INTEGRATION_PROFILE_REF_V1, QODER_PROFILE_ID_V1, TrustedReleaseCatalog,
 };
 use hiroute_local_storage::{ApplyCapabilityRegistrationV1, LocalStorageSet, ManagedArtifactStore};
 use hiroute_observation::{DigestAuthority, LocalObservationStore};
@@ -73,16 +73,19 @@ mod model_connections;
 mod mutation;
 mod native_claude_model;
 mod native_model;
+mod native_qoder_model;
 mod plan_content;
 mod plan_content_snapshot;
 mod plan_versions;
 mod prices;
 mod protected_inputs;
 mod publication;
+mod qoder_model_budget;
 mod release_install;
 mod routing;
 mod settings_codex_profile;
 mod settings_facts;
+mod settings_retry;
 mod settings_status;
 mod source_authorization;
 mod subscriptions;
@@ -300,12 +303,21 @@ impl ProductionControlRuntime {
                     )
                     .map_err(|error| error.to_string())?
                     .map(|(selection, _)| PathBuf::from(selection.cli_path));
+                let selected_qoder = stores
+                    .control()
+                    .worker_dependency_selection(
+                        &WorkspaceId::default(),
+                        hiroute_domain::delegation::WorkerHarnessV1::QoderCli,
+                    )
+                    .map_err(|error| error.to_string())?
+                    .map(|(selection, _)| PathBuf::from(selection.cli_path));
                 release_agent_scanner(
                     &home,
                     &project,
                     &release_catalog,
                     overrides.codex_desktop_engine,
                     selected_claude,
+                    selected_qoder,
                 )?
             }
         };
@@ -336,11 +348,23 @@ impl ProductionControlRuntime {
         let profile_target = AgentConnectionEffectRoleV1::ManagedConfiguration
             .target_for(&profile_subject)
             .map_err(|error| error.to_string())?;
+        let qoder_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent_qoder_default",
+            QODER_PROFILE_ID_V1,
+            QODER_INTEGRATION_PROFILE_REF_V1,
+        )
+        .map_err(|error| error.to_string())?;
         let artifacts = stores
             .open_managed_artifacts_with_external_targets(
                 storage_root.join("managed-artifacts"),
                 storage_root.join("artifact-restores"),
                 [
+                    (
+                        AgentConnectionEffectRoleV1::ManagedConfiguration
+                            .target_for(&qoder_subject)
+                            .map_err(|error| error.to_string())?,
+                        scanner.qoder_user_config_target(),
+                    ),
                     (claude_managed_target, scanner.claude_user_settings_target()),
                     (codex_managed_target, scanner.codex_user_config_target()),
                     (profile_target, scanner.codex_profile_config_target()),
@@ -355,6 +379,12 @@ impl ProductionControlRuntime {
                             .target_for(&claude_subject)
                             .map_err(|error| error.to_string())?,
                         home.join(".claude/skills/hiroute-collaboration/SKILL.md"),
+                    ),
+                    (
+                        AgentConnectionEffectRoleV1::RoutingSkill
+                            .target_for(&qoder_subject)
+                            .map_err(|error| error.to_string())?,
+                        scanner.qoder_user_skill_target(),
                     ),
                 ],
             )
@@ -888,17 +918,14 @@ impl WorkerInstallationSelectionSource for LocalControlAdapter {
             .control()
             .worker_dependency_selection(&WorkspaceId::default(), harness)
             .map_err(|_| hiroute_domain::delegation::DelegationErrorV1::StorageUnavailable)?;
-        Ok(
-            selected.map(|(selection, revision)| WorkerInstallationSelection {
-                config: WorkerInstallationConfig {
-                    harness: selection.harness,
-                    adapter: PathBuf::from(selection.adapter_path),
-                    harness_binary: PathBuf::from(selection.cli_path),
-                    node_binary: selection.node_path.map(PathBuf::from),
-                },
-                revision,
-            }),
-        )
+        selected
+            .map(|(selection, revision)| {
+                Ok(WorkerInstallationSelection {
+                    config: WorkerInstallationConfig::from_record(&selection)?,
+                    revision,
+                })
+            })
+            .transpose()
     }
 }
 
@@ -1241,6 +1268,7 @@ fn release_agent_scanner(
     catalog: &TrustedReleaseCatalog,
     codex_desktop_engine: Option<PathBuf>,
     selected_claude: Option<PathBuf>,
+    selected_qoder: Option<PathBuf>,
 ) -> Result<FilesystemAgentScannerV1, String> {
     // ReleaseFacts verification already validated the registered connector/model metadata.
     // Agent registration consumes that payload after the current rating snapshot and all
@@ -1254,6 +1282,9 @@ fn release_agent_scanner(
     layout.codex_desktop_executable = codex_desktop_engine;
     if let Some(executable) = selected_claude {
         layout.claude_executable = executable;
+    }
+    if let Some(executable) = selected_qoder {
+        layout.qoder_executable = executable;
     }
     Ok(FilesystemAgentScannerV1::new(layout, index))
 }
@@ -1284,6 +1315,7 @@ fn discovered_agent(
             match kind {
                 AgentKindV1::Codex => "codex-responses-v1",
                 AgentKindV1::ClaudeCode => "claude-messages-v1",
+                AgentKindV1::Qoder => QODER_PROFILE_ID_V1,
             }
             .to_owned(),
             version.clone(),

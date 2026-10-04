@@ -71,7 +71,7 @@ fn both_frozen_v14_shapes_upgrade_without_losing_their_applied_history() {
                 Path::new("unused-backups"),
                 None,
                 None,
-                true,
+                Some(LATEST_SCHEMA_VERSION),
             )
             .unwrap();
 

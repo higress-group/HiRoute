@@ -182,7 +182,9 @@ function Harness() {
   async function run() {
     setRunning(true);
     if (workerChecks) {
-      const outcome = await runRoutingWorkerScenarios(0, 5);
+      const ids = ['routing.capabilities.candidate-vs-fixed', 'worker.discovery.visible-only',
+        'worker.installation.harness-isolation', 'worker.installation.replace', 'worker.installation.latest-edit'];
+      const outcome = await runRoutingWorkerScenarios({ ids, requiredIds: ids });
       setResults(outcome.results);
       setRunning(false);
       return;

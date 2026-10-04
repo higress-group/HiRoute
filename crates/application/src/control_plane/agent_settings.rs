@@ -21,7 +21,10 @@ pub(crate) fn preview(
         Ok(payload) => payload,
         Err(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
     };
-    if request.operation_id == "PreviewAgentConnectionRestore" && !payload.spec.is_restore_only() {
+    // Restore owns a distinct confirmation and idempotency scope. Keep the descriptor
+    // consistent with the journal kind the strict settings reader derives from this spec.
+    let restore = request.operation_id == "PreviewAgentConnectionRestore";
+    if restore != payload.spec.is_restore_only() {
         return failed(ErrorCode::InvalidArguments, request.request_id);
     }
     let Some(port) = service
@@ -44,8 +47,8 @@ pub(crate) fn preview(
     result["expected_revisions"] = json!(input.expected_revisions);
     result["applicable"] = json!(preview.blockers.is_empty());
     result["resident_service"] = json!({
-        "login_item_required": input.facts.login_item_required,
-        "login_item_removal_required": input.facts.login_item_removal_required,
+        "login_item_required": input.facts.model.as_ref().is_some_and(|model| model.login_item_required),
+        "login_item_removal_required": input.facts.model.as_ref().is_some_and(|model| model.login_item_removal_required),
     });
     if matches!(
         &preview.spec.collaboration,
@@ -61,13 +64,16 @@ pub(crate) fn preview(
             trigger_mode: settings.trigger_mode,
         });
     }
-    result["model_effect"] = match (&preview.spec.model, &input.model_file.target) {
+    result["model_effect"] = match (
+        &preview.spec.model,
+        input.model_file.as_ref().map(|file| &file.target),
+    ) {
         (
             hiroute_application_api::AgentFacetIntent::Configure { settings },
-            SettingsModelTargetFacts::Codex {
+            Some(SettingsModelTargetFacts::Codex {
                 provider_id,
                 endpoint,
-            },
+            }),
         ) => json!({
             "action":"configure", "agent_class":"codex", "provider_id":provider_id, "endpoint":endpoint,
             "selection":settings,
@@ -75,16 +81,28 @@ pub(crate) fn preview(
         }),
         (
             hiroute_application_api::AgentFacetIntent::Configure { settings },
-            SettingsModelTargetFacts::Claude(claude),
+            Some(SettingsModelTargetFacts::Claude(claude)),
         ) => json!({
             "action":"configure", "agent_class":"claude", "endpoint":claude.gateway_base_url,
             "selection":settings,
             "authentication":"connection_scoped_local_grant",
         }),
-        (hiroute_application_api::AgentFacetIntent::Restore { restore_point_ref }, _) => {
+        (
+            hiroute_application_api::AgentFacetIntent::Configure { settings },
+            Some(SettingsModelTargetFacts::Qoder {
+                provider_id,
+                endpoint,
+                ..
+            }),
+        ) => json!({
+            "action":"configure", "agent_class":"qoder", "provider_id":provider_id, "endpoint":endpoint,
+            "selection":settings, "authentication":"connection_scoped_local_grant",
+        }),
+        (hiroute_application_api::AgentFacetIntent::Restore { restore_point_ref }, Some(_)) => {
             json!({"action":"restore","restore_point_ref":restore_point_ref})
         }
         (hiroute_application_api::AgentFacetIntent::Keep, _) => json!({"action":"keep"}),
+        (_, None) => return failed(ErrorCode::InvalidArguments, request.request_id),
     };
     if !preview.context_windows.is_empty() {
         result["model_effect"]["context_windows"] = json!(preview.context_windows);
@@ -128,7 +146,7 @@ pub(crate) fn apply(
         Err(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
     };
     let restore = request.operation_id == "ApplyAgentConnectionRestore";
-    if restore && !payload.spec.is_restore_only() {
+    if restore != payload.spec.is_restore_only() {
         return failed(ErrorCode::InvalidArguments, request.request_id);
     }
     let operation_kind = if restore {
@@ -156,12 +174,22 @@ pub(crate) fn apply(
         Ok(input) => input,
         Err(error) => return failed(map_control_error(error), request.request_id),
     };
-    if !input.facts.login_item_removal_required && payload.login_item.is_some() {
+    if !input
+        .facts
+        .model
+        .as_ref()
+        .is_some_and(|model| model.login_item_removal_required)
+        && payload.login_item.is_some()
+    {
         // New saves do not own startup state; an unsolicited host declaration must not be
         // silently accepted after an older Desktop has changed the system login item.
         return failed(ErrorCode::InvalidArguments, request.request_id);
     }
-    if input.facts.login_item_removal_required
+    if input
+        .facts
+        .model
+        .as_ref()
+        .is_some_and(|model| model.login_item_removal_required)
         && !payload
             .login_item
             .as_ref()

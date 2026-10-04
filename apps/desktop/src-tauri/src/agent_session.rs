@@ -1,5 +1,6 @@
 //! Agent-specific native flow over shared Client Core and the existing confirmation/recovery.
 use super::*;
+use hiroute_application_api::AgentSettingsStatusV2;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -22,7 +23,7 @@ pub struct AgentEntry {
     pub native_model_catalog: Option<Value>,
     pub context_id: Option<String>,
     #[serde(default)]
-    pub settings: Option<AgentModelSettingsStatusV2>,
+    pub settings: Option<AgentSettingsStatusV2>,
     #[serde(default)]
     pub status_error: Option<String>,
 }
@@ -109,7 +110,7 @@ fn trusted_preview_spec(requested: &AgentSettingsSpecV2, returned: &AgentSetting
 pub struct AgentConfirmation {
     plan_names: std::collections::BTreeMap<String, String>,
     agent_name: String,
-    previous: Option<AgentModelSettingsStatusV2>,
+    previous: Option<AgentSettingsStatusV2>,
     permit: ConfirmationPermit,
     input: AgentSettingsInput,
     preview: AgentPreview,
@@ -130,10 +131,29 @@ impl AgentConfirmation {
         self.input.language == "en"
     }
     pub fn message(&self) -> String {
+        let qoder_routes = self.agent_name == "Qoder"
+            || matches!(
+                &self.input.spec.model,
+                AgentFacetIntent::Configure {
+                    settings: AgentModelSelectionV2::QoderAdditional { .. }
+                }
+            )
+            || self
+                .previous
+                .as_ref()
+                .and_then(AgentSettingsStatusV2::model)
+                .and_then(|status| status.current_selection.as_ref())
+                .is_some_and(|selection| {
+                    matches!(selection, AgentModelSelectionV2::QoderAdditional { .. })
+                });
         let action = if self.input.spec.is_restore_only()
             && matches!(&self.input.spec.model, AgentFacetIntent::Restore { .. })
         {
-            if self.english() {
+            if qoder_routes && self.english() {
+                "Remove additional HiRoute model routes"
+            } else if qoder_routes {
+                "移除附加 HiRoute 模型路由"
+            } else if self.english() {
                 "Restore owned model settings"
             } else {
                 "恢复受管模型设置"
@@ -182,6 +202,24 @@ impl AgentConfirmation {
         };
         let effect = &self.preview.model_effect;
         let details = match &self.input.spec.model {
+            AgentFacetIntent::Configure {
+                settings: AgentModelSelectionV2::QoderAdditional { allowed_plan_ids },
+            } => {
+                let routes = allowed_plan_ids
+                    .iter()
+                    .map(|id| route_name(id.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if self.english() {
+                    format!(
+                        "Additional HiRoute routes: {routes}\nChoose one of these routes explicitly in Qoder to use HiRoute. Your native models, current default model and login configuration stay unchanged."
+                    )
+                } else {
+                    format!(
+                        "附加 HiRoute 路由：{routes}\n在 Qoder 中明确选择这些路由后才会使用 HiRoute；原生模型、当前默认模型和登录配置保持不变。"
+                    )
+                }
+            }
             AgentFacetIntent::Configure { settings } => format!(
                 "{}: {}\n{}: {}\n{}: {}\n{}",
                 if self.english() {
@@ -208,6 +246,22 @@ impl AgentConfirmation {
                     "认证将替换为仅此连接使用的本机凭据。"
                 }
             ),
+            AgentFacetIntent::Restore { .. } if qoder_routes => {
+                let mut details = if self.english() {
+                    "Remove only HiRoute-owned additional model routes. Your native models, current default model and login configuration stay unchanged."
+                } else {
+                    "仅移除 HiRoute 拥有的附加模型路由；原生模型、当前默认模型和登录配置保持不变。"
+                }
+                .to_owned();
+                if matches!(&self.input.spec.collaboration, AgentFacetIntent::Keep) {
+                    details.push_str(if self.english() {
+                        " Task collaboration stays unchanged."
+                    } else {
+                        "任务协作保持不变。"
+                    });
+                }
+                details
+            }
             AgentFacetIntent::Restore { .. } => if self.english() {
                 "Restore the previously saved model configuration."
             } else {
@@ -231,10 +285,13 @@ impl AgentConfirmation {
                 }
                 .into(),
             },
-            AgentFacetIntent::Restore { .. } => if self.english() {
-                "Disable task routing for this Agent. Model routing stays configured."
-            } else {
-                "停用此 Agent 的任务路由；模型路由保持原配置。"
+            AgentFacetIntent::Restore { .. } => match (self.english(), &self.input.spec.model) {
+                (true, AgentFacetIntent::Keep) => {
+                    "Disable task routing for this Agent. Model configuration stays unchanged."
+                }
+                (false, AgentFacetIntent::Keep) => "停用此 Agent 的任务路由；模型配置保持不变。",
+                (true, _) => "Disable task routing for this Agent.",
+                (false, _) => "停用此 Agent 的任务路由。",
             }
             .into(),
             AgentFacetIntent::Keep => String::new(),
@@ -244,6 +301,7 @@ impl AgentConfirmation {
             && let Some(before) = self
                 .previous
                 .as_ref()
+                .and_then(AgentSettingsStatusV2::model)
                 .and_then(|s| s.current_selection.as_ref())
         {
             let before_model = default_model(before);
@@ -285,6 +343,8 @@ impl AgentConfirmation {
         }
         let model_details = if changes.is_empty() {
             details
+        } else if qoder_routes {
+            format!("{}\n{details}", changes.join("\n"))
         } else {
             format!(
                 "{}\n{}",
@@ -469,6 +529,7 @@ impl Session {
                 .map(|agent| match agent.agent_id.as_str() {
                     "agent_codex_default" => "Codex".to_owned(),
                     "agent_claude_default" => "Claude Code".to_owned(),
+                    "agent_qoder_default" => "Qoder".to_owned(),
                     _ => if input.language == "en" {
                         "Scanned Agent"
                     } else {
@@ -625,6 +686,178 @@ impl Session {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn qoder_spec() -> AgentSettingsSpecV2 {
+        serde_json::from_value(json!({
+            "schema_version": {"major": 2, "minor": 0},
+            "context_id": "agent-context/qoder/test",
+            "model": {"intent": "configure", "settings": {
+                "mode": "qoder_additional", "allowed_plan_ids": ["plan/one", "plan/two"]
+            }}
+        }))
+        .unwrap()
+    }
+
+    fn qoder_confirmation(spec: AgentSettingsSpecV2, language: &str) -> AgentConfirmation {
+        let digest = CanonicalDigest::of(&spec).unwrap();
+        let model_action = match &spec.model {
+            AgentFacetIntent::Keep => "keep",
+            AgentFacetIntent::Configure { .. } => "configure",
+            AgentFacetIntent::Restore { .. } => "restore",
+        };
+        let preview = AgentPreview {
+            schema: "hiroute.agent-settings-preview/v2".into(),
+            spec: spec.clone(),
+            accept_digest: digest.clone(),
+            dependency_digest: digest.clone(),
+            expected_revisions: RevisionSetV1 {
+                target: 7,
+                dependencies: Default::default(),
+            },
+            applicable: true,
+            blockers: vec![],
+            model_effect: json!({"action": model_action}),
+            collaboration_effect: None,
+            resident_service: AgentResidentServicePreview::default(),
+        };
+        let request = AgentSettingsApplyV2 {
+            spec: spec.clone(),
+            accept_digest: preview.accept_digest.clone(),
+            dependency_digest: preview.dependency_digest.clone(),
+            expected_revisions: preview.expected_revisions.clone(),
+            idempotency_key: "qoder-settings-test".into(),
+            login_item: None,
+        };
+        AgentConfirmation {
+            plan_names: [
+                ("plan/one".into(), "Route one".into()),
+                ("plan/two".into(), "Route two".into()),
+            ]
+            .into(),
+            agent_name: "Qoder".into(),
+            previous: None,
+            permit: ConfirmationGate::default().begin().unwrap(),
+            input: AgentSettingsInput {
+                spec,
+                language: language.into(),
+                custom_token: None,
+            },
+            preview,
+            request,
+            intent: IntentEvidence {
+                schema: "hiroute.desktop-agent-settings-intent/v2".into(),
+                digest,
+            },
+            token_candidate: None,
+        }
+    }
+
+    #[test]
+    fn qoder_preview_cannot_change_the_exact_routes_context_or_other_facets() {
+        let requested = qoder_spec();
+        assert!(trusted_preview_spec(&requested, &requested));
+        let wire = serde_json::to_value(&requested).unwrap();
+        for routes in [
+            json!(["plan/one"]),
+            json!(["plan/one", "plan/two", "plan/three"]),
+        ] {
+            let mut changed = wire.clone();
+            changed["model"]["settings"]["allowed_plan_ids"] = routes;
+            let changed = serde_json::from_value(changed).unwrap();
+            assert!(!trusted_preview_spec(&requested, &changed));
+        }
+        for (field, value) in [
+            ("context_id", json!("agent-context/qoder/other")),
+            ("access_token", json!({"intent": "regenerate"})),
+            (
+                "collaboration",
+                json!({"intent": "configure", "settings": {"trigger_mode": "explicit"}}),
+            ),
+            (
+                "model",
+                json!({"intent": "configure", "settings": {
+                    "mode": "codex_default", "native_model_mode": "preserve_available",
+                    "fixed_models": [], "allowed_plan_ids": ["plan/one", "plan/two"],
+                    "default_selection": {"kind": "preserve_native"}
+                }}),
+            ),
+        ] {
+            let mut changed = wire.clone();
+            changed[field] = value;
+            let changed = serde_json::from_value(changed).unwrap();
+            assert!(!trusted_preview_spec(&requested, &changed), "{field}");
+        }
+    }
+
+    #[test]
+    fn qoder_route_save_and_independent_restores_describe_only_their_owned_effects() {
+        let previous: AgentSettingsStatusV2 = serde_json::from_value(json!({
+            "schema": "hiroute.agent-model-settings-status/v2",
+            "context_id": "agent-context/qoder/test", "state": "configured",
+            "operation_id": "operation/qoder", "operation_state": "succeeded",
+            "restore_point_ref": "model-restore/qoder", "applied_revision": 7,
+            "surface_results": [], "model_verified": false,
+            "current_selection": {"mode": "qoder_additional", "allowed_plan_ids": ["plan/one"]}
+        }))
+        .unwrap();
+        for (language, preservation, collaboration_kept, models_kept) in [
+            (
+                "en",
+                "native models, current default model and login configuration stay unchanged",
+                "Task collaboration stays unchanged",
+                "Model configuration stays unchanged",
+            ),
+            (
+                "zh",
+                "原生模型、当前默认模型和登录配置保持不变",
+                "任务协作保持不变",
+                "模型配置保持不变",
+            ),
+        ] {
+            let mut configured = qoder_confirmation(qoder_spec(), language);
+            configured.previous = Some(previous.clone());
+            assert!(!configured.requires_confirmation());
+            let message = configured.message();
+            for text in ["Route one", "+ Route two", preservation] {
+                assert!(message.contains(text), "Missing {text}: {message}");
+            }
+
+            let mut spec = qoder_spec();
+            spec.model = AgentFacetIntent::Restore {
+                restore_point_ref: "model-restore/qoder".into(),
+            };
+            let mut restored = qoder_confirmation(spec, language);
+            restored.agent_name = "Agent identity unavailable".into();
+            restored.previous = Some(previous.clone());
+            assert!(restored.requires_confirmation());
+            assert_eq!(restored.revision(), 7);
+            let message = restored.message();
+            assert!(message.contains(preservation), "{message}");
+            assert!(message.contains(collaboration_kept), "{message}");
+            assert!(message.contains(if language == "en" {
+                "only HiRoute-owned additional model routes"
+            } else {
+                "仅移除 HiRoute 拥有的附加模型路由"
+            }));
+
+            let mut both = restored.input.spec.clone();
+            both.collaboration = AgentFacetIntent::Restore {
+                restore_point_ref: "skill-restore/qoder".into(),
+            };
+            let message = qoder_confirmation(both, language).message();
+            assert!(!message.contains(collaboration_kept));
+            assert!(!message.contains(models_kept));
+
+            let mut spec = qoder_spec();
+            spec.model = AgentFacetIntent::Keep;
+            spec.collaboration = AgentFacetIntent::Restore {
+                restore_point_ref: "skill-restore/qoder".into(),
+            };
+            let restored = qoder_confirmation(spec, language);
+            assert!(restored.requires_confirmation());
+            assert!(restored.message().contains(models_kept));
+        }
+    }
 
     #[test]
     fn preview_cannot_replace_the_requested_token_action() {

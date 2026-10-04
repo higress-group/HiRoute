@@ -56,7 +56,7 @@ impl ManagedArtifactStore {
             ));
         }
         let target = self.native_target_path(intent.target())?;
-        let safe = read_native_file(&target, 1024 * 1024).map_err(|_| {
+        let safe = read_native_file(&target, 1024 * 1024, None).map_err(|_| {
             port(
                 PortErrorCode::PermissionDenied,
                 "native.restoration.ack.read",
@@ -96,7 +96,7 @@ impl ManagedArtifactStore {
             ));
         }
         let target = self.native_target_path(intent.target())?;
-        let current = read_native_file(&target, 1024 * 1024).map_err(|_| {
+        let current = read_native_file(&target, 1024 * 1024, None).map_err(|_| {
             port(
                 PortErrorCode::PermissionDenied,
                 "native.restoration.ack.read",

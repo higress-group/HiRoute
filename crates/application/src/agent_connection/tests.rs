@@ -48,6 +48,9 @@ fn agent_connection_current_proof_allows_unlisted_version_without_version_allowl
 
 fn installation(kind: AgentKindV1) -> SupportedAgentInstallationV1 {
     let version = match kind {
+        AgentKindV1::Qoder => {
+            panic!("model-connection fixture does not support collaboration-only Qoder")
+        }
         AgentKindV1::Codex => CODEX_VERIFIED_VERSION_V1,
         AgentKindV1::ClaudeCode => CLAUDE_CODE_VERIFIED_VERSION_V1,
     };
@@ -82,6 +85,9 @@ fn installation(kind: AgentKindV1) -> SupportedAgentInstallationV1 {
 fn profile(kind: AgentKindV1) -> AgentProfileV1 {
     let precedence = kind.config_precedence().to_vec();
     match kind {
+        AgentKindV1::Qoder => {
+            panic!("model-connection fixture does not support collaboration-only Qoder")
+        }
         AgentKindV1::Codex => {
             let tool = codex_spawn_agent_tool_v1();
             AgentProfileV1 {
@@ -90,7 +96,7 @@ fn profile(kind: AgentKindV1) -> AgentProfileV1 {
                 integration_profile_ref: "builtin/codex-responses/v1".to_owned(),
                 kind,
                 legacy_exact_versions: BTreeSet::from([CODEX_VERIFIED_VERSION_V1.to_owned()]),
-                ingress_protocol: AgentIngressProtocolV1::Responses,
+                ingress_protocol: Some(AgentIngressProtocolV1::Responses),
                 config_precedence: precedence,
                 owned_config_fields: vec![
                     field("provider", "model_provider"),
@@ -120,7 +126,7 @@ fn profile(kind: AgentKindV1) -> AgentProfileV1 {
             integration_profile_ref: "builtin/claude-messages/v1".to_owned(),
             kind,
             legacy_exact_versions: BTreeSet::from([CLAUDE_CODE_VERIFIED_VERSION_V1.to_owned()]),
-            ingress_protocol: AgentIngressProtocolV1::Messages,
+            ingress_protocol: Some(AgentIngressProtocolV1::Messages),
             config_precedence: precedence,
             owned_config_fields: vec![
                 field("base_endpoint", "env.ANTHROPIC_BASE_URL"),
@@ -246,6 +252,9 @@ fn facts(kind: AgentKindV1) -> AgentConnectionPlanningFactsV1 {
 
 fn spec(kind: AgentKindV1, native: bool, dynamic: bool) -> AgentConnectSpecV1 {
     let profile = match kind {
+        AgentKindV1::Qoder => {
+            panic!("model-connection fixture does not support collaboration-only Qoder")
+        }
         AgentKindV1::Codex => profile(AgentKindV1::Codex),
         AgentKindV1::ClaudeCode => profile(AgentKindV1::ClaudeCode),
     };
@@ -254,6 +263,9 @@ fn spec(kind: AgentKindV1, native: bool, dynamic: bool) -> AgentConnectSpecV1 {
         agent_id: format!("agent/{}", kind.as_str()),
         profile_id: profile.profile_id,
         installed_version: match kind {
+            AgentKindV1::Qoder => {
+                panic!("model-connection fixture does not support collaboration-only Qoder")
+            }
             AgentKindV1::Codex => CODEX_VERIFIED_VERSION_V1,
             AgentKindV1::ClaudeCode => CLAUDE_CODE_VERIFIED_VERSION_V1,
         }
@@ -734,4 +746,22 @@ fn client_version_changes_do_not_invalidate_configuration_snapshot() {
             assert!(!original.same_snapshot(&changed));
         }
     }
+}
+
+#[test]
+fn model_connection_planner_rejects_collaboration_only_profile_before_grants() {
+    let spec = spec(AgentKindV1::Codex, false, false);
+    let mut facts = facts(AgentKindV1::Codex);
+    let profile = &mut facts.installation.profile;
+    profile.kind = AgentKindV1::Qoder;
+    profile.ingress_protocol = None;
+    profile.config_precedence.clear();
+    profile.owned_config_fields.clear();
+    profile.dynamic_catalog = false;
+    profile.static_catalog_fallback = false;
+    profile.native_subagent_routing = false;
+    profile.spawn_guidance = None;
+    profile.managed_launch = None;
+    profile.validate().unwrap();
+    assert!(AgentConnectionPlanner::preview_connect(spec, facts).is_err());
 }

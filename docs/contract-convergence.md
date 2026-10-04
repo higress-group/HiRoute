@@ -26,7 +26,25 @@ families in tests remain governed by the subject path rules.
 inventory entry, a multi-version production family not classified by one subject, or a registered
 legacy token outside its allowed paths. This catches both producer and consumer drift without
 treating arbitrary prose or third-party fixtures as production contracts. It also pins database
-schema V17 and the unversioned `control.sock` endpoint.
+schema V23 from the single production declaration
+`LATEST_SCHEMA_VERSION` in `crates/local-storage/src/migrations/mod.rs`, and retains the
+unversioned `control.sock` endpoint. The schema gate accepts exactly one plain, unattributed
+top-level constant declaration in that source. Conditional declarations (including nested
+`cfg`/`cfg_attr` expressions), module/macro bodies, comments and string literals cannot satisfy
+it. Duplicate declarations and malformed lexical input fail. Inner file attributes require an
+explicit gate review because they can condition the entire module; the checker does not evaluate
+Rust configuration expressions. Matching literals in fixtures or other files cannot satisfy the
+gate. This narrow lexical check is not a replacement for Rust compilation.
+
+The local-storage owner owns both the schema and startup support policy. The current startup
+path accepts a fresh store or the current V23 format; existing schema 22 and other unsupported
+formats fail closed, as specified in [storage upgrades](upgrade-storage-design.md) and implemented
+in `crates/local-storage/src/migrations/startup_format.rs`. The version pin is an explicit review
+gate, not a claim that this Python script executes migration or recovery semantics. A schema
+change must review the production declaration, startup policy and its Rust contract tests, then
+update `EXPECTED_DATABASE_SCHEMA_VERSION` in the checker. Do not relax the gate by adding a
+fixture literal or a second live producer. `python3 scripts/test-contract-convergence.py` checks
+the gate itself, including changed production versions masked by historical fixtures.
 
 Desktop bridge owns `hiroute.web-confirmation/v1`, the local Tauri event between its native backend
 and bundled WebView confirmation host. V1 is the only emitted and accepted version; there is no

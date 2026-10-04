@@ -4,7 +4,9 @@ use hiroute_application::agent_connection::{
     AgentConnectionBeforeFingerprintsV1, AgentConnectionPlanningFactsV1,
     AgentConnectionPlanningInputV1, RegisteredGatewayEndpointV1,
 };
-use hiroute_application::control::{AgentConnectionControlPort, ControlReadError};
+use hiroute_application::control::{
+    AgentConnectionControlPort, CollaborationCheckError, ControlReadError,
+};
 use hiroute_application_api::{
     AGENT_CONNECTION_STATUS_SCHEMA_V1, AgentConnectSpecV1, AgentConnectionStateV1,
     AgentConnectionStatusRequestV1, AgentConnectionStatusV1, AgentLaunchDescriptorRequestV1,
@@ -20,6 +22,9 @@ use hiroute_integrations::AgentDiscoveryOutcomeV1;
 
 use super::LocalControlAdapter;
 
+#[cfg(unix)]
+#[path = "agent_connection_collaboration_check.rs"]
+mod collaboration_check;
 #[path = "agent_connection_discovery.rs"]
 mod discovery;
 
@@ -325,27 +330,33 @@ impl LocalControlAdapter {
 }
 
 impl AgentConnectionControlPort for LocalControlAdapter {
-    fn check_collaboration(&self, agent_id: &str) -> Result<(), ControlReadError> {
+    fn check_collaboration(&self, agent_id: &str) -> Result<(), CollaborationCheckError> {
         #[cfg(unix)]
         {
             // A sibling from the running installation, never a PATH-selected replacement.
             let cli = std::env::current_exe()
                 .map_err(|_| ControlReadError::Unavailable)?
                 .with_file_name("hiroute");
+            if agent_id == "agent_qoder_default" {
+                return self
+                    .scanner
+                    .check_qoder_collaboration(&cli, self.qoder_collaboration_probe_target()?)
+                    .map_err(collaboration_check::qoder_failure);
+            }
             let result = match agent_id {
                 "agent_codex_default" => self.scanner.check_codex_collaboration(&cli),
                 "agent_claude_default" => self.scanner.check_claude_collaboration(&cli),
-                _ => return Err(ControlReadError::NotFound),
+                _ => return Err(ControlReadError::NotFound.into()),
             };
             result.map_err(|error| {
                 eprintln!("native collaboration check: {error}");
-                ControlReadError::Unavailable
+                ControlReadError::Unavailable.into()
             })
         }
         #[cfg(not(unix))]
         {
             let _ = agent_id;
-            Err(ControlReadError::Unavailable)
+            Err(ControlReadError::Unavailable.into())
         }
     }
     fn check_native_authentication(&self, agent_id: &str) -> Result<(), ControlReadError> {
@@ -394,14 +405,14 @@ impl AgentConnectionControlPort for LocalControlAdapter {
         &self,
         request: &hiroute_application_api::AgentSettingsRetryV1,
     ) -> Result<hiroute_domain::OperationV1, ControlReadError> {
-        self.retry_codex_operation(request)
+        self.retry_model_settings_operation(request)
     }
 
     fn settings_status(
         &self,
         request: &hiroute_application_api::AgentSettingsStatusRequestV2,
-    ) -> Result<hiroute_application_api::AgentModelSettingsStatusV2, ControlReadError> {
-        self.model_settings_status(request)
+    ) -> Result<hiroute_application_api::AgentSettingsStatusV2, ControlReadError> {
+        self.agent_settings_status(request)
     }
 
     fn settings_facts(

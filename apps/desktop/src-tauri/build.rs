@@ -55,6 +55,7 @@ fn main() {
             "preview_agent_settings",
             "retry_agent_settings",
             "check_agent_authentication",
+            "check_agent_live",
             "worker_settings_get",
             "worker_settings_set",
             "worker_task_plans",

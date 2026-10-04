@@ -91,25 +91,26 @@ impl LocalControlAdapter {
             AgentFacetIntent::Configure { settings } => {
                 let skill_current = match skill {
                     Some(record) if record.contexts.contains(&spec.context_id) => {
-                        match record.file_ownership {
+                        let ownership_current = match record.file_ownership {
                             hiroute_domain::CollaborationSkillFileOwnership::Managed => {
                                 record.file_effect.is_some()
                             }
                             hiroute_domain::CollaborationSkillFileOwnership::BorrowedIdentical => {
-                                let target = class
-                                    .skill_target()
-                                    .map_err(|_| ControlReadError::Corrupt)?;
                                 record.file_effect.is_none()
-                                    && self
-                                        .artifacts
-                                        .read_native_target(&target)
-                                        .map_err(super::map_port)?
-                                        .is_some_and(|bytes| {
-                                            CanonicalDigest::of_bytes(bytes.as_slice())
-                                                == record.content_digest
-                                        })
                             }
-                        }
+                        };
+                        let target = class
+                            .skill_target()
+                            .map_err(|_| ControlReadError::Corrupt)?;
+                        ownership_current
+                            && self
+                                .artifacts
+                                .read_native_target(&target)
+                                .map_err(super::map_port)?
+                                .is_some_and(|bytes| {
+                                    CanonicalDigest::of_bytes(bytes.as_slice())
+                                        == record.content_digest
+                                })
                     }
                     _ => false,
                 };

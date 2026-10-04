@@ -809,6 +809,7 @@ mod tests {
                 executors: vec![
                     unavailable(hiroute_domain::delegation::WorkerHarnessV1::CodexCli),
                     unavailable(hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode),
+                    unavailable(hiroute_domain::delegation::WorkerHarnessV1::QoderCli),
                 ],
             })
         }
@@ -869,7 +870,15 @@ mod tests {
         let value = response.data.unwrap();
         assert!(value.get("plans").is_none());
         assert!(value.get("agent_id").is_none());
-        assert_eq!(value["executors"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            value["executors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|executor| executor["harness"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["codex_cli", "claude_code", "qoder_cli"]
+        );
 
         let rejected = invoke_worker(
             &tasks,

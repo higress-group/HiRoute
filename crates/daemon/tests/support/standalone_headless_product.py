@@ -206,7 +206,7 @@ finally:
 import http.client, json, os, sys
 from urllib.parse import urlparse
 config = json.loads(os.environ['CODEX_CONFIG'])
-base = urlparse(config['model_providers']['hiroute']['base_url'])
+base = urlparse(config['model_providers'][config['model_provider']]['base_url'])
 token = os.environ['HIROUTE_RUN_TOKEN']
 session = 'headless-acp-session'
 for line in sys.stdin:
@@ -217,7 +217,10 @@ for line in sys.stdin:
     elif method == 'session/new':
         result = {'sessionId': session, '_meta': {'agentSessionId': session}, 'modes': {
             'currentModeId': 'agent-full-access',
-            'availableModes': [{'id': 'agent-full-access', 'name': 'Autonomous'}]}}
+            'availableModes': [{'id': 'agent-full-access', 'name': 'Autonomous'}]},
+            'configOptions': [{'id': 'model', 'name': 'Model', 'type': 'select',
+                               'currentValue': config['model'],
+                               'options': [{'value': config['model'], 'name': config['model']}]}]}
     elif method == 'session/set_mode':
         result = {}
     elif method == 'session/prompt':

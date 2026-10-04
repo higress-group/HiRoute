@@ -564,6 +564,7 @@ pub enum ErrorCode {
     ChangePreviewStale,
     IdempotencyKeyReused,
     AgentAuthPrecedenceConflict,
+    QoderModelBudgetConflict,
     CapabilityDenied,
     CapabilityUnavailable,
     ResourceNotFound,
@@ -602,7 +603,9 @@ impl ErrorCode {
             | Self::RevisionConflict
             | Self::ChangePreviewStale
             | Self::IdempotencyKeyReused => MachineStatus::Conflict,
-            Self::NoSupportedAgent | Self::AgentAuthPrecedenceConflict => MachineStatus::Conflict,
+            Self::NoSupportedAgent
+            | Self::AgentAuthPrecedenceConflict
+            | Self::QoderModelBudgetConflict => MachineStatus::Conflict,
             Self::CapabilityDenied => MachineStatus::Denied,
             Self::ResourceNotFound => MachineStatus::NotFound,
             Self::CapabilityUnavailable
@@ -632,6 +635,7 @@ impl ErrorCode {
             Self::ChangePreviewStale => "application.error.change_preview_stale",
             Self::IdempotencyKeyReused => "application.error.idempotency_key_reused",
             Self::AgentAuthPrecedenceConflict => "agent.error.auth_precedence_conflict",
+            Self::QoderModelBudgetConflict => "agent.error.qoder_model_budget_conflict",
             Self::CapabilityUnavailable => "control.error.capability_unavailable",
             Self::CapabilityDenied => "control.error.capability_denied",
             Self::ResourceNotFound => "application.error.resource_not_found",

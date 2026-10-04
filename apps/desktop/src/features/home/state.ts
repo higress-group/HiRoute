@@ -63,7 +63,7 @@ export function visibleData<T>(read: HomeRead<T>): T | undefined {
 }
 
 function configuredFacet(state: HomeFacetState): boolean {
-  return state !== 'unconfigured' && state !== 'unknown';
+  return state !== 'unconfigured' && state !== 'unknown' && state !== 'unsupported';
 }
 
 function hasAnyConfiguration(compute?: HomeCompute, plans?: HomePlans, agents?: HomeAgents): boolean {

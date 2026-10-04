@@ -36,6 +36,15 @@ pub trait NativeAgentArtifactPort: ExternalEffectPort {
         intent: &ExternalEffectIntentV1,
     ) -> PortResult<bool>;
     fn read_native_target(&self, target: &str) -> PortResult<Option<Zeroizing<Vec<u8>>>>;
+    /// Read a native file containing a local bearer only after verifying owner-only 0600
+    /// permissions on the same opened file used for reading. Import/restore of ordinary user
+    /// configuration remains on read_native_target; unsupported adapters must fail closed.
+    fn read_private_native_target(&self, _target: &str) -> PortResult<Option<Zeroizing<Vec<u8>>>> {
+        Err(crate::PortError::new(
+            crate::PortErrorCode::PermissionDenied,
+            "native.private_read.unsupported",
+        ))
+    }
     fn save_native_restore(
         &self,
         operation: &OperationId,

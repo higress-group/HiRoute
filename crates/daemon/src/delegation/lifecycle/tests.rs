@@ -9,10 +9,13 @@ use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
+mod startup;
+
 #[derive(Default)]
 struct Journal(
     Mutex<Vec<&'static str>>,
     Option<Arc<crate::delegation::finalization::DelegationFinalization>>,
+    std::sync::atomic::AtomicBool,
 );
 impl AcpRunJournal for Journal {
     fn session_bound(&self, _: &AcpSessionBinding) -> Result<(), DelegationErrorV1> {
@@ -39,7 +42,11 @@ impl WorkerRunJournal for Journal {
 
     fn before_launch(&self) -> Result<(), DelegationErrorV1> {
         self.0.lock().unwrap().push("authorize");
-        Ok(())
+        if self.2.load(std::sync::atomic::Ordering::SeqCst) {
+            Err(DelegationErrorV1::PermissionDenied)
+        } else {
+            Ok(())
+        }
     }
     fn process_spawned(&self, _: &WorkerProcessIdentity) -> Result<(), DelegationErrorV1> {
         self.0.lock().unwrap().push("spawned");
@@ -171,6 +178,12 @@ impl WorkerPlatformPort for Fixture {
 }
 
 fn inputs() -> (WorkerLaunchRequest, AcpRunInput, tempfile::TempDir) {
+    inputs_in_context(None)
+}
+
+fn inputs_in_context(
+    borrowed_root: Option<&std::path::Path>,
+) -> (WorkerLaunchRequest, AcpRunInput, tempfile::TempDir) {
     let fixture = tempfile::tempdir().unwrap();
     #[cfg(unix)]
     {
@@ -210,17 +223,28 @@ fn inputs() -> (WorkerLaunchRequest, AcpRunInput, tempfile::TempDir) {
         duration_ms: 1000,
         delegation_depth: 1,
     };
+    let native_context = match borrowed_root {
+        Some(root) => {
+            crate::delegation::profile::NativeWorkerContext::borrowed(fixture.path(), root)
+        }
+        None => crate::delegation::profile::NativeWorkerContext::isolated(&private, session.path()),
+    }
+    .unwrap();
+    let catalog =
+        borrowed_root.map(|_| crate::delegation::profile::test_codex_catalog("fixed-alias"));
     let profile = CandidateWorkerProfile::build(ProfileInput {
-        claude_context_window: None,
+        context_window_tokens: None,
+        max_output_tokens: None,
         harness: WorkerHarnessV1::CodexCli,
-        adapter: &adapter,
+        adapter: Some(&adapter),
         harness_binary: &harness,
         node_binary: None,
         private_root: &private,
         session_root: &session,
+        native_context: &native_context,
         workspace: &cwd,
         alias: "fixed-alias",
-        codex_catalog: None,
+        codex_catalog: catalog.as_deref(),
         native_effort: None,
         gateway: "127.0.0.1:10001".parse().unwrap(),
         permit: &permit,
@@ -237,6 +261,7 @@ fn inputs() -> (WorkerLaunchRequest, AcpRunInput, tempfile::TempDir) {
         identity_contract: profile.identity_contract.clone(),
         session_meta: profile.session_meta.clone(),
         native_session_mode: Some(profile.native_session_mode().to_owned()),
+        expected_model: None,
         authentication: None,
         deadline: Instant::now() + Duration::from_secs(1),
         cancellation: CancellationToken::new(),
@@ -398,7 +423,11 @@ async fn spawn_stdio_acp_result_and_owned_cleanup_need_no_helper_handshake() {
 #[tokio::test]
 async fn terminal_publication_lease_survives_until_the_executor_receives_the_result() {
     let finalization = Arc::new(crate::delegation::finalization::DelegationFinalization::default());
-    let journal = Arc::new(Journal(Mutex::default(), Some(Arc::clone(&finalization))));
+    let journal = Arc::new(Journal(
+        Mutex::default(),
+        Some(Arc::clone(&finalization)),
+        Default::default(),
+    ));
     let backend = Fixture {
         journal: Arc::clone(&journal),
         methods: Arc::default(),
@@ -458,6 +487,62 @@ async fn claude_history_checkpoint_observes_new_and_appended_stable_transcripts(
         );
         writer.await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn borrowed_claude_checkpoint_observes_native_file_instead_of_owned_binding() {
+    let storage = tempfile::tempdir().unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(storage.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let workspace = storage.path().join("workspace");
+    let home = storage.path().join("daily-home");
+    let config = home.join("native-config");
+    fs::create_dir_all(&config).unwrap();
+    fs::create_dir(&workspace).unwrap();
+    let session = TaskSessionRoot::prepare(
+        storage.path(),
+        &hiroute_domain::WorkspaceId::parse("workspace").unwrap(),
+        "root",
+        "task",
+        WorkerHarnessV1::ClaudeCode,
+        SessionRootUse::New,
+    )
+    .unwrap();
+    session
+        .bind_borrowed_context(&home, &config, &workspace)
+        .unwrap();
+    let project = fs::canonicalize(workspace)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .replace(|ch: char| !ch.is_ascii_alphanumeric(), "-");
+    let id = "71a2b020-312e-49cd-b084-924cbb3642ad";
+    let history = config
+        .join("projects")
+        .join(project)
+        .join(format!("{id}.jsonl"));
+    fs::create_dir_all(history.parent().unwrap()).unwrap();
+    fs::write(&history, b"old\n").unwrap();
+    crate::delegation::profile::native_history(session.path(), WorkerHarnessV1::ClaudeCode, id)
+        .unwrap();
+    assert_eq!(claude_history_len(session.path(), id), Some(4));
+    let checkpoint = ClaudeHistoryCheckpoint {
+        root: session.path().to_owned(),
+        baseline: HistoryBaseline::Existing(4),
+    };
+    let writer = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        use std::io::Write;
+        let mut file = fs::OpenOptions::new().append(true).open(history).unwrap();
+        file.write_all(b"new\n").unwrap();
+        file.sync_all().unwrap();
+    });
+    assert!(checkpoint.wait_until_settled(Some(id)).await);
+    writer.await.unwrap();
+    assert_eq!(claude_history_len(session.path(), id), Some(8));
 }
 
 #[tokio::test]

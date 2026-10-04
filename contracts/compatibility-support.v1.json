@@ -5,8 +5,10 @@
     "hiroute.agent-access-grant-entry/v1",
     "hiroute.agent-check-request/v1",
     "hiroute.agent-check/v1",
+    "hiroute.agent-collaboration-check-failure/v1",
     "hiroute.agent-collaboration-credential/v1",
     "hiroute.agent-collaboration-grant/v1",
+    "hiroute.agent-collaboration-only-settings-status/v2",
     "hiroute.agent-collaboration-settings-status/v2",
     "hiroute.agent-config-change/v1",
     "hiroute.agent-config-permission-control/v1",
@@ -268,6 +270,9 @@
     "hiroute.protected-apply-grant/v2",
     "hiroute.protected-input-result/v1",
     "hiroute.protected-input/v1",
+    "hiroute.qoder-additional-model/v1",
+    "hiroute.qoder-borrowed-context-collaboration/v1",
+    "hiroute.qoder-native-restore/v1",
     "hiroute.rating-snapshot/v2",
     "hiroute.registered-compute-discovery-fact/v1",
     "hiroute.release-facts-compiler-input/v2",
@@ -297,6 +302,7 @@
     "hiroute.settings-codex-model-file/v1",
     "hiroute.settings-login-item/v1",
     "hiroute.settings-model-publication/v1",
+    "hiroute.settings-qoder-model-file/v1",
     "hiroute.settings-service-completion/v2",
     "hiroute.settings-service-proof/v2",
     "hiroute.settings-skill-file/v1",
@@ -368,7 +374,7 @@
           "contract": "hiroute.pre-fix-default-canonical-records/v1",
           "mode": "frozen_fixture",
           "owner": "local-storage",
-          "reason": "Preserve the unmodified pre-MVP canonical Operation journal, alias-only model scope and six original step proofs as algorithm regression evidence. It is not a supported schema22 migration source or production recovery decoder; a schema23 store rejects its raw journal.",
+          "reason": "Preserve the unmodified pre-MVP canonical Operation journal, alias-only model scope and six original step proofs as algorithm regression evidence. It is not a supported schema22 migration source or production recovery decoder; the current stable store rejects its raw journal.",
           "removal_condition": "Remove only with the historical canonical digest regression suite; never regenerate the frozen bytes from a current producer.",
           "allowed_paths": [
             "crates/local-storage/tests/canonical_compat.rs",
@@ -891,6 +897,20 @@
   ],
   "field_compatibility_support": [
     {
+      "contract": "hiroute.delegation-native-root/v1",
+      "field": "task-owned native home without borrowed-native-context.json",
+      "mode": "recovery_read_only",
+      "owner": "worker-native-context",
+      "reason": "Continue existing private-root Worker tasks with their original native history and owned cleanup. New tasks bind borrowed native context explicitly; a damaged or partially missing binding must never fall back to the legacy scanner.",
+      "removal_condition": "Retire only after all retained tasks and supported backups no longer contain private-root native sessions, together with the frozen recovery fixtures.",
+      "allowed_paths": [
+        "crates/daemon/src/delegation/profile/materials.rs",
+        "crates/daemon/src/delegation/profile/native_history.rs",
+        "crates/daemon/src/delegation/profile/materials_tests.rs",
+        "crates/daemon/src/delegation/profile/native_history_tests.rs"
+      ]
+    },
+    {
       "contract": "hiroute.settings-service-completion/v2",
       "field": "service-first restore checkpoint with an unstaged client model file",
       "mode": "recovery_read_only",
@@ -963,6 +983,110 @@
         "crates/cpa-bridge/src/owner.rs",
         "crates/cpa-bridge/src/runtime.rs",
         "crates/cpa-bridge/src/runtime/tests/proxy_recovery.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.worker-dependency-selection-confirmation/v1",
+      "field": "schema23 selection/effect constraints and original Operation journal bytes",
+      "mode": "recovery_read_only",
+      "owner": "local-storage",
+      "reason": "Accept only marked stable schema23 through the existing complete three-store backup coordinator; schema24 expands harness constraints without reserializing selections, effects or Operation journals. Interrupted 23/24 sets require validated source backup, identities, key and migration phase.",
+      "removal_condition": "End schema23 upgrade support only by an explicit product decision that preserves a documented usable recovery path for supported stores and backups.",
+      "allowed_paths": [
+        "crates/local-storage/src/migrations/startup_format.rs",
+        "crates/local-storage/src/migrations/worker_dependencies_v24.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.worker-dependency-selection-confirmation/v1",
+      "field": "frozen schema23 staged/activated/succeeded Worker journals",
+      "mode": "frozen_fixture",
+      "owner": "local-storage",
+      "reason": "Original six Codex/Claude journals exported from producer cdbb2cec by 5d8306cc establish raw-byte, fingerprint, idempotency and compensation compatibility after production startup; never regenerate from the current serializer.",
+      "removal_condition": "Retire only with declared schema23 recovery support and its replacement upgrade evidence.",
+      "allowed_paths": [
+        "crates/local-storage/src/migrations/fixtures/schema23-worker-operations.json",
+        "crates/local-storage/src/migrations/fixtures/README.md",
+        "crates/local-storage/src/migrations/worker_dependencies_v24_tests.rs",
+        "crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.worker-settings/v1",
+      "field": "Qoder CLI 1.1.65 exact native-session history and compaction witnesses in acceptance fixtures",
+      "mode": "frozen_fixture",
+      "owner": "worker-product-acceptance",
+      "reason": "The opt-in Qoder acceptance fixture locates only the already-bound native session beneath its private canonical workspace (at most 200 characters) to verify history retention, exact missing-history refusal and native automatic compaction. The shared fixture classifier pins native summarization prompts; the auxiliary journey additionally pins compact_boundary/isCompactSummary records. Production never enumerates or derives a Qoder history filename or consumes these records.",
+      "removal_condition": "Replace when native exact-session history and structured purpose/compaction receipts can prove the same assertions; revise the pinned fixture when supporting a different native history or compaction layout.",
+      "allowed_paths": [
+        "crates/daemon/tests/support/qoder_native_context.py",
+        "crates/daemon/tests/support/qoder_compaction_product.py",
+        "crates/daemon/tests/support/native_context_fixture.py",
+        "tools/product-e2e/tests/QODER_DELEGATION.md",
+        "scripts/test-qoder-product.py"
+      ]
+    },
+    {
+      "contract": "hiroute.delegation-native-root/v1",
+      "field": "current runtime task/run record_json identity witness for a cancelled Qoder acceptance task",
+      "mode": "frozen_fixture",
+      "owner": "worker-product-acceptance",
+      "reason": "Cancellation does not grant successful-Continue eligibility. The opt-in fixture reads only its own runtime.db in read-only mode with exact workspace/task/run keys, verifies the task-owned context descriptor, Qoder harness, cancelled state, completed cleanup and matching native/ACP identity, then locates that exact native transcript. It never scans a daily database or changes the production Continue reader.",
+      "removal_condition": "Replace this test-only current-storage reader when a public exact-native-session identity projection can establish cancellation history retention independently of successful-Continue material; update the fixture if the task/run storage contract changes.",
+      "allowed_paths": [
+        "crates/daemon/tests/support/qoder_native_context.py",
+        "scripts/test-qoder-product.py",
+        "tools/product-e2e/tests/QODER_DELEGATION.md"
+      ]
+    },
+    {
+      "contract": "hiroute.qoder-additional-model/v1",
+      "field": "Qoder CLI 1.1.65 stream-json terminal result in persisted-model acceptance",
+      "mode": "frozen_fixture",
+      "owner": "agent-connections-product-acceptance",
+      "reason": "The opt-in persisted-model journey requires one native result with subtype=success, is_error=false, the independently issued source receipt and a nonempty session_id. This pinned test reader proves ordinary native startup consumed the saved route; it is not a production parser or model-subscription discovery contract.",
+      "removal_condition": "Replace or revise when a supported Qoder CLI changes its terminal result shape, preserving the independent upstream receipt and native identity assertions.",
+      "allowed_paths": [
+        "crates/daemon/tests/support/qoder_model_fixture.py",
+        "scripts/test-qoder-product.py",
+        "tools/product-e2e/tests/QODER_DELEGATION.md"
+      ]
+    },
+    {
+      "contract": "hiroute.operation-input/v1",
+      "field": "historical object member ordering in mutable operation_json.steps and operation_steps.step_json.step",
+      "mode": "recovery_read_only",
+      "owner": "local-storage Operation journal",
+      "reason": "journal_json_matches reads pre-canonical mutable journal copies emitted under either serde_json object-order feature graph. The same SQLite snapshot retains immutable Plan bytes, identities, generation, writer and step metadata guards; the narrow reader rejects duplicate members, unknown content changes, array reordering and changed numeric tokens. Current step-row writes use the existing canonical producer.",
+      "removal_condition": "Retire only after an explicitly approved migration covers every supported historical journal and backup, with replacement recovery evidence for the frozen original producer fixtures.",
+      "allowed_paths": [
+        "crates/local-storage/src/control/journal.rs",
+        "crates/local-storage/src/control/journal_order_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.agent-profile/v1",
+      "field": "Qoder collaboration-only ingress/config precedence/owned fields",
+      "mode": "recovery_read_only",
+      "owner": "agent-connections",
+      "reason": "Preserve the original model-less Qoder profile shape and identity for accepted collaboration Operations; current additional-model capability never upgrades a historical Skill transaction implicitly.",
+      "removal_condition": "Retire only when retained Operations and supported backups no longer contain collaboration-only Qoder profiles, together with their frozen byte-preservation test.",
+      "allowed_paths": [
+        "crates/domain/src/agents/profile.rs",
+        "crates/domain/src/agents/optional_model_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.agent-surface-check/v1",
+      "field": "marked schema23/schema24 native surface rows before Qoder model verification",
+      "mode": "recovery_read_only",
+      "owner": "local-storage",
+      "reason": "Schema25 extends only the closed surface constraint via the existing three-store migration coordinator; historical record JSON, revisions and timestamps are copied verbatim. Historical SQL-layout tests use opaque synthetic rows and do not claim native verification.",
+      "removal_condition": "End marked schema23/schema24 upgrade support only through an explicit product decision preserving a usable supported data recovery path.",
+      "allowed_paths": [
+        "crates/local-storage/src/migrations/startup_format.rs",
+        "crates/local-storage/src/migrations/agent_surface_checks_v25.rs",
+        "crates/local-storage/src/migrations/agent_surface_checks_v25_tests.rs"
       ]
     }
   ]

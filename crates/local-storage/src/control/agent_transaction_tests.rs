@@ -136,13 +136,72 @@ fn native_read_rejects_links_and_oversized_files_without_following() {
     fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
     fs::hard_link(&target, root.join("other")).unwrap();
     assert!(store.read_native_target("native.toml").is_err());
+    assert!(store.read_private_native_target("native.toml").is_err());
     fs::remove_file(&target).unwrap();
     symlink(root.join("other"), &target).unwrap();
     assert!(store.read_native_target("native.toml").is_err());
+    assert!(store.read_private_native_target("native.toml").is_err());
     fs::remove_file(&target).unwrap();
     let file = fs::File::create(&target).unwrap();
     file.set_len(1024 * 1024 + 1).unwrap();
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
     assert!(store.read_native_target("native.toml").is_err());
+    assert!(store.read_private_native_target("native.toml").is_err());
+}
+
+#[test]
+#[cfg(unix)]
+fn private_native_read_requires_0600_while_import_can_read_0644_without_chmod() {
+    use hiroute_domain::{NativeAgentArtifactPort, PortErrorCode};
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("settings.json");
+    let store = ManagedArtifactStore::open_with_external_target(
+        &crate::test_storage_authority(),
+        directory.path().join("artifacts"),
+        directory.path().join("restore"),
+        "native-settings",
+        &path,
+    )
+    .unwrap();
+    assert!(
+        store
+            .read_private_native_target("native-settings")
+            .unwrap()
+            .is_none()
+    );
+    let bytes = br#"{"providers":[{"apiKey":"fixture-local-bearer"}]}"#;
+    fs::write(&path, bytes).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(
+        store
+            .read_private_native_target("native-settings")
+            .unwrap()
+            .unwrap()
+            .as_slice(),
+        bytes
+    );
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(
+        store
+            .read_private_native_target("native-settings")
+            .unwrap_err()
+            .code,
+        PortErrorCode::PermissionDenied
+    );
+    assert_eq!(
+        store
+            .read_native_target("native-settings")
+            .unwrap()
+            .unwrap()
+            .as_slice(),
+        bytes
+    );
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o7777,
+        0o644
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes);
 }
 
 fn agent_transaction_plan(

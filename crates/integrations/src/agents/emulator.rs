@@ -18,8 +18,9 @@ pub fn render_agent_probe(
     profile: &AgentProfileV1,
     probe: &BuiltInAgentProbeV1,
 ) -> Result<RenderedAgentProbeV1, AgentProbeAdapterError> {
+    let protocol = model_protocol(profile)?;
     probe.validate_for(profile)?;
-    let payload = match profile.client_protocol() {
+    let payload = match protocol {
         AgentIngressProtocolV1::Responses => json!({
             "input": [{
                 "content": [{"text": probe.prompt, "type": "input_text"}],
@@ -43,7 +44,7 @@ pub fn render_agent_probe(
         }),
     };
     Ok(RenderedAgentProbeV1 {
-        protocol: profile.client_protocol(),
+        protocol,
         traffic_kind: AgentTrafficKindV1::ConnectivityProbe,
         payload,
     })
@@ -62,10 +63,8 @@ pub fn parse_agent_probe_response(
     profile: &AgentProfileV1,
     response: &Value,
 ) -> Result<AgentProbeResultV1, AgentProbeAdapterError> {
-    profile
-        .validate()
-        .map_err(|_| AgentProbeAdapterError::UnexpectedResponse)?;
-    let text = match profile.client_protocol() {
+    let protocol = model_protocol(profile)?;
+    let text = match protocol {
         AgentIngressProtocolV1::Responses => response
             .get("output")
             .and_then(Value::as_array)
@@ -91,12 +90,22 @@ pub fn parse_agent_probe_response(
         return Err(AgentProbeAdapterError::UnexpectedResponse);
     }
     Ok(AgentProbeResultV1 {
-        protocol: profile.client_protocol(),
+        protocol,
         traffic_kind: AgentTrafficKindV1::ConnectivityProbe,
         ready: true,
         response_digest: CanonicalDigest::of(response)
             .map_err(|_| AgentProbeAdapterError::UnexpectedResponse)?,
     })
+}
+
+fn model_protocol(
+    profile: &AgentProfileV1,
+) -> Result<AgentIngressProtocolV1, AgentProbeAdapterError> {
+    profile
+        .model_connection()
+        .map_err(|_| AgentEmulatorError::InvalidProfile)?
+        .map(|model| model.ingress_protocol)
+        .ok_or_else(|| AgentEmulatorError::InvalidProfile.into())
 }
 
 fn contains_tool_result(value: &Value) -> bool {

@@ -12,7 +12,7 @@ use hiroute_application_api::{
 };
 use hiroute_domain::delegation::{DelegationErrorV1, WorkerHarnessV1};
 
-use super::{WorkerInstallationConfig, WorkerInstallationSelectionSource};
+use super::{WORKER_HARNESSES, WorkerInstallationConfig, WorkerInstallationSelectionSource};
 
 const MAX_DIRECTORY_ENTRIES: usize = 256;
 const MAX_CANDIDATES: usize = 64;
@@ -34,10 +34,9 @@ fn discover_with_environment(
     if !request.valid() {
         return Err(DelegationErrorV1::InvalidArguments);
     }
-    let harnesses = request.harness.map_or_else(
-        || vec![WorkerHarnessV1::CodexCli, WorkerHarnessV1::ClaudeCode],
-        |harness| vec![harness],
-    );
+    let harnesses = request
+        .harness
+        .map_or_else(|| WORKER_HARNESSES.to_vec(), |harness| vec![harness]);
     let mut selection_revisions = Vec::with_capacity(harnesses.len());
     let mut selected = Vec::new();
     let mut candidates = Vec::new();
@@ -57,9 +56,11 @@ fn discover_with_environment(
         }
         scan.add_path_candidates();
         scan.add_common_candidates();
-        scan.add_npm_prefix_candidates();
-        scan.add_version_manager_candidates();
-        scan.add_npx_candidates();
+        if harness != WorkerHarnessV1::QoderCli {
+            scan.add_npm_prefix_candidates();
+            scan.add_version_manager_candidates();
+            scan.add_npx_candidates();
+        }
         scan.finish_hints(&mut install_hints);
         candidates.extend(scan.candidates);
     }
@@ -110,10 +111,11 @@ pub(crate) fn validate_selection(
     if !request.valid() {
         return Err(DelegationErrorV1::InvalidArguments);
     }
-    let adapter = normalize_required(
-        Path::new(&request.adapter_path),
-        request.node_path.is_none(),
-    )?;
+    let adapter = request
+        .adapter_path
+        .as_deref()
+        .map(|path| normalize_required(Path::new(path), request.node_path.is_none()))
+        .transpose()?;
     let cli = normalize_required(Path::new(&request.cli_path), true)?;
     let node = request
         .node_path
@@ -122,7 +124,7 @@ pub(crate) fn validate_selection(
         .transpose()?;
     Ok(WorkerDependenciesSelectRequestV1 {
         harness: request.harness,
-        adapter_path: path_string(adapter)?,
+        adapter_path: adapter.map(path_string).transpose()?,
         cli_path: path_string(cli)?,
         node_path: node.map(path_string).transpose()?,
         expected_selection_revision: request.expected_selection_revision,
@@ -134,7 +136,10 @@ pub(crate) fn validate_persisted_installation(
 ) -> Result<WorkerInstallationConfig, DelegationErrorV1> {
     let request = WorkerDependenciesSelectRequestV1 {
         harness: selection.harness,
-        adapter_path: selection.adapter.to_string_lossy().into_owned(),
+        adapter_path: selection
+            .adapter
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned()),
         cli_path: selection.harness_binary.to_string_lossy().into_owned(),
         node_path: selection
             .node_binary
@@ -151,7 +156,7 @@ pub(crate) fn validate_persisted_installation(
     }
     Ok(WorkerInstallationConfig {
         harness: normalized.harness,
-        adapter: PathBuf::from(normalized.adapter_path),
+        adapter: normalized.adapter_path.map(PathBuf::from),
         harness_binary: PathBuf::from(normalized.cli_path),
         node_binary: normalized.node_path.map(PathBuf::from),
     })
@@ -181,13 +186,15 @@ impl HarnessScan {
     }
 
     fn add_selected(&mut self, config: &WorkerInstallationConfig) {
-        self.add_explicit(
-            WorkerDependencyComponentV1::Adapter,
-            &config.adapter,
-            WorkerDependencyCandidateSourceV1::Selected,
-            config.node_binary.is_none(),
-            true,
-        );
+        if let Some(adapter) = &config.adapter {
+            self.add_explicit(
+                WorkerDependencyComponentV1::Adapter,
+                adapter,
+                WorkerDependencyCandidateSourceV1::Selected,
+                config.node_binary.is_none(),
+                true,
+            );
+        }
         self.add_explicit(
             WorkerDependencyComponentV1::Cli,
             &config.harness_binary,
@@ -222,6 +229,9 @@ impl HarnessScan {
         let mut directories = Vec::new();
         if let Some(home) = self.environment.home.as_ref() {
             directories.push(home.join(".local/bin"));
+            if self.harness == WorkerHarnessV1::QoderCli {
+                directories.push(home.join(".qoder/bin"));
+            }
         }
         directories.extend([PathBuf::from("/usr/local/bin"), PathBuf::from("/usr/bin")]);
         #[cfg(target_os = "macos")]
@@ -231,6 +241,54 @@ impl HarnessScan {
                 return;
             }
             self.add_bin_directory(&directory, WorkerDependencyCandidateSourceV1::Common);
+        }
+        if self.harness == WorkerHarnessV1::QoderCli {
+            self.add_qoder_standalone_versions();
+        }
+    }
+
+    fn add_qoder_standalone_versions(&mut self) {
+        let Some(home) = self.environment.home.as_ref() else {
+            return;
+        };
+        let entries = match fs::read_dir(home.join(".qoder/bin/qodercli")) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(_) => {
+                self.incomplete = true;
+                return;
+            }
+        };
+        let mut paths = Vec::new();
+        for entry in entries {
+            if self.exhausted() {
+                return;
+            }
+            self.directory_entries += 1;
+            match entry {
+                Ok(entry)
+                    if entry
+                        .file_name()
+                        .to_str()
+                        .is_some_and(|name| name.starts_with("qodercli-")) =>
+                {
+                    paths.push(entry.path())
+                }
+                Ok(_) => {}
+                Err(_) => self.incomplete = true,
+            }
+        }
+        paths.sort();
+        for path in paths {
+            if self.exhausted() {
+                return;
+            }
+            self.add_discovered(
+                WorkerDependencyComponentV1::Cli,
+                &path,
+                WorkerDependencyCandidateSourceV1::Common,
+                true,
+            );
         }
     }
 
@@ -298,6 +356,9 @@ impl HarnessScan {
     }
 
     fn add_npx_candidates(&mut self) {
+        let Some(package) = package_name(self.harness) else {
+            return;
+        };
         let root = self
             .environment
             .npm_cache
@@ -337,20 +398,25 @@ impl HarnessScan {
                 return;
             }
             self.add_npm_package_root(
-                &root.join("node_modules").join(package_name(self.harness)),
+                &root.join("node_modules").join(package),
                 WorkerDependencyCandidateSourceV1::NpxCache,
             );
         }
     }
 
     fn add_bin_directory(&mut self, directory: &Path, source: WorkerDependencyCandidateSourceV1) {
-        let (cli, adapter) = names(self.harness);
-        self.add_discovered(
-            WorkerDependencyComponentV1::Cli,
-            &directory.join(cli),
-            source,
-            true,
-        );
+        let (cli_names, adapter) = names(self.harness);
+        for cli in cli_names {
+            self.add_discovered(
+                WorkerDependencyComponentV1::Cli,
+                &directory.join(cli),
+                source,
+                true,
+            );
+        }
+        let Some(adapter) = adapter else {
+            return;
+        };
         self.add_discovered(
             WorkerDependencyComponentV1::Adapter,
             &directory.join(adapter),
@@ -366,9 +432,10 @@ impl HarnessScan {
     }
 
     fn add_npm_package(&mut self, prefix: &Path, source: WorkerDependencyCandidateSourceV1) {
-        let package_root = prefix
-            .join("lib/node_modules")
-            .join(package_name(self.harness));
+        let Some(package) = package_name(self.harness) else {
+            return;
+        };
+        let package_root = prefix.join("lib/node_modules").join(package);
         self.add_npm_package_root(&package_root, source);
     }
 
@@ -377,8 +444,11 @@ impl HarnessScan {
         package_root: &Path,
         source: WorkerDependencyCandidateSourceV1,
     ) {
+        let Some(adapter) = names(self.harness).1 else {
+            return;
+        };
         let package_json = package_root.join("package.json");
-        let entry = match package_bin(&package_json, names(self.harness).1) {
+        let entry = match package_bin(&package_json, adapter) {
             Ok(Some(entry)) => entry,
             Ok(None) => return,
             Err(()) => {
@@ -454,6 +524,11 @@ impl HarnessScan {
             WorkerDependencyComponentV1::Adapter,
             WorkerDependencyComponentV1::Node,
         ] {
+            if self.harness == WorkerHarnessV1::QoderCli
+                && component != WorkerDependencyComponentV1::Cli
+            {
+                continue;
+            }
             if !self.candidates.iter().any(|candidate| {
                 candidate.component == component
                     && candidate.state == WorkerDependencyCandidateStateV1::Found
@@ -470,7 +545,11 @@ impl HarnessScan {
         if self.incomplete {
             hints.push(WorkerDependencyInstallHintV1 {
                 harness: self.harness,
-                component: WorkerDependencyComponentV1::Adapter,
+                component: if self.harness == WorkerHarnessV1::QoderCli {
+                    WorkerDependencyComponentV1::Cli
+                } else {
+                    WorkerDependencyComponentV1::Adapter
+                },
                 platform: platform().to_owned(),
                 command: None,
                 reason_code: "worker.dependencies.scan_incomplete".to_owned(),
@@ -587,17 +666,19 @@ fn package_bin(package_json: &Path, expected_bin: &str) -> Result<Option<PathBuf
     Ok(Some(path.to_path_buf()))
 }
 
-fn names(harness: WorkerHarnessV1) -> (&'static str, &'static str) {
+fn names(harness: WorkerHarnessV1) -> (&'static [&'static str], Option<&'static str>) {
     match harness {
-        WorkerHarnessV1::CodexCli => ("codex", "codex-acp"),
-        WorkerHarnessV1::ClaudeCode => ("claude", "claude-agent-acp"),
+        WorkerHarnessV1::CodexCli => (&["codex"], Some("codex-acp")),
+        WorkerHarnessV1::ClaudeCode => (&["claude"], Some("claude-agent-acp")),
+        WorkerHarnessV1::QoderCli => (&["qoder", "qodercli"], None),
     }
 }
 
-fn package_name(harness: WorkerHarnessV1) -> &'static Path {
+fn package_name(harness: WorkerHarnessV1) -> Option<&'static Path> {
     match harness {
-        WorkerHarnessV1::CodexCli => Path::new("@agentclientprotocol/codex-acp"),
-        WorkerHarnessV1::ClaudeCode => Path::new("@agentclientprotocol/claude-agent-acp"),
+        WorkerHarnessV1::CodexCli => Some(Path::new("@agentclientprotocol/codex-acp")),
+        WorkerHarnessV1::ClaudeCode => Some(Path::new("@agentclientprotocol/claude-agent-acp")),
+        WorkerHarnessV1::QoderCli => None,
     }
 }
 

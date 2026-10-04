@@ -33,7 +33,7 @@ use crate::agent_turn_history::{AgentTurnHistorySnapshot, AssessmentTarget};
 use crate::content_ref::ContentValueExt;
 use crate::ports::{ExecutionScope, HeaderSecretLeaseRequest};
 use crate::replay::{ReplayError, ReplayStore};
-use crate::runtime::{ProductionProvider, resolve_target};
+use crate::runtime::TargetResolver;
 use crate::server::request_plan::{
     ClassifierAuthenticationAuthorityV1, IngressProtocol, RestBranchClassifierAuthorityV1,
 };
@@ -410,20 +410,22 @@ impl ProductionGatewayRuntime {
             }
         }
 
-        let provider = ProductionProvider::new(&self.ports);
-        let target =
-            match resolve_target(&provider, classifier.transport_target.clone(), &scope).await {
-                Ok(target) => target,
-                Err(_) => {
-                    return active_failure_or_abort(
-                        CallFailure::Unavailable,
-                        call_deadline,
-                        overall_deadline,
-                        fixed_timeout_wins,
-                        &cancellation,
-                    );
-                }
-            };
+        let resolver = TargetResolver::new();
+        let target = match resolver
+            .resolve(classifier.transport_target.clone(), &scope)
+            .await
+        {
+            Ok(target) => target,
+            Err(_) => {
+                return active_failure_or_abort(
+                    CallFailure::Unavailable,
+                    call_deadline,
+                    overall_deadline,
+                    fixed_timeout_wins,
+                    &cancellation,
+                );
+            }
+        };
         let body = sequential_replay_body(
             template.clone(),
             replay.clone(),

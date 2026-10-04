@@ -261,6 +261,83 @@ fn coordinator<'a>(
     TransactionCoordinator::new(ports, ports, ports, ports, ports, admission)
 }
 
+#[test]
+fn restore_only_settings_require_restore_authority_before_journal_admission() {
+    let ports = MemoryPorts::default();
+    let runtime = TransactionRuntime::default();
+    let coordinator = open(&ports, &runtime);
+    let plan = settings_plan_for_action(false, true);
+    // Unlike the execution-tail fixtures, admission observes the previewed publication.
+    // Model-file absence is intentional, but the publication must exist at its source digest.
+    let publication = plan
+        .external()
+        .iter()
+        .find(|intent| is_settings_publication(intent))
+        .unwrap();
+    ports.state.borrow_mut().external_fingerprints.insert(
+        publication.target().to_owned(),
+        CanonicalDigest::of_bytes(b"publication-source"),
+    );
+    let digest = CanonicalDigest::of_bytes(b"restore-authority");
+    let request = ApplyRequestV1 {
+        schema_version: CHANGE_SPEC_SCHEMA_V1,
+        spec: plan.spec().clone(),
+        accept_digest: digest.clone(),
+        expected_revisions: ports.current_revisions(&WorkspaceId::default()).unwrap(),
+        idempotency_key: "restore-authority".to_owned(),
+        apply_capability: Some("restore-capability".to_owned()),
+    };
+    // Even a valid Change capability cannot admit a restore-only plan under the Change kind.
+    ports.grant_for(
+        "restore-capability",
+        &digest,
+        &request.expected_revisions,
+        "ApplyAgentConnectionChange",
+    );
+    let before = ports.counters();
+    let wrong =
+        crate::PreparedTransactionV1::for_setup(request.clone(), digest.clone(), plan.clone())
+            .unwrap()
+            .with_revalidation(|| Ok(()));
+    assert!(matches!(
+        coordinator.accept_prepared(&WorkspaceId::default(), &principal(), wrong),
+        Err(TransactionError::InvalidArguments)
+    ));
+    assert_eq!(ports.counters(), before);
+    assert!(ports.state.borrow().operations.is_empty());
+    assert!(ports.state.borrow().writer.is_none());
+    assert!(
+        ports.state.borrow().grants[CanonicalDigest::of_bytes(b"restore-capability").as_str()]
+            .consumed
+            .is_none()
+    );
+
+    ports.grant_for(
+        "restore-capability",
+        &digest,
+        &request.expected_revisions,
+        "ApplyAgentConnectionRestore",
+    );
+    for replay in [false, true] {
+        let prepared = crate::PreparedTransactionV1::for_agent_settings_restore(
+            request.clone(),
+            digest.clone(),
+            plan.clone(),
+        )
+        .unwrap()
+        .with_revalidation(|| Ok(()));
+        let accepted = coordinator
+            .accept_prepared(&WorkspaceId::default(), &principal(), prepared)
+            .unwrap();
+        assert_eq!(accepted.existing, replay);
+        assert_eq!(
+            accepted.operation().idempotency.operation_kind,
+            "ApplyAgentConnectionRestore"
+        );
+    }
+    assert_eq!(ports.state.borrow().operations.len(), 1);
+}
+
 fn stored(ports: &MemoryPorts, operation_id: &OperationId) -> OperationV1 {
     ports
         .state

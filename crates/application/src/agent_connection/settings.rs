@@ -12,12 +12,21 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub struct AgentSettingsFacts {
-    pub codex_context_override: bool,
-    pub claude_context_override: bool,
-    pub claude_plan_capability_unavailable: bool,
     pub context_id: String,
     pub dependency_digest: CanonicalDigest,
     pub capabilities: AgentCapabilitySet,
+    /// No model facts or configuration target are needed by collaboration-only installations.
+    pub model: Option<SettingsModelFacts>,
+    pub collaboration_file_conflict: bool,
+    pub restore_points: BTreeMap<String, AgentSettingsFacet>,
+}
+
+pub struct SettingsModelFacts {
+    /// A closed native field conflict; only Qoder model changes consume this fact.
+    pub qoder_model_conflict: Option<SettingsBlockReason>,
+    pub codex_context_override: bool,
+    pub claude_context_override: bool,
+    pub claude_plan_capability_unavailable: bool,
     pub ingress: AgentIngressProtocolV1,
     pub available_surfaces: BTreeSet<hiroute_domain::AgentModelSurfaceV2>,
     pub model_publication: Option<GatewayPublicationV1>,
@@ -56,10 +65,6 @@ pub struct AgentSettingsFacts {
     /// Model that an unmodified restore would leave in the native configuration.
     pub restored_native_model: Option<String>,
     pub native_claude_presets: Option<hiroute_domain::AgentClaudePresetValuesV2>,
-    /// Preview-time ownership check for an existing collaboration Skill file.
-    pub collaboration_file_conflict: bool,
-    /// Only restoration points owned by this context, projected from the protected store.
-    pub restore_points: BTreeMap<String, AgentSettingsFacet>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -113,6 +118,8 @@ pub struct AgentSettingsBlock {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SettingsBlockReason {
+    QoderDefaultInUse,
+    QoderModelFileConflict,
     CodexContextOverride,
     ClaudeContextOverride,
     ClaudePlanCapabilityUnavailable,
@@ -149,6 +156,13 @@ pub fn preview_agent_settings(
     {
         return Err(SettingsPlanningError::InvalidContext);
     }
+    if facts.model.is_none()
+        && (!matches!(spec.model, AgentFacetIntent::Keep)
+            || !matches!(spec.access_token, AgentAccessTokenIntentV1::Keep)
+            || spec.restore_native_model.is_some())
+    {
+        return Err(SettingsPlanningError::InvalidSelection);
+    }
     if spec.restore_native_model.is_some()
         && !matches!(&spec.model, AgentFacetIntent::Restore { .. })
     {
@@ -159,34 +173,63 @@ pub fn preview_agent_settings(
     {
         return Err(SettingsPlanningError::InvalidSelection);
     }
-    spec.protected_native_model_ids = if facts.require_native_model_routes {
-        facts.required_native_model_ids.clone().unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    if let AgentFacetIntent::Configure {
-        settings: AgentModelSelectionV2::CodexDefault { fixed_models, .. },
-    } = &mut spec.model
-    {
-        for preserved in &facts.preserved_codex_models {
-            if !fixed_models
-                .iter()
-                .any(|selected| selected.client_model_id == preserved.client_model_id)
-            {
-                fixed_models.push(preserved.clone());
+    spec.protected_native_model_ids.clear();
+    if let Some(model) = &facts.model {
+        spec.protected_native_model_ids = if model.require_native_model_routes {
+            model.required_native_model_ids.clone().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        if let AgentFacetIntent::Configure {
+            settings: AgentModelSelectionV2::CodexDefault { fixed_models, .. },
+        } = &mut spec.model
+        {
+            for preserved in &model.preserved_codex_models {
+                if !fixed_models
+                    .iter()
+                    .any(|selected| selected.client_model_id == preserved.client_model_id)
+                {
+                    fixed_models.push(preserved.clone());
+                }
             }
+            fixed_models.sort_by(|left, right| left.client_model_id.cmp(&right.client_model_id));
         }
-        fixed_models.sort_by(|left, right| left.client_model_id.cmp(&right.client_model_id));
     }
     let mut changed_facets = BTreeSet::new();
     let mut blockers = Vec::new();
+    if let Some(reason) = facts
+        .model
+        .as_ref()
+        .and_then(|model| model.qoder_model_conflict)
+    {
+        if !matches!(
+            reason,
+            SettingsBlockReason::QoderDefaultInUse | SettingsBlockReason::QoderModelFileConflict
+        ) {
+            return Err(SettingsPlanningError::InvalidSelection);
+        }
+        blockers.push(AgentSettingsBlock {
+            facet: AgentSettingsFacet::Model,
+            reason,
+            capabilities: Vec::new(),
+            model_ids: Vec::new(),
+        });
+    }
     let mut model_grant = None;
     let mut collaboration_trigger_mode = None;
     match &spec.model {
         AgentFacetIntent::Keep => {}
         AgentFacetIntent::Configure { settings } => {
+            let model = facts
+                .model
+                .as_ref()
+                .ok_or(SettingsPlanningError::InvalidSelection)?;
             changed_facets.insert(AgentSettingsFacet::Model);
-            if matches!(settings, AgentModelSelectionV2::CodexDefault { .. }) {
+            if matches!(
+                settings,
+                AgentModelSelectionV2::CodexDefault { .. }
+                    | AgentModelSelectionV2::QoderAdditional { .. }
+            ) {
                 // A short-lived isolated HTTP challenge diagnoses a native client; it is not
                 // authorization to write a safely observed Codex configuration. Actual client
                 // calls have independent per-surface verification results.
@@ -216,17 +259,24 @@ pub fn preview_agent_settings(
                     &mut blockers,
                 );
             }
+            if matches!(settings, AgentModelSelectionV2::QoderAdditional { .. })
+                && !model
+                    .available_surfaces
+                    .contains(&hiroute_domain::AgentModelSurfaceV2::QoderCli)
+            {
+                return Err(SettingsPlanningError::InvalidSelection);
+            }
             settings
                 .validate()
                 .map_err(|_| SettingsPlanningError::InvalidSelection)?;
             if let AgentModelSelectionV2::ClaudeLauncher { surfaces, .. } = settings
-                && !surfaces.is_subset(&facts.available_surfaces)
+                && !surfaces.is_subset(&model.available_surfaces)
             {
                 return Err(SettingsPlanningError::InvalidSelection);
             }
             if matches!(settings, AgentModelSelectionV2::CodexDefault { .. })
                 && !settings.allowed_plan_ids().is_empty()
-                && facts.codex_context_override
+                && model.codex_context_override
             {
                 blockers.push(AgentSettingsBlock {
                     facet: AgentSettingsFacet::Model,
@@ -235,13 +285,13 @@ pub fn preview_agent_settings(
                     model_ids: Vec::new(),
                 });
             }
-            let grant = derive_model_grant(settings, facts);
+            let grant = derive_model_grant(settings, model);
             match grant {
                 Ok(grant) => {
                     // Every Codex selection publishes one exact client catalog, including
                     // HiRoute-only fixed routes without a Plan.
                     if matches!(settings, AgentModelSelectionV2::CodexDefault { .. })
-                        && facts.model_catalog.is_none()
+                        && model.model_catalog.is_none()
                     {
                         blockers.push(AgentSettingsBlock {
                             facet: AgentSettingsFacet::Model,
@@ -254,11 +304,11 @@ pub fn preview_agent_settings(
                             model_ids: Vec::new(),
                         });
                     }
-                    if let Some(required) = &facts.required_native_model_ids {
+                    if let Some(required) = &model.required_native_model_ids {
                         let missing = required
                             .iter()
                             .filter(|name| {
-                                !facts.preserved_codex_models.iter().any(|preserved| {
+                                !model.preserved_codex_models.iter().any(|preserved| {
                                     preserved.client_model_id == name.as_str()
                                         && settings
                                             .fixed_models()
@@ -268,7 +318,7 @@ pub fn preview_agent_settings(
                             })
                             .cloned()
                             .collect::<Vec<_>>();
-                        if facts.require_native_model_routes
+                        if model.require_native_model_routes
                             && (required.is_empty() || !missing.is_empty())
                         {
                             blockers.push(AgentSettingsBlock {
@@ -278,8 +328,8 @@ pub fn preview_agent_settings(
                                 model_ids: missing,
                             });
                         }
-                        if facts.native_default_must_be_original
-                            && facts
+                        if model.native_default_must_be_original
+                            && model
                                 .native_default_model
                                 .as_ref()
                                 .is_some_and(|default| !required.contains(default))
@@ -288,7 +338,7 @@ pub fn preview_agent_settings(
                                 facet: AgentSettingsFacet::Model,
                                 reason: SettingsBlockReason::NativeDefaultInvalid,
                                 capabilities: Vec::new(),
-                                model_ids: facts.native_default_model.iter().cloned().collect(),
+                                model_ids: model.native_default_model.iter().cloned().collect(),
                             });
                         }
                     }
@@ -303,6 +353,10 @@ pub fn preview_agent_settings(
             }
         }
         AgentFacetIntent::Restore { restore_point_ref } => {
+            let model = facts
+                .model
+                .as_ref()
+                .ok_or(SettingsPlanningError::InvalidSelection)?;
             changed_facets.insert(AgentSettingsFacet::Model);
             restore(
                 facts,
@@ -311,12 +365,17 @@ pub fn preview_agent_settings(
                 restore_point_ref,
                 &mut blockers,
             );
-            if facts.ingress == AgentIngressProtocolV1::Responses && !facts.restore_inherits_root {
+            if model.ingress == AgentIngressProtocolV1::Responses
+                && !model.restore_inherits_root
+                && !model
+                    .available_surfaces
+                    .contains(&hiroute_domain::AgentModelSurfaceV2::QoderCli)
+            {
                 let chosen = spec
                     .restore_native_model
                     .as_ref()
-                    .or(facts.restored_native_model.as_ref());
-                let valid = facts
+                    .or(model.restored_native_model.as_ref());
+                let valid = model
                     .restore_native_model_ids
                     .as_ref()
                     .is_some_and(|models| {
@@ -327,7 +386,7 @@ pub fn preview_agent_settings(
                         facet: AgentSettingsFacet::Model,
                         reason: SettingsBlockReason::RestoreNativeModelInvalid,
                         capabilities: Vec::new(),
-                        model_ids: facts.restored_native_model.iter().cloned().collect(),
+                        model_ids: model.restored_native_model.iter().cloned().collect(),
                     });
                 }
             } else if spec.restore_native_model.is_some() {
@@ -404,7 +463,15 @@ pub fn preview_agent_settings(
     .collect::<Vec<_>>();
     let context_windows = match model_grant
         .as_ref()
-        .map(|grant| plan_context_windows(grant, facts.model_publication.as_ref()))
+        .map(|grant| {
+            plan_context_windows(
+                grant,
+                facts
+                    .model
+                    .as_ref()
+                    .and_then(|model| model.model_publication.as_ref()),
+            )
+        })
         .transpose()
     {
         Ok(windows) => windows.unwrap_or_default(),
@@ -425,7 +492,11 @@ pub fn preview_agent_settings(
         }
     ) && !context_windows.is_empty()
     {
-        if facts.claude_plan_capability_unavailable {
+        let model = facts
+            .model
+            .as_ref()
+            .ok_or(SettingsPlanningError::InvalidSelection)?;
+        if model.claude_plan_capability_unavailable {
             blockers.push(AgentSettingsBlock {
                 facet: AgentSettingsFacet::Model,
                 reason: SettingsBlockReason::ClaudePlanCapabilityUnavailable,
@@ -438,10 +509,10 @@ pub fn preview_agent_settings(
             .copied()
             .min()
             .and_then(hiroute_domain::claude_context_window);
-        if facts.claude_context_override || window.is_none() {
+        if model.claude_context_override || window.is_none() {
             blockers.push(AgentSettingsBlock {
                 facet: AgentSettingsFacet::Model,
-                reason: if facts.claude_context_override {
+                reason: if model.claude_context_override {
                     SettingsBlockReason::ClaudeContextOverride
                 } else {
                     SettingsBlockReason::ClaudeContextWindowUnsupported
@@ -477,13 +548,17 @@ pub fn preview_agent_settings(
         model_grant,
         collaboration_trigger_mode,
         blockers,
-        unproven_native_model_ids: facts.unproven_native_model_ids.clone(),
+        unproven_native_model_ids: facts
+            .model
+            .as_ref()
+            .map(|model| model.unproven_native_model_ids.clone())
+            .unwrap_or_default(),
     })
 }
 
 fn derive_model_grant(
     settings: &AgentModelSelectionV2,
-    facts: &AgentSettingsFacts,
+    facts: &SettingsModelFacts,
 ) -> Result<AgentModelGrantV2, SettingsPlanningError> {
     let invalid = || SettingsPlanningError::InvalidSelection;
     let ordinary_fixed = settings
@@ -522,7 +597,7 @@ fn derive_model_grant(
 
 fn validate_model_default(
     settings: &AgentModelSelectionV2,
-    facts: &AgentSettingsFacts,
+    facts: &SettingsModelFacts,
     grant: &AgentModelGrantV2,
 ) -> Result<(), SettingsPlanningError> {
     let invalid = || SettingsPlanningError::InvalidSelection;
@@ -536,6 +611,7 @@ fn validate_model_default(
                     .then_some(name.as_str())
             }),
         },
+        AgentModelSelectionV2::QoderAdditional { .. } => return Ok(()),
         AgentModelSelectionV2::ClaudeLauncher { .. } => {
             claude_presets = grant
                 .claude_preset_values(

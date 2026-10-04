@@ -11,6 +11,9 @@ use hiroute_domain::CanonicalDigest;
 
 mod agent_access_grant_v9;
 mod agent_surface_checks_v22;
+mod agent_surface_checks_v25;
+#[cfg(test)]
+mod agent_surface_checks_v25_tests;
 mod current_storage;
 mod startup_format;
 pub(crate) use startup_format::validate_startup_format;
@@ -31,16 +34,21 @@ mod integration_v17_tests;
 mod plan_authoring_v10;
 mod source_prices_v10;
 mod subscription_v16;
+#[cfg(test)]
+mod upgrade_batch_recovery_tests;
 mod worker_dependencies_v20;
+mod worker_dependencies_v24;
+#[cfg(test)]
+mod worker_dependencies_v24_tests;
 mod worker_instance_v19;
 
 #[cfg(test)]
 mod convergence_tests;
 
-/// Converged integration format: Worker marker in all stores, Control subscription validations,
-/// and the single runtime-owned Worker concurrency setting. Older layouts migrate through a
-/// durable three-store backup set.
-pub const LATEST_SCHEMA_VERSION: u32 = 23;
+/// Current stable storage format, including native ACP Worker dependency selections.
+/// Production source admission is defined in `startup_format`; supported upgrades retain the
+/// existing durable three-store backup and recovery coordinator.
+pub const LATEST_SCHEMA_VERSION: u32 = 25;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -63,7 +71,7 @@ pub(crate) fn open_database(
         None,
         None,
         None,
-        false,
+        None,
     )
 }
 
@@ -82,7 +90,7 @@ pub(crate) fn open_database_with_key_id(
         key_id,
         None,
         None,
-        false,
+        None,
     )
 }
 
@@ -100,6 +108,7 @@ pub(crate) fn open_database_from_set(
     migration_backup_root: &Path,
     expected_store_uuid: Option<&str>,
     secret_binding: Option<&MigrationSecretBinding>,
+    target_schema_version: u32,
 ) -> Result<Connection, LocalStorageError> {
     open_database_internal(
         authority,
@@ -109,7 +118,7 @@ pub(crate) fn open_database_from_set(
         secret_binding.map(|binding| &binding.key_id),
         secret_binding,
         expected_store_uuid,
-        true,
+        Some(target_schema_version),
     )
 }
 
@@ -122,7 +131,7 @@ fn open_database_internal(
     key_id: Option<&CanonicalDigest>,
     secret_binding: Option<&MigrationSecretBinding>,
     expected_store_uuid: Option<&str>,
-    durable_set_prepared: bool,
+    durable_set_target: Option<u32>,
 ) -> Result<Connection, LocalStorageError> {
     let parent = path.parent().ok_or(LocalStorageError::InvalidData)?;
     prepare_owner_directory(parent)?;
@@ -146,7 +155,7 @@ fn open_database_internal(
         migration_backup_root,
         key_id,
         secret_binding,
-        durable_set_prepared,
+        durable_set_target,
     )?;
     if kind != DatabaseKind::Secrets {
         initialize_storage_meta(&connection, expected_store_uuid)?;
@@ -251,20 +260,21 @@ fn migrate(
     backup_root: &Path,
     key_id: Option<&CanonicalDigest>,
     secret_binding: Option<&MigrationSecretBinding>,
-    durable_set_prepared: bool,
+    durable_set_target: Option<u32>,
 ) -> Result<(), LocalStorageError> {
+    let target = durable_set_target.unwrap_or(LATEST_SCHEMA_VERSION);
     let current: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if current > LATEST_SCHEMA_VERSION {
+    if target > LATEST_SCHEMA_VERSION || current > target {
         return Err(LocalStorageError::InvalidData);
     }
-    if current > 0 && current < LATEST_SCHEMA_VERSION && !durable_set_prepared {
+    if current > 0 && current < target && durable_set_target.is_none() {
         let backup_path = migration_backup_path(path, backup_root, current)?;
         // `create_bound` reuses only the exact source identity/key/watermark manifest. A stale or
         // half-published final is preserved and replaced by a unique fresh attempt.
         SqliteBackup::create_bound(connection, &backup_path, key_id)?;
     }
 
-    for version in (current + 1)..=LATEST_SCHEMA_VERSION {
+    for version in (current + 1)..=target {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute_batch(migration_sql(kind, version)?)?;
         if kind == DatabaseKind::Control && version == 8 {
@@ -423,10 +433,7 @@ impl MigrationSetCoordinator {
         let set = if let Some(set) = durable_set {
             set
         } else {
-            if versions
-                .iter()
-                .any(|version| *version == LATEST_SCHEMA_VERSION || *version == 0)
-            {
+            if versions[0] == 0 || versions.iter().any(|version| *version != versions[0]) {
                 // A partially upgraded set without a durable source manifest has no exact group
                 // recovery point and must not be adopted.
                 return Err(LocalStorageError::InvalidData);
@@ -444,7 +451,15 @@ impl MigrationSetCoordinator {
                 LATEST_SCHEMA_VERSION,
             )?
         };
-        if set.target_schema_version() != LATEST_SCHEMA_VERSION
+        if !matches!(set.target_schema_version(), 24 | LATEST_SCHEMA_VERSION)
+            || (set.target_schema_version() == 24
+                && [
+                    set.control.manifest(),
+                    set.runtime.manifest(),
+                    set.secrets.manifest(),
+                ]
+                .iter()
+                .any(|source| source.schema_version != 23))
             || set.secrets.manifest().key_id.as_deref() != Some(secret_binding.key_id.as_str())
         {
             return Err(LocalStorageError::InvalidData);
@@ -467,6 +482,12 @@ impl MigrationSetCoordinator {
 
     pub(crate) fn durable_set_prepared(&self) -> bool {
         self.set.is_some()
+    }
+
+    pub(crate) fn target_schema_version(&self) -> u32 {
+        self.set
+            .as_ref()
+            .map_or(LATEST_SCHEMA_VERSION, BackupSet::target_schema_version)
     }
 
     pub(crate) fn expected_control_store_uuid(&self) -> Option<&str> {
@@ -608,12 +629,15 @@ fn validate_live_set(
     runtime_target_uuid: &str,
     secret_binding: &MigrationSecretBinding,
 ) -> Result<(), LocalStorageError> {
+    let rank = phase_rank(set.phase());
     let control_target = validate_live_database(
         &paths[0],
         set.control.manifest(),
         DatabaseKind::Control,
         control_target_uuid,
         None,
+        set.target_schema_version(),
+        rank,
     )?;
     let runtime_target = validate_live_database(
         &paths[1],
@@ -621,6 +645,8 @@ fn validate_live_set(
         DatabaseKind::Runtime,
         runtime_target_uuid,
         None,
+        set.target_schema_version(),
+        rank,
     )?;
     let secrets_target = validate_live_database(
         &paths[2],
@@ -628,8 +654,9 @@ fn validate_live_set(
         DatabaseKind::Secrets,
         &secret_binding.store_uuid,
         Some(&secret_binding.key_id),
+        set.target_schema_version(),
+        rank,
     )?;
-    let rank = phase_rank(set.phase());
     if (rank >= phase_rank(BackupSetPhase::ControlMigrated) && !control_target)
         || (rank >= phase_rank(BackupSetPhase::RuntimeMigrated) && !runtime_target)
         || (rank >= phase_rank(BackupSetPhase::SecretsMigrated) && !secrets_target)
@@ -641,12 +668,15 @@ fn validate_live_set(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_live_database(
     path: &Path,
     source: &crate::backup::BackupManifest,
     kind: DatabaseKind,
     target_store_uuid: &str,
     target_key_id: Option<&CanonicalDigest>,
+    target_schema_version: u32,
+    recorded_phase: u8,
 ) -> Result<bool, LocalStorageError> {
     validate_owner_file(path)?;
     let connection = Connection::open_with_flags(
@@ -658,10 +688,38 @@ fn validate_live_database(
         if database_state_digest(&connection)? != source.source_state_digest {
             return Err(LocalStorageError::InvalidData);
         }
-        return Ok(false);
+        return Ok(version == target_schema_version);
     }
-    if version != LATEST_SCHEMA_VERSION {
+    let store_phase = match kind {
+        DatabaseKind::Control => 0,
+        DatabaseKind::Runtime => 1,
+        DatabaseKind::Secrets => 2,
+    };
+    if recorded_phase < store_phase {
         return Err(LocalStorageError::InvalidData);
+    }
+    let at_target = version == target_schema_version;
+    if !at_target {
+        // Only the published stable 23 -> 25 chain has a supported intermediate commit.
+        // Its original source/target and next-store phase must all agree; arbitrary mixed
+        // versions are not migration sources. Version 24 must have its real committed ledger.
+        if recorded_phase != store_phase
+            || source.schema_version != 23
+            || target_schema_version != 25
+            || version != 24
+            || connection.query_row(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version >= 24",
+                [],
+                |row| row.get::<_, u32>(0),
+            )? != 1
+            || !connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 24)",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?
+        {
+            return Err(LocalStorageError::InvalidData);
+        }
     }
     match kind {
         DatabaseKind::Control | DatabaseKind::Runtime => {
@@ -672,9 +730,10 @@ fn validate_live_database(
                     |row| row.get::<_, String>(0),
                 )
                 .optional()?;
-            if binding
-                .as_deref()
-                .is_some_and(|binding| !binding.is_empty() && binding != target_store_uuid)
+            if (source.schema_version >= 23 && binding.as_deref() != Some(target_store_uuid))
+                || binding
+                    .as_deref()
+                    .is_some_and(|binding| !binding.is_empty() && binding != target_store_uuid)
             {
                 return Err(LocalStorageError::InvalidData);
             }
@@ -692,7 +751,7 @@ fn validate_live_database(
             }
         }
     }
-    Ok(true)
+    Ok(at_target)
 }
 
 fn phase_rank(phase: BackupSetPhase) -> u8 {
@@ -769,6 +828,10 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Control | DatabaseKind::Runtime | DatabaseKind::Secrets, 23) => {
             Ok(current_storage::MARKER_SQL)
         }
+        (DatabaseKind::Control, 24) => Ok(worker_dependencies_v24::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 24) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 25) => Ok(agent_surface_checks_v25::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 25) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }
@@ -1553,6 +1616,7 @@ mod tests {
                     &live.join("control.db"),
                     &backup_root,
                     &control_uuid,
+                    LATEST_SCHEMA_VERSION,
                 )
                 .unwrap(),
             );
@@ -1757,6 +1821,7 @@ mod tests {
                     &live.join("control.db"),
                     &backup_root,
                     &control_uuid,
+                    LATEST_SCHEMA_VERSION,
                 )
                 .unwrap(),
             );

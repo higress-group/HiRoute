@@ -709,7 +709,8 @@ impl ExternalEffectIntentV1 {
 #[serde(deny_unknown_fields)]
 pub struct WorkerDependencySelectionRecordV1 {
     pub harness: crate::delegation::WorkerHarnessV1,
-    pub adapter_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_path: Option<String>,
     pub cli_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_path: Option<String>,
@@ -718,26 +719,29 @@ pub struct WorkerDependencySelectionRecordV1 {
 impl WorkerDependencySelectionRecordV1 {
     pub fn new(
         harness: crate::delegation::WorkerHarnessV1,
-        adapter_path: impl Into<String>,
+        adapter_path: Option<String>,
         cli_path: impl Into<String>,
         node_path: Option<String>,
     ) -> Result<Self, OperationValidationError> {
         let selection = Self {
             harness,
-            adapter_path: adapter_path.into(),
+            adapter_path,
             cli_path: cli_path.into(),
             node_path,
         };
-        if !valid_native_absolute_path(&selection.adapter_path)
-            || !valid_native_absolute_path(&selection.cli_path)
-            || selection
-                .node_path
-                .as_deref()
-                .is_some_and(|path| !valid_native_absolute_path(path))
-        {
-            return Err(OperationValidationError::UnregisteredEffectPlan);
-        }
+        selection.validated_launch()?;
         Ok(selection)
+    }
+
+    pub fn validated_launch(
+        &self,
+    ) -> Result<crate::delegation::WorkerLaunchFormV1<'_>, OperationValidationError> {
+        crate::delegation::WorkerLaunchFormV1::validate(
+            self.harness,
+            self.adapter_path.as_deref(),
+            &self.cli_path,
+            self.node_path.as_deref(),
+        )
     }
 }
 
@@ -766,14 +770,6 @@ impl WorkerDependencySelectionChangeV1 {
     pub const fn after_revision(&self) -> Option<u64> {
         self.before_revision.checked_add(1)
     }
-}
-
-fn valid_native_absolute_path(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 4096
-        && !value.contains('\0')
-        && !value.contains(char::is_control)
-        && std::path::Path::new(value).is_absolute()
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -841,8 +837,10 @@ impl TransactionPlanV1 {
         spec: ChangeSpecV1,
         change: WorkerDependencySelectionChangeV1,
     ) -> Result<Self, OperationValidationError> {
+        change.after_selection.validated_launch()?;
         let harness = change.after_selection.harness;
         let resource = match harness {
+            crate::delegation::WorkerHarnessV1::QoderCli => "worker-dependency-selection/qoder_cli",
             crate::delegation::WorkerHarnessV1::CodexCli => "worker-dependency-selection/codex_cli",
             crate::delegation::WorkerHarnessV1::ClaudeCode => {
                 "worker-dependency-selection/claude_code"

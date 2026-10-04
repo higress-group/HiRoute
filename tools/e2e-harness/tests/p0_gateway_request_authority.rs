@@ -223,6 +223,24 @@ fn production_hirouted_wire_authority_catalog_deadline_and_actual_restart() {
         );
     }
 
+    // Native Qoder cannot send a custom token header. Its dedicated local entry
+    // still authenticates publication grants, never account or run credentials.
+    let qoder_responses = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);
+    for headers in [
+        "Authorization: Bearer native-account-token\r\n",
+        "Authorization: Bearer hr_run_model_fixture\r\n",
+        "Authorization: Bearer wire-token\r\nAuthorization: Bearer wire-token\r\n",
+        "Authorization: Bearer wire-token\r\nX-HiRoute-Token: wire-token\r\n",
+    ] {
+        let rejected =
+            header_only_request(address, &qoder_responses, headers, Duration::from_secs(1));
+        assert_json_response(&rejected, 401);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&rejected.body).unwrap()["code"],
+            "GATEWAY_GRANT_UNAUTHORIZED"
+        );
+    }
+
     let models = request(
         address,
         "GET",
@@ -247,6 +265,17 @@ fn production_hirouted_wire_authority_catalog_deadline_and_actual_restart() {
     assert_eq!(unchanged.status, 304);
     assert_eq!(unchanged.headers["etag"], etag);
     assert!(unchanged.body.is_empty());
+
+    let qoder_models = request(
+        address,
+        "GET",
+        &format!("{}/models", hiroute_domain::QODER_MODEL_BASE_PATH),
+        &[("Authorization", "Bearer wire-token")],
+        b"",
+    );
+    assert_json_response(&qoder_models, 200);
+    assert_eq!(qoder_models.body, models.body);
+    assert_eq!(qoder_models.headers["etag"], etag);
 
     for (path, model, header, status, code) in [
         (
@@ -274,6 +303,20 @@ fn production_hirouted_wire_authority_catalog_deadline_and_actual_restart() {
             "/v1/messages",
             "wire-deep",
             ("Authorization", "Bearer wire-token"),
+            422,
+            "AGENT_PROTOCOL_UNSUPPORTED",
+        ),
+        (
+            qoder_responses.as_str(),
+            "wire-private",
+            ("Authorization", "Bearer wire-token"),
+            404,
+            "AGENT_MODEL_NOT_GRANTED",
+        ),
+        (
+            qoder_responses.as_str(),
+            "wire-deep",
+            ("Authorization", "Bearer wire-messages-token"),
             422,
             "AGENT_PROTOCOL_UNSUPPORTED",
         ),
@@ -310,6 +353,27 @@ fn production_hirouted_wire_authority_catalog_deadline_and_actual_restart() {
     provider_thread.join().unwrap();
     assert_json_response(&accepted, 200);
     assert_response_text(&accepted, "wire-fast", "wire-provider", "ok");
+
+    let qoder_provider = serve_one_tls_json_response(
+        provider.try_clone().unwrap(),
+        "Bearer wire-provider-secret-1",
+        provider_response("qoder-provider", "native-qoder-ok"),
+    );
+    let qoder_accepted = request(
+        address,
+        "POST",
+        &qoder_responses,
+        &[("Authorization", "Bearer wire-token")],
+        br#"{"model":"wire-fast","input":"ordinary Qoder request"}"#,
+    );
+    qoder_provider.join().unwrap();
+    assert_json_response(&qoder_accepted, 200);
+    assert_response_text(
+        &qoder_accepted,
+        "wire-fast",
+        "qoder-provider",
+        "native-qoder-ok",
+    );
 
     let selector_started = Instant::now();
     let timed_out = trickle_request(address, Duration::from_secs(3));

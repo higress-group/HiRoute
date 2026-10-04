@@ -1,4 +1,4 @@
-export type WorkerHarness = 'codex_cli' | 'claude_code';
+export type WorkerHarness = 'codex_cli' | 'claude_code' | 'qoder_cli';
 export type WorkerDependencyComponent = 'cli' | 'adapter' | 'node';
 export type WorkerDependencyCandidateState = 'found' | 'missing' | 'invalid' | 'unavailable';
 
@@ -13,7 +13,7 @@ export type WorkerDependencyCandidate = {
 
 export type WorkerDependencySelection = {
   harness: WorkerHarness;
-  adapter_path: string;
+  adapter_path?: string | null;
   cli_path: string;
   node_path?: string | null;
 };
@@ -35,6 +35,17 @@ export type WorkerDependenciesView = {
 export type WorkerDependencySelectionRequest = WorkerDependencySelection & {
   expected_selection_revision: number;
 };
+
+export function workerDependencyComponents(harness: WorkerHarness): WorkerDependencyComponent[] {
+  return harness === 'qoder_cli' ? ['cli'] : ['cli', 'adapter', 'node'];
+}
+
+export function workerDependencySelectionComplete(selection: WorkerDependencySelection | null): boolean {
+  if (!selection?.cli_path) return false;
+  return selection.harness === 'qoder_cli'
+    ? selection.adapter_path == null && selection.node_path == null
+    : Boolean(selection.adapter_path);
+}
 
 export type WorkerMachineEnvelope<T> = {
   status: 'succeeded' | 'accepted' | 'usage_error' | 'conflict' | 'denied' | 'not_found' | 'unavailable' | 'action_required' | 'needs_attention' | 'internal_error';
@@ -72,7 +83,7 @@ export function workerDependencySelectionMatches(
   const selected = selectedWorkerDependencies(view, request.harness);
   return Boolean(selected
     && selected.cli_path === request.cli_path
-    && selected.adapter_path === request.adapter_path
+    && (selected.adapter_path ?? null) === (request.adapter_path ?? null)
     && (selected.node_path ?? null) === (request.node_path ?? null));
 }
 
@@ -84,7 +95,7 @@ export function recommendedWorkerDependencies(
   if (selected) {
     return {
       ...selected,
-      node_path: selected.node_path ?? null,
+      ...(harness === 'qoder_cli' ? {} : { node_path: selected.node_path ?? null }),
       expected_selection_revision: workerDependencyRevision(view, harness),
     };
   }
@@ -93,8 +104,10 @@ export function recommendedWorkerDependencies(
   return {
     harness,
     cli_path: found('cli')?.path ?? '',
-    adapter_path: found('adapter')?.path ?? '',
-    node_path: found('node')?.path ?? null,
+    ...(harness === 'qoder_cli' ? {} : {
+      adapter_path: found('adapter')?.path ?? '',
+      node_path: found('node')?.path ?? null,
+    }),
     expected_selection_revision: workerDependencyRevision(view, harness),
   };
 }
@@ -110,12 +123,13 @@ export function workerDependencySelectionState(
         && candidate.component === component
         && candidate.path === path)?.state
     : undefined;
-  const nodeRequired = Boolean(request.node_path)
+  const nodeRequired = harness !== 'qoder_cli' && (Boolean(request.node_path)
     || (!selected && view.install_hints.some(hint => hint.harness === harness
       && hint.component === 'node'
-      && hint.reason_code === 'worker.dependencies.install_required'));
-  const complete = fact('cli', request.cli_path) === 'found'
-    && fact('adapter', request.adapter_path) === 'found'
+      && hint.reason_code === 'worker.dependencies.install_required')));
+  const complete = workerDependencySelectionComplete(request)
+    && fact('cli', request.cli_path) === 'found'
+    && (harness === 'qoder_cli' || fact('adapter', request.adapter_path) === 'found')
     && (!nodeRequired || fact('node', request.node_path) === 'found');
   if (selected && complete) return 'configured';
   if (complete) return 'found';

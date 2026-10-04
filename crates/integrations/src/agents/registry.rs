@@ -12,11 +12,17 @@ pub const CLAUDE_CODE_VERIFIED_VERSION_V1: &str = "2.1.0";
 pub const CLAUDE_CODE_VERIFIED_VERSION_2_1_231_V1: &str = "2.1.231";
 pub const CODEX_PROFILE_ID_V1: &str = "codex-responses-v1";
 pub const CLAUDE_PROFILE_ID_V1: &str = "claude-messages-v1";
+pub const QODER_PROFILE_ID_V1: &str = "qoder-collaboration-v1";
 pub const CODEX_INTEGRATION_PROFILE_REF_V1: &str = "builtin/codex-responses/v1";
 pub const CLAUDE_INTEGRATION_PROFILE_REF_V1: &str = "builtin/claude-messages/v1";
+pub const QODER_INTEGRATION_PROFILE_REF_V1: &str = "builtin/qoder-collaboration/v1";
 
 pub fn builtin_agent_profiles() -> Vec<AgentProfileV1> {
-    vec![codex_profile_v1(), claude_code_profile_v1()]
+    vec![
+        codex_profile_v1(),
+        claude_code_profile_v1(),
+        qoder_collaboration_profile_v1(),
+    ]
 }
 
 pub fn codex_profile_v1() -> AgentProfileV1 {
@@ -29,7 +35,7 @@ pub fn codex_profile_v1() -> AgentProfileV1 {
         // Codex versions are diagnostic only. MVP admission never uses a binary-version
         // allowlist; concrete Desktop and CLI surfaces locate and launch their actual engine.
         legacy_exact_versions: BTreeSet::new(),
-        ingress_protocol: AgentIngressProtocolV1::Responses,
+        ingress_protocol: Some(AgentIngressProtocolV1::Responses),
         config_precedence: AgentKindV1::Codex.config_precedence().to_vec(),
         owned_config_fields: vec![
             field("provider", "model_provider"),
@@ -63,7 +69,7 @@ pub fn claude_code_profile_v1() -> AgentProfileV1 {
         integration_profile_ref: CLAUDE_INTEGRATION_PROFILE_REF_V1.to_owned(),
         kind: AgentKindV1::ClaudeCode,
         legacy_exact_versions: BTreeSet::new(),
-        ingress_protocol: AgentIngressProtocolV1::Messages,
+        ingress_protocol: Some(AgentIngressProtocolV1::Messages),
         config_precedence: AgentKindV1::ClaudeCode.config_precedence().to_vec(),
         owned_config_fields: vec![
             field("base_endpoint", "env.ANTHROPIC_BASE_URL"),
@@ -83,6 +89,27 @@ pub fn claude_code_profile_v1() -> AgentProfileV1 {
         native_subagent_routing: false,
         spawn_guidance: None,
         managed_launch: Some(ManagedLaunchProfileV1::claude_code()),
+    }
+}
+
+/// Keep the original collaboration identity so accepted Skill ownership remains valid.
+/// Model routing adds one scoped provider; it never claims native defaults or account auth.
+pub fn qoder_collaboration_profile_v1() -> AgentProfileV1 {
+    AgentProfileV1 {
+        schema: AGENT_PROFILE_SCHEMA_V1.to_owned(),
+        profile_id: QODER_PROFILE_ID_V1.to_owned(),
+        integration_profile_ref: QODER_INTEGRATION_PROFILE_REF_V1.to_owned(),
+        kind: AgentKindV1::Qoder,
+        legacy_exact_versions: BTreeSet::new(),
+        ingress_protocol: Some(AgentIngressProtocolV1::Responses),
+        config_precedence: AgentKindV1::Qoder.config_precedence().to_vec(),
+        // Adapter-semantic ownership: only the context-specific provider inside this map.
+        owned_config_fields: vec![field("additional_provider", "hiroute.additional_provider")],
+        dynamic_catalog: false,
+        static_catalog_fallback: false,
+        native_subagent_routing: false,
+        spawn_guidance: None,
+        managed_launch: None,
     }
 }
 

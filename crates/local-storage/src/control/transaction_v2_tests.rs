@@ -1014,3 +1014,6 @@ fn current_operation_allows_only_the_committed_parked_settings_tail_without_a_wr
         .unwrap();
     assert!(!control.operation_is_current(&op).unwrap());
 }
+
+#[path = "journal_order_tests.rs"]
+mod journal_order_tests;

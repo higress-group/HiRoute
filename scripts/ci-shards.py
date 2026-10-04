@@ -83,9 +83,11 @@ INTEGRATION_SHARDS = {
         ("hiroute-product-e2e", "gateway_adapter_contract"),
         ("hiroute-product-e2e", "local_observation"),
         ("hiroute-product-e2e", "product_oracle"),
+        ("hiroute-product-e2e", "qoder_delegation"),
         ("hiroute-product-e2e", "routing_plans"),
         ("hiroute-product-e2e", "transaction_recovery"),
         ("hiroute-product-e2e", "worker_delegation"),
+        ("hiroute-product-e2e", "worker_native_context"),
         ("hiroute-product-e2e", "worker_read"),
     },
     "integration-smoke": {

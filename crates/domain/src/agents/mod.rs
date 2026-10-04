@@ -9,6 +9,7 @@ mod model_grant;
 mod native_artifacts;
 mod plan_references;
 mod profile;
+mod qoder_model;
 mod settings;
 mod skill_installation;
 mod surface_check;
@@ -22,9 +23,13 @@ pub use model_grant::*;
 pub use native_artifacts::*;
 pub use plan_references::*;
 pub use profile::*;
+pub use qoder_model::*;
 pub use settings::*;
 pub use skill_installation::*;
 pub use surface_check::*;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod optional_model_tests;

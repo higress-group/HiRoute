@@ -114,13 +114,14 @@ impl LocalSecretStore {
         master_key_path: &Path,
         migration_backup_root: &Path,
         binding: &MigrationSecretBinding,
+        target_schema_version: u32,
     ) -> Result<Self, LocalStorageError> {
         Self::open_internal(
             authority,
             database_path,
             master_key_path,
             migration_backup_root,
-            Some(binding),
+            Some((binding, target_schema_version)),
         )
     }
 
@@ -129,7 +130,7 @@ impl LocalSecretStore {
         database_path: &Path,
         master_key_path: &Path,
         migration_backup_root: &Path,
-        migration_binding: Option<&MigrationSecretBinding>,
+        migration_binding: Option<(&MigrationSecretBinding, u32)>,
     ) -> Result<Self, LocalStorageError> {
         let existing_store = database_path.exists();
         if !existing_store && has_backup_evidence(database_path, migration_backup_root)? {
@@ -155,14 +156,14 @@ impl LocalSecretStore {
         if existing_store {
             preflight_existing_store(database_path, &keys)?;
         }
-        if migration_binding.is_some_and(|binding| {
+        if migration_binding.is_some_and(|(binding, _)| {
             binding.store_uuid != keys.store_uuid
                 || binding.key_id != keys.key_id
                 || binding.key_verifier != keys.verifier
         }) {
             return Err(LocalStorageError::Locked);
         }
-        let mut connection = if let Some(binding) = migration_binding {
+        let mut connection = if let Some((binding, target_schema_version)) = migration_binding {
             open_database_from_set(
                 authority,
                 database_path,
@@ -170,6 +171,7 @@ impl LocalSecretStore {
                 migration_backup_root,
                 None,
                 Some(binding),
+                target_schema_version,
             )?
         } else {
             open_database_with_key_id(

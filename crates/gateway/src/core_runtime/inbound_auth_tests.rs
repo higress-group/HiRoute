@@ -1,6 +1,59 @@
 use super::*;
 
 #[test]
+fn qoder_model_entry_is_explicit_and_never_adopts_worker_or_mixed_credentials() {
+    let path = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);
+    let catalog = format!("{}/models", hiroute_domain::QODER_MODEL_BASE_PATH);
+    assert_eq!(
+        IngressProtocol::from_path(&path),
+        Some(IngressProtocol::Responses)
+    );
+    let mut headers = HeaderMap::new();
+    for target in [&path, &catalog] {
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer local-model-grant"),
+        );
+        assert_eq!(
+            inbound_authorization(target, &headers).as_deref(),
+            Some("Bearer local-model-grant")
+        );
+        assert!(inbound_authorization("/v1/responses", &headers).is_none());
+        headers.insert(
+            "x-hiroute-token",
+            HeaderValue::from_static("local-model-grant"),
+        );
+        assert!(inbound_authorization(target, &headers).is_none());
+        headers.remove("x-hiroute-token");
+        for invalid in [
+            "Bearer hr_run_model_fixture",
+            "Bearer hr_run_control_fixture",
+            "Bearer ",
+            "Bearer first,second",
+            "Bearer first second",
+            "Basic local-model-grant",
+        ] {
+            headers.insert(AUTHORIZATION, HeaderValue::from_static(invalid));
+            assert!(
+                inbound_authorization(target, &headers).is_none(),
+                "{invalid}"
+            );
+        }
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer first"));
+        headers.append(AUTHORIZATION, HeaderValue::from_static("Bearer second"));
+        assert!(inbound_authorization(target, &headers).is_none());
+        headers.clear();
+    }
+    assert!(
+        IngressProtocol::from_path(&format!(
+            "{}/responses/extra",
+            hiroute_domain::QODER_MODEL_BASE_PATH
+        ))
+        .is_none()
+    );
+}
+
+#[test]
 fn x_api_key_never_authenticates_and_bearer_wins_when_both_are_present() {
     let mut headers = HeaderMap::new();
     headers.insert("x-api-key", HeaderValue::from_static("not-an-agent-grant"));

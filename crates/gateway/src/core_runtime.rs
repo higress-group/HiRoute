@@ -251,7 +251,10 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
             .get(CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<usize>().ok());
-        if request.method == Method::GET && path == "/v1/models" {
+        if request.method == Method::GET
+            && (path == "/v1/models"
+                || path.strip_prefix(hiroute_domain::QODER_MODEL_BASE_PATH) == Some("/models"))
+        {
             let if_none_match = request
                 .headers
                 .get(IF_NONE_MATCH)
@@ -1385,6 +1388,30 @@ fn inbound_authorization<'a>(
     path: &str,
     headers: &'a HeaderMap,
 ) -> Option<std::borrow::Cow<'a, str>> {
+    if path
+        .strip_prefix(hiroute_domain::QODER_MODEL_BASE_PATH)
+        .is_some_and(|resource| matches!(resource, "/responses" | "/models"))
+    {
+        // This explicit native entry consumes only local model-grant credentials.
+        // Normal publication authentication still rejects unissued/native account
+        // tokens; delegated run authority remains on its separate existing entry.
+        if headers.contains_key("x-hiroute-token")
+            || headers.get_all(AUTHORIZATION).iter().count() != 1
+        {
+            return None;
+        }
+        let authorization = headers.get(AUTHORIZATION)?.to_str().ok()?;
+        let token = authorization.strip_prefix("Bearer ")?;
+        if token.is_empty()
+            || token.starts_with("hr_run_")
+            || token
+                .bytes()
+                .any(|byte| byte.is_ascii_whitespace() || byte == b',')
+        {
+            return None;
+        }
+        return Some(std::borrow::Cow::Borrowed(authorization));
+    }
     if headers.contains_key("x-hiroute-token") {
         if !matches!(path, "/v1/responses" | "/v1/models")
             || headers.get_all("x-hiroute-token").iter().count() != 1

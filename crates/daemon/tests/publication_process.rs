@@ -6,6 +6,16 @@ fn real_process_publication_crashes_recover_without_reapplying() {
     run_script("publication_process.py");
 }
 
+/// Unmanaged native directories may have ordinary user permissions. Only operations that
+/// actually use protected targets should reject them; startup must preserve their contents.
+#[test]
+fn real_process_starts_without_changing_unmanaged_native_directory_permissions() {
+    run_script_case(
+        "publication_process.py",
+        Some("unmanaged-native-permissions"),
+    );
+}
+
 #[test]
 fn real_process_three_domain_interleavings_preserve_all_accepted_changes() {
     run_script("publication_interleaving.py");
@@ -80,6 +90,10 @@ fn real_gateway_native_protocol_usage_populates_home_value() {
 }
 
 fn run_script(script: &str) {
+    run_script_case(script, None);
+}
+
+fn run_script_case(script: &str, scenario: Option<&str>) {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
@@ -104,6 +118,7 @@ fn run_script(script: &str) {
         .arg("-B")
         .arg(root.join("crates/daemon/tests/support").join(script))
         .arg(&root)
+        .args(scenario)
         .status()
         .unwrap();
     assert!(result.success(), "production publication scenarios failed");

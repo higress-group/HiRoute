@@ -189,16 +189,7 @@ fn build_entry(
         || task.plan.plan_digest != version.reference.content_digest
         || task.plan.exact_reference != exact_reference(&version.reference)
         || task.plan.model_alias != version.compiled.model_alias().as_str()
-        || !matches!(
-            (task.plan.harness, work.harness),
-            (
-                hiroute_domain::delegation::WorkerHarnessV1::CodexCli,
-                hiroute_domain::delegation::WorkerHarnessV1::CodexCli
-            ) | (
-                hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode,
-                hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode
-            )
-        )
+        || task.plan.harness != work.harness
         || !verifier.protects_run(run)
     {
         return Err(DelegationErrorV1::Conflict);
@@ -288,6 +279,7 @@ fn build_entry(
             match task.plan.harness {
                 hiroute_domain::delegation::WorkerHarnessV1::CodexCli => "codex",
                 hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode => "claude",
+                hiroute_domain::delegation::WorkerHarnessV1::QoderCli => "qoder",
             },
             task.session
                 .as_ref()
@@ -360,3 +352,6 @@ fn now_ms() -> Result<u64, DelegationErrorV1> {
         .as_millis();
     u64::try_from(millis).map_err(|_| DelegationErrorV1::DeadlineExceeded)
 }
+
+#[cfg(test)]
+mod tests;

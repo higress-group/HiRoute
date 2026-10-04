@@ -627,6 +627,7 @@ pub(super) const fn harness_key(harness: WorkerHarnessV1) -> &'static str {
     match harness {
         WorkerHarnessV1::CodexCli => "codex_cli",
         WorkerHarnessV1::ClaudeCode => "claude_code",
+        WorkerHarnessV1::QoderCli => "qoder_cli",
     }
 }
 
@@ -634,6 +635,7 @@ fn parse_harness(value: &str) -> PortResult<WorkerHarnessV1> {
     match value {
         "codex_cli" => Ok(WorkerHarnessV1::CodexCli),
         "claude_code" => Ok(WorkerHarnessV1::ClaudeCode),
+        "qoder_cli" => Ok(WorkerHarnessV1::QoderCli),
         _ => Err(port(
             PortErrorCode::Corrupt,
             "control.worker_dependency.harness",

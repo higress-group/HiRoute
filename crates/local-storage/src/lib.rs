@@ -124,6 +124,7 @@ impl LocalStorageSet {
             &backup_root,
             secret_binding.as_ref(),
         )?;
+        let target_schema_version = migration.target_schema_version();
         let control_result = if migration.durable_set_prepared() {
             ControlStore::open_from_migration_set(
                 authority,
@@ -132,6 +133,7 @@ impl LocalStorageSet {
                 migration
                     .expected_control_store_uuid()
                     .ok_or(LocalStorageError::InvalidData)?,
+                target_schema_version,
             )
         } else {
             ControlStore::open(authority, &control_path, &backup_root)
@@ -157,6 +159,7 @@ impl LocalStorageSet {
                 migration
                     .expected_runtime_store_uuid()
                     .ok_or(LocalStorageError::InvalidData)?,
+                target_schema_version,
             )
         } else {
             RuntimeStore::open(authority, &runtime_path, &backup_root)
@@ -183,6 +186,7 @@ impl LocalStorageSet {
                 &master_key_path,
                 &backup_root,
                 secret_binding.as_ref().ok_or(LocalStorageError::Locked)?,
+                target_schema_version,
             )
         } else {
             LocalSecretStore::open(authority, &secrets_path, &master_key_path, &backup_root)
@@ -218,6 +222,17 @@ impl LocalStorageSet {
             drop(control);
             migration.restore_after_failure(barrier, &live_root)?;
             return Err(error);
+        }
+        if target_schema_version < migrations::LATEST_SCHEMA_VERSION {
+            // A prior binary's accepted batch must finish under its own target and backup.
+            // Keep the startup lock while reopening: prepare archives that completed batch
+            // and publishes a fresh source backup for the current version. Admission opens
+            // only after the current batch also completes.
+            drop(secrets);
+            drop(runtime);
+            drop(control);
+            drop(migration);
+            return Self::open_locked_stores(authority, barrier, storage_root, startup_lock);
         }
         control.startup_lock = Some(startup_lock.clone());
         runtime.startup_lock = Some(startup_lock.clone());

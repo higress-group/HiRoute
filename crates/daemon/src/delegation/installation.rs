@@ -6,11 +6,13 @@ use hiroute_domain::delegation::{
     DelegationErrorV1, DelegationNativeRootReadyV1, DelegationNativeRootStateV1,
     DelegationNativeUseStateV1, DelegationRuntimePort, WorkerHarnessV1,
 };
-use hiroute_domain::{CanonicalDigest, WorkspaceId};
+use hiroute_domain::{CanonicalDigest, WorkerDependencySelectionRecordV1, WorkspaceId};
 use hiroute_integrations::agents::codex_private_worker_catalog;
 
 use super::executor::{WorkerProfileInput, WorkerProfileSource};
-use super::profile::{CandidateWorkerProfile, ProfileInput, SessionRootUse, TaskSessionRoot};
+use super::profile::{
+    CandidateWorkerProfile, NativeWorkerContext, ProfileInput, SessionRootUse, TaskSessionRoot,
+};
 
 #[path = "installation/availability.rs"]
 mod availability;
@@ -27,11 +29,18 @@ pub(crate) use discovery::{
     discover as discover_worker_dependencies, validate_persisted_installation, validate_selection,
 };
 
+const WORKER_HARNESSES: [WorkerHarnessV1; 3] = [
+    WorkerHarnessV1::CodexCli,
+    WorkerHarnessV1::ClaudeCode,
+    WorkerHarnessV1::QoderCli,
+];
+
 #[derive(Clone, Debug)]
 pub struct WorkerInstallationConfig {
     pub harness: WorkerHarnessV1,
-    /// The ACP agent server.  It may be a Node script only when `node_binary` is present.
-    pub adapter: PathBuf,
+    /// Adapter ACP only; native ACP selects the CLI itself and leaves this absent.
+    /// An adapter may be a Node script only when `node_binary` is present.
+    pub adapter: Option<PathBuf>,
     /// The native Harness executable selected by the user/installation owner.
     pub harness_binary: PathBuf,
     /// The explicitly selected Node runtime for a script adapter, if one is required.
@@ -46,7 +55,7 @@ impl WorkerInstallationConfig {
     ) -> Self {
         Self {
             harness: WorkerHarnessV1::CodexCli,
-            adapter: adapter.into(),
+            adapter: Some(adapter.into()),
             harness_binary: harness_binary.into(),
             node_binary: Some(node_binary.into()),
         }
@@ -59,16 +68,56 @@ impl WorkerInstallationConfig {
     ) -> Self {
         Self {
             harness: WorkerHarnessV1::ClaudeCode,
-            adapter: adapter.into(),
+            adapter: Some(adapter.into()),
             harness_binary: harness_binary.into(),
             node_binary: Some(node_binary.into()),
         }
     }
 
+    pub fn qoder_native(harness_binary: impl Into<PathBuf>) -> Self {
+        Self {
+            harness: WorkerHarnessV1::QoderCli,
+            adapter: None,
+            harness_binary: harness_binary.into(),
+            node_binary: None,
+        }
+    }
+
+    pub fn from_record(
+        record: &WorkerDependencySelectionRecordV1,
+    ) -> Result<Self, DelegationErrorV1> {
+        record
+            .validated_launch()
+            .map_err(|_| DelegationErrorV1::DependenciesInvalid)?;
+        Ok(Self {
+            harness: record.harness,
+            adapter: record.adapter_path.as_ref().map(PathBuf::from),
+            harness_binary: PathBuf::from(&record.cli_path),
+            node_binary: record.node_path.as_ref().map(PathBuf::from),
+        })
+    }
+
+    fn selection_record(&self) -> Result<WorkerDependencySelectionRecordV1, DelegationErrorV1> {
+        let path = |path: &Path| {
+            path.to_str()
+                .map(str::to_owned)
+                .ok_or(DelegationErrorV1::DependenciesInvalid)
+        };
+        Ok(WorkerDependencySelectionRecordV1 {
+            harness: self.harness,
+            adapter_path: self.adapter.as_deref().map(path).transpose()?,
+            cli_path: path(&self.harness_binary)?,
+            node_path: self.node_binary.as_deref().map(path).transpose()?,
+        })
+    }
+
     fn public_selection(&self) -> hiroute_application_api::WorkerDependencySelectionV1 {
         hiroute_application_api::WorkerDependencySelectionV1 {
             harness: self.harness,
-            adapter_path: self.adapter.to_string_lossy().into_owned(),
+            adapter_path: self
+                .adapter
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned()),
             cli_path: self.harness_binary.to_string_lossy().into_owned(),
             node_path: self
                 .node_binary
@@ -94,10 +143,20 @@ pub(crate) trait WorkerInstallationSelectionSource: Send + Sync {
 pub(super) fn check_installation(
     config: &WorkerInstallationConfig,
 ) -> Result<(), DelegationErrorV1> {
-    check_entry(&config.adapter, config.node_binary.is_none())?;
-    check_entry(&config.harness_binary, true)?;
-    if let Some(node) = &config.node_binary {
-        check_entry(node, true)?;
+    use hiroute_domain::delegation::WorkerLaunchFormV1;
+    let record = config.selection_record()?;
+    match record
+        .validated_launch()
+        .map_err(|_| DelegationErrorV1::DependenciesInvalid)?
+    {
+        WorkerLaunchFormV1::NativeAcp { cli } => check_entry(Path::new(cli), true)?,
+        WorkerLaunchFormV1::AdapterAcp { cli, adapter, node } => {
+            check_entry(Path::new(adapter), node.is_none())?;
+            check_entry(Path::new(cli), true)?;
+            if let Some(node) = node {
+                check_entry(Path::new(node), true)?;
+            }
+        }
     }
     Ok(())
 }
@@ -225,6 +284,12 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             .selection(input.task.plan.harness)?
             .ok_or(DelegationErrorV1::DependenciesMissing)?;
         let installation = discovery::validate_persisted_installation(&selection.config)?;
+        if installation.harness == WorkerHarnessV1::QoderCli
+            && input.run.configuration.permission_policy
+                != hiroute_domain::delegation::WorkerPermissionPolicyV1::ApproveAll
+        {
+            return Err(DelegationErrorV1::CapabilityUnavailable);
+        }
         let roots = WorkerProfileRoots::prepare(&self.storage_root)?;
         let task = &input.task;
         let run = &input.run;
@@ -293,7 +358,15 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             if native.root.state != DelegationNativeRootStateV1::Creating {
                 return Err(DelegationErrorV1::Conflict);
             }
-            let identity = match session.create_ownership_marker(&roots.sessions, &native.root) {
+            let identity = match (|| {
+                let context = NativeWorkerContext::from_environment(installation.harness)?;
+                session.bind_borrowed_context(
+                    context.home(),
+                    context.config_root(),
+                    &input.workspace_path,
+                )?;
+                session.create_ownership_marker(&roots.sessions, &native.root)
+            })() {
                 Ok(identity) => identity,
                 Err(error) => {
                     let _ = self.runtime.mark_native_root_unknown(
@@ -337,6 +410,35 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         let private_root = roots
             .runs
             .join(run_root_name(&task.workspace_id, task, run)?);
+        let (native_context, workspace) = match session.borrowed_context()? {
+            Some(context) => {
+                if fs::canonicalize(&input.workspace_path)
+                    .map_err(|_| DelegationErrorV1::ResumeUnavailable)?
+                    != context.workspace
+                {
+                    return Err(DelegationErrorV1::ResumeUnavailable);
+                }
+                if run.continued_from.is_some() {
+                    let native_session_id = task
+                        .session
+                        .as_ref()
+                        .and_then(|session| session.native_session_id.as_deref())
+                        .ok_or(DelegationErrorV1::ResumeUnavailable)?;
+                    session.verify_native_session(native_session_id)?;
+                }
+                (
+                    NativeWorkerContext::borrowed(&context.home, &context.config_root)?,
+                    context.workspace,
+                )
+            }
+            None if installation.harness == WorkerHarnessV1::QoderCli => {
+                return Err(DelegationErrorV1::ResumeUnavailable);
+            }
+            None => (
+                NativeWorkerContext::isolated(&private_root, session.path())?,
+                input.workspace_path.clone(),
+            ),
+        };
         let admitted_at_ms =
             accepted_run_admitted_at_ms(run.deadline_ms, run.execution.duration_ms)?;
         let codex_catalog = if installation.harness == WorkerHarnessV1::CodexCli {
@@ -358,8 +460,18 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         {
             return Err(DelegationErrorV1::CapabilityUnavailable);
         }
+        let qoder_budget = (installation.harness == WorkerHarnessV1::QoderCli)
+            .then(|| {
+                hiroute_integrations::agents::qoder_plan_token_budget(
+                    &input.compiled_plan.body.materialized,
+                )
+            })
+            .transpose()
+            .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
         CandidateWorkerProfile::build(ProfileInput {
-            claude_context_window: if installation.harness == WorkerHarnessV1::ClaudeCode {
+            context_window_tokens: if let Some(budget) = qoder_budget {
+                Some(budget.context_window_tokens)
+            } else if installation.harness == WorkerHarnessV1::ClaudeCode {
                 Some(
                     input
                         .compiled_plan
@@ -371,13 +483,15 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             } else {
                 None
             },
+            max_output_tokens: qoder_budget.map(|budget| budget.max_output_tokens),
             harness: installation.harness,
-            adapter: &installation.adapter,
+            adapter: installation.adapter.as_deref(),
             harness_binary: &installation.harness_binary,
             node_binary: installation.node_binary.as_deref(),
             private_root: &private_root,
             session_root: &session,
-            workspace: &input.workspace_path,
+            native_context: &native_context,
+            workspace: &workspace,
             alias: &task.plan.model_alias,
             codex_catalog: codex_catalog.as_deref(),
             native_effort: None,

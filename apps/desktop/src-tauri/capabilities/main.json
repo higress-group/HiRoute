@@ -51,6 +51,7 @@
     "allow-preview-agent-settings",
     "allow-retry-agent-settings",
     "allow-check-agent-authentication",
+    "allow-check-agent-live",
     "allow-worker-settings-get",
     "allow-worker-settings-set",
     "allow-worker-task-plans",

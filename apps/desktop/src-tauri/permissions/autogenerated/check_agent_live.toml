@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-check-agent-live"
+description = "Enables the check_agent_live command without any pre-configured scope."
+commands.allow = ["check_agent_live"]
+
+[[permission]]
+identifier = "deny-check-agent-live"
+description = "Denies the check_agent_live command without any pre-configured scope."
+commands.deny = ["check_agent_live"]

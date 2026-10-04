@@ -10,6 +10,11 @@ from pathlib import Path
 
 
 REGISTRY_PATH = Path("contracts/compatibility-support.v1.json")
+# Storage owns the production declaration and startup support policy. A schema change
+# must deliberately update this gate after reviewing migrations/startup_format.rs and
+# docs/upgrade-storage-design.md; fixtures cannot satisfy it. This is not a migration test.
+DATABASE_SCHEMA_SOURCE = "crates/local-storage/src/migrations/mod.rs"
+EXPECTED_DATABASE_SCHEMA_VERSION = 25
 VERSION_SUFFIX = re.compile(r"/v[0-9]+")
 INTERNAL_CONTRACT = re.compile(r"hiroute(?:\.[a-z0-9][a-z0-9-]*)+/v[0-9]+")
 VALID_MODES = {
@@ -133,6 +138,101 @@ def without_cfg_test_items(source):
             continue
         output.append(line)
     return "".join(output)
+
+
+def schema_source_tokens(source):
+    """Lex only enough Rust to distinguish this gate's declaration from text.
+
+    This is not a Rust parser or a cfg evaluator. Literals stay opaque, nested
+    comments are skipped, and malformed lexical input fails closed.
+    """
+    raw_string = re.compile(r'(?:b|c)?r(#{0,255})"')
+    quoted_string = re.compile(r'(?:b|c)?"(?:\\[\s\S]|[^"\\])*"')
+    character = re.compile(r"(?:b)?'(?:\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|[^\n])|[^'\\\n])'")
+    token = re.compile(r"[A-Za-z_]\w*|[0-9][0-9_]*|.")
+    position = 0
+    while position < len(source):
+        if source[position].isspace():
+            position += 1
+        elif source.startswith("//", position):
+            end = source.find("\n", position)
+            position = len(source) if end < 0 else end
+        elif source.startswith("/*", position):
+            depth = 1
+            position += 2
+            while depth and position < len(source):
+                if source.startswith("/*", position):
+                    depth += 1
+                    position += 2
+                elif source.startswith("*/", position):
+                    depth -= 1
+                    position += 2
+                else:
+                    position += 1
+            if depth:
+                raise ValueError("unterminated block comment")
+        elif match := raw_string.match(source, position):
+            ending = '"' + match[1]
+            end = source.find(ending, match.end())
+            if end < 0:
+                raise ValueError("unterminated raw string")
+            position = end + len(ending)
+            yield "<literal>"
+        elif source.startswith(('"', 'b"', 'c"'), position):
+            match = quoted_string.match(source, position)
+            if not match:
+                raise ValueError("unterminated string")
+            position = match.end()
+            yield "<literal>"
+        elif match := character.match(source, position):
+            position = match.end()
+            yield "<literal>"
+        else:
+            match = token.match(source, position)
+            position = match.end()
+            yield match[0]
+
+
+def database_schema_declarations(source):
+    # Positive allowlist: one plain, unattributed module-level const. Do not infer
+    # production availability from arbitrary cfg/cfg_attr expressions or macros.
+    versions = []
+    item = []
+    stack = []
+    pairs = {"(": ")", "[": "]", "{": "}"}
+    declaration = re.compile(r"pub const LATEST_SCHEMA_VERSION : u32 = ([0-9][0-9_]*) ;")
+    for token in schema_source_tokens(source):
+        if not stack:
+            item.append(token)
+            if item[-2:] == ["#", "!"]:
+                raise ValueError("inner attributes require an explicit schema gate review")
+        if token in pairs:
+            stack.append(pairs[token])
+        elif token in pairs.values():
+            if not stack or stack.pop() != token:
+                raise ValueError("unbalanced delimiters")
+        if not stack and token in {";", "}"}:
+            if any(item[index:index + 2] == ["const", "LATEST_SCHEMA_VERSION"]
+                   for index in range(len(item) - 1)):
+                match = declaration.fullmatch(" ".join(item))
+                versions.append(match[1] if match else None)
+            item = []
+    if stack:
+        raise ValueError("unclosed delimiter")
+    return versions
+
+
+def audit_database_schema(root):
+    try:
+        versions = database_schema_declarations(load_text(root, DATABASE_SCHEMA_SOURCE))
+    except ValueError as error:
+        return [f"database schema: {DATABASE_SCHEMA_SOURCE}: {error}"]
+    if len(versions) != 1 or versions[0] is None:
+        return [f"database schema: {DATABASE_SCHEMA_SOURCE} must contain exactly one unconditional, unattributed top-level LATEST_SCHEMA_VERSION declaration"]
+    version = int(versions[0].replace("_", ""))
+    if version != EXPECTED_DATABASE_SCHEMA_VERSION:
+        return [f"database schema: {DATABASE_SCHEMA_SOURCE} declares V{version}; current storage requires V{EXPECTED_DATABASE_SCHEMA_VERSION} (storage owner must review schema and startup support policy together)"]
+    return []
 
 
 def discover_production_contracts(texts):
@@ -296,8 +396,7 @@ def audit(root, registry, paths=None):
             if contract in value:
                 errors.append(f"{path}: forbidden contract reintroduced: {contract}")
     joined = "\n".join(texts.values())
-    if "pub const LATEST_SCHEMA_VERSION: u32 = 17;" not in joined:
-        errors.append("local database latest schema must remain V17")
+    errors.extend(audit_database_schema(root))
     if "control-v1.sock" in joined:
         errors.append("legacy Local Control socket name reintroduced")
     return sorted(set(errors))

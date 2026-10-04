@@ -37,7 +37,11 @@ impl BuiltInAgentProbeV1 {
         Ok(Self {
             profile_id: profile.profile_id.clone(),
             integration_profile_ref: profile.integration_profile_ref.clone(),
-            protocol: profile.client_protocol(),
+            protocol: profile
+                .model_connection()
+                .map_err(|_| AgentEmulatorError::InvalidProfile)?
+                .ok_or(AgentEmulatorError::InvalidProfile)?
+                .ingress_protocol,
             model_alias,
             traffic_kind: AgentTrafficKindV1::ConnectivityProbe,
             prompt: CONNECTIVITY_PROBE_PROMPT_V1.to_owned(),
@@ -51,7 +55,7 @@ impl BuiltInAgentProbeV1 {
             .map_err(|_| AgentEmulatorError::InvalidProfile)?;
         if self.profile_id != profile.profile_id
             || self.integration_profile_ref != profile.integration_profile_ref
-            || self.protocol != profile.client_protocol()
+            || Some(self.protocol) != profile.client_protocol()
             || self.traffic_kind != AgentTrafficKindV1::ConnectivityProbe
             || self.prompt != CONNECTIVITY_PROBE_PROMPT_V1
             || self.allow_tools

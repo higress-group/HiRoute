@@ -12,7 +12,7 @@ fn profile(kind: AgentKindV1, protocol: AgentIngressProtocolV1) -> AgentProfileV
         integration_profile_ref: format!("integration/{}/v1", kind.as_str()),
         kind,
         legacy_exact_versions: BTreeSet::from(["1.2.3".to_owned()]),
-        ingress_protocol: protocol,
+        ingress_protocol: Some(protocol),
         config_precedence: kind.config_precedence().to_vec(),
         owned_config_fields: vec![
             OwnedConfigFieldV1::new("provider", "model_provider", ConfigLayerV1::User).unwrap(),
@@ -39,7 +39,7 @@ fn agents_profiles_bind_protocol_to_exact_kind_and_version() {
     assert!(codex.validate().is_ok());
 
     let mut invalid = codex;
-    invalid.ingress_protocol = AgentIngressProtocolV1::Messages;
+    invalid.ingress_protocol = Some(AgentIngressProtocolV1::Messages);
     assert_eq!(
         invalid.validate().unwrap_err(),
         AgentProfileError::ProtocolKindMismatch

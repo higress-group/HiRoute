@@ -2,6 +2,18 @@
   "$id": "hiroute://contracts/cli/worker-dependencies-select-request.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "else": {
+    "required": [
+      "adapter_path"
+    ]
+  },
+  "if": {
+    "properties": {
+      "harness": {
+        "const": "qoder_cli"
+      }
+    }
+  },
   "properties": {
     "adapter_path": {
       "maxLength": 4096,
@@ -21,7 +33,8 @@
     "harness": {
       "enum": [
         "codex_cli",
-        "claude_code"
+        "claude_code",
+        "qoder_cli"
       ]
     },
     "node_path": {
@@ -32,9 +45,14 @@
   },
   "required": [
     "harness",
-    "adapter_path",
     "cli_path",
     "expected_selection_revision"
   ],
+  "then": {
+    "properties": {
+      "adapter_path": false,
+      "node_path": false
+    }
+  },
   "type": "object"
 }
