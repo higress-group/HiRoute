@@ -295,10 +295,12 @@ def run(repository, candidate):
                 report['cases'].append({'id': CORE_CASES[0], 'state': 'green'})
             assert_preserved(fixture)
             report['run_ids'].append(continued['run_id'])
-            before = upstream.request_count()
+            replay_sources = [source for source in (upstream, replacement) if source is not None]
+            before = [source.request_count() for source in replay_sources]
             _, replay = worker_cli(product, command, CONTINUE_PROMPT)
             assert replay['data']['replayed'] and replay['data']['run_id'] == continued['run_id']
-            assert upstream.request_count() == before, 'Continue replay sent another model request'
+            assert [source.request_count() for source in replay_sources] == before, \
+                'Continue replay sent another model request'
         report['cases'].append({'id': CORE_CASES[1], 'state': 'green'})
         attempts = events(product)
         if fixture.get('proxy_trap_events'):
