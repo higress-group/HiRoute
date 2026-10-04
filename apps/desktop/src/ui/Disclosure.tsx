@@ -12,19 +12,24 @@ export function Disclosure({
   language,
   defaultOpen = false,
   className = '',
+  onOpenChange,
   children,
 }: PropsWithChildren<{
   label: string;
   language: Language;
   defaultOpen?: boolean;
   className?: string;
+  onOpenChange?(open: boolean): void;
 }>) {
   const [open, setOpen] = useState(defaultOpen);
   return <details
     className={`disclosure ${className}`.trim()}
     open={open}
     data-state={open ? 'open' : 'closed'}
-    onToggle={event => setOpen(event.currentTarget.open)}
+    onToggle={event => {
+      setOpen(event.currentTarget.open);
+      onOpenChange?.(event.currentTarget.open);
+    }}
   >
     <summary aria-expanded={open}>
       <span className="disclosure-label">{label}</span>

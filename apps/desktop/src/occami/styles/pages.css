@@ -398,6 +398,39 @@ button.list-row { width: 100%; border-top: 0; border-right: 0; border-left: 0; c
 button.option-row { width: 100%; text-align: left; }
 button.option-row[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); }
 .classifier-choice > .badge { flex: none; margin-top: 0; }
+.plan-editor .editor-section { padding: 28px 0; }
+.plan-editor .editor-section-heading { margin-bottom: 18px; }
+.plan-fallback { margin-top: 16px; }
+.plan-editor button.route-toggle-row,
+.plan-editor button.route-toggle-row[aria-pressed='true'] { padding: 12px 0; border: 0; border-radius: 0; background: transparent; }
+.plan-classification .classifier-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.classifier-choice > .icon { flex: none; color: var(--accent); }
+.plan-classifier-config { margin-top: 22px; }
+.plan-classifier-config > label { display: grid; gap: 7px; }
+.plan-classifier-config > .editor-section-heading { margin-bottom: 0; }
+.plan-runtime-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.plan-runtime-grid > div { min-width: 0; }
+.plan-editor .plan-runtime-grid .field { margin: 0; }
+.plan-editor .plan-runtime-grid .field + .field { margin-top: 12px; }
+.plan-runtime-grid .select { width: 100%; }
+.plan-runtime-grid .field-help { margin: 8px 0 0; }
+.plan-runtime-grid .plan-current-window { color: var(--text-soft); }
+.plan-capability-preview { margin-top: 24px; }
+.plan-preview-target { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.plan-preview-target .field-label { margin: 0; }
+.plan-editor .plan-preview-target .select { width: auto; min-width: 120px; }
+.plan-capability-value { display: grid; gap: 4px; margin: 12px 0; font-size: calc(12px * var(--hr-text-scale)); }
+.plan-capability-value > span { color: var(--text-muted); font-size: calc(11px * var(--hr-text-scale)); }
+.plan-capability-preview .callout { margin-top: 10px; }
+.plan-capability-details { margin-top: 16px; }
+.plan-more-settings .editor-subsection { padding: 18px 0; border-bottom: 1px solid var(--divider); }
+.plan-more-settings .editor-subsection:last-child { padding-bottom: 0; border-bottom: 0; }
+.plan-more-settings .editor-subsection > h3 { margin: 0 0 10px; font-size: calc(14px * var(--hr-text-scale)); }
+.plan-more-settings button.option-row,
+.plan-more-settings button.option-row[aria-pressed='true'] { border: 0; border-radius: 0; padding: 12px 0; background: transparent; }
+@media(max-width:760px) {
+  .plan-classification .classifier-choices, .plan-runtime-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .classifier-protocol { display: grid; gap: 22px; }
 .classifier-protocol section { min-width: 0; }
 .classifier-protocol h3 { margin: 0; font-size: calc(14px * var(--hr-text-scale)); }

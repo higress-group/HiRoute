@@ -84,13 +84,15 @@ test('the routing connection name is direct and documents its stable Agent ident
 test('classifier choices expose an unmistakable selected state and left-aligned copy', () => {
   const editor = read('src/plan-editor.tsx');
   assert.match(editor, /className="option-row classifier-choice"/);
-  assert.match(editor, /如何判断任务复杂度/);
+  assert.match(editor, /任务判断/);
   assert.match(editor, /内置规则/);
   assert.match(editor, /自定义分类服务/);
   assert.match(editor, /Jev、LLM 或其他自定义策略/);
   assert.doesNotMatch(editor, /BERT/);
-  assert.match(editor, /classifier\.kind === 'local_rules' \? text\('已选择', 'Selected'\)/);
-  assert.match(editor, /classifier\.kind === 'rest' \? text\('已选择', 'Selected'\)/);
+  assert.match(editor, /aria-pressed=\{classifier\.kind === 'local_rules'\}/);
+  assert.match(editor, /aria-pressed=\{classifier\.kind === 'rest'\}/);
+  assert.match(editor, /classifier\.kind === 'local_rules' && <UiIcon name="check"/);
+  assert.match(editor, /classifier\.kind === 'rest' && <UiIcon name="check"/);
   const pages = read('src/occami/styles/pages.css');
   assert.match(pages, /button\.option-row\[aria-pressed='true'\]\s*\{[^}]*border-color:\s*var\(--accent\)/);
   assert.match(pages, /\.option-row > div\s*\{[^}]*text-align:\s*left/);

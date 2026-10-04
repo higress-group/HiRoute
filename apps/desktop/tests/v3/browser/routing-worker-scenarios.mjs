@@ -27,14 +27,19 @@ const scenarios = [
     await until(() => document.querySelector('[data-codex-capability-state="available"]'), 'Codex capability summary');
     const summary = document.querySelector('[data-codex-capability-summary]');
     assert(summary.textContent.includes('上下文 64K') && summary.textContent.includes('输入 文本'), 'The shared Codex capability summary is incomplete');
-    assert(document.querySelector('.codex-capability-summary').textContent.includes('当前编辑内容') && document.querySelector('.codex-capability-summary').textContent.includes('Codex Responses 入口'), 'The capability preview claims published or upstream protocol support');
+    const details = document.querySelector('.plan-capability-details');
+    assert(details && !details.open, 'Lengthy capability explanations are not folded by default');
+    assert(visible(summary), 'The capability summary was folded');
+    details.querySelector('summary').click();
+    await tick();
+    assert(details.textContent.includes('当前编辑内容') && details.textContent.includes('Codex Responses 入口'), 'The capability preview claims published or upstream protocol support');
     const context = document.querySelector('[data-codex-capability-limit="context_window"]');
     const image = document.querySelector('[data-codex-capability-limit="image_input"]');
-    assert(context?.textContent.includes('Qwen3-Coder-Plus'), 'The context narrowing candidate is not identified');
-    assert(image?.textContent.includes('Qwen3-Coder-Plus'), 'The image narrowing candidate is not identified');
+    assert(visible(context) && context?.textContent.includes('Qwen3-Coder-Plus'), 'The context narrowing candidate is not identified');
+    assert(visible(image) && image?.textContent.includes('Qwen3-Coder-Plus'), 'The image narrowing candidate is not identified');
     assert(!document.querySelector('[data-codex-capability-limit="messages_protocol_boundary"]'), 'A native Responses candidate was labeled as Messages-limited');
     const fixed = document.querySelector('[data-codex-fixed-limit="parallel_tool_calls_disabled"]');
-    assert(fixed?.textContent.includes('不由任何候选模型造成'), 'The fixed serial-tool limit is attributed to a candidate');
+    assert(visible(fixed) && fixed?.textContent.includes('不由任何候选模型造成'), 'The fixed serial-tool limit is attributed to a candidate');
     assert(!document.querySelector('[data-codex-capability-unavailable]'), 'Complete metadata was rendered as unavailable');
   }],
   ['configured delegation discovers only while its configuration is visible', async () => {
