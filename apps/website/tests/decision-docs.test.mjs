@@ -19,7 +19,15 @@ test('canonical decision documents render into bilingual website routes', async 
   assert.match(zh, /href="#illustration-evidence-boundaries"/);
   assert.match(zh, /id="illustration-evidence-boundaries"/);
   assert.match(rendered.find(html => html.includes('Illustration evidence boundaries')), /id="illustration-evidence-boundaries"/);
-  assert.doesNotMatch(rendered.join(''), /href="[^" ]+\.md"/);
+  assert.doesNotMatch(rendered.join(''), /href="(?!https:\/\/)[^" ]+\.md(?:#[^"]*)?"/);
+  for (const html of rendered.slice(4)) {
+    for (const file of ['settings', 'protocol', 'decision', 'server']) {
+      assert.ok(html.includes(`href="https://github.com/higress-group/HiRoute/blob/main/decision-extensions/extensions/jev-decider/jev_decider/${file}.py"`));
+    }
+    assert.ok(html.includes('https://github.com/higress-group/HiRoute/blob/main/decision-extensions/extensions/jev-decider/tests/README.md'));
+  }
+  assert.match(rendered[4], /href="\/en\/docs\/jev-decider\/#code-and-responsibility-map"/);
+  assert.ok(rendered[5].includes('https://github.com/higress-group/HiRoute/blob/main/docs/code-map/decision-foundation.md'));
 });
 
 test('prepared OpenAPI is byte-identical to the one repository contract', () => {

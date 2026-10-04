@@ -12,6 +12,7 @@ const sources = {
 };
 
 const route = (language, page) => `${language === 'en' ? '/en' : ''}/docs/${page}/`;
+const sourceLink = file => `https://github.com/higress-group/HiRoute/blob/main/${file}`;
 const maps = {
   mechanism: {
     'README.md': '/en/docs/decision-extensions/', 'README.zh-CN.md': '/docs/decision-extensions/',
@@ -25,6 +26,13 @@ const maps = {
     'decision.openapi.json': '/api/decision.openapi.json',
   },
   jev: {
+    'jev_decider/settings.py': sourceLink('decision-extensions/extensions/jev-decider/jev_decider/settings.py'),
+    'jev_decider/protocol.py': sourceLink('decision-extensions/extensions/jev-decider/jev_decider/protocol.py'),
+    'jev_decider/decision.py': sourceLink('decision-extensions/extensions/jev-decider/jev_decider/decision.py'),
+    'jev_decider/server.py': sourceLink('decision-extensions/extensions/jev-decider/jev_decider/server.py'),
+    'tests/README.md': sourceLink('decision-extensions/extensions/jev-decider/tests/README.md'),
+    '../../../docs/code-map/decision-foundation.md': sourceLink('docs/code-map/decision-foundation.md'),
+    '../../../crates/gateway/README.md': sourceLink('crates/gateway/README.md'),
     'README.md': '/en/docs/jev-decider/', 'README.zh-CN.md': '/docs/jev-decider/',
     '../../README.md': '/en/docs/decision-extensions/', '../../README.zh-CN.md': '/docs/decision-extensions/',
     '../../api/README.md': '/en/docs/decision-api/', '../../api/README.zh-CN.md': '/docs/decision-api/',
@@ -39,9 +47,10 @@ function rewriteTarget(target, page, language) {
       || target === '../../docs/smart-saving-model-classification.zh-CN.md') {
     return route(language, 'model-routing');
   }
-  const mapped = maps[page][target];
+  const [file, fragment] = target.split('#', 2);
+  const mapped = maps[page][file];
   if (!mapped) throw new Error(`unmapped relative decision-document link in ${page}: ${target}`);
-  return mapped;
+  return mapped + (fragment === undefined ? '' : `#${fragment}`);
 }
 
 export async function renderDecisionDoc(page, language) {
