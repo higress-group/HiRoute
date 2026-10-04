@@ -3,7 +3,7 @@ use super::*;
 use hiroute_domain::{
     AgentAccessGrantMaterialActionV1, AgentAccessGrantMutationV1, AgentAccessGrantRefV1,
     AgentAccessGrantScopeV1, AgentAccessTokenIntentV1, AgentConnectionTransactionSubjectV1,
-    AgentFacetIntent, AgentIngressProtocolV1, CanonicalDigest, OperationId,
+    AgentFacetIntent, AgentIngressProtocolV1, AgentModelSelectionV2, CanonicalDigest, OperationId,
     OperationValidationError, RevisionSetV1, SupportedAgentInstallationV1, TransactionPlanV1,
     WorkspaceId, settings_model_publication_intent,
 };
@@ -15,7 +15,7 @@ pub struct AgentSettingsPlanningInput {
     pub facts: AgentSettingsFacts,
     pub expected_revisions: RevisionSetV1,
     pub subject: AgentConnectionTransactionSubjectV1,
-    pub model_file: SettingsModelFileFacts,
+    pub model_file: Option<SettingsModelFileFacts>,
     pub skill_file: SettingsSkillFileFacts,
 }
 
@@ -43,6 +43,11 @@ pub enum SettingsModelTargetFacts {
         endpoint: String,
     },
     Claude(SettingsClaudeModelFacts),
+    Qoder {
+        provider_id: String,
+        endpoint: String,
+        models: Vec<hiroute_domain::QoderAdditionalModelV1>,
+    },
 }
 
 pub struct SettingsClaudeModelFacts {
@@ -76,9 +81,17 @@ impl AgentSettingsPlanningInput {
         {
             return Err(invalid());
         }
-        let file = &self.model_file;
+        if self.facts.model.is_none()
+            && (!matches!(preview.spec.model, AgentFacetIntent::Keep)
+                || !matches!(preview.spec.access_token, AgentAccessTokenIntentV1::Keep)
+                || preview.model_grant.is_some())
+        {
+            return Err(invalid());
+        }
         let (model_mutations, model_action, restore_grant) = match &preview.spec.model {
             AgentFacetIntent::Configure { settings } => {
+                let file = self.model_file.as_ref().ok_or_else(invalid)?;
+                let model = self.facts.model.as_ref().ok_or_else(invalid)?;
                 let grant = preview.model_grant.as_ref().ok_or_else(invalid)?;
                 let scope = AgentAccessGrantScopeV1::new(
                     format!("agent-connection/{}", self.facts.context_id),
@@ -95,21 +108,32 @@ impl AgentSettingsPlanningInput {
                         model: grant
                             .codex_default_override(settings)
                             .map_err(|_| invalid())?,
-                        model_catalog: self
-                            .facts
+                        model_catalog: model
                             .model_catalog
                             .as_ref()
                             .map(|catalog| catalog.content_digest.clone()),
                     }),
+                    SettingsModelTargetFacts::Qoder {
+                        provider_id,
+                        endpoint,
+                        models,
+                    } => {
+                        if !matches!(settings, AgentModelSelectionV2::QoderAdditional { .. }) {
+                            return Err(invalid());
+                        }
+                        SettingsModelAction::Qoder(super::QoderModelFileAction::Configure {
+                            previous_operation: file.active_configuration.clone(),
+                            provider_id: provider_id.clone(),
+                            endpoint: endpoint.clone(),
+                            models: models.clone(),
+                        })
+                    }
                     SettingsModelTargetFacts::Claude(claude) => {
                         let mut snapshot = claude_model_snapshot(
                             settings,
                             grant,
                             claude,
-                            self.facts
-                                .native_claude_presets
-                                .as_ref()
-                                .ok_or_else(invalid)?,
+                            model.native_claude_presets.as_ref().ok_or_else(invalid)?,
                         )?;
                         snapshot.context_window_tokens = preview.claude_context_window;
                         SettingsModelAction::Claude(ClaudeModelFileAction::Configure {
@@ -155,6 +179,8 @@ impl AgentSettingsPlanningInput {
                 )
             }
             AgentFacetIntent::Restore { restore_point_ref } => {
+                let file = self.model_file.as_ref().ok_or_else(invalid)?;
+                self.facts.model.as_ref().ok_or_else(invalid)?;
                 let (operation, reference) = file.restore.as_ref().ok_or_else(invalid)?;
                 if *restore_point_ref != codex_model_restore_point_ref(operation)
                     || reference.generation() != file.expected_grant_generation
@@ -166,6 +192,11 @@ impl AgentSettingsPlanningInput {
                         SettingsModelAction::Codex(CodexModelFileAction::Restore {
                             original_operation: operation.clone(),
                             native_model: preview.spec.restore_native_model.clone(),
+                        })
+                    }
+                    SettingsModelTargetFacts::Qoder { .. } => {
+                        SettingsModelAction::Qoder(super::QoderModelFileAction::Restore {
+                            original_operation: operation.clone(),
                         })
                     }
                     SettingsModelTargetFacts::Claude(_) => {
@@ -210,7 +241,12 @@ impl AgentSettingsPlanningInput {
             model_mutations,
             |control| {
                 let mut external = Vec::new();
-                if self.facts.login_item_removal_required {
+                if self
+                    .facts
+                    .model
+                    .as_ref()
+                    .is_some_and(|model| model.login_item_removal_required)
+                {
                     // The last managed connection's restore releases the login item this
                     // feature created in an older version. New connections never create one.
                     let declaration = confirmed.login_item().ok_or_else(invalid)?;
@@ -221,9 +257,11 @@ impl AgentSettingsPlanningInput {
                     )?);
                 }
                 if let Some(action) = model_action {
+                    let file = self.model_file.as_ref().ok_or_else(invalid)?;
+                    let model = self.facts.model.as_ref().ok_or_else(invalid)?;
                     match action {
                         SettingsModelAction::Codex(change) => {
-                            if let Some(catalog) = self.facts.model_catalog.as_ref() {
+                            if let Some(catalog) = model.model_catalog.as_ref() {
                                 // The immutable catalog artifact is staged before the managed
                                 // configuration so the rendered pointer always has a target.
                                 external.push(settings_codex_catalog_intent(
@@ -239,6 +277,15 @@ impl AgentSettingsPlanningInput {
                                 return Err(invalid());
                             }
                             external.push(settings_codex_model_file_intent(
+                                control,
+                                &self.facts.context_id,
+                                file.expected_content.clone(),
+                                file.before_fingerprint.clone(),
+                                change,
+                            )?);
+                        }
+                        SettingsModelAction::Qoder(change) => {
+                            external.push(super::settings_qoder_model_file_intent(
                                 control,
                                 &self.facts.context_id,
                                 file.expected_content.clone(),
@@ -356,6 +403,7 @@ impl AgentSettingsPlanningInput {
 }
 
 enum SettingsModelAction {
+    Qoder(super::QoderModelFileAction),
     Codex(CodexModelFileAction),
     Claude(ClaudeModelFileAction),
 }
@@ -405,7 +453,7 @@ fn claude_model_snapshot(
     if installation.agent_id != "agent_claude_default"
         || profile.profile_id != "claude-messages-v1"
         || profile.integration_profile_ref != "builtin/claude-messages/v1"
-        || profile.client_protocol() != AgentIngressProtocolV1::Messages
+        || profile.client_protocol() != Some(AgentIngressProtocolV1::Messages)
         || !Path::new(&facts.trusted_hiroute_executable).is_absolute()
     {
         return Err(invalid());

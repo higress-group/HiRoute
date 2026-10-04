@@ -392,6 +392,14 @@ async fn worker_executor_availability_is_an_empty_local_trust_query() {
                             "cancel": {"state":"unknown","reason":"runtime_unavailable"},
                             "continue_session": {"state":"unknown","reason":"runtime_unavailable"},
                             "restricted_policy": {"state":"unknown","reason":"runtime_unavailable"}
+                        },
+                        {
+                            "harness": "qoder_cli",
+                            "state": "ready",
+                            "start_approve_all": {"state":"ready"},
+                            "cancel": {"state":"ready"},
+                            "continue_session": {"state":"unknown","reason":"capability_unverified"},
+                            "restricted_policy": {"state":"unknown","reason":"restricted_policy_unverified"}
                         }
                     ]
                 }),
@@ -407,7 +415,18 @@ async fn worker_executor_availability_is_an_empty_local_trust_query() {
         .data
         .unwrap();
     assert!(response.valid());
-    assert_eq!(response.executors[0].harness, WorkerHarnessV1::CodexCli);
+    assert_eq!(
+        response
+            .executors
+            .iter()
+            .map(|executor| executor.harness)
+            .collect::<Vec<_>>(),
+        [
+            WorkerHarnessV1::CodexCli,
+            WorkerHarnessV1::ClaudeCode,
+            WorkerHarnessV1::QoderCli
+        ]
+    );
     server.await.unwrap();
 }
 

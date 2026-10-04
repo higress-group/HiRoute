@@ -25,7 +25,18 @@ mod native_claude_ingress_probe;
 mod native_effects;
 #[cfg(unix)]
 mod native_ingress_probe;
+#[cfg(unix)]
+mod native_probe_process;
+#[cfg(unix)]
+pub use native_probe_process::NativeProbeProcess;
 mod observed_capabilities;
+mod qoder;
+mod qoder_native;
+mod qoder_native_effects;
+mod qoder_provider;
+pub use qoder_native_effects::*;
+#[cfg(unix)]
+mod qoder_probe;
 mod registration;
 mod registry;
 mod source_candidates;
@@ -50,6 +61,9 @@ pub use native_claude_ingress_probe::*;
 pub use native_effects::*;
 #[cfg(unix)]
 pub use native_ingress_probe::*;
+pub use qoder::*;
+#[cfg(unix)]
+pub use qoder_probe::*;
 pub use registration::*;
 pub use registry::*;
 pub use source_candidates::*;

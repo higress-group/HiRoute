@@ -79,7 +79,8 @@ impl WorkerDependenciesDiscoverRequestV1 {
 #[serde(deny_unknown_fields)]
 pub struct WorkerDependenciesSelectRequestV1 {
     pub harness: WorkerHarnessV1,
-    pub adapter_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_path: Option<String>,
     pub cli_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_path: Option<String>,
@@ -88,12 +89,13 @@ pub struct WorkerDependenciesSelectRequestV1 {
 
 impl WorkerDependenciesSelectRequestV1 {
     pub fn valid(&self) -> bool {
-        absolute_path(&self.adapter_path)
-            && absolute_path(&self.cli_path)
-            && self
-                .node_path
-                .as_ref()
-                .is_none_or(|path| absolute_path(path))
+        hiroute_domain::delegation::WorkerLaunchFormV1::validate(
+            self.harness,
+            self.adapter_path.as_deref(),
+            &self.cli_path,
+            self.node_path.as_deref(),
+        )
+        .is_ok()
     }
 }
 
@@ -128,6 +130,7 @@ pub fn plan_worker_dependency_selection(
     let harness = match request.harness {
         WorkerHarnessV1::CodexCli => "codex_cli",
         WorkerHarnessV1::ClaudeCode => "claude_code",
+        WorkerHarnessV1::QoderCli => "qoder_cli",
     };
     let spec = ChangeSpecV1 {
         schema_version: CHANGE_SPEC_SCHEMA_V1,
@@ -209,7 +212,8 @@ pub struct WorkerDependencySelectionRevisionV1 {
 #[serde(deny_unknown_fields)]
 pub struct WorkerDependencySelectionV1 {
     pub harness: WorkerHarnessV1,
-    pub adapter_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_path: Option<String>,
     pub cli_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_path: Option<String>,
@@ -251,16 +255,17 @@ impl WorkerDependenciesViewV1 {
             .collect::<BTreeSet<_>>();
         self.schema == WORKER_DEPENDENCIES_VIEW_SCHEMA_V1
             && !self.selection_revisions.is_empty()
-            && self.selection_revisions.len() <= 2
+            && self.selection_revisions.len() <= 3
             && revisions.len() == self.selection_revisions.len()
             && selections.len() == self.selected.len()
             && self.selected.iter().all(|selection| {
-                absolute_path(&selection.adapter_path)
-                    && absolute_path(&selection.cli_path)
-                    && selection
-                        .node_path
-                        .as_ref()
-                        .is_none_or(|path| absolute_path(path))
+                hiroute_domain::delegation::WorkerLaunchFormV1::validate(
+                    selection.harness,
+                    selection.adapter_path.as_deref(),
+                    &selection.cli_path,
+                    selection.node_path.as_deref(),
+                )
+                .is_ok()
             })
             && self.candidates.len() <= 256
             && self.candidates.iter().all(|candidate| {
@@ -371,9 +376,10 @@ pub struct WorkerExecutorAvailabilityListV1 {
 impl WorkerExecutorAvailabilityListV1 {
     pub fn valid(&self) -> bool {
         self.schema == WORKER_EXECUTOR_AVAILABILITY_SCHEMA_V1
-            && self.executors.len() == 2
+            && self.executors.len() == 3
             && self.executors[0].harness == WorkerHarnessV1::CodexCli
             && self.executors[1].harness == WorkerHarnessV1::ClaudeCode
+            && self.executors[2].harness == WorkerHarnessV1::QoderCli
             && self
                 .executors
                 .iter()
@@ -900,7 +906,7 @@ mod tests {
     fn dependency_selection_plan_binds_only_the_normalized_tuple_and_target_revision() {
         let request = WorkerDependenciesSelectRequestV1 {
             harness: WorkerHarnessV1::CodexCli,
-            adapter_path: "/opt/acp/codex-acp.js".into(),
+            adapter_path: Some("/opt/acp/codex-acp.js".into()),
             cli_path: "/opt/bin/codex".into(),
             node_path: Some("/opt/bin/node".into()),
             expected_selection_revision: 7,
@@ -936,14 +942,14 @@ mod tests {
     fn dependency_selection_plan_rejects_relative_or_control_character_paths() {
         let request = WorkerDependenciesSelectRequestV1 {
             harness: WorkerHarnessV1::CodexCli,
-            adapter_path: "relative/adapter".into(),
+            adapter_path: Some("relative/adapter".into()),
             cli_path: "/opt/bin/codex".into(),
             node_path: Some("/opt/bin/node".into()),
             expected_selection_revision: 0,
         };
         assert!(plan_worker_dependency_selection(&request).is_none());
         let invalid = WorkerDependenciesSelectRequestV1 {
-            adapter_path: "/opt/acp/codex\nacp".into(),
+            adapter_path: Some("/opt/acp/codex\nacp".into()),
             ..request
         };
         assert!(plan_worker_dependency_selection(&invalid).is_none());
@@ -1143,7 +1149,7 @@ mod tests {
     }
 
     #[test]
-    fn executor_availability_is_exactly_two_capability_scoped_harnesses() {
+    fn executor_availability_is_exactly_three_capability_scoped_harnesses() {
         let ready = WorkerExecutorCapabilityAvailabilityV1 {
             state: WorkerExecutorAvailabilityStateV1::Ready,
             reason: None,
@@ -1170,10 +1176,17 @@ mod tests {
             executors: vec![
                 executor(WorkerHarnessV1::CodexCli),
                 executor(WorkerHarnessV1::ClaudeCode),
+                executor(WorkerHarnessV1::QoderCli),
             ],
         };
         assert!(response.valid());
 
+        let mut incomplete = response.clone();
+        incomplete.executors.pop();
+        assert!(!incomplete.valid());
+        let mut duplicate = response.clone();
+        duplicate.executors[2].harness = WorkerHarnessV1::CodexCli;
+        assert!(!duplicate.valid());
         let mut reordered = response.clone();
         reordered.executors.swap(0, 1);
         assert!(!reordered.valid());
@@ -1183,3 +1196,7 @@ mod tests {
         assert!(!overstated.valid());
     }
 }
+
+#[cfg(test)]
+#[path = "worker_selection_tests.rs"]
+mod selection_tests;

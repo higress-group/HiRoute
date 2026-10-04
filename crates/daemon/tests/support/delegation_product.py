@@ -29,9 +29,9 @@ def configure_worker_installation(product, harness, adapter, cli, node):
         if entry['harness'] == harness)
     selection = {
         'harness': harness,
-        'adapter_path': str(adapter),
+        **({'adapter_path': str(adapter)} if adapter is not None else {}),
         'cli_path': str(cli),
-        'node_path': str(node),
+        **({'node_path': str(node)} if node is not None else {}),
         'expected_selection_revision': revision,
     }
     selected = product.control('SelectWorkerDependencies', selection)
@@ -42,9 +42,9 @@ def configure_worker_installation(product, harness, adapter, cli, node):
         if entry['harness'] == harness) == revision + 1, view
     assert {
         'harness': harness,
-        'adapter_path': str(adapter),
+        **({'adapter_path': str(adapter)} if adapter is not None else {}),
         'cli_path': str(cli),
-        'node_path': str(node),
+        **({'node_path': str(node)} if node is not None else {}),
     } in view['selected'], view
 
 

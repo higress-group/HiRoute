@@ -1,7 +1,9 @@
 use hiroute_daemon::delegation::{
     local_worker::LocalWorkerPlatform,
     platform::{ReadyWorker, WorkerLaunchRequest, WorkerPlatformPort},
-    profile::{CandidateWorkerProfile, ProfileInput, SessionRootUse, TaskSessionRoot},
+    profile::{
+        CandidateWorkerProfile, NativeWorkerContext, ProfileInput, SessionRootUse, TaskSessionRoot,
+    },
 };
 use hiroute_domain::{ProtectedSecret, delegation::*};
 use std::{
@@ -48,13 +50,15 @@ pub fn request(root: &Path, cwd: &Path, nonce: &str, mode: &str) -> WorkerLaunch
     .unwrap();
     let builder_root = cwd.join(format!("build-{nonce}"));
     let mut profile = CandidateWorkerProfile::build(ProfileInput {
-        claude_context_window: None,
+        context_window_tokens: None,
+        max_output_tokens: None,
         harness: WorkerHarnessV1::CodexCli,
-        adapter: &binary,
+        adapter: Some(&binary),
         harness_binary: &binary,
         node_binary: None,
         private_root: &builder_root,
         session_root: &session,
+        native_context: &NativeWorkerContext::isolated(&builder_root, session.path()).unwrap(),
         workspace: cwd,
         alias: "probe",
         codex_catalog: None,

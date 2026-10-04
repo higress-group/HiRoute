@@ -44,6 +44,7 @@ impl RuntimeStore {
         path: &Path,
         migration_backup_root: &Path,
         expected_store_uuid: &str,
+        target_schema_version: u32,
     ) -> Result<Self, LocalStorageError> {
         Ok(Self {
             startup_lock: None,
@@ -54,6 +55,7 @@ impl RuntimeStore {
                 migration_backup_root,
                 Some(expected_store_uuid),
                 None,
+                target_schema_version,
             )?),
         })
     }

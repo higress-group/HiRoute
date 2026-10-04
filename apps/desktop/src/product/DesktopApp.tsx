@@ -35,6 +35,7 @@ import { RoutingPage, type RoutingEditorIntent } from './RoutingPage';
 import { SettingsPage } from './SettingsPage';
 import { useDesktopHome } from './use-desktop-home';
 import { safeDiagnosticCode } from '../error-code';
+import { planErrorMessage } from '../plan-editor-errors';
 import {
   acceptObservedOperation,
   currentPendingHint,
@@ -77,6 +78,7 @@ function failureCode(error: unknown): string {
 }
 
 function failureHelp(code: string, language: 'zh' | 'en'): string {
+  if (code === 'QODER_MODEL_BUDGET_CONFLICT') return planErrorMessage(code, language);
   const messages: Record<string, [string, string]> = {
     CONFIRMATION_EXPIRED: ['确认已过期，请重新预览。输入已保留。', 'Confirmation expired. Preview again; your input is retained.'],
     CONFIRMATION_STALE: ['确认已失效，请重新预览。', 'This confirmation is no longer valid. Preview again.'],

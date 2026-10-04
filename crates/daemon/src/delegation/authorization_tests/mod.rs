@@ -1,6 +1,6 @@
 //! Real SQLite/Operation integration, with a narrow exact-version check fixture.
 mod dispatcher_tests;
-mod fixture;
+pub(in crate::delegation) mod fixture;
 use fixture::*;
 use hiroute_application::delegation::{
     admission::{DelegationAdmission, verify_bootstrap},

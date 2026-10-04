@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { agentEditorSeed, codexDefaultChoiceValid, commonClaudePlan, sharedClaudePlan, editorFingerprint } from '../src/agent-editor-state.ts';
+import { agentModelFormInvalid } from '../src/features/agents/editor-state.ts';
+import { agentModelStatus } from '../src/features/agents/status.ts';
 
 const codexSelection = {
   mode: 'codex_default',
@@ -54,11 +56,58 @@ test('collaboration retains only its task trigger mode', () => {
   assert.equal(value.triggerMode, 'delegate_by_default');
 });
 
+test('Qoder collaboration-only status seeds its trigger without making a model editor or selecting model routes', () => {
+  for (const collaboration of [
+    { state: 'not_configured', restore_point_ref: null, current_selection: null },
+    { state: 'configured', restore_point_ref: 'restore/qoder-skill', current_selection: { trigger_mode: 'explicit' } },
+    { state: 'configured', restore_point_ref: 'restore/qoder-skill', current_selection: { trigger_mode: 'delegate_by_default' } },
+  ]) {
+    const qoder = {
+      agent_id: 'agent_qoder_default', context_id: 'context/qoder', status_error: null,
+      settings: {
+        schema: 'hiroute.agent-collaboration-only-settings-status/v2', context_id: 'context/qoder', collaboration,
+      },
+    };
+    assert.equal(agentModelStatus(qoder), null);
+    const model = agentEditorSeed(qoder, 'model', ['only-route']);
+    assert.equal(model.known, false);
+    assert.deepEqual(model.allowedPlanIds, []);
+    assert.deepEqual(model.fixedModels, []);
+    assert.equal(commonClaudePlan(model.claudePresets), '');
+    const seed = agentEditorSeed(qoder, 'collaboration', ['only-route']);
+    assert.equal(seed.known, true);
+    assert.equal(seed.triggerMode, collaboration.current_selection?.trigger_mode ?? 'explicit');
+    assert.deepEqual(seed.allowedPlanIds, []);
+  }
+});
+
 test('unknown, drift and unavailable status cannot become empty authorization', () => {
   for (const state of ['configured', 'drift', 'pending', 'needs_attention']) {
     assert.equal(agentEditorSeed({ ...codex, settings: { state } }, 'model').known, false);
   }
   assert.equal(agentEditorSeed({ ...codex, status_error: 'UNAVAILABLE' }, 'model').known, false);
+});
+
+test('Qoder preserves route selections without a native catalog and retains unavailable choices for repair', () => {
+  const agent = { agent_id: 'agent_qoder_default', status_error: null, native_model_catalog: null,
+    settings: { state: 'not_configured', current_selection: null } };
+  const initial = agentEditorSeed(agent, 'model', ['only-route']);
+  assert.equal(initial.known, true);
+  assert.deepEqual(initial.allowedPlanIds, ['only-route']);
+  assert.deepEqual(initial.fixedModels, []);
+  assert.deepEqual(initial.defaultChoice, { kind: 'preserve_native' });
+  assert.equal(agentModelFormInvalid(agent, initial, ['only-route']), false);
+  assert.equal(agentModelFormInvalid(agent, initial, []), true);
+  const saved = { ...agent, settings: { state: 'configured', current_selection: {
+    mode: 'qoder_additional', allowed_plan_ids: ['route/retired', 'route/current'],
+  } } };
+  const seed = agentEditorSeed(saved, 'model', ['route/new']);
+  assert.equal(seed.known, true);
+  assert.deepEqual(seed.allowedPlanIds, ['route/retired', 'route/current']);
+  assert.equal(agentModelFormInvalid(saved, seed, ['route/current']), true);
+  const repaired = { ...seed, allowedPlanIds: ['route/current'] };
+  assert.equal(agentModelFormInvalid(saved, repaired, ['route/current']), false);
+  assert.notEqual(editorFingerprint(seed), editorFingerprint(repaired));
 });
 
 test('Codex discovery facts do not change the initial shared configuration', () => {
@@ -100,7 +149,18 @@ test('configured collaboration requires an explicit current selection', () => {
 test('all model and collaboration choices participate in dirty tracking', () => {
   const { known, ...values } = agentEditorSeed(codex, 'model');
   assert.equal(known, true);
-  assert.notEqual(editorFingerprint(values), editorFingerprint({ ...values, triggerMode: 'delegate_by_default' }));
+  const edits = [
+    { triggerMode: 'delegate_by_default' },
+    { nativeModelMode: 'hiroute_only' },
+    { allowedPlanIds: ['a'] },
+    { defaultChoice: { kind: 'fixed_model', client_model_id: 'native-model' } },
+    { fixedModels: [{ client_model_id: 'native-model', candidate: { binding_id: 'binding/other-account' } }] },
+    { fixedModels: [{ client_model_id: 'native-model', candidate: { binding_id: 'binding/native', reasoning: { kind: 'toggle', enabled: false } } }] },
+    { claudePresets: { ...values.claudePresets, haiku: { kind: 'plan', plan_id: 'a' } } },
+  ];
+  for (const edit of edits) {
+    assert.notEqual(editorFingerprint(values), editorFingerprint({ ...values, ...edit }), JSON.stringify(edit));
+  }
   assert.equal(
     editorFingerprint(values),
     editorFingerprint({ ...values, allowedPlanIds: [...values.allowedPlanIds].reverse() }),
@@ -155,4 +215,14 @@ test('collaboration and unreadable initial settings do not pick model routes', (
   const seed = agentEditorSeed({ ...codex, status_error: 'UNAVAILABLE', settings: { state: 'not_configured' } }, 'model', ['only-route']);
   assert.equal(seed.known, false);
   assert.deepEqual(seed.allowedPlanIds, []);
+});
+
+test('an existing model selection from another ecosystem cannot become an editable draft', () => {
+  for (const [agent, other] of [[codex, claude], [claude, codex]]) {
+    const seed = agentEditorSeed({
+      ...agent,
+      settings: { ...agent.settings, current_selection: other.settings.current_selection },
+    }, 'model', ['replacement']);
+    assert.equal(seed.known, false);
+  }
 });

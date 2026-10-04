@@ -956,6 +956,12 @@ pub enum TransactionError {
 impl TransactionError {
     pub fn error_code(&self) -> ErrorCode {
         match self {
+            Self::Port(error) | Self::Preparation(ChangePreparationError::Port(error))
+                if error.code == hiroute_domain::PortErrorCode::Conflict
+                    && error.context == "qoder.model.budget.shrink" =>
+            {
+                ErrorCode::QoderModelBudgetConflict
+            }
             Self::PlanContent(code) => *code,
             Self::FeatureNotEnabled
             | Self::Preparation(ChangePreparationError::FeatureNotEnabled) => {
@@ -991,6 +997,12 @@ impl TransactionError {
 
     fn safe_code(&self) -> &'static str {
         match self {
+            Self::Port(error) | Self::Preparation(ChangePreparationError::Port(error))
+                if error.code == hiroute_domain::PortErrorCode::Conflict
+                    && error.context == "qoder.model.budget.shrink" =>
+            {
+                "QODER_MODEL_BUDGET_CONFLICT"
+            }
             Self::ChangePreviewStale
             | Self::Preparation(ChangePreparationError::SecretFingerprintMismatch)
             | Self::Preparation(ChangePreparationError::ExternalEffectChanged) => {

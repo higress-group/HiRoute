@@ -4,13 +4,15 @@
 import codexDark from './assets/codex-dark.png?inline';
 import codexLight from './assets/codex-light.png?inline';
 import claudeCode from './assets/claude-code.svg';
+import qoder from './assets/qoder.svg';
 
-export type BrandKind = 'codex' | 'claude-code' | 'agent' | 'model';
+export type BrandKind = 'codex' | 'claude-code' | 'qoder' | 'agent' | 'model';
 
 export function agentBrandFromId(agentId: string): BrandKind {
   const normalized = agentId.toLowerCase();
   if (normalized.includes('codex')) return 'codex';
   if (normalized.includes('claude')) return 'claude-code';
+  if (normalized.includes('qoder')) return 'qoder';
   return 'agent';
 }
 
@@ -43,6 +45,12 @@ export function BrandIcon({
         <img src={claudeCode} alt="" />
       </span>
     );
+  }
+
+  if (kind === 'qoder') {
+    return <span className={classes} data-size={size} data-brand="qoder" {...accessibility}>
+      <img src={qoder} alt="" />
+    </span>;
   }
 
   return (

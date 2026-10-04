@@ -13,24 +13,31 @@ pub const AGENT_PROFILE_SCHEMA_V1: &str = "hiroute.agent-profile/v1";
 pub enum AgentKindV1 {
     Codex,
     ClaudeCode,
+    Qoder,
 }
 
 impl AgentKindV1 {
     /// Native adapter order, highest priority first. Managed Claude policy is a
     /// constraint on every lower layer, including the caller's environment.
-    pub const fn config_precedence(self) -> [ConfigLayerV1; 5] {
+    pub const fn config_precedence(self) -> &'static [ConfigLayerV1] {
         match self {
-            Self::Codex => [
+            Self::Codex => &[
                 ConfigLayerV1::Process,
                 ConfigLayerV1::Launch,
                 ConfigLayerV1::Project,
                 ConfigLayerV1::User,
                 ConfigLayerV1::Managed,
             ],
-            Self::ClaudeCode => [
+            Self::ClaudeCode => &[
                 ConfigLayerV1::Managed,
                 ConfigLayerV1::Process,
                 ConfigLayerV1::Launch,
+                ConfigLayerV1::Project,
+                ConfigLayerV1::User,
+            ],
+            Self::Qoder => &[
+                ConfigLayerV1::Process,
+                ConfigLayerV1::Local,
                 ConfigLayerV1::Project,
                 ConfigLayerV1::User,
             ],
@@ -41,6 +48,7 @@ impl AgentKindV1 {
         match self {
             Self::Codex => "codex",
             Self::ClaudeCode => "claude_code",
+            Self::Qoder => "qoder",
         }
     }
 }
@@ -56,6 +64,7 @@ pub enum AgentIngressProtocolV1 {
 #[serde(rename_all = "snake_case")]
 pub enum ConfigLayerV1 {
     Process,
+    Local,
     Launch,
     Project,
     User,
@@ -63,18 +72,17 @@ pub enum ConfigLayerV1 {
 }
 
 impl ConfigLayerV1 {
-    pub fn precedence_for(self, kind: AgentKindV1) -> usize {
+    pub fn precedence_for(self, kind: AgentKindV1) -> Option<usize> {
         kind.config_precedence()
             .iter()
             .position(|layer| *layer == self)
-            .expect("each native order contains every layer")
     }
 
     /// Smaller values have higher effective precedence.
     pub const fn precedence(self) -> u8 {
         match self {
             Self::Process => 0,
-            Self::Launch => 1,
+            Self::Launch | Self::Local => 1,
             Self::Project => 2,
             Self::User => 3,
             Self::Managed => 4,
@@ -159,7 +167,8 @@ pub struct AgentProfileV1 {
         skip_serializing_if = "BTreeSet::is_empty"
     )]
     pub legacy_exact_versions: BTreeSet<String>,
-    pub ingress_protocol: AgentIngressProtocolV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ingress_protocol: Option<AgentIngressProtocolV1>,
     pub config_precedence: Vec<ConfigLayerV1>,
     pub owned_config_fields: Vec<OwnedConfigFieldV1>,
     pub dynamic_catalog: bool,
@@ -178,9 +187,32 @@ impl AgentProfileV1 {
         }
         validate_identifier(&self.profile_id)?;
         validate_identifier(&self.integration_profile_ref)?;
-        let expected_precedence = self.kind.config_precedence();
-        if self.config_precedence.as_slice() != expected_precedence {
+        // Previously accepted collaboration-only Qoder profiles retain their original shape.
+        // Their empty capability must never be upgraded implicitly during journal recovery.
+        if self.kind == AgentKindV1::Qoder && self.ingress_protocol.is_none() {
+            if !self.config_precedence.is_empty()
+                || !self.owned_config_fields.is_empty()
+                || self.dynamic_catalog
+                || self.static_catalog_fallback
+                || self.native_subagent_routing
+                || self.spawn_guidance.is_some()
+                || self.managed_launch.is_some()
+            {
+                return Err(AgentProfileError::ProtocolKindMismatch);
+            }
+            return Ok(());
+        }
+        if self.config_precedence.as_slice() != self.kind.config_precedence() {
             return Err(AgentProfileError::InvalidConfigPrecedence);
+        }
+        if self.kind == AgentKindV1::Qoder
+            && (self.dynamic_catalog
+                || self.static_catalog_fallback
+                || self.native_subagent_routing
+                || self.spawn_guidance.is_some()
+                || self.managed_launch.is_some())
+        {
+            return Err(AgentProfileError::InvalidCatalogCapability);
         }
         if self.owned_config_fields.is_empty() {
             return Err(AgentProfileError::InvalidConfigField);
@@ -208,16 +240,30 @@ impl AgentProfileV1 {
         }
         if let Some(managed_launch) = &self.managed_launch
             && (self.kind != AgentKindV1::ClaudeCode
-                || self.ingress_protocol != AgentIngressProtocolV1::Messages
+                || self.ingress_protocol != Some(AgentIngressProtocolV1::Messages)
                 || managed_launch.validate().is_err())
         {
             return Err(AgentProfileError::InvalidManagedLaunch);
         }
         match (self.kind, self.ingress_protocol) {
-            (AgentKindV1::Codex, AgentIngressProtocolV1::Responses)
-            | (AgentKindV1::ClaudeCode, AgentIngressProtocolV1::Messages) => Ok(()),
+            (AgentKindV1::Codex | AgentKindV1::Qoder, Some(AgentIngressProtocolV1::Responses))
+            | (AgentKindV1::ClaudeCode, Some(AgentIngressProtocolV1::Messages)) => Ok(()),
             _ => Err(AgentProfileError::ProtocolKindMismatch),
         }
+    }
+
+    /// A validated model capability view. Collaboration-only profiles deliberately have none.
+    pub fn model_connection(
+        &self,
+    ) -> Result<Option<AgentModelConnectionProfileV1<'_>>, AgentProfileError> {
+        self.validate()?;
+        Ok(self
+            .ingress_protocol
+            .map(|ingress_protocol| AgentModelConnectionProfileV1 {
+                ingress_protocol,
+                config_precedence: &self.config_precedence,
+                owned_config_fields: &self.owned_config_fields,
+            }))
     }
 
     pub fn supports_managed_launch(&self) -> bool {
@@ -226,7 +272,7 @@ impl AgentProfileV1 {
             .is_some_and(|capability| capability.validate().is_ok())
     }
 
-    pub const fn client_protocol(&self) -> AgentIngressProtocolV1 {
+    pub const fn client_protocol(&self) -> Option<AgentIngressProtocolV1> {
         self.ingress_protocol
     }
 
@@ -247,6 +293,14 @@ impl AgentProfileV1 {
             .iter()
             .find(|field| field.field_id == field_id)
     }
+}
+
+/// Borrowed, validated model configuration facts; never a second wire profile.
+#[derive(Clone, Copy, Debug)]
+pub struct AgentModelConnectionProfileV1<'a> {
+    pub ingress_protocol: AgentIngressProtocolV1,
+    pub config_precedence: &'a [ConfigLayerV1],
+    pub owned_config_fields: &'a [OwnedConfigFieldV1],
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -296,6 +350,9 @@ impl SupportedAgentInstallationV1 {
         &self,
         desired: &BTreeMap<String, Option<Value>>,
     ) -> Result<BTreeMap<String, Option<Value>>, AgentDiscoveryError> {
+        self.profile
+            .validate()
+            .map_err(|_| AgentDiscoveryError::UnownedConfigField)?;
         let owned = self
             .profile
             .owned_config_fields

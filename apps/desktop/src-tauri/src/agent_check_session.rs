@@ -46,6 +46,48 @@ impl AgentCheckCompletion {
             requested_call_count: 0,
         }
     }
+
+    fn from_live_result(
+        target: &AgentModelCheckTargetV2,
+        data: &Value,
+    ) -> Result<Self, DesktopFailure> {
+        let state = data["state"].as_str().ok_or("RESPONSE_DATA_INVALID")?;
+        let checked: Vec<String> = serde_json::from_value(data["checked_model_ids"].clone())
+            .map_err(|_| "RESPONSE_DATA_INVALID")?;
+        let call_count = data["call_count"]
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or("RESPONSE_DATA_INVALID")?;
+        let requested_call_count = data["requested_call_count"]
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or("RESPONSE_DATA_INVALID")?;
+        let valid = data["scope"] == "live"
+            && data["model_call"] == true
+            && data["surface"]
+                == serde_json::to_value(target.surface).map_err(|_| "RESPONSE_DATA_INVALID")?
+            && data["applied_revision"]
+                == serde_json::to_value(target.expected_applied_revision)
+                    .map_err(|_| "RESPONSE_DATA_INVALID")?
+            && matches!(state, "passed" | "failed")
+            && call_count == checked.len()
+            && requested_call_count == target.client_model_ids.len()
+            && checked
+                .iter()
+                .all(|model| target.client_model_ids.contains(model))
+            && (state != "passed" || checked == target.client_model_ids);
+        if !valid {
+            return Err("RESPONSE_DATA_INVALID".into());
+        }
+        Ok(Self {
+            accepted: true,
+            scope: "live".into(),
+            model_call: true,
+            state: Some(state.into()),
+            call_count,
+            requested_call_count,
+        })
+    }
 }
 
 pub(crate) struct PendingAgentCheck {
@@ -77,10 +119,10 @@ impl AgentCheckConfirmation {
     }
 
     pub fn message(&self) -> String {
-        let agent = if self.request.agent_id == "agent_claude_default" {
-            "Claude Code"
-        } else {
-            "Codex"
+        let agent = match self.request.agent_id.as_str() {
+            "agent_claude_default" => "Claude Code",
+            "agent_qoder_default" => "Qoder",
+            _ => "Codex",
         };
         if self.request.scope == AgentCheckScopeV1::Live {
             let target = self
@@ -92,9 +134,10 @@ impl AgentCheckConfirmation {
                 AgentModelSurfaceV2::CodexCli => "Codex CLI",
                 AgentModelSurfaceV2::CodexDesktop => "Codex Desktop",
                 AgentModelSurfaceV2::ClaudeCli => "Claude Code CLI",
+                AgentModelSurfaceV2::QoderCli => "Qoder CLI",
             };
             let models = target.client_model_ids.join(", ");
-            return if self.english {
+            let message = if self.english {
                 format!(
                     "Verify {surface} model access?\n\nHiRoute will launch the actual configured client and make up to {} short model calls through applied revision {}. Provider usage may be charged.\n\nModels: {models}\n\nOnly complete responses with matching Gateway publication, grant, route, account and receipt evidence can pass.",
                     target.client_model_ids.len(),
@@ -106,6 +149,27 @@ impl AgentCheckConfirmation {
                     target.expected_applied_revision.get(),
                     target.client_model_ids.len(),
                 )
+            };
+            return if target.surface == AgentModelSurfaceV2::QoderCli {
+                format!(
+                    "{message}\n\n{}",
+                    if self.english {
+                        "This checks only the selected additional HiRoute routes. Your native models, current default model and login configuration stay unchanged."
+                    } else {
+                        "仅验证所选的附加 HiRoute 路由；原生模型、当前默认模型和登录配置保持不变。"
+                    }
+                )
+            } else {
+                message
+            };
+        }
+        if self.request.scope == AgentCheckScopeV1::Collaboration
+            && self.request.agent_id == "agent_qoder_default"
+        {
+            return if self.english {
+                "Check Qoder task collaboration?\nUses the selected Qoder CLI with your normal login and user Skills. The verification uses a separate workspace and a local test endpoint; it does not call an upstream provider or execute a delegated task. If collaboration is enabled, it checks your installed collaboration Skill. Otherwise it checks the capability to enable it. Your daily configuration is not changed.".into()
+            } else {
+                "检查 Qoder 任务协作？\n使用所选 Qoder CLI 的正常登录状态和用户技能，在独立验证目录中访问本机测试端点，不调用上游提供方，也不执行委派任务。已启用协作时检查已安装的用户协作技能；尚未启用时检查启用能力。不改写日常配置。".into()
             };
         }
         if self.request.scope == AgentCheckScopeV1::Collaboration && self.english {
@@ -152,42 +216,7 @@ impl PendingAgentCheck {
         let data = envelope.data.ok_or("RESPONSE_DATA_MISSING")?;
         if scope == AgentCheckScopeV1::Live {
             let target = target.ok_or("RESPONSE_DATA_INVALID")?;
-            let state = data["state"].as_str().ok_or("RESPONSE_DATA_INVALID")?;
-            let checked: Vec<String> = serde_json::from_value(data["checked_model_ids"].clone())
-                .map_err(|_| "RESPONSE_DATA_INVALID")?;
-            let call_count = data["call_count"]
-                .as_u64()
-                .and_then(|value| usize::try_from(value).ok())
-                .ok_or("RESPONSE_DATA_INVALID")?;
-            let requested_call_count = data["requested_call_count"]
-                .as_u64()
-                .and_then(|value| usize::try_from(value).ok())
-                .ok_or("RESPONSE_DATA_INVALID")?;
-            let valid = data["scope"] == "live"
-                && data["model_call"] == true
-                && data["surface"]
-                    == serde_json::to_value(target.surface).map_err(|_| "RESPONSE_DATA_INVALID")?
-                && data["applied_revision"]
-                    == serde_json::to_value(target.expected_applied_revision)
-                        .map_err(|_| "RESPONSE_DATA_INVALID")?
-                && matches!(state, "passed" | "failed")
-                && call_count == checked.len()
-                && requested_call_count == target.client_model_ids.len()
-                && checked
-                    .iter()
-                    .all(|model| target.client_model_ids.contains(model))
-                && (state != "passed" || checked == target.client_model_ids);
-            if !valid {
-                return Err("RESPONSE_DATA_INVALID".into());
-            }
-            return Ok(AgentCheckCompletion {
-                accepted: true,
-                scope: "live".into(),
-                model_call: true,
-                state: Some(state.into()),
-                call_count,
-                requested_call_count,
-            });
+            return AgentCheckCompletion::from_live_result(&target, &data);
         }
         let valid = if scope == AgentCheckScopeV1::Collaboration {
             data["scope"] == "collaboration"
@@ -213,39 +242,65 @@ impl PendingAgentCheck {
     }
 }
 
-impl Session {
-    pub async fn prepare_agent_check(
-        &mut self,
-        input: AgentCheckInput,
-    ) -> Result<AgentCheckConfirmation, DesktopFailure> {
-        if !matches!(input.language.as_str(), "zh" | "en") {
+impl AgentCheckInput {
+    fn request(&self) -> Result<AgentCheckRequestV1, DesktopFailure> {
+        if !matches!(self.language.as_str(), "zh" | "en") {
             return Err("AGENT_INPUT_INVALID".into());
         }
-        let scope = match input.scope.as_deref() {
+        let scope = match self.scope.as_deref() {
             None | Some("native_authentication") => AgentCheckScopeV1::NativeAuthentication,
             Some("collaboration") => AgentCheckScopeV1::Collaboration,
             Some("live") => AgentCheckScopeV1::Live,
             Some(_) => return Err("AGENT_INPUT_INVALID".into()),
         };
-        if !matches!(
-            input.agent_id.as_str(),
-            "agent_codex_default" | "agent_claude_default"
-        ) {
+        let supported = match self.agent_id.as_str() {
+            "agent_codex_default" | "agent_claude_default" => true,
+            "agent_qoder_default" => matches!(
+                scope,
+                AgentCheckScopeV1::Collaboration | AgentCheckScopeV1::Live
+            ),
+            _ => false,
+        };
+        if !supported {
             return Err("AGENT_INPUT_INVALID".into());
         }
         if scope == AgentCheckScopeV1::Live {
-            let target = input.target.as_ref().ok_or("AGENT_INPUT_INVALID")?;
-            let valid_surface = match input.agent_id.as_str() {
+            let target = self.target.as_ref().ok_or("AGENT_INPUT_INVALID")?;
+            let valid_surface = match self.agent_id.as_str() {
                 "agent_claude_default" => target.surface == AgentModelSurfaceV2::ClaudeCli,
-                "agent_codex_default" => target.surface != AgentModelSurfaceV2::ClaudeCli,
+                "agent_codex_default" => matches!(
+                    target.surface,
+                    AgentModelSurfaceV2::CodexCli | AgentModelSurfaceV2::CodexDesktop
+                ),
+                "agent_qoder_default" => target.surface == AgentModelSurfaceV2::QoderCli,
                 _ => false,
             };
             if !valid_surface {
                 return Err("AGENT_INPUT_INVALID".into());
             }
-        } else if input.target.is_some() {
+        } else if self.target.is_some() {
             return Err("AGENT_INPUT_INVALID".into());
         }
+        let request = AgentCheckRequestV1 {
+            agent_id: self.agent_id.clone(),
+            scope,
+            suite: AgentCheckSuiteV1::Quick,
+            allow_model_call: scope == AgentCheckScopeV1::Live,
+            target: self.target.clone(),
+        };
+        if !request.valid_target() {
+            return Err("AGENT_INPUT_INVALID".into());
+        }
+        Ok(request)
+    }
+}
+
+impl Session {
+    pub async fn prepare_agent_check(
+        &mut self,
+        input: AgentCheckInput,
+    ) -> Result<AgentCheckConfirmation, DesktopFailure> {
+        let request = input.request()?;
         let snapshot = self.snapshot().await?;
         if !snapshot.trusted_authority || !snapshot.service.mutation_available {
             return Err("TRUSTED_AUTHORITY_UNAVAILABLE".into());
@@ -253,16 +308,6 @@ impl Session {
         #[cfg(unix)]
         if !self.resident.has_authority() {
             return Err("TRUSTED_AUTHORITY_UNAVAILABLE".into());
-        }
-        let request = AgentCheckRequestV1 {
-            agent_id: input.agent_id,
-            scope,
-            suite: AgentCheckSuiteV1::Quick,
-            allow_model_call: scope == AgentCheckScopeV1::Live,
-            target: input.target,
-        };
-        if !request.valid_target() {
-            return Err("AGENT_INPUT_INVALID".into());
         }
         let digest = CanonicalDigest::of(&request).map_err(|_| "AGENT_INPUT_INVALID")?;
         Ok(AgentCheckConfirmation {
@@ -305,5 +350,205 @@ fn scope_name(scope: AgentCheckScopeV1) -> &'static str {
         AgentCheckScopeV1::NativeAuthentication => "native_authentication",
         AgentCheckScopeV1::Collaboration => "collaboration",
         AgentCheckScopeV1::Live => "live",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn live_target() -> AgentModelCheckTargetV2 {
+        serde_json::from_value(json!({
+            "context_id": "agent-context/qoder/test",
+            "surface": "qoder_cli",
+            "expected_applied_revision": 7,
+            "client_model_ids": ["route-one", "route-two"]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn qoder_checks_keep_collaboration_independent_and_require_explicit_live_targets() {
+        let mut input = AgentCheckInput {
+            agent_id: "agent_qoder_default".into(),
+            language: "en".into(),
+            scope: Some("collaboration".into()),
+            target: None,
+        };
+        let request = input
+            .request()
+            .expect("Qoder collaboration can reach the protected check");
+        assert_eq!(request.scope, AgentCheckScopeV1::Collaboration);
+        assert!(!request.allow_model_call);
+        assert!(request.target.is_none());
+        input.target = Some(live_target());
+        assert!(
+            input.request().is_err(),
+            "Collaboration cannot borrow a model target"
+        );
+        input.target = None;
+        for scope in [None, Some("native_authentication"), Some("live")] {
+            input.scope = scope.map(str::to_owned);
+            assert!(input.request().is_err());
+        }
+        input.scope = Some("live".into());
+        input.target = Some(live_target());
+        let request = input.request().expect("Explicit Qoder Live target");
+        assert!(request.allow_model_call);
+        assert_eq!(request.target, input.target);
+        input
+            .target
+            .as_mut()
+            .unwrap()
+            .client_model_ids
+            .push("route-one".into());
+        assert!(
+            input.request().is_err(),
+            "Duplicate models are not an exact Live target"
+        );
+        input.target = None;
+        for agent in ["agent_codex_default", "agent_claude_default"] {
+            input.agent_id = agent.into();
+            input.scope = None;
+            assert!(
+                input.request().is_ok(),
+                "Existing clients keep native authentication"
+            );
+        }
+    }
+
+    #[test]
+    fn live_checks_accept_only_the_requested_agents_exact_surfaces() {
+        for (agent, allowed) in [
+            (
+                "agent_codex_default",
+                vec![
+                    AgentModelSurfaceV2::CodexCli,
+                    AgentModelSurfaceV2::CodexDesktop,
+                ],
+            ),
+            ("agent_claude_default", vec![AgentModelSurfaceV2::ClaudeCli]),
+            ("agent_qoder_default", vec![AgentModelSurfaceV2::QoderCli]),
+        ] {
+            for surface in [
+                AgentModelSurfaceV2::CodexCli,
+                AgentModelSurfaceV2::CodexDesktop,
+                AgentModelSurfaceV2::ClaudeCli,
+                AgentModelSurfaceV2::QoderCli,
+            ] {
+                let mut target = live_target();
+                target.surface = surface;
+                let input = AgentCheckInput {
+                    agent_id: agent.into(),
+                    language: "en".into(),
+                    scope: Some("live".into()),
+                    target: Some(target),
+                };
+                assert_eq!(
+                    input.request().is_ok(),
+                    allowed.contains(&surface),
+                    "{agent}: {surface:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn qoder_live_confirmation_describes_the_exact_paid_check_and_native_preservation() {
+        for (language, required) in [
+            (
+                "en",
+                [
+                    "up to 2",
+                    "revision 7",
+                    "may be charged",
+                    "additional HiRoute routes",
+                    "current default model and login configuration stay unchanged",
+                ],
+            ),
+            (
+                "zh",
+                [
+                    "最多发起 2 次",
+                    "已应用版本 7",
+                    "可能产生提供方费用",
+                    "附加 HiRoute 路由",
+                    "当前默认模型和登录配置保持不变",
+                ],
+            ),
+        ] {
+            let input = AgentCheckInput {
+                agent_id: "agent_qoder_default".into(),
+                language: language.into(),
+                scope: Some("live".into()),
+                target: Some(live_target()),
+            };
+            let request = input.request().unwrap();
+            let mut gate = ConfirmationGate::default();
+            let context = AgentCheckConfirmation {
+                permit: gate.begin().unwrap(),
+                digest: CanonicalDigest::of(&request).unwrap(),
+                request,
+                revisions: RevisionSetV1 {
+                    target: 3,
+                    dependencies: Default::default(),
+                },
+                english: language == "en",
+            };
+            assert!(context.requires_confirmation());
+            let message = context.message();
+            for text in required
+                .into_iter()
+                .chain(["Qoder CLI", "route-one", "route-two"])
+            {
+                assert!(message.contains(text), "Missing {text}: {message}");
+            }
+            assert_eq!(
+                context.revision(),
+                3,
+                "Service revision remains separate from applied revision"
+            );
+        }
+    }
+
+    #[test]
+    fn qoder_live_completion_requires_the_confirmed_target_and_complete_success() {
+        let target = live_target();
+        let result = json!({
+            "scope": "live", "model_call": true, "surface": "qoder_cli",
+            "applied_revision": 7, "state": "passed",
+            "checked_model_ids": ["route-one", "route-two"],
+            "call_count": 2, "requested_call_count": 2
+        });
+        let completion = AgentCheckCompletion::from_live_result(&target, &result).unwrap();
+        assert!(completion.passed());
+        assert!(completion.model_call);
+        for (field, value) in [
+            ("surface", json!("codex_cli")),
+            ("applied_revision", json!(8)),
+            (
+                "checked_model_ids",
+                json!(["route-one", "unselected-route"]),
+            ),
+            ("call_count", json!(1)),
+            ("requested_call_count", json!(1)),
+            ("model_call", json!(false)),
+        ] {
+            let mut changed = result.clone();
+            changed[field] = value;
+            assert!(
+                AgentCheckCompletion::from_live_result(&target, &changed).is_err(),
+                "{field}"
+            );
+        }
+        let mut partial = result;
+        partial["checked_model_ids"] = json!(["route-one"]);
+        partial["call_count"] = json!(1);
+        assert!(AgentCheckCompletion::from_live_result(&target, &partial).is_err());
+        partial["state"] = json!("failed");
+        let failed = AgentCheckCompletion::from_live_result(&target, &partial).unwrap();
+        assert!(!failed.passed());
+        assert_eq!((failed.call_count, failed.requested_call_count), (1, 2));
     }
 }

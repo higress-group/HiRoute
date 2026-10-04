@@ -773,6 +773,7 @@ fn display_path(layer: ConfigLayerV1, path: &Path) -> String {
         ConfigLayerV1::Process => "process environment".to_owned(),
         ConfigLayerV1::Launch => format!("launch/{name}"),
         ConfigLayerV1::Project => format!(".claude/{name}"),
+        ConfigLayerV1::Local => format!("local/{name}"),
         ConfigLayerV1::User => format!("~/.claude/{name}"),
         ConfigLayerV1::Managed => format!("managed/{name}"),
     }

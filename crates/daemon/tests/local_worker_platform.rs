@@ -25,6 +25,53 @@ fn local_worker_probe() {
         std::fs::canonicalize(&cwd).unwrap()
     );
     assert!(std::env::var("HOME").is_err());
+    if mode == "native-owner" {
+        use std::os::unix::process::CommandExt;
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let mut terminate =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                        .unwrap();
+                let mut tool = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", "local_worker_probe", "--nocapture"])
+                    .env_clear()
+                    .env("HIROUTE_PROBE_MODE", "child")
+                    .env("HIROUTE_PROBE_CWD", &cwd)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .process_group(0)
+                    .spawn()
+                    .unwrap();
+                std::fs::write(cwd.join("child.pid"), tool.id().to_string()).unwrap();
+                std::fs::write(cwd.join("native-ready"), "ready").unwrap();
+                terminate.recv().await.unwrap();
+                // The adapter may already have exited; its native child still needs
+                // time to clean tools outside the original Worker process group.
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                std::fs::write(cwd.join("stop"), "stop").unwrap();
+                tool.wait().unwrap();
+                std::fs::write(cwd.join("native-cleanup"), "complete").unwrap();
+            });
+        return;
+    }
+    if mode == "ignore-term" {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let _terminate =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                        .unwrap();
+                println!("PROBE_READY");
+                std::io::stdout().flush().unwrap();
+                std::future::pending::<()>().await;
+            });
+        return;
+    }
     if mode == "child" {
         let mut file = std::fs::OpenOptions::new()
             .create(true)
@@ -38,17 +85,26 @@ fn local_worker_probe() {
         }
         return;
     }
-    let mut child = if mode == "tree" || mode == "root-first" || mode == "cooperate" {
+    let mut child = if ["tree", "root-first", "cooperate", "native-tree"].contains(&mode.as_str()) {
         let child = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "local_worker_probe", "--nocapture"])
             .env_clear()
-            .env("HIROUTE_PROBE_MODE", "child")
+            .env(
+                "HIROUTE_PROBE_MODE",
+                if mode == "native-tree" {
+                    "native-owner"
+                } else {
+                    "child"
+                },
+            )
             .env("HIROUTE_PROBE_CWD", &cwd)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        std::fs::write(cwd.join("child.pid"), child.id().to_string()).unwrap();
+        if mode != "native-tree" {
+            std::fs::write(cwd.join("child.pid"), child.id().to_string()).unwrap();
+        }
         for _ in 0..500 {
             if cwd.join("heartbeat").exists() {
                 break;
@@ -218,6 +274,102 @@ async fn local_worker_normal_close_then_stop() {
 }
 
 #[tokio::test]
+async fn local_worker_native_shutdown_reclaims_separate_tool_group_without_stopping_neighbor() {
+    use std::os::unix::fs::DirBuilderExt;
+    let temp = private_tempdir().unwrap();
+    let target = temp.path().join("target");
+    let neighbor = temp.path().join("neighbor");
+    for root in [&target, &neighbor] {
+        std::fs::DirBuilder::new().mode(0o700).create(root).unwrap();
+    }
+    // On a failing assertion, release only these test-owned tools through their
+    // explicit fixture condition, never signal numeric PIDs read from receipt files.
+    struct ReleaseTools(Vec<PathBuf>);
+    impl Drop for ReleaseTools {
+        fn drop(&mut self) {
+            for root in &self.0 {
+                let _ = std::fs::write(root.join("stop"), "stop");
+            }
+        }
+    }
+    let _release = ReleaseTools(vec![target.clone(), neighbor.clone()]);
+    let platform = LocalWorkerPlatform::default();
+    let (a, _ar) = start(
+        &platform,
+        &target.join("run"),
+        &target,
+        "native-a",
+        "native-tree",
+    )
+    .await;
+    let (b, _br) = start(
+        &platform,
+        &neighbor.join("run"),
+        &neighbor,
+        "native-b",
+        "native-tree",
+    )
+    .await;
+    let short = platform.terminate(&a.identity, 20).await.unwrap();
+    assert!(!short.scope_stopped && short.residual_unknown, "{short:?}");
+    assert_eq!(platform.release(&a.identity), Err(DelegationErrorV1::Busy));
+    let result = platform.terminate(&a.identity, 5000).await.unwrap();
+    assert!(
+        result.scope_stopped && !result.residual_unknown,
+        "{result:?}"
+    );
+    assert_eq!(result.scope, WorkerStopScope::ProcessGroup);
+    assert_eq!(
+        std::fs::read_to_string(target.join("native-cleanup")).unwrap(),
+        "complete"
+    );
+    let target_size = std::fs::metadata(target.join("heartbeat")).unwrap().len();
+    let neighbor_size = std::fs::metadata(neighbor.join("heartbeat")).unwrap().len();
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert_eq!(
+        std::fs::metadata(target.join("heartbeat")).unwrap().len(),
+        target_size
+    );
+    assert!(std::fs::metadata(neighbor.join("heartbeat")).unwrap().len() > neighbor_size);
+    assert_eq!(
+        platform.observe(&b.identity).await.unwrap(),
+        WorkerObservation::Running
+    );
+    assert!(
+        platform
+            .terminate(&b.identity, 5000)
+            .await
+            .unwrap()
+            .scope_stopped
+    );
+}
+
+#[tokio::test]
+async fn local_worker_native_shutdown_remains_bounded_when_term_is_ignored() {
+    let temp = private_tempdir().unwrap();
+    let platform = LocalWorkerPlatform::default();
+    let (ready, _reader) = start(
+        &platform,
+        &temp.path().join("run"),
+        temp.path(),
+        "ignore",
+        "ignore-term",
+    )
+    .await;
+    let result = tokio::time::timeout(
+        Duration::from_secs(3),
+        platform.terminate(&ready.identity, 2500),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(
+        result.scope_stopped && !result.residual_unknown,
+        "{result:?}"
+    );
+}
+
+#[tokio::test]
 async fn local_worker_identity_isolation_zero_budget_and_restart_unknown() {
     let temp = private_tempdir().unwrap();
     let p = LocalWorkerPlatform::default();
@@ -258,10 +410,18 @@ async fn local_worker_materials_and_sessions_never_share_ownership() {
     req.profile.session_root = session.clone();
     req.profile.materials = RunMaterials {
         directories: vec!["home".into()],
-        files: vec![RunMaterialFile {
-            relative_path: "home/opaque".into(),
-            contents: Zeroizing::new(b"secret".to_vec()),
-        }],
+        files: vec![
+            RunMaterialFile {
+                relative_path: "home/opaque".into(),
+                contents: Zeroizing::new(b"secret".to_vec()),
+                executable: false,
+            },
+            RunMaterialFile {
+                relative_path: "native-launcher".into(),
+                contents: Zeroizing::new(b"#!/bin/sh\nprintf '%s' \"$1\"\n".to_vec()),
+                executable: true,
+            },
+        ],
     };
     let ready = p.launch(req).await.unwrap();
     assert_eq!(std::fs::read(root.join("home/opaque")).unwrap(), b"secret");
@@ -277,6 +437,21 @@ async fn local_worker_materials_and_sessions_never_share_ownership() {
             & 0o777,
         0o600
     );
+    assert_eq!(
+        std::fs::metadata(root.join("native-launcher"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    let literal = "a path with spaces; $(not-a-command)";
+    let output = std::process::Command::new(root.join("native-launcher"))
+        .arg(literal)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, literal.as_bytes());
     assert!(
         p.terminate(&ready.identity, 5000)
             .await
@@ -312,6 +487,7 @@ async fn local_worker_rejects_paths_existing_root_pin_and_spawn_failure() {
             files: vec![RunMaterialFile {
                 relative_path: path.into(),
                 contents: Zeroizing::new(vec![]),
+                executable: false,
             }],
         };
         assert!(p.launch(req).await.is_err());

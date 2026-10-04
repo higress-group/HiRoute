@@ -1,10 +1,11 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-fn contracts() -> [AcpNativeIdentityContract; 2] {
+fn contracts() -> [AcpNativeIdentityContract; 3] {
     [
         AcpNativeIdentityContract::CodexThreadV1,
         AcpNativeIdentityContract::ClaudeSessionV1,
+        AcpNativeIdentityContract::QoderSessionV1,
     ]
 }
 
@@ -62,7 +63,7 @@ async fn execute(
 }
 
 #[tokio::test]
-async fn both_native_profile_mappings_resume_exact_native_id_without_generic_metadata() {
+async fn declared_native_profile_mappings_resume_exact_native_id_without_generic_metadata() {
     for contract in contracts() {
         let mut request = tests::input();
         request.identity_contract = contract.clone();

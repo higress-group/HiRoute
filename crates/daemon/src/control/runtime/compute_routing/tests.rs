@@ -304,7 +304,7 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&project).unwrap();
     let scanner =
-        super::super::release_agent_scanner(&home, &project, &catalog, None, None).unwrap();
+        super::super::release_agent_scanner(&home, &project, &catalog, None, None, None).unwrap();
     assert_eq!(
         scanner.claude_executable_target(),
         std::path::PathBuf::from("claude")
@@ -316,6 +316,7 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
         &catalog,
         None,
         Some(selected_claude.clone()),
+        None,
     )
     .unwrap();
     assert_eq!(selected_scanner.claude_executable_target(), selected_claude);

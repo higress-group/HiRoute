@@ -43,7 +43,7 @@ mod response;
 mod response_diagnostics;
 mod selection;
 
-pub(crate) use materialization::resolve_target;
+pub(crate) use materialization::TargetResolver;
 pub use selection::{ProductionDecisionSession, ProductionSelection};
 
 const MATERIALIZATION_BINDING_UNAVAILABLE: &str = "binding_unavailable";
@@ -63,8 +63,7 @@ pub struct ProductionProvider {
     credentials: Arc<dyn ProductionCredentialResolver>,
     state: Arc<materialization::ProductionStateAdapter>,
     cooldowns: RuntimeCooldownPolicy,
-    #[cfg(feature = "e2e-test-control")]
-    test_dial: Result<Option<crate::server::test_control::E2eDialMap>, ()>,
+    target_resolver: TargetResolver,
 }
 
 pub struct ProductionLogicalRequest {

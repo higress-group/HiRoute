@@ -350,14 +350,34 @@ pub(super) fn discover(ctx: &mut Context<'_>) -> Result<()> {
             let agents = result["data"]["agents"]
                 .as_array()
                 .ok_or(super::SmokeError("agent_discovery_missing"))?;
+            let agent_ids = agents
+                .iter()
+                .map(|agent| {
+                    agent["agent_id"]
+                        .as_str()
+                        .ok_or(super::SmokeError("agent_discovery_mismatch"))
+                })
+                .collect::<Result<std::collections::BTreeSet<_>>>()?;
             require(
                 result["status"] == "succeeded"
-                    && agents.len() == 2
+                    && agent_ids.len() == agents.len()
+                    && [
+                        "agent_codex_default",
+                        "agent_claude_default",
+                        "agent_qoder_default",
+                    ]
+                    .iter()
+                    .all(|id| agent_ids.contains(id))
                     && agents.iter().any(|a| {
                         a["agent_id"] == "agent_claude_default"
                             && a["supported"] == true
                             && a["registered_configuration"]["connection_option_id"]
                                 == "zhipu.coding-plan.cn.v1"
+                    })
+                    && agents.iter().any(|a| {
+                        a["agent_id"] == "agent_qoder_default"
+                            && a["registered_configuration"].is_null()
+                            && a["discovered_credential"].is_null()
                     }),
                 "agent_discovery_mismatch",
             )?;

@@ -29,6 +29,7 @@ pub(super) fn input() -> AcpRunInput {
         identity_contract: AcpNativeIdentityContract::ExplicitResponseMetadata,
         session_meta: serde_json::Map::new(),
         native_session_mode: None,
+        expected_model: None,
         authentication: None,
         deadline: tokio::time::Instant::now() + std::time::Duration::from_secs(2),
         cancellation: tokio_util::sync::CancellationToken::new(),

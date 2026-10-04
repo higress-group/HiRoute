@@ -33,6 +33,8 @@ use super::{
 mod claude_settings;
 #[path = "claude_observation.rs"]
 mod main_observation;
+#[path = "qoder_discovery.rs"]
+mod qoder_discovery;
 #[path = "settings_discovery.rs"]
 mod settings_discovery;
 
@@ -120,6 +122,9 @@ pub struct AgentFilesystemLayoutV1 {
     /// installed bundle through the operating system. `None` means that surface is unavailable.
     pub codex_desktop_executable: Option<PathBuf>,
     pub claude_executable: PathBuf,
+    pub qoder_executable: PathBuf,
+    pub qoder_home: PathBuf,
+    pub qoder_config_root: PathBuf,
     pub codex_user_config: PathBuf,
     pub claude_launch_settings: Option<PathBuf>,
     pub claude_project_settings: Vec<PathBuf>,
@@ -160,6 +165,12 @@ impl AgentFilesystemLayoutV1 {
             codex_executable: PathBuf::from("codex"),
             codex_desktop_executable: None,
             claude_executable: PathBuf::from("claude"),
+            qoder_executable: PathBuf::from("qoder"),
+            qoder_home: home.to_owned(),
+            qoder_config_root: std::env::var_os("QODER_CONFIG_DIR")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".qoder")),
             codex_user_config: codex_config_path(home, std::env::var_os("CODEX_HOME").as_deref()),
             claude_launch_settings: None,
             claude_project_settings: vec![
@@ -192,6 +203,8 @@ pub struct FilesystemAgentScannerV1 {
     codex_ingress: std::sync::Arc<std::sync::Mutex<Option<super::CodexIngressEvidence>>>,
     #[cfg(unix)]
     claude_ingress: std::sync::Arc<std::sync::Mutex<Option<super::ClaudeIngressEvidence>>>,
+    #[cfg(unix)]
+    qoder_collaboration: std::sync::Arc<std::sync::Mutex<super::qoder_probe::QoderProofCache>>,
 }
 
 impl FilesystemAgentScannerV1 {
@@ -247,6 +260,8 @@ impl FilesystemAgentScannerV1 {
             codex_ingress: Default::default(),
             #[cfg(unix)]
             claude_ingress: Default::default(),
+            #[cfg(unix)]
+            qoder_collaboration: Default::default(),
         }
     }
 
@@ -350,7 +365,7 @@ impl FilesystemAgentScannerV1 {
     }
 
     pub fn scan(&self) -> Vec<FilesystemAgentDiscoveryV1> {
-        let mut results = vec![self.scan_codex()];
+        let mut results = vec![self.scan_codex(), self.qoder_settings_discovery(false)];
         match executable_probe(&self.layout.claude_executable) {
             ExecutableProbe::Installed(executable) => {
                 results.push(self.scan_claude(Some(executable), None, false));
@@ -384,6 +399,7 @@ impl FilesystemAgentScannerV1 {
                         );
                         self.layout.claude_executable.clone()
                     }
+                    AgentKindV1::Qoder => continue,
                 };
                 #[cfg(unix)]
                 if installation.profile.kind == AgentKindV1::Codex
@@ -513,7 +529,8 @@ impl FilesystemAgentScannerV1 {
             hiroute_domain::AgentModelSurfaceV2::CodexDesktop => {
                 self.layout.codex_desktop_executable.clone()
             }
-            hiroute_domain::AgentModelSurfaceV2::ClaudeCli => None,
+            hiroute_domain::AgentModelSurfaceV2::ClaudeCli
+            | hiroute_domain::AgentModelSurfaceV2::QoderCli => None,
         }
     }
 
@@ -542,6 +559,11 @@ impl FilesystemAgentScannerV1 {
             }
             "agent_claude_default" if available(&self.layout.claude_executable) => {
                 [hiroute_domain::AgentModelSurfaceV2::ClaudeCli]
+                    .into_iter()
+                    .collect()
+            }
+            "agent_qoder_default" if self.qoder_executable_target().is_some() => {
+                [hiroute_domain::AgentModelSurfaceV2::QoderCli]
                     .into_iter()
                     .collect()
             }

@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import signal
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -17,6 +19,49 @@ SPEC = importlib.util.spec_from_file_location(
 )
 pilot = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(pilot)
+
+
+class ConfigurationTests(unittest.TestCase):
+    def test_relocated_driver_uses_explicit_repository_and_local_default_still_works(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            repository = root / "repository"
+            config_root = repository / "apps/desktop/src-tauri"
+            config_root.mkdir(parents=True)
+            production = {"app": {"windows": [{"label": "main", "title": "repository window"}]}}
+            overlay = {"identifier": "fixture.pilot", "app": {"windows": []}}
+            (config_root / "tauri.conf.json").write_text(json.dumps(production))
+            (config_root / "tauri.pilot.conf.json").write_text(json.dumps(overlay))
+            frontend = root / "frontend"
+            frontend.mkdir()
+            (frontend / "index.html").write_text("fixture")
+            for explicit_repository in (True, False):
+                with self.subTest(explicit_repository=explicit_repository):
+                    scripts = root / "tooling-bundle" if explicit_repository else repository / "scripts"
+                    scripts.mkdir()
+                    driver = scripts / "desktop-pilot.py"
+                    driver.write_text(Path(pilot.__file__).read_text())
+                    command = [sys.executable, str(driver), "config", "--frontend-dist", str(frontend)]
+                    if explicit_repository:
+                        command += ["--repo", str(repository)]
+                    result = subprocess.run(command, text=True, capture_output=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    config = json.loads(result.stdout)
+                    self.assertEqual(config["identifier"], "fixture.pilot")
+                    self.assertEqual(config["build"], {"frontendDist": str(frontend)})
+                    self.assertEqual(config["app"]["windows"], [
+                        {"label": "main", "title": "repository window", "incognito": True}
+                    ])
+                    if explicit_repository:
+                        # A wrapper-injected --repo must not be overridden via an abbreviation.
+                        rejected = subprocess.run(
+                            [*command, "--rep", str(root / "different-repository")],
+                            text=True, capture_output=True,
+                        )
+                        self.assertEqual(rejected.returncode, 2, rejected.stderr)
+                        self.assertIn("unrecognized arguments: --rep", rejected.stderr)
+            self.assertEqual(json.loads((config_root / "tauri.conf.json").read_text()), production)
+            self.assertEqual(json.loads((config_root / "tauri.pilot.conf.json").read_text()), overlay)
 
 
 class ProcessOwnershipTests(unittest.TestCase):
@@ -141,6 +186,144 @@ class ProcessOwnershipTests(unittest.TestCase):
             killpg.call_args_list,
             [mock.call(101, signal.SIGTERM), mock.call(101, signal.SIGKILL)],
         )
+
+    def test_owned_child_exiting_between_stop_snapshot_and_identity_read_is_stopped(self):
+        members = [self.member(101, 1, 101), self.member(102, 101, 101)]
+        for unavailable in ("start_time", "executable"):
+            with self.subTest(unavailable=unavailable):
+                starts = ["app-start", "daemon-start", "daemon-start"]
+                executables = [self.app, self.daemon, self.daemon]
+                if unavailable == "start_time":
+                    starts[-1] = ProcessLookupError("process exited after ps")
+                else:
+                    executables[-1] = ProcessLookupError("process exited after start identity")
+                with mock.patch.object(
+                    pilot, "process_rows", side_effect=[members, [members[1]], []]
+                ), mock.patch.object(
+                    pilot, "process_start_time", side_effect=starts
+                ), mock.patch.object(
+                    pilot, "process_executable", side_effect=executables
+                ), mock.patch.object(pilot.os, "killpg") as killpg:
+                    stopped = pilot.stop_group(self.row, timeout=0)
+                self.assertEqual(stopped, [101, 102])
+                killpg.assert_called_once_with(101, signal.SIGTERM)
+
+    def test_unresolved_pid_still_present_after_stop_is_not_assumed_exited(self):
+        members = [self.member(101, 1, 101), self.member(102, 101, 101)]
+        for current in (members[1], self.member(102, 1, 202)):
+            with self.subTest(current_group=current["pgid"]):
+                with mock.patch.object(
+                    pilot, "process_rows", side_effect=[members, [members[1]], [current]]
+                ), mock.patch.object(
+                    pilot, "process_start_time",
+                    side_effect=["app-start", "daemon-start", ProcessLookupError("identity unavailable")],
+                ), mock.patch.object(
+                    pilot, "process_executable", side_effect=self.executable
+                ), mock.patch.object(pilot.os, "killpg") as killpg:
+                    with self.assertRaisesRegex(ProcessLookupError, "identity unavailable"):
+                        pilot.stop_group(self.row, timeout=0)
+                killpg.assert_called_once_with(101, signal.SIGTERM)
+
+    def test_replaced_child_after_sigterm_refuses_further_signal(self):
+        members = [self.member(101, 1, 101), self.member(102, 101, 101)]
+        with mock.patch.object(
+            pilot, "process_rows", side_effect=[members, [members[1]]]
+        ), mock.patch.object(
+            pilot, "process_start_time", side_effect=["app-start", "daemon-start", "new-daemon-start"]
+        ), mock.patch.object(
+            pilot, "process_executable", side_effect=self.executable
+        ), mock.patch.object(pilot.os, "killpg") as killpg:
+            with self.assertRaisesRegex(ValueError, "PID 102 was reused"):
+                pilot.stop_group(self.row, timeout=0)
+        killpg.assert_called_once_with(101, signal.SIGTERM)
+
+    def test_exit_race_rechecks_new_group_members_before_declaring_stop_complete(self):
+        members = [self.member(101, 1, 101), self.member(102, 101, 101)]
+        with mock.patch.object(
+            pilot, "process_rows", side_effect=[members, [members[1]], [self.member(103, 1, 101)]]
+        ), mock.patch.object(
+            pilot, "process_start_time",
+            side_effect=["app-start", "daemon-start", ProcessLookupError("exited")],
+        ), mock.patch.object(
+            pilot, "process_executable", side_effect=self.executable
+        ), mock.patch.object(pilot.os, "killpg") as killpg:
+            with self.assertRaisesRegex(ValueError, "unrecorded PID 103"):
+                pilot.stop_group(self.row, timeout=0)
+        killpg.assert_called_once_with(101, signal.SIGTERM)
+
+    def test_child_exiting_during_sigkill_wait_is_also_stopped(self):
+        members = [self.member(101, 1, 101), self.member(102, 101, 101)]
+        with mock.patch.object(
+            pilot, "process_rows", side_effect=[members, [members[1]], [members[1]], [], []]
+        ), mock.patch.object(
+            pilot, "process_start_time",
+            side_effect=["app-start", "daemon-start", "daemon-start", ProcessLookupError("exited")],
+        ), mock.patch.object(
+            pilot, "process_executable", side_effect=self.executable
+        ), mock.patch.object(
+            pilot.time, "monotonic", side_effect=[0, 1, 2, 3]
+        ), mock.patch.object(pilot.os, "killpg") as killpg:
+            stopped = pilot.stop_group(self.row, timeout=0)
+        self.assertEqual(stopped, [101, 102])
+        self.assertEqual(
+            killpg.call_args_list,
+            [mock.call(101, signal.SIGTERM), mock.call(101, signal.SIGKILL)],
+        )
+
+    @unittest.skipUnless(sys.platform == "darwin", "requires the native macOS process identity API")
+    def test_native_macos_exit_between_ps_and_proc_pidinfo_completes_stop(self):
+        # Desktop's native build already requires the platform C compiler. Build an
+        # owned fixture: relocated Apple system binaries may be killed before exec.
+        subprocess.run(
+            ["/usr/bin/cc", "-x", "c", "-", "-o", str(self.app)],
+            input="#include <unistd.h>\nint main(void) { sleep(30); return 0; }\n",
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.app.chmod(0o700)
+        self.row["artifacts"]["app"] = pilot.executable_artifact(self.app)
+        process = subprocess.Popen([str(self.app), "30"], start_new_session=True)
+        real_rows = pilot.process_rows
+        real_start_time = pilot.process_start_time
+        try:
+            self.row.update(pid=process.pid, pgid=process.pid, process_identities=[{
+                "pid": process.pid,
+                "role": "app",
+                "start_time": real_start_time(process.pid),
+                "executable": str(pilot.process_executable(process.pid)),
+            }])
+            snapshots = []
+            native_lookup_failures = []
+
+            def snapshot_with_one_exit_race():
+                if len(snapshots) == 1:
+                    # Deliver the already observed ps snapshot after the real TERM
+                    # exits/reaps our child. proc_pidinfo must run against the OS.
+                    process.wait(timeout=5)
+                    snapshots.append(snapshots[0])
+                    return snapshots[0]
+                current = real_rows()
+                snapshots.append(current)
+                return current
+
+            def native_start_time(pid):
+                try:
+                    return real_start_time(pid)
+                except ProcessLookupError:
+                    native_lookup_failures.append(pid)
+                    raise
+
+            with mock.patch.object(
+                pilot, "process_rows", side_effect=snapshot_with_one_exit_race
+            ), mock.patch.object(pilot, "process_start_time", side_effect=native_start_time):
+                self.assertEqual(pilot.stop_group(self.row, timeout=0), [process.pid])
+            self.assertEqual(native_lookup_failures, [process.pid])
+            self.assertIsNotNone(process.returncode)
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
 
 
 class ManagedBuildTests(unittest.TestCase):
@@ -403,12 +586,34 @@ class ExistingDataRootTests(unittest.TestCase):
         temporary = self.session / "tmp"
         for path in (runtime, temporary):
             path.mkdir(mode=0o700)
-        with mock.patch.dict(os.environ, {"HOME": "/real-user-home"}):
+        with mock.patch.dict(os.environ, {"HOME": "/real-user-home",
+                                        "CODEX_HOME": "/daily-codex",
+                                        "CLAUDE_CONFIG_DIR": "/daily-claude",
+                                        "QODER_CONFIG_DIR": "/daily-qoder"}):
             environment = pilot.launch_environment(runtime, temporary, self.data, self.data)
+            self.assertEqual(os.environ["CODEX_HOME"], "/daily-codex")
         self.assertEqual(environment["HOME"], str(self.data))
+        self.assertEqual(environment["CODEX_HOME"], str(self.data / ".codex"))
+        self.assertEqual(environment["CLAUDE_CONFIG_DIR"], str(self.data / ".claude"))
+        self.assertEqual(environment["QODER_CONFIG_DIR"], str(self.data / ".qoder"))
         self.assertEqual(environment["HIROUTE_DESKTOP_TEST_ROOT"], str(self.data))
         self.assertEqual(environment["XDG_RUNTIME_DIR"], str(runtime))
         self.assertEqual(environment["TMPDIR"], str(temporary))
+
+    def test_isolated_native_context_does_not_borrow_provider_credentials(self):
+        variables = {key: 'synthetic-parent-value' for key in (
+            'OPENAI_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN',
+            'CODEX_CONFIG', 'CODEX_API_KEY', 'AWS_PROFILE', 'GOOGLE_APPLICATION_CREDENTIALS',
+            'OPENROUTER_API_KEY', 'AZURE_OPENAI_API_KEY', 'HIROUTE_RUN_TOKEN',
+            'CLAUDE_CODE_USE_BEDROCK', 'QODER_PERSONAL_ACCESS_TOKEN', 'QODER_MODEL',
+            'QODER_SUBAGENT_MODEL')}
+        with mock.patch.dict(os.environ, variables):
+            isolated = pilot.launch_environment(self.session, self.session, self.data, self.data)
+            ordinary = pilot.launch_environment(self.session, self.session, self.data, None)
+            for key in variables:
+                self.assertNotIn(key, isolated)
+                self.assertEqual(ordinary[key], variables[key])
+                self.assertEqual(os.environ[key], variables[key])
 
 
 class DiagnosticLevelSelectionTests(unittest.TestCase):

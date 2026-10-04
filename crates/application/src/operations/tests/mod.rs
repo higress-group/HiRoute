@@ -40,6 +40,7 @@ struct MemoryState {
     operation_reads: usize,
     secret_reads: usize,
     external_reads: usize,
+    external_fingerprints: HashMap<String, CanonicalDigest>,
     protected_reads: usize,
     staged_pool: Option<CredentialPoolMutationV1>,
     compute_pool: Option<hiroute_domain::CredentialPoolV1>,
@@ -589,9 +590,10 @@ impl RuntimeStatePort for MemoryPorts {
 }
 
 impl ExternalEffectPort for MemoryPorts {
-    fn current_external_fingerprint(&self, _target: &str) -> PortResult<Option<CanonicalDigest>> {
-        self.state.borrow_mut().external_reads += 1;
-        Ok(None)
+    fn current_external_fingerprint(&self, target: &str) -> PortResult<Option<CanonicalDigest>> {
+        let mut state = self.state.borrow_mut();
+        state.external_reads += 1;
+        Ok(state.external_fingerprints.get(target).cloned())
     }
 
     fn apply_external(
@@ -1011,3 +1013,28 @@ fn terminal_reconciliation_turns_missing_owned_effect_into_attention() {
 mod classifier_secret_tests;
 #[path = "compute_tests.rs"]
 mod compute_tests;
+
+#[test]
+fn qoder_budget_conflict_has_the_same_public_and_terminal_error_code() {
+    for error in [
+        TransactionError::Port(PortError::new(
+            PortErrorCode::Conflict,
+            "qoder.model.budget.shrink",
+        )),
+        TransactionError::Preparation(ChangePreparationError::Port(PortError::new(
+            PortErrorCode::Conflict,
+            "qoder.model.budget.shrink",
+        ))),
+    ] {
+        assert_eq!(error.error_code(), ErrorCode::QoderModelBudgetConflict);
+        assert_eq!(error.safe_code(), "QODER_MODEL_BUDGET_CONFLICT");
+    }
+    for error in [
+        PortError::new(PortErrorCode::Conflict, "another.conflict"),
+        PortError::new(PortErrorCode::Unavailable, "qoder.model.budget.shrink"),
+    ] {
+        let error = TransactionError::Port(error);
+        assert_eq!(error.error_code(), ErrorCode::DaemonUnavailable);
+        assert_eq!(error.safe_code(), "ADAPTER_FAILURE");
+    }
+}

@@ -1,4 +1,5 @@
-import type { Agent } from '../../agents';
+import { agentModelStatus } from './status.ts';
+import type { Agent } from './types';
 import type { OperationReference } from '../model-connections/types';
 
 export type PendingCodexLaunchCopy = { operationId: string; contextId: string };
@@ -17,7 +18,7 @@ export function confirmedCodexLaunchCommand(
 ): string | null {
   const access = agent?.codex_access;
   if (operation?.operation_id !== target.operationId || operation.state !== 'succeeded'
-    || agent?.status_error || agent?.settings?.state !== 'configured'
+    || agent?.status_error || agentModelStatus(agent)?.state !== 'configured'
     || !access?.slot_occupied || access.selected_mode !== 'profile'
     || access.profile_context_id !== target.contextId || access.pending_operation || access.access_revoked) return null;
   return access.commands[preferredCodexShell(platform, access.commands)] || null;

@@ -229,53 +229,30 @@ mod tests {
             .0,
             WorkPlanAvailabilityV1::Unavailable
         );
-        let configured = hiroute_application_api::WorkerExecutorAvailabilityListV1 {
-            schema: hiroute_application_api::WORKER_EXECUTOR_AVAILABILITY_SCHEMA_V1.to_owned(),
-            executors: vec![
-                hiroute_application_api::WorkerExecutorAvailabilityV1 {
-                    harness: WorkerHarnessV1::CodexCli,
-                    state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Ready,
-                    reason: None,
-                    start_approve_all: hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
-                        state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Ready,
-                        reason: None,
-                    },
-                    cancel: hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
-                        state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Ready,
-                        reason: None,
-                    },
-                    continue_session: hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
-                        state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unknown,
-                        reason: Some(hiroute_application_api::WorkerExecutorAvailabilityReasonV1::CapabilityUnverified),
-                    },
-                    restricted_policy: hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
-                        state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unknown,
-                        reason: Some(hiroute_application_api::WorkerExecutorAvailabilityReasonV1::RestrictedPolicyUnverified),
-                    },
-                },
-                hiroute_application_api::WorkerExecutorAvailabilityV1 {
-                    harness: WorkerHarnessV1::ClaudeCode,
-                    state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unavailable,
-                    reason: Some(hiroute_application_api::WorkerExecutorAvailabilityReasonV1::InstallationNotConfigured),
-                    start_approve_all: hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
-                        state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unavailable,
-                        reason: Some(hiroute_application_api::WorkerExecutorAvailabilityReasonV1::InstallationNotConfigured),
-                    },
-                    cancel: hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
-                        state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unavailable,
-                        reason: Some(hiroute_application_api::WorkerExecutorAvailabilityReasonV1::InstallationNotConfigured),
-                    },
-                    continue_session: hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
-                        state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unavailable,
-                        reason: Some(hiroute_application_api::WorkerExecutorAvailabilityReasonV1::InstallationNotConfigured),
-                    },
-                    restricted_policy: hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
-                        state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unavailable,
-                        reason: Some(hiroute_application_api::WorkerExecutorAvailabilityReasonV1::InstallationNotConfigured),
-                    },
-                },
-            ],
+        let mut configured = WorkerExecutorAvailabilityRegistry::unconfigured().snapshot();
+        let codex = configured
+            .executors
+            .iter_mut()
+            .find(|executor| executor.harness == WorkerHarnessV1::CodexCli)
+            .unwrap();
+        codex.state = hiroute_application_api::WorkerExecutorAvailabilityStateV1::Ready;
+        codex.reason = None;
+        codex.start_approve_all = hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
+            state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Ready,
+            reason: None,
         };
+        codex.cancel = codex.start_approve_all.clone();
+        codex.continue_session = hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
+            state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unknown,
+            reason: Some(
+                hiroute_application_api::WorkerExecutorAvailabilityReasonV1::CapabilityUnverified,
+            ),
+        };
+        codex.restricted_policy = hiroute_application_api::WorkerExecutorCapabilityAvailabilityV1 {
+            state: hiroute_application_api::WorkerExecutorAvailabilityStateV1::Unknown,
+            reason: Some(hiroute_application_api::WorkerExecutorAvailabilityReasonV1::RestrictedPolicyUnverified),
+        };
+        assert!(configured.valid());
         assert_eq!(
             worker_availability(Some(&configured), WorkerHarnessV1::CodexCli),
             (WorkPlanAvailabilityV1::Ready, None)

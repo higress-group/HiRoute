@@ -24,6 +24,7 @@ pub(super) fn parse_dependencies_discover(
                 let parsed = match next(options, &mut index)?.as_str() {
                     "codex_cli" => WorkerHarnessV1::CodexCli,
                     "claude_code" => WorkerHarnessV1::ClaudeCode,
+                    "qoder_cli" => WorkerHarnessV1::QoderCli,
                     _ => return Err(ErrorCode::InvalidArguments),
                 };
                 harness = unique(harness, parsed)?;

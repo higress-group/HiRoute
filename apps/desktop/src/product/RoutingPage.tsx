@@ -6,6 +6,8 @@ import { requestEditorReplacement } from '../ui/discard-guard';
 import { ProductPage, UiIcon } from '../ui';
 import type { DesktopOperation, DesktopSnapshot } from './home-projections';
 import type { AgentSnapshot } from '../agents';
+import { agentModelStatus } from '../features/agents/status';
+import { agentBrand, agentDisplayName } from '../features/agents/ecosystems';
 import { routingEditorEntries } from '../routing-editor-entries';
 
 export type RoutingEditorIntent = { key: string; plan?: Plan; draft?: Draft; staleDraft?: boolean; initialBindingId?: string; editingMemory?: PlanEditorMemory };
@@ -111,19 +113,17 @@ export function RoutingPage({ language, active = true, snapshot, agentSnapshot, 
     setEditor({ key: crypto.randomUUID(), editingMemory: {} });
     setShowList(false);
   }
-  const agentName = (agentId: string) => agentId === 'agent_codex_default' ? 'Codex' : agentId === 'agent_claude_default' ? 'Claude Code' : text('本机 Agent', 'Local Agent');
-  const agentBrand = (agentId: string) => agentId.toLowerCase().includes('codex') ? 'codex' as const : agentId.toLowerCase().includes('claude') ? 'claude-code' as const : 'agent' as const;
   const usedBy = editor?.plan ? (agentSnapshot?.agents ?? []).flatMap(agent => {
-    const model = agent.settings?.current_selection;
+    const model = agentModelStatus(agent)?.current_selection;
     const isDefault = model?.mode === 'codex_default'
       && model.default_selection.kind === 'plan'
       && model.default_selection.plan_id === editor.plan!.agent_plan_id;
-    const isAllowed = model?.mode === 'codex_default'
+    const isAllowed = model?.mode === 'codex_default' || model?.mode === 'qoder_additional'
       ? model.allowed_plan_ids.includes(editor.plan!.agent_plan_id)
       : model?.mode === 'claude_launcher'
         ? Object.values(model.preset_mappings).some(selection => selection.kind === 'plan' && selection.plan_id === editor.plan!.agent_plan_id)
         : false;
-    return isDefault || isAllowed ? [{ id: agent.agent_id, name: agentName(agent.agent_id), brand: agentBrand(agent.agent_id), isDefault }] : [];
+    return isDefault || isAllowed ? [{ id: agent.agent_id, name: agentDisplayName(agent.agent_id, language), brand: agentBrand(agent.agent_id), isDefault }] : [];
   }) : [];
   const pageLocked = busy || localBusy || editorBusy || !mutable;
   const pageActions = creating ? <>

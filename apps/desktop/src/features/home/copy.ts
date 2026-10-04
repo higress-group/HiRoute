@@ -135,6 +135,7 @@ export function facetLabel(state: HomeFacetState, language: Language): string {
     pending: ['正在处理', 'Pending'],
     degraded: ['受到影响', 'Degraded'],
     unavailable: ['不可用', 'Unavailable'],
+    unsupported: ['不支持', 'Not supported'],
     unknown: ['待核实', 'Unverified'],
   };
   return labels[state][language === 'zh' ? 0 : 1];

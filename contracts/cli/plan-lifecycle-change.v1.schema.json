@@ -440,7 +440,8 @@
             "harness": {
               "enum": [
                 "codex_cli",
-                "claude_code"
+                "claude_code",
+                "qoder_cli"
               ]
             },
             "protocol": {

@@ -26,6 +26,9 @@ pub enum AgentModelSelectionV2 {
         allowed_plan_ids: BTreeSet<AgentPlanId>,
         default_selection: AgentModelDefaultSelectionV2,
     },
+    QoderAdditional {
+        allowed_plan_ids: BTreeSet<AgentPlanId>,
+    },
     ClaudeLauncher {
         surfaces: BTreeSet<AgentModelSurfaceV2>,
         fixed_models: Vec<AgentFixedModelSelectionV2>,
@@ -46,6 +49,7 @@ pub enum AgentModelSurfaceV2 {
     CodexCli,
     CodexDesktop,
     ClaudeCli,
+    QoderCli,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -92,6 +96,7 @@ impl AgentModelSelectionV2 {
             Self::CodexDefault { fixed_models, .. } | Self::ClaudeLauncher { fixed_models, .. } => {
                 fixed_models
             }
+            Self::QoderAdditional { .. } => &[],
         }
     }
 
@@ -99,7 +104,8 @@ impl AgentModelSelectionV2 {
         match self {
             Self::CodexDefault {
                 allowed_plan_ids, ..
-            } => allowed_plan_ids.clone(),
+            }
+            | Self::QoderAdditional { allowed_plan_ids } => allowed_plan_ids.clone(),
             Self::ClaudeLauncher {
                 preset_mappings, ..
             } => [
@@ -148,6 +154,7 @@ impl AgentModelSelectionV2 {
                 AgentModelDefaultSelectionV2::Plan { plan_id } if plans.contains(plan_id) => {}
                 _ => return Err(invalid),
             },
+            Self::QoderAdditional { .. } => {}
             Self::ClaudeLauncher { surfaces, .. } => {
                 if *surfaces != BTreeSet::from([AgentModelSurfaceV2::ClaudeCli]) {
                     return Err(invalid);

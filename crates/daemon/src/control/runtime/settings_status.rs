@@ -29,6 +29,15 @@ pub(super) struct ConfiguredModelSettings {
 }
 
 impl LocalControlAdapter {
+    pub(super) fn agent_settings_status(
+        &self,
+        request: &AgentSettingsStatusRequestV2,
+    ) -> Result<hiroute_application_api::AgentSettingsStatusV2, ControlReadError> {
+        self.model_settings_status(request)
+            .map(Box::new)
+            .map(hiroute_application_api::AgentSettingsStatusV2::Model)
+    }
+
     pub(super) fn validate_model_check_target(
         &self,
         request: &hiroute_application_api::AgentCheckRequestV1,
@@ -192,7 +201,14 @@ impl LocalControlAdapter {
         status.operation_state = Some(operation.state.as_str().into());
         let (active_grant, configured_join) = match action {
             ModelAction::Configure => {
-                let file_applied = if class == SettingsAgentClass::Claude {
+                let file_applied = if class == SettingsAgentClass::Qoder {
+                    hiroute_integrations::qoder_native_configuration_is_applied(
+                        &self.artifacts,
+                        &operation.operation_id,
+                        intent,
+                    )
+                    .map_err(super::map_port)?
+                } else if class == SettingsAgentClass::Claude {
                     let policy =
                         hiroute_application::agent_connection::decode_settings_claude_model_file(
                             intent,
@@ -299,6 +315,10 @@ impl LocalControlAdapter {
                             },
                             SettingsAgentClass::Claude,
                         ) => surfaces.clone(),
+                        (
+                            hiroute_domain::AgentModelSelectionV2::QoderAdditional { .. },
+                            SettingsAgentClass::Qoder,
+                        ) => [hiroute_domain::AgentModelSurfaceV2::QoderCli].into(),
                         _ => return Err(ControlReadError::Corrupt),
                     };
                     // The applied revision is the installed publication this configuration was
@@ -432,6 +452,9 @@ fn model_intent(
             super::settings_facts::SettingsAgentClass::Claude => {
                 super::native_claude_model::is_settings_claude_model(intent)
             }
+            super::settings_facts::SettingsAgentClass::Qoder => {
+                super::native_qoder_model::is_settings_qoder_model(intent)
+            }
         })
 }
 
@@ -441,6 +464,20 @@ fn model_action(
     intent: &hiroute_domain::ExternalEffectIntentV1,
 ) -> hiroute_domain::PortResult<ModelAction> {
     match class {
+        super::settings_facts::SettingsAgentClass::Qoder => {
+            match hiroute_application::agent_connection::settings_qoder_model_file_for_operation(
+                operation, intent,
+            )?
+            .change
+            {
+                hiroute_application::agent_connection::QoderModelFileAction::Configure {
+                    ..
+                } => Ok(ModelAction::Configure),
+                hiroute_application::agent_connection::QoderModelFileAction::Restore { .. } => {
+                    Ok(ModelAction::Restore)
+                }
+            }
+        }
         super::settings_facts::SettingsAgentClass::Codex
         | super::settings_facts::SettingsAgentClass::CodexProfile => {
             match settings_codex_model_file_for_operation(operation, intent)?.change {

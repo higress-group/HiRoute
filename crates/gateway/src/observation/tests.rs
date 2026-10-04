@@ -81,6 +81,31 @@ fn native_agent_session_derivation_reuses_the_producer_identity_formula() {
         derive_native_agent_observation_session_id(&workspace, &[0; 32], &trust, &identity)
             .is_err()
     );
+    let qoder = NativeAgentObservationIdentityV1::QoderSession {
+        session_id: "qoder-session".into(),
+    };
+    let header_session = NativeAgentObservationIdentityV1::CodexSession {
+        session_id: "qoder-session".into(),
+    };
+    let session =
+        derive_native_agent_observation_session_id(&workspace, &key, &trust, &qoder).unwrap();
+    assert_eq!(
+        session,
+        derive_native_agent_observation_session_id(&workspace, &key, &trust, &header_session)
+            .unwrap()
+    );
+    let mut other_grant = trust.clone();
+    other_grant.grant_id = "grant/other".into();
+    assert_ne!(
+        session,
+        derive_native_agent_observation_session_id(&workspace, &key, &other_grant, &qoder).unwrap()
+    );
+    let mut wrong_protocol = trust;
+    wrong_protocol.ingress_protocol = hiroute_domain::IngressProtocolV1::Messages;
+    assert!(
+        derive_native_agent_observation_session_id(&workspace, &key, &wrong_protocol, &qoder)
+            .is_err()
+    );
 }
 
 fn request(policy: OtelContentPolicy) -> RequestObservation {

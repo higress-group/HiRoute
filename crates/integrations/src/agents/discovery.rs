@@ -164,7 +164,14 @@ fn select_effective<'a>(
     values
         .iter()
         .copied()
-        .min_by_key(|value| value.layer.precedence_for(kind))
+        .filter_map(|value| {
+            value
+                .layer
+                .precedence_for(kind)
+                .map(|precedence| (precedence, value))
+        })
+        .min_by_key(|(precedence, _)| *precedence)
+        .map(|(_, value)| value)
 }
 
 fn valid_agent_id(value: &str) -> bool {

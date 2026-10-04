@@ -20,6 +20,7 @@ impl LocalControlAdapter {
             return Ok(());
         }
         self.guard_codex_pending_change(None)?;
+        self.guard_qoder_pending_model_change(None)?;
         if intent.desired()["transaction"] == "settings" {
             hiroute_domain::validate_settings_model_publication_intent(intent)
                 .map_err(|_| invalid("publication.settings.admission"))?;
@@ -27,6 +28,7 @@ impl LocalControlAdapter {
         if let Some(record) = routing_publication_record(intent)
             .map_err(|_| invalid("publication.admission.record"))?
         {
+            self.validate_qoder_installed_model_budgets(&record)?;
             record
                 .verify()
                 .map_err(|_| invalid("publication.admission.verify"))?
@@ -73,6 +75,7 @@ impl LocalControlAdapter {
     ) -> PortResult<()> {
         self.require_current_operation(operation)?;
         self.guard_codex_pending_change(Some(&operation.operation_id))?;
+        self.guard_qoder_pending_model_change(Some(&operation.operation_id))?;
         self.begin_plan_content_activation(operation)?;
         // Settings model publications are hot-swappable: the aggregate ArcSwap cutover keeps
         // every in-flight pin on its old root, so normal B updates never suspend admission.
@@ -116,6 +119,7 @@ impl LocalControlAdapter {
                     .record
                     .as_ref()
                     .expect("publication_marker always returns the current shape");
+                self.validate_qoder_installed_model_budgets(record)?;
                 record
                     .verify()
                     .map_err(|_| invalid("publication.install.record"))?

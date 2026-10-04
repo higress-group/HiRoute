@@ -1,5 +1,7 @@
 use super::super::platform::{WorkerObservation as Observation, WorkerStopScope as Scope};
 use std::io;
+#[cfg(unix)]
+use std::time::{Duration, Instant};
 use tokio::process::{Child, Command};
 
 /// Never expose a numeric process identifier as an operation capability.
@@ -8,6 +10,8 @@ pub(super) struct Process {
     reaped: Option<Observation>,
     #[cfg(unix)]
     group: rustix::process::Pid,
+    #[cfg(unix)]
+    graceful_stop_started: Option<Instant>,
     stop_sent: bool,
 }
 
@@ -30,6 +34,8 @@ impl Process {
             reaped: None,
             #[cfg(unix)]
             group,
+            #[cfg(unix)]
+            graceful_stop_started: None,
             stop_sent: false,
         })
     }
@@ -89,21 +95,22 @@ impl Process {
         }
         #[cfg(unix)]
         {
-            // Validate the still-owned child before any group signal. After reaping, no
-            // signal ever uses this number again, even if another process reused it.
-            let observation = self.observe();
-            if self.reaped.is_some() || observation == Observation::Unknown {
-                return Err(io::Error::other("process ownership unavailable"));
+            // Native Harnesses own tools in separate process groups. A turn interrupt
+            // may deliberately keep those tools alive; TERM lets the Harness release them.
+            // Keep the leader unreaped throughout this window even if the adapter exits
+            // first: a remaining Harness may still be draining its own child resources.
+            if self.graceful_stop_started.is_none() {
+                self.signal_group(rustix::process::Signal::TERM)?;
+                self.graceful_stop_started = Some(Instant::now());
+                return Ok(());
             }
-            match rustix::process::kill_process_group(self.group, rustix::process::Signal::KILL) {
-                Ok(()) | Err(rustix::io::Errno::SRCH) => {}
-                Err(rustix::io::Errno::PERM)
-                    if matches!(observation, Observation::Exited { .. }) => {}
-                Err(error) => return Err(error.into()),
+            if self
+                .graceful_stop_started
+                .is_some_and(|started| started.elapsed() < Duration::from_secs(1))
+            {
+                return Ok(());
             }
-            // Darwin returns EPERM when only an exited/unreaped leader remains. Only
-            // for an observed exit may we proceed to reap and check group absence. A
-            // still-present/inaccessible group remains unknown; EPERM is never success.
+            self.signal_group(rustix::process::Signal::KILL)?;
         }
         #[cfg(not(unix))]
         {
@@ -112,6 +119,25 @@ impl Process {
             }
         }
         self.stop_sent = true;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn signal_group(&mut self, signal: rustix::process::Signal) -> io::Result<()> {
+        // Validate the still-owned child before any group signal. After reaping, no
+        // signal ever uses this number again, even if another process reused it.
+        let observation = self.observe();
+        if self.reaped.is_some() || observation == Observation::Unknown {
+            return Err(io::Error::other("process ownership unavailable"));
+        }
+        match rustix::process::kill_process_group(self.group, signal) {
+            Ok(()) | Err(rustix::io::Errno::SRCH) => {}
+            Err(rustix::io::Errno::PERM) if matches!(observation, Observation::Exited { .. }) => {}
+            Err(error) => return Err(error.into()),
+        }
+        // Darwin returns EPERM when only an exited/unreaped leader remains. Only
+        // for an observed exit may we proceed to reap and check group absence. A
+        // still-present/inaccessible group remains unknown; EPERM is never success.
         Ok(())
     }
 
@@ -148,5 +174,9 @@ impl Drop for Process {
     fn drop(&mut self) {
         // Last resort only; never reported as successful cleanup.
         let _ = self.request_stop();
+        #[cfg(unix)]
+        if !self.stop_sent {
+            let _ = self.signal_group(rustix::process::Signal::KILL);
+        }
     }
 }

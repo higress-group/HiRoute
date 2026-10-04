@@ -104,6 +104,10 @@ pub enum NativeAgentObservationIdentityV1 {
     CodexSession {
         session_id: String,
     },
+    /// Qoder 1.1.65 sends its native session UUID in the Responses `session-id` header.
+    QoderSession {
+        session_id: String,
+    },
     CodexThreadSession {
         thread_id: String,
         session_id: String,
@@ -162,6 +166,15 @@ pub fn derive_native_agent_observation_session_id(
             ("codex_thread", vec![thread_id.as_str()])
         }
         NativeAgentObservationIdentityV1::CodexSession { session_id } => {
+            ("codex_session", vec![session_id.as_str()])
+        }
+        NativeAgentObservationIdentityV1::QoderSession { session_id } => {
+            if trust.ingress_protocol != hiroute_domain::IngressProtocolV1::Responses {
+                return Err(NativeAgentObservationSessionError::UnsupportedIngress);
+            }
+            // The existing wire producer already accepts this header independently of client
+            // branding. Retain its historical HMAC namespace; do not create another parser or
+            // relabel the native client as Codex merely to locate its receipt.
             ("codex_session", vec![session_id.as_str()])
         }
         NativeAgentObservationIdentityV1::CodexThreadSession {

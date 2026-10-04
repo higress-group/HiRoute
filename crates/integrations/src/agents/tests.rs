@@ -21,17 +21,17 @@ fn observation(kind: AgentKindV1, version: &str) -> AgentScanObservationV1 {
 #[test]
 fn agents_registry_binds_codex_to_responses_and_claude_to_messages() {
     let profiles = builtin_agent_profiles();
-    assert_eq!(profiles.len(), 2);
+    assert_eq!(profiles.len(), 3);
     for profile in &profiles {
         profile.validate().unwrap();
     }
     assert_eq!(
         codex_profile_v1().client_protocol(),
-        AgentIngressProtocolV1::Responses
+        Some(AgentIngressProtocolV1::Responses)
     );
     assert_eq!(
         claude_code_profile_v1().client_protocol(),
-        AgentIngressProtocolV1::Messages
+        Some(AgentIngressProtocolV1::Messages)
     );
     if std::env::var_os("HIROUTE_PRINT_AGENT_DIGESTS").is_some() {
         println!(
@@ -113,7 +113,7 @@ fn agents_codex_and_claude_emulators_have_closed_native_shapes() {
         )
         .unwrap();
         let rendered = render_agent_probe(&profile, &probe).unwrap();
-        assert_eq!(rendered.protocol, profile.client_protocol());
+        assert_eq!(Some(rendered.protocol), profile.client_protocol());
         assert_eq!(
             rendered.payload["metadata"]["traffic_kind"],
             "connectivity_probe"
@@ -299,4 +299,39 @@ fn agents_emulator_response_parser_is_protocol_exact_and_rejects_tools() {
         "tool_call": {"name": "unexpected"}
     });
     assert!(parse_agent_probe_response(&codex, &with_tool).is_err());
+}
+
+#[test]
+fn collaboration_only_installation_cannot_render_or_accept_a_model_connectivity_probe() {
+    let profile: hiroute_domain::AgentProfileV1 = serde_json::from_value(json!({
+        "schema":"hiroute.agent-profile/v1", "profile_id":"qoder-collaboration-v1",
+        "integration_profile_ref":"builtin/qoder-collaboration/v1", "kind":"qoder",
+        "config_precedence":[], "owned_config_fields":[], "dynamic_catalog":false,
+        "static_catalog_fallback":false, "native_subagent_routing":false,
+    }))
+    .unwrap();
+    let mut forged = BuiltInAgentProbeV1::for_profile(
+        &codex_profile_v1(),
+        ModelAlias::parse("hiroute/0011223344556677").unwrap(),
+    )
+    .unwrap();
+    forged.profile_id = profile.profile_id.clone();
+    forged.integration_profile_ref = profile.integration_profile_ref.clone();
+    assert!(matches!(
+        render_agent_probe(&profile, &forged),
+        Err(AgentProbeAdapterError::Contract(
+            hiroute_domain::AgentEmulatorError::InvalidProfile
+        ))
+    ));
+    // Even a valid Responses challenge receipt cannot create model verification evidence for
+    // an installation which only supports collaboration.
+    let response = json!({"output":[{"type":"message","content":[{
+        "type":"output_text", "text":hiroute_domain::CONNECTIVITY_PROBE_RESPONSE_V1,
+    }]}]});
+    assert!(matches!(
+        parse_agent_probe_response(&profile, &response),
+        Err(AgentProbeAdapterError::Contract(
+            hiroute_domain::AgentEmulatorError::InvalidProfile
+        ))
+    ));
 }

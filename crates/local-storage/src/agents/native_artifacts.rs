@@ -58,7 +58,7 @@ impl NativeAgentArtifactPort for ManagedArtifactStore {
         let path = self
             .target_path(intent.target())
             .map_err(|_| port(PortErrorCode::PermissionDenied, "native.restoration.target"))?;
-        let current = read_native_file(&path, MAX_NATIVE_BYTES)
+        let current = read_native_file(&path, MAX_NATIVE_BYTES, None)
             .map_err(|_| port(PortErrorCode::Conflict, "native.restoration.file"))?;
         if current.as_deref().map(|b| b.as_slice()) != expected {
             return Err(port(PortErrorCode::Conflict, "native.restoration.changed"));
@@ -159,18 +159,10 @@ impl NativeAgentArtifactPort for ManagedArtifactStore {
             .map_err(|_| port(PortErrorCode::PermissionDenied, "native.parents.cleanup"))
     }
     fn read_native_target(&self, target: &str) -> PortResult<Option<Zeroizing<Vec<u8>>>> {
-        let path = self
-            .target_path(target)
-            .map_err(|_| port(PortErrorCode::PermissionDenied, "native.target"))?;
-        let bytes = read_native_file(&path, MAX_NATIVE_BYTES)
-            .map_err(|_| port(PortErrorCode::PermissionDenied, "native.read"))?;
-        if bytes
-            .as_ref()
-            .is_some_and(|bytes| bytes.len() > MAX_NATIVE_BYTES)
-        {
-            return Err(port(PortErrorCode::InvalidData, "native.size"));
-        }
-        Ok(bytes)
+        self.read_native_target_with_mode(target, None)
+    }
+    fn read_private_native_target(&self, target: &str) -> PortResult<Option<Zeroizing<Vec<u8>>>> {
+        self.read_native_target_with_mode(target, Some(0o600))
     }
     fn native_target_path(&self, target: &str) -> PortResult<std::path::PathBuf> {
         self.target_path(target)
@@ -226,6 +218,7 @@ impl NativeAgentArtifactPort for ManagedArtifactStore {
         let Some(encoded) = read_native_file(
             &self.native_restore_path(operation, intent),
             MAX_NATIVE_BYTES + 64,
+            None,
         )
         .map_err(|_| port(PortErrorCode::Corrupt, "native.restore.read"))?
         else {
@@ -274,10 +267,11 @@ impl NativeAgentArtifactPort for ManagedArtifactStore {
 pub(super) fn read_native_file(
     path: &Path,
     limit: usize,
+    required_mode: Option<u32>,
 ) -> Result<Option<Zeroizing<Vec<u8>>>, LocalStorageError> {
     #[cfg(not(unix))]
     {
-        let _ = (path, limit);
+        let _ = (path, limit, required_mode);
         Err(LocalStorageError::Permission)
     }
     #[cfg(unix)]
@@ -299,6 +293,7 @@ pub(super) fn read_native_file(
             || before.nlink() != 1
             || before.uid() != rustix::process::getuid().as_raw()
             || !supported_artifact_mode(before.mode() & 0o777)
+            || required_mode.is_some_and(|mode| before.mode() & 0o7777 != mode)
             || before.len() > limit as u64
         {
             return Err(LocalStorageError::Permission);
@@ -330,6 +325,25 @@ pub(super) fn read_native_file(
     }
 }
 impl ManagedArtifactStore {
+    fn read_native_target_with_mode(
+        &self,
+        target: &str,
+        required_mode: Option<u32>,
+    ) -> PortResult<Option<Zeroizing<Vec<u8>>>> {
+        let path = self
+            .target_path(target)
+            .map_err(|_| port(PortErrorCode::PermissionDenied, "native.target"))?;
+        let bytes = read_native_file(&path, MAX_NATIVE_BYTES, required_mode)
+            .map_err(|_| port(PortErrorCode::PermissionDenied, "native.read"))?;
+        if bytes
+            .as_ref()
+            .is_some_and(|bytes| bytes.len() > MAX_NATIVE_BYTES)
+        {
+            return Err(port(PortErrorCode::InvalidData, "native.size"));
+        }
+        Ok(bytes)
+    }
+
     fn native_restore_path(
         &self,
         operation: &OperationId,

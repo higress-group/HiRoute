@@ -27,7 +27,7 @@ fn missing_worker_dependencies_leave_normal_gateway_publication_available() {
     for harness in [WorkerHarnessV1::CodexCli, WorkerHarnessV1::ClaudeCode] {
         let config = crate::delegation::installation::WorkerInstallationConfig {
             harness,
-            adapter: PathBuf::from("/missing-worker-adapter"),
+            adapter: Some(PathBuf::from("/missing-worker-adapter")),
             harness_binary: PathBuf::from("/missing-worker-harness"),
             node_binary: None,
         };

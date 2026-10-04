@@ -35,6 +35,11 @@ DIAGNOSTIC_CONTRACTS = (
     "crates/diagnostics/src/identity.rs", "crates/diagnostics/src/error.rs",
 )
 SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py"}
+WORKER_FIXTURE_TOOLING = {"scripts/test-agent-product-support.py",
+                          "scripts/test-native-context-product.py",
+                          "scripts/test-native-context-boundaries.py",
+                          "scripts/test-qoder-product.py"}
+WORKER_BOOTSTRAP_TEST = "crates/daemon/src/delegation/profile/claude_adapter_bootstrap.test.mjs"
 INTEGRATION_SKILL = ".agents/skills/hiroute-integrate/SKILL.md"
 WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/release.yml"}
 WEBSITE_PREFIXES = ("apps/website/", ".github/scripts/")
@@ -57,9 +62,127 @@ VALIDATION_TOOLING = {"scripts/validation.py", "scripts/validation-host.py", "sc
                       "scripts/validation-schedule.py", "scripts/test-validation-schedule.py"}
 PRODUCT_GROUPS = set(GROUPS) - {"diagnostics"}
 
+# Known shared Worker contracts consumed by the feature-gated Tauri bridge and
+# protected Session. Keep this bounded: shared-library location is not sufficient
+# to require Desktop compilation. Review new consumers when a contract moves.
+DESKTOP_WORKER_CONTRACTS = {
+    "crates/application-api/src/worker.rs",
+    "crates/domain/src/delegation/mod.rs",
+    "crates/domain/src/delegation/installation.rs",
+}
+
+
+def desktop_compile_checks(paths):
+    triggers = sorted({path for path in paths if path in DESKTOP_WORKER_CONTRACTS
+                       or path.startswith("apps/desktop/src-tauri/")})
+    if not triggers:
+        return []
+    return [{
+        "id": "desktop.compile", "platform": "macos", "trigger_paths": triggers,
+        "guide": "docs/validation-routing.md#native-consumer-compilation",
+        # --frontend-dist uses the existing Pilot TAURI_CONFIG, whose ACL requires
+        # desktop-pilot. That feature also enables desktop-runtime and its bridge.
+        "command_template": ["python3", "scripts/validation.py",
+                             "--frontend-dist", "<candidate-frontend-dist>", "desktop", "run",
+                             "--ref", "<pushed-branch-ref>", "--sha", "<candidate-sha>",
+                             "--plan", "<feature-plan>", "--phase", "focused", "--cargo-only", "--",
+                             "cargo", "check", "--locked", "-p", "hiroute-desktop",
+                             "--features", "desktop-pilot", "--all-targets"],
+        "required_inputs": {"pushed-branch-ref": "Advertised refs/heads/... containing the candidate",
+                            "candidate-sha": "Exact committed candidate being validated",
+                            "candidate-frontend-dist": "Same-candidate built frontend directory on the Mac",
+                            "feature-plan": "Current validation plan; include related runs when applicable"},
+        "evidence_limit": "Compile production and test consumers on the configured Mac; "
+                          "does not execute tests or prove native product behavior.",
+    }]
+
+
+# One registration per explicit product entry. The ordinary commands only compile ignored
+# targets; these obligations require real installations and separate business verdicts.
+WORKER_PRODUCT_CHECKS = {
+    "worker_native_context": {
+        "id": "worker.native-context", "harnesses": ["codex", "claude"],
+        "guide": "tools/product-e2e/tests/WORKER_NATIVE_CONTEXT.md",
+        "business_cases": ["worker.context." + name for name in (
+            "native-skills", "concurrent-routing", "run-authority", "exact-continue",
+            "cancel-owned-work", "retention-ownership")],
+        "automated_cases": ["worker.context.native-skills", "worker.context.exact-continue",
+                            "worker.context.concurrent-routing", "worker.context.cancel-owned-work"],
+    },
+    "worker_delegation": {
+        "id": "worker.lifecycle", "harnesses": ["codex", "claude"],
+        "guide": "docs/code-map/worker-context.md",
+    },
+    "worker_read": {
+        "id": "worker.read-continue", "harnesses": ["codex", "claude"],
+        "guide": "docs/code-map/worker-context.md",
+    },
+    "qoder_delegation": {
+        "id": "qoder.delegation", "harnesses": ["qoder"],
+        "guide": "tools/product-e2e/tests/QODER_DELEGATION.md",
+        "required_tests": [
+            "qoder_main_agent_uses_installed_user_skill_to_delegate_real_work",
+            "qoder_worker_uses_native_skills_and_continues_the_frozen_task",
+            "qoder_workers_route_independently_and_cancel_only_owned_work",
+            "qoder_worker_compaction_keeps_the_frozen_managed_route",
+            "qoder_main_agent_uses_persisted_additional_model_routes"],
+        "required_environment": ["HIROUTE_PRODUCT_CANDIDATE_SHA", "HIROUTE_WORKER_QODER_BINARY",
+                                 "HIROUTE_QODER_CONTEXT_HOME", "HIROUTE_QODER_CONFIG_DIR",
+                                 "HIROUTE_QODER_MODEL_CONTEXT_HOME", "HIROUTE_QODER_MODEL_CONFIG_DIR"],
+        "missing_environment": "fail",
+    },
+}
+OPT_IN_WORKER_TARGETS = set(WORKER_PRODUCT_CHECKS)
+PRODUCT_GUIDES = {entry["guide"] for entry in WORKER_PRODUCT_CHECKS.values()} | {
+    "crates/daemon/tests/support/NATIVE_CONTEXT_BOUNDARIES.md"}
+
+# Qoder-only leaves and the shared settings/Skill boundaries consumed by its main-Agent
+# journey. Model-specific Codex/Claude settings do not select unrelated native journeys.
+QODER_PRODUCT_PREFIXES = (
+    "crates/integrations/src/agents/qoder", "crates/daemon/src/delegation/profile/qoder",
+    "crates/daemon/src/control/runtime/settings_facts/qoder",
+    "crates/application/src/agent_connection/skill",
+    "crates/application/src/agent_connection/qoder",
+    "crates/daemon/src/control/runtime/qoder",
+    "crates/domain/src/agents/qoder",
+    "crates/application/src/agent_connection/settings/",
+)
+QODER_PRODUCT_PATHS = {
+    "crates/daemon/src/control/runtime.rs",
+    "crates/application-api/src/agent_settings.rs",
+    "crates/domain/src/agents/profile.rs",
+    "crates/integrations/src/agents/registry.rs",
+    "crates/daemon/src/control/runtime/agent_connection.rs",
+    "crates/daemon/src/control/runtime/settings_facts.rs",
+    "crates/daemon/src/control/runtime/settings_status.rs",
+    "crates/daemon/src/control/runtime/collaboration_installation.rs",
+    "crates/daemon/src/control/runtime/collaboration_status.rs",
+    "crates/daemon/src/control/runtime/settings_entry_qoder_tests.rs",
+    "crates/application/src/agent_connection/settings.rs",
+    "crates/application/src/agent_connection/settings_input.rs",
+    "crates/application/src/control_plane/agent_settings.rs",
+    "crates/integrations/src/agents/filesystem.rs",
+    "crates/integrations/src/agents/settings_discovery.rs",
+    "crates/integrations/src/agents/executable.rs",
+}
+# These helpers also serve publication/model journeys. Add the known real Worker gates
+# without pretending their complete ordinary-test dependency graph is bounded here.
+SHARED_WORKER_FIXTURES = {
+    "crates/daemon/tests/support/delegation_product.py",
+    "crates/daemon/tests/support/publication_product.py",
+}
+
 
 def e2e_consumers(path):
     """Bounded test/fixture ownership, not a guessed production dependency graph."""
+    if path.startswith("tools/product-e2e/tests/worker_product_support/"):
+        return [("hiroute-product-e2e", name) for name in WORKER_PRODUCT_CHECKS]
+    if path.startswith("tools/product-e2e/tests/") and Path(path).stem in OPT_IN_WORKER_TARGETS:
+        return [("hiroute-product-e2e", Path(path).stem)]
+    if path.startswith("crates/daemon/tests/support/native_context_"):
+        return [("hiroute-product-e2e", name) for name in ("worker_native_context", "qoder_delegation")]
+    if path == "crates/daemon/tests/support/agent_product_support.py" or path.startswith("crates/daemon/tests/support/qoder_"):
+        return [("hiroute-product-e2e", "qoder_delegation")]
     if path == "tools/e2e-harness/tests/p0_gateway_runtime.rs" or path.startswith("tools/e2e-harness/tests/p0_gateway_runtime/"):
         return [("hiroute-e2e", "p0_gateway_runtime"), ("hiroute-e2e", "p0_gateway_protocol"),
                 ("hiroute-e2e", "p0_gateway_matrix_coverage")]
@@ -82,16 +205,44 @@ def e2e_consumers(path):
 PROCESS_TARGETS = {"p0_gateway_runtime", "p0_gateway_protocol", "smoke_cli"}
 
 
+def worker_product_checks(paths):
+    """Explicit opt-in obligations; ordinary Cargo success does not run ignored Agents."""
+    selected = set()
+    for path in paths:
+        if path.endswith(".md"):
+            continue
+        selected.update(target for package, target in e2e_consumers(path)
+                        if package == "hiroute-product-e2e" and target in OPT_IN_WORKER_TARGETS)
+        if path in QODER_PRODUCT_PATHS or path.startswith(QODER_PRODUCT_PREFIXES):
+            selected.add("qoder_delegation")
+        elif path.startswith(("crates/daemon/src/delegation/", "crates/application/src/delegation/",
+                              "crates/domain/src/delegation/")) or path in SHARED_WORKER_FIXTURES:
+            selected.update(OPT_IN_WORKER_TARGETS)
+    return [{**entry,
+             "command": ["cargo", "test", "--locked", "-p", "hiroute-product-e2e",
+                         "--test", target, "--", "--ignored", "--nocapture", "--test-threads=1"],
+             "evidence_limit": "Real installed Harnesses with controlled upstream; native Desktop "
+                               "and unexecuted component contracts need their own evidence."}
+            for target, entry in WORKER_PRODUCT_CHECKS.items() if target in selected]
+
+
 def select(paths, full=False):
     groups = set()
     frontend = full
-    native = False
+    native_checks = desktop_compile_checks(paths)
+    native = bool(native_checks)
     reasons = []
     selection_tooling = False
+    worker_fixture_tooling = False
     validation_tooling = False
     release_contract_tooling = False
     targets = set()
     for path in sorted(set(paths)):
+        if path in PRODUCT_GUIDES:
+            continue  # Navigation-only guide; not embedded in a product binary.
+        if path in WORKER_FIXTURE_TOOLING:
+            worker_fixture_tooling = True
+            continue
         if path in RELEASE_CONTRACT_TOOLING or path.startswith("contracts/releases/"):
             release_contract_tooling = True
             continue
@@ -163,8 +314,9 @@ def select(paths, full=False):
                              "--test", "transport_loopback", "loopback_plain_http_smoke_reuses_h1_connection_and_joins_server",
                              "--", "--exact"])
         if full or "gateway" in groups:
-            commands.append(["cargo", "run", "--locked", "-p", "hiroute-e2e", "--", "validate",
-                             "--scenario", "e2e/scenarios/core-routing.json", "--profile", "e2e/profiles/local-process.json"])
+            commands.append(["cargo", "test", "--locked", "-p", "hiroute-e2e", "--test", "case_shards",
+                             "core_routing_validation_covers_the_complete_unsharded_scenario",
+                             "--", "--exact", "--nocapture"])
     if targets and not full:
         if not groups:
             commands.append(["cargo", "fmt", "--check"])
@@ -181,6 +333,10 @@ def select(paths, full=False):
             commands.append(["cargo", "clippy", "--locked", "-p", package, "--all-targets", "--all-features"] +
                             (feature_flags if runtime_context and package == "hiroute-e2e" else []) + ["--", "-D", "warnings"])
         for package, target in sorted(pending):
+            if package == "hiroute-product-e2e" and target in OPT_IN_WORKER_TARGETS:
+                # Clippy above compiles all consumers. Running an ignored-only target
+                # normally would produce zero executed tests, not product acceptance.
+                continue
             flags = ["--lib"] if target == "lib" else ["--test", target]
             commands.append(["cargo", "test", "--locked", "-p", package, "--all-features", *flags] +
                             (feature_flags if target == "p0_gateway_runtime" else []) +
@@ -195,6 +351,15 @@ def select(paths, full=False):
                              "--", "--exact"])
     if selection_tooling:
         commands.append(["python3", "scripts/test-test-plan.py"])
+    product_checks = worker_product_checks(paths)
+    if full or worker_fixture_tooling or product_checks:
+        commands.append(["python3", "scripts/test-agent-product-support.py"])
+        commands.append(["python3", "scripts/test-native-context-product.py"])
+        commands.append(["python3", "scripts/test-native-context-boundaries.py"])
+    if full or worker_fixture_tooling or any(check["id"] == "qoder.delegation" for check in product_checks):
+        commands.append(["python3", "scripts/test-qoder-product.py"])
+    if full or any(path.startswith("crates/daemon/src/delegation/profile/") for path in paths):
+        commands.append(["node", "--test", WORKER_BOOTSTRAP_TEST])
     if full or release_contract_tooling:
         commands.extend([["python3", "scripts/test-release-contracts.py"],
                          ["python3", "scripts/test-release-contract-pr.py"],
@@ -209,6 +374,8 @@ def select(paths, full=False):
     return {"mode": "full" if full else "affected", "paths": sorted(set(paths)),
             "groups": sorted(groups), "reasons": reasons, "rust": rust,
             "frontend": frontend, "native_required": native, "commands": commands,
+            "native_checks": native_checks,
+            "product_checks": product_checks,
             "execution": {"remote_exclusive": full,
                           "feature_context": "Package selection may resolve different dependency features than workspace; preserve failing context when diagnosing."},
             "note": "Native Desktop, real accounts and fixed-machine performance are separate evidence."}
@@ -235,7 +402,8 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
                           or path == "crates/local-storage/src/lib.rs"
                           for path in plan["paths"])
     # These already-selected cheap tooling gates run before Rust preparation.
-    commands = [c[:] for c in plan["commands"] if c[:1] == ["python3"]]
+    commands = [c[:] for c in plan["commands"]
+                if c[:1] == ["python3"] or c[:2] == ["node", "--test"]]
     if targets:
         # Keep the final package selection for broad plans: package selection can
         # change dependency features, even when both commands say --all-features.

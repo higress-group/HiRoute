@@ -445,6 +445,7 @@ impl DelegationRunExecutor {
         let identity_contract = profile.identity_contract.clone();
         let session_meta = profile.session_meta.clone();
         let native_session_mode = Some(profile.native_session_mode().to_owned());
+        let expected_model = Some(profile.native_selected_model_id().to_owned());
         let cwd = profile.cwd.clone();
         let launch = WorkerLaunchRequest {
             launch_nonce: run.launch_nonce.clone(),
@@ -461,6 +462,7 @@ impl DelegationRunExecutor {
                 identity_contract,
                 session_meta,
                 native_session_mode,
+                expected_model,
                 authentication: None,
                 deadline,
                 cancellation,
@@ -637,16 +639,7 @@ fn version_matches_task(
         && CanonicalDigest::of(work)
             .map(|digest| digest == task.plan.harness_configuration_digest)
             .unwrap_or(false)
-        && matches!(
-            (task.plan.harness, work.harness),
-            (
-                hiroute_domain::delegation::WorkerHarnessV1::CodexCli,
-                hiroute_domain::delegation::WorkerHarnessV1::CodexCli
-            ) | (
-                hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode,
-                hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode
-            )
-        )
+        && task.plan.harness == work.harness
 }
 
 fn credential_record(

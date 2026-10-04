@@ -19,6 +19,8 @@ mod native_claude_file_tests;
 mod native_codex_catalog_tests;
 #[path = "native_codex_test.rs"]
 mod native_codex_test;
+#[path = "native_registration_tests.rs"]
+mod native_registration_tests;
 #[path = "settings_skill_journal_tests.rs"]
 mod settings_skill_journal_tests;
 #[path = "skill_parent_tests.rs"]

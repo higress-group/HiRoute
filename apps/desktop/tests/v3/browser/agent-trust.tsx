@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from '@tauri-apps/api/mocks';
-import { Agents, type AgentSnapshot } from '../../../src/agents';
+import { Agents, type Agent, type AgentSnapshot, type ModelStatus } from '../../../src/agents';
 import type { OperationReference } from '../../../src/features/model-connections/types';
 import { PresentationRoot } from '../../../src/ui';
 import { readyAgents } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
-const claudeOf = (snapshot: AgentSnapshot) => snapshot.agents.find(agent => agent.agent_id === 'agent_claude_default')!;
-const codexOf = (snapshot: AgentSnapshot) => snapshot.agents.find(agent => agent.agent_id === 'agent_codex_default')!;
+function modelAgent(snapshot: AgentSnapshot, id: string): Agent & { settings: ModelStatus } {
+  const agent = snapshot.agents.find(agent => agent.agent_id === id);
+  if (!agent?.settings || !('state' in agent.settings)) throw new Error('Model scenario requires model settings');
+  return agent as Agent & { settings: ModelStatus };
+}
+const claudeOf = (snapshot: AgentSnapshot) => modelAgent(snapshot, 'agent_claude_default');
+const codexOf = (snapshot: AgentSnapshot) => modelAgent(snapshot, 'agent_codex_default');
 
 function registered(): AgentSnapshot {
   return structuredClone(readyAgents);
@@ -34,7 +39,7 @@ function notRunnableWithRestore(): AgentSnapshot {
 }
 function unregisteredEndpoint(): AgentSnapshot {
   const snapshot = registered();
-  const agent = claudeOf(snapshot);
+  const agent = snapshot.agents.find(agent => agent.agent_id === 'agent_claude_default')!;
   agent.configuration_state = 'unregistered_endpoint';
   agent.version = '';
   agent.settings = null;
@@ -78,6 +83,8 @@ function protectedCodex(): AgentSnapshot {
 function splitCodexStatus(): AgentSnapshot {
   const snapshot = registered();
   const agent = codexOf(snapshot);
+  const selection = agent.settings?.current_selection;
+  if (selection?.mode !== 'codex_default') throw new Error('Codex status fixture requires a Codex selection');
   agent.codex_access = {
     codex_home: '/fixture/codex', slot_id: 'slot/fixture',
     profile_context_id: 'context/fixture/profile', root_context_id: agent.context_id!,
@@ -91,10 +98,42 @@ function splitCodexStatus(): AgentSnapshot {
       { surface: 'codex_cli', applied_revision: 19, state: 'passed', reason_code: null },
       { surface: 'codex_desktop', applied_revision: 19, state: 'not_verified', reason_code: null },
     ],
-    current_selection: {
-      ...agent.settings!.current_selection!,
-      mode: 'codex_default',
-    },
+    current_selection: selection,
+  };
+  return snapshot;
+}
+
+function qoder(configured: boolean): AgentSnapshot {
+  const context = `agent-context/qoder/sha256:${'a'.repeat(64)}`;
+  return {
+    trusted_authority: true, plans: { plans: [] },
+    agents: [{
+      agent_id: 'agent_qoder_default', version: 'fixture', context_id: context,
+      configuration_state: configured ? 'configured' : 'not_configured',
+      available_surfaces: ['qoder_cli'], native_model_catalog: null, status_error: null,
+      settings: {
+        state: 'not_configured', model_verified: false, restore_point_ref: null, current_selection: null,
+        collaboration: {
+          state: configured ? 'configured' : 'not_configured',
+          restore_point_ref: configured ? 'task-restore/qoder' : null,
+          current_selection: configured ? { trigger_mode: 'explicit' } : null,
+        },
+      },
+    }],
+  };
+}
+
+function qoderRouted(): AgentSnapshot {
+  const snapshot = qoder(true);
+  snapshot.plans = structuredClone(readyAgents.plans);
+  const agent = modelAgent(snapshot, 'agent_qoder_default');
+  const plans = snapshot.plans.plans.slice(0, 2);
+  agent.settings = {
+    ...agent.settings, state: 'configured', applied_revision: 23, restore_point_ref: 'model-restore/qoder',
+    current_selection: { mode: 'qoder_additional', allowed_plan_ids: plans.map(plan => plan.agent_plan_id) },
+    live_check_targets: [{ context_id: agent.context_id!, surface: 'qoder_cli', expected_applied_revision: 23,
+      client_model_ids: plans.map(plan => `fixture-hiroute/${plan.model_alias}`) }],
+    surface_results: [{ surface: 'qoder_cli', applied_revision: 23, state: 'not_verified', reason_code: null }],
   };
   return snapshot;
 }
@@ -117,6 +156,9 @@ const control = {
   protectedCodex,
   cliOnly: () => freshCodex('codex_cli'),
   splitCodexStatus,
+  qoderFresh: () => qoder(false),
+  qoderConfigured: () => qoder(true),
+  qoderRouted,
 };
 Object.assign(window, { agentTrust: control });
 
@@ -151,8 +193,9 @@ function Harness() {
     setGeneration(value => value + 1);
   };
   return <PresentationRoot language="zh" theme="dark" textScale={1}>
-    <div className="app-window"><main className="main" style={{ marginLeft: 0 }}>
-      <div role="note">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实安装。</div>
+    <div className="app-window">
+      <div role="note" style={{ gridColumn: '1 / -1', gridRow: 1 }}>组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实安装。</div>
+      <main className="main" style={{ gridColumn: '1 / -1', gridRow: 2 }}>
       <Agents key={generation} language="zh" refreshVersion={refresh} operation={operation} mutationAllowed onMutation={() => { control.mutations += 1; }} onOperation={(operation, presentation) => { control.operations.push({ operation, presentation }); setOperation(operation); }} />
     </main></div>
   </PresentationRoot>;

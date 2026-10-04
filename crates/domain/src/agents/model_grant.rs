@@ -77,7 +77,8 @@ impl AgentModelGrantV2 {
         if !matches!(
             (selection, protocol),
             (
-                AgentModelSelectionV2::CodexDefault { .. },
+                AgentModelSelectionV2::CodexDefault { .. }
+                    | AgentModelSelectionV2::QoderAdditional { .. },
                 AgentIngressProtocolV1::Responses
             ) | (
                 AgentModelSelectionV2::ClaudeLauncher { .. },
@@ -251,7 +252,8 @@ impl AgentModelGrantV2 {
         if !matches!(
             (selection, self.protocol),
             (
-                AgentModelSelectionV2::CodexDefault { .. },
+                AgentModelSelectionV2::CodexDefault { .. }
+                    | AgentModelSelectionV2::QoderAdditional { .. },
                 AgentIngressProtocolV1::Responses
             ) | (
                 AgentModelSelectionV2::ClaudeLauncher { .. },
@@ -381,6 +383,38 @@ mod tests {
             })),
             Ok(Some("hiroute-example".into()))
         );
+    }
+
+    #[test]
+    fn qoder_additional_routes_authorize_only_selected_plans_without_native_defaults() {
+        let selection = AgentModelSelectionV2::QoderAdditional {
+            allowed_plan_ids: [AgentPlanId::parse("plan/example").unwrap()].into(),
+        };
+        let grant = grant();
+        assert!(grant.validate_selection(&selection).is_ok());
+        assert!(grant.codex_default_override(&selection).is_err());
+        assert!(selection.fixed_models().is_empty());
+        let other = AgentModelSelectionV2::QoderAdditional {
+            allowed_plan_ids: [AgentPlanId::parse("plan/other").unwrap()].into(),
+        };
+        assert!(grant.validate_selection(&other).is_err());
+        let wrong_protocol =
+            AgentModelGrantV2::seal(AgentIngressProtocolV1::Messages, grant.routes).unwrap();
+        assert!(wrong_protocol.validate_selection(&selection).is_err());
+        assert!(
+            AgentModelSelectionV2::QoderAdditional {
+                allowed_plan_ids: Default::default(),
+            }
+            .validate()
+            .is_err()
+        );
+        for forbidden in ["default_selection", "fixed_models", "native_model_mode"] {
+            let mut wire = serde_json::to_value(&selection).unwrap();
+            wire.as_object_mut()
+                .unwrap()
+                .insert(forbidden.into(), serde_json::Value::Null);
+            assert!(serde_json::from_value::<AgentModelSelectionV2>(wire).is_err());
+        }
     }
 
     #[test]

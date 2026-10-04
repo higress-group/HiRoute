@@ -29,6 +29,89 @@ fn make_file(path: &Path, mode: u32) {
 }
 
 #[test]
+#[cfg(unix)]
+fn qoder_discovers_native_aliases_and_official_root_without_inventing_dependencies_or_replacing_selection()
+ {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let bin = root.path().join("bin");
+    let cli = bin.join("qodercli");
+    make_file(&cli, 0o700);
+    let invoked = root.path().join("invoked");
+    fs::write(
+        &cli,
+        format!("#!/bin/sh\nprintf invoked > '{}'\n", invoked.display()),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&cli, bin.join("qoder")).unwrap();
+    make_file(&bin.join("node"), 0o700);
+    make_file(&bin.join("codex-acp"), 0o700);
+    let official = home.join(".qoder/bin/qodercli/qodercli-1.2.3");
+    make_file(&official, 0o700);
+    let missing = root.path().join("explicitly-selected-but-missing");
+    let config = WorkerInstallationConfig::qoder_native(&missing);
+    let source = StaticSelection(Some(WorkerInstallationSelection {
+        config: config.clone(),
+        revision: 4,
+    }));
+    let view = discover_with_environment(
+        &source,
+        &WorkerDependenciesDiscoverRequestV1 {
+            harness: Some(WorkerHarnessV1::QoderCli),
+        },
+        &ScanEnvironment {
+            path: Some(std::env::join_paths([&bin]).unwrap()),
+            home: Some(home),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(view.selected.len(), 1);
+    assert_eq!(view.selected[0].cli_path, missing.to_string_lossy());
+    assert_eq!(view.selected[0].adapter_path, None);
+    assert_eq!(view.selected[0].node_path, None);
+    assert!(
+        view.candidates
+            .iter()
+            .all(|entry| entry.component == WorkerDependencyComponentV1::Cli)
+    );
+    assert!(
+        view.install_hints
+            .iter()
+            .all(|hint| hint.component == WorkerDependencyComponentV1::Cli)
+    );
+    assert_eq!(
+        view.candidates
+            .iter()
+            .filter(|entry| entry.path == cli.to_string_lossy())
+            .count(),
+        1
+    );
+    assert!(
+        view.candidates
+            .iter()
+            .any(|entry| entry.path == official.to_string_lossy()
+                && entry.state == WorkerDependencyCandidateStateV1::Found)
+    );
+    assert!(matches!(
+        validate_persisted_installation(&config),
+        Err(DelegationErrorV1::DependenciesMissing)
+    ));
+    let request = WorkerDependenciesSelectRequestV1 {
+        harness: WorkerHarnessV1::QoderCli,
+        cli_path: cli.to_string_lossy().into_owned(),
+        adapter_path: None,
+        node_path: None,
+        expected_selection_revision: 4,
+    };
+    assert_eq!(validate_selection(&request).unwrap(), request);
+    assert!(
+        !invoked.exists(),
+        "installation discovery and selection must not launch Qoder"
+    );
+}
+
+#[test]
 fn script_adapter_requires_readability_but_not_execute_permission() {
     let root = tempfile::tempdir().unwrap();
     let root_path = fs::canonicalize(root.path()).unwrap();
@@ -47,7 +130,7 @@ fn script_adapter_requires_readability_but_not_execute_permission() {
     }
     let request = WorkerDependenciesSelectRequestV1 {
         harness: WorkerHarnessV1::CodexCli,
-        adapter_path: adapter.to_string_lossy().into_owned(),
+        adapter_path: Some(adapter.to_string_lossy().into_owned()),
         cli_path: cli.to_string_lossy().into_owned(),
         node_path: Some(node.to_string_lossy().into_owned()),
         expected_selection_revision: 0,

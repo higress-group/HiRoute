@@ -6,7 +6,7 @@ use hiroute_application_api::{
 use hiroute_domain::delegation::WorkerHarnessV1;
 use std::sync::Arc;
 
-use super::{WorkerInstallationSelectionSource, check_installation};
+use super::{WORKER_HARNESSES, WorkerInstallationSelectionSource, check_installation};
 
 pub(crate) struct WorkerExecutorAvailabilityRegistry {
     selections: Arc<dyn WorkerInstallationSelectionSource>,
@@ -42,55 +42,49 @@ impl WorkerExecutorAvailabilityRegistry {
 
     pub(crate) fn runtime_unavailable() -> WorkerExecutorAvailabilityListV1 {
         executor_list(
-            [WorkerHarnessV1::CodexCli, WorkerHarnessV1::ClaudeCode]
+            WORKER_HARNESSES
                 .map(|harness| unavailable(harness, State::Unknown, Reason::RuntimeUnavailable)),
         )
     }
 
     pub(crate) fn snapshot(&self) -> WorkerExecutorAvailabilityListV1 {
-        executor_list(
-            [WorkerHarnessV1::CodexCli, WorkerHarnessV1::ClaudeCode].map(|harness| {
-                let selection = match self.selections.selection(harness) {
-                    Ok(selection) => selection,
-                    Err(_) => {
-                        return unavailable(
-                            harness,
-                            State::Unavailable,
-                            Reason::RuntimeUnavailable,
-                        );
-                    }
-                };
-                let Some(selection) = selection else {
-                    return unavailable(
-                        harness,
-                        State::Unavailable,
-                        Reason::InstallationNotConfigured,
-                    );
-                };
-                if check_installation(&selection.config).is_err() {
-                    return unavailable(harness, State::Unavailable, Reason::ArtifactUnavailable);
+        executor_list(WORKER_HARNESSES.map(|harness| {
+            let selection = match self.selections.selection(harness) {
+                Ok(selection) => selection,
+                Err(_) => {
+                    return unavailable(harness, State::Unavailable, Reason::RuntimeUnavailable);
                 }
-                let ready = WorkerExecutorCapabilityAvailabilityV1 {
-                    state: State::Ready,
-                    reason: None,
-                };
-                WorkerExecutorAvailabilityV1 {
+            };
+            let Some(selection) = selection else {
+                return unavailable(
                     harness,
-                    state: State::Ready,
-                    reason: None,
-                    start_approve_all: ready.clone(),
-                    cancel: ready,
-                    continue_session: WorkerExecutorCapabilityAvailabilityV1 {
-                        state: State::Unknown,
-                        reason: Some(Reason::CapabilityUnverified),
-                    },
-                    restricted_policy: WorkerExecutorCapabilityAvailabilityV1 {
-                        state: State::Unknown,
-                        reason: Some(Reason::RestrictedPolicyUnverified),
-                    },
-                }
-            }),
-        )
+                    State::Unavailable,
+                    Reason::InstallationNotConfigured,
+                );
+            };
+            if check_installation(&selection.config).is_err() {
+                return unavailable(harness, State::Unavailable, Reason::ArtifactUnavailable);
+            }
+            let ready = WorkerExecutorCapabilityAvailabilityV1 {
+                state: State::Ready,
+                reason: None,
+            };
+            WorkerExecutorAvailabilityV1 {
+                harness,
+                state: State::Ready,
+                reason: None,
+                start_approve_all: ready.clone(),
+                cancel: ready,
+                continue_session: WorkerExecutorCapabilityAvailabilityV1 {
+                    state: State::Unknown,
+                    reason: Some(Reason::CapabilityUnverified),
+                },
+                restricted_policy: WorkerExecutorCapabilityAvailabilityV1 {
+                    state: State::Unknown,
+                    reason: Some(Reason::RestrictedPolicyUnverified),
+                },
+            }
+        }))
     }
 }
 
@@ -114,10 +108,12 @@ fn unavailable(
     }
 }
 
-fn executor_list(executors: [WorkerExecutorAvailabilityV1; 2]) -> WorkerExecutorAvailabilityListV1 {
+fn executor_list(
+    executors: impl IntoIterator<Item = WorkerExecutorAvailabilityV1>,
+) -> WorkerExecutorAvailabilityListV1 {
     let list = WorkerExecutorAvailabilityListV1 {
         schema: WORKER_EXECUTOR_AVAILABILITY_SCHEMA_V1.into(),
-        executors: executors.into(),
+        executors: executors.into_iter().collect(),
     };
     debug_assert!(list.valid());
     list
@@ -156,6 +152,33 @@ mod tests {
     }
 
     #[test]
+    fn native_qoder_readiness_requires_only_its_selected_cli_and_rejects_mixed_launch_forms() {
+        let root = tempfile::tempdir().unwrap();
+        let cli = root.path().join("qodercli");
+        fs::write(&cli, b"unexecuted native fixture").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&cli, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let mut config = WorkerInstallationConfig::qoder_native(&cli);
+        let list = registry(vec![config.clone()]).snapshot();
+        let fact = list
+            .executors
+            .iter()
+            .find(|entry| entry.harness == WorkerHarnessV1::QoderCli)
+            .unwrap();
+        assert_eq!(fact.state, State::Ready);
+        assert_eq!(fact.continue_session.state, State::Unknown);
+        assert_eq!(fact.restricted_policy.state, State::Unknown);
+        config.adapter = Some(cli);
+        assert_eq!(
+            check_installation(&config),
+            Err(DelegationErrorV1::DependenciesInvalid)
+        );
+    }
+
+    #[test]
     #[cfg(unix)]
     fn worker_installation_accepts_every_diagnostic_version_without_running_it() {
         use std::os::unix::fs::PermissionsExt;
@@ -176,7 +199,7 @@ mod tests {
                 fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
                 let config = WorkerInstallationConfig {
                     harness,
-                    adapter: binary.clone(),
+                    adapter: Some(binary.clone()),
                     harness_binary: binary.clone(),
                     node_binary: None,
                 };
@@ -208,7 +231,7 @@ mod tests {
         }
         let config = WorkerInstallationConfig {
             harness: WorkerHarnessV1::CodexCli,
-            adapter: adapter.clone(),
+            adapter: Some(adapter.clone()),
             harness_binary: adapter.clone(),
             node_binary: None,
         };
@@ -252,7 +275,7 @@ mod tests {
         fs::set_permissions(&binary, fs::Permissions::from_mode(0o100)).unwrap();
         let config = WorkerInstallationConfig {
             harness: WorkerHarnessV1::ClaudeCode,
-            adapter: binary.clone(),
+            adapter: Some(binary.clone()),
             harness_binary: binary,
             node_binary: None,
         };
@@ -260,7 +283,7 @@ mod tests {
         let fifo = root.path().join("fifo");
         nix::unistd::mkfifo(&fifo, nix::sys::stat::Mode::S_IRWXU).unwrap();
         let registry = registry(vec![WorkerInstallationConfig {
-            adapter: fifo,
+            adapter: Some(fifo),
             ..config
         }]);
         assert_eq!(

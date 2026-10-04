@@ -220,9 +220,12 @@ impl ControlRepositoryPort for LocalControlAdapter {
 
     fn begin_local_operation(&self, operation: &OperationV1) -> PortResult<BeginOperationOutcome> {
         self.guard_codex_pending_change(Some(&operation.operation_id))?;
-        self.stores_lock()?
-            .control()
-            .begin_local_operation(operation)
+        let stores = self.stores_lock()?;
+        super::qoder_model_budget::guard_pending_model_change(
+            stores.control(),
+            Some(&operation.operation_id),
+        )?;
+        stores.control().begin_local_operation(operation)
     }
 
     fn verify_apply_authorization(
@@ -250,9 +253,12 @@ impl ControlRepositoryPort for LocalControlAdapter {
         authorization: &VerifiedApplyAuthorizationV1,
     ) -> PortResult<BeginOperationOutcome> {
         self.guard_codex_pending_change(Some(&operation.operation_id))?;
-        self.stores_lock()?
-            .control()
-            .begin_operation(operation, authorization)
+        let stores = self.stores_lock()?;
+        super::qoder_model_budget::guard_pending_model_change(
+            stores.control(),
+            Some(&operation.operation_id),
+        )?;
+        stores.control().begin_operation(operation, authorization)
     }
 
     fn operation_is_current(&self, operation: &OperationV1) -> PortResult<bool> {

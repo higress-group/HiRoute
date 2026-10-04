@@ -109,6 +109,10 @@ impl LocalControlAdapter {
             hiroute_application::agent_connection::decode_settings_claude_model_file(intent)?;
             return Ok(None);
         }
+        if super::native_qoder_model::is_settings_qoder_model(intent) {
+            hiroute_application::agent_connection::decode_settings_qoder_model_file(intent)?;
+            return Ok(None);
+        }
         let envelope: AgentConfigurationEnvelopeV1 =
             serde_json::from_value(intent.desired().clone())
                 .map_err(|_| invalid("agent-config.intent.decode"))?;
@@ -360,6 +364,9 @@ impl ExternalEffectPort for LocalControlAdapter {
         }
         if super::native_claude_model::is_settings_claude_model(intent) {
             return self.stage_settings_claude_model(operation, intent);
+        }
+        if super::native_qoder_model::is_settings_qoder_model(intent) {
+            return self.stage_settings_qoder_model(operation, intent);
         }
         let Some(permission) = self.permission_intent(intent)? else {
             if let Some(change) = self.native_claude_change(intent)? {

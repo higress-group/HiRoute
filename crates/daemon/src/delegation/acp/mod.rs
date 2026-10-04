@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 use super::progress::ProgressSink;
 
 mod identity;
+mod model;
 mod transport;
 pub use identity::AcpNativeIdentityContract;
 pub use transport::MAX_ACP_FRAME_BYTES;
@@ -43,12 +44,19 @@ pub struct AcpRunInput {
     /// Exact adapter-owned native mode selected after new/load and before the first prompt.
     /// Production profiles always set this; `None` exists for protocol-only test fixtures.
     pub native_session_mode: Option<String>,
+    /// Profile's exact native model selector ID, confirmed before prompting. The frozen
+    /// Plan/Gateway alias remains separate when the native client adds a provider prefix.
+    /// Production runs and installation probes set this; protocol-only fixtures may omit it.
+    pub expected_model: Option<String>,
     pub authentication: Option<Value>,
     pub deadline: Instant,
     pub cancellation: CancellationToken,
 }
 
 pub trait AcpRunJournal: Send + Sync {
+    /// Transient startup receipt after a successful, version-checked initialize.
+    /// It does not imply session/model readiness or permission to send a prompt.
+    fn initialized(&self) {}
     fn session_bound(&self, binding: &AcpSessionBinding) -> Result<(), DelegationErrorV1>;
     /// Must durably record the send intent before returning Ok. Failure means no prompt.
     fn before_prompt(&self) -> Result<(), DelegationErrorV1>;
@@ -217,6 +225,7 @@ async fn run_session(
     if initialized.protocol_version != ProtocolVersion::V1 {
         return Err(DelegationErrorV1::CapabilityUnavailable);
     }
+    journal.initialized();
     if let Some(authentication) = input.authentication {
         let request: AuthenticateRequest = serde_json::from_value(authentication)
             .map_err(|_| DelegationErrorV1::InvalidArguments)?;
@@ -227,7 +236,7 @@ async fn run_session(
         )
         .await?;
     }
-    let (binding, modes) = match input.session {
+    let (binding, modes, config_options) = match input.session {
         AcpSessionStart::New => {
             let request: NewSessionRequest = serde_json::from_value(json!({
                 "cwd":input.cwd,"mcpServers":[],"_meta":input.session_meta,
@@ -249,6 +258,7 @@ async fn run_session(
                         .new_native(&response.session_id.to_string(), &raw)?,
                 },
                 response.modes,
+                response.config_options,
             )
         }
         AcpSessionStart::Load(expected) => {
@@ -283,7 +293,7 @@ async fn run_session(
             if !identity_verified {
                 return Err(DelegationErrorV1::ResumeUnavailable);
             }
-            (expected, response.modes)
+            (expected, response.modes, response.config_options)
         }
     };
     if binding.acp_session_id.is_empty() || binding.acp_session_id.len() > 1024 {
@@ -292,6 +302,17 @@ async fn run_session(
     updates.lock().unwrap_or_else(|e| e.into_inner()).session =
         Some(binding.acp_session_id.clone());
     journal.session_bound(&binding)?;
+    if let Some(expected_model) = input.expected_model.as_deref() {
+        model::ensure_model(
+            &connection,
+            &binding.acp_session_id,
+            config_options.as_deref(),
+            expected_model,
+            &input.cancellation,
+            input.deadline,
+        )
+        .await?;
+    }
     if let Some(native_session_mode) = input.native_session_mode {
         let mode_available = modes.as_ref().is_some_and(|modes| {
             modes
@@ -485,6 +506,8 @@ async fn phase<T>(
 
 #[cfg(test)]
 mod identity_tests;
+#[cfg(test)]
+mod model_tests;
 #[cfg(test)]
 mod security_tests;
 #[cfg(test)]
