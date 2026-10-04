@@ -7,23 +7,45 @@ memo. Sources, task bytes, model settings, and quality gates were fixed before t
 three paired mixed/all-Astra repeats. Three all-Qwen repeats were registered afterward
 without changing task or rubric. Evaluators knew the model identities.
 
-## Complete original results
+## Quality at a glance
 
-| Repeat | Mixed cards | Astra cards | Qwen cards | Critical memo: mixed / Astra / Qwen | Strict whole delivery: mixed / Astra / Qwen |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 352/360 | 359/360 | 356/360 | pass / pass / fail | fail / pass / fail |
-| 2 | 357/360 | 359/360 | 356/360 | pass / pass / fail | pass / pass / fail |
-| 3 | 356/360 | 359/360 | 355/360 | pass / pass / pass | pass / pass / pass* |
+All nine deliveries are included below: three repeats per mode, with 1,080 research
+cards and three critical memos per mode. The percentages describe card correctness;
+they are not whole-delivery acceptance rates.
 
-Whole delivery requires all 360 unique cards, at least 353 correct, and an entirely
-correct critical memo. A wrong verdict, unsupported factual statement, missing necessary
-qualification, or unsupported citation counts once per card. Every card and complete memo
-was read against the frozen sources; finite JSON checks alone are insufficient.
+| Quality measure | HiRoute mixed | All Astra | All Qwen |
+| --- | --- | --- | --- |
+| Card correctness, including citation support (original rubric) | **98.61%** (1,065/1,080) | **99.72%** (1,077/1,080) | **98.80%** (1,067/1,080) |
+| Content/verdict correctness (supplementary analysis) | **99.17%** (1,071/1,080) | **99.72%** (1,077/1,080) | **99.07%** (1,070/1,080) |
+| Critical memos without a material error | **3/3** | **3/3** | **1/3** |
 
-**Original strict whole-delivery counts: mixed 2/3, Astra 3/3, Qwen 1/3.**
-The first mixed result was corrected from 353 to 352 after a citation-support omission
-was found and checked symmetrically in all nine deliveries. The original goal requiring
-all three paired deliveries to pass was not met. Model answers were not repaired.
+Content/verdict correctness separates citation-support-only findings from substantive
+errors. This analysis was introduced after observing the results and is exploratory;
+it does not replace the original rubric or excuse outstanding citation defects. The
+same classification is applied to all three modes. See the [complete analysis and
+finding classifications](results/2026-10-04/posthoc.json).
+
+## Correctness in every repetition
+
+These are the original scores, including citation support, without dropping any repeat.
+
+| Repeat | HiRoute mixed | All Astra | All Qwen |
+| --- | --- | --- | --- |
+| 1 | 97.78% (352/360) | 99.72% (359/360) | 98.89% (356/360) |
+| 2 | 99.17% (357/360) | 99.72% (359/360) | 98.89% (356/360) |
+| 3 | 98.89% (356/360) | 99.72% (359/360) | 98.61% (355/360)* |
+
+A wrong verdict, unsupported factual statement, missing necessary qualification, or
+unsupported citation counts once per card. Every card and complete memo was read against
+the frozen sources; finite JSON checks alone are insufficient. The first mixed score uses
+the corrected 352 count after a citation-support omission was found and checked
+symmetrically in all nine deliveries. Model answers were not repaired.
+
+The original whole-delivery rule remains complete coverage of 360 unique cards, at least
+353 correct, and an entirely correct critical memo. A high percentage alone does not
+establish that every delivery met this rule. The [recorded outcomes](results/2026-10-04/deliveries.json)
+and offline scorer preserve the original per-delivery and all-three-pairs acceptance
+results; this presentation changes neither the threshold nor those outcomes.
 
 *Qwen repeat 3 includes one prospectively registered transport recovery after an HTTP 502.
 Its original execution-completeness gate remains failed. The failed request's usage/cost
@@ -31,11 +53,17 @@ is unknown, not zero. The completed delivery can be reviewed, but its all-attemp
 cannot be presented as completely known. The critical memo had not run before recovery;
 no completed answer was rerun to improve a semantic score.*
 
-| Pair | Mixed USD bounds | All-Astra USD bounds | Conservative reduction | Original pair accepted |
-| --- | --- | --- | --- | --- |
-| 1 | 0.135848–0.144745 | 2.083912–2.155990 | 93.05% | No; attempt expense, not accepted-delivery savings |
-| 2 | 0.137909–0.146806 | 1.838882–1.842160 | 92.01% | Yes |
-| 3 | 0.162341–0.177957 | 2.067170–2.132528 | 91.39% | Yes |
+## Complete-task cost
+
+All three pairs' spending is retained. The article's savings claim uses pairs 2 and 3,
+which met the original whole-delivery rule in both modes. Pair 1's spending is shown for
+accounting completeness and is not counted as accepted-delivery savings.
+
+| Pair | Mixed USD bounds | All-Astra USD bounds | Conservative reduction for a qualified pair |
+| --- | --- | --- | --- |
+| 1 | 0.135848–0.144745 | 2.083912–2.155990 | — |
+| 2 | 0.137909–0.146806 | 1.838882–1.842160 | **92.01%** |
+| 3 | 0.162341–0.177957 | 2.067170–2.132528 | **91.39%** |
 
 These are frozen **API-equivalent USD**, not actual subscription charges. Savings use
 `1 - mixed_upper / strong_lower`, rounded down for publication. All subject attempts,

@@ -25,8 +25,10 @@ Verification checks original artifact hashes, all 3,240 cards and nine memos,
 recorded finding counts, critical-memo findings, per-attempt accounting, Jev cost,
 whole-delivery gates, and conservative paired savings. It replays the published
 unblinded review judgments; it does **not** independently establish semantic truth.
-The original all-three-pairs success gate remains false. Fresh live runs are separate
-from these historical results and cannot overwrite them.
+The case overview reports correctness and critical-decision quality; those metrics
+are distinct from whole-delivery acceptance. All original acceptance outcomes remain
+in the evidence and offline scorer. Fresh live runs are separate from these historical
+results and cannot overwrite them.
 
 ## Read the article
 
