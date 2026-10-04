@@ -31,3 +31,18 @@ test('shared evidence is read once per page and successful last evidence avoids 
   assert.deepEqual(result, { 'stage/a': 'executed-model', 'stage/b': 'executed-model' });
   assert.equal(calls, 1);
 });
+
+test('a full page leaves observation capacity for transcript reads', async () => {
+  let active = 0;
+  let peak = 0;
+  const stages = Array.from({ length: 20 }, (_, index) => stage({ segment_id: `stage/${index}`, last_request_id: `request/${index}` }));
+  const result = await qualityExecutionModels(stages, async (session, request) => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise(resolve => setImmediate(resolve));
+    active--;
+    return [{ session_id: session, request_id: request, final_native_model: request }];
+  });
+  assert.equal(Object.keys(result).length, 20);
+  assert.ok(peak <= 2, `Quality reads consumed all query capacity: ${peak}`);
+});

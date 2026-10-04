@@ -22,14 +22,20 @@ export async function qualityExecutionModels(stages: readonly Stage[], lookup: L
       .catch(() => null));
     return requests.get(key)!;
   };
-  const names = await Promise.all(stages.map(async stage => {
-    if (stage.attribution !== 'single' || !stage.execution_evidence_available) return null;
-    for (const request of new Set([stage.last_request_id, stage.first_request_id])) {
-      if (!request) continue;
-      const name = await read(stage.session_id, request);
-      if (name) return [stage.segment_id, name] as const;
+  const names: Record<string, string> = {};
+  let next = 0;
+  // The observation service admits four concurrent queries. Leave room for the
+  // surrounding session's transcript and facts instead of firing a whole page.
+  await Promise.all(Array.from({ length: Math.min(2, stages.length) }, async () => {
+    while (next < stages.length) {
+      const stage = stages[next++];
+      if (stage.attribution !== 'single' || !stage.execution_evidence_available) continue;
+      for (const request of new Set([stage.last_request_id, stage.first_request_id])) {
+        if (!request) continue;
+        const name = await read(stage.session_id, request);
+        if (name) { names[stage.segment_id] = name; break; }
+      }
     }
-    return null;
   }));
-  return Object.fromEntries(names.filter(entry => entry !== null));
+  return names;
 }
