@@ -1,40 +1,38 @@
 # HiRoute Smart Routing in Action: GPT-6 Astra × Qwen-3.8 Flash, Same Quality at 90% Lower Cost
 
-**HiRoute: an open-source intelligent routing engine for long-running agent tasks. Spend less. Stay steady. Choose smarter.**
+**Does every step of a software iteration need the most expensive model?**
 
-The right agent for the task. The right model for each step.
-
-An agent working for tens of minutes may research a problem, reconcile constraints, implement changes, run tests, diagnose failures, and repair its work before delivery. Much of that work is well bounded; a few difficult judgments can determine the outcome. Model selection needs to keep pace with the task.
+Reading documentation, organizing evidence, implementing changes, running tests, and diagnosing difficult failures can all happen within one agent task. They demand different capabilities. Some require careful coverage of explicit information; others require deriving guarantees or spotting subtle failure windows. A strong model throughout can overprice the former. An economical model throughout can miss the latter.
 
 We put **GPT-6 Astra + Qwen-3.8 Flash** through two kinds of practical work. In two engineering-research pairs meeting the same delivery standard, mixed routing reduced **API-equivalent cost by 92.01% and 91.39%**. In a separate real coding task, an agent **received no intermediate operator guidance and passed 343 independent assertions after automatic model handoff**. The first case tests cost-effective allocation; the second observes autonomous escalation and completion.
 
-## Why long tasks need intelligent routing
+## What HiRoute is, and where it fits
 
-A software iteration continually changes what it asks of a model. Research needs coverage and accuracy; architecture decisions need reasoning about constraints and failure boundaries; implementation needs tool execution and sustained verification. Even within one stage, straightforward edits and difficult debugging can alternate.
+**HiRoute is an open-source intelligent routing engine that runs locally between existing agents and model services, designed for long-running tasks.** You continue assigning work in your familiar agent. That agent reads files, writes code, executes tools, and runs tests. HiRoute receives its model requests, selects the actual model according to a configured routing plan, and records calls and execution performance.
 
-Model capabilities, reasoning settings, prices, and availability differ. Research, coding, and complex analysis can also benefit from different agent workflows. Longer tasks make three questions increasingly relevant: **Is the capability appropriate? Can execution continue? What does completing the entire task cost?**
+Connect model sources in HiRoute, then create a plan. Each plan has a stable “connection model name”: the agent uses that name to call HiRoute, while the route behind it can contain one model or a combination such as Qwen and Astra. The agent's connection stays consistent while routing decisions can change the model doing the work.
 
-HiRoute brings those decisions into one engine:
+For example, this case puts Qwen in the economy group and Astra in the primary group. Explicit source verification can go to Qwen; analysis of cross-system consistency guarantees can go to Astra. At a context handoff during a long task, evidence that economy is not sufficiently capable can send subsequent requests to primary.
 
-- **Task routing:** the primary agent selects an allowed work plan by purpose; that plan specifies an execution agent and its model route.
-- **Model routing:** within the plan's allowed scope, select a model combination, reasoning setting, and candidate order for the work.
-- **Execution observability:** associate actual models, attempts, usage, estimated costs, and available stage assessments for users and agents to inspect.
+Desktop manages models, plans, and session inspection. The local Gateway handles model requests, and the CLI supports automation. For multi-agent work, a plan can also specify an execution agent to which the primary agent delegates by purpose. The two experiments here focus on model routing and do not depend on multi-agent delegation.
 
-Desktop provides configuration and observation, the CLI supports automation, and the Gateway handles model calls. Keep working in a familiar agent through a supported integration. Task decomposition remains the agent's or workflow's responsibility; this article tests model routing and long-task handoff.
-
-[![HiRoute connects work plans, execution agents, model routes, and execution evidence](assets/long-horizon-engine-en.png)](assets/long-horizon-engine-en.png)
+[![HiRoute connects agents to model services through routing plans and uses execution evidence to inform later choices](assets/long-horizon-engine-en.png)](assets/long-horizon-engine-en.png)
 
 Open any figure to view it at full size.
 
-## Spend less. Stay steady. Choose smarter.
+## One plan, different capability needs as work progresses
 
-**Spend less: reserve stronger reasoning for work that benefits from it.** Explicit extraction, verification, and organization can be candidates for economical models; deriving guarantees and analyzing complex failures justify stronger models. Configuring reasoning effort alongside models also avoids maximum effort on every task.
+A software iteration does not simply become harder over time. Solving an architecture problem may leave a large amount of routine implementation. Nearly finished code can still stall on a concurrency issue or edge case. Model allocation needs to accommodate that progression.
 
-**Stay steady: hand off at appropriate boundaries.** Ordinary tool continuations keep their existing route. A fresh decision opportunity allows reassessment. When a source is unavailable, failure recovery follows the plan, candidate order, and capability requirements; a response already being delivered does not transparently switch models midway. Capability escalation at a context boundary and recovery from a failed request have distinct triggers.
+| Situation | How routing participates |
+| --- | --- |
+| Extract, verify, and organize information from supplied sources | Use economy when decision criteria permit, reducing the cost of bulk work |
+| Derive guarantees, reconcile contradictions, or analyze complex failures | Select primary for stronger reasoning |
+| Continue calling tools within the same segment of work | Inherit the existing route to keep execution stable |
+| Rebuild context, or receive a user follow-up with reselection enabled | Reassess the task and consider available evidence from the preceding stage |
+| A source is unavailable or a request fails | Try candidates within the plan's capability and fallback rules; a response already being delivered does not transparently change models midway |
 
-**Choose smarter: use performance to calibrate the initial choice.** A task description provides an initial signal. Actual progress, repeated mistakes, and substantial corrections add evidence. HiRoute associates visible execution facts with stage assessments, making subsequent choices inspectable and helping users understand which work a model handles well.
-
-Together, these capabilities aim to **reduce the cost of reliably completing an entire task while reducing manual model selection, supervision, and switching.**
+Candidate fallback after a failed request addresses availability. Escalation based on performance addresses whether the selected capability is sufficient. The long-task experiment examines the latter.
 
 ## A cheaper model can create a more expensive task
 
@@ -53,35 +51,44 @@ HiRoute therefore distinguishes two questions:
 
 The competence assessment used in this case considers answers and tool activity visible to the routing layer, failed and recovered attempts, and available user feedback. It looks back at an assessable stage of execution. Useful progress with an appropriate process and no material correction differs from repeated errors and limited progress.
 
-**The score concerns a particular stage. It is neither a permanent model ranking nor a probability of success.** A missing assessment is not a zero; incomplete visible history must be interpreted alongside its coverage. Independent acceptance still determines whether the final delivery meets requirements.
+**The score concerns a particular stage. It is neither a permanent model ranking nor a probability of success.** Read it alongside the model, the work assessed, and evidence coverage. Scores for different stages are not a same-task model comparison. A missing assessment is not a zero; independent acceptance still determines whether the final delivery meets requirements.
 
 [![Task complexity and observed competence inform the next choice at a decision opportunity](assets/competence-feedback-en.png)](assets/competence-feedback-en.png)
 
-## Automatic model handoff for long tasks
+## Switch at context handoffs without watching every step
 
-Assessment becomes useful when it informs the next action. HiRoute can reconsider at new user input and natural handoffs where the existing context can no longer be inherited. Compaction followed by rebuilding context is a common example during a long task.
+An agent's ongoing work accumulates conversation, tool results, and code changes. As context approaches its limit, the agent typically compacts history and continues from a summary. This is a common **context handoff** in long tasks.
 
-Ordinary tool continuations remain stable. At a handoff, assess the current task and the preceding stage. When the current competence assessment is below the configured floor, the policy used in this experiment blocks the economy branch and selects primary. A new decision can also keep the same model when it remains suitable.
+HiRoute checks continuity between requests. Ordinary tool continuations inherit the route. When the existing context can no longer be inherited and a fresh decision is needed, it considers the current task and preceding stage performance. The client does not need to send a separate compaction notification.
 
-This does not depend on someone watching and asking for a stronger model. ContextHold checks context continuity without requiring a separate client compaction notification. **Feedback is evaluated at decision opportunities, not as a real-time error detector after every tool call**, and compaction does not automatically require an upgrade.
+This experiment sets a competence floor of **0.5**. At a decision opportunity, a stage score below that floor blocks the economy branch and selects primary. Suitable work and sufficient performance can also keep the same model in use.
 
-Different models cannot share a KV cache. Switching builds a new prefix that subsequent calls may reuse. Choosing at a point where context already needs rebuilding helps preserve stability across ordinary continuations.
+That makes “try a stronger model” an automatic part of execution, without always waiting for the user to notice a problem and intervene. Assessment happens at decision opportunities, not after every tool call, and compaction does not automatically require an upgrade. Different models cannot share a KV cache; switching still builds a new context prefix.
 
-## How this case was configured
+## How to configure this setup in HiRoute
 
-The smart-saving plan puts **Qwen-3.8 Flash** in economy and **GPT-6 Astra** in primary, with reasoning effort configured for each. The subject client uses the appropriate plan; actual execution models and usage are checked in the resulting records.
+The product setup has three steps: make the model combination active, then check how it actually executes.
+
+1. **Connect sources on the Models page.** Confirm that Qwen-3.8 Flash and GPT-6 Astra are available for routing through your normally authorized model services.
+2. **Create a plan on the Smart routing page.** Choose “Smart saving,” place Qwen in “Economy group” and Astra in “Primary group,” and set reasoning effort to `xhigh` and `medium`, respectively. Confirm the “Connection model name” and enable the plan. Later edits take effect after publishing changes.
+3. **Point the client at the plan.** When managing an agent through Desktop, select its model route on the Agent page. This coding experiment used isolated configuration to connect native Codex to the mixed plan; the research case used a separate exported client configuration for each plan to submit the same tasks through HiRoute. Check actual models, request records, and usage on the Sessions page.
+
+For the cost comparison, create two additional “Fixed model” plans: one containing only Astra, the other only Qwen. All three modes receive the same frozen sources, verification obligations, and delivery requirements. Mixed routing does not get an easier task.
+
+The model groups and experimental decision parameters are below. Thresholds are part of the frozen experiment policy; the experiment directory contains the full configuration and rerun instructions.
 
 | Setting | Research cost experiment | Long-task handoff experiment |
 | --- | --- | --- |
-| Economy model | Qwen-3.8 Flash, xhigh | Qwen-3.8 Flash, xhigh |
-| Primary model | GPT-6 Astra, medium | GPT-6 Astra, medium |
+| Economy group | Qwen-3.8 Flash, xhigh | Qwen-3.8 Flash, xhigh |
+| Primary group | GPT-6 Astra, medium | GPT-6 Astra, medium |
 | Simple-task threshold | 0.8 | 0, economy-first start |
 | Competence floor | 0.5 | 0.5 |
+| Context window / maximum output | 131,072 / 65,536 tokens | 131,072 / 65,536 tokens |
 | Outcome of interest | Whole-task cost at the same acceptance standard | Autonomous escalation and completion without intermediate guidance |
 
-The cases have different purposes and starting policies. Research reserves primary for consequential judgments; the long task observes whether execution starting with economy can hand off based on performance. These are not universal optimal settings. Exact versions, policies, and complete parameters remain in the [experiment directory](../experiments/README.md).
+The starting policies serve different purposes. Research reserves primary for consequential judgments; the long task observes whether execution starting with economy can hand off based on performance. The long-task client also uses a **60,000-token** automatic compaction threshold and continues after one initial instruction. These settings are not universal optima.
 
-To inspect the effect, first look at **actual execution models and attempts** in the session, then stage competence and assessment coverage, and finally independent delivery acceptance. Configuration, an assessment, and a completed deliverable provide different kinds of evidence.
+To reproduce the setup, use the [research case](../experiments/cases/research-cost-quality/README.md) to prepare frozen sources and separate configurations for the three plans, or the [long-task case](../experiments/cases/unattended-engineering/README.md) to prepare pinned HTTPX. Keep fresh results separate from the historical records published here.
 
 ## Experiment one: 360 research cards and one critical decision
 
@@ -144,11 +151,18 @@ A native agent executed code and tools. The initial task required both implement
 
 Independent verification followed execution, with protected tests unchanged. This case demonstrates an actual automatic upgrade followed by accepted completion. It has no all-Astra cost control and does not support a 90% savings claim. [Task, parameters, and verification](../experiments/cases/unattended-engineering/README.md)
 
-### Inspecting the handoff in Desktop
+### Follow the execution record, not just two scores
 
-[![Native HiRoute Desktop replaying stage competence and execution-evidence links from this task](assets/desktop-session-quality-en.png)](assets/desktop-session-quality-en.png)
+A useful handoff connects three kinds of evidence: **why escalation happened, which model actually executed afterward, and whether the final delivery passed acceptance.** This historical record supports the following observations:
 
-This screenshot replays historical observation metadata from the experiment in an isolated native Desktop. It shows stage scores, assessed turns, and evidence links. It was captured after the experiment without rerunning the model task. Conversation content and agent connection configuration were not imported, so the incomplete-content and unlinked-agent indicators remain visible. The stage-level “Partial” badges describe the original assessment coverage, not failed delivery. The UI displays two decimal places; the escalation used the recorded value **0.485**.
+| Stage | Actual model and assessment | What it establishes |
+| --- | --- | --- |
+| Intermediate summary | Astra, stage score **0.775** | Assesses that stage only; it is not a score for the final code repair |
+| Around the second context compaction | Qwen, stage score **0.485**, below **0.5** | The routing record shows the competence guard selecting primary |
+| Subsequent implementation and repair | Astra, **13 actual tool calls**; no later stage score | Primary continued executing, rather than merely being selected |
+| Independent checks after completion | **All 343 assertions passed** | The final implementation met this task's acceptance requirements |
+
+These stages involved different work. **0.775 versus 0.485** is not a same-task score comparison between Astra and Qwen. Historical assessments also carry partial-evidence flags and must be read alongside their coverage. The stronger evidence in this case is the connection from escalation to actual execution to independent acceptance. [Inspect decisions, compaction timestamps, and model request records](../experiments/cases/unattended-engineering/results/2026-10-04/evidence.json)
 
 ## Start with a long task of your own
 
@@ -166,5 +180,3 @@ python3 experiments/reproduce.py report
 The [experiments directory](../experiments/README.md) preserves all nine research deliveries, item-level findings, cost provenance, tasks, and rerun entry points. Offline replay makes no model calls; fresh execution uses your own connections and writes separate results. Semantic review still requires reading every answer against its sources; structure checks alone are not quality grades.
 
 These are purpose-designed cases with three research repeats per mode and unblinded evaluation. Complete original records, supplementary analysis, and transport recovery remain available for inspection under the same definitions.
-
-**HiRoute. Spend less. Stay steady. Choose smarter. The right agent for the task. The right model for each step.**
