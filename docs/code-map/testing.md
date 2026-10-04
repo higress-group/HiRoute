@@ -72,7 +72,7 @@ model providers. Reuse the same production control and upstream oracle, with a
 small native launch leaf for each distinct startup contract.
 
 For a new ecosystem, reuse [Agent product support](../../crates/daemon/tests/support/agent_product_support.py)
-for public settings Preview → Apply → current-status reads and bounded native CLI
+for product settings Preview → Apply → current-status reads and bounded native CLI
 execution with private output capture. Keep native argv, configuration ownership,
 terminal-result parsing and independent business assertions in the ecosystem leaf.
 The process helper proves neither a model request nor a successful task by itself.
