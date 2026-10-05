@@ -118,13 +118,13 @@ This case shows execution feedback influencing model selection throughout the ta
 
 ### Inspect each stage in HiRoute
 
-That execution feedback is also available for inspection. A session's **Model performance** view shows the actual model, competence score and assessment coverage for each execution stage. If progress looks insufficient, execution-evidence and assessment-feedback links lead back to the relevant activity. Stages that have not received a score remain visible too.
+These screenshots show the updated HiRoute Desktop reading the observation records retained from this case. A session's **Model performance** view shows the actual model, reasoning setting, stage competence and execution turns. Open execution evidence to inspect the activity; expand assessment details to check coverage and open the assessment-trigger request. Stages that have not received a score remain visible too.
 
 [![Session model performance: inspect Qwen and Astra stage scores, assessment coverage and evidence links](assets/desktop-session-competence-en.png)](assets/desktop-session-competence-en.png)
 
-A routing plan's **Runtime performance** view provides a broader perspective. Select a plan version and time range to see each model's average stage competence, together with counts of scored and unrated stages. Open a model's stages to inspect the underlying execution and assess which combination fits your tasks. The average includes scored stages only; unrated stages do not enter the calculation.
+A routing plan's **Model performance** tab provides a broader perspective. Select a plan version and time range to inspect model configurations within each execution group, with average stage competence and counts of scored and unrated stages. A group can contain multiple models; different reasoning settings remain separate, and rows follow the plan's candidate order. Open a model's stages to inspect the underlying execution and assess which combination fits your tasks. Averages use the latest raw assessment of each scored stage in the scope; unrated stages are excluded.
 
-[![Routing-plan performance: inspect model averages and stage counts within one version and time range](assets/desktop-plan-competence-en.png)](assets/desktop-plan-competence-en.png)
+[![Routing-plan model performance: inspect model configurations, averages and stage counts by execution group](assets/desktop-plan-competence-en.png)](assets/desktop-plan-competence-en.png)
 
 ## Enterprise gateway experience, lightweight local execution
 
