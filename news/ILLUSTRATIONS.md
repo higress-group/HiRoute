@@ -1,19 +1,23 @@
 # Article illustrations
 
-The two explanatory slides have Chinese and English versions:
+The article's explanatory slides have Chinese and English versions:
 
-- [Long-task engine, Chinese](assets/long-horizon-engine-zh.png) / [English](assets/long-horizon-engine-en.png).
 - [Competence and cost, Chinese](assets/competence-feedback-zh.png) / [English](assets/competence-feedback-en.png).
+- [Local architecture, Chinese](assets/local-architecture-zh.png) / [English](assets/local-architecture-en.png).
 
 These are explanatory presentation graphics created with the built-in `image_gen`
 tool, not Desktop screenshots or measured output. Their text describes product roles
-and the routing policy discussed in the article. The overview is the article's only
-slogan-bearing figure. The body explains the
-product in terms of connection, routing, and observation rather than repeating it.
+and the routing policy discussed in the article. The body introduces the product,
+then presents two case studies, the local architecture and the download entry.
+Configuration pictures accompany the first case; competence, handoff and observation
+pictures accompany the second.
 
-The [complete generation and correction prompts](illustration-prompts.json) record the
-requested text and visual constraints. Chinese and English text and arrows were visually
-checked.
+The [original generation and correction prompts](illustration-prompts.json) and
+[architecture prompts](local-architecture-illustrations.json) record the requested text
+and visual constraints. Chinese and English text and arrows were visually checked.
+The earlier long-task overview ([Chinese](assets/long-horizon-engine-zh.png) /
+[English](assets/long-horizon-engine-en.png)) remains for provenance; it is no longer
+used in the article, whose introduction is now three short paragraphs.
 
 The cost chart and recorded HTTPX handoff graphic are generated separately by
 `experiments/render_figures.py` from the published evidence. Their measurements come
@@ -118,13 +122,17 @@ in this design. Removing them from the primary view does not alter the experimen
 records. Both language editions use the same two Chinese-interface images, with
 localized article text and captions.
 
-## Overview revision brief
+## Local architecture
 
-The next overview should explain one concrete model-call path: the user's existing
-agent sends a request using a stable route name; local HiRoute selects the Qwen or
-Astra group; the response returns to the agent for continued tool execution. Place
-stage assessment below the route, with a return arrow at context handoffs. Keep
-optional multi-agent delegation outside this core diagram. Show product roles and
-actions instead of repeating three slogan cards. Proposed prompts are recorded as
-pending below the original generation history; no replacement image has yet been
-produced from them.
+The architecture figures show one concrete call path: an existing agent calls the
+local HiRoute Gateway, which connects to cloud or locally hosted model services.
+Desktop/CLI configures the gateway, and execution facts feed local observation.
+The computer boundary includes the agent, management, gateway, records and local
+models; cloud services remain outside it. Connected model services perform inference.
+
+The Rust core, shared Desktop/CLI service and local record storage are described by
+the public source references in the architecture prompt record. The figures explain
+those responsibilities rather than prescribing internal process or crate boundaries.
+The article describes the Higress engineering lineage separately from HiRoute's Rust
+implementation. The previous overview revision brief is superseded by these figures;
+its original unexecuted prompts remain in the historical prompt file.
