@@ -17,6 +17,10 @@ pub struct PlanQualitySamplesQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_configuration_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<PlanQualityExecutionIdentity>,
+    #[serde(default)]
+    pub unrated_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to_ms: Option<i64>,
@@ -60,6 +64,10 @@ pub struct PlanQualitySample {
     pub model_configuration_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_profile_id: Option<String>,
     pub attribution: AgentTurnAttributionV1,
     pub first_turn_id: String,
     pub first_turn_ordinal: u64,
@@ -85,6 +93,42 @@ pub struct PlanQualitySample {
 #[serde(deny_unknown_fields)]
 pub struct PlanQualitySamplesPage {
     pub samples: Vec<PlanQualitySample>,
+    pub summary: PlanQualitySummary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
+}
+
+/// Full authorized scope, independent of the stage page and detail filters.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanQualitySummary {
+    pub models: Vec<PlanQualityModelSummary>,
+    pub scored_stage_count: u64,
+    pub unrated_stage_count: u64,
+    pub session_count: u64,
+    pub available_revisions: Vec<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanQualityModelSummary {
+    pub execution: PlanQualityExecutionIdentity,
+    pub native_model: Option<String>,
+    pub reasoning_profile_id: Option<String>,
+    pub scored_stage_count: u64,
+    pub unrated_stage_count: u64,
+    pub average_score: Option<f64>,
+}
+
+/// The exact aggregate key, also used for stage drill-down (including nulls).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanQualityExecutionIdentity {
+    pub plan_revision: u64,
+    /// Present only when no executed branch was recorded; never replaces it.
+    pub selected_branch_id: Option<String>,
+    pub executed_branch_id: Option<String>,
+    pub model_configuration_id: Option<String>,
+    pub profile_digest: Option<String>,
+    pub attribution: AgentTurnAttributionV1,
 }

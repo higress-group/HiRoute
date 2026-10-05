@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from '@tauri-apps/api/mocks';
+import { PlanQuality, type PlanQualityModel } from '../../../src/features/PlanQuality';
 import { Sessions } from '../../../src/features/Sessions';
 import { Home, HomeNavigation } from '../../../src/features/home';
 import type { HomeReads } from '../../../src/features/home/types';
@@ -41,6 +42,8 @@ const control = {
   bumpRefresh: () => {},
   showHome: () => {},
   showSessions: () => {},
+  showQualityPlan: () => {},
+  qualityModels: [] as PlanQualityModel[],
   reset: () => {},
 };
 
@@ -100,7 +103,7 @@ function observationRead(view: string, query: Record<string, any>) {
     case 'catalog': return { contents: control.catalog[query.request_id] ?? [], transcript_roots: [], roots_partial: false, next_cursor: null };
     case 'content': return { state: 'complete', chunks: [{ text: control.texts[query.content_id] ?? '', original_byte_offset: 0 }], next_cursor: null };
     case 'facts': return { facts: [], projection_partial: false, next_cursor: null };
-    case 'plan_quality': return { samples: [], next_cursor: null };
+    case 'plan_quality': return { samples: [], summary: { models: [], scored_stage_count: 0, unrated_stage_count: 0, session_count: 0, available_revisions: [] }, next_cursor: null };
     case 'home_value': return {
       pending_requests: 0,
       provisional_requests: 0,
@@ -150,10 +153,12 @@ const navItems = [
 function Harness() {
   const [generation, setGeneration] = useState(0);
   const [refresh, setRefresh] = useState(0);
+  const [qualityVisible, setQualityVisible] = useState(false);
   const [homeVisible, setHomeVisible] = useState(false);
   control.bumpRefresh = () => setRefresh(value => value + 1);
   control.showHome = () => setHomeVisible(true);
-  control.showSessions = () => setHomeVisible(false);
+  control.showSessions = () => { setHomeVisible(false); setQualityVisible(false); };
+  control.showQualityPlan = () => { setHomeVisible(false); setQualityVisible(true); };
   control.reset = () => {
     control.requests = {};
     control.catalog = {};
@@ -162,6 +167,8 @@ function Harness() {
     control.views = {};
     control.handlers = {};
     control.commands = [];
+    control.qualityModels = [];
+    setQualityVisible(false);
     setHomeVisible(false);
     setRefresh(0);
     setGeneration(value => value + 1);
@@ -189,7 +196,8 @@ function Harness() {
       <main className="main"><div>
         <p className="sr-only">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实数据。</p>
         {homeVisible && <Home language="zh" reads={homeReads} onAction={() => {}} />}
-        <div hidden={homeVisible}><Sessions key={generation} active={!homeVisible} language="zh" refreshVersion={refresh} onOpenAgents={() => {}} /></div>
+        {qualityVisible && <PlanQuality key={'quality-' + generation} planId="plan/quality" planRevision={1} currentModels={control.qualityModels} active={!homeVisible} refreshVersion={refresh} language="zh" />}
+        <div hidden={homeVisible || qualityVisible}><Sessions key={generation} active={!homeVisible && !qualityVisible} language="zh" refreshVersion={refresh} onOpenAgents={() => {}} /></div>
       </div></main>
     </div>
   </PresentationRoot>;
