@@ -2,6 +2,7 @@
 
 The article's explanatory slides have Chinese and English versions:
 
+- [Product overview, Chinese](assets/long-horizon-engine-zh.png) / [English](assets/long-horizon-engine-en.png).
 - [Competence and cost, Chinese](assets/competence-feedback-zh.png) / [English](assets/competence-feedback-en.png).
 - [Local architecture, Chinese](assets/local-architecture-zh.png) / [English](assets/local-architecture-en.png).
 
@@ -15,9 +16,10 @@ pictures accompany the second.
 The [original generation and correction prompts](illustration-prompts.json) and
 [architecture prompts](local-architecture-illustrations.json) record the requested text
 and visual constraints. Chinese and English text and arrows were visually checked.
-The earlier long-task overview ([Chinese](assets/long-horizon-engine-zh.png) /
-[English](assets/long-horizon-engine-en.png)) remains for provenance; it is no longer
-used in the article, whose introduction is now three short paragraphs.
+The product overview appears once in the introduction to explain the positioning
+and the slogan. The local architecture figure near the end explains runtime
+responsibilities and the computer boundary. Both are retained because they serve
+different purposes.
 
 The cost chart and recorded HTTPX handoff graphic are generated separately by
 `experiments/render_figures.py` from the published evidence. Their measurements come
@@ -134,5 +136,5 @@ The Rust core, shared Desktop/CLI service and local record storage are described
 the public source references in the architecture prompt record. The figures explain
 those responsibilities rather than prescribing internal process or crate boundaries.
 The article describes the Higress engineering lineage separately from HiRoute's Rust
-implementation. The previous overview revision brief is superseded by these figures;
-its original unexecuted prompts remain in the historical prompt file.
+implementation. The existing product overview remains in the introduction; the
+historical prompt file also retains an earlier, unexecuted redraw brief.

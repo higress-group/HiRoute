@@ -14,6 +14,8 @@ HiRoute is an open-source routing engine that runs locally between your existing
 
 Connect your models in Desktop, create a routing plan, and point the agent at it. The agent uses one stable model alias while the models behind that alias can change with the task. The Sessions page shows which model actually ran, token usage, and assessments of earlier stages.
 
+[![HiRoute connects existing agents to model services through a routing plan, using execution feedback to inform later selections](assets/long-horizon-engine-en.png)](assets/long-horizon-engine-en.png)
+
 This fits the rhythm of software development: research, design, implementation, testing, and deeper investigation when something breaks. Organizing documented facts and deriving a new system guarantee demand different capabilities. Once the hard problem is solved, every remaining step may not need the most expensive model.
 
 ## Case Study 1: reserve Astra for critical decisions and cut whole-task cost by 90%
