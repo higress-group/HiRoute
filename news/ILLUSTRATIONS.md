@@ -98,9 +98,11 @@ as current product evidence or substitute a new score into the frozen case.
 
 Two additional images explain the intended final observation interface:
 
-- [Session model performance](assets/desktop-session-competence-zh.png): actual models,
+- Session model performance ([Chinese](assets/desktop-session-competence-zh.png) /
+  [English](assets/desktop-session-competence-en.png)): actual models,
   stage scores, assessment coverage and evidence links.
-- [Routing-plan performance](assets/desktop-plan-competence-zh.png): model averages
+- Routing-plan performance ([Chinese](assets/desktop-plan-competence-zh.png) /
+  [English](assets/desktop-plan-competence-en.png)): model averages
   within one plan version and time range, with scored and unrated stage counts.
 
 These images were generated with the built-in `image_gen` tool. They are product-design
@@ -121,8 +123,11 @@ Stage scores describe different stretches of work, not a controlled model rankin
 or whole-delivery acceptance. Partial-assessment and historical-gap states remain
 part of the underlying evidence; their notices belong in expanded evidence details
 in this design. Removing them from the primary view does not alter the experiment
-records. Both language editions use the same two Chinese-interface images, with
-localized article text and captions.
+records. Each language edition uses matching localized interface images. The English
+versions translate the navigation, filters, labels, actions and explanatory text while
+preserving the source layout, model identities, numerical values, stage counts and
+unrated state. Their source-image hashes and exact localization prompts are retained
+in the same provenance record.
 
 ## Local architecture
 

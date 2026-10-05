@@ -11,11 +11,11 @@ const alternate = new URL(alternatePath, Astro.site);
 const zhPath = english ? alternatePath : path;
 const enPath = english ? path : alternatePath;
 const nav = english ? [
-  ['Product', '/en/#product'], ['How it works', '/en/#boundaries'],
-  ['News', '/en/news/'], ['Docs', '/en/docs/'], ['Decision extensions', '/en/docs/decision-extensions/'], ['Download', '/en/download/'],
+  ['Product', '/en/#product'], ['Docs', '/en/docs/'],
+  ['Articles', '/en/news/'], ['Download', '/en/download/'],
 ] : [
-  ['产品', '/#product'], ['如何工作', '/#boundaries'],
-  ['新闻', '/news/'], ['文档', '/docs/'], ['决策扩展', '/docs/decision-extensions/'], ['下载', '/download/'],
+  ['产品', '/#product'], ['文档', '/docs/'],
+  ['文章', '/news/'], ['下载', '/download/'],
 ];
 ---
 <!doctype html>
@@ -71,7 +71,7 @@ const nav = english ? [
       </a>
       <p>{english ? 'Intelligent routing for long-horizon agents.' : '面向长程 Agent 的智能路由引擎。'}</p>
       <div class="footer-links">
-        <a href={english ? '/en/news/' : '/news/'}>{english ? 'News' : '新闻'}</a>
+        <a href={english ? '/en/news/' : '/news/'}>{english ? 'Articles' : '文章'}</a>
         <a href={english ? '/en/docs/' : '/docs/'}>{english ? 'Docs' : '文档'}</a>
         <a href={english ? '/en/changelog/' : '/changelog/'}>{english ? 'Changelog' : '更新日志'}</a>
         <a href={githubUrl} target="_blank" rel="noreferrer">GitHub ↗</a>
