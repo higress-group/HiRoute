@@ -47,7 +47,7 @@ User, project and already installed package Skills retain their native precedenc
 | Import an effective static provider/model and use the saved source in a route | [Static discovery](../../../crates/daemon/tests/support/pi_discovery_product.py) | BOM/JSONC configuration, model endpoint override, saved credential precedence; public scan/prepare/save/restart with unchanged native files; stale source save refused; zero model POSTs during passive import, then exactly one ordinary native Pi request through the saved source and published Plan; restore owned settings |
 
 Ordinary tests compile these ignored targets without executing them. The test
-planner registers all six required native tests explicitly. Cheap shared oracle
+planner registers all seven required native tests explicitly. Cheap shared oracle
 checks are in `scripts/test-agent-product-support.py`,
 `scripts/test-qoder-product.py`, `scripts/test-native-context-product.py` and
 `scripts/test-native-context-boundaries.py`; they cannot prove native support.
@@ -98,3 +98,7 @@ the updated task/run in Desktop; Desktop has no separate Continue control for an
 ecosystem. Cancellation must use Desktop's task detail and confirmation, followed
 by real child-stop and live-neighbor witnesses. Leave the validated client open
 only when handing it to the user.
+
+Recovery acceptance also forces a recoverable length stop through the real Pi SDK,
+requires its persisted `context_edit` omission, and continues the exact recovered session.
+This is separate from threshold compaction; fixture-only history parsing is not native recovery proof.

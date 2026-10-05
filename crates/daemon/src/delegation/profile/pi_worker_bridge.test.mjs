@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import {
   mkdtempSync,
+  realpathSync,
   mkdirSync,
   writeFileSync,
   readFileSync,
@@ -70,7 +71,7 @@ export async function createAgentSession() {
 `;
 
 function fixture(t, env = {}) {
-  const root = mkdtempSync(join(tmpdir(), "hiroute-pi-bridge-test-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hiroute-pi-bridge-test-")));
   const packageRoot = join(root, "package");
   mkdirSync(packageRoot);
   const cli = join(packageRoot, "cli.mjs");
