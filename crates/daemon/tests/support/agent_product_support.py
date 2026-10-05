@@ -2,6 +2,18 @@
 import os
 import signal
 import subprocess
+from pathlib import Path
+
+
+def expose_native_installation(product, harness, binary, node=None):
+    """Expose selected native entries in the fixture's private PATH, never the host PATH."""
+    assert harness in ('pi', 'qoder')
+    assert harness != 'pi' or node is not None, 'Pi fixture requires its selected Node'
+    entries = [('pi' if harness == 'pi' else 'qodercli', binary)]
+    if harness == 'pi':
+        entries.append(('node', node))
+    for name, path in entries:
+        (product.root / 'bin' / name).symlink_to(Path(path).resolve(strict=True))
 
 
 def settings_status(product, context):

@@ -174,6 +174,11 @@ cross-routing, fabricated child completion and replacement native history.
 These checks validate the test inputs and verdicts without claiming native-client
 or Desktop behavior; keep them separate from the product assertions above.
 
+The [shared native installation fixture](../../crates/daemon/tests/support/agent_product_support.py)
+exposes the selected CLI and Pi's selected Node in the product's private PATH.
+Passing Node only to a Worker argv does not make that runtime available to main
+Agent model or collaboration checks; keep both paths bound to the same installation.
+
 Use the [test planner](../../scripts/test-plan.py) for affected checks and explicit
 real-Agent commands. The normal Rust suite compiles ignored native targets but
 does not execute them. Linux headless and macOS Desktop use real daemon, Gateway,

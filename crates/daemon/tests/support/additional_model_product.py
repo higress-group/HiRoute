@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 from model_connections_product import save_native_source
-from agent_product_support import apply_settings, settings_status
+from agent_product_support import apply_settings, settings_status, expose_native_installation
 from native_context_boundaries import source_events
 from native_context_fixture import NativeContextUpstream, NativeProxyTrap, digest
 from native_context_product import report_failure, selected_installation
@@ -168,8 +168,8 @@ def run(repository, candidate):
     cleanup_errors = []
     try:
         config = select_model_context(product, HARNESS)
-        binary, _, _ = selected_installation(HARNESS)
-        (product.root / 'bin' / ('pi' if HARNESS == 'pi' else 'qodercli')).symlink_to(binary)
+        binary, _, node = selected_installation(HARNESS)
+        expose_native_installation(product, HARNESS, binary, node)
         foreign = NativeProxyTrap(product.root / 'unselected-native.log')
         settings = OwnedModelSettings(config, foreign.url + '/v1', HARNESS)
         product.enable_debug_diagnostics()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared native product-fixture mechanics; no native Agent or product acceptance claim."""
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -10,7 +11,23 @@ import unittest
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'crates/daemon/tests/support'))
-from agent_product_support import apply_settings, run_native_command
+from agent_product_support import apply_settings, run_native_command, expose_native_installation
+
+
+class NativeInstallationTests(unittest.TestCase):
+    def test_selected_cli_and_required_runtime_share_the_private_fixture_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bin').mkdir()
+            cli = root / 'selected-cli'; cli.write_text('fixture'); cli.chmod(0o700)
+            node = root / 'selected-node'; node.write_text('fixture'); node.chmod(0o700)
+            product = SimpleNamespace(root=root)
+            with self.assertRaisesRegex(AssertionError, 'requires its selected Node'):
+                expose_native_installation(product, 'pi', cli)
+            self.assertFalse((root / 'bin/pi').exists())
+            expose_native_installation(product, 'pi', cli, node)
+            self.assertEqual(Path(shutil.which('pi', path=str(root / 'bin'))).resolve(), cli)
+            self.assertEqual(Path(shutil.which('node', path=str(root / 'bin'))).resolve(), node)
 
 
 class SettingsJourneyTests(unittest.TestCase):

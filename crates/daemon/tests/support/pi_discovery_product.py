@@ -16,7 +16,7 @@ from native_context_fixture import NativeContextUpstream, digest, write_new
 from native_context_product import report_failure, selected_installation
 from publication_product import Product, encoded
 from publication_process import plan_change
-from agent_product_support import apply_settings
+from agent_product_support import apply_settings, expose_native_installation
 from additional_model_fixture import PersistedRouteOracle, read_persisted_route
 
 CASES = ('agent.sources.effective-static-import', 'agent.sources.changed-source-rejected',
@@ -82,9 +82,8 @@ def run(repository, candidate):
         evidence_limit='Real static import/save/restart followed by ordinary native routing; deterministic source; no OAuth')
     try:
         product.enable_debug_diagnostics()
-        binary, _, _ = selected_installation('pi')
-        (product.root / 'bin/pi').symlink_to(binary)
-        (product.root / 'bin/node').symlink_to(Path(os.environ['HIROUTE_WORKER_NODE']))
+        binary, _, node = selected_installation('pi')
+        expose_native_installation(product, 'pi', binary, node)
         config = Path(product.env['HOME']) / 'selected-pi-config'
         config.mkdir(mode=0o700)
         product.env['PI_CODING_AGENT_DIR'] = str(config)

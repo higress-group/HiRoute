@@ -11,7 +11,7 @@ import secrets
 import subprocess
 import sys
 
-from agent_product_support import apply_settings, run_native_command
+from agent_product_support import apply_settings, run_native_command, expose_native_installation
 from delegation_product import configure_worker_installation
 from native_context_boundaries import source_events
 from native_context_fixture import NativeContextUpstream, assert_preserved, digest, write_new
@@ -150,7 +150,7 @@ def run(repository, candidate):
                   evidence_limit='Real main Agent, user Skill, public CLI, daemon, Gateway and Worker; synthetic models; no Desktop verdict')
     try:
         binary, _, node = selected_installation(HARNESS)
-        (product.root / 'bin' / ('pi' if HARNESS == 'pi' else 'qodercli')).symlink_to(binary)
+        expose_native_installation(product, HARNESS, binary, node)
         if HARNESS == 'pi':
             product.env['PI_CODING_AGENT_DIR'] = str(Path(product.env['HOME']) / 'selected-pi-config')
         fixture, worker_source = prepare_product(product, HARNESS)
