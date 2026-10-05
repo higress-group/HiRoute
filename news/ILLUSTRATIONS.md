@@ -108,7 +108,12 @@ The four images are native captures of HiRoute Desktop on macOS:
 Desktop reads an isolated copy of the unchanged observation records retained from
 this HTTPX case. The images come from the production UI and local daemon, without
 mock IPC, generated interface text or image edits. Both languages were selected
-through the app's settings. Native validation covered stage and assessment-trigger
+through the app's settings, with 100% text size in all four captures. The Chinese
+routing list translates plan names and purposes in the isolated replay catalog;
+the English list retains the source names. Plan IDs, revisions, model candidates,
+execution identities and scores are unchanged. The main competence views display
+`gpt-6-astra`; the full CPA transport ID remains in expandable stage details.
+Native validation covered stage and assessment-trigger
 navigation, exact model drill-down, unrated filtering, scope changes, refresh on
 re-entry, and preserving draft settings without changing published-plan statistics.
 Capture hashes, binary hashes and the source evidence archive are recorded in

@@ -7,8 +7,9 @@
     "build_profile": "Debug",
     "method": "tauri-pilot screenshot_native (cgwindow)",
     "image_edits": false,
-    "desktop_binary_sha256": "c42252ccf1cd5cd05869cd0c6def0c171544e4f58c8794ab88c6175d9bd40d9a",
-    "daemon_binary_sha256": "5b68f428a9d3aa37971cafc9764989c4254099236ef252938caec50c54adf009"
+    "desktop_binary_sha256": "4b56a3b64ddb18a5df99407e7d0cc4ed33d8157631c0f925527a27e8aacdc330",
+    "daemon_binary_sha256": "92f064f53eba0598932102c0babaf93eb838028cc524c87ba86c70d7aff89ef9",
+    "source_commit": "006207351159011ba65de517e81a14e5cc1a7fa6"
   },
   "data_origin": {
     "case": "Unattended Convergence v2 mixed / HTTPX streaming JSON",
@@ -16,7 +17,8 @@
     "archive": "https://github.com/higress-group/HiRoute/releases/download/experiment-evidence-2026-10-04/evidence-2026-10-04.zip",
     "member": "cases/unattended-engineering/results/2026-10-04/evidence.json",
     "retained_request_count": 40,
-    "stage_identity_and_scores_sha256": "895d97366463e04d47e5a13307d864c203c0881b17494b1638fe613b1232fa09"
+    "stage_identity_and_scores_sha256": "895d97366463e04d47e5a13307d864c203c0881b17494b1638fe613b1232fa09",
+    "display_labels": "Chinese plan names and purposes are translated in the isolated replay catalog. Plan IDs, revision numbers, candidates, execution identities and observation scores are unchanged; the English catalog retains the original names."
   },
   "visible_stage_scores": {
     "Qwen 3.8 Flash": [
@@ -37,7 +39,7 @@
       "width": 1920,
       "height": 1080,
       "text_scale_percent": 100,
-      "sha256": "c418f31c7c367918265cc7678e6d21e8f8741d76d4fa0a481c671fb146fe85aa"
+      "sha256": "f567336b877ae131c4d015320ec8b75628cf4d901857349bac83ec455bde6935"
     },
     {
       "file": "assets/desktop-session-competence-en.png",
@@ -46,7 +48,7 @@
       "width": 1920,
       "height": 1080,
       "text_scale_percent": 100,
-      "sha256": "21eca630536c582db21e5661a98a7bc9f5ce23b52bbbe4c2259d7cf9a38ae9b5"
+      "sha256": "4b4131bce0b084921e9bfb0ff3f2964da8cac6e428b1dd8be304cf37ae5e70a8"
     },
     {
       "file": "assets/desktop-plan-competence-zh.png",
@@ -54,8 +56,8 @@
       "language": "zh",
       "width": 1920,
       "height": 1080,
-      "text_scale_percent": 150,
-      "sha256": "22fe15243339869066f42b2d19af6034e5f6bf172cb38eafc994755d2ee6380e"
+      "text_scale_percent": 100,
+      "sha256": "eba5a323e22d4a249701ec45c38509d96371c85d02daf7c65f9870440592de6f"
     },
     {
       "file": "assets/desktop-plan-competence-en.png",
@@ -63,8 +65,8 @@
       "language": "en",
       "width": 1920,
       "height": 1080,
-      "text_scale_percent": 150,
-      "sha256": "efadbf84c7f5d742222f095a4be901230582db80a789ce2a66cab4c22f4b43d2"
+      "text_scale_percent": 100,
+      "sha256": "a320587ee6271d5020d41764647ed0362cdcb75e063914410fe1bb8ada3615e0"
     }
   ]
 }
