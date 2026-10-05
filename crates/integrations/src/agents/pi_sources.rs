@@ -237,11 +237,10 @@ impl FilesystemAgentScannerV1 {
                     .filter(|m| m["type"] == "chat")
                     .cloned()
                     .map(|mut model| {
-                        // Catalog values are inherited defaults, not explicit model overrides.
-                        for field in ["baseUrl", "api"] {
-                            if let Some(value) = provider.get(field) {
-                                model[field] = value.clone();
-                            }
+                        // Pi applies provider addresses to inherited models, but preserves
+                        // their API. Provider API defaults apply only to explicit models.
+                        if let Some(value) = provider.get("baseUrl") {
+                            model["baseUrl"] = value.clone();
                         }
                         model
                     })

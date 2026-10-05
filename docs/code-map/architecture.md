@@ -51,6 +51,12 @@ not authorize writes or imply Worker support. Start a new ecosystem in its nativ
 adapter and the [Agent feature](../../apps/desktop/src/features/agents/README.md);
 reuse the existing Application transaction and confirmation contracts. Verify
 real configuration precedence and restoration semantics before generalizing.
+For Pi discovery, provider `baseUrl` overrides inherited catalog addresses;
+inherited models retain their own API. Provider `api` supplies the default for
+explicit model declarations only. The scanner regression in
+[filesystem tests](../../crates/integrations/src/agents/filesystem_tests/pi.rs)
+checks both cases together; do not generalize all provider fields into one
+inheritance rule.
 
 Qoder illustrates why these capabilities stay separate. Its main-Agent selection
 adds explicit Plan routes without importing native models or taking over the
