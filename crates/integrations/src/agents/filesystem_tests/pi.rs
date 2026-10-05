@@ -274,7 +274,7 @@ fn pi_disabled_collaboration_skill_does_not_authorize_enable_or_reuse_a_stale_ob
 }
 
 #[test]
-fn pi_builtin_provider_proxy_overrides_catalog_defaults() {
+fn pi_builtin_provider_proxy_preserves_catalog_api_and_explicit_models_inherit_provider_api() {
     let root = tempfile::tempdir().unwrap();
     let package = root.path().join("selected-pi");
     let cli = package.join("bin/pi.js");
@@ -298,7 +298,8 @@ fn pi_builtin_provider_proxy_overrides_catalog_defaults() {
     let mut scanner = source_scanner(
         root.path(),
         json!({"providers":{"openai":{
-            "baseUrl":"https://user-proxy.invalid/v1","apiKey":"proxy-only-secret"
+            "baseUrl":"https://user-proxy.invalid/v1","apiKey":"proxy-only-secret",
+            "api":"openai-completions"
         }}}),
         json!({}),
     );
@@ -308,6 +309,24 @@ fn pi_builtin_provider_proxy_overrides_catalog_defaults() {
     let (endpoint, secret) = scanner.read_pi_api_source(source).unwrap();
     assert_eq!(endpoint.as_str(), "https://user-proxy.invalid/v1");
     assert_eq!(secret.expose(), b"proxy-only-secret");
+    assert_eq!(
+        source.protocol,
+        Some(hiroute_domain::UpstreamProtocol::Responses)
+    );
+    write_secret_settings(
+        &scanner.layout.pi_config_root.join("models.json"),
+        json!({"providers":{"openai":{
+            "baseUrl":"https://user-proxy.invalid/v1","apiKey":"proxy-only-secret",
+            "api":"openai-completions","models":[{"id":"explicit"}]
+        }}}),
+    );
+    let sources = scanner.pi_api_sources().unwrap();
+    let source = sources.iter().find(|s| s.provider_id == "openai").unwrap();
+    assert_eq!(
+        source.protocol,
+        Some(hiroute_domain::UpstreamProtocol::ChatCompletions)
+    );
+    assert!(scanner.read_pi_api_source(source).is_ok());
 }
 
 #[test]
