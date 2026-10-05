@@ -176,6 +176,7 @@ fn snapshot(provider_authority: &str) -> GatewayPublicationSnapshotV3 {
         ]
         .into_iter()
         .map(|protocol| GrantV1 {
+            route_protocols: Default::default(),
             grant_id: format!("protocol-grant-{}", protocol.path()),
             generation: 1,
             bearer_token_sha256: token_sha256(&format!("protocol-token-{}", protocol.path())),

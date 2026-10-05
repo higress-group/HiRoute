@@ -384,6 +384,7 @@ mod tests {
     fn qoder_model_verification_cannot_inherit_another_clients_success() {
         let mut value = status();
         value.current_selection = Some(AgentModelSelectionV2::QoderAdditional {
+            plan_protocols: Default::default(),
             allowed_plan_ids: [AgentPlanId::parse("plan/test").unwrap()].into(),
         });
         assert!(!value.derive_model_verified(value.applied_revision));

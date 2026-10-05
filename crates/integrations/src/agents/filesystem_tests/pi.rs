@@ -112,9 +112,10 @@ fn pi_default_reference_is_protected_independently_of_provider_file() {
     assert_ne!(before.content_digest, current.content_digest);
     assert!(current.removes_default("hiroute-main-test", &[]));
     assert!(!current.removes_default("another-provider", &[]));
-    assert!(!current.removes_default(
+    assert!(current.removes_default(
         "hiroute-main-test",
         &[hiroute_domain::AdditionalAgentModelV1 {
+            protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
             alias: "selected".into(),
             context_window_tokens: 16384,
             max_output_tokens: 4096

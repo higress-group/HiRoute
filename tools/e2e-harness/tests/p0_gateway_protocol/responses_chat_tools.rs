@@ -560,6 +560,7 @@ fn responses_chat_tools_snapshot(
             candidates: vec![chat, fallback],
         }],
         vec![GrantV1 {
+            route_protocols: Default::default(),
             grant_id: "responses-chat-tools-grant".into(),
             generation: 1,
             bearer_token_sha256: token_sha256("responses-chat-tools-token"),

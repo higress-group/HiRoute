@@ -51,6 +51,7 @@ impl RunPublicationHandle {
             || alias.protocols.len() != 1
             || alias.protocols[0] != protocol
             || grant.protocol != protocol
+            || !grant.route_protocols.is_empty()
             || grant.routes.len() != 1
             || !matches!(grant.routes.get(model_alias), Some(super::schema::ModelRouteV2::Plan { alias, .. }) if alias == model_alias)
             || grant.bearer_token_sha256 != token_fingerprint.as_str()

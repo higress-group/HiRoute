@@ -288,18 +288,29 @@ class NativeContextOracleTests(unittest.TestCase):
             self.assertEqual(save.call_args.kwargs['protocol'], protocol)
             self.assertEqual(save.call_args.kwargs['variant'], 'neighbor')
 
-    def test_plan_replacement_changes_the_actual_route(self):
-        product = Mock(root=self.root, worker_work={'protocol': 'responses', 'harness': 'codex_cli'})
-        product.preview.return_value = {'preview_id': 'new-route'}
-        upstream = Mock(controls=self.root)
-        with patch('native_context_product.NativeContextUpstream', return_value=upstream), \
-                patch('native_context_product.save_native_source', return_value={'binding_id': 'new-binding'}) as save, \
-                patch('native_context_product.plan_change', return_value={'change': 'new-route'}) as change:
-            self.assertIs(publish_replacement_route(product, {'harness': 'codex'}), upstream)
-        self.assertEqual(upstream.model, 'gpt-5.5')
-        self.assertEqual(save.call_args.kwargs['upstream_model_id'], 'gpt-5.5')
-        self.assertEqual(change.call_args.kwargs['candidates'], [{'binding_id': 'new-binding'}])
-        product.apply.assert_called_once()
+    def test_plan_replacement_changes_source_and_both_protocols_for_multi_protocol_agents(self):
+        for index, (harness, worker, protocol) in enumerate((('codex','codex_cli','responses'),
+                ('qoder','qoder_cli','responses'), ('qoder','qoder_cli','messages'),
+                ('pi','pi','responses'), ('pi','pi','messages'))):
+            root = self.root / str(index)
+            root.mkdir()
+            work = {'protocol':protocol, 'harness':worker}
+            product = Mock(root=root, worker_work=work)
+            product.preview.return_value = {'preview_id': 'new-route'}
+            upstream = Mock(controls=root)
+            with patch('native_context_product.NativeContextUpstream', return_value=upstream), \
+                    patch('native_context_product.save_native_source', return_value={'binding_id': 'new-binding'}) as save, \
+                    patch('native_context_product.plan_change', return_value={'change': 'new-route'}) as change:
+                self.assertIs(publish_replacement_route(product, {'harness':harness}), upstream)
+            expected = protocol if harness == 'codex' else ('messages' if protocol == 'responses' else 'responses')
+            self.assertEqual(save.call_args.kwargs['protocol'], expected)
+            self.assertEqual(change.call_args.kwargs['work']['protocol'], expected)
+            self.assertEqual(product.worker_work, work)
+            self.assertEqual(product.worker_work['protocol'], protocol)
+            self.assertEqual(upstream.model, 'gpt-5.5')
+            self.assertEqual(save.call_args.kwargs['upstream_model_id'], 'gpt-5.5')
+            self.assertEqual(change.call_args.kwargs['candidates'], [{'binding_id': 'new-binding'}])
+            product.apply.assert_called_once()
 
     def test_frozen_route_requires_old_source_traffic_and_rejects_new_route_traffic(self):
         replacement = Mock(controls=self.root)
@@ -308,6 +319,9 @@ class NativeContextOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'original source'):
             assert_frozen_route([continued], 1, replacement)
         assert_frozen_route([continued], 0, replacement)
+        with self.assertRaisesRegex(AssertionError, 'frozen protocol'):
+            assert_frozen_route([dict(continued, protocol='messages')], 0, replacement, 'responses')
+        assert_frozen_route([dict(continued, protocol='responses')], 0, replacement, 'responses')
         (self.root / 'native-context-events.jsonl').write_text(json.dumps(continued) + '\n')
         with self.assertRaisesRegex(AssertionError, 'newly published route'):
             assert_frozen_route([continued], 0, replacement)
@@ -409,6 +423,41 @@ class NativeContextOracleTests(unittest.TestCase):
         value = fixture.prepare(home, selected, project, 'claude')
         self.assertEqual(Path(value['skills'][0]['skill']).parent.parent, selected / 'skills')
         self.assertFalse((home / '.claude').exists())
+
+
+class NativeProtocolWitnessTests(unittest.TestCase):
+    def test_correlated_tool_results_follow_wire_protocol_not_agent_name(self):
+        responses = {'input':[{'type':'function_call_output','call_id':'actual','output':'receipt'},
+            {'role':'user','content':'prompt echo receipt'}]}
+        messages = {'system':'not a tool result', 'messages':[
+            {'role':'user','content':[{'type':'tool_result','tool_use_id':'actual','content':'receipt'},
+                {'type':'tool_result','tool_use_id':'failed','content':'spoofed','is_error':True}]},
+            {'role':'assistant','content':[{'type':'tool_result','tool_use_id':'spoof','content':'spoofed'}]}]}
+        for harness in ('qoder','pi'):
+            for body in (responses, messages):
+                with self.subTest(harness=harness, body=body):
+                    self.assertEqual(fixture.tool_results(body, harness), {'actual':'receipt'})
+
+    def test_messages_text_and_skill_expansion_keep_content_and_exact_directory_guards(self):
+        directory = Path('/fixture/skill')
+        body = {'system':'system marker','messages':[
+            {'role':'assistant','content':'Base directory for this skill: /fixture/skill\n\nwrong role'},
+            {'role':'user','content':[{'type':'text','text':'Base directory for this skill: /fixture/skill-other\n\nwrong directory'}]},
+            {'role':'user','content':[{'type':'text','text':'Base directory for this skill: /fixture/skill\n\nactual contents'}]}],
+            'metadata':{'text':'not content'}}
+        self.assertIn('system marker', fixture.native_text(body))
+        self.assertIn('actual contents', fixture.native_text(body))
+        self.assertNotIn('not content', fixture.native_text(body))
+        self.assertEqual(list(fixture.qoder_skill_expansions(body, directory)), ['actual contents'])
+
+    def test_messages_budget_keeps_the_same_frozen_limit_assertion(self):
+        value = {'harness':'qoder','expected_max_output_tokens':4096,'skills':[], 'receipt':'done'}
+        body = {'max_tokens':4096,'messages':[{'role':'user','content':[
+            {'type':'tool_result','tool_use_id':'native_context_execute','content':'done'}]}]}
+        self.assertEqual(fixture.decision(value, body)['text'], 'done')
+        body['max_tokens'] = 8192
+        with self.assertRaisesRegex(AssertionError, 'frozen source output budget'):
+            fixture.decision(value, body)
 
 
 if __name__ == '__main__':

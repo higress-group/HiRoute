@@ -25,6 +25,8 @@ pub struct GatewayProjectedGrantV2 {
     pub generation: u64,
     pub bearer_token_sha256: CanonicalDigest,
     pub protocol: AgentIngressProtocolV1,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub route_protocols: BTreeMap<String, AgentIngressProtocolV1>,
     pub routes: BTreeMap<String, GatewayModelRouteV2>,
 }
 
@@ -46,6 +48,12 @@ pub(super) fn project_grants(
                 .routes
                 .into_iter()
                 .map(|(name, route)| {
+                    let route_protocol = grant
+                        .model_grant
+                        .route_protocols
+                        .get(&name)
+                        .copied()
+                        .unwrap_or(protocol);
                     let route = match route {
                         crate::AgentModelRouteV2::Plan {
                             plan_id,
@@ -64,7 +72,7 @@ pub(super) fn project_grants(
                                     && semantic_digest != plan.body.materialized_route_digest)
                                 || !aliases.iter().any(|projected| {
                                     projected.served_model_id == alias
-                                        && projected.protocols.contains(&protocol)
+                                        && projected.protocols.contains(&route_protocol)
                                 })
                             {
                                 return Err(PublicationError::InvalidGrant);
@@ -117,6 +125,7 @@ pub(super) fn project_grants(
                 generation: grant.generation,
                 bearer_token_sha256: grant.bearer_token_sha256,
                 protocol,
+                route_protocols: grant.model_grant.route_protocols,
                 routes,
             })
         })

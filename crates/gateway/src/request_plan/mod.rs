@@ -23,8 +23,12 @@ pub enum IngressProtocol {
 
 impl IngressProtocol {
     pub fn from_path(path: &str) -> Option<Self> {
-        if path.strip_prefix(hiroute_domain::QODER_MODEL_BASE_PATH) == Some("/responses") {
-            return Some(Self::Responses);
+        if let Some(resource) = path.strip_prefix(hiroute_domain::QODER_MODEL_BASE_PATH) {
+            return match resource {
+                "/responses" => Some(Self::Responses),
+                "/messages" => Some(Self::Messages),
+                _ => None,
+            };
         }
         match path {
             "/v1/responses" => Some(Self::Responses),

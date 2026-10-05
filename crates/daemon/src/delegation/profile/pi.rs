@@ -32,7 +32,11 @@ pub(super) fn render(
         ],
         ..Default::default()
     };
-    let route = json!({"minimumNode":hiroute_integrations::PI_NODE_MINIMUM,"provider":provider,"endpoint":format!("http://{}/v1",input.gateway),
+    let gateway_v1_base = format!("http://{}/v1", input.gateway);
+    let (api, endpoint) =
+        hiroute_integrations::agents::pi_native_provider_api(input.protocol, &gateway_v1_base)
+            .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+    let route = json!({"api":api,"minimumNode":hiroute_integrations::PI_NODE_MINIMUM,"provider":provider,"endpoint":endpoint,
         "model":{"id":input.alias,"name":"HiRoute frozen Plan","reasoning":false,"input":["text"],
         "cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":context,"maxTokens":output}});
     for (key, value) in [

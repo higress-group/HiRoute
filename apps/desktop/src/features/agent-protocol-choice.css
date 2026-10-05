@@ -1,0 +1,19 @@
+.agent-protocol-choice {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agent-protocol-choice__field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: calc(12px * var(--hr-text-scale));
+  font-weight: 620;
+}
+
+.agent-protocol-choice__field > span { line-height: 1.5; }
+.agent-protocol-choice__field > .select { font: inherit; }
+.agent-protocol-choice > .field-help { margin: 0; line-height: 1.6; }

@@ -233,6 +233,7 @@ function ownedFile(path, root) {
 
 try {
   const route = JSON.parse(process.env.HIROUTE_PI_ROUTE);
+  if (!["openai-responses", "anthropic-messages"].includes(route.api)) throw new Error();
   const nodeVersion = process.versions.node.split(".").map(Number);
   if (
     nodeVersion.some((part, index) =>
@@ -284,7 +285,8 @@ try {
     },
   });
   runtime.registerProvider(route.provider, {
-    api: "openai-responses",
+    api: route.api,
+    headers: route.api === "anthropic-messages" ? { Authorization: `Bearer ${token}` } : {},
     baseUrl: route.endpoint,
     models: [route.model],
   });
@@ -292,7 +294,7 @@ try {
   const model = runtime.getModels(route.provider).find((item) => item.id === route.model.id);
   if (
     !model ||
-    model.api !== "openai-responses" ||
+    model.api !== route.api ||
     model.baseUrl !== route.endpoint ||
     model.contextWindow !== route.model.contextWindow ||
     model.maxTokens !== route.model.maxTokens

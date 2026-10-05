@@ -235,7 +235,7 @@ The implementation retains
 HiRoute's explicit environment and ownership contracts rather than importing an
 entire daemon environment or copying a user's configuration tree.
 
-Pi discovery preserves provider `baseUrl`/`api` overrides on inherited catalog models;
+Pi discovery applies provider `baseUrl` to inherited catalog models while preserving their native API; provider `api` defaults apply only to explicit models;
 explicit model overrides retain their precedence. Additional `authHeader` authentication
 is reported as not importable until the import contract can preserve it. A valid Claude
 prepare does not depend on unrelated Pi configuration being readable.
@@ -246,3 +246,37 @@ missing targets and invalid replacement content still fail closed. The Pi native
 suite covers both threshold compaction and recoverable-length compaction followed by exact
 Continue. Concurrent-route acceptance checks rejected HTTP attempts as well as accepted
 model receipts, so a rejected wrong credential/endpoint/model cannot disappear from evidence.
+
+
+### Explicit protocol per plan
+
+Qoder/Pi additional models use one owned native provider per Plan, with a stable
+context namespace and alias-derived identity. Each selected Plan has an explicit
+Responses/Messages choice in settings; `work.protocol` is the independent frozen
+Worker choice. Protocol advice is computed from every active candidate and fallback;
+conversion-capable profiles are not described as native support. Advice never changes
+the user's selection or makes a model call.
+
+`AgentModelGrantV2.route_protocols` seals exact per-alias overrides. Gateway publication,
+restart, catalog and dispatch preserve them; a credential for one alias/protocol does
+not authorize a sibling alias on that protocol. Keep Worker grants single-protocol and
+Continue bound to the saved Work plan, even after new settings are published.
+
+The shared native writer owns a set of provider members in one existing Operation.
+It verifies every owned digest before edits, preserves foreign JSONC members and
+checks native default references before removal. V1 restore records retain their
+single-provider meaning; only V2 records are produced for new per-plan writes. Never
+infer ownership from a `hiroute-` name or silently change an existing native default.
+
+Native API base URLs are adapter contracts, not interchangeable protocol labels.
+Pi's shared `pi_native_provider_api` in the runtime adapter is used by both saved
+providers and Worker rendering: the Anthropic SDK appends `/v1/messages`, while
+OpenAI appends `/responses`. Test the resulting request path as well as the API
+field; reusing a `/v1` base blindly can pass configuration tests and fail real calls.
+
+Native acceptance also exercises receipt identity, not just successful output.
+Qoder's session header uses the existing observation identity producer for both
+protocols; its native receipt lookup must retain the protocol in the trusted HMAC
+scope. Native Messages tools can carry the known cache and eager-streaming hints:
+the shared Gateway adapter preserves them on native forwarding while still
+rejecting unknown executable tool fields and endpoint/credential overrides.

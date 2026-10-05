@@ -248,6 +248,7 @@
     "hiroute.pi-local-cli/v1",
     "hiroute.pi-native-resources/v1",
     "hiroute.pi-native-restore/v1",
+    "hiroute.pi-native-restore/v2",
     "hiroute.pi-sdk-capability/v1",
     "hiroute.pi-worker-failure/v1",
     "hiroute.plan-authoring/v2",
@@ -279,6 +280,7 @@
     "hiroute.qoder-additional-model/v1",
     "hiroute.qoder-borrowed-context-collaboration/v1",
     "hiroute.qoder-native-restore/v1",
+    "hiroute.qoder-native-restore/v2",
     "hiroute.rating-snapshot/v2",
     "hiroute.registered-compute-discovery-fact/v1",
     "hiroute.release-facts-compiler-input/v2",
@@ -884,6 +886,50 @@
         "hiroute.daemon-upgrade-progress/v1"
       ],
       "legacy_support": []
+    },
+    {
+      "subject": "pi_native_provider_restore",
+      "audited_prefixes": [
+        "hiroute.pi-native-restore"
+      ],
+      "current_contracts": [
+        "hiroute.pi-native-restore/v2"
+      ],
+      "legacy_support": [
+        {
+          "contract": "hiroute.pi-native-restore/v1",
+          "mode": "recovery_read_only",
+          "owner": "integrations/additional_native",
+          "reason": "Restore original single-provider encrypted records without adopting user nodes; new writes own one provider per plan.",
+          "removal_condition": "Remove only after all supported single-provider Operations have been restored or explicitly migrated with verified ownership.",
+          "allowed_paths": [
+            "crates/integrations/src/agents/additional_native.rs",
+            "crates/integrations/src/agents/qoder_native_tests.rs"
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "qoder_native_provider_restore",
+      "audited_prefixes": [
+        "hiroute.qoder-native-restore"
+      ],
+      "current_contracts": [
+        "hiroute.qoder-native-restore/v2"
+      ],
+      "legacy_support": [
+        {
+          "contract": "hiroute.qoder-native-restore/v1",
+          "mode": "recovery_read_only",
+          "owner": "integrations/additional_native",
+          "reason": "Restore original single-provider encrypted records without adopting user nodes; new writes own one provider per plan.",
+          "removal_condition": "Remove only after all supported single-provider Operations have been restored or explicitly migrated with verified ownership.",
+          "allowed_paths": [
+            "crates/integrations/src/agents/additional_native.rs",
+            "crates/integrations/src/agents/qoder_native_tests.rs"
+          ]
+        }
+      ]
     }
   ],
   "forbidden_contracts": [
@@ -1096,6 +1142,21 @@
         "crates/local-storage/src/migrations/startup_format.rs",
         "crates/local-storage/src/migrations/agent_surface_checks_v25.rs",
         "crates/local-storage/src/migrations/agent_surface_checks_v25_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.agent-model-grant/v3",
+      "field": "route_protocols and corresponding plan_protocols / AdditionalAgentModel protocol omissions",
+      "mode": "recovery_read_only",
+      "owner": "domain/agents",
+      "reason": "Existing grants and Operations keep their single sealed protocol; omitted additional-model fields retain Responses and original digest bytes. New UI writes explicit per-plan selections, mixed grants seal exact overrides.",
+      "removal_condition": "Retire only with an explicit migration for retained grant and Operation identities.",
+      "allowed_paths": [
+        "crates/domain/src/agents/model_grant.rs",
+        "crates/domain/src/agents/settings.rs",
+        "crates/domain/src/agents/additional_model.rs",
+        "crates/domain/src/publication/snapshot.rs",
+        "crates/gateway/src/publication/schema.rs"
       ]
     }
   ]

@@ -193,3 +193,17 @@ the main runner. Standalone editor pages must request stable scenario IDs and
 required IDs too; positional slices can silently select different cases after
 another feature adds scenarios. Keep their retained assertions visible in the
 fixture result, even when the main suite exercises the same components.
+
+
+Per-plan protocol changes reuse additional-model and native-context journeys. The
+additional-model scenario selects Responses and Messages simultaneously and checks
+native reads, credential rotation, independent restore and default protection.
+`HIROUTE_PRODUCT_AGENT_PROTOCOL=messages` runs the existing Qoder/Pi Worker and
+Continue journey on Messages; the default retains Responses. Unit tests cover
+per-alias authorization after Gateway restart and recommendation fallback coverage.
+An old single-provider restore fixture proves ownership recovery, not native execution.
+
+Dual-protocol saved-route reports include the native provider and observed source
+protocol. A removed-route negative witness must use that route's previously
+successful protocol and check the typed authorization error plus zero upstream
+requests. An unknown HTTP endpoint is not proof that route authority was revoked.

@@ -99,6 +99,7 @@ pub fn sealed_native_candidate(
             .iter()
             .enumerate()
             .map(|(index, (protocol, _))| GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: format!("fixture-validation-{index}"),
                 generation: 1,
                 bearer_token_sha256: token_sha256(&format!("fixture-validation-{index}")),

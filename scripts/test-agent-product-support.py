@@ -112,5 +112,27 @@ class NativeProcessTests(unittest.TestCase):
             neighbor.wait(timeout=5)
 
 
+class RemovedRouteWitnessTests(unittest.TestCase):
+    def test_messages_revocation_uses_messages_and_refuses_missing_http_endpoint_as_proof(self):
+        from unittest.mock import patch
+        import json
+        import additional_model_product as journey
+        source = SimpleNamespace(request_count=lambda: 0)
+        calls = []
+        response = SimpleNamespace(status=422, read=lambda: b'{"code":"AGENT_PROTOCOL_UNSUPPORTED"}')
+        connection = SimpleNamespace(request=lambda *args, **kwargs: calls.append((args, kwargs)),
+            getresponse=lambda: response, close=lambda: None)
+        with patch.object(journey.http.client, 'HTTPConnection', return_value=connection):
+            journey.reject_gateway_request(SimpleNamespace(port=1), 'synthetic', 'removed', 'messages',
+                [source], ('AGENT_PROTOCOL_UNSUPPORTED',))
+            self.assertEqual(calls[0][0], ('POST', journey.TAIL + '/messages'))
+            self.assertEqual(json.loads(calls[0][1]['body'])['messages'][0]['role'], 'user')
+            response.status = 404
+            response.read = lambda: b'{"code":"INGRESS_PROTOCOL_NOT_AVAILABLE"}'
+            with self.assertRaises(AssertionError):
+                journey.reject_gateway_request(SimpleNamespace(port=1), 'synthetic', 'removed', 'messages',
+                    [source], ('AGENT_PROTOCOL_UNSUPPORTED',))
+
+
 if __name__ == '__main__':
     unittest.main()

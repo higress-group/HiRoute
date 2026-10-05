@@ -4,6 +4,21 @@ use std::path::{Path, PathBuf};
 pub const PI_NPM_PACKAGE: &str = "@earendil-works/pi-coding-agent";
 pub const PI_SDK_CONTRACT: &str = include_str!("pi_sdk_contract.mjs");
 
+/// Native SDKs append different resource paths: Anthropic owns `/v1/messages`,
+/// while OpenAI Responses appends `/responses`. Used by saved and Worker routes.
+pub fn pi_native_provider_api(
+    protocol: hiroute_domain::AgentIngressProtocolV1,
+    gateway_v1_base: &str,
+) -> Result<(&'static str, &str), super::AgentFilesystemScanError> {
+    let root = gateway_v1_base
+        .strip_suffix("/v1")
+        .ok_or(super::AgentFilesystemScanError::InvalidConfig)?;
+    Ok(match protocol {
+        hiroute_domain::AgentIngressProtocolV1::Responses => ("openai-responses", gateway_v1_base),
+        hiroute_domain::AgentIngressProtocolV1::Messages => ("anthropic-messages", root),
+    })
+}
+
 pub struct PiCliInstallation {
     pub package_root: PathBuf,
     pub version: String,

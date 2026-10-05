@@ -191,11 +191,12 @@ impl LocalControlAdapter {
             );
             restore = Some((operation.operation_id.clone(), reference.clone()));
         }
+        let protocol = AgentIngressProtocolV1::Responses;
         let qoder_model_conflict;
         let models = match &spec.model {
             AgentFacetIntent::Configure { settings } => {
                 let grant = hiroute_domain::AgentModelGrantV2::derive(
-                    AgentIngressProtocolV1::Responses,
+                    protocol,
                     settings,
                     &active,
                     &BTreeMap::new(),
@@ -296,7 +297,7 @@ impl LocalControlAdapter {
         input.facts.dependency_digest = dependency_digest;
         input.facts.model = Some(SettingsModelFacts {
             common: SettingsModelCommonFacts {
-                ingress: AgentIngressProtocolV1::Responses,
+                ingress: protocol,
                 available_surfaces: [if kind == hiroute_domain::AgentKindV1::Pi {
                     AgentModelSurfaceV2::PiCli
                 } else {

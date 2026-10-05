@@ -13,6 +13,7 @@ export type AgentEditorValues = {
   fixedModels: AgentFixedModel[];
   nativeModelMode: CodexNativeModelMode;
   allowedPlanIds: string[];
+  planProtocols: Record<string, 'responses' | 'messages'>;
   defaultChoice: AgentDefaultChoice;
   claudePresets: AgentClaudePresetMappings;
   triggerMode: AgentCollaborationTriggerMode;
@@ -22,6 +23,7 @@ export const EMPTY_EDITOR_VALUES: AgentEditorValues = {
   fixedModels: [],
   nativeModelMode: 'hiroute_only',
   allowedPlanIds: [],
+  planProtocols: {},
   defaultChoice: { kind: 'preserve_native' },
   claudePresets: {
     opus: { kind: 'preserve_native' },
@@ -82,6 +84,7 @@ export function agentEditorSeed(
     known: facet === 'model'
       ? known && agentSupportsModelRouting(agent.agent_id) && (initial || Boolean(currentModel && agentModelSelectionMatches(agent.agent_id, currentModel)))
       : known,
+    planProtocols: qoder?.plan_protocols ?? {},
     fixedModels: currentModel && 'fixed_models' in currentModel ? currentModel.fixed_models : [],
     nativeModelMode: codex?.native_model_mode ?? 'hiroute_only',
     allowedPlanIds: codex?.allowed_plan_ids ?? qoder?.allowed_plan_ids

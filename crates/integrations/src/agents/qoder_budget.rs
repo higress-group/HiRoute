@@ -21,6 +21,7 @@ pub fn pi_plan_token_budget(
 ) -> Result<QoderTokenBudget, QoderNativeError> {
     let (context, output) = plan_token_budgets(plan)?;
     let declaration = hiroute_domain::AdditionalAgentModelV1 {
+        protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
         alias: "hiroute-budget".into(),
         context_window_tokens: context,
         max_output_tokens: output,

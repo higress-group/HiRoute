@@ -10,6 +10,8 @@ mod classifier;
 mod context_window;
 mod gateway_execution;
 mod materialized;
+mod native_protocol;
+pub use native_protocol::{AgentProtocolAdviceV1, agent_protocol_advice};
 mod stored;
 mod stored_capability;
 pub use stored::*;

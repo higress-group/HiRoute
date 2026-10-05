@@ -29,6 +29,7 @@ pub use materials::{
 };
 
 pub struct ProfileInput<'a> {
+    pub protocol: hiroute_domain::AgentIngressProtocolV1,
     pub context_window_tokens: Option<u64>,
     /// Qoder's frozen catalogue output upper bound; other Harness renderers are unchanged.
     pub max_output_tokens: Option<u64>,

@@ -121,6 +121,7 @@ fn runtime(
             },
         ],
         vec![GrantV1 {
+            route_protocols: Default::default(),
             grant_id: "grant".into(),
             generation: 1,
             bearer_token_sha256: token_sha256("token"),
@@ -279,6 +280,7 @@ fn selector_budget_is_independent_of_extreme_agent_plan_budgets() {
             "renderer",
             aliases,
             vec![GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "budget-grant".into(),
                 generation: 1,
                 bearer_token_sha256: token_sha256("budget-token"),

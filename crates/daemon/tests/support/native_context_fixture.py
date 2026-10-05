@@ -96,13 +96,13 @@ def assert_preserved(fixture):
 
 def tool_results(body, harness):
     """Only correlated tool-result records count, never arbitrary prompt substrings."""
-    if harness in ('codex', 'qoder', 'pi'):
+    if 'messages' not in body:
         source = body.get('input', [])
         return {item.get('call_id'): item.get('output', '') for item in source
                 if isinstance(item, dict) and item.get('type') == 'function_call_output'} \
             if isinstance(source, list) else {}
     return {block.get('tool_use_id'): block.get('content', '')
-            for message in body.get('messages', [])
+            for message in body.get('messages', []) if message.get('role') == 'user'
             for block in (message.get('content', []) if isinstance(message.get('content'), list) else [])
             if isinstance(block, dict) and block.get('type') == 'tool_result'
             and block.get('is_error') is not True}
@@ -111,7 +111,7 @@ def tool_results(body, harness):
 def qoder_skill_expansions(body, directory):
     """Read exact native Skill user-message expansions, never a path substring."""
     expected_header = 'Base directory for this skill: ' + str(directory)
-    for item in body.get('input', []):
+    for item in body.get('messages', body.get('input', [])):
         if not isinstance(item, dict) or item.get('role') != 'user':
             continue
         content = item.get('content', [])
@@ -130,13 +130,13 @@ def native_text(value):
         return '\n'.join(native_text(item) for item in value)
     if isinstance(value, dict):
         return '\n'.join(native_text(item) for key, item in value.items()
-                         if key in ('text', 'content', 'input', 'instructions', 'output'))
+                         if key in ('text', 'content', 'input', 'instructions', 'output', 'messages', 'system'))
     return ''
 
 
 def is_native_compaction(body):
     """Pinned Qoder 1.1.65 request signature, independent of request order."""
-    items = body.get('input', [])
+    items = body.get('messages', body.get('input', []))
     last = native_text(items[-1]) if isinstance(items, list) and items else native_text(items)
     return 'detailed summary' in last.lower() and 'summarization' in last.lower()
 
@@ -145,7 +145,8 @@ def decision(fixture, body):
     """Small deterministic model: require native discovery, then real tools, then history."""
     harness = fixture['harness']
     if harness == 'qoder' and 'expected_max_output_tokens' in fixture:
-        assert body.get('max_output_tokens') == fixture['expected_max_output_tokens'], \
+        budget_field = 'max_tokens' if 'messages' in body else 'max_output_tokens'
+        assert body.get(budget_field) == fixture['expected_max_output_tokens'], \
             'Qoder request did not carry the frozen source output budget'
     assert harness != 'qoder' or not is_native_compaction(body), \
         'unexpected Qoder compaction in the ordinary Skill journey; check the native context budget'

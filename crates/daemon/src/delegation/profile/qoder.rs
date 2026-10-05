@@ -21,6 +21,7 @@ pub(super) fn render(
     let provider_id = format!("hiroute-worker-{task_key}");
     let endpoint = format!("http://{}/v1", input.gateway);
     let route = render_qoder_transient_route(QoderTransientRouteInput {
+        protocol: input.protocol,
         provider_id: &provider_id,
         endpoint: &endpoint,
         alias: input.alias,

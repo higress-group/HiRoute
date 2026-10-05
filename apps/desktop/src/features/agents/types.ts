@@ -83,9 +83,10 @@ export type ClaudeModelSelection = {
 };
 export type QoderModelSelection = {
   mode: 'qoder_additional';
+  plan_protocols?: Record<string, 'responses' | 'messages'>;
   allowed_plan_ids: string[];
 };
-export type PiModelSelection = { mode: 'pi_additional'; allowed_plan_ids: string[] };
+export type PiModelSelection = { mode: 'pi_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
 export type AgentModelSelection = CodexModelSelection | ClaudeModelSelection | QoderModelSelection | PiModelSelection;
 export type AgentSurfaceResult = {
   surface: AgentModelSurface;

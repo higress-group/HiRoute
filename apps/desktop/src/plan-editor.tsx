@@ -1,3 +1,4 @@
+import { AgentProtocolChoice, type ProtocolAdvice } from './features/AgentProtocolChoice';
 import { contextWindowError, type ContextWindowBounds } from './plan-context-window';
 import { DEFAULT_REQUEST_TIMEOUT_MS, requestTimeoutError } from './plan-request-timeout';
 import { ProviderIcon } from './ui/ProviderIcon';
@@ -29,10 +30,10 @@ export type PlanEditorMemory = { restClassifier?: Extract<SmartClassifier, { kin
 type Smart = { economy: Selection[]; primary: Selection[]; primary_fallback: boolean; reselect_on_user_message: boolean; classifier: SmartClassifier; complex_keywords: string[] };
 type Free = { candidates: Selection[]; primary: Selection[]; primary_fallback: boolean };
 export type Editor = { schema: string; display_name: string; purpose: string; custom_alias?: string; mode: Mode; candidates: Selection[]; smart: Smart; free: Free; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: { context_window_tokens?: number; maximum_attempts: number; request_timeout_ms: number; attempt_timeout_ms: number } };
-export type Plan = { agent_plan_id: string; desired: { display_name: string; purpose: string; mode: Mode; strategy: { mode: string; candidates?: Selection[] } & Partial<Smart & Free>; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: Editor['limits'] }; head: { head_revision: number; status: string }; agent_plan_revision: number; model_alias: string; publication: { revision: number; digest: string }; execution: string };
+export type Plan = { protocol_advice?: ProtocolAdvice; agent_plan_id: string; desired: { display_name: string; purpose: string; mode: Mode; strategy: { mode: string; candidates?: Selection[] } & Partial<Smart & Free>; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: Editor['limits'] }; head: { head_revision: number; status: string }; agent_plan_revision: number; model_alias: string; publication: { revision: number; digest: string }; execution: string };
 export type Draft = { draft_id: string; plan_id?: string; base_head_revision?: number; revision: number; editor: Editor };
 type Native = NativeReasoning;
-type Candidate = { binding_id: string; model_configuration_id: string; display_name: string; reasoning: Native; billing_class: string; routable: boolean; ingress_protocols: string[] };
+type Candidate = { binding_id: string; model_configuration_id: string; display_name: string; reasoning: Native; billing_class: string; routable: boolean; ingress_protocols: string[]; native_ingress_protocols?: string[] };
 type CodexCapabilityLimit = { kind: 'context_window' | 'image_input'; binding_ids: string[] };
 type CodexCapabilityIssue = { kind: 'plan_compilation' | 'invalid_compiled_plan' | 'responses_protocol' | 'request_capabilities' | 'instruction_roles' | 'context_input' | 'context_output' | 'context_total' | 'reasoning_profile' | 'context_window'; binding_id?: string };
 type CodexCapabilities = { state: 'available'; context_window: number; input_modalities: ('text' | 'image')[]; reasoning: 'route_configuration'; limitations: CodexCapabilityLimit[]; fixed_limits: ('parallel_tool_calls_disabled')[] }
@@ -48,6 +49,18 @@ export type PlanEditorHandle = {
   publish(): Promise<boolean>;
   cancel(): void;
 };
+
+function workerProtocolAdvice(editor: Editor, options: Options | null): ProtocolAdvice | undefined {
+  if (!options) return undefined;
+  const selections = editor.mode === 'fixed_model' ? editor.candidates
+    : editor.mode === 'smart_saving' ? [...editor.smart.economy, ...editor.smart.primary]
+      : [...editor.free.candidates, ...(editor.free.primary_fallback ? editor.free.primary : [])];
+  const candidates = selections.map(s => options.candidates.find(c => c.binding_id === s.binding_id));
+  if (!candidates.length || candidates.some(c => !c)) return undefined;
+  const protocols = ['responses', 'messages'] as const;
+  return { supported: protocols.filter(p => candidates.every(c => c!.ingress_protocols.includes(p))),
+    native: protocols.filter(p => candidates.every(c => c!.native_ingress_protocols?.includes(p))) };
+}
 
 function defaultReasoning(native: Native | undefined, preferred: 'low' | 'high' = 'high'): Selection['reasoning'] {
   if (!native || native.kind === 'fixed' || native.kind === 'budget') return undefined;
@@ -485,7 +498,8 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
       ['pi', 'Pi', text('使用 Pi 执行委派任务', 'Use Pi for delegated tasks')],
       ['qoder_cli', 'Qoder CLI', text('使用 Qoder CLI 执行委派任务', 'Use Qoder CLI for delegated tasks')],
     ] as const).map(([value, title, description]) => <button className={`v3-executor${editor.work?.harness === value ? ' selected' : ''}`} type="button" key={value} aria-pressed={editor.work?.harness === value} onClick={() => update({ work: { harness: value, protocol: value === 'claude_code' ? 'messages' : 'responses' } })}><BrandIcon kind={value === 'codex_cli' ? 'codex' : value === 'claude_code' ? 'claude-code' : value === 'pi' ? 'pi' : 'qoder'} label={`${title} logo`} /><div><strong>{title}</strong><span>{description}</span></div>{editor.work?.harness === value && <UiIcon name="check" />}</button>)}</div>{validationIssue?.group === 'executor' && <p className="oc-inline-error route-lane-error">{validationIssue.message}</p>}
-      {editor.work && <WorkerDependencies key={editor.work.harness} harness={editor.work.harness} language={language} active={active && moreSettingsOpen} onOperation={onOperation} />}
+      {editor.work && (editor.work.harness === 'pi' || editor.work.harness === 'qoder_cli') && <AgentProtocolChoice name={editor.display_name || text('任务路由', 'Task route')} language={language} value={editor.work.protocol} advice={workerProtocolAdvice(editor, options)} onChange={protocol => update({ work: { ...editor.work!, protocol } })} />}
+{editor.work && <WorkerDependencies key={editor.work.harness} harness={editor.work.harness} language={language} active={active && moreSettingsOpen} onOperation={onOperation} />}
     </div>}</section>
       </Disclosure>
     </section>

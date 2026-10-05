@@ -387,6 +387,7 @@ fn snapshot(
         .into_iter()
         .filter(|protocol| pairs.iter().any(|(ingress, _)| ingress == protocol))
         .map(|protocol| GrantV1 {
+            route_protocols: Default::default(),
             grant_id: format!("protocol-grant-{}", protocol_name(protocol)),
             generation: 1,
             bearer_token_sha256: token_sha256(&format!(

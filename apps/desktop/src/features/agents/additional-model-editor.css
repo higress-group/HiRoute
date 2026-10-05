@@ -1,0 +1,19 @@
+.additional-model-editor {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-width: 0;
+}
+
+.additional-model-editor > p { margin: 0; font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; }
+.additional-model-editor__plans { display: grid; gap: 8px; }
+.additional-model-editor__plans > legend { padding: 0; margin-bottom: 10px; }
+.additional-model-editor__plan { min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft); }
+.additional-model-editor__plan[data-selected='true'] { border-color: var(--accent); }
+.additional-model-editor__plan > .check-row { margin: 0; padding: 10px 12px; border: 0; border-radius: 9px; background: transparent; cursor: pointer; align-items: center; }
+.additional-model-editor__plan > .check-row > input { margin: 0; }
+.additional-model-editor__plan > .check-row > span { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.additional-model-editor__plan[data-selected='true'] > .check-row { background: var(--accent-soft); border-radius: 9px 9px 0 0; }
+.additional-model-editor__plan > .agent-protocol-choice { padding: 12px; border-top: 1px solid var(--border); }
+.additional-model-editor__help { display: grid; gap: 6px; }
+.additional-model-editor__help > p { margin: 0; line-height: 1.6; }

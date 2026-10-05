@@ -19,6 +19,8 @@ from publication_process import plan_change
 from agent_product_support import apply_settings, expose_native_installation
 from additional_model_fixture import PersistedRouteOracle, read_persisted_route
 
+NATIVE_PREFIX = '\ufeff// Native effective endpoint differs from provider default\n'
+
 CASES = ('agent.sources.effective-static-import', 'agent.sources.changed-source-rejected',
          'agent.sources.imported-route-usable')
 
@@ -48,7 +50,11 @@ def use_imported_route(product, binary, source, saved):
     oracle = PersistedRouteOracle(source.model)
     source.reply = oracle.reply
     try:
-        selector = configured['model_effect']['provider_id'] + '/' + plan['model_alias']
+        namespace = configured['model_effect']['provider_id']
+        providers = json.loads((Path(product.env['PI_CODING_AGENT_DIR']) / 'models.json').read_text().removeprefix(NATIVE_PREFIX))['providers']
+        ids = [name for name, provider in providers.items() if name.startswith(namespace + '-') and any(m.get('id') == plan['model_alias'] for m in provider.get('models', []))]
+        assert len(ids) == 1
+        selector = ids[0] + '/' + plan['model_alias']
         return read_persisted_route(product, binary, selector, source, oracle, 'pi-imported-source-route')
     finally:
         spec['model'] = {'intent':'restore','restore_point_ref':status['restore_point_ref']}
@@ -93,7 +99,7 @@ def run(repository, candidate):
         source = NativeContextUpstream(controls)
         provider = {'api':'openai-responses','baseUrl':'http://127.0.0.1:9/v1','apiKey':'provider-fallback',
             'models':[{'id':source.model,'baseUrl':source.base_url,'contextWindow':16384,'maxTokens':4096,'input':['text']}]}
-        write_new(config / 'models.json', '\ufeff// Native effective endpoint differs from provider default\n' +
+        write_new(config / 'models.json', NATIVE_PREFIX +
             json.dumps({'providers':{'native-source':provider}}))
         write_new(config / 'auth.json', json.dumps({'native-source':{'type':'api_key',
             'key':'${IMPORT_KEY}','env':{'IMPORT_KEY':source.token}}}))

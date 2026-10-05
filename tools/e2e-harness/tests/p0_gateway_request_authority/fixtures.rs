@@ -54,6 +54,7 @@ pub(super) fn wire_snapshot(provider_authority: &str) -> GatewayPublicationSnaps
         ],
         vec![
             GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "wire-grant".into(),
                 generation: 5,
                 bearer_token_sha256: token_sha256("wire-token"),
@@ -61,6 +62,7 @@ pub(super) fn wire_snapshot(provider_authority: &str) -> GatewayPublicationSnaps
                 routes: plan_routes(&[("wire-fast", 41), ("wire-deep", 42)]),
             },
             GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "wire-messages-grant".into(),
                 generation: 5,
                 bearer_token_sha256: token_sha256("wire-messages-token"),
@@ -102,6 +104,7 @@ pub(super) fn live_snapshot(
             )],
         }],
         vec![GrantV1 {
+            route_protocols: Default::default(),
             grant_id: "live-grant".into(),
             generation: 1,
             bearer_token_sha256: token_sha256("live-wire-token"),

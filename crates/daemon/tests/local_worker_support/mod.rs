@@ -50,6 +50,7 @@ pub fn request(root: &Path, cwd: &Path, nonce: &str, mode: &str) -> WorkerLaunch
     .unwrap();
     let builder_root = cwd.join(format!("build-{nonce}"));
     let mut profile = CandidateWorkerProfile::build(ProfileInput {
+        protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
         context_window_tokens: None,
         max_output_tokens: None,
         harness: WorkerHarnessV1::CodexCli,

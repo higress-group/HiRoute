@@ -62,6 +62,7 @@ impl QoderNativeContext {
 }
 
 pub struct QoderTransientRouteInput<'a> {
+    pub protocol: hiroute_domain::AgentIngressProtocolV1,
     pub provider_id: &'a str,
     /// Explicit numeric loopback origin followed by /v1, without query or credentials.
     pub endpoint: &'a str,
@@ -106,6 +107,7 @@ pub fn render_qoder_transient_route(
         input.endpoint,
         &format!("${{{}}}", input.credential_env),
         vec![model],
+        input.protocol,
     );
     provider["model"] = input.alias.into();
     provider["routing"] = json!({
@@ -147,6 +149,7 @@ mod tests {
     #[test]
     fn frozen_alias_is_preserved_and_credentials_remain_environment_references() {
         let route = render_qoder_transient_route(QoderTransientRouteInput {
+            protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
             provider_id: "hiroute-worker-123",
             endpoint: "http://127.0.0.1:1234/v1",
             alias: "plan/branch:cheap",
@@ -179,6 +182,7 @@ mod tests {
         ] {
             assert!(
                 render_qoder_transient_route(QoderTransientRouteInput {
+                    protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
                     provider_id: "hiroute",
                     endpoint,
                     alias: "plan/one",

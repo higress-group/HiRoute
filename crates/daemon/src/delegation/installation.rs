@@ -502,6 +502,7 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         .transpose()
         .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
         CandidateWorkerProfile::build(ProfileInput {
+            protocol: input.protocol,
             context_window_tokens: if let Some(budget) = qoder_budget {
                 Some(budget.context_window_tokens)
             } else if installation.harness == WorkerHarnessV1::ClaudeCode {

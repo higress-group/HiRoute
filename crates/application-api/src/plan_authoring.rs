@@ -168,6 +168,7 @@ pub struct PlanCandidateOptionV1 {
     pub billing_class: BillingClass,
     pub routable: bool,
     pub ingress_protocols: Vec<UpstreamProtocol>,
+    pub native_ingress_protocols: Vec<UpstreamProtocol>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

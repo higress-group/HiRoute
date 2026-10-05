@@ -623,6 +623,7 @@ fn snapshot(
         ],
         vec![
             GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "continuation-grant".into(),
                 generation: 1,
                 bearer_token_sha256: token_sha256("continuation-token"),
@@ -649,6 +650,7 @@ fn snapshot(
                 .collect(),
             },
             GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "other-grant".into(),
                 generation: 1,
                 bearer_token_sha256: token_sha256("other-token"),

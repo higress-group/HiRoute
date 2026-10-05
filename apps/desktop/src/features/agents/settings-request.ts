@@ -39,10 +39,10 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
         };
         break;
       case 'pi':
-        settings = { mode: 'pi_additional', allowed_plan_ids: values.allowedPlanIds };
+        settings = { mode: 'pi_additional', allowed_plan_ids: values.allowedPlanIds, plan_protocols: Object.fromEntries(values.allowedPlanIds.map(id => [id, values.planProtocols?.[id] ?? 'responses'])) };
         break;
       case 'qoder':
-        settings = { mode: 'qoder_additional', allowed_plan_ids: values.allowedPlanIds };
+        settings = { mode: 'qoder_additional', allowed_plan_ids: values.allowedPlanIds, plan_protocols: Object.fromEntries(values.allowedPlanIds.map(id => [id, values.planProtocols?.[id] ?? 'responses'])) };
         break;
       default: throw new Error('AGENT_INPUT_INVALID');
     }

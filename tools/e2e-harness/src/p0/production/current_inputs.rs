@@ -67,6 +67,7 @@ impl CurrentUpstream {
                 )],
             }],
             vec![GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "oracle-grant".into(),
                 generation: 1,
                 bearer_token_sha256: client_digest.into(),

@@ -136,6 +136,7 @@ pub(super) fn snapshot(revision: u64, renderer: &str) -> GatewayPublicationSnaps
         ],
         vec![
             GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "grant-alpha".into(),
                 generation: 1,
                 bearer_token_sha256: token_sha256("token-alpha"),
@@ -143,6 +144,7 @@ pub(super) fn snapshot(revision: u64, renderer: &str) -> GatewayPublicationSnaps
                 routes: [test_plan_route("alpha", 10)].into(),
             },
             GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "grant-beta".into(),
                 generation: 1,
                 bearer_token_sha256: token_sha256("token-beta"),
@@ -199,6 +201,7 @@ fn rest_classifier_snapshot() -> GatewayPublicationSnapshotV3 {
             candidates: vec![candidate(1), candidate(2)],
         }],
         vec![GrantV1 {
+            route_protocols: Default::default(),
             grant_id: "grant".into(),
             generation: 1,
             bearer_token_sha256: token_sha256("token"),
@@ -907,6 +910,7 @@ fn fixed_grants_isolate_same_name_and_revocation_without_hidden_plans() {
         .map(|id| {
             let binding = candidate(id);
             GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: format!("fixed-{id}"),
                 generation: 1,
                 bearer_token_sha256: token_sha256(&format!("fixed-token-{id}")),
