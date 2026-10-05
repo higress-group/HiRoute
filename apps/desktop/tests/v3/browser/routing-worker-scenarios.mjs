@@ -142,6 +142,27 @@ const scenarios = [
     button('更换或高级设置').click(); await tick();
     assert(document.querySelector('#worker-qoder_cli-cli')?.value === request.cli_path, 'Switching away lost the Qoder installation');
   }),
+  ...[['pi', 'Pi'], ['qoder_cli', 'Qoder CLI']].map(([harness, title]) =>
+    scenario(`routing.protocol.${harness.replace("_cli", "")}-reselection`, ['route-save'], `${title} retains an explicit protocol when reselected and saved`, async () => {
+      const executor = () => [...document.querySelectorAll('.v3-executor')].find(node => node.querySelector('strong')?.textContent === title);
+      executor().click();
+      await until(() => document.querySelector('[data-plan-protocol] select'), `${title} protocol choice`);
+      const select = document.querySelector('[data-plan-protocol] select');
+      assert(!select.querySelector('option[value="messages"]').disabled, 'The fixture must offer Messages');
+      select.value = 'messages';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await tick();
+      executor().click();
+      await tick();
+      assert(select.value === 'messages', `${title} reselection reset the explicit Messages choice`);
+      trace().commands.length = 0;
+      await until(() => !button('保存草稿')?.disabled, 'protocol draft save');
+      button('保存草稿').click();
+      await until(() => calls('preview_plan_editor') === 1, 'protocol draft submission');
+      const saved = trace().requests.filter(item => item.command === 'preview_plan_editor').at(-1).payload.input.editor;
+      assert(saved.work.harness === harness && saved.work.protocol === 'messages', 'The saved task route lost its explicit protocol');
+      await until(() => !document.querySelector('.plan-editor > fieldset')?.disabled, 'editor released after save');
+    })),
   scenario('routing.save.unobserved-editable', ['route-save'], 'an unobserved route save does not lock the editor or the route list', async () => {
     trace().commands.length = 0;
     const name = document.querySelector('.plan-identity-fields input');

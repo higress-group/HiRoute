@@ -25,6 +25,10 @@ proves native authorization, persistence, process cleanup or real model calls.
 | Return to routing or configure a classifier | `desktop.routing.reactivation-models`, `desktop.routing.classifier-protocol` | An existing editor refreshes saved model names; quality uses active models; selection, curl copy and native-save outcomes are visible. |
 | Inspect a model or open its documentation | `desktop.models.documentation-retains-input`; [model-to-route scenario](v3/browser/model-to-route-scenarios.mjs) | Local readiness does not claim inference success; browser failure retains form input; web anchors retain their default action; route creation uses the selected model. |
 
+Task-route save scenarios also cover Pi and Qoder executor reselection: an explicit
+Messages choice survives clicking the selected executor and reaches the saved draft.
+They reuse the real Plan editor and existing IPC trace, without launching a native Agent.
+
 The focused Agent fixture explicitly spans the application grid and keeps its evidence
 note outside the page viewport. Layout assertions must observe usable component width;
 a DOM element that exists outside a valid viewport does not establish readability.
