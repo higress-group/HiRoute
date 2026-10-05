@@ -90,37 +90,46 @@ This matters especially in long tasks. As an agent accumulates context, it compr
 
 “Let a stronger model take over” can then become part of the execution process, without waiting for a person to watch the conversation, spot a problem, and intervene.
 
-## Experiment 2: an unattended handoff from repeated research to working code
+## Experiment 2: one long task, three automatic model handoffs
 
 The second task added synchronous and asynchronous JSON stream iteration to HTTPX. It needed to support several JSON stream formats, handle encoding and consumption state, and yield parsed values before the rest of the data arrived.
 
 We gave native Codex one task instruction and let it continue. HiRoute started with the economy model and used a stage-competence floor of **0.5**.
 
-### Why this was a reasonable point to upgrade
+The actual sequence was **Qwen → Astra → Qwen → Astra**, with three automatic model changes at handoff and reassessment opportunities. Nobody told the agent which model to use next.
 
-The original tool trace shows Qwen reading source, tests, and interfaces extensively, with additional encoding probes. By the second context handoff, however, execution had still not moved into product-code implementation. The first working-tree check after the handoff remained clean. More context consumption had not turned into a deliverable that could be tested.
+[![Three automatic handoffs: Qwen investigates, Astra prepares the context summary, Qwen continues, and Astra implements and repairs](assets/unattended-handoff-en.svg)](assets/unattended-handoff-en.svg)
 
-At that handoff, HiRoute assessed the visible preceding stage at **0.485**, below the **0.5** floor. The current work could otherwise still have selected the economy branch, but the competence guard changed that choice and handed subsequent requests to Astra.
+### First upgrade: prepare the context handoff
 
-**The upgrade made sense because observed progress no longer justified continuing with the same capability allocation.** It was not a rule to upgrade after every context compression, and nobody had to tell the agent it was stuck or ask for a different model.
+Qwen began by reading source and tests and analyzing the requirements. At the first context-summary request, the preceding stage scored **0.41**, below the competence floor, so HiRoute selected Astra. The agent was preparing a context summary, and Astra handled that handoff.
 
-### What happened after the handoff
+The reason for this switch was straightforward: execution feedback triggered the competence guard, assigning the next request to a stronger model. Its work at this point was the summary; implementation came later.
 
-Astra began writing the JSON streaming implementation, ran tests, and worked through issues involving asynchronous iterator closure, encoding boundaries, and type checking. The agent repaired failures encountered along the way and completed the delivery.
+### Return to Qwen: allocate work using stage feedback
 
-[![Stage competence triggers an upgrade at a context handoff; Astra continues implementation and validation, leading to independent acceptance](assets/unattended-handoff-en.svg)](assets/unattended-handoff-en.svg)
+The summary stage scored above the floor. Under the configured economy-first policy, Qwen got another opportunity to continue. A subsequent reassessment also retained Qwen.
+
+This illustrates **ongoing model selection**: return after a handoff, retain the current model after reassessment, or upgrade based on the next stretch of work and fresh execution feedback.
+
+### Upgrade again: turn investigation into a deliverable
+
+The work still consisted of investigating source, tests and interfaces, without a product implementation. At the second context handoff, the stage score was **0.485**, again below the **0.5** floor. HiRoute upgraded to Astra to continue the task.
+
+This handoff produced clear delivery progress. Astra began writing the JSON streaming implementation, ran tests, and worked through asynchronous iterator closure, encoding boundaries and type checking. The agent repaired failures encountered along the way and completed the delivery.
 
 | This long-running task | Result |
 | --- | --- |
 | Start to finish | **31 minutes 36 seconds** |
+| Automatic model changes | **3: two upgrades and one return to the economy model** |
 | Intermediate human prompts / human code patches | **0 / 0** |
 | Astra tool calls after the key upgrade | **13** |
 | Independent checks after execution | **108 feature + 229 regression + 6 incrementality checks, all passing** |
 
-The useful result is not a contest between two stage scores. **HiRoute used execution feedback to improve model selection for the next stretch of work:** start economically, upgrade when progress is insufficient, then let the stronger model continue implementation and validation. The user did not have to act as a full-time model dispatcher. [Explore the handoff and acceptance record](../experiments/cases/unattended-engineering/handoff-notes.md).
+**HiRoute continually applied execution feedback to model selection for the next stretch of work:** start economically, reassess at handoffs, upgrade when progress is insufficient, then let the stronger model continue implementation and validation. The user could focus on the deliverable without acting as a full-time model dispatcher. [Explore the handoff and acceptance record](../experiments/cases/unattended-engineering/handoff-notes.md).
 
 ## Download HiRoute and try your own task
 
 The experiment procedures, results, and reproduction instructions are open source in the [HiRoute repository](../experiments/README.md).
 
-Want to try it with your agent? **[Download HiRoute from the official website](https://hiroute.ai/en/download/)**. The current macOS installer is about **73 MB—under 100 MB**. Install it, connect your existing model services, choose a routing plan, and get back to work in the agent you already use.
+Want to try it with your agent? **[Download HiRoute from the official website](https://hiroute.ai/en/download/)**. The macOS installer is **under 100 MB**. Install it, connect your existing model services, choose a routing plan, and get back to work in the agent you already use.

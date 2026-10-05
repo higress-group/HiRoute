@@ -2,10 +2,48 @@
 """Deterministic article figures from verified published results. Requires matplotlib."""
 import json
 from pathlib import Path
+from html import escape
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from reproduce import ROOT, RESULTS, report
+
+
+def render_handoffs(out, result):
+    evidence = json.loads((ROOT / 'cases/unattended-engineering/results/2026-10-04/evidence.json').read_text())
+    stages = []
+    for request in evidence['requests']:
+        model, = request['models']
+        if not stages or stages[-1] != model:
+            stages.append(model)
+    if stages != ['qwen3.8-flash', 'gpt-6-astra'] * 2:
+        raise ValueError('The recorded model sequence changed; review the handoff narrative.')
+    changes = len(stages) - 1
+    checks = result['unattended']['independent_assertions']['total_passed']
+    first_upgrade, final_upgrade = [decision for decision in evidence['decisions'] if decision['reason'] == 'competence_guard']
+    for lang in ['zh', 'en']:
+        zh = lang == 'zh'
+        title = f'一项长任务，{changes} 次自动模型接力' if zh else f'One long task. {changes} automatic model handoffs.'
+        names = ['Qwen 起步', 'Astra 整理交接', 'Qwen 接续', 'Astra 完成交付'] if zh else ['Qwen starts', 'Astra summarizes', 'Qwen continues', 'Astra delivers']
+        roles = ['阅读源码与测试', '完成上下文摘要', '继续研究与探查', '实现、测试与修复'] if zh else ['Read source and tests', 'Prepare context summary', 'Continue investigation', 'Implement, test and repair']
+        details = ['经济模型优先起步', '', '摘要交接后按策略回切', ''] if zh else ['Economy-first policy', '', 'Summary complete · return', '']
+        for index, decision in [(1, first_upgrade), (3, final_upgrade)]:
+            details[index] = f"{decision['competence']} < {decision['competence_floor']}" + (' · 升级' if zh else ' · upgrade')
+        summary = (f'{changes} 次自动切换 · 零中途人工提示 · {checks} 项独立验收通过' if zh else f'{changes} automatic model changes · No operator prompts during execution · {checks} passing checks')
+        note = '31 分 36 秒：阶段反馈触发升级，交接后按策略回切，进展不足时再次升级。' if zh else '31m 36s: upgrade on stage feedback, return after handoff, upgrade again when progress remains insufficient.'
+        svg = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 350" role="img">',
+               f'<title>{escape(title)}</title><rect width="1240" height="350" rx="20" fill="#eef2fa"/>',
+               '<g font-family="system-ui,sans-serif" fill="#192439">',
+               f'<text x="32" y="48" font-size="26" font-weight="700">{escape(title)}</text>']
+        for i, x in enumerate([32, 340, 648, 956]):
+            svg.append(f'<rect x="{x}" y="85" width="252" height="142" rx="14" fill="white"/>')
+            for y, size, weight, value in [(122, 20, 700, names[i]), (162, 17, 400, roles[i]), (198, 15, 400, details[i])]:
+                svg.append(f'<text x="{x+16}" y="{y}" font-size="{size}" font-weight="{weight}">{escape(value)}</text>')
+            if i < len(stages) - 1:
+                svg.append(f'<path d="M {x+261} 151 h 38 m -10 -7 l 10 7 -10 7" fill="none" stroke="#586caa" stroke-width="3"/>')
+        svg.extend([f'<text x="32" y="277" font-size="22" font-weight="700">{escape(summary)}</text>',
+                    f'<text x="32" y="316" font-size="16" fill="#536079">{escape(note)}</text>', '</g></svg>'])
+        (out / f'unattended-handoff-{lang}.svg').write_text(''.join(svg) + '\n')
 
 
 def render():
@@ -46,15 +84,7 @@ def render():
         fig.savefig(target, metadata={'Date': None})
         target.write_text('\n'.join(line.rstrip() for line in target.read_text().splitlines()) + '\n')
         plt.close(fig)
-    for lang in ['zh','en']:
-        labels=(['长任务自动模型接力','Qwen 执行','上下文交接 · 重新评估','Astra 接续','25 次模型请求','0.485 < 0.5 胜任度下限','13 次实际工具调用','31 分 36 秒 · 零中途人工提示 · 343 项独立验收通过','实际接力记录：从研究探查转入实现、修复与验收。'] if lang=='zh' else ['Automatic model handoff','Qwen executes','Context handoff · Reassess','Astra continues','25 model requests','Competence 0.485 < 0.5 floor','13 actual tool calls','31m 36s · No intermediate operator prompts · 343 passing assertions','Recorded HTTPX handoff: from investigation to implementation, repair and acceptance.'])
-        from html import escape
-        svg=['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 320" role="img"><title>'+escape(labels[0])+'</title><rect width="1100" height="320" rx="20" fill="#eef2fa"/><g font-family="system-ui,sans-serif" fill="#192439">',f'<text x="40" y="48" font-size="26" font-weight="700">{escape(labels[0])}</text>']
-        for i,x in enumerate([40,410,780]):
-            svg.append(f'<rect x="{x}" y="85" width="280" height="110" rx="14" fill="white"/><text x="{x+20}" y="123" font-size="20" font-weight="700">{escape(labels[i+1])}</text><text x="{x+20}" y="163" font-size="16">{escape(labels[i+4])}</text>')
-            if i<2:svg.append(f'<path d="M {x+290} 140 h 65 m -10 -7 l 10 7 -10 7" fill="none" stroke="#586caa" stroke-width="3"/>')
-        svg.extend([f'<text x="40" y="246" font-size="22" font-weight="700">{escape(labels[7])}</text>',f'<text x="40" y="287" font-size="15" fill="#536079">{escape(labels[8])}</text>','</g></svg>'])
-        (out/f'unattended-handoff-{lang}.svg').write_text(''.join(svg)+'\n')
+    render_handoffs(out, result)
 
 
 if __name__=='__main__':render()
