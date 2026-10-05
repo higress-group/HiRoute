@@ -90,6 +90,14 @@ This matters especially in long tasks. As an agent accumulates context, it compr
 
 “Let a stronger model take over” can then become part of the execution process, without waiting for a person to watch the conversation, spot a problem, and intervene.
 
+That execution feedback is also available for inspection. A session's **Model performance** view shows the actual model, competence score and assessment coverage for each execution stage. If progress looks insufficient, execution-evidence and assessment-feedback links lead back to the relevant activity. Stages that have not received a score remain visible too.
+
+[![Session model performance: inspect Qwen and Astra stage scores, assessment coverage and evidence links](assets/desktop-session-competence-zh.png)](assets/desktop-session-competence-zh.png)
+
+A routing plan's **Runtime performance** view provides a broader perspective. Select a plan version and time range to see each model's average stage competence, together with counts of scored and unrated stages. Open a model's stages to inspect the underlying execution and assess which combination fits your tasks. The average includes scored stages only; unrated stages do not enter the calculation.
+
+[![Routing-plan performance: inspect model averages and stage counts within one version and time range](assets/desktop-plan-competence-zh.png)](assets/desktop-plan-competence-zh.png)
+
 ## Experiment 2: one long task, three automatic model handoffs
 
 The second task added synchronous and asynchronous JSON stream iteration to HTTPX. It needed to support several JSON stream formats, handle encoding and consumption state, and yield parsed values before the rest of the data arrived.

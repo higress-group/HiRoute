@@ -88,6 +88,36 @@ The article uses the recorded handoff figure and the linked execution notes to e
 the second experiment. It does not reuse the earlier flawed observation screenshots
 as current product evidence or substitute a new score into the frozen case.
 
+## Competence product views
+
+Two additional images explain the intended final observation interface:
+
+- [Session model performance](assets/desktop-session-competence-zh.png): actual models,
+  stage scores, assessment coverage and evidence links.
+- [Routing-plan performance](assets/desktop-plan-competence-zh.png): model averages
+  within one plan version and time range, with scored and unrated stage counts.
+
+These images were generated with the built-in `image_gen` tool. They are product-design
+assets, not native Desktop captures. The per-model aggregate view is planned
+functionality; the images do not establish that its implementation has passed
+acceptance. The article describes the intended final interface. Production notes are
+kept here and in the [complete prompts and data record](competence-product-views.json),
+without overlays on the images.
+
+The values follow the visible execution stages in the retained HTTPX observation:
+Qwen has one scored stage at 0.485; Astra has one at 0.775 and one unrated stage.
+The existing two-decimal display produces 0.48 and 0.78. The earlier 0.410 assessment
+lacks an attributed visible execution stage and is excluded from this product-view
+average. A prior 0.615 assessment of the later Qwen stage is not another independent
+stage. No score has been added to the final Astra stage.
+
+Stage scores describe different stretches of work, not a controlled model ranking
+or whole-delivery acceptance. Partial-assessment and historical-gap states remain
+part of the underlying evidence; their notices belong in expanded evidence details
+in this design. Removing them from the primary view does not alter the experiment
+records. Both language editions use the same two Chinese-interface images, with
+localized article text and captions.
+
 ## Overview revision brief
 
 The next overview should explain one concrete model-call path: the user's existing
