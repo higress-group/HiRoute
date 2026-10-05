@@ -26,7 +26,8 @@ mod installation_probe;
 mod probe_server;
 pub(crate) use availability::WorkerExecutorAvailabilityRegistry;
 pub(crate) use discovery::{
-    discover as discover_worker_dependencies, validate_persisted_installation, validate_selection,
+    discover as discover_worker_dependencies, validate_persisted_installation_for_run,
+    validate_selection,
 };
 
 const WORKER_HARNESSES: [WorkerHarnessV1; 4] = [
@@ -153,8 +154,15 @@ pub(super) fn check_installation(
         WorkerLaunchFormV1::NativeSdk { cli, node } => {
             check_entry(Path::new(cli), true)?;
             check_entry(Path::new(node), true)?;
-            hiroute_integrations::agents::pi_sdk_installation(Path::new(cli))
+            hiroute_integrations::agents::pi_cli_installation(Path::new(cli))
                 .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+            #[cfg(unix)]
+            hiroute_integrations::check_pi_sdk_capability(
+                Path::new(cli),
+                Path::new(node),
+                hiroute_integrations::PiSdkCapability::Worker,
+            )
+            .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
         }
         WorkerLaunchFormV1::NativeAcp { cli } => check_entry(Path::new(cli), true)?,
         WorkerLaunchFormV1::AdapterAcp { cli, adapter, node } => {
@@ -290,7 +298,10 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             .selections
             .selection(input.task.plan.harness)?
             .ok_or(DelegationErrorV1::DependenciesMissing)?;
-        let installation = discovery::validate_persisted_installation(&selection.config)?;
+        let installation = discovery::validate_persisted_installation_for_run(
+            &selection.config,
+            input.run.continued_from.is_some(),
+        )?;
         if matches!(
             installation.harness,
             WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi

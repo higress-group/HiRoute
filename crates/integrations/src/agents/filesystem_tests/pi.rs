@@ -153,6 +153,43 @@ fn pi_import_observes_jsonc_bom_and_the_models_effective_endpoint_override() {
 }
 
 #[test]
+fn pi_cli_release_labels_and_entry_layout_do_not_gate_settings() {
+    let root = tempfile::tempdir().unwrap();
+    let package = root.path().join("selected-pi");
+    let cli = package.join("bin/pi.js");
+    fs::create_dir_all(cli.parent().unwrap()).unwrap();
+    write_executable(&cli, "native CLI must not run during metadata discovery");
+    for version in ["1.0.2", "1.0.3", "9.0.0-next"] {
+        write_secret_settings(
+            &package.join("package.json"),
+            json!({
+                "name":crate::PI_NPM_PACKAGE, "version":version, "bin":{"pi":"bin/pi.js"}
+            }),
+        );
+        let installation = crate::pi_cli_installation(&cli).unwrap();
+        assert_eq!(installation.version, version);
+        assert_eq!(installation.package_root, package);
+        // A missing Worker SDK does not prevent passive static discovery or settings identity.
+        assert!(!package.join("dist/index.js").exists());
+        let mut selected = layout(root.path());
+        selected.pi_executable = cli.clone();
+        let scanner = FilesystemAgentScannerV1::new(selected, registry());
+        assert!(matches!(
+            scanner.pi_settings_discovery().outcome,
+            AgentDiscoveryOutcomeV1::Supported { .. }
+        ));
+    }
+    write_secret_settings(
+        &package.join("package.json"),
+        json!({
+            "name":crate::PI_NPM_PACKAGE, "version":"1.0.3", "bin":{"pi":"../foreign.js"}
+        }),
+    );
+    write_executable(&root.path().join("foreign.js"), "foreign CLI");
+    assert!(crate::pi_cli_installation(&cli).is_err());
+}
+
+#[test]
 fn pi_disabled_collaboration_skill_does_not_authorize_enable_or_reuse_a_stale_observation() {
     use hiroute_domain::{AgentCapability, CapabilityState};
     let root = tempfile::tempdir().unwrap();
@@ -161,7 +198,7 @@ fn pi_disabled_collaboration_skill_does_not_authorize_enable_or_reuse_a_stale_ob
     write_secret_settings(
         &package.join("package.json"),
         json!({"name": crate::PI_NPM_PACKAGE,
-        "version":crate::PI_WORKER_VERSION,"bin":{"pi":"dist/bundle/cli.js"}}),
+        "version":"1.0.2","bin":{"pi":"dist/bundle/cli.js"}}),
     );
     fs::create_dir_all(package.join("dist/bundle")).unwrap();
     write_executable(
@@ -171,6 +208,14 @@ fn pi_disabled_collaboration_skill_does_not_authorize_enable_or_reuse_a_stale_ob
     fs::write(package.join("dist/index.js"), b"test SDK location only").unwrap();
     layout.pi_executable = package.join("dist/bundle/cli.js");
     let scanner = FilesystemAgentScannerV1::new(layout, registry());
+    // This case isolates native Skill exclusion after the local interface check.
+    // SDK capability acceptance/rejection is exercised by pi_sdk_contract.test.mjs.
+    *scanner.pi_collaboration_cli.lock().unwrap() = Some((
+        root.path().join("trusted-hiroute"),
+        crate::pi_cli_installation(&scanner.layout.pi_executable)
+            .unwrap()
+            .manifest_digest,
+    ));
     let inspect = || {
         let discovery = scanner.pi_settings_discovery();
         let AgentDiscoveryOutcomeV1::Supported { installation } = discovery.outcome else {
@@ -213,6 +258,16 @@ fn pi_disabled_collaboration_skill_does_not_authorize_enable_or_reuse_a_stale_ob
     let original = fs::read(&settings).unwrap();
     fs::write(&settings, [&[0xef, 0xbb, 0xbf][..], &original].concat()).unwrap();
     assert_eq!(inspect().1, CapabilityState::Proven);
+    let manifest = package.join("package.json");
+    let mut upgraded: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    upgraded["version"] = json!("1.0.3");
+    write_secret_settings(&manifest, upgraded);
+    assert_ne!(
+        inspect().1,
+        CapabilityState::Proven,
+        "an upgraded CLI must recheck its local resource capability"
+    );
     fs::write(&settings, b"[]").unwrap();
     assert_ne!(inspect().1, CapabilityState::Proven);
     assert!(scanner.pi_default_model().is_err());

@@ -2,8 +2,8 @@
 // The daemon owns admission, credentials, process groups, retention and task state.
 import {readFileSync, realpathSync, lstatSync, openSync, readSync, closeSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
-import {pathToFileURL} from 'node:url';
 import {createInterface} from 'node:readline';
+import {loadPiSdk, assertPiCapabilities} from './pi-sdk-contract.mjs';
 
 process.umask(0o077);
 const output = value => process.stdout.write(JSON.stringify(value) + '\n');
@@ -78,12 +78,8 @@ try {
   const route = JSON.parse(process.env.HIROUTE_PI_ROUTE);
   const nodeVersion=process.versions.node.split(".").map(Number);
   if (nodeVersion.some((part,index)=> index===0 ? part<route.minimumNode[0] : nodeVersion[0]===route.minimumNode[0] && index===1 && part<route.minimumNode[1])) throw new Error();
-  const cli = realpathSync(process.argv[2]);
-  const packageRoot = dirname(dirname(dirname(cli)));
-  const pkg = JSON.parse(readFileSync(join(packageRoot,'package.json'),'utf8'));
-  if (pkg.name !== route.cliPackage || pkg.version !== route.cliVersion
-      || realpathSync(join(packageRoot,pkg.bin.pi)) !== cli) throw new Error();
-  const sdk = await import(pathToFileURL(join(packageRoot,'dist/index.js')).href);
+  const {sdk, pkg} = await loadPiSdk(process.argv[2]);
+  assertPiCapabilities(sdk, 'collaboration');
   const {createAgentSession,ModelRuntime,SettingsManager,SessionManager,DefaultResourceLoader} = sdk;
   const agentDir = resolve(process.env.PI_CODING_AGENT_DIR);
   const root = realpathSync(process.env.HIROUTE_PI_SESSION_ROOT);
@@ -93,7 +89,7 @@ try {
   delete process.env.HIROUTE_PI_ROUTE;
   const modelId = route.provider + '/' + route.model.id;
   const credentials=new Map();
-  const runtime = await ModelRuntime.create({modelsPath:null,credentials:{
+  const runtime = await ModelRuntime.create({modelsPath:null,allowModelNetwork:false,refreshOnCreate:false,credentials:{
     async read(id){return credentials.get(id);},async list(){return [];},
     async modify(id,fn){const next=await fn(credentials.get(id));if(next!==undefined)credentials.set(id,next);return credentials.get(id);},
     async delete(id){credentials.delete(id);}
@@ -101,7 +97,8 @@ try {
   runtime.registerProvider(route.provider,{api:'openai-responses',baseUrl:route.endpoint,models:[route.model]});
   await runtime.setRuntimeApiKey(route.provider,token);
   const model = runtime.getModels(route.provider).find(item=>item.id===route.model.id);
-  if (!model) throw new Error();
+  if (!model || model.api!=='openai-responses' || model.baseUrl!==route.endpoint
+      || model.contextWindow!==route.model.contextWindow || model.maxTokens!==route.model.maxTokens) throw new Error();
 
   // Read native resource settings without writing them. Snapshot each scope, so reload cannot
   // undo host overrides or turn relative project Skill paths into user paths.
@@ -133,10 +130,12 @@ try {
         if (session || realpathSync(p.cwd)!==process.cwd() || p.mcpServers?.length) throw new Error();
         let manager;
         if (request.method==='session/load') {
+          assertPiCapabilities(sdk, 'continue');
           const header=ownedFile(file,root); if (header.id!==p.sessionId) throw new Error();
           manager=SessionManager.open(file,root);
           if (manager.getSessionId()!==header.id || manager.getSessionFile()!==file || manager.buildSessionContext().messages.length===0) throw new Error();
         } else {
+          assertPiCapabilities(sdk, 'worker');
           try {lstatSync(file);throw new Error('already-exists');} catch(error) {if (error.code!=='ENOENT') throw error;}
           manager=SessionManager.create(process.cwd(),root); manager.setSessionFile(file);
         }

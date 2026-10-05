@@ -40,6 +40,7 @@ WORKER_FIXTURE_TOOLING = {"scripts/test-agent-product-support.py",
                           "scripts/test-native-context-boundaries.py",
                           "scripts/test-qoder-product.py"}
 WORKER_BOOTSTRAP_TEST = "crates/daemon/src/delegation/profile/claude_adapter_bootstrap.test.mjs"
+PI_SDK_CONTRACT_TEST = "crates/integrations/src/agents/pi_sdk_contract.test.mjs"
 INTEGRATION_SKILL = ".agents/skills/hiroute-integrate/SKILL.md"
 WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/release.yml"}
 WEBSITE_PREFIXES = ("apps/website/", ".github/scripts/")
@@ -408,6 +409,9 @@ def select(paths, full=False):
         commands.append(["python3", "scripts/test-qoder-product.py"])
     if full or any(path.startswith("crates/daemon/src/delegation/profile/") for path in paths):
         commands.append(["node", "--test", WORKER_BOOTSTRAP_TEST])
+    if full or any(path.startswith(("crates/integrations/src/agents/pi_",
+                                   "crates/daemon/src/delegation/profile/pi")) for path in paths):
+        commands.append(["node", "--test", PI_SDK_CONTRACT_TEST])
     if full or release_contract_tooling:
         commands.extend([["python3", "scripts/test-release-contracts.py"],
                          ["python3", "scripts/test-release-contract-pr.py"],

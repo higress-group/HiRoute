@@ -1,12 +1,19 @@
 //! Isolate tests that compose production discovery without mutating process-global HOME.
 
 pub(crate) fn isolated_agent_home(test_name: &str) -> bool {
-    isolated_agent_home_inner(test_name, false)
+    isolated_agent_home_inner(test_name, false, None)
+}
+pub(crate) fn isolated_agent_home_with_path(test_name: &str, path: &std::ffi::OsStr) -> bool {
+    isolated_agent_home_inner(test_name, false, Some(path))
 }
 pub(crate) fn isolated_ignored_agent_home(test_name: &str) -> bool {
-    isolated_agent_home_inner(test_name, true)
+    isolated_agent_home_inner(test_name, true, None)
 }
-fn isolated_agent_home_inner(test_name: &str, ignored: bool) -> bool {
+fn isolated_agent_home_inner(
+    test_name: &str,
+    ignored: bool,
+    path: Option<&std::ffi::OsStr>,
+) -> bool {
     const CHILD: &str = "HIROUTE_ISOLATED_DAEMON_TEST";
     if std::env::var(CHILD).as_deref() == Ok(test_name) {
         return false;
@@ -56,7 +63,10 @@ fn isolated_agent_home_inner(test_name: &str, ignored: bool) -> bool {
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
         .env("CLAUDE_CONFIG_DIR", &claude_home)
-        .env("PATH", "/usr/bin:/bin");
+        .env(
+            "PATH",
+            path.unwrap_or(std::ffi::OsStr::new("/usr/bin:/bin")),
+        );
     for name in [
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_AUTH_TOKEN",

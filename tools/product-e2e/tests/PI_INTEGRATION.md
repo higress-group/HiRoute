@@ -13,8 +13,13 @@ Use the Linux or Mac test environment described in the
 [product test map](../../../docs/code-map/testing.md).
 [Hosted CI](../../../docs/github-actions-validation.md) does not execute these
 installed native clients. Select an exact committed
-candidate, the official `@earendil-works/pi-coding-agent` 1.0.2 CLI and Node >=22.19.
-The SDK must be adjacent to that CLI; an unrelated global SDK is not a substitute.
+candidate and an explicitly installed official `@earendil-works/pi-coding-agent`
+CLI with Node >=22.19. The reproducible reference fixture uses 1.0.2; compatibility
+runs may select another exact release, including 1.0.1, without changing the journeys.
+This acceptance pin is not production admission: the
+[operation-specific contract](../../../docs/code-map/worker-context.md#pi-compatibility-is-a-capability-contract)
+checks actual required interfaces and local behavior. The SDK must be exported by
+the selected CLI's own package; an unrelated global SDK is not a substitute.
 Set absolute `HIROUTE_WORKER_PI_BINARY`, `HIROUTE_WORKER_NODE` and full
 `HIROUTE_PRODUCT_CANDIDATE_SHA`. Missing inputs fail instead of skipping silently.
 
@@ -57,6 +62,12 @@ are resolved offline; missing packages are not installed. Extensions are disable
 Native model/default/auth files are borrowed and must remain byte-for-byte intact.
 Only the task's `native-pi.jsonl` is owned. Validate its current v3 shape before
 native open, because the SDK can otherwise skip malformed rows or migrate history.
+SDK release and transcript format compatibility are separate. Missing native open
+only blocks Continue; an unknown SDK writer or existing transcript format blocks
+Worker execution/restoration without changing unrelated model or task-route setup.
+Cheap local interface/ownership regressions are in
+`crates/integrations/src/agents/pi_sdk_contract.test.mjs`; synthetic release labels
+prove admission behavior, not actual future-release compatibility.
 
 Main-Agent model settings own only one provider member in `models.json` and the
 local grant inside that private file. Pi's separate user `settings.json` default

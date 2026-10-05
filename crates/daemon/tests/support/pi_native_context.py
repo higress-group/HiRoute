@@ -68,6 +68,8 @@ def corrupt_history_refuses_model_call(product, fixture, task, upstreams, varian
                 del entry['message']['content']
             elif variant == 'old-session-version':
                 rows[0]['version'] = 2
+            elif variant == 'unknown-session-version':
+                rows[0]['version'] = 4
             else:
                 raise AssertionError('unknown native corruption fixture')
             damaged = ('\n'.join(json.dumps(row) for row in rows) + '\n').encode()
@@ -93,7 +95,7 @@ def verify_corrupt_history_variants(product, fixture, task, upstreams):
     from delegation_product import worker_cli, wait_for_worker_result
     from native_context_product import wait_for_resumable_task
     results = [corrupt_history_refuses_model_call(product, fixture, task, upstreams)]
-    for variant in ('missing-content', 'old-session-version'):
+    for variant in ('missing-content', 'old-session-version', 'unknown-session-version'):
         # Give each corruption an independently healthy task. A previously refused
         # Continue cannot mask a later variant by withdrawing that task's capability.
         command = ('worker exec --plan ' + fixture['plan_id'] + ' --cwd ' + str(product.project)

@@ -246,6 +246,7 @@ fn pi_transcript(
     let header: serde_json::Value =
         serde_json::from_str(&header).map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
     if header["type"] != "session"
+        || header["version"] != 3
         || header["id"] != id
         || header["cwd"].as_str() != context.context.workspace.to_str()
     {

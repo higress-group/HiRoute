@@ -38,6 +38,15 @@ impl LocalControlAdapter {
         } else {
             hiroute_domain::AgentKindV1::Qoder
         };
+        // Restore remains available even after the installed SDK becomes incompatible.
+        #[cfg(unix)]
+        if kind == hiroute_domain::AgentKindV1::Pi
+            && matches!(spec.model, AgentFacetIntent::Configure { .. })
+        {
+            self.scanner
+                .check_pi_model_configuration()
+                .map_err(|_| ControlReadError::Unavailable)?;
+        }
         let pi_settings = if kind == hiroute_domain::AgentKindV1::Pi {
             Some(
                 self.scanner

@@ -20,6 +20,18 @@ runner_spec.loader.exec_module(runner)
 
 
 class SelectionTests(unittest.TestCase):
+    def test_pi_runtime_contract_changes_select_local_capability_regressions(self):
+        check = ['node', '--test', plan.PI_SDK_CONTRACT_TEST]
+        for path in ('crates/integrations/src/agents/pi_runtime.rs',
+                     'crates/integrations/src/agents/pi_sdk_contract.mjs',
+                     'crates/daemon/src/delegation/profile/pi_worker_bridge.mjs'):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertIn(check, result['commands'])
+                self.assertIn(check, plan.integration_preflight(result)['commands'])
+        self.assertIn(check, plan.select([], full=True)['commands'])
+        self.assertNotIn(check, plan.select(['apps/desktop/src/ui/assets/pi.svg'])['commands'])
+
     def test_agent_catalog_changes_select_the_source_to_bundle_check(self):
         command = ['python3', 'assets/release-facts/current/prepare-bundle.py', '--check']
         for path in (

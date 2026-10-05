@@ -4,7 +4,7 @@ use super::*;
 pub(super) fn render(
     input: &ProfileInput<'_>,
 ) -> Result<RenderedHarnessProfile, DelegationErrorV1> {
-    hiroute_integrations::agents::pi_sdk_installation(input.harness_binary)
+    hiroute_integrations::agents::pi_cli_installation(input.harness_binary)
         .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
     let context = input
         .context_window_tokens
@@ -18,14 +18,21 @@ pub(super) fn render(
     let provider = "hiroute-worker";
     let mut rendered = RenderedHarnessProfile {
         native_model_id: format!("{provider}/{}", input.alias),
-        files: vec![RunMaterialFile {
-            relative_path: "pi-worker-bridge.mjs".into(),
-            contents: Zeroizing::new(include_bytes!("pi_worker_bridge.mjs").to_vec()),
-            executable: false,
-        }],
+        files: vec![
+            RunMaterialFile {
+                relative_path: "pi-worker-bridge.mjs".into(),
+                contents: Zeroizing::new(include_bytes!("pi_worker_bridge.mjs").to_vec()),
+                executable: false,
+            },
+            RunMaterialFile {
+                relative_path: "pi-sdk-contract.mjs".into(),
+                contents: Zeroizing::new(hiroute_integrations::PI_SDK_CONTRACT.as_bytes().to_vec()),
+                executable: false,
+            },
+        ],
         ..Default::default()
     };
-    let route = json!({"cliPackage":hiroute_integrations::PI_NPM_PACKAGE,"cliVersion":hiroute_integrations::PI_WORKER_VERSION, "minimumNode":hiroute_integrations::PI_NODE_MINIMUM,"provider":provider,"endpoint":format!("http://{}/v1",input.gateway),
+    let route = json!({"minimumNode":hiroute_integrations::PI_NODE_MINIMUM,"provider":provider,"endpoint":format!("http://{}/v1",input.gateway),
         "model":{"id":input.alias,"name":"HiRoute frozen Plan","reasoning":false,"input":["text"],
         "cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":context,"maxTokens":output}});
     for (key, value) in [

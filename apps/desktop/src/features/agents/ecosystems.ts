@@ -39,11 +39,11 @@ export function agentDisplayName(agentId: string, language: 'zh' | 'en'): string
   }
 }
 
-export function agentBrand(agentId: string): 'codex' | 'claude-code' | 'qoder' | 'agent' {
+export function agentBrand(agentId: string): 'codex' | 'claude-code' | 'qoder' | 'pi' | 'agent' {
   switch (agentEcosystem(agentId)) {
     case 'codex': return 'codex';
     case 'claude': return 'claude-code';
-    case 'pi': return 'agent';
+    case 'pi': return 'pi';
     case 'qoder': return 'qoder';
     default: return 'agent';
   }

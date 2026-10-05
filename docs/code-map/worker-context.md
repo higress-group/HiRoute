@@ -41,6 +41,35 @@ The shared boundary journey retains total model POST counts, concurrent native
 children, exact Continue and neighbor preservation; missing/corrupt history must
 produce zero model calls without repair or replacement.
 
+## Pi compatibility is a capability contract
+
+The acceptance fixture pins a reproducible release; production never compares a
+Pi release label with that pin or a version allowlist. The selected CLI's owning
+manifest binds its declared `bin.pi` and exported SDK entry. Both are resolved
+inside the same package; neither npm directory depth nor an unrelated global SDK
+establishes compatibility. See the shared [SDK contract](../../crates/integrations/src/agents/pi_sdk_contract.mjs)
+and [local runner](../../crates/integrations/src/agents/pi_runtime.rs).
+
+| User operation | Required local contract | Independent boundary |
+| --- | --- | --- |
+| Import an explicit static API | Supported native models/auth declarations and credential precedence | No Worker SDK, prompt, helper or OAuth refresh |
+| Configure model routes | Offline native model configuration reader preserves the declared API, endpoint and token budgets | No Skill, task session or history interface; Restore remains available after an SDK incompatibility |
+| Configure task routing | Native resource loader finds a private Skill; read/bash tool interfaces and the sibling HiRoute CLI are available | No model runtime or Worker session prerequisite; CLI manifest changes invalidate cached resource proof |
+| Confirm dependencies / execute a Worker | Selected Node, runtime provider/key binding, resource and new-session interfaces | No native open prerequisite for a new task; actual execution keeps the frozen route and isolated in-memory credentials |
+| Continue | Native open plus the exact owned v3 transcript and context/session identity | No new-session create/set-file prerequisite; CLI compatibility does not authorize an unknown history format, migration, row repair or a replacement conversation |
+
+Local checks use private temporary files and empty credentials, disable model
+network refresh and extensions, and never prompt a model. Required missing
+interfaces or mismatched configuration fail on their own operation; UI keeps the
+shared enable/adjust/disable flow. Structural interface checks do not certify all
+future releases' semantics. Preserve runtime guards and run the [same native product
+journeys](../../tools/product-e2e/tests/PI_INTEGRATION.md) against another explicit
+official release before claiming it was actually validated.
+
+For later ecosystems, separate an acceptance pin, an adapter capability contract
+and each persisted history format. Reuse shared lifecycle/fixture owners; extend
+only the native leaf and capability regression when the startup protocol differs.
+
 ## Follow a task through its owners
 
 | Product question | Read this owner | Boundary to preserve |

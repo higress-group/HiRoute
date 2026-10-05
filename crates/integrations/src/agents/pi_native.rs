@@ -94,9 +94,8 @@ impl FilesystemAgentScannerV1 {
                 ExecutableProbe::NotFound,
             );
         };
-        if super::super::pi_sdk_installation(&executable).is_err()
-            || !self.layout.pi_config_root.is_absolute()
-        {
+        let installation = super::super::pi_cli_installation(&executable);
+        if installation.is_err() || !self.layout.pi_config_root.is_absolute() {
             return report_only_agent(
                 "agent_pi_default",
                 AgentKindV1::Pi,
@@ -104,10 +103,11 @@ impl FilesystemAgentScannerV1 {
                 AgentReportOnlyReasonV1::ConfigUnavailable,
             );
         }
+        let identity = installation.expect("checked CLI identity");
         let mut outcome = resolve_agent_observation(base_observation(
             "agent_pi_default",
             AgentKindV1::Pi,
-            super::super::PI_WORKER_VERSION.into(),
+            identity.version,
         ));
         let resource_settings = super::super::filesystem_config::read_validated_config_bytes(
             &self.layout.pi_config_root.join("settings.json"),
@@ -156,22 +156,30 @@ impl FilesystemAgentScannerV1 {
                     proof.dependency_digest = installation.observation_digest.clone();
                 }
             }
-            // The pinned SDK's normal resource loader and native bash tool are this adapter's
-            // contract. The sibling HiRoute CLI is checked separately during normal Save.
+            // Only a successful local resource/tool interface check authorizes Skill loading.
+            // Model configuration does not depend on the Worker or history SDK contracts.
+            let resource_contract = self.pi_collaboration_cli.lock().ok().is_some_and(|v| {
+                v.as_ref()
+                    .is_some_and(|(_, digest)| *digest == identity.manifest_digest)
+            });
             for proof in &mut installation.capability_evidence {
-                if proof.capability == AgentCapability::SkillLoading && resources_allowed {
+                if proof.capability == AgentCapability::SkillLoading
+                    && resources_allowed
+                    && resource_contract
+                {
                     proof.state = CapabilityState::Proven;
                     proof.reason = None;
                     proof.adapter_contract = "hiroute.pi-native-resources/v1".into();
                 }
                 if proof.capability == AgentCapability::TrustedCliExecution
                     && self.pi_collaboration_cli.lock().ok().is_some_and(|v| {
-                        v.as_ref().is_some_and(|cli| {
-                            super::super::executable::resolve(cli)
-                                .ok()
-                                .flatten()
-                                .as_ref()
-                                == Some(cli)
+                        v.as_ref().is_some_and(|(cli, digest)| {
+                            *digest == identity.manifest_digest
+                                && super::super::executable::resolve(cli)
+                                    .ok()
+                                    .flatten()
+                                    .as_ref()
+                                    == Some(cli)
                         })
                     })
                 {
@@ -190,6 +198,7 @@ impl FilesystemAgentScannerV1 {
             managed_launch: None,
         }
     }
+    #[cfg(unix)]
     pub fn check_pi_collaboration(&self, cli: &Path) -> Result<(), AgentFilesystemScanError> {
         *self
             .pi_collaboration_cli
@@ -198,14 +207,41 @@ impl FilesystemAgentScannerV1 {
         let executable = self
             .pi_executable_target()
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
-        super::super::pi_sdk_installation(&executable)?;
+        let identity = super::super::pi_cli_installation(&executable)?;
+        self.check_pi_capability(&executable, super::super::PiSdkCapability::Collaboration)?;
+        if super::super::pi_cli_installation(&executable)?.manifest_digest
+            != identity.manifest_digest
+        {
+            return Err(AgentFilesystemScanError::SourceChanged);
+        }
         let cli = super::super::executable::resolve(cli)
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
         *self
             .pi_collaboration_cli
             .lock()
-            .map_err(|_| AgentFilesystemScanError::SourceUnavailable)? = Some(cli);
+            .map_err(|_| AgentFilesystemScanError::SourceUnavailable)? =
+            Some((cli, identity.manifest_digest));
         Ok(())
+    }
+
+    #[cfg(unix)]
+    pub fn check_pi_model_configuration(&self) -> Result<(), AgentFilesystemScanError> {
+        let executable = self
+            .pi_executable_target()
+            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
+        self.check_pi_capability(&executable, super::super::PiSdkCapability::Models)
+    }
+
+    #[cfg(unix)]
+    fn check_pi_capability(
+        &self,
+        executable: &Path,
+        capability: super::super::PiSdkCapability,
+    ) -> Result<(), AgentFilesystemScanError> {
+        let node = super::super::executable::resolve(Path::new("node"))
+            .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?
+            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
+        super::super::check_pi_sdk_capability(executable, &node, capability)
     }
 }

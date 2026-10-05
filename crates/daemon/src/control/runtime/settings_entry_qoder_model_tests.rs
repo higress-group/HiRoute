@@ -41,8 +41,17 @@ fn restore_spec(fixture: &QoderFixture, status: &serde_json::Value) -> serde_jso
 
 #[test]
 fn pi_default_selected_after_prepare_blocks_final_removal_without_losing_models() {
-    if crate::test_support::isolated_agent_home(
+    // Supply only the model-capability receipt, without a machine-wide Node dependency.
+    // SDK imports/semantics are independently covered by the SDK contract and native E2E.
+    let tools = crate::test_support::private_tempdir();
+    let node = tools.path().join("node");
+    private_file(&node, b"#!/bin/sh\nif [ \"$1\" = --version ]; then echo v22.19.0; elif [ \"$2\" = --check ] && [ \"$4\" = models ]; then echo hiroute.pi-sdk-capability/v1:ok; else exit 97; fi\n");
+    fs::set_permissions(&node, fs::Permissions::from_mode(0o700)).unwrap();
+    let path =
+        std::env::join_paths([tools.path(), Path::new("/usr/bin"), Path::new("/bin")]).unwrap();
+    if crate::test_support::isolated_agent_home_with_path(
         "control::runtime::native_model::tests::settings_entry_tests::qoder::models::pi_default_selected_after_prepare_blocks_final_removal_without_losing_models",
+        &path,
     ) {
         return;
     }

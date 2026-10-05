@@ -72,7 +72,7 @@ fn key(
     if value.starts_with('!') {
         return (DiscoveredAuthSource::HelperNeedsInput, None);
     }
-    // Official 1.0.2 templates: $NAME/${NAME}, $$ and $!. Plain names are literal.
+    // Supported native key templates: $NAME/${NAME}, $$ and $!. Plain names are literal.
     // Resolve only referenced names, never evaluate a shell or enumerate the environment.
     let mut resolved = Zeroizing::new(String::new());
     let mut rest = value;
@@ -185,7 +185,7 @@ impl FilesystemAgentScannerV1 {
         // not a second checked-in catalog or execution of user/provider JavaScript.
         let sdk = self
             .pi_executable_target()
-            .and_then(|p| super::super::pi_sdk_installation(&p).ok());
+            .and_then(|p| super::super::pi_cli_installation(&p).ok());
         let mut catalog_digests = BTreeMap::new();
         for (provider_id, variable) in [
             ("openai", "OPENAI_API_KEY"),

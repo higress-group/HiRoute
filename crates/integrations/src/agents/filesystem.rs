@@ -205,7 +205,8 @@ impl AgentFilesystemLayoutV1 {
 
 #[derive(Clone)]
 pub struct FilesystemAgentScannerV1 {
-    pi_collaboration_cli: std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+    pi_collaboration_cli:
+        std::sync::Arc<std::sync::Mutex<Option<(PathBuf, hiroute_domain::CanonicalDigest)>>>,
     pub(super) layout: AgentFilesystemLayoutV1,
     registry: ClaudeRegistrationIndexV1,
     legacy_recovery_version: Option<String>,

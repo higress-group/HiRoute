@@ -248,6 +248,7 @@
     "hiroute.pi-local-cli/v1",
     "hiroute.pi-native-resources/v1",
     "hiroute.pi-native-restore/v1",
+    "hiroute.pi-sdk-capability/v1",
     "hiroute.plan-authoring/v2",
     "hiroute.plan-content-change/v2",
     "hiroute.plan-content-preview/v2",

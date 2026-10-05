@@ -108,6 +108,13 @@ impl ScanEnvironment {
 pub(crate) fn validate_selection(
     request: &WorkerDependenciesSelectRequestV1,
 ) -> Result<WorkerDependenciesSelectRequestV1, DelegationErrorV1> {
+    validate_selection_for(request, hiroute_integrations::PiSdkCapability::Worker)
+}
+
+fn validate_selection_for(
+    request: &WorkerDependenciesSelectRequestV1,
+    capability: hiroute_integrations::PiSdkCapability,
+) -> Result<WorkerDependenciesSelectRequestV1, DelegationErrorV1> {
     if !request.valid() {
         return Err(DelegationErrorV1::InvalidArguments);
     }
@@ -118,7 +125,7 @@ pub(crate) fn validate_selection(
         .transpose()?;
     let cli = normalize_required(Path::new(&request.cli_path), true)?;
     if request.harness == WorkerHarnessV1::Pi {
-        hiroute_integrations::pi_sdk_installation(&cli)
+        hiroute_integrations::pi_cli_installation(&cli)
             .map_err(|_| DelegationErrorV1::DependenciesInvalid)?;
     }
     let node = request
@@ -128,9 +135,11 @@ pub(crate) fn validate_selection(
         .transpose()?;
     #[cfg(unix)]
     if request.harness == WorkerHarnessV1::Pi {
-        hiroute_integrations::validate_pi_node(
+        hiroute_integrations::check_pi_sdk_capability(
+            &cli,
             node.as_deref()
                 .ok_or(DelegationErrorV1::DependenciesInvalid)?,
+            capability,
         )
         .map_err(|_| DelegationErrorV1::DependenciesInvalid)?;
     }
@@ -143,8 +152,16 @@ pub(crate) fn validate_selection(
     })
 }
 
-pub(crate) fn validate_persisted_installation(
+#[cfg(test)]
+fn validate_persisted_installation(
     selection: &WorkerInstallationConfig,
+) -> Result<WorkerInstallationConfig, DelegationErrorV1> {
+    validate_persisted_installation_for_run(selection, false)
+}
+
+pub(crate) fn validate_persisted_installation_for_run(
+    selection: &WorkerInstallationConfig,
+    continuing: bool,
 ) -> Result<WorkerInstallationConfig, DelegationErrorV1> {
     let request = WorkerDependenciesSelectRequestV1 {
         harness: selection.harness,
@@ -159,7 +176,12 @@ pub(crate) fn validate_persisted_installation(
             .map(|path| path.to_string_lossy().into_owned()),
         expected_selection_revision: 0,
     };
-    let normalized = validate_selection(&request)?;
+    let capability = if continuing {
+        hiroute_integrations::PiSdkCapability::Continue
+    } else {
+        hiroute_integrations::PiSdkCapability::Worker
+    };
+    let normalized = validate_selection_for(&request, capability)?;
     if normalized.adapter_path != request.adapter_path
         || normalized.cli_path != request.cli_path
         || normalized.node_path != request.node_path
