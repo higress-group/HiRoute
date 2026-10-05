@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="720pt" height="345.6pt" viewBox="0 0 720 345.6" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.11.2, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 345.6
+L 720 345.6
+L 720 0
+L 0 0
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 84.31 255.416
+L 709.2 255.416
+L 709.2 45.235547
+L 84.31 45.235547
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 84.31 54.789204
+L 557.711515 54.789204
+L 557.711515 114.99033
+L 84.31 114.99033
+z
+" clip-path="url(#p52c476096b)" style="fill: #5564bd"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 84.31 185.661217
+L 123.670338 185.661217
+L 123.670338 245.862343
+L 84.31 245.862343
+z
+" clip-path="url(#p52c476096b)" style="fill: #078677"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <defs>
+       <path id="m82bb2c2545" d="M 0 0
+L 0 3.5
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#m82bb2c2545" x="84.31" y="255.416" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="84.31" y="270.013656" transform="rotate(-0 84.31 270.013656)">0%</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_2">
+      <g>
+       <use xlink:href="#m82bb2c2545" x="202.660379" y="255.416" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="202.660379" y="270.013656" transform="rotate(-0 202.660379 270.013656)">25%</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_3">
+      <g>
+       <use xlink:href="#m82bb2c2545" x="321.010758" y="255.416" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="321.010758" y="270.013656" transform="rotate(-0 321.010758 270.013656)">50%</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_4">
+      <g>
+       <use xlink:href="#m82bb2c2545" x="439.361136" y="255.416" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="439.361136" y="270.013656" transform="rotate(-0 439.361136 270.013656)">75%</text>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_5">
+      <g>
+       <use xlink:href="#m82bb2c2545" x="557.711515" y="255.416" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="557.711515" y="270.013656" transform="rotate(-0 557.711515 270.013656)">100%</text>
+     </g>
+    </g>
+    <g id="text_6">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="396.755" y="284.013656" transform="rotate(-0 396.755 284.013656)">整单 API 等价成本 · 全 Astra = 100%</text>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_6">
+      <defs>
+       <path id="m7cbd49e816" d="M 0 0
+L -3.5 0
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#m7cbd49e816" x="84.31" y="84.889767" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_7">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="77.31" y="88.688595" transform="rotate(-0 77.31 88.688595)">全 Astra</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_7">
+      <g>
+       <use xlink:href="#m7cbd49e816" x="84.31" y="215.76178" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="text_8">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="77.31" y="219.560999" transform="rotate(-0 77.31 219.560999)">HiRoute 混合</text>
+     </g>
+    </g>
+   </g>
+   <g id="patch_5">
+    <path d="M 84.31 255.416
+L 709.2 255.416
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_9">
+    <text style="font-weight: 700; font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #192439" x="567.179545" y="88.007423" transform="rotate(-0 567.179545 88.007423)">$1.953–1.987</text>
+   </g>
+   <g id="text_10">
+    <text style="font-weight: 700; font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #192439" x="133.138368" y="218.879436" transform="rotate(-0 133.138368 218.879436)">$0.150–0.162</text>
+   </g>
+   <g id="text_11">
+    <text style="font-weight: 700; font-size: 23px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #087464" x="699.73197" y="221.736389" transform="rotate(-0 699.73197 221.736389)">−91.69%</text>
+   </g>
+   <g id="text_12">
+    <text style="font-size: 19px; font-family: 'DejaVu Sans'; text-anchor: start" x="84.31" y="25.235547" transform="rotate(-0 84.31 25.235547)">相同交付标准，成本降低超过 90%</text>
+   </g>
+  </g>
+  <g id="text_13">
+   <text style="font-size: 9px; font-family: 'DejaVu Sans'; fill: #566078" transform="translate(57.6 322.702242)">两次双方均达标运行的平均成本，包含全部尝试与路由评估。</text>
+   <text style="font-size: 9px; font-family: 'DejaVu Sans'; fill: #566078" transform="translate(57.6 333.504)">保守比较：混合成本上界 ÷ Astra 成本下界；完整三次结果见实验记录。</text>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p52c476096b">
+   <rect x="84.31" y="45.235547" width="624.89" height="210.180453"/>
+  </clipPath>
+ </defs>
+</svg>

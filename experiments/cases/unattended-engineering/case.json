@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/encode/httpx",
+  "baseline": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+  "task": "datacurve/httpx-streaming-json-iteration",
+  "task_source_revision": "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea",
+  "native_client_version": "0.160.0",
+  "context_window_tokens": 131072,
+  "auto_compact_token_limit": 60000,
+  "maximum_output_tokens": 65536,
+  "routing": {
+    "simple_threshold": 0,
+    "competence_floor": 0.5,
+    "qwen_reasoning": "xhigh",
+    "astra_reasoning": "medium"
+  },
+  "native_guard_seconds": 5400,
+  "request_budget_ms": 1800000,
+  "attempt_budget_ms": 1780000,
+  "independent_assertions": {
+    "feature": 108,
+    "existing": 229,
+    "incrementality": 6
+  },
+  "transport_exclusions": [
+    "test_logging_request",
+    "test_logging_redirect_chain",
+    "test_httpcore_exception_mapping"
+  ],
+  "no_savings_claim": true
+}

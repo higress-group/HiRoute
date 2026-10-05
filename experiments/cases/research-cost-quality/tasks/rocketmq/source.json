@@ -1,0 +1,11 @@
+{
+  "id": "rocketmq",
+  "url": "https://rocketmq.apache.org/docs/featureBehavior/10consumerretrypolicy/",
+  "resolved_url": "https://rocketmq.apache.org/docs/featureBehavior/10consumerretrypolicy/",
+  "title": "Apache RocketMQ consumer retry policy; frozen website snapshot",
+  "fetch_utc": "2026-10-03T16:21:41.393977+00:00",
+  "raw_sha256": "6a0e3cbc4211f852d56d6b224f48e9ecaf7d31096242f15c5fdcd44cf701f957",
+  "text_sha256": "2abd3fc621c78ac38316116aeb62b60d08ffbbe045b334e5925c720d64fea8c1",
+  "lines": 118,
+  "characters": 12280
+}

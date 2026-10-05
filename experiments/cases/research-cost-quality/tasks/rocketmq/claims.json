@@ -1,0 +1,302 @@
+[
+  {
+    "id": "rocketmq-01",
+    "claim": "消费重试超过指定次数后，消息会进入死信队列。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-02",
+    "claim": "消费失败、异常、超时或在 push queue 停留过久可触发重试。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-03",
+    "claim": "PushConsumer 与 SimpleConsumer 的重试机制和配置方式不同。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-04",
+    "claim": "Ready 是在 broker 等待消费，Inflight 是已获取但结果尚未返回。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-05",
+    "claim": "WaitingRetry 状态对 PushConsumer 和 SimpleConsumer 都存在。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-06",
+    "claim": "消费者返回成功后进入 Commit，状态机可结束。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-07",
+    "claim": "达到最大重试次数后进入 DLQ，可通过消费死信进行业务恢复。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-08",
+    "claim": "PushConsumer 两次消费间隔包含实际消费时间与重试间隔。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-09",
+    "claim": "最大重试数为 3 的例子总共允许 4 次投递（初次加 3 次重试）。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-10",
+    "claim": "PushConsumer 的无序消息重试使用递增间隔。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-11",
+    "claim": "重试次数超过 16 时，后续每次间隔为 2 小时。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-12",
+    "claim": "PushConsumer 的有序消息重试使用固定间隔。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-13",
+    "claim": "PushConsumer 通过失败状态码触发重试，SDK 也捕获意外异常。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-14",
+    "claim": "SimpleConsumer 的 InvisibleDuration 由 API 设置，重试时复用该值。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-15",
+    "claim": "修改 InvisibleDuration 的前提包括尚未超时且尚未返回消费状态。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-16",
+    "claim": "修改 InvisibleDuration 后的新时长仍从最初获取消息的时刻计算。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-17",
+    "claim": "SimpleConsumer 最大重试次数在创建 consumer group 的元数据中指定。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-18",
+    "claim": "示例中 InvisibleDuration=30ms、10ms 处理失败时，距重试还剩 20ms。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-19",
+    "claim": "官方建议用频繁返回消费失败来实现消费限流。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-20",
+    "claim": "文档建议少量重试与较长间隔，以减少系统负担。",
+    "source": "rocketmq"
+  },
+  {
+    "id": "rocketmq-21",
+    "source": "rocketmq-transactions",
+    "claim": "普通消息与本地订单事务异步组合可能出现消息已发但订单未执行，或订单完成但消息未发。"
+  },
+  {
+    "id": "rocketmq-22",
+    "source": "rocketmq-transactions",
+    "claim": "事务消息的定义目标是消息生产与本地事务之间的最终一致性。"
+  },
+  {
+    "id": "rocketmq-23",
+    "source": "rocketmq-transactions",
+    "claim": "流程先发送half message并收到broker ACK，再执行本地事务并提交第二次结果。"
+  },
+  {
+    "id": "rocketmq-24",
+    "source": "rocketmq-transactions",
+    "claim": "broker确认收到half message后，消费者立即可以消费它。"
+  },
+  {
+    "id": "rocketmq-25",
+    "source": "rocketmq-transactions",
+    "claim": "Commit使half message可投递；Rollback使其不向消费者投递。"
+  },
+  {
+    "id": "rocketmq-26",
+    "source": "rocketmq-transactions",
+    "claim": "第二次ACK丢失或状态Unknown时，broker等待后向生产者集群查询本地事务结果。"
+  },
+  {
+    "id": "rocketmq-27",
+    "source": "rocketmq-transactions",
+    "claim": "事务等待阶段的half message对下游消费者不可见。"
+  },
+  {
+    "id": "rocketmq-28",
+    "source": "rocketmq-transactions",
+    "claim": "消费者确认成功后，事务消息立即从物理文件删除。"
+  },
+  {
+    "id": "rocketmq-29",
+    "source": "rocketmq-transactions",
+    "claim": "保留期到期或存储不足时，broker滚动删除物理文件中最早保存的消息。"
+  },
+  {
+    "id": "rocketmq-30",
+    "source": "rocketmq-transactions",
+    "claim": "事务消息可以直接发到MessageType为Normal的topic。"
+  },
+  {
+    "id": "rocketmq-31",
+    "source": "rocketmq-transactions",
+    "claim": "事务消息不保证消费结果与上游执行结果一致，下游仍须正确处理及重试。"
+  },
+  {
+    "id": "rocketmq-32",
+    "source": "rocketmq-transactions",
+    "claim": "事务消息保证上游状态与下游分支在消息投递之前始终一致。"
+  },
+  {
+    "id": "rocketmq-33",
+    "source": "rocketmq-transactions",
+    "claim": "超过事务超时后仍无法确定提交或回滚时，broker默认回滚该消息。"
+  },
+  {
+    "id": "rocketmq-34",
+    "source": "rocketmq-transactions",
+    "claim": "发送事务消息前应配置transaction checker，并关联本地事务执行。"
+  },
+  {
+    "id": "rocketmq-35",
+    "source": "rocketmq-transactions",
+    "claim": "示例checker按OrderId查询本地订单状态，缺少该属性时返回ROLLBACK。"
+  },
+  {
+    "id": "rocketmq-36",
+    "source": "rocketmq-transactions",
+    "claim": "示例在half message发送失败时允许终止事务并回滚消息。"
+  },
+  {
+    "id": "rocketmq-37",
+    "source": "rocketmq-transactions",
+    "claim": "示例在未知异常时等待状态查询；提交异常可按业务决定重试或依靠查询提交状态。"
+  },
+  {
+    "id": "rocketmq-38",
+    "source": "rocketmq-transactions",
+    "claim": "大量Unknown与事务回查会拖慢处理并使性能下降，应尽量避免。"
+  },
+  {
+    "id": "rocketmq-39",
+    "source": "rocketmq-transactions",
+    "claim": "回查遇到仍在执行的本地事务时，应立刻返回Rollback。"
+  },
+  {
+    "id": "rocketmq-40",
+    "source": "rocketmq-transactions",
+    "claim": "增大首次回查间隔可缓解慢事务频繁查询，但会增加依赖查询结果的消息延迟。"
+  },
+  {
+    "id": "rocketmq-41",
+    "source": "rocketmq-ordering",
+    "claim": "同一topic所有message group的消息都保证全局FIFO。"
+  },
+  {
+    "id": "rocketmq-42",
+    "source": "rocketmq-ordering",
+    "claim": "message group是有序消息的排序范围，可按业务细粒度划分以提高并发。"
+  },
+  {
+    "id": "rocketmq-43",
+    "source": "rocketmq-ordering",
+    "claim": "生产顺序要求单一生产者串行发送，多线程并发发送不能确定线程间顺序。"
+  },
+  {
+    "id": "rocketmq-44",
+    "source": "rocketmq-ordering",
+    "claim": "不同系统的生产者只要使用同一message group，就能保证它们的发送顺序。"
+  },
+  {
+    "id": "rocketmq-45",
+    "source": "rocketmq-ordering",
+    "claim": "满足发送前提时，同组消息顺序写入同一队列，异组间没有特定顺序。"
+  },
+  {
+    "id": "rocketmq-46",
+    "source": "rocketmq-ordering",
+    "claim": "应用须遵守接收、处理、响应路径，防止异步处理打乱消费顺序。"
+  },
+  {
+    "id": "rocketmq-47",
+    "source": "rocketmq-ordering",
+    "claim": "PushConsumer逐条顺序投递，而SimpleConsumer可批量拉取，应用须自行实现消费顺序。"
+  },
+  {
+    "id": "rocketmq-48",
+    "source": "rocketmq-ordering",
+    "claim": "有序消息的投递重试有上限，达到上限停止重试以免后续消息一直等待。"
+  },
+  {
+    "id": "rocketmq-49",
+    "source": "rocketmq-ordering",
+    "claim": "业务FIFO同时需要生产顺序与消费顺序，只有一侧有序不足以保证。"
+  },
+  {
+    "id": "rocketmq-50",
+    "source": "rocketmq-ordering",
+    "claim": "未设置message group但使用顺序消费时，保证队列存储顺序，不必等同发送顺序。"
+  },
+  {
+    "id": "rocketmq-51",
+    "source": "rocketmq-ordering",
+    "claim": "有序消息消费成功仅逻辑标记，可在保留期或空间清理前回溯重消费。"
+  },
+  {
+    "id": "rocketmq-52",
+    "source": "rocketmq-ordering",
+    "claim": "该页把消费重试视为新消息生命周期，并要求同组后续消息等待前一条处理。"
+  },
+  {
+    "id": "rocketmq-53",
+    "source": "rocketmq-ordering",
+    "claim": "有序消息不要求topic的MessageType为FIFO。"
+  },
+  {
+    "id": "rocketmq-54",
+    "source": "rocketmq-ordering",
+    "claim": "5.0示例通过mqadmin updateSubGroup的-o true配置有序消费组。"
+  },
+  {
+    "id": "rocketmq-55",
+    "source": "rocketmq-ordering",
+    "claim": "发送有序消息必须配置message group，该页推荐按业务进行细粒度分组。"
+  },
+  {
+    "id": "rocketmq-56",
+    "source": "rocketmq-ordering",
+    "claim": "示例要求消费组启用有序投递，否则消息并发且无特定顺序。"
+  },
+  {
+    "id": "rocketmq-57",
+    "source": "rocketmq-ordering",
+    "claim": "SimpleConsumer同组前一条未完成时，Receive不能获取下一条消息。"
+  },
+  {
+    "id": "rocketmq-58",
+    "source": "rocketmq-ordering",
+    "claim": "SimpleConsumer完成消费后必须显式调用ACK提交结果。"
+  },
+  {
+    "id": "rocketmq-59",
+    "source": "rocketmq-ordering",
+    "claim": "该页建议串行而非批量消费，因为部分批次失败重试可能重复处理并打乱顺序。"
+  },
+  {
+    "id": "rocketmq-60",
+    "source": "rocketmq-ordering",
+    "claim": "过大的message group会压垮对应队列并阻碍扩展，可按订单ID或用户ID划分。"
+  }
+]

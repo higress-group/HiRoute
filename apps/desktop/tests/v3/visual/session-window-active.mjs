@@ -15,7 +15,9 @@ try {
   try {
     await navigate(client, new URL('session-window.html', baseUrl).href, { width: 1280, height: 900 });
     await waitFor(client, 'Boolean(window.sessionWindow)', { timeout: 7000 });
-    const batches = [[0, 4], [4, 7], [7, 10], [10, 12], [12, 19], [19, 22]];
+    const count = await evaluate(client, `import('/session-window-scenarios.mjs').then(module => module.sessionWindowScenarioCount)`);
+    if (!Number.isInteger(count) || count < 22) throw new Error('Required session scenarios are missing');
+    const batches = Array.from({ length: Math.ceil(count / 4) }, (_, index) => [index * 4, Math.min(count, (index + 1) * 4)]);
     const checks = [];
     for (const [start, end] of batches) {
       const batch = await evaluate(client, `import('/session-window-scenarios.mjs').then(module => module.runSessionWindowScenarios(${start}, ${end}))`);
@@ -31,7 +33,7 @@ try {
       summary: { total: checks.length, green: checks.filter(check => check.state === 'green').length, red: checks.filter(check => check.state === 'red').length },
     };
     await writeFile(path.join(outputRoot, 'session-window-report.json'), `${JSON.stringify(report, null, 2)}\n`);
-    if (report.summary.red > 0) process.exitCode = 1;
+    if (report.summary.total !== count || report.summary.red > 0) process.exitCode = 1;
   } finally {
     client.close();
   }

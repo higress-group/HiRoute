@@ -4,6 +4,8 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const dist = path.join(root, 'dist');
 const required = [
+  'news/index.html', 'en/news/index.html',
+  'news/astra-qwen-smart-routing/index.html', 'en/news/astra-qwen-smart-routing/index.html',
   'index.html', 'en/index.html', 'download/index.html', 'en/download/index.html',
   'changelog/index.html', 'en/changelog/index.html',
   'docs/index.html', 'en/docs/index.html',

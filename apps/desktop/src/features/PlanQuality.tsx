@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { UiIcon } from '../ui';
 import { safeDiagnosticCode } from '../error-code';
 import { observationRead } from './observation-client';
+import { qualityExecutionModels } from './plan-quality-models';
 
 type Assessment = {
   trigger_request_id: string;
@@ -62,6 +63,7 @@ export function PlanQuality({
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const [samples, setSamples] = useState<PlanQualitySample[]>([]);
+  const [executionModels, setExecutionModels] = useState<Record<string, string>>({});
   const [cursor, setCursor] = useState<string | null>(null);
   const [score, setScore] = useState<ScoreFilter>('all');
   const [period, setPeriod] = useState<Period>(compact ? 'all' : 'seven_days');
@@ -102,6 +104,14 @@ export function PlanQuality({
       setSamples(current => next ? [...current, ...page.samples] : page.samples);
       setCursor(page.next_cursor ?? null);
       setLoaded(true);
+      const models = await qualityExecutionModels(page.samples, async (session, request) => {
+        const result = await observationRead<{ requests: { session_id: string; request_id: string; final_native_model: string | null }[] }>('timeline', {
+          session_id: session, request_id: request, from_ms: 0, to_ms: window.to,
+          only_model_switch: false, limit: 1, cursor: null,
+        });
+        return result.requests;
+      });
+      if (epoch === generation.current) setExecutionModels(current => next ? { ...current, ...models } : models);
     } catch (cause) {
       if (epoch === generation.current) setError(safeDiagnosticCode(cause, 'LOCAL_SERVICE_UNAVAILABLE'));
     } finally {
@@ -110,7 +120,7 @@ export function PlanQuality({
   }
 
   useEffect(() => {
-    setSamples([]); setCursor(null); setLoaded(false);
+    setSamples([]); setExecutionModels({}); setCursor(null); setLoaded(false);
     queryWindow.current = null;
     void load();
     return () => { generation.current++; };
@@ -119,9 +129,12 @@ export function PlanQuality({
   const scoreText = (sample: PlanQualitySample) => sample.assessment
     ? `${sample.assessment.score.toFixed(2)} / 1`
     : text('未评分', 'Not rated');
-  const branchText = (sample: PlanQualitySample) => sample.executed_branch_id
-    ? sample.executed_branch_id
-    : `${sample.selected_branch_id} · ${text('未取得实际分支', 'execution unknown')}`;
+  const branchText = (sample: PlanQualitySample) => {
+    const branch = sample.executed_branch_id ?? sample.selected_branch_id;
+    const label = branch === 'smart_saving_simple' ? text('省钱分支', 'Economy branch')
+      : branch === 'smart_saving_complex' ? text('主力分支', 'Primary branch') : text('其他分支', 'Other branch');
+    return sample.executed_branch_id ? label : `${label} · ${text('实际分支未记录', 'Execution branch not recorded')}`;
+  };
   const currentModelNames = new Map(currentModels.map(model => [model.model_configuration_id, model.display_name]));
 
   return <div className={`plan-quality${compact ? ' compact' : ''}`}>
@@ -140,14 +153,20 @@ export function PlanQuality({
     <div className="quality-list">{samples.map(sample => {
       const executionRequestId = sample.execution_evidence_available ? sample.last_request_id ?? sample.first_request_id : null;
       const feedbackRequestId = sample.assessment?.evidence_available ? sample.assessment.trigger_request_id : null;
-      const incomplete = sample.history_partial || sample.assessment?.partial || sample.attribution !== 'single';
-      const modelName = sample.model_configuration_id
-        ? currentModelNames.get(sample.model_configuration_id) ?? sample.model_configuration_id
-        : text('实际模型未记录', 'Executed model not recorded');
+      const modelName = sample.attribution === 'mixed' ? text('多个执行模型', 'Multiple execution models')
+        : sample.attribution === 'unknown' ? text('执行模型未确认', 'Execution model unknown')
+        : executionModels[sample.segment_id]
+          ?? (sample.model_configuration_id ? currentModelNames.get(sample.model_configuration_id) : null)
+          ?? (busy ? text('正在读取模型名称…', 'Reading model name…') : text('模型名称不可用', 'Model name unavailable'));
       return <article className="quality-row" key={sample.segment_id}>
-        <div className="quality-row-main"><strong title={sample.model_configuration_id ?? undefined}>{modelName}</strong><span>{branchText(sample)} · {text(`轮次 ${sample.first_turn_ordinal}–${sample.last_observed_turn_ordinal}`, `turn ${sample.first_turn_ordinal}–${sample.last_observed_turn_ordinal}`)}</span><span>{new Date(sample.last_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')} · {text(`计划版本 r${sample.plan_revision}`, `plan r${sample.plan_revision}`)}</span></div>
+        <div className="quality-row-main"><strong title={sample.model_configuration_id ?? undefined}>{modelName}</strong><span title={sample.executed_branch_id ?? sample.selected_branch_id}>{branchText(sample)} · {text(`轮次 ${sample.first_turn_ordinal}–${sample.last_observed_turn_ordinal}`, `turn ${sample.first_turn_ordinal}–${sample.last_observed_turn_ordinal}`)}</span><span>{new Date(sample.last_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')} · {text(`计划版本 r${sample.plan_revision}`, `plan r${sample.plan_revision}`)}</span></div>
         <div className="quality-score"><strong>{scoreText(sample)}</strong><span>{text('胜任度', 'Competence')}</span></div>
-        <div className="quality-flags">{incomplete && <span className="badge warn no-dot">{text('部分证据', 'Partial')}</span>}{!sample.assessment && <span className="badge no-dot">{text('待评分', 'Unrated')}</span>}</div>
+        <div className="quality-flags">
+          {sample.history_partial && <span className="badge warn no-dot" title={text('该阶段的执行历史存在记录缺口；这不等于 Agent 收到的回答不完整。', 'The recorded execution history has gaps; this does not establish that the Agent received an incomplete answer.')}>{text('历史记录不完整', 'Incomplete history')}</span>}
+          {sample.assessment?.partial && <span className="badge warn no-dot" title={text('评分依据仅覆盖该阶段的部分证据。', 'The assessment is based on only part of the evidence for this stage.')}>{text('评分证据不完整', 'Partial assessment evidence')}</span>}
+          {sample.attribution !== 'single' && <span className="badge warn no-dot">{sample.attribution === 'mixed' ? text('无法归因于单一模型', 'Not attributable to one model') : text('模型归属未确认', 'Model attribution unknown')}</span>}
+        </div>
+        {!sample.assessment && <p className="quality-coverage">{text('尚未产生该阶段的胜任度评分；后续评估触发后才会显示。', 'No competence assessment has been recorded for this stage. A score appears after a subsequent assessment is triggered.')}</p>}
         {sample.assessment && <p className="quality-coverage">{text(`评分覆盖轮次 ${sample.assessment.target_from_ordinal}–${sample.assessment.target_through_ordinal}`, `Assessed turns ${sample.assessment.target_from_ordinal}–${sample.assessment.target_through_ordinal}`)}</p>}
         {sample.assessment?.reason && <p className="quality-reason">{sample.assessment.reason}</p>}
         <div className="quality-evidence-actions"><button className="btn btn-quiet" type="button" disabled={!executionRequestId || !onOpenEvidence} onClick={() => executionRequestId && onOpenEvidence?.(sample.session_id, executionRequestId)}>{executionRequestId ? text('执行证据', 'Execution evidence') : text('执行证据不可用', 'Execution unavailable')}</button>{sample.assessment && <button className="btn btn-quiet" type="button" disabled={!feedbackRequestId || !onOpenEvidence} onClick={() => feedbackRequestId && onOpenEvidence?.(sample.session_id, feedbackRequestId)}>{feedbackRequestId ? text('评分触发反馈', 'Assessment feedback') : text('反馈不可用', 'Feedback unavailable')}</button>}</div>

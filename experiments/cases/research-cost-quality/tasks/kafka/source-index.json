@@ -1,0 +1,26 @@
+[
+  {
+    "id": "kafka",
+    "url": "https://kafka.apache.org/43/design/design/",
+    "resolved_url": "https://kafka.apache.org/43/design/design/",
+    "title": "Apache Kafka 4.3 design: delivery semantics and transactions",
+    "fetch_utc": "2026-10-03T14:00:50.257601+00:00",
+    "raw_sha256": "bcca1c2a60856d1be95d7774beb60e7ff5531ede367529becb787e5772531ef4",
+    "text_sha256": "13b9538711a748a6cd0d503a44fa17f6f52fdfb1299d3757790ee6612d71b118",
+    "lines": 36,
+    "characters": 12859,
+    "reuse": "Earlier frozen primary snapshot; overlapping subject matter is disclosed, not a held-out benchmark."
+  },
+  {
+    "id": "kafka-producer",
+    "url": "https://kafka.apache.org/43/configuration/producer-configs/",
+    "resolved_url": "https://kafka.apache.org/43/configuration/producer-configs/",
+    "fetch_utc": "2026-10-03T17:53:15.810342+00:00",
+    "raw_sha256": "9fff580cd4dbcc40003eea673f16e041cfee3ddc496e9a628b055b2bb4f03de1",
+    "text_sha256": "61ad3edc92685c01ad136960adb8454644bb44588e600c8d2c3a1448b1670afc",
+    "lines": 765,
+    "characters": 56389,
+    "role": "expanded research input",
+    "title": "kafka-producer official frozen documentation"
+  }
+]

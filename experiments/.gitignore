@@ -1,0 +1,6 @@
+# Frozen JSON is restored from evidence-2026-10-04.zip when needed.
+/evidence-2026-10-04.zip
+/cases/research-cost-quality/inputs.json
+/cases/research-cost-quality/results/2026-10-04/
+/cases/unattended-engineering/fixtures/config.json
+/cases/unattended-engineering/results/2026-10-04/evidence.json

@@ -44,6 +44,61 @@ function seedUserText(control, request, textValue) {
 }
 
 const scenarios = [
+  ['quality stages show their executed models and distinguish evidence coverage', async () => {
+    await fresh(control => {
+      const session = 'observation-session/quality';
+      const at = Date.now() - 60_000;
+      const cheap = control.makeRequest(session, 0, at, { final_native_model: 'qwen3.8-flash' });
+      const strong = control.makeRequest(session, 1, at + 1000, { final_native_model: 'gpt-6-astra' });
+      control.requests[session] = [cheap, strong];
+      control.views.plan_quality = () => ({ samples: [cheap, strong].map((request, index) => ({
+        segment_id: `stage/${index}`, session_id: session, plan_id: 'plan/quality', plan_revision: 1,
+        model_configuration_id: `model/runtime-fallback/opaque-${index}`,
+        attribution: 'single', selected_branch_id: index ? 'smart_saving_complex' : 'smart_saving_simple',
+        executed_branch_id: index ? 'smart_saving_complex' : 'smart_saving_simple',
+        first_turn_ordinal: index + 1, last_observed_turn_ordinal: index + 1,
+        first_at_ms: request.started_at_ms, last_at_ms: request.started_at_ms,
+        first_request_id: request.request_id, last_request_id: request.request_id,
+        history_partial: index === 0, execution_evidence_available: true,
+        assessment: index ? null : { trigger_request_id: strong.request_id, target_from_ordinal: 1, target_through_ordinal: 1, score: 0.485, partial: true, evidence_available: true },
+      })), next_cursor: null });
+    });
+    await until(() => rows().length === 1, 'quality session');
+    rows()[0].click();
+    await until(() => document.querySelectorAll('.quality-row').length === 2, 'quality stages');
+    const disclosure = document.querySelector('.session-model-performance summary');
+    if (disclosure && !disclosure.parentElement.open) disclosure.click();
+    await until(() => document.querySelectorAll('.quality-row-main strong')[1]?.textContent === 'gpt-6-astra', 'recorded model names');
+    const names = [...document.querySelectorAll('.quality-row-main strong')].map(element => element.textContent);
+    assert(names.join('|') === 'qwen3.8-flash|gpt-6-astra', `Wrong historical names: ${names}`);
+    const quality = document.querySelector('.plan-quality').innerText;
+    assert(!quality.includes('model/runtime-fallback/') && !quality.includes('smart_saving_'), 'Internal IDs appear as primary labels');
+    assert(quality.includes('历史记录不完整') && quality.includes('评分证据不完整'), 'Distinct evidence gaps are not explained');
+    assert(quality.includes('尚未产生该阶段的胜任度评分'), 'Unrated stage lacks an explanation');
+    assert(quality.includes('评分覆盖轮次 1–1'), 'Assessment coverage disappeared');
+    button('执行证据').click();
+    await until(() => reads('timeline').some(call => queryOf(call).request_id === 'request/quality/0' && queryOf(call).limit === 50), 'execution evidence navigation');
+  }],
+  ['missing model evidence preserves scores without exposing opaque identities', async () => {
+    await fresh(control => {
+      seedSimple(control);
+      control.views.plan_quality = () => ({ samples: [{
+        segment_id: 'stage/missing', session_id: 'observation-session/simple', plan_id: 'plan/quality', plan_revision: 1,
+        model_configuration_id: 'model/runtime-fallback/opaque-missing', attribution: 'single',
+        selected_branch_id: 'smart_saving_simple', executed_branch_id: 'smart_saving_simple',
+        first_turn_ordinal: 1, last_observed_turn_ordinal: 1, first_at_ms: Date.now() - 60000, last_at_ms: Date.now() - 60000,
+        history_partial: false, execution_evidence_available: false,
+        assessment: { trigger_request_id: 'request/missing', target_from_ordinal: 1, target_through_ordinal: 1, score: 0.6, partial: false, evidence_available: false },
+      }], next_cursor: null });
+    });
+    await until(() => rows().length === 1, 'missing-evidence session');
+    rows()[0].click();
+    await until(() => document.querySelector('.quality-row-main strong')?.textContent === '模型名称不可用', 'readable missing model');
+    const quality = document.querySelector('.plan-quality');
+    assert(quality.textContent.includes('0.60 / 1'), 'Missing name removed an available score');
+    assert(!quality.textContent.includes('opaque-missing'), 'Opaque ID leaked into the primary content');
+    assert(quality.querySelector('.quality-evidence-actions button').disabled, 'Missing execution evidence is actionable');
+  }],
   ['a session that starts after mount appears on an explicit re-query', async () => {
     await fresh(control => { seedSimple(control); });
     await until(() => rows().length === 1, 'initial row');
@@ -135,7 +190,7 @@ const scenarios = [
       control.requests['observation-session/complex'] = Array.from({ length: 30 }, (_, index) => control.makeRequest('observation-session/complex', index, at + index * 1000, { outcome: 'failed', attempted_model_count: 0 }));
     });
     await until(() => rows().length === 1, 'complex session row');
-    await until(() => rows()[0].querySelector('.badge')?.textContent.includes('内容不完整'), 'incomplete-content badge');
+    await until(() => rows()[0].querySelector('.badge')?.textContent.includes('记录不完整'), 'incomplete-content badge');
     rows()[0].click();
     await until(() => document.querySelector('.request-timeline summary')?.textContent.includes('30'), 'full request list');
     assert(document.querySelectorAll('.request-timeline .list-row').length === 30, 'Failed requests were filtered out');
@@ -428,6 +483,8 @@ const scenarios = [
     assert(document.querySelector('.transcript-context'), 'Canonical tool fields lacked a context disclosure');
   }],
 ];
+
+export const sessionWindowScenarioCount = scenarios.length;
 
 export async function runSessionWindowScenarios(start = 0, end = Infinity) {
   const results = [];

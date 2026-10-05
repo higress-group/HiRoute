@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'apps/website/**'
+      - 'news/**'
+      - 'experiments/**'
       - 'decision-extensions/**'
       - 'scripts/collect-third-party-licenses.py'
       - 'scripts/install-standalone.py'
@@ -20,6 +22,8 @@ on:
     branches: [main]
     paths:
       - 'apps/website/**'
+      - 'news/**'
+      - 'experiments/**'
       - 'decision-extensions/**'
       - 'scripts/collect-third-party-licenses.py'
       - 'scripts/install-standalone.py'
@@ -56,6 +60,11 @@ jobs:
           cache-dependency-path: apps/website/package-lock.json
       - run: npm ci --ignore-scripts
         working-directory: apps/website
+      - name: Verify published experiment evidence
+        run: |
+          python3 experiments/reproduce.py fetch
+          python3 experiments/reproduce.py verify
+          python3 -m unittest discover -s experiments/tests
       - run: npm test
         working-directory: apps/website
       - run: npm run build

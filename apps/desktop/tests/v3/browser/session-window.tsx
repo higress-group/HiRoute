@@ -93,7 +93,7 @@ function observationRead(view: string, query: Record<string, any>) {
     }
     case 'timeline': {
       const digest = digestOf('timeline', query);
-      const rows = (control.requests[query.session_id] ?? []).filter(row => inWindow(row.started_at_ms, query)).sort((left, right) => left.started_at_ms - right.started_at_ms);
+      const rows = (control.requests[query.session_id] ?? []).filter(row => inWindow(row.started_at_ms, query) && (!query.request_id || row.request_id === query.request_id)).sort((left, right) => left.started_at_ms - right.started_at_ms);
       const { page, next_cursor } = paginate(rows, query, digest);
       return { next_cursor, requests: page };
     }

@@ -1,0 +1,12 @@
+{
+  "id": "nats",
+  "url": "https://raw.githubusercontent.com/nats-io/nats.docs/master/using-nats/jetstream/model_deep_dive.md",
+  "resolved_url": "https://raw.githubusercontent.com/nats-io/nats.docs/master/using-nats/jetstream/model_deep_dive.md",
+  "title": "NATS JetStream model deep dive; frozen default-branch snapshot",
+  "fetch_utc": "2026-10-03T14:00:51.845311+00:00",
+  "raw_sha256": "12df476cf59908abea5b104ca1bfea5c04c319d63d1b6016f7e9e8cccd42a6a8",
+  "text_sha256": "bedb3750f83f5b0b59f18ed9e2dc25682750f99032f88c621e515005f13857d1",
+  "lines": 330,
+  "characters": 19304,
+  "reuse": "Earlier frozen primary snapshot; overlapping subject matter is disclosed, not a held-out benchmark."
+}
