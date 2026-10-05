@@ -113,6 +113,8 @@ routing list translates plan names and purposes in the isolated replay catalog;
 the English list retains the source names. Plan IDs, revisions, model candidates,
 execution identities and scores are unchanged. The main competence views display
 `gpt-6-astra`; the full CPA transport ID remains in expandable stage details.
+Reasoning settings use the original tier names (`medium` and `xhigh`) in both
+languages.
 Native validation covered stage and assessment-trigger
 navigation, exact model drill-down, unrated filtering, scope changes, refresh on
 re-entry, and preserving draft settings without changing published-plan statistics.

@@ -7,9 +7,9 @@
     "build_profile": "Debug",
     "method": "tauri-pilot screenshot_native (cgwindow)",
     "image_edits": false,
-    "desktop_binary_sha256": "4b56a3b64ddb18a5df99407e7d0cc4ed33d8157631c0f925527a27e8aacdc330",
-    "daemon_binary_sha256": "92f064f53eba0598932102c0babaf93eb838028cc524c87ba86c70d7aff89ef9",
-    "source_commit": "006207351159011ba65de517e81a14e5cc1a7fa6"
+    "desktop_binary_sha256": "3da3197ad2794b55db3cb8d6d8c56b6758163c64bee7c2adb41f741542f25159",
+    "daemon_binary_sha256": "6bd42ec8d4fa3fd524f16bf4e03ac31f85b7bdc83fd23d59f9b0cb2dfc0e0f49",
+    "source_commit": "c9268e65180dd3368d43e39dc497418f4ad2060a"
   },
   "data_origin": {
     "case": "Unattended Convergence v2 mixed / HTTPX streaming JSON",
@@ -39,7 +39,7 @@
       "width": 1920,
       "height": 1080,
       "text_scale_percent": 100,
-      "sha256": "f567336b877ae131c4d015320ec8b75628cf4d901857349bac83ec455bde6935"
+      "sha256": "77acce3ed9554a566e88bb95492e6446e6a28e765ba83edaa71d323cf8187276"
     },
     {
       "file": "assets/desktop-session-competence-en.png",
@@ -48,7 +48,7 @@
       "width": 1920,
       "height": 1080,
       "text_scale_percent": 100,
-      "sha256": "4b4131bce0b084921e9bfb0ff3f2964da8cac6e428b1dd8be304cf37ae5e70a8"
+      "sha256": "d7c28392e8739d5c798a929be70766501cf14569583547170d7f2d9b1753c433"
     },
     {
       "file": "assets/desktop-plan-competence-zh.png",
@@ -57,7 +57,7 @@
       "width": 1920,
       "height": 1080,
       "text_scale_percent": 100,
-      "sha256": "eba5a323e22d4a249701ec45c38509d96371c85d02daf7c65f9870440592de6f"
+      "sha256": "99bb1d202de501563ffe9e877b038fd83c2da9fc1ea4736b88590bc4c63474bf"
     },
     {
       "file": "assets/desktop-plan-competence-en.png",
@@ -66,7 +66,7 @@
       "width": 1920,
       "height": 1080,
       "text_scale_percent": 100,
-      "sha256": "a320587ee6271d5020d41764647ed0362cdcb75e063914410fe1bb8ada3615e0"
+      "sha256": "43a09d5fa12c959ea794f0dbe049bcadabe72a2f967146039d6677d162bcd100"
     }
   ]
 }
