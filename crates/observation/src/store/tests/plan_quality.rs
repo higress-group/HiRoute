@@ -9,6 +9,8 @@ use crate::query_v2::ObservationReaderContext;
 
 use super::support::{Fixture, fact_channel, offer_fact, open_store, writer};
 
+mod summary;
+
 const PLAN: &str = "plan/codex-daily";
 const MODEL: &str = "model/config-a";
 
@@ -130,6 +132,8 @@ fn query(plan_revision: Option<u64>) -> PlanQualitySamplesQuery {
         segment_id: None,
         plan_revision,
         model_configuration_id: None,
+        execution: None,
+        unrated_only: false,
         from_ms: Some(0),
         to_ms: Some(10_000),
         score_gt: None,

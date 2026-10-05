@@ -56,10 +56,16 @@ let vite;
 let chrome;
 try {
   vite = spawn(path.join(desktopRoot, 'node_modules/.bin/vite'), ['tests/v3/browser', '--host', '127.0.0.1', '--port', String(httpPort), '--strictPort'], { cwd: desktopRoot, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  vite.stdout.resume();
+  vite.stderr.on('data', data => process.stderr.write(data));
   await waitFor(`http://127.0.0.1:${httpPort}/`);
   const chromeExecutable = process.env.CHROME_BIN || (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome');
   chrome = spawn(chromeExecutable, ['--headless=new', '--disable-gpu', `--remote-debugging-port=${cdpPort}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1280,900', 'about:blank'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  await waitFor(`http://127.0.0.1:${cdpPort}/json/version`);
+  chrome.stdout.resume();
+  let chromeErrors = '';
+  chrome.stderr.on('data', data => { chromeErrors = (chromeErrors + data).slice(-8000); });
+  try { await waitFor(`http://127.0.0.1:${cdpPort}/json/version`); }
+  catch (error) { throw new Error(`${error.message}\n${chromeErrors}`); }
   const runner = spawn(process.execPath, [path.join(here, 'session-window-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot], { cwd: desktopRoot, stdio: 'inherit' });
   const outcome = await waitForExit(runner);
   if (outcome.code !== 0) process.exitCode = outcome.code ?? 1;

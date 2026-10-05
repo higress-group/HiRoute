@@ -96,23 +96,31 @@ as current product evidence or substitute a new score into the frozen case.
 
 ## Competence product views
 
-Two additional images explain the intended final observation interface:
+The four images are native captures of HiRoute Desktop on macOS:
 
 - Session model performance ([Chinese](assets/desktop-session-competence-zh.png) /
-  [English](assets/desktop-session-competence-en.png)): actual models,
-  stage scores, assessment coverage and evidence links.
-- Routing-plan performance ([Chinese](assets/desktop-plan-competence-zh.png) /
-  [English](assets/desktop-plan-competence-en.png)): model averages
-  within one plan version and time range, with scored and unrated stage counts.
+  [English](assets/desktop-session-competence-en.png)): actual execution models,
+  reasoning settings, stage scores and evidence actions.
+- Routing-plan model performance ([Chinese](assets/desktop-plan-competence-zh.png) /
+  [English](assets/desktop-plan-competence-en.png)): model configurations grouped
+  by execution branch, scoped averages, and scored/unrated stage counts.
 
-These images were generated with the built-in `image_gen` tool. They are product-design
-assets, not native Desktop captures. The per-model aggregate view is planned
-functionality; the images do not establish that its implementation has passed
-acceptance. The article describes the intended final interface. Production notes are
-kept here and in the [complete prompts and data record](competence-product-views.json),
-without overlays on the images.
+Desktop reads an isolated copy of the unchanged observation records retained from
+this HTTPX case. The images come from the production UI and local daemon, without
+mock IPC, generated interface text or image edits. Both languages were selected
+through the app's settings, with 100% text size in all four captures. The Chinese
+routing list translates plan names and purposes in the isolated replay catalog;
+the English list retains the source names. Plan IDs, revisions, model candidates,
+execution identities and scores are unchanged. The main competence views display
+`gpt-6-astra`; the full CPA transport ID remains in expandable stage details.
+Reasoning settings use the original tier names (`medium` and `xhigh`) in both
+languages.
+Native validation covered stage and assessment-trigger
+navigation, exact model drill-down, unrated filtering, scope changes, refresh on
+re-entry, and preserving draft settings without changing published-plan statistics.
+Capture hashes, binary hashes and the source evidence archive are recorded in
+[the capture provenance](competence-product-views.json).
 
-The values follow the visible execution stages in the retained HTTPX observation:
 Qwen has one scored stage at 0.485; Astra has one at 0.775 and one unrated stage.
 The existing two-decimal display produces 0.48 and 0.78. The earlier 0.410 assessment
 lacks an attributed visible execution stage and is excluded from this product-view
@@ -120,14 +128,10 @@ average. A prior 0.615 assessment of the later Qwen stage is not another indepen
 stage. No score has been added to the final Astra stage.
 
 Stage scores describe different stretches of work, not a controlled model ranking
-or whole-delivery acceptance. Partial-assessment and historical-gap states remain
-part of the underlying evidence; their notices belong in expanded evidence details
-in this design. Removing them from the primary view does not alter the experiment
-records. Each language edition uses matching localized interface images. The English
-versions translate the navigation, filters, labels, actions and explanatory text while
-preserving the source layout, model identities, numerical values, stage counts and
-unrated state. Their source-image hashes and exact localization prompts are retained
-in the same provenance record.
+or whole-delivery acceptance. Retained diagnostic states and raw identities are
+available in expanded stage details. The captures validate the product's observation
+interface; they do not constitute a new model-quality experiment. Each article uses
+matching localized images and the same original numerical values and stage counts.
 
 ## Local architecture
 

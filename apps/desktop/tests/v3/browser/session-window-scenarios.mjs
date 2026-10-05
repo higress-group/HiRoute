@@ -43,7 +43,148 @@ function seedUserText(control, request, textValue) {
   control.texts[contentId] = textValue;
 }
 
+const emptySummary = { models: [], scored_stage_count: 0, unrated_stage_count: 0, session_count: 0, available_revisions: [] };
+const openQuality = () => { const disclosure = document.querySelector('.session-model-performance summary'); if (disclosure && !disclosure.parentElement.open) disclosure.click(); };
+
 const scenarios = [
+  ['switching from a filtered 21-stage session resets the filter for a two-stage session', async () => {
+    const largeSession = 'observation-session/low-21';
+    const smallSession = 'observation-session/high-2';
+    const at = Date.now() - 60_000;
+    const stages = (session, count) => Array.from({ length: count }, (_, index) => ({
+      segment_id: `${session}/stage/${index}`, session_id: session, plan_id: 'plan/quality', plan_revision: 1,
+      selected_branch_id: 'smart_saving_simple', executed_branch_id: 'smart_saving_simple', attribution: 'single',
+      native_model: 'qwen3.8-flash', reasoning_profile_id: 'low',
+      first_turn_ordinal: index + 1, last_observed_turn_ordinal: index + 1, first_at_ms: at, last_at_ms: at,
+      history_partial: false, execution_evidence_available: false,
+      assessment: { score: session === largeSession && index === 0 ? .4 : .9, partial: false, target_from_ordinal: index + 1, target_through_ordinal: index + 1, evidence_available: false },
+    }));
+    await fresh(control => {
+      control.requests[largeSession] = [control.makeRequest(largeSession, 0, at + 1)];
+      control.requests[smallSession] = [control.makeRequest(smallSession, 0, at)];
+      control.views.plan_quality = query => {
+        const all = stages(query.session_id, query.session_id === largeSession ? 21 : 2);
+        const matched = query.score_lt == null ? all : all.filter(stage => stage.assessment.score < query.score_lt);
+        return { samples: matched.slice(0, 20), summary: { ...emptySummary, scored_stage_count: all.length }, next_cursor: matched.length > 20 ? 'page/two' : null };
+      };
+    });
+    await until(() => rows().length === 2, 'two sessions');
+    rows()[0].click(); openQuality();
+    await until(() => document.querySelectorAll('.quality-row').length === 20 && document.querySelector('.quality-score-filter'), 'large session first page');
+    const filter = document.querySelector('.quality-score-filter');
+    filter.value = 'low'; filter.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => document.querySelectorAll('.quality-row').length === 1, 'low stage filter');
+    const beforeRefresh = reads('plan_quality').length;
+    document.querySelector('.quality-refresh').click();
+    await until(() => reads('plan_quality').length > beforeRefresh && document.querySelectorAll('.quality-row').length === 1, 'same-session filtered refresh');
+    assert(queryOf(reads('plan_quality').at(-1)).score_lt === .5, 'Same-session refresh cleared the score filter');
+    rows()[1].click();
+    await until(() => reads('plan_quality').some(call => queryOf(call).session_id === smallSession) && !document.querySelector('.quality-refresh').disabled, 'small session loaded');
+    const smallReads = reads('plan_quality').filter(call => queryOf(call).session_id === smallSession);
+    assert(smallReads.every(call => queryOf(call).score_lt == null), 'The new session inherited the previous low-score filter');
+    assert(document.querySelectorAll('.quality-row').length === 2, 'The new session hid its two high-score stages');
+    assert([...document.querySelectorAll('.quality-score strong')].every(element => element.textContent === '0.90 / 1'), 'The new session displayed stages from the previous session');
+    assert(!document.querySelector('.quality-more'), 'The new session inherited the previous pagination');
+  }],
+  ['plan competence stays full-scope while exact model stages are filtered and paged', async () => {
+    const identity = { plan_revision: 1, selected_branch_id: null, executed_branch_id: 'smart_saving_simple', model_configuration_id: 'model/qwen', profile_digest: 'sha256/profile-low', attribution: 'single' };
+    const stats = {
+      models: [{ execution: identity, native_model: 'qwen3.8-flash', reasoning_profile_id: 'low', scored_stage_count: 25, unrated_stage_count: 1, average_score: .492 }],
+      scored_stage_count: 25, unrated_stage_count: 1, session_count: 2, available_revisions: [2, 1],
+    };
+    const stage = index => ({
+      segment_id: 'bulk/' + index, session_id: 'session/bulk', plan_id: 'plan/quality', plan_revision: 1,
+      selected_branch_id: 'smart_saving_simple', executed_branch_id: 'smart_saving_simple',
+      model_configuration_id: 'model/qwen', profile_digest: identity.profile_digest,
+      native_model: 'qwen3.8-flash', reasoning_profile_id: 'low', attribution: 'single',
+      first_turn_ordinal: index + 1, last_observed_turn_ordinal: index + 1,
+      first_at_ms: Date.now() - 60000, last_at_ms: Date.now() - 60000,
+      history_partial: false, execution_evidence_available: false,
+      assessment: index === 25 ? null : { score: index === 0 ? 0 : .5, target_from_ordinal: index + 1, target_through_ordinal: index + 1, partial: false, evidence_available: false },
+    });
+    await fresh(control => {
+      seedSimple(control);
+      control.qualityModels = [
+        { model_configuration_id: 'model/qwen', display_name: 'Qwen Flash', reasoning_profile_id: 'low', branch_id: 'smart_saving_simple' },
+        { model_configuration_id: 'model/unused', display_name: 'Unused model', reasoning_profile_id: 'high', branch_id: 'smart_saving_complex' },
+      ];
+      control.views.plan_quality = query => ({
+        summary: stats,
+        samples: query.unrated_only ? [stage(25)] : query.score_lt ? [stage(0)]
+          : Array.from({ length: query.cursor ? 6 : 20 }, (_, index) => stage(index + (query.cursor ? 20 : 0))),
+        next_cursor: query.unrated_only || query.score_lt || query.cursor ? null : 'page/two',
+      });
+    });
+    c().showQualityPlan();
+    await until(() => document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 'full-scope mean');
+    const modelRows = [...document.querySelectorAll('.quality-model-row')];
+    assert(modelRows[0].innerText.includes('25 已评分') && modelRows[0].innerText.includes('1 待评分'), 'Full-scope sample counts disappeared');
+    assert(modelRows[1].innerText.includes('暂无记录') && !modelRows[1].innerText.includes('0.00'), 'Unused candidate was assigned a zero score');
+    assert(!document.querySelector('.quality-row'), 'The overview starts with a long stage list');
+    modelRows[0].querySelector('button').click();
+    await until(() => document.querySelectorAll('.quality-row').length === 20, 'first stage page');
+    const first = queryOf(reads('plan_quality').at(-1));
+    assert(JSON.stringify(first.execution) === JSON.stringify(identity), 'Drill-down did not send the complete actual execution identity');
+    button('加载更多阶段').click();
+    await until(() => document.querySelectorAll('.quality-row').length === 26, 'second stage page');
+    const second = queryOf(reads('plan_quality').at(-1));
+    assert(first.from_ms === second.from_ms && first.to_ms === second.to_ms, 'Stage pagination changed the summary window');
+    const select = document.querySelector('.quality-score-filter');
+    select.value = 'low'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => document.querySelectorAll('.quality-row').length === 1 && document.querySelector('.quality-score strong')?.textContent === '0.00 / 1', 'zero score remains scored');
+    assert(document.querySelector('.quality-model-average strong').textContent.includes('0.49'), 'Low-score filtering recomputed the mean');
+    select.value = 'unrated'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => document.querySelector('.quality-score strong')?.textContent === '未评分', 'unrated stage filter');
+    assert(document.querySelector('.quality-model-average strong').textContent.includes('0.49'), 'Unrated filtering erased the mean');
+    document.querySelector('[data-model-configuration="model/unused"] .quality-view-stages').click();
+    await until(() => document.querySelector('.quality-stage-section') && document.querySelectorAll('.quality-row').length === 0, 'unused candidate has no execution stages');
+    const beforeUnusedRefresh = reads('plan_quality').length;
+    button('刷新').click();
+    await until(() => reads('plan_quality').length > beforeUnusedRefresh && document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 'refresh of unused candidate retains full-scope summary');
+    assert(!document.querySelector('.quality-row') && !document.querySelector('.quality-more'), 'Unused candidate displayed another model’s stages or pagination');
+    assert(document.querySelector('[data-model-configuration="model/qwen"]').innerText.includes('25 已评分'), 'Unused candidate refresh erased the other model’s counts');
+    const beforeUnusedReentry = reads('plan_quality').length;
+    c().showHome(); await tick(); c().showQualityPlan();
+    await until(() => reads('plan_quality').length > beforeUnusedReentry && document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 're-entry with unused candidate retains full-scope summary');
+    assert(!document.querySelector('.quality-row'), 'Unused candidate re-entry displayed another model’s stages');
+    const version = [...document.querySelectorAll('select')].find(element => element.querySelector('option[value="2"]'));
+    assert(version, 'Available retained revision cannot be selected');
+    version.value = '2'; version.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => queryOf(reads('plan_quality').at(-1)).plan_revision === 2, 'exact retained revision');
+    assert(!queryOf(reads('plan_quality').at(-1)).execution && !queryOf(reads('plan_quality').at(-1)).unrated_only, 'Revision change retained an incompatible detail filter');
+  }],
+  ['quality refresh and re-entry pick up assessments and reject stale results', async () => {
+    let score = null;
+    const page = () => ({
+      samples: [{
+        segment_id: 'stage/refresh', session_id: 'observation-session/simple', plan_id: 'plan/quality', plan_revision: 1,
+        selected_branch_id: 'smart_saving_complex', executed_branch_id: 'smart_saving_complex', attribution: 'single',
+        native_model: 'gpt-6-astra', reasoning_profile_id: 'high',
+        first_turn_ordinal: 1, last_observed_turn_ordinal: 1, first_at_ms: Date.now() - 60000, last_at_ms: Date.now() - 60000,
+        history_partial: false, execution_evidence_available: false,
+        assessment: score == null ? null : { score, partial: false, target_from_ordinal: 1, target_through_ordinal: 1, evidence_available: false },
+      }],
+      summary: { ...emptySummary, scored_stage_count: score == null ? 0 : 1, unrated_stage_count: score == null ? 1 : 0 },
+      next_cursor: null,
+    });
+    await fresh(control => { seedSimple(control); control.views.plan_quality = page; });
+    await until(() => rows().length === 1, 'refresh session');
+    rows()[0].click(); openQuality();
+    await until(() => document.querySelector('.quality-score strong')?.textContent === '未评分', 'initial unrated stage');
+    const initial = queryOf(reads('plan_quality').at(-1));
+    score = .78; c().bumpRefresh();
+    await until(() => document.querySelector('.quality-score strong')?.textContent === '0.78 / 1', 'new assessment after refresh');
+    assert(queryOf(reads('plan_quality').at(-1)).to_ms > initial.to_ms, 'Quality refresh reused a stale upper bound');
+    const slow = deferred(); const before = reads('plan_quality').length;
+    c().views.plan_quality = () => slow.promise; c().bumpRefresh();
+    await until(() => reads('plan_quality').length > before, 'slow assessment query');
+    c().views.plan_quality = page; score = .9; c().bumpRefresh();
+    await until(() => document.querySelector('.quality-score strong')?.textContent === '0.90 / 1', 'latest assessment query');
+    score = .1; slow.resolve(page()); await tick();
+    assert(document.querySelector('.quality-score strong')?.textContent === '0.90 / 1', 'An older assessment overwrote a newer result');
+    c().showHome(); await tick(); score = .95; c().showSessions();
+    await until(() => document.querySelector('.quality-score strong')?.textContent === '0.95 / 1', 'fresh assessment after page re-entry');
+  }],
   ['quality stages show their executed models and distinguish evidence coverage', async () => {
     await fresh(control => {
       const session = 'observation-session/quality';
@@ -61,18 +202,21 @@ const scenarios = [
         first_request_id: request.request_id, last_request_id: request.request_id,
         history_partial: index === 0, execution_evidence_available: true,
         assessment: index ? null : { trigger_request_id: strong.request_id, target_from_ordinal: 1, target_through_ordinal: 1, score: 0.485, partial: true, evidence_available: true },
-      })), next_cursor: null });
+      })), summary: { ...emptySummary, scored_stage_count: 1, unrated_stage_count: 1 }, next_cursor: null });
     });
     await until(() => rows().length === 1, 'quality session');
     rows()[0].click();
+    openQuality();
     await until(() => document.querySelectorAll('.quality-row').length === 2, 'quality stages');
-    const disclosure = document.querySelector('.session-model-performance summary');
-    if (disclosure && !disclosure.parentElement.open) disclosure.click();
     await until(() => document.querySelectorAll('.quality-row-main strong')[1]?.textContent === 'gpt-6-astra', 'recorded model names');
     const names = [...document.querySelectorAll('.quality-row-main strong')].map(element => element.textContent);
     assert(names.join('|') === 'qwen3.8-flash|gpt-6-astra', `Wrong historical names: ${names}`);
+    const overview = document.querySelector('.plan-quality').innerText;
+    assert(!overview.includes('评分证据不完整') && !overview.includes('历史记录不完整'), 'Diagnostics crowd the overview');
+    document.querySelectorAll('.quality-assessment-details summary').forEach(element => element.click());
+    await tick();
     const quality = document.querySelector('.plan-quality').innerText;
-    assert(!quality.includes('model/runtime-fallback/') && !quality.includes('smart_saving_'), 'Internal IDs appear as primary labels');
+    assert(names.every(name => !name.includes('model/runtime-fallback/')), 'Internal IDs appear as primary labels');
     assert(quality.includes('历史记录不完整') && quality.includes('评分证据不完整'), 'Distinct evidence gaps are not explained');
     assert(quality.includes('尚未产生该阶段的胜任度评分'), 'Unrated stage lacks an explanation');
     assert(quality.includes('评分覆盖轮次 1–1'), 'Assessment coverage disappeared');
@@ -89,14 +233,15 @@ const scenarios = [
         first_turn_ordinal: 1, last_observed_turn_ordinal: 1, first_at_ms: Date.now() - 60000, last_at_ms: Date.now() - 60000,
         history_partial: false, execution_evidence_available: false,
         assessment: { trigger_request_id: 'request/missing', target_from_ordinal: 1, target_through_ordinal: 1, score: 0.6, partial: false, evidence_available: false },
-      }], next_cursor: null });
+      }], summary: { ...emptySummary, scored_stage_count: 1 }, next_cursor: null });
     });
     await until(() => rows().length === 1, 'missing-evidence session');
     rows()[0].click();
+    openQuality();
     await until(() => document.querySelector('.quality-row-main strong')?.textContent === '模型名称不可用', 'readable missing model');
     const quality = document.querySelector('.plan-quality');
     assert(quality.textContent.includes('0.60 / 1'), 'Missing name removed an available score');
-    assert(!quality.textContent.includes('opaque-missing'), 'Opaque ID leaked into the primary content');
+    assert(!quality.innerText.includes('opaque-missing'), 'Opaque ID leaked into the primary content');
     assert(quality.querySelector('.quality-evidence-actions button').disabled, 'Missing execution evidence is actionable');
   }],
   ['a session that starts after mount appears on an explicit re-query', async () => {

@@ -122,7 +122,8 @@ const scenarios = [
   }),
   scenario('desktop.routing.reactivation-models', ['routing-editor'], 'Returning to an existing route reloads saved model choices and scopes quality to active models', async () => {
     await fresh(); await routing();
-    await until(() => document.querySelector('.quality-model-scope'), 'active model scope');
+    await click('模型表现');
+    await until(() => document.querySelector('.quality-model-scope')?.textContent.includes('Qwen'), 'active model scope');
     assert(document.querySelector('.quality-model-scope').textContent.includes('Qwen'), 'Active route models are absent');
     assert(!document.querySelector('.quality-model-filter'), 'Quality asks users to type internal model IDs');
     const before = calls('compute_management_snapshot').length;

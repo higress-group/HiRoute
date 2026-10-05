@@ -21,6 +21,8 @@ pub(super) fn plan_quality_samples(options: &[String]) -> Result<Value, ErrorCod
         segment_id: None,
         plan_revision: None,
         model_configuration_id: None,
+        execution: None,
+        unrated_only: false,
         from_ms: None,
         to_ms: None,
         score_gt: None,

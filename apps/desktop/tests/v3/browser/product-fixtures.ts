@@ -646,6 +646,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     const intent = payload?.request?.intent ?? {};
     const view = intent.view;
     const query = intent.query ?? {};
+    if (view === 'plan_quality') return { samples: [], summary: { models: [], scored_stage_count: 0, unrated_stage_count: 0, session_count: 0, available_revisions: [] }, next_cursor: null };
     if (view === 'sessions') {
       const rows = query.only_model_switch
         ? sessionRows.filter(row => row.fallback_request_count > 0)

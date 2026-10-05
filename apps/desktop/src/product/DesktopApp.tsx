@@ -632,6 +632,7 @@ export function DesktopApp() {
             key={routingIntent.key}
             language={language}
             active={page === 'routing'}
+            refreshVersion={refreshVersion}
             snapshot={home.desktopSnapshot}
             agentSnapshot={home.agentSnapshot}
             operation={operation}
