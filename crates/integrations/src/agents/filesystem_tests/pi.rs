@@ -159,6 +159,9 @@ fn pi_cli_release_labels_and_entry_layout_do_not_gate_settings() {
     let cli = package.join("bin/pi.js");
     fs::create_dir_all(cli.parent().unwrap()).unwrap();
     write_executable(&cli, "native CLI must not run during metadata discovery");
+    let mut selected = layout(root.path());
+    selected.pi_executable = cli.clone();
+    let scanner = FilesystemAgentScannerV1::new(selected, registry());
     for version in ["1.0.2", "1.0.3", "9.0.0-next"] {
         write_secret_settings(
             &package.join("package.json"),
@@ -171,9 +174,6 @@ fn pi_cli_release_labels_and_entry_layout_do_not_gate_settings() {
         assert_eq!(installation.package_root, package);
         // A missing Worker SDK does not prevent passive static discovery or settings identity.
         assert!(!package.join("dist/index.js").exists());
-        let mut selected = layout(root.path());
-        selected.pi_executable = cli.clone();
-        let scanner = FilesystemAgentScannerV1::new(selected, registry());
         assert!(matches!(
             scanner.pi_settings_discovery().outcome,
             AgentDiscoveryOutcomeV1::Supported { .. }
