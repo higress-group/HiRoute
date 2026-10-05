@@ -10,7 +10,9 @@ Both cases illustrate the same idea: **a long-running task benefits from the rig
 
 ## HiRoute: the right model for each stage of a long task
 
-HiRoute is an open-source routing engine that runs locally between your existing agent and model services, designed for long-running tasks. You keep asking Codex, Claude Code, or another supported agent to do the work. The agent still reads files, writes code, and runs tests. HiRoute decides which model handles each stretch of work.
+HiRoute is an open-source routing engine that runs locally between your existing agent and model services, designed for long-running tasks. You keep asking coding agents such as Codex, Claude Code, Qoder, DeepSeek Harness, and Pi to do the work. The agent still reads files, writes code, and runs tests. HiRoute decides which model handles each stretch of work.
+
+HiRoute also provides **smart task routing**. The main agent can choose a suitable execution agent through a published routing plan, delegate independent research, implementation, or testing work, and use the returned result to continue the overall task. Task routing assigns the executor; model routing chooses the model for each stage. They work independently or together, connecting agent collaboration with model selection. The two case studies below focus on model routing.
 
 Connect your models in Desktop, create a routing plan, and point the agent at it. The agent uses one stable model alias while the models behind that alias can change with the task. The Sessions page shows which model actually ran, token usage, and assessments of earlier stages.
 
