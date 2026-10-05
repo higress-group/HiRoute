@@ -39,11 +39,12 @@ export function assertPiCapabilities(sdk, scope) {
     return;
   }
   if (!['collaboration', 'worker', 'continue'].includes(scope)) throw new Error('Pi capability scope');
-  methods(sdk.SettingsManager, ['create', 'fromStorage']);
-  methods(sdk.SettingsManager?.prototype, ['getGlobalSettings', 'getProjectSettings']);
+  methods(sdk.SettingsManager, ['fromStorage']);
   methods(sdk.DefaultResourceLoader?.prototype, ['reload', 'getSkills']);
   methods(sdk, ['createReadTool', 'createBashTool']);
   if (scope === 'collaboration') return;
+  methods(sdk.SettingsManager, ['create']);
+  methods(sdk.SettingsManager?.prototype, ['getGlobalSettings', 'getProjectSettings']);
   assertPiCapabilities(sdk, 'models');
   methods(sdk.ModelRuntime?.prototype, ['registerProvider', 'setRuntimeApiKey']);
   methods(sdk, ['createAgentSession']);

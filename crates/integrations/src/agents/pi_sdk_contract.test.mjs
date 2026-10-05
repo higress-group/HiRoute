@@ -62,6 +62,9 @@ test('model routing checks native declarations without requiring Worker or histo
 
 test('task-route configuration requires resources and tools, independently of Worker SDK', () => {
   const value = sdk(); delete value.ModelRuntime; delete value.createAgentSession;
+  delete value.SettingsManager.create;
+  delete value.SettingsManager.prototype.getGlobalSettings;
+  delete value.SettingsManager.prototype.getProjectSettings;
   assertPiCapabilities(value, 'collaboration');
   delete value.createBashTool;
   assert.throws(() => assertPiCapabilities(value, 'collaboration'), /capability unavailable/);
