@@ -133,7 +133,10 @@ impl LocalControlAdapter {
             if let Some(source) = self
                 .scanner
                 .pi_api_sources()
-                .map_err(|_| ComputeManagementControlError::DiscoveryUnavailable)?
+                // An unreadable unrelated source must not replace the selected
+                // discovery result (including stale/forged Claude handles).
+                // No matching Pi source still fails below; no candidate is created.
+                .unwrap_or_default()
                 .into_iter()
                 .find(|source| super::pi_discovered::pi_discovery(source) == request.discovery)
             {
