@@ -584,7 +584,7 @@ impl HarnessScan {
                     platform: platform().to_owned(),
                     command: (self.harness == WorkerHarnessV1::Pi
                         && component == WorkerDependencyComponentV1::Cli)
-                        .then(|| "npm install -g @earendil-works/pi-coding-agent@1.0.2".into()),
+                        .then(|| "npm install -g @earendil-works/pi-coding-agent".into()),
                     reason_code: "worker.dependencies.install_required".to_owned(),
                 });
             }

@@ -222,7 +222,7 @@ export function WorkerDependencies({
       {text('选择已安装的 Qoder CLI（qoder 或 qodercli）。需要登录时，请在终端正常启动该 CLI 并完成登录，再返回使用。', 'Select your installed Qoder CLI (qoder or qodercli). When sign-in is needed, start that CLI normally in a terminal and sign in, then return here.')} {' '}
       <a href="https://docs.qoder.com/cli/installation" target="_blank" rel="noreferrer" onClick={event => void openInstallationGuide(event)}>{text('官方安装与升级说明', 'Official installation and upgrade guide')}</a>
     </p>}
-    {harness === 'pi' && <p className="field-help" data-pi-installation-guide>{text('使用官方 npm 安装的 Pi 和 Node.js。点击检测后，可查看所需版本的安装命令。', 'Use the official npm installation of Pi and Node.js. Detect to see installation commands for the supported versions.')}</p>}
+    {harness === 'pi' && <p className="field-help" data-pi-installation-guide>{text('使用官方 npm 安装的 Pi 和 Node.js。检测安装位置后，保存时会检查所需能力；也可查看安装命令。', 'Use the official npm installation of Pi and Node.js. Detect installation paths; saving checks the required capabilities. Installation commands are also available.')}</p>}
     {!view && <div className="option-panel"><div className="option-row"><div><strong>{text('检测本机安装', 'Detect local installation')}</strong><span>{harness === 'qoder_cli'
       ? text('查找当前环境中的 Qoder CLI。', 'Find Qoder CLI in the current environment.')
       : harness === 'pi' ? text('查找 Pi 和 Node.js。', 'Find Pi and Node.js.') : text(`查找 ${name}、连接组件和必要的 Node.js。`, `Find ${name}, its adapter, and Node.js when required.`)}</span></div><button className="btn btn-primary" type="button" disabled={refreshing} onClick={() => void discover()}>{refreshing ? text('正在检测…', 'Detecting…') : text('一键检测', 'Detect')}</button></div></div>}
