@@ -120,11 +120,11 @@ This case shows execution feedback influencing model selection throughout the ta
 
 That execution feedback is also available for inspection. A session's **Model performance** view shows the actual model, competence score and assessment coverage for each execution stage. If progress looks insufficient, execution-evidence and assessment-feedback links lead back to the relevant activity. Stages that have not received a score remain visible too.
 
-[![Session model performance: inspect Qwen and Astra stage scores, assessment coverage and evidence links](assets/desktop-session-competence-zh.png)](assets/desktop-session-competence-zh.png)
+[![Session model performance: inspect Qwen and Astra stage scores, assessment coverage and evidence links](assets/desktop-session-competence-en.png)](assets/desktop-session-competence-en.png)
 
 A routing plan's **Runtime performance** view provides a broader perspective. Select a plan version and time range to see each model's average stage competence, together with counts of scored and unrated stages. Open a model's stages to inspect the underlying execution and assess which combination fits your tasks. The average includes scored stages only; unrated stages do not enter the calculation.
 
-[![Routing-plan performance: inspect model averages and stage counts within one version and time range](assets/desktop-plan-competence-zh.png)](assets/desktop-plan-competence-zh.png)
+[![Routing-plan performance: inspect model averages and stage counts within one version and time range](assets/desktop-plan-competence-en.png)](assets/desktop-plan-competence-en.png)
 
 ## Enterprise gateway experience, lightweight local execution
 
