@@ -20,24 +20,10 @@ pub enum ReasoningAccounting {
     Additive,
 }
 
-/// A catalog-owned native value. Values are deliberately scalar so applying a
-/// field assignment can never silently replace an unrelated native object.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-pub enum NativeReasoningValue {
-    Bool(bool),
-    String(String),
-    U64(u64),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NativeReasoningFieldAssignment {
-    /// Object path from the native request root, for example
-    /// `["thinking", "type"]`.
-    pub path: Vec<String>,
-    pub value: NativeReasoningValue,
-}
+pub use hiroute_domain::{
+    GatewayNativeReasoningFieldAssignmentV1 as NativeReasoningFieldAssignment,
+    GatewayNativeReasoningValueV1 as NativeReasoningValue,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -110,10 +96,27 @@ impl ReasoningProfileCapability {
                     || self.accounting == ReasoningAccounting::Additive
             }
             (ReasoningControlKind::Toggle, NativeReasoningRender::ExactFields { fields, .. }) => {
-                !fields.is_empty()
-                    && fields
-                        .iter()
-                        .any(|field| matches!(field.value, NativeReasoningValue::Bool(_)))
+                let enabled = match self.profile_id.as_str() {
+                    "enabled" => true,
+                    "disabled" => false,
+                    // Existing custom Boolean profile names retain their contract;
+                    // protocol-owned strings require a precise binary identity.
+                    _ => {
+                        return fields
+                            .iter()
+                            .any(|field| matches!(field.value, NativeReasoningValue::Bool(_)));
+                    }
+                };
+                let protocol = match protocol {
+                    IngressProtocol::Responses => hiroute_domain::UpstreamProtocol::Responses,
+                    IngressProtocol::Messages => hiroute_domain::UpstreamProtocol::Messages,
+                    IngressProtocol::ChatCompletions => {
+                        hiroute_domain::UpstreamProtocol::ChatCompletions
+                    }
+                };
+                fields
+                    .iter()
+                    .any(|field| field.matches_toggle_wire(protocol, enabled))
             }
             (ReasoningControlKind::Discrete, NativeReasoningRender::ExactFields { fields, .. }) => {
                 !fields.is_empty()
@@ -172,4 +175,68 @@ fn reserved_request_field(field: &str) -> bool {
             | "max_completion_tokens"
             | "max_tokens"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_toggle_profiles_validate_protocol_switch_and_keep_custom_boolean_names() {
+        for (protocol, path, values) in [
+            (
+                IngressProtocol::Responses,
+                "reasoning.effort",
+                ["none", "high"],
+            ),
+            (
+                IngressProtocol::Messages,
+                "thinking.type",
+                ["disabled", "enabled"],
+            ),
+            (
+                IngressProtocol::ChatCompletions,
+                "thinking.type",
+                ["disabled", "enabled"],
+            ),
+        ] {
+            for enabled in [false, true] {
+                let mut profile = ReasoningProfileCapability {
+                    profile_id: if enabled { "enabled" } else { "disabled" }.into(),
+                    control_kind: ReasoningControlKind::Toggle,
+                    render: NativeReasoningRender::ExactFields {
+                        protocol,
+                        fields: vec![NativeReasoningFieldAssignment {
+                            path: path.split('.').map(str::to_owned).collect(),
+                            value: NativeReasoningValue::String(
+                                values[usize::from(enabled)].into(),
+                            ),
+                        }],
+                    },
+                    accounting: ReasoningAccounting::WithinOutputCap,
+                    additional_reservation_tokens: 0,
+                };
+                assert!(profile.validate_for(protocol));
+                profile.profile_id = if enabled { "disabled" } else { "enabled" }.into();
+                assert!(!profile.validate_for(protocol));
+                profile.profile_id = "custom-boolean-name".into();
+                assert!(!profile.validate_for(protocol));
+                let NativeReasoningRender::ExactFields { fields, .. } = &mut profile.render else {
+                    unreachable!()
+                };
+                fields[0] = NativeReasoningFieldAssignment {
+                    path: vec!["custom_toggle".into()],
+                    value: NativeReasoningValue::Bool(enabled),
+                };
+                assert!(profile.validate_for(protocol));
+                profile.profile_id = if enabled { "enabled" } else { "disabled" }.into();
+                assert!(profile.validate_for(protocol));
+                let NativeReasoningRender::ExactFields { fields, .. } = &mut profile.render else {
+                    unreachable!()
+                };
+                fields[0].value = NativeReasoningValue::Bool(!enabled);
+                assert!(!profile.validate_for(protocol));
+            }
+        }
+    }
 }

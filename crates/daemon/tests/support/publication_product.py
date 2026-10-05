@@ -140,10 +140,13 @@ finally:
                                          'GOOGLE_', 'VERTEX_', 'QODER_'))
                     and k not in ('CODEX_CONFIG', 'CODEX_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN',
                                   'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'CLAUDE_CODE_USE_BEDROCK',
-                                  'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY')}
+                                  'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY',
+                                  'DEEPSEEK_API_KEY', 'GROQ_API_KEY', 'MISTRAL_API_KEY',
+                                  'XAI_API_KEY', 'CEREBRAS_API_KEY')}
         self.env.update(HOME=str(home), CODEX_HOME=str(home / '.codex'),
                         CLAUDE_CONFIG_DIR=str(home / '.claude'),
                         QODER_CONFIG_DIR=str(home / '.qoder'),
+                        PI_CODING_AGENT_DIR=str(home / '.pi/agent'),
                         PATH=str(bin_dir) + ':/usr/bin:/bin',
                         HIROUTE_RUNTIME_DIR=str(self.root / 'runtime'),
                         HIROUTE_WORKER_RECEIPT_DIR=str(self.root / 'worker-receipts'),

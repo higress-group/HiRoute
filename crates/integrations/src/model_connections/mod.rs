@@ -317,6 +317,64 @@ where
         {
             return Err(NativeModelConnectionErrorV1::InvalidDraft);
         }
+        self.prepare_static_discovery(draft, credential, discovery_evidence)
+    }
+
+    /// Closed native discovery from a trusted scanner. Native observations retain their own
+    /// fact bases and do not inherit catalog provenance, prices or subscription qualification.
+    pub fn prepare_observed_discovery(
+        &self,
+        draft: NativeModelConnectionDraftV1,
+        credential: NativeModelConnectionCredentialV1<'_>,
+        discovery_evidence: CanonicalDigest,
+    ) -> Result<ComputeCandidateViewV2, NativeModelConnectionErrorV1> {
+        if !matches!(
+            &draft.provenance,
+            NativeConnectionProvenanceInputV1::UserConfigured { .. }
+        ) || draft.models.iter().any(|model| {
+            model.catalog_configuration_id.is_some()
+                || model.membership != ComputeModelMembershipV2::Observed
+                || [
+                    model.capabilities.tool.basis,
+                    model.capabilities.vision.basis,
+                    model.capabilities.streaming.basis,
+                    model.capabilities.context_tokens.basis,
+                    model.capabilities.max_output_tokens.basis,
+                    model.capabilities.native_reasoning.basis,
+                ]
+                .iter()
+                .any(|basis| {
+                    !matches!(
+                        basis,
+                        NativeCandidateFactBasisV1::Observed | NativeCandidateFactBasisV1::Unknown
+                    )
+                })
+        }) {
+            return Err(NativeModelConnectionErrorV1::InvalidDraft);
+        }
+        self.prepare_static_discovery(draft, credential, discovery_evidence)
+    }
+
+    fn prepare_static_discovery(
+        &self,
+        draft: NativeModelConnectionDraftV1,
+        credential: NativeModelConnectionCredentialV1<'_>,
+        discovery_evidence: CanonicalDigest,
+    ) -> Result<ComputeCandidateViewV2, NativeModelConnectionErrorV1> {
+        if discovery_evidence == CanonicalDigest::of_bytes(&[])
+            || draft.candidate_ref.is_none()
+            || draft.existing_source_id.is_some()
+            || draft.trusted_lineage_digest.is_some()
+            || !matches!(
+                &credential,
+                NativeModelConnectionCredentialV1::Protected {
+                    descriptor: ProtectedInputSourceDescriptorV1::DiscoveredConfig { .. },
+                    ..
+                }
+            )
+        {
+            return Err(NativeModelConnectionErrorV1::InvalidDraft);
+        }
         validate_draft(&draft, &credential)?;
         let (candidate_ref, revision) = self.issue_candidate(draft.candidate_ref.as_deref())?;
         let target = normalize_model_connection_target(ModelConnectionTargetInputV1 {
@@ -350,13 +408,22 @@ where
             true,
             &draft.runtime_fallback_denied_model_ids,
         )?;
-        let NativeConnectionProvenanceInputV1::Registered {
-            connection_option_id,
-            registry_version,
-            catalog_digest,
-        } = draft.provenance
-        else {
-            return Err(NativeModelConnectionErrorV1::InvalidDraft);
+        let provenance = match draft.provenance {
+            NativeConnectionProvenanceInputV1::Registered {
+                connection_option_id,
+                registry_version,
+                catalog_digest,
+            } => ComputeCandidateProvenanceV2::Registered {
+                connection_option_id,
+                registry_version,
+                catalog_digest,
+            },
+            NativeConnectionProvenanceInputV1::UserConfigured {
+                configuration_revision,
+            } => ComputeCandidateProvenanceV2::UserConfigured {
+                configuration_revision,
+                evidence_digest: input_digest.clone(),
+            },
         };
         let facts = ComputeCandidateFactsV2 {
             candidate: ComputeCandidateRefV2 {
@@ -375,11 +442,7 @@ where
             display_name: draft.display_name,
             existing_source_id: None,
             evidence_digest: discovery_evidence.clone(),
-            provenance: ComputeCandidateProvenanceV2::Registered {
-                connection_option_id,
-                registry_version,
-                catalog_digest,
-            },
+            provenance,
             target: Some(target.candidate_target),
             authentication: Some(draft.authentication),
             models,

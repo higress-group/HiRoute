@@ -21,51 +21,8 @@ pub struct AgentSettingsFacts {
     pub restore_points: BTreeMap<String, AgentSettingsFacet>,
 }
 
-pub struct SettingsModelFacts {
-    /// A closed native field conflict; only Qoder model changes consume this fact.
-    pub qoder_model_conflict: Option<SettingsBlockReason>,
-    pub codex_context_override: bool,
-    pub claude_context_override: bool,
-    pub claude_plan_capability_unavailable: bool,
-    pub ingress: AgentIngressProtocolV1,
-    pub available_surfaces: BTreeSet<hiroute_domain::AgentModelSurfaceV2>,
-    pub model_publication: Option<GatewayPublicationV1>,
-    /// The immutable model catalog artifact for a plan-carrying Codex selection; built by the
-    /// backend from a structurally valid full-catalog source and the merged permitted plans.
-    /// Absent when that catalog cannot be derived without losing source fidelity.
-    pub model_catalog: Option<SettingsModelCatalogFacts>,
-    /// True when this apply configures the model facet while no managed connection holds an
-    /// active grant anywhere: the first resident-service connection, which requires the host
-    /// to establish the login item before the Operation is sealed.
-    pub login_item_required: bool,
-    /// True when this restore removes the last managed connection while journal evidence
-    /// proves this feature owns the login item: the host must unregister that owned item as
-    /// part of the restore. A pre-existing user login item is never owned and never removed.
-    pub login_item_removal_required: bool,
-    pub fixed_candidate_facts: Vec<crate::compiler::CandidateCompilationFactV1>,
-    /// Native Codex source/account bindings established at initial adoption and carried through
-    /// subsequent full-state edits. Explicit replacements are rejected by the coverage check.
-    pub preserved_codex_models: Vec<hiroute_domain::AgentFixedModelSelectionV2>,
-    /// Sealed fixed routes for protected names. These remain usable for a Plan edit even if the
-    /// source is temporarily absent from the current discovery snapshot.
-    pub preserved_codex_bindings: BTreeMap<String, hiroute_domain::AttemptOwnedCandidateV1>,
-    /// Original names proven usable on the same account and retained for this selection.
-    pub required_native_model_ids: Option<Vec<String>>,
-    /// Names in Codex metadata without a proven same-account route, shown as guidance only.
-    pub unproven_native_model_ids: Vec<String>,
-    /// The user chose to keep proven native names alongside HiRoute routes.
-    pub require_native_model_routes: bool,
-    /// Preserving the native default requires an exact proven route for that name.
-    pub native_default_must_be_original: bool,
-    pub native_default_model: Option<String>,
-    /// Original directory for a Codex restore, never the HiRoute merged catalog.
-    pub restore_native_model_ids: Option<Vec<String>>,
-    /// A standalone file restores absence and inherits root; it never validates root's models.
-    pub restore_inherits_root: bool,
-    /// Model that an unmodified restore would leave in the native configuration.
-    pub restored_native_model: Option<String>,
-    pub native_claude_presets: Option<hiroute_domain::AgentClaudePresetValuesV2>,
-}
+mod model_facts;
+pub use model_facts::*;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct SettingsModelCatalogFacts {
@@ -119,6 +76,7 @@ pub struct AgentSettingsBlock {
 #[serde(rename_all = "snake_case")]
 pub enum SettingsBlockReason {
     QoderDefaultInUse,
+    AdditionalDefaultInUse,
     QoderModelFileConflict,
     CodexContextOverride,
     ClaudeContextOverride,
@@ -174,7 +132,7 @@ pub fn preview_agent_settings(
         return Err(SettingsPlanningError::InvalidSelection);
     }
     spec.protected_native_model_ids.clear();
-    if let Some(model) = &facts.model {
+    if let Some(model) = facts.model.as_ref().and_then(SettingsModelFacts::codex) {
         spec.protected_native_model_ids = if model.require_native_model_routes {
             model.required_native_model_ids.clone().unwrap_or_default()
         } else {
@@ -197,14 +155,15 @@ pub fn preview_agent_settings(
     }
     let mut changed_facets = BTreeSet::new();
     let mut blockers = Vec::new();
-    if let Some(reason) = facts
-        .model
-        .as_ref()
-        .and_then(|model| model.qoder_model_conflict)
-    {
+    if let Some(reason) = facts.model.as_ref().and_then(|model| match &model.native {
+        SettingsModelNativeFacts::Additional(facts) => facts.model_conflict,
+        _ => None,
+    }) {
         if !matches!(
             reason,
-            SettingsBlockReason::QoderDefaultInUse | SettingsBlockReason::QoderModelFileConflict
+            SettingsBlockReason::QoderDefaultInUse
+                | SettingsBlockReason::QoderModelFileConflict
+                | SettingsBlockReason::AdditionalDefaultInUse
         ) {
             return Err(SettingsPlanningError::InvalidSelection);
         }
@@ -229,6 +188,7 @@ pub fn preview_agent_settings(
                 settings,
                 AgentModelSelectionV2::CodexDefault { .. }
                     | AgentModelSelectionV2::QoderAdditional { .. }
+                    | AgentModelSelectionV2::PiAdditional { .. }
             ) {
                 // A short-lived isolated HTTP challenge diagnoses a native client; it is not
                 // authorization to write a safely observed Codex configuration. Actual client
@@ -261,8 +221,17 @@ pub fn preview_agent_settings(
             }
             if matches!(settings, AgentModelSelectionV2::QoderAdditional { .. })
                 && !model
+                    .common
                     .available_surfaces
                     .contains(&hiroute_domain::AgentModelSurfaceV2::QoderCli)
+            {
+                return Err(SettingsPlanningError::InvalidSelection);
+            }
+            if matches!(settings, AgentModelSelectionV2::PiAdditional { .. })
+                && !model
+                    .common
+                    .available_surfaces
+                    .contains(&hiroute_domain::AgentModelSurfaceV2::PiCli)
             {
                 return Err(SettingsPlanningError::InvalidSelection);
             }
@@ -270,13 +239,13 @@ pub fn preview_agent_settings(
                 .validate()
                 .map_err(|_| SettingsPlanningError::InvalidSelection)?;
             if let AgentModelSelectionV2::ClaudeLauncher { surfaces, .. } = settings
-                && !surfaces.is_subset(&model.available_surfaces)
+                && !surfaces.is_subset(&model.common.available_surfaces)
             {
                 return Err(SettingsPlanningError::InvalidSelection);
             }
             if matches!(settings, AgentModelSelectionV2::CodexDefault { .. })
                 && !settings.allowed_plan_ids().is_empty()
-                && model.codex_context_override
+                && model.codex().is_some_and(|facts| facts.context_override)
             {
                 blockers.push(AgentSettingsBlock {
                     facet: AgentSettingsFacet::Model,
@@ -291,7 +260,10 @@ pub fn preview_agent_settings(
                     // Every Codex selection publishes one exact client catalog, including
                     // HiRoute-only fixed routes without a Plan.
                     if matches!(settings, AgentModelSelectionV2::CodexDefault { .. })
-                        && model.model_catalog.is_none()
+                        && model
+                            .codex()
+                            .and_then(|facts| facts.model_catalog.as_ref())
+                            .is_none()
                     {
                         blockers.push(AgentSettingsBlock {
                             facet: AgentSettingsFacet::Model,
@@ -304,7 +276,9 @@ pub fn preview_agent_settings(
                             model_ids: Vec::new(),
                         });
                     }
-                    if let Some(required) = &model.required_native_model_ids {
+                    if let Some(model) = model.codex()
+                        && let Some(required) = &model.required_native_model_ids
+                    {
                         let missing = required
                             .iter()
                             .filter(|name| {
@@ -365,11 +339,8 @@ pub fn preview_agent_settings(
                 restore_point_ref,
                 &mut blockers,
             );
-            if model.ingress == AgentIngressProtocolV1::Responses
+            if let Some(model) = model.codex()
                 && !model.restore_inherits_root
-                && !model
-                    .available_surfaces
-                    .contains(&hiroute_domain::AgentModelSurfaceV2::QoderCli)
             {
                 let chosen = spec
                     .restore_native_model
@@ -469,7 +440,7 @@ pub fn preview_agent_settings(
                 facts
                     .model
                     .as_ref()
-                    .and_then(|model| model.model_publication.as_ref()),
+                    .and_then(|model| model.common.model_publication.as_ref()),
             )
         })
         .transpose()
@@ -496,7 +467,10 @@ pub fn preview_agent_settings(
             .model
             .as_ref()
             .ok_or(SettingsPlanningError::InvalidSelection)?;
-        if model.claude_plan_capability_unavailable {
+        let model = model
+            .claude()
+            .ok_or(SettingsPlanningError::InvalidSelection)?;
+        if model.plan_capability_unavailable {
             blockers.push(AgentSettingsBlock {
                 facet: AgentSettingsFacet::Model,
                 reason: SettingsBlockReason::ClaudePlanCapabilityUnavailable,
@@ -509,10 +483,10 @@ pub fn preview_agent_settings(
             .copied()
             .min()
             .and_then(hiroute_domain::claude_context_window);
-        if model.claude_context_override || window.is_none() {
+        if model.context_override || window.is_none() {
             blockers.push(AgentSettingsBlock {
                 facet: AgentSettingsFacet::Model,
-                reason: if model.claude_context_override {
+                reason: if model.context_override {
                     SettingsBlockReason::ClaudeContextOverride
                 } else {
                     SettingsBlockReason::ClaudeContextWindowUnsupported
@@ -551,6 +525,7 @@ pub fn preview_agent_settings(
         unproven_native_model_ids: facts
             .model
             .as_ref()
+            .and_then(SettingsModelFacts::codex)
             .map(|model| model.unproven_native_model_ids.clone())
             .unwrap_or_default(),
     })
@@ -565,29 +540,36 @@ fn derive_model_grant(
         .fixed_models()
         .iter()
         .filter(|selection| {
-            !facts
-                .preserved_codex_bindings
-                .contains_key(&selection.client_model_id)
+            !facts.codex().is_some_and(|facts| {
+                facts
+                    .preserved_codex_bindings
+                    .contains_key(&selection.client_model_id)
+            })
         })
         .cloned()
         .collect::<Vec<_>>();
     let mut fixed = crate::compiler::compile_fixed_model_bindings(
         &ordinary_fixed,
-        &facts.fixed_candidate_facts,
+        &facts.common.fixed_candidate_facts,
     )
     .map_err(|_| invalid())?;
     for selection in settings.fixed_models() {
-        if let Some(binding) = facts
-            .preserved_codex_bindings
-            .get(&selection.client_model_id)
-        {
+        if let Some(binding) = facts.codex().and_then(|facts| {
+            facts
+                .preserved_codex_bindings
+                .get(&selection.client_model_id)
+        }) {
             fixed.insert(selection.client_model_id.clone(), binding.clone());
         }
     }
     let grant = AgentModelGrantV2::derive(
-        facts.ingress,
+        facts.common.ingress,
         settings,
-        facts.model_publication.as_ref().ok_or_else(invalid)?,
+        facts
+            .common
+            .model_publication
+            .as_ref()
+            .ok_or_else(invalid)?,
         &fixed,
     )
     .map_err(|_| invalid())?;
@@ -604,19 +586,20 @@ fn validate_model_default(
     let claude_presets;
     let default_name = match settings {
         AgentModelSelectionV2::CodexDefault { default_selection, .. } => match default_selection {
-            AgentModelDefaultSelectionV2::PreserveNative => facts.native_default_model.as_deref(),
+            AgentModelDefaultSelectionV2::PreserveNative => facts.codex().ok_or_else(invalid)?.native_default_model.as_deref(),
             AgentModelDefaultSelectionV2::FixedModel { client_model_id } => Some(client_model_id.as_str()),
             AgentModelDefaultSelectionV2::Plan { plan_id } => grant.routes.iter().find_map(|(name, route)| {
                 matches!(route, AgentModelRouteV2::Plan { plan_id: selected, .. } if selected == plan_id)
                     .then_some(name.as_str())
             }),
         },
-        AgentModelSelectionV2::QoderAdditional { .. } => return Ok(()),
+        AgentModelSelectionV2::QoderAdditional { .. } | AgentModelSelectionV2::PiAdditional { .. } => return Ok(()),
         AgentModelSelectionV2::ClaudeLauncher { .. } => {
+            let facts = facts.claude().ok_or_else(invalid)?;
             claude_presets = grant
                 .claude_preset_values(
                     settings,
-                    facts.native_claude_presets.as_ref().ok_or_else(invalid)?,
+                    facts.presets.as_ref().ok_or_else(invalid)?,
                 )
                 .map_err(|_| invalid())?;
             match facts.native_default_model.as_deref() {

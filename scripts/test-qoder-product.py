@@ -18,11 +18,11 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'crates/daemon/tests/support'))
 import native_context_fixture as oracle
 import qoder_native_context as qoder
-import qoder_collaboration_product as collaboration
-from qoder_collaboration_fixture import MainAgentOracle, worker_decision, output_envelope
-from qoder_compaction_product import CompactionOracle, PRESSURE_TOKENS, assert_native_compaction
-import qoder_model_fixture as model_fixture
-import qoder_model_product as model_product
+import collaboration_product as collaboration
+from collaboration_fixture import MainAgentOracle, worker_decision, output_envelope
+from native_compaction_product import CompactionOracle, PRESSURE_TOKENS, assert_native_compaction
+import additional_model_fixture as model_fixture
+import additional_model_product as model_product
 
 
 class QoderFixtureContext:

@@ -16,6 +16,7 @@ pub enum ComputeManagementEligibilityV2 {
     CatalogMatched,
     RuntimeQualified,
     UserConfirmed,
+    NativeObserved,
     ConnectorVerified,
 }
 
@@ -208,6 +209,11 @@ fn compile_model(
     {
         return Err(ComputeManagementCompilationErrorV2::UnknownCapability);
     }
+    if eligibility == ComputeManagementEligibilityV2::NativeObserved
+        && !native_observed_model(source, model)
+    {
+        return Err(ComputeManagementCompilationErrorV2::EligibilityMismatch);
+    }
     let native_reasoning = capabilities
         .native_reasoning
         .value
@@ -244,6 +250,9 @@ fn eligibility(
     source: &ComputeManagementSourceV2,
     model: &ComputeManagedModelV2,
 ) -> Result<ComputeManagementEligibilityV2, ComputeManagementCompilationErrorV2> {
+    if native_observed_model(source, model) {
+        return Ok(ComputeManagementEligibilityV2::NativeObserved);
+    }
     if (matches!(
         source.provenance,
         ComputeManagementProvenanceV2::Registered { .. }
@@ -282,6 +291,30 @@ fn eligibility(
             Ok(ComputeManagementEligibilityV2::ConnectorVerified)
         }
     }
+}
+
+// A discovered native user source is not a registered runtime fallback. Keep
+// its observed/unknown facts and give it the existing source-local authority.
+fn native_observed_model(
+    source: &ComputeManagementSourceV2,
+    model: &ComputeManagedModelV2,
+) -> bool {
+    model.membership == ComputeManagementMembershipV2::Observed
+        && model.catalog_configuration_id.is_none()
+        && matches!(
+            source.provenance,
+            ComputeManagementProvenanceV2::UserConfigured { .. }
+        )
+        && capability_bases(&model.capabilities)
+            .into_iter()
+            .all(|basis| {
+                matches!(
+                    basis,
+                    ComputeManagementFactBasisV2::Observed
+                        | ComputeManagementFactBasisV2::Unknown
+                        | ComputeManagementFactBasisV2::UserDeclared
+                )
+            })
 }
 
 fn capability_bases(

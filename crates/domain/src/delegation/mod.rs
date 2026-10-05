@@ -48,6 +48,7 @@ pub enum WorkerHarnessV1 {
     CodexCli,
     ClaudeCode,
     QoderCli,
+    Pi,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

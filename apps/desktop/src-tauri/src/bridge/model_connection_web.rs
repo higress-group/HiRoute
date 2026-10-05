@@ -54,6 +54,8 @@ impl TryFrom<WebComputeDiscoveryRefV1> for ComputeDiscoveryRefV1 {
 pub(super) struct WebComputeScanItemV1 {
     agent_id: String,
     supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    native_provider_id: Option<String>,
     configuration_state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     connection_option_id: Option<String>,
@@ -81,6 +83,7 @@ impl From<ComputeScanResultV1> for WebComputeScanResultV1 {
                 .map(|item| WebComputeScanItemV1 {
                     agent_id: item.agent_id,
                     supported: item.supported,
+                    native_provider_id: item.native_provider_id,
                     configuration_state: item.configuration_state,
                     connection_option_id: item.connection_option_id,
                     observed_model_id: item.observed_model_id,
@@ -383,7 +386,7 @@ mod tests {
 
     #[test]
     fn compute_scan_web_view_omits_protected_discovery_material() {
-        let scan = ComputeScanResultV1 {
+        let mut scan = ComputeScanResultV1 {
             schema: COMPUTE_SCAN_RESULT_SCHEMA_V1.into(),
             catalog: ComputeCatalogProvenanceViewV1 {
                 product_release: "fixture-release".into(),
@@ -394,6 +397,7 @@ mod tests {
                 cross_reference_digest: CanonicalDigest::of_bytes(b"cross-reference"),
             },
             items: vec![ComputeScanItemV1 {
+                native_provider_id: None,
                 agent_id: "agent_claude_default".into(),
                 supported: true,
                 configuration_state: "registered_with_protected_input".into(),
@@ -427,9 +431,23 @@ mod tests {
             }],
         };
 
+        scan.items.push(ComputeScanItemV1 {
+            agent_id: "agent_pi_default".into(),
+            native_provider_id: Some("native-static-provider".into()),
+            connection_option_id: None,
+            ..scan.items[0].clone()
+        });
+
         let web = serde_json::to_value(WebComputeScanResultV1::from(scan)).unwrap();
         assert_eq!(web["items"][0]["agent_id"], "agent_claude_default");
         assert_eq!(web["items"][0]["supported"], true);
+        assert!(web["items"][0].get("native_provider_id").is_none());
+        assert_eq!(web["items"][1]["agent_id"], "agent_pi_default");
+        assert_eq!(
+            web["items"][1]["native_provider_id"],
+            "native-static-provider"
+        );
+        assert!(web["items"][1].get("connection_option_id").is_none());
         assert_eq!(
             web["items"][0]["configuration_state"],
             "registered_with_protected_input"

@@ -4,6 +4,7 @@ Reuse the core native context transport and product setup. No fake ACP, database
 edits, deletion API, or private execution port. This entry never builds binaries.
 """
 import qoder_native_context
+import pi_native_context
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import copy
@@ -84,6 +85,9 @@ def boundary_decision(fixture, body):
     if fixture['harness'] in ('claude', 'qoder'):
         assert 'Bash' in names, 'native Bash tool unavailable'
         name, arguments = 'Bash', {'command': command, 'timeout': 120000}
+    elif fixture['harness'] == 'pi':
+        assert 'bash' in names
+        name, arguments = 'bash', {'command': command, 'timeout': 120}
     elif 'exec_command' in names:
         name, arguments = 'exec_command', {'cmd': command, 'yield_time_ms': 30000,
                                             'max_output_tokens': 1000}
@@ -133,7 +137,7 @@ def source_events(upstream):
 
 def transcript_snapshot(fixture):
     root = (qoder_native_context.history_directory(fixture) if fixture['harness'] == 'qoder'
-            else Path(fixture['config']) / ('sessions' if fixture['harness'] == 'codex' else 'projects'))
+            else pi_native_context.history_directory(fixture) if fixture['harness'] == 'pi' else Path(fixture['config']) / ('sessions' if fixture['harness'] == 'codex' else 'projects'))
     paths = list(root.rglob('*.jsonl'))
     assert all(not path.is_symlink() for path in paths), 'unexpected linked fixture history'
     return {str(path): digest(path) for path in paths if path.is_file()}
@@ -206,6 +210,8 @@ def run(repository, candidate, harness):
     repo = Path(repository).resolve()
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == candidate
     product = Product(repo)
+    if harness == "pi":
+        product.env["PI_CODING_AGENT_DIR"] = str(Path(product.env["HOME"]) / "selected-pi-config")
     upstreams, fixtures, runs = [], [], []
     stage = 'setup'
     report = dict(scenario='worker-native-context-boundaries', candidate=candidate,
@@ -276,6 +282,8 @@ def run(repository, candidate, harness):
         report['run_ids'] = [run['run_id'] for run in runs]
         stage = 'missing-native-history'
         report['missing_history'] = missing_history_refuses_new_session(product, neighbor, runs[1], upstreams)
+        if harness == 'pi':
+            report['corrupt_history'] = pi_native_context.verify_corrupt_history_variants(product, dict(neighbor, plan_id=neighbor_plan), runs[1], upstreams)
         report['cases'].append({'id': CASES[2], 'state': 'green', 'variant': 'missing-history-no-new'})
         report.update(state='green', binaries={name: digest(product.bin / name) for name in ('hiroute', 'hirouted')},
                       harness_sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
@@ -306,6 +314,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('repository')
     parser.add_argument('candidate')
-    parser.add_argument('--harness', choices=('codex', 'claude', 'qoder'), required=True)
+    parser.add_argument('--harness', choices=('codex', 'claude', 'qoder', 'pi'), required=True)
     args = parser.parse_args()
     run(args.repository, args.candidate, args.harness)

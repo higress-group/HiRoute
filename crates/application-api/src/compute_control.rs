@@ -69,6 +69,8 @@ impl ComputeDiscoveryRefV1 {
 pub struct ComputeScanItemV1 {
     pub agent_id: String,
     pub supported: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_provider_id: Option<String>,
     pub configuration_state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discovered_source_ref: Option<String>,

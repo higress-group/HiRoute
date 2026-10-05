@@ -10,14 +10,22 @@ fn generated_schema(path: &str) -> serde_json::Value {
     serde_json::from_str(&file.contents).unwrap()
 }
 
+// Resolve a harness form by its discriminator, rather than a conditional's nesting depth.
+fn harness_rule<'a>(
+    schema: &'a serde_json::Value,
+    harness: &serde_json::Value,
+) -> &'a serde_json::Value {
+    let mut rule = schema;
+    while let Some(condition) = rule.get("if") {
+        let selected = condition["properties"]["harness"]["const"] == *harness;
+        rule = &rule[if selected { "then" } else { "else" }];
+    }
+    rule
+}
+
 #[test]
 fn saved_adapter_selections_preserve_json_and_confirmation_identity() {
     let schema = generated_schema("worker-dependencies-select-request.v1.schema.json");
-    // Adapter-based clients keep their required adapter in the published conditional schema.
-    assert_eq!(
-        schema["else"]["required"],
-        serde_json::json!(["adapter_path"])
-    );
     // Frozen V1 payloads and independently calculated canonical SHA-256 values. The expected
     // side deliberately does not serialize the current producer or call its digest algorithm.
     let cases = [
@@ -49,9 +57,10 @@ fn saved_adapter_selections_preserve_json_and_confirmation_identity() {
     for (request_json, selection_json, accepted, idempotency) in cases {
         let request: WorkerDependenciesSelectRequestV1 =
             serde_json::from_str(request_json).unwrap();
-        assert_ne!(
-            schema["if"]["properties"]["harness"]["const"],
-            serde_json::to_value(request.harness).unwrap()
+        // Adapter-based clients keep the required adapter, regardless of native forms added.
+        assert_eq!(
+            harness_rule(&schema, &serde_json::to_value(request.harness).unwrap())["required"],
+            serde_json::json!(["adapter_path"])
         );
         assert_eq!(serde_json::to_string(&request).unwrap(), request_json);
         let plan = plan_worker_dependency_selection(&request).unwrap();
@@ -83,11 +92,7 @@ fn native_acp_requires_only_cli_and_rejects_cross_form_fields() {
         serde_json::json!(["harness", "cli_path", "expected_selection_revision"])
     );
     assert_eq!(
-        schema["if"]["properties"]["harness"]["const"],
-        serde_json::to_value(request.harness).unwrap()
-    );
-    assert_eq!(
-        schema["then"]["properties"],
+        harness_rule(&schema, &serde_json::to_value(request.harness).unwrap())["properties"],
         serde_json::json!({"adapter_path":false,"node_path":false})
     );
     assert_eq!(serde_json::to_string(&request).unwrap(), json);
@@ -136,7 +141,7 @@ fn published_worker_harnesses_match_typed_discovery_selection_and_plan_bindings(
     let discover = generated_schema("worker-dependencies-discover-request.v1.schema.json");
     let select = generated_schema("worker-dependencies-select-request.v1.schema.json");
     let editor = generated_schema("plan-editor.v2.schema.json");
-    let expected = serde_json::json!(["codex_cli", "claude_code", "qoder_cli"]);
+    let expected = serde_json::json!(["codex_cli", "claude_code", "qoder_cli", "pi"]);
     for declared in [
         &discover["properties"]["harness"]["enum"],
         &select["properties"]["harness"]["enum"],

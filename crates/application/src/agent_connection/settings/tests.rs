@@ -30,33 +30,25 @@ fn facts() -> AgentSettingsFacts {
         collaboration_file_conflict: false,
         restore_points: BTreeMap::new(),
         model: Some(SettingsModelFacts {
-            qoder_model_conflict: None,
-            codex_context_override: false,
-            claude_context_override: false,
-            claude_plan_capability_unavailable: false,
-            ingress: hiroute_domain::AgentIngressProtocolV1::Messages,
-            available_surfaces: [
-                hiroute_domain::AgentModelSurfaceV2::CodexCli,
-                hiroute_domain::AgentModelSurfaceV2::CodexDesktop,
-                hiroute_domain::AgentModelSurfaceV2::ClaudeCli,
-            ]
-            .into(),
-            model_publication: None,
-            model_catalog: None,
-            login_item_required: false,
-            login_item_removal_required: false,
-            fixed_candidate_facts: Vec::new(),
-            preserved_codex_models: Vec::new(),
-            preserved_codex_bindings: BTreeMap::new(),
-            required_native_model_ids: None,
-            unproven_native_model_ids: Vec::new(),
-            require_native_model_routes: false,
-            native_default_must_be_original: false,
-            native_default_model: None,
-            restore_native_model_ids: None,
-            restore_inherits_root: false,
-            restored_native_model: None,
-            native_claude_presets: None,
+            common: SettingsModelCommonFacts {
+                ingress: hiroute_domain::AgentIngressProtocolV1::Messages,
+                available_surfaces: [
+                    hiroute_domain::AgentModelSurfaceV2::CodexCli,
+                    hiroute_domain::AgentModelSurfaceV2::CodexDesktop,
+                    hiroute_domain::AgentModelSurfaceV2::ClaudeCli,
+                ]
+                .into(),
+                model_publication: None,
+                login_item_required: false,
+                login_item_removal_required: false,
+                fixed_candidate_facts: Vec::new(),
+            },
+            native: SettingsModelNativeFacts::Claude(SettingsClaudeNativeFacts {
+                context_override: false,
+                plan_capability_unavailable: false,
+                native_default_model: None,
+                presets: None,
+            }),
         }),
     }
 }
@@ -65,6 +57,22 @@ fn model(facts: &mut AgentSettingsFacts) -> &mut SettingsModelFacts {
         .model
         .as_mut()
         .expect("this fixture supports model settings")
+}
+
+fn codex(facts: &mut AgentSettingsFacts) -> &mut SettingsCodexModelFacts {
+    if !matches!(model(facts).native, SettingsModelNativeFacts::Codex(_)) {
+        model(facts).native = SettingsModelNativeFacts::Codex(Box::default());
+    }
+    match &mut model(facts).native {
+        SettingsModelNativeFacts::Codex(facts) => facts,
+        _ => unreachable!(),
+    }
+}
+fn claude(facts: &mut AgentSettingsFacts) -> &mut SettingsClaudeNativeFacts {
+    match &mut model(facts).native {
+        SettingsModelNativeFacts::Claude(facts) => facts,
+        _ => panic!("Claude fixture required"),
+    }
 }
 
 #[test]
@@ -98,29 +106,29 @@ fn claude_default_coverage_resolves_all_three_presets_without_changing_selection
         },
     };
     let mut current = facts();
-    model(&mut current).native_claude_presets = Some(AgentClaudePresetValuesV2 {
+    claude(&mut current).presets = Some(AgentClaudePresetValuesV2 {
         opus: Some("native-opus".into()),
         sonnet: None,
         haiku: Some("native-haiku".into()),
     });
     for default in ["opus", "sonnet", "haiku", "hiroute-shared", "default"] {
-        model(&mut current).native_default_model = Some(default.into());
+        claude(&mut current).native_default_model = Some(default.into());
         assert_eq!(
             validate_model_default(&selection, current.model.as_ref().unwrap(), &grant),
             Ok(())
         );
         assert_eq!(
-            model(&mut current).native_default_model.as_deref(),
+            claude(&mut current).native_default_model.as_deref(),
             Some(default)
         );
     }
-    model(&mut current).native_default_model = None;
+    claude(&mut current).native_default_model = None;
     assert_eq!(
         validate_model_default(&selection, current.model.as_ref().unwrap(), &grant),
         Ok(())
     );
     for default in [Some("uncovered-native"), Some("opus[1m]")] {
-        model(&mut current).native_default_model = default.map(str::to_owned);
+        claude(&mut current).native_default_model = default.map(str::to_owned);
         assert_eq!(
             validate_model_default(&selection, current.model.as_ref().unwrap(), &grant),
             Err(SettingsPlanningError::InvalidSelection)
@@ -134,18 +142,18 @@ fn claude_default_coverage_resolves_all_three_presets_without_changing_selection
         preset_mappings.sonnet = AgentClaudePresetSelectionV2::PreserveNative;
     }
     for default in ["opus", "sonnet"] {
-        model(&mut current).native_default_model = Some(default.into());
+        claude(&mut current).native_default_model = Some(default.into());
         assert_eq!(
             validate_model_default(&selection, current.model.as_ref().unwrap(), &grant),
             Err(SettingsPlanningError::InvalidSelection)
         );
     }
-    model(&mut current).native_default_model = Some("haiku".into());
+    claude(&mut current).native_default_model = Some("haiku".into());
     assert_eq!(
         validate_model_default(&selection, current.model.as_ref().unwrap(), &grant),
         Ok(())
     );
-    model(&mut current).native_claude_presets = None;
+    claude(&mut current).presets = None;
     assert_eq!(
         validate_model_default(&selection, current.model.as_ref().unwrap(), &grant),
         Err(SettingsPlanningError::InvalidSelection)
@@ -247,13 +255,13 @@ fn agent_settings_restore_reference_cannot_cross_context_or_facet() {
 #[test]
 fn codex_restore_requires_an_original_catalog_model_for_a_stale_alias() {
     let mut facts = facts();
-    model(&mut facts).ingress = AgentIngressProtocolV1::Responses;
+    model(&mut facts).common.ingress = AgentIngressProtocolV1::Responses;
     facts
         .restore_points
         .insert("restore/owned".into(), AgentSettingsFacet::Model);
-    model(&mut facts).restore_native_model_ids =
+    codex(&mut facts).restore_native_model_ids =
         Some(vec!["gpt-5.6-sol".into(), "gpt-5.6-luna".into()]);
-    model(&mut facts).restored_native_model = Some("hiroute-fanyi".into());
+    codex(&mut facts).restored_native_model = Some("hiroute-fanyi".into());
     let mut spec: AgentSettingsSpecV2 = serde_json::from_value(json!({
         "schema_version": {"major": 2, "minor": 0},
         "context_id": "agent-context/test",
@@ -464,32 +472,32 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
             collaboration_file_conflict: false,
             restore_points: BTreeMap::new(),
             model: Some(SettingsModelFacts {
-                qoder_model_conflict: None,
-                codex_context_override: false,
-                claude_context_override: false,
-                claude_plan_capability_unavailable: false,
-                ingress: AgentIngressProtocolV1::Responses,
-                available_surfaces: [
-                    hiroute_domain::AgentModelSurfaceV2::CodexCli,
-                    hiroute_domain::AgentModelSurfaceV2::CodexDesktop,
-                ]
-                .into(),
-                model_publication: Some(publication.clone()),
-                model_catalog,
-                login_item_required: false,
-                login_item_removal_required: false,
-                fixed_candidate_facts: Vec::new(),
-                preserved_codex_models: Vec::new(),
-                preserved_codex_bindings: BTreeMap::new(),
-                required_native_model_ids: None,
-                unproven_native_model_ids: Vec::new(),
-                require_native_model_routes: false,
-                native_default_must_be_original: false,
-                native_default_model: None,
-                restore_native_model_ids: None,
-                restore_inherits_root: false,
-                restored_native_model: None,
-                native_claude_presets: None,
+                common: SettingsModelCommonFacts {
+                    ingress: AgentIngressProtocolV1::Responses,
+                    available_surfaces: [
+                        hiroute_domain::AgentModelSurfaceV2::CodexCli,
+                        hiroute_domain::AgentModelSurfaceV2::CodexDesktop,
+                    ]
+                    .into(),
+                    model_publication: Some(publication.clone()),
+                    login_item_required: false,
+                    login_item_removal_required: false,
+                    fixed_candidate_facts: Vec::new(),
+                },
+                native: SettingsModelNativeFacts::Codex(Box::new(SettingsCodexModelFacts {
+                    context_override: false,
+                    model_catalog,
+                    preserved_codex_models: Vec::new(),
+                    preserved_codex_bindings: BTreeMap::new(),
+                    required_native_model_ids: None,
+                    unproven_native_model_ids: Vec::new(),
+                    require_native_model_routes: false,
+                    native_default_must_be_original: false,
+                    native_default_model: None,
+                    restore_native_model_ids: None,
+                    restore_inherits_root: false,
+                    restored_native_model: None,
+                })),
             }),
         }
     };
@@ -555,13 +563,16 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
         producer_context_digest: CanonicalDigest::of_bytes(b"codex-context"),
         producer_dependency_digest: CanonicalDigest::of_bytes(b"catalog-dependencies"),
     }));
-    model(&mut no_detected_surface).available_surfaces.clear();
+    model(&mut no_detected_surface)
+        .common
+        .available_surfaces
+        .clear();
     let without_client =
         preview_agent_settings(spec(plan_selection.clone()), &no_detected_surface).unwrap();
     assert!(without_client.blockers.is_empty());
     assert!(without_client.model_grant.is_some());
 
-    model(&mut no_detected_surface).codex_context_override = true;
+    codex(&mut no_detected_surface).context_override = true;
     let conflict =
         preview_agent_settings(spec(plan_selection.clone()), &no_detected_surface).unwrap();
     assert!(
@@ -585,7 +596,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     let mut preserve_plan_alias = plan_selection.clone();
     preserve_plan_alias["native_model_mode"] = json!("preserve_available");
     preserve_plan_alias["default_selection"] = json!({"kind": "preserve_native"});
-    model(&mut proven_facts).native_default_model = Some(plan.model_alias.as_str().into());
+    codex(&mut proven_facts).native_default_model = Some(plan.model_alias.as_str().into());
     let matched_alias =
         preview_agent_settings(spec(preserve_plan_alias.clone()), &proven_facts).unwrap();
     assert!(matched_alias.blockers.is_empty());
@@ -596,14 +607,14 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
             .permits_name(plan.model_alias.as_str()),
         "an explicitly allowed plan covers the same current Codex default alias"
     );
-    model(&mut proven_facts).native_default_model = Some("hiroute-unpublished".into());
+    codex(&mut proven_facts).native_default_model = Some("hiroute-unpublished".into());
     let unmatched_alias = preview_agent_settings(spec(preserve_plan_alias), &proven_facts).unwrap();
     assert_eq!(
         unmatched_alias.blockers[0].reason,
         SettingsBlockReason::ModelPlanUnavailable,
         "an unrelated default name still cannot be published"
     );
-    model(&mut proven_facts).native_default_model = None;
+    codex(&mut proven_facts).native_default_model = None;
     let candidates = crate::compiler::test_fixtures::compilation_facts().candidates;
     let candidate = candidates
         .iter()
@@ -624,15 +635,16 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
             }),
         },
     };
-    model(&mut proven_facts).fixed_candidate_facts = vec![candidate, replacement_candidate.clone()];
-    model(&mut proven_facts).preserved_codex_models = vec![preserved.clone()];
-    model(&mut proven_facts).native_default_model = Some(preserved.client_model_id.clone());
-    model(&mut proven_facts).required_native_model_ids = Some(vec![
+    model(&mut proven_facts).common.fixed_candidate_facts =
+        vec![candidate, replacement_candidate.clone()];
+    codex(&mut proven_facts).preserved_codex_models = vec![preserved.clone()];
+    codex(&mut proven_facts).native_default_model = Some(preserved.client_model_id.clone());
+    codex(&mut proven_facts).required_native_model_ids = Some(vec![
         preserved.client_model_id.clone(),
         "native-unselected".into(),
     ]);
-    model(&mut proven_facts).require_native_model_routes = true;
-    model(&mut proven_facts).native_default_must_be_original = true;
+    codex(&mut proven_facts).require_native_model_routes = true;
+    codex(&mut proven_facts).native_default_must_be_original = true;
     let mut preserve_selection = plan_selection.clone();
     preserve_selection["native_model_mode"] = json!("preserve_available");
     let incomplete =
@@ -641,16 +653,16 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
         block.reason == SettingsBlockReason::NativeModelCoverageUnavailable
             && block.model_ids == ["native-unselected"]
     }));
-    model(&mut proven_facts).required_native_model_ids =
+    codex(&mut proven_facts).required_native_model_ids =
         Some(vec![preserved.client_model_id.clone()]);
-    model(&mut proven_facts).native_default_model = Some(plan.model_alias.as_str().into());
+    codex(&mut proven_facts).native_default_model = Some(plan.model_alias.as_str().into());
     let stale_default =
         preview_agent_settings(spec(preserve_selection.clone()), &proven_facts).unwrap();
     assert!(stale_default.blockers.iter().any(|block| {
         block.reason == SettingsBlockReason::NativeDefaultInvalid
             && block.model_ids == [plan.model_alias.as_str()]
     }));
-    model(&mut proven_facts).native_default_model = Some(preserved.client_model_id.clone());
+    codex(&mut proven_facts).native_default_model = Some(preserved.client_model_id.clone());
     let mut replacing = preserve_selection.clone();
     let mut replaced = preserved.clone();
     replaced.candidate.binding_id = replacement_candidate.binding.binding_id.clone();
@@ -668,7 +680,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     };
     assert_eq!(fixed_models, std::slice::from_ref(&replaced));
 
-    model(&mut proven_facts).unproven_native_model_ids =
+    codex(&mut proven_facts).unproven_native_model_ids =
         vec!["cache-name-without-account-proof".into()];
     let proven = preview_agent_settings(spec(preserve_selection.clone()), &proven_facts).unwrap();
     assert!(proven.blockers.is_empty());
@@ -693,10 +705,13 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     else {
         panic!("fixed route")
     };
-    model(&mut proven_facts)
+    codex(&mut proven_facts)
         .preserved_codex_bindings
         .insert(preserved.client_model_id.clone(), binding.as_ref().clone());
-    model(&mut proven_facts).fixed_candidate_facts.clear();
+    model(&mut proven_facts)
+        .common
+        .fixed_candidate_facts
+        .clear();
     let later = preview_agent_settings(spec(preserve_selection.clone()), &proven_facts).unwrap();
     assert!(later.blockers.is_empty());
     assert_eq!(
@@ -709,7 +724,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     );
     let mut changed_binding = preserve_selection;
     changed_binding["fixed_models"] = serde_json::to_value([replaced]).unwrap();
-    model(&mut proven_facts).fixed_candidate_facts = vec![replacement_candidate];
+    model(&mut proven_facts).common.fixed_candidate_facts = vec![replacement_candidate];
     let rejected = preview_agent_settings(spec(changed_binding), &proven_facts).unwrap();
     assert!(!rejected.blockers.is_empty());
     assert!(
@@ -720,10 +735,10 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
     );
 
     // Plan-only settings without protected native bindings remain a full-state edit.
-    model(&mut proven_facts).preserved_codex_models.clear();
-    model(&mut proven_facts).preserved_codex_bindings.clear();
-    model(&mut proven_facts).required_native_model_ids = None;
-    model(&mut proven_facts).require_native_model_routes = false;
+    codex(&mut proven_facts).preserved_codex_models.clear();
+    codex(&mut proven_facts).preserved_codex_bindings.clear();
+    codex(&mut proven_facts).required_native_model_ids = None;
+    codex(&mut proven_facts).require_native_model_routes = false;
     let removed = preview_agent_settings(spec(plan_selection), &proven_facts).unwrap();
     let AgentFacetIntent::Configure {
         settings: AgentModelSelectionV2::CodexDefault { fixed_models, .. },
@@ -1055,8 +1070,8 @@ fn claude_settings_share_the_smallest_published_window_and_block_overrides() {
             "opus":{"kind":"plan","plan_id":ids[0]},"sonnet":{"kind":"plan","plan_id":ids[1]},"haiku":{"kind":"preserve_native"}}}}
     })).unwrap();
     let mut facts = facts();
-    model(&mut facts).model_publication = Some(publication);
-    model(&mut facts).native_claude_presets = Some(hiroute_domain::AgentClaudePresetValuesV2 {
+    model(&mut facts).common.model_publication = Some(publication);
+    claude(&mut facts).presets = Some(hiroute_domain::AgentClaudePresetValuesV2 {
         opus: None,
         sonnet: None,
         haiku: None,
@@ -1071,7 +1086,7 @@ fn claude_settings_share_the_smallest_published_window_and_block_overrides() {
             .collect::<BTreeSet<_>>(),
         [100_000, 120_000].into()
     );
-    model(&mut facts).claude_context_override = true;
+    claude(&mut facts).context_override = true;
     let blocked = preview_agent_settings(spec.clone(), &facts).unwrap();
     assert!(
         blocked
@@ -1079,8 +1094,8 @@ fn claude_settings_share_the_smallest_published_window_and_block_overrides() {
             .iter()
             .any(|block| block.reason == SettingsBlockReason::ClaudeContextOverride)
     );
-    model(&mut facts).claude_context_override = false;
-    model(&mut facts).claude_plan_capability_unavailable = true;
+    claude(&mut facts).context_override = false;
+    claude(&mut facts).plan_capability_unavailable = true;
     let blocked = preview_agent_settings(spec, &facts).unwrap();
     assert!(
         blocked
@@ -1093,8 +1108,8 @@ fn claude_settings_share_the_smallest_published_window_and_block_overrides() {
 #[test]
 fn standalone_profile_restore_inherits_root_without_catalog_or_native_override() {
     let mut facts = facts();
-    model(&mut facts).ingress = AgentIngressProtocolV1::Responses;
-    model(&mut facts).restore_inherits_root = true;
+    model(&mut facts).common.ingress = AgentIngressProtocolV1::Responses;
+    codex(&mut facts).restore_inherits_root = true;
     facts.capabilities = AgentCapabilitySet::new(
         [
             AgentCapability::EffectiveConfiguration,

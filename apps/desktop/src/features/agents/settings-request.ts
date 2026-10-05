@@ -38,6 +38,9 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
           preset_mappings: values.claudePresets,
         };
         break;
+      case 'pi':
+        settings = { mode: 'pi_additional', allowed_plan_ids: values.allowedPlanIds };
+        break;
       case 'qoder':
         settings = { mode: 'qoder_additional', allowed_plan_ids: values.allowedPlanIds };
         break;

@@ -21,6 +21,7 @@ from model_connections_product import save_native_source
 from publication_product import Product
 from publication_process import plan_change
 import qoder_native_context
+import pi_native_context
 
 
 def save_context_source(product, upstream, variant='', context_tokens=None):
@@ -44,6 +45,8 @@ def selected_installation(harness):
     binary = Path(os.environ['HIROUTE_WORKER_' + harness.upper() + '_BINARY']).resolve(strict=True)
     if harness == 'qoder':
         return binary, None, None
+    if harness == 'pi':
+        return binary, None, Path(os.environ['HIROUTE_WORKER_NODE']).resolve(strict=True)
     adapter = Path(os.environ['HIROUTE_WORKER_' + harness.upper() + '_ACP_ADAPTER']).resolve(strict=True)
     node = Path(os.environ['HIROUTE_WORKER_NODE']).resolve(strict=True)
     return binary, adapter, node
@@ -52,16 +55,18 @@ def selected_installation(harness):
 def prepare_product(product, harness, context_tokens=None):
     """Prepare a normal API source/Plan; Desktop can take over after product.stop()."""
     product.enable_debug_diagnostics()
-    roots = {'codex': 'CODEX_HOME', 'claude': 'CLAUDE_CONFIG_DIR', 'qoder': 'QODER_CONFIG_DIR'}
+    roots = {'codex': 'CODEX_HOME', 'claude': 'CLAUDE_CONFIG_DIR', 'qoder': 'QODER_CONFIG_DIR', 'pi': 'PI_CODING_AGENT_DIR'}
     if harness == 'qoder':
         qoder_native_context.select_context(product)
         fixture = qoder_native_context.prepare_context(product)
     else:
         fixture = prepare(Path(product.env['HOME']), Path(product.env[roots[harness]]),
                           product.project, harness)
+    if harness == 'pi':
+        pi_native_context.prepare_context(product, fixture)
     native = Path(product.env[roots[harness]])
     product.worker_work = {'harness': {'codex': 'codex_cli', 'claude': 'claude_code',
-                                       'qoder': 'qoder_cli'}[harness],
+                                       'qoder': 'qoder_cli', 'pi': 'pi'}[harness],
                            'protocol': 'messages' if harness == 'claude' else 'responses'}
     fixture['source_context_tokens'] = (context_tokens if context_tokens is not None
                                         else native_context_budget(product))
@@ -93,6 +98,8 @@ def prepare_product(product, harness, context_tokens=None):
                 'env_key = "NATIVE_CONTEXT_UNUSED_TOKEN"\nrequires_openai_auth = false\n')
         elif harness == 'qoder':
             qoder_native_context.install_project_conflict(fixture, upstream)
+        elif harness == 'pi':
+            pass  # Pi's conflict files and package resource receipt are prepared by its leaf.
         elif harness == 'claude':
             configuration.write_text(json.dumps({'env': {'ANTHROPIC_BASE_URL': 'http://127.0.0.1:9',
                 'ANTHROPIC_AUTH_TOKEN': 'synthetic-ambient-must-not-authorize-worker',
@@ -147,6 +154,8 @@ def assert_frozen_route(original_events, before, replacement):
 
 def exact_history(fixture):
     """Inspect only this synthetic context's native transcript directory, never auth."""
+    if fixture['harness'] == 'pi':
+        return pi_native_context.exact_history(fixture)
     if fixture['harness'] == 'qoder':
         return qoder_native_context.exact_history(fixture)
     folder = Path(fixture['config']) / ('sessions' if fixture['harness'] == 'codex' else 'projects')
@@ -218,12 +227,12 @@ def run(repository, candidate):
     repo = Path(repository).resolve()
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == candidate
     harness = os.environ['HIROUTE_PRODUCT_WORKER_HARNESS']
-    assert harness in ('codex', 'claude', 'qoder')
+    assert harness in ('codex', 'claude', 'qoder', 'pi')
     product = Product(repo)
     # Headless services may explicitly select a non-default native configuration.
     # Mac Pilot intentionally uses its documented HOME/.codex and HOME/.claude roots.
     if harness != 'qoder':
-        product.env['CODEX_HOME' if harness == 'codex' else 'CLAUDE_CONFIG_DIR'] = str(
+        product.env['CODEX_HOME' if harness == 'codex' else 'PI_CODING_AGENT_DIR' if harness == 'pi' else 'CLAUDE_CONFIG_DIR'] = str(
             Path(product.env['HOME']) / ('selected-' + harness + '-config'))
     upstream = replacement = None
     stage = 'prepare-native-context'
@@ -236,7 +245,7 @@ def run(repository, candidate):
         binary, adapter, node = selected_installation(harness)
         stage = 'real-daemon-and-plan'
         fixture, upstream = prepare_product(product, harness,
-                                             context_tokens=32_768 if harness == 'qoder' else None)
+                                             context_tokens=16_384 if harness == 'pi' else 32_768 if harness == 'qoder' else None)
         report['source_context_tokens'] = fixture['source_context_tokens']
         if harness == 'qoder':
             fixture['expected_max_output_tokens'] = 4096

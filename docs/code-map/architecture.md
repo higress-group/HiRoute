@@ -57,7 +57,7 @@ adds explicit Plan routes without importing native models or taking over the
 native default. Its collaboration Skill remains independent, and Worker routing
 uses transient frozen-task overrides rather than the persistent model provider.
 The [shared selection](../../crates/domain/src/agents/settings.rs) defines user
-intent; the [native budget policy](../../crates/domain/src/agents/qoder_model.rs)
+intent; the [native budget policy](../../crates/domain/src/agents/additional_model.rs)
 is shared by persistent models and Workers. Do not duplicate that policy in a
 renderer or turn a successful Skill check into model verification. Native live
 checks must bind the original client session to the Gateway's receipt authority.
@@ -70,7 +70,7 @@ entry; ordinary Responses and transient Worker authority keep their existing
 authentication channels. See [Gateway ingress authentication](../../crates/gateway/src/core_runtime/inbound_auth_tests.rs)
 and [real listener authority](../../tools/e2e-harness/tests/p0_gateway_request_authority.rs)
 before changing a native provider's endpoint.
-The [native provider guide](../../crates/integrations/src/agents/qoder_native/README.md)
+The [native provider guide](../../crates/integrations/src/agents/additional_native/README.md)
 maps JSONC ownership, protected credential delivery and conditional restoration;
 the [persisted-model journey](../../crates/daemon/tests/support/qoder_model_product.py)
 documents the normal startup path independently of Worker overrides.

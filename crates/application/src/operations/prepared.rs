@@ -312,6 +312,9 @@ where
                     self.protected_inputs
                         .validate_discovery_evidence(&guard.input_slot, &guard.evidence_digest)
                         .map_err(|_| TransactionError::ChangePreviewStale)?;
+                    if !guard.materializes_secret {
+                        continue;
+                    }
                     let mutation = plan
                         .secrets()
                         .iter()

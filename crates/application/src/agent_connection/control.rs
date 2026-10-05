@@ -64,9 +64,12 @@ pub(crate) fn check(
                 "agent_claude_default" => {
                     target.surface != hiroute_application_api::AgentModelSurfaceV2::ClaudeCli
                 }
-                "agent_qoder_default" => {
-                    target.surface != hiroute_application_api::AgentModelSurfaceV2::QoderCli
-                }
+                "agent_qoder_default" => !matches!(
+                    target.surface,
+                    hiroute_application_api::AgentModelSurfaceV2::QoderCli
+                        | hiroute_application_api::AgentModelSurfaceV2::PiCli
+                ),
+                "agent_pi_default" => true, // No public per-surface model probe for this integration.
                 _ => true,
             }
         {

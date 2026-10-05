@@ -2,12 +2,13 @@
 use super::*;
 use hiroute_application::agent_connection::{
     AgentSettingsFacts, AgentSettingsPlanningInput, CodexModelFileAction,
-    CollaborationSkillTemplate, SettingsClaudeModelFacts, SettingsModelCatalogFacts,
-    SettingsModelFacts, SettingsModelFileFacts, SettingsModelTargetFacts, SettingsSkillFileFacts,
-    SkillFileAction, codex_model_restore_point_ref, decode_settings_login_item,
-    is_settings_login_item, plan_skill_install, plan_skill_remove,
-    settings_claude_model_file_for_operation, settings_codex_catalog_target,
-    settings_codex_model_file_for_operation,
+    CollaborationSkillTemplate, SettingsAdditionalModelFacts, SettingsClaudeModelFacts,
+    SettingsClaudeNativeFacts, SettingsCodexModelFacts, SettingsModelCatalogFacts,
+    SettingsModelCommonFacts, SettingsModelFacts, SettingsModelFileFacts, SettingsModelNativeFacts,
+    SettingsModelTargetFacts, SettingsSkillFileFacts, SkillFileAction,
+    codex_model_restore_point_ref, decode_settings_login_item, is_settings_login_item,
+    plan_skill_install, plan_skill_remove, settings_claude_model_file_for_operation,
+    settings_codex_catalog_target, settings_codex_model_file_for_operation,
 };
 use hiroute_application::control::RoutingFactsPort;
 use hiroute_application_api::{
@@ -28,12 +29,12 @@ use hiroute_integrations::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+mod additional_model;
 #[path = "settings_codex_association.rs"]
 mod codex_association;
 #[path = "settings_facts/codex_models.rs"]
 mod codex_models;
 mod qoder;
-mod qoder_model;
 use codex_association::{
     connector_account_matches, endpoint_matches_target, mark_catalog_structure_proven,
 };
@@ -55,6 +56,7 @@ pub(super) enum SettingsAgentClass {
     CodexProfile,
     Claude,
     Qoder,
+    Pi,
 }
 
 impl SettingsAgentClass {
@@ -67,6 +69,7 @@ impl SettingsAgentClass {
             Self::Codex | Self::CodexProfile => "agent_codex_default",
             Self::Claude => "agent_claude_default",
             Self::Qoder => "agent_qoder_default",
+            Self::Pi => "agent_pi_default",
         }
     }
 
@@ -75,6 +78,7 @@ impl SettingsAgentClass {
             Self::Codex | Self::CodexProfile => "codex",
             Self::Claude => "claude",
             Self::Qoder => "qoder",
+            Self::Pi => "pi",
         }
     }
 
@@ -84,6 +88,7 @@ impl SettingsAgentClass {
             Self::CodexProfile => scanner.codex_profile_config_target(),
             Self::Claude => scanner.claude_user_settings_target(),
             Self::Qoder => scanner.qoder_user_config_target(),
+            Self::Pi => scanner.pi_user_models_target(),
         }
     }
 
@@ -92,6 +97,7 @@ impl SettingsAgentClass {
             Self::Codex | Self::CodexProfile => "skill-root/agent_codex_default",
             Self::Claude => "skill-root/agent_claude_default",
             Self::Qoder => "skill-root/agent_qoder_default",
+            Self::Pi => "skill-root/agent_pi_default",
         }
     }
 
@@ -104,6 +110,10 @@ impl SettingsAgentClass {
             Self::Claude => (
                 hiroute_integrations::CLAUDE_PROFILE_ID_V1,
                 hiroute_integrations::CLAUDE_INTEGRATION_PROFILE_REF_V1,
+            ),
+            Self::Pi => (
+                hiroute_integrations::PI_PROFILE_ID_V1,
+                hiroute_integrations::PI_INTEGRATION_PROFILE_REF_V1,
             ),
             Self::Qoder => (
                 hiroute_integrations::QODER_PROFILE_ID_V1,
@@ -125,6 +135,7 @@ impl LocalControlAdapter {
             "agent_codex_default" => SettingsAgentClass::Codex,
             "agent_claude_default" => SettingsAgentClass::Claude,
             "agent_qoder_default" => SettingsAgentClass::Qoder,
+            "agent_pi_default" => SettingsAgentClass::Pi,
             _ => return None,
         };
         Some(self.settings_context(class))
@@ -136,6 +147,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::CodexProfile,
             SettingsAgentClass::Claude,
             SettingsAgentClass::Qoder,
+            SettingsAgentClass::Pi,
         ]
         .into_iter()
         .find(|class| context == self.settings_context(*class))
@@ -172,8 +184,12 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
-        if class == SettingsAgentClass::Qoder {
-            return self.attach_qoder_model_facts(spec, self.qoder_settings_snapshot(spec)?);
+        if matches!(class, SettingsAgentClass::Qoder | SettingsAgentClass::Pi) {
+            return self.attach_additional_model_facts(
+                spec,
+                class,
+                self.additional_settings_snapshot(spec, class)?,
+            );
         }
         let owned_claude = if class == SettingsAgentClass::Claude {
             if let Some(join) = self.configured_model_settings_join(&spec.context_id)? {
@@ -378,7 +394,9 @@ impl LocalControlAdapter {
                 SettingsAgentClass::Claude
             }
             SettingsAgentClass::Claude => SettingsAgentClass::Codex,
-            SettingsAgentClass::Qoder => return Err(ControlReadError::Denied),
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi => {
+                return Err(ControlReadError::Denied);
+            }
         };
         let other_grant = stores
             .secrets()
@@ -444,7 +462,7 @@ impl LocalControlAdapter {
                 selected_collaboration_restore = Some(original.operation_id.clone());
             }
             let model = match class {
-                SettingsAgentClass::Qoder => return Err(ControlReadError::Denied),
+                SettingsAgentClass::Qoder | SettingsAgentClass::Pi => return Err(ControlReadError::Denied),
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => original
                     .plan
                     .external()
@@ -580,7 +598,9 @@ impl LocalControlAdapter {
             None
         };
         let native_default_model = match class {
-            SettingsAgentClass::Qoder => return Err(ControlReadError::Denied),
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi => {
+                return Err(ControlReadError::Denied);
+            }
             SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => codex_catalog_summary
                 .as_ref()
                 .map(|catalog| catalog.native_default_model.clone()),
@@ -868,7 +888,9 @@ impl LocalControlAdapter {
             ))
             .map_err(|_| ControlReadError::Corrupt)?;
         let model_target = match class {
-            SettingsAgentClass::Qoder => return Err(ControlReadError::Denied),
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi => {
+                return Err(ControlReadError::Denied);
+            }
             SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => {
                 SettingsModelTargetFacts::Codex {
                     provider_id: "hiroute".into(),
@@ -917,33 +939,42 @@ impl LocalControlAdapter {
                 collaboration_file_conflict,
                 restore_points,
                 model: Some(SettingsModelFacts {
-                    qoder_model_conflict: None,
-                    codex_context_override,
-                    claude_context_override,
-                    claude_plan_capability_unavailable,
-                    ingress: installation
-                        .profile
-                        .model_connection()
-                        .map_err(|_| ControlReadError::Corrupt)?
-                        .ok_or(ControlReadError::Denied)?
-                        .ingress_protocol,
-                    available_surfaces: self.scanner.available_model_surfaces(class.agent_id()),
-                    model_publication: active,
-                    model_catalog,
-                    login_item_required,
-                    login_item_removal_required,
-                    fixed_candidate_facts,
-                    preserved_codex_models,
-                    preserved_codex_bindings,
-                    required_native_model_ids,
-                    require_native_model_routes: preserve_native_models,
-                    unproven_native_model_ids,
-                    native_default_must_be_original,
-                    native_default_model,
-                    native_claude_presets,
-                    restore_native_model_ids,
-                    restore_inherits_root: class == SettingsAgentClass::CodexProfile,
-                    restored_native_model,
+                    common: SettingsModelCommonFacts {
+                        ingress: installation
+                            .profile
+                            .model_connection()
+                            .map_err(|_| ControlReadError::Corrupt)?
+                            .ok_or(ControlReadError::Denied)?
+                            .ingress_protocol,
+                        available_surfaces: self.scanner.available_model_surfaces(class.agent_id()),
+                        model_publication: active,
+                        login_item_required,
+                        login_item_removal_required,
+                        fixed_candidate_facts,
+                    },
+                    native: if class.is_codex() {
+                        SettingsModelNativeFacts::Codex(Box::new(SettingsCodexModelFacts {
+                            context_override: codex_context_override,
+                            model_catalog,
+                            preserved_codex_models,
+                            preserved_codex_bindings,
+                            required_native_model_ids,
+                            unproven_native_model_ids,
+                            require_native_model_routes: preserve_native_models,
+                            native_default_must_be_original,
+                            native_default_model,
+                            restore_native_model_ids,
+                            restore_inherits_root: class == SettingsAgentClass::CodexProfile,
+                            restored_native_model,
+                        }))
+                    } else {
+                        SettingsModelNativeFacts::Claude(SettingsClaudeNativeFacts {
+                            context_override: claude_context_override,
+                            plan_capability_unavailable: claude_plan_capability_unavailable,
+                            native_default_model,
+                            presets: native_claude_presets,
+                        })
+                    },
                 }),
             },
         })

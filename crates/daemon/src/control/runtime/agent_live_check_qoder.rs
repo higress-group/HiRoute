@@ -48,7 +48,7 @@ impl LocalControlAdapter {
             .map_err(|_| unavailable())?;
         let native_model = format!(
             "{}/{}",
-            hiroute_application::agent_connection::qoder_model_provider_id(context_id),
+            hiroute_application::agent_connection::additional_model_provider_id(context_id),
             model
         );
         let mut command = Command::new(executable);

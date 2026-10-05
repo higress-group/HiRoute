@@ -132,6 +132,14 @@ impl LocalControlAdapter {
                 return Err("protected discovery slot collision".to_owned());
             }
         }
+        for source in self.scanner.pi_api_sources().unwrap_or_default() {
+            if let Some(descriptor) = source.credential {
+                let slot = protected_input_slot(&descriptor)?;
+                if inputs.insert(slot, descriptor).is_some() {
+                    return Err("protected discovery slot collision".into());
+                }
+            }
+        }
         *self
             .permission_findings
             .lock()
@@ -221,7 +229,7 @@ impl ControlRepositoryPort for LocalControlAdapter {
     fn begin_local_operation(&self, operation: &OperationV1) -> PortResult<BeginOperationOutcome> {
         self.guard_codex_pending_change(Some(&operation.operation_id))?;
         let stores = self.stores_lock()?;
-        super::qoder_model_budget::guard_pending_model_change(
+        super::additional_model_budget::guard_pending_model_change(
             stores.control(),
             Some(&operation.operation_id),
         )?;
@@ -254,7 +262,7 @@ impl ControlRepositoryPort for LocalControlAdapter {
     ) -> PortResult<BeginOperationOutcome> {
         self.guard_codex_pending_change(Some(&operation.operation_id))?;
         let stores = self.stores_lock()?;
-        super::qoder_model_budget::guard_pending_model_change(
+        super::additional_model_budget::guard_pending_model_change(
             stores.control(),
             Some(&operation.operation_id),
         )?;

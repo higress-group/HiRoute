@@ -7,7 +7,7 @@ import { commonClaudePlan } from './editor-state';
 import { agentEcosystem } from './ecosystems';
 import { CodexModelEditor } from './CodexModelEditor';
 import { ClaudeModelEditor } from './ClaudeModelEditor';
-import { QoderModelEditor } from './QoderModelEditor';
+import { AdditionalModelEditor } from './AdditionalModelEditor';
 
 export type AgentModelEditorProps = {
   agent: Agent;
@@ -27,7 +27,8 @@ export function AgentModelEditor(props: AgentModelEditorProps) {
   switch (agentEcosystem(props.agent.agent_id)) {
     case 'codex': return <CodexModelEditor {...props} />;
     case 'claude': return <ClaudeModelEditor {...props} />;
-    case 'qoder': return <QoderModelEditor {...props} />;
+    case 'pi':
+    case 'qoder': return <AdditionalModelEditor {...props} />;
     default: return null;
   }
 }
@@ -48,6 +49,7 @@ export function modelSelectionSummary(selection: AgentModelSelection | null | un
         ? text('三个档位共用：', 'All presets use: ') + (planName(sharedPlan) ?? text('当前路由不可用', 'Current route unavailable'))
         : Object.entries(selection.preset_mappings).map(([preset, choice]) => `${preset[0].toUpperCase() + preset.slice(1)}: ${choice.kind === 'plan' ? planName(choice.plan_id) ?? text('当前路由不可用', 'Current route unavailable') : text('保留原生', 'Native')}`).join(' · ');
     }
+    case 'pi_additional':
     case 'qoder_additional':
       return selection.allowed_plan_ids.map(id => planName(id) ?? text('当前路由不可用', 'Current route unavailable')).join(' · ');
     default: return '';

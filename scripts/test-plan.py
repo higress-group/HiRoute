@@ -131,6 +131,19 @@ WORKER_PRODUCT_CHECKS = {
                                  "HIROUTE_QODER_MODEL_CONTEXT_HOME", "HIROUTE_QODER_MODEL_CONFIG_DIR"],
         "missing_environment": "fail",
     },
+    "pi_delegation": {
+        "id": "pi.delegation", "harnesses": ["pi"],
+        "guide": "tools/product-e2e/tests/PI_INTEGRATION.md",
+        "required_tests": [
+            "pi_worker_uses_native_skills_and_continues_the_frozen_task",
+            "pi_workers_route_independently_and_reject_missing_or_corrupt_history",
+            "pi_agent_saved_model_routes_preserve_defaults_and_restore_independently",
+            "pi_agent_uses_installed_user_skill_to_delegate_through_public_cli",
+            "pi_worker_compaction_uses_frozen_route_and_continues_exact_history",
+            "pi_static_api_discovery_imports_effective_source_and_rejects_stale_save"],
+        "required_environment": ["HIROUTE_PRODUCT_CANDIDATE_SHA", "HIROUTE_WORKER_PI_BINARY", "HIROUTE_WORKER_NODE"],
+        "missing_environment": "fail",
+    },
 }
 OPT_IN_WORKER_TARGETS = set(WORKER_PRODUCT_CHECKS)
 PRODUCT_GUIDES = {entry["guide"] for entry in WORKER_PRODUCT_CHECKS.values()} | {
@@ -165,6 +178,24 @@ QODER_PRODUCT_PATHS = {
     "crates/integrations/src/agents/settings_discovery.rs",
     "crates/integrations/src/agents/executable.rs",
 }
+PI_PRODUCT_PREFIXES = (
+    "crates/integrations/src/agents/pi", "crates/daemon/src/delegation/profile/pi",
+    "crates/daemon/src/control/runtime/model_connections/pi",
+    "crates/integrations/src/agents/filesystem_tests/pi",
+)
+ADDITIONAL_MODEL_PREFIXES = (
+    "crates/integrations/src/agents/additional_native",
+    "crates/application/src/agent_connection/additional_model",
+    "crates/domain/src/agents/additional_model",
+    "crates/daemon/src/control/runtime/native_additional_model",
+    "crates/daemon/src/control/runtime/additional_model",
+    "crates/daemon/src/control/runtime/settings_facts/additional_model",
+)
+ADDITIONAL_NATIVE_FIXTURE_PREFIXES = (
+    "crates/daemon/tests/support/additional_model_",
+    "crates/daemon/tests/support/collaboration_",
+    "crates/daemon/tests/support/native_compaction_",
+)
 # These helpers also serve publication/model journeys. Add the known real Worker gates
 # without pretending their complete ordinary-test dependency graph is bounded here.
 SHARED_WORKER_FIXTURES = {
@@ -180,8 +211,12 @@ def e2e_consumers(path):
     if path.startswith("tools/product-e2e/tests/") and Path(path).stem in OPT_IN_WORKER_TARGETS:
         return [("hiroute-product-e2e", Path(path).stem)]
     if path.startswith("crates/daemon/tests/support/native_context_"):
-        return [("hiroute-product-e2e", name) for name in ("worker_native_context", "qoder_delegation")]
-    if path == "crates/daemon/tests/support/agent_product_support.py" or path.startswith("crates/daemon/tests/support/qoder_"):
+        return [("hiroute-product-e2e", name) for name in ("worker_native_context", "qoder_delegation", "pi_delegation")]
+    if path == "crates/daemon/tests/support/agent_product_support.py" or path.startswith(ADDITIONAL_NATIVE_FIXTURE_PREFIXES):
+        return [("hiroute-product-e2e", name) for name in ("qoder_delegation", "pi_delegation")]
+    if path.startswith("crates/daemon/tests/support/pi_"):
+        return [("hiroute-product-e2e", "pi_delegation")]
+    if path.startswith("crates/daemon/tests/support/qoder_"):
         return [("hiroute-product-e2e", "qoder_delegation")]
     if path == "tools/e2e-harness/tests/p0_gateway_runtime.rs" or path.startswith("tools/e2e-harness/tests/p0_gateway_runtime/"):
         return [("hiroute-e2e", "p0_gateway_runtime"), ("hiroute-e2e", "p0_gateway_protocol"),
@@ -213,8 +248,14 @@ def worker_product_checks(paths):
             continue
         selected.update(target for package, target in e2e_consumers(path)
                         if package == "hiroute-product-e2e" and target in OPT_IN_WORKER_TARGETS)
-        if path in QODER_PRODUCT_PATHS or path.startswith(QODER_PRODUCT_PREFIXES):
+        if path.startswith(PI_PRODUCT_PREFIXES):
+            selected.add("pi_delegation")
+        elif path.startswith(ADDITIONAL_MODEL_PREFIXES):
+            selected.update(("qoder_delegation", "pi_delegation"))
+        elif path in QODER_PRODUCT_PATHS or path.startswith(QODER_PRODUCT_PREFIXES):
             selected.add("qoder_delegation")
+            if path in QODER_PRODUCT_PATHS or path.startswith(("crates/application/src/agent_connection/settings/", "crates/application/src/agent_connection/skill")):
+                selected.add("pi_delegation")
         elif path.startswith(("crates/daemon/src/delegation/", "crates/application/src/delegation/",
                               "crates/domain/src/delegation/")) or path in SHARED_WORKER_FIXTURES:
             selected.update(OPT_IN_WORKER_TARGETS)

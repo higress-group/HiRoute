@@ -29,10 +29,11 @@ pub(crate) use discovery::{
     discover as discover_worker_dependencies, validate_persisted_installation, validate_selection,
 };
 
-const WORKER_HARNESSES: [WorkerHarnessV1; 3] = [
+const WORKER_HARNESSES: [WorkerHarnessV1; 4] = [
     WorkerHarnessV1::CodexCli,
     WorkerHarnessV1::ClaudeCode,
     WorkerHarnessV1::QoderCli,
+    WorkerHarnessV1::Pi,
 ];
 
 #[derive(Clone, Debug)]
@@ -149,6 +150,12 @@ pub(super) fn check_installation(
         .validated_launch()
         .map_err(|_| DelegationErrorV1::DependenciesInvalid)?
     {
+        WorkerLaunchFormV1::NativeSdk { cli, node } => {
+            check_entry(Path::new(cli), true)?;
+            check_entry(Path::new(node), true)?;
+            hiroute_integrations::agents::pi_sdk_installation(Path::new(cli))
+                .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+        }
         WorkerLaunchFormV1::NativeAcp { cli } => check_entry(Path::new(cli), true)?,
         WorkerLaunchFormV1::AdapterAcp { cli, adapter, node } => {
             check_entry(Path::new(adapter), node.is_none())?;
@@ -284,9 +291,11 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             .selection(input.task.plan.harness)?
             .ok_or(DelegationErrorV1::DependenciesMissing)?;
         let installation = discovery::validate_persisted_installation(&selection.config)?;
-        if installation.harness == WorkerHarnessV1::QoderCli
-            && input.run.configuration.permission_policy
-                != hiroute_domain::delegation::WorkerPermissionPolicyV1::ApproveAll
+        if matches!(
+            installation.harness,
+            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi
+        ) && input.run.configuration.permission_policy
+            != hiroute_domain::delegation::WorkerPermissionPolicyV1::ApproveAll
         {
             return Err(DelegationErrorV1::CapabilityUnavailable);
         }
@@ -431,7 +440,11 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
                     context.workspace,
                 )
             }
-            None if installation.harness == WorkerHarnessV1::QoderCli => {
+            None if matches!(
+                installation.harness,
+                WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi
+            ) =>
+            {
                 return Err(DelegationErrorV1::ResumeUnavailable);
             }
             None => (
@@ -460,14 +473,23 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         {
             return Err(DelegationErrorV1::CapabilityUnavailable);
         }
-        let qoder_budget = (installation.harness == WorkerHarnessV1::QoderCli)
-            .then(|| {
+        let qoder_budget = (matches!(
+            installation.harness,
+            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi
+        ))
+        .then(|| {
+            if installation.harness == WorkerHarnessV1::Pi {
+                hiroute_integrations::agents::pi_plan_token_budget(
+                    &input.compiled_plan.body.materialized,
+                )
+            } else {
                 hiroute_integrations::agents::qoder_plan_token_budget(
                     &input.compiled_plan.body.materialized,
                 )
-            })
-            .transpose()
-            .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+            }
+        })
+        .transpose()
+        .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
         CandidateWorkerProfile::build(ProfileInput {
             context_window_tokens: if let Some(budget) = qoder_budget {
                 Some(budget.context_window_tokens)

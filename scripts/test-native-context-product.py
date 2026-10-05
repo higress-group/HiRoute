@@ -218,6 +218,12 @@ class NativeContextOracleTests(unittest.TestCase):
                                     'CLAUDE_CODE_OAUTH_TOKEN': 'synthetic-parent-token',
                                     'CODEX_CONFIG': 'synthetic-parent-config', 'AWS_PROFILE': 'daily',
                                     'QODER_CONFIG_DIR': '/daily/qoder',
+                                    'PI_CODING_AGENT_DIR': '/daily/pi',
+                                    'DEEPSEEK_API_KEY': 'synthetic-deepseek-secret',
+                                    'GROQ_API_KEY': 'synthetic-groq-secret',
+                                    'MISTRAL_API_KEY': 'synthetic-mistral-secret',
+                                    'XAI_API_KEY': 'synthetic-xai-secret',
+                                    'CEREBRAS_API_KEY': 'synthetic-cerebras-secret',
                                     'HIROUTE_WORKER_RECEIPT_DIR': '/daily/worker-receipts',
                                     'QODER_PERSONAL_ACCESS_TOKEN': 'synthetic-qoder-secret'}):
             product = Product(REPO, root=self.root / 'product')
@@ -225,6 +231,7 @@ class NativeContextOracleTests(unittest.TestCase):
         self.assertEqual(product.env['CODEX_HOME'], str(home / '.codex'))
         self.assertEqual(product.env['CLAUDE_CONFIG_DIR'], str(home / '.claude'))
         self.assertEqual(product.env['QODER_CONFIG_DIR'], str(home / '.qoder'))
+        self.assertEqual(product.env['PI_CODING_AGENT_DIR'], str(home / '.pi/agent'))
         receipt_root = str(product.root / 'worker-receipts')
         self.assertEqual(product.env['HIROUTE_WORKER_RECEIPT_DIR'], receipt_root)
         # Borrowing a normally logged-in native HOME must not borrow HiRoute's
@@ -234,7 +241,8 @@ class NativeContextOracleTests(unittest.TestCase):
         neighbor = Product(REPO, root=self.root / 'neighbor-product')
         neighbor.env['HOME'] = product.env['HOME']
         self.assertNotEqual(neighbor.env['HIROUTE_WORKER_RECEIPT_DIR'], receipt_root)
-        for key in ('CLAUDE_CODE_OAUTH_TOKEN', 'CODEX_CONFIG', 'AWS_PROFILE', 'QODER_PERSONAL_ACCESS_TOKEN'):
+        for key in ('CLAUDE_CODE_OAUTH_TOKEN', 'CODEX_CONFIG', 'AWS_PROFILE', 'QODER_PERSONAL_ACCESS_TOKEN',
+                    'DEEPSEEK_API_KEY', 'GROQ_API_KEY', 'MISTRAL_API_KEY', 'XAI_API_KEY', 'CEREBRAS_API_KEY'):
             self.assertNotIn(key, product.env)
 
     def test_proxy_trap_records_any_method_without_request_content(self):

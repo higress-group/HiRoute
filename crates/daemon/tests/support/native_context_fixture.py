@@ -35,9 +35,26 @@ def write_new(path, text, executable=False):
     path.chmod(0o700 if executable else 0o600)
 
 
+def prepare_skill(parent, name, scope, writer=write_new):
+    nonce = secrets.token_hex(12)
+    directory = parent / name
+    discovery, contents, executed = ('discovery-' + nonce, 'contents-' + nonce, 'executed-' + nonce)
+    script = directory / 'receipt.sh'
+    writer(script, '#!/bin/sh\nprintf "%s\\n" ' + shlex.quote(executed) + '\n', True)
+    skill = directory / 'SKILL.md'
+    writer(skill, '\n'.join((
+        '---', 'name: ' + name,
+        'description: Native context read-only receipt ' + discovery, '---', '',
+        'Read this skill and run its receipt script using the native shell tool.',
+        'Content receipt: ' + contents, 'Script: ' + str(script), '',
+    )))
+    return dict(name=name, scope=scope, discovery=discovery, contents=contents,
+                       executed=executed, skill=str(skill), script=str(script))
+
+
 def prepare(home, config, project, harness, suffix='', owned_files=None):
     """Add only new fixture-owned skills and neighbors; never replace existing files."""
-    assert harness in ('codex', 'claude', 'qoder')
+    assert harness in ('codex', 'claude', 'qoder', 'pi')
     home, config, project = map(lambda path: Path(path).resolve(), (home, config, project))
     def owned_write(path, text, executable=False):
         write_new(path, text, executable)
@@ -47,23 +64,9 @@ def prepare(home, config, project, harness, suffix='', owned_files=None):
     skills = []
     for scope, parent in (
         ('user', home / '.agents/skills' if harness == 'codex' else config / 'skills'),
-        ('project', project / {'codex': '.agents/skills', 'claude': '.claude/skills', 'qoder': '.qoder/skills'}[harness]),
+        ('project', project / {'codex': '.agents/skills', 'claude': '.claude/skills', 'qoder': '.qoder/skills', 'pi': '.pi/skills'}[harness]),
     ):
-        nonce = secrets.token_hex(12)
-        name = 'native-context-' + scope + suffix
-        directory = parent / name
-        discovery, contents, executed = ('discovery-' + nonce, 'contents-' + nonce, 'executed-' + nonce)
-        script = directory / 'receipt.sh'
-        owned_write(script, '#!/bin/sh\nprintf "%s\\n" ' + shlex.quote(executed) + '\n', True)
-        skill = directory / 'SKILL.md'
-        owned_write(skill, '\n'.join((
-            '---', 'name: ' + name,
-            'description: Native context read-only receipt ' + discovery, '---', '',
-            'Read this skill and run its receipt script using the native shell tool.',
-            'Content receipt: ' + contents, 'Script: ' + str(script), '',
-        )))
-        skills.append(dict(name=name, scope=scope, discovery=discovery, contents=contents,
-                           executed=executed, skill=str(skill), script=str(script)))
+        skills.append(prepare_skill(parent, 'native-context-' + scope + suffix, scope, owned_write))
     neighbor = config / ('native-context-neighbor' + suffix + '.txt')
     owned_write(neighbor, 'A neighboring user file must survive Worker cleanup.\n')
     protected = [neighbor, *(Path(item[key]) for item in skills for key in ('skill', 'script'))]
@@ -93,7 +96,7 @@ def assert_preserved(fixture):
 
 def tool_results(body, harness):
     """Only correlated tool-result records count, never arbitrary prompt substrings."""
-    if harness in ('codex', 'qoder'):
+    if harness in ('codex', 'qoder', 'pi'):
         source = body.get('input', [])
         return {item.get('call_id'): item.get('output', '') for item in source
                 if isinstance(item, dict) and item.get('type') == 'function_call_output'} \
@@ -178,6 +181,9 @@ def decision(fixture, body):
                     'expected native Skill directory was not loaded'
         assert 'Bash' in names, 'native Bash tool unavailable'
         name = 'Bash'
+    elif harness == 'pi':
+        assert 'bash' in names and 'read' in names, 'native Pi tools unavailable'
+        name = 'bash'
     else:
         name = next((name for name in ('exec_command', 'shell_command') if name in names), None)
         assert name, 'native shell tool unavailable'
@@ -185,7 +191,7 @@ def decision(fixture, body):
                           + shlex.quote(skill['script']) for skill in fixture['skills'])
     arguments = ({'cmd': command, 'max_output_tokens': 2000, 'yield_time_ms': 1000}
                  if name == 'exec_command' else {'command': command, 'timeout_ms': 10000}
-                 if name == 'shell_command' else {'command': command, 'timeout': 10000})
+                 if name == 'shell_command' else {'command': command, 'timeout': 10 if harness == 'pi' else 10000})
     return dict(kind='tool', id='native_context_execute', name=name, arguments=arguments)
 
 

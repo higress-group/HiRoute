@@ -109,8 +109,8 @@ impl LocalControlAdapter {
             hiroute_application::agent_connection::decode_settings_claude_model_file(intent)?;
             return Ok(None);
         }
-        if super::native_qoder_model::is_settings_qoder_model(intent) {
-            hiroute_application::agent_connection::decode_settings_qoder_model_file(intent)?;
+        if super::native_additional_model::is_settings_additional_model(intent) {
+            hiroute_application::agent_connection::decode_settings_additional_model_file(intent)?;
             return Ok(None);
         }
         let envelope: AgentConfigurationEnvelopeV1 =
@@ -244,6 +244,9 @@ impl ExternalEffectPort for LocalControlAdapter {
         intent: &ExternalEffectIntentV1,
     ) -> PortResult<()> {
         self.acknowledge_clean_codex_restoration(operation, intent)?;
+        if super::native_additional_model::is_settings_additional_model(intent) {
+            self.validate_additional_model_dependencies(operation, intent)?;
+        }
         if intent.effect_id() == "agent-connection-routing-skill"
             && intent.desired()["transaction"] == "settings"
         {
@@ -365,8 +368,8 @@ impl ExternalEffectPort for LocalControlAdapter {
         if super::native_claude_model::is_settings_claude_model(intent) {
             return self.stage_settings_claude_model(operation, intent);
         }
-        if super::native_qoder_model::is_settings_qoder_model(intent) {
-            return self.stage_settings_qoder_model(operation, intent);
+        if super::native_additional_model::is_settings_additional_model(intent) {
+            return self.stage_settings_additional_model(operation, intent);
         }
         let Some(permission) = self.permission_intent(intent)? else {
             if let Some(change) = self.native_claude_change(intent)? {
@@ -477,6 +480,12 @@ impl ExternalEffectPort for LocalControlAdapter {
             return self.activate_publication(operation, effect);
         }
         if effect.effect_id != EFFECT_ID {
+            for intent in operation.plan.external().iter().filter(|intent| {
+                intent.target() == effect.target
+                    && super::native_additional_model::is_settings_additional_model(intent)
+            }) {
+                self.validate_additional_model_dependencies(operation, intent)?;
+            }
             return self.artifacts.activate_artifact(effect);
         }
         let (operation_id, intent) = self.permission_marker(effect)?;

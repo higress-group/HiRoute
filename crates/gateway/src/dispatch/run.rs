@@ -62,7 +62,10 @@ impl RunObservationMetadata {
         if value.plan_revision == 0
             || !valid_observation_reference(&value.plan_id)
             || !valid_observation_reference(&value.publication_ref)
-            || !matches!(value.harness_id.as_str(), "codex" | "claude" | "qoder")
+            || !matches!(
+                value.harness_id.as_str(),
+                "codex" | "claude" | "qoder" | "pi"
+            )
             || [
                 &value.native_session_id,
                 &value.parent_context_ref,

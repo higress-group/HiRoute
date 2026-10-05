@@ -51,6 +51,7 @@ use crate::delegation::installation::{
 use crate::delegation::local_worker::LocalWorkerPlatform;
 use crate::delegation::run_authority::DelegationRunAuthority;
 
+mod additional_model_budget;
 mod agent_connection;
 mod agent_live_check;
 mod candidate_execution;
@@ -71,16 +72,15 @@ mod effects;
 mod model_catalog;
 mod model_connections;
 mod mutation;
+mod native_additional_model;
 mod native_claude_model;
 mod native_model;
-mod native_qoder_model;
 mod plan_content;
 mod plan_content_snapshot;
 mod plan_versions;
 mod prices;
 mod protected_inputs;
 mod publication;
-mod qoder_model_budget;
 mod release_install;
 mod routing;
 mod settings_codex_profile;
@@ -311,6 +311,14 @@ impl ProductionControlRuntime {
                     )
                     .map_err(|error| error.to_string())?
                     .map(|(selection, _)| PathBuf::from(selection.cli_path));
+                let selected_pi = stores
+                    .control()
+                    .worker_dependency_selection(
+                        &WorkspaceId::default(),
+                        hiroute_domain::delegation::WorkerHarnessV1::Pi,
+                    )
+                    .map_err(|error| error.to_string())?
+                    .map(|(selection, _)| PathBuf::from(selection.cli_path));
                 release_agent_scanner(
                     &home,
                     &project,
@@ -318,6 +326,7 @@ impl ProductionControlRuntime {
                     overrides.codex_desktop_engine,
                     selected_claude,
                     selected_qoder,
+                    selected_pi,
                 )?
             }
         };
@@ -354,11 +363,29 @@ impl ProductionControlRuntime {
             QODER_INTEGRATION_PROFILE_REF_V1,
         )
         .map_err(|error| error.to_string())?;
+        let pi_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent_pi_default",
+            hiroute_integrations::PI_PROFILE_ID_V1,
+            hiroute_integrations::PI_INTEGRATION_PROFILE_REF_V1,
+        )
+        .map_err(|error| error.to_string())?;
         let artifacts = stores
             .open_managed_artifacts_with_external_targets(
                 storage_root.join("managed-artifacts"),
                 storage_root.join("artifact-restores"),
                 [
+                    (
+                        AgentConnectionEffectRoleV1::ManagedConfiguration
+                            .target_for(&pi_subject)
+                            .map_err(|error| error.to_string())?,
+                        scanner.pi_user_models_target(),
+                    ),
+                    (
+                        AgentConnectionEffectRoleV1::RoutingSkill
+                            .target_for(&pi_subject)
+                            .map_err(|error| error.to_string())?,
+                        scanner.pi_user_skill_target(),
+                    ),
                     (
                         AgentConnectionEffectRoleV1::ManagedConfiguration
                             .target_for(&qoder_subject)
@@ -1269,6 +1296,7 @@ fn release_agent_scanner(
     codex_desktop_engine: Option<PathBuf>,
     selected_claude: Option<PathBuf>,
     selected_qoder: Option<PathBuf>,
+    selected_pi: Option<PathBuf>,
 ) -> Result<FilesystemAgentScannerV1, String> {
     // ReleaseFacts verification already validated the registered connector/model metadata.
     // Agent registration consumes that payload after the current rating snapshot and all
@@ -1285,6 +1313,9 @@ fn release_agent_scanner(
     }
     if let Some(executable) = selected_qoder {
         layout.qoder_executable = executable;
+    }
+    if let Some(executable) = selected_pi {
+        layout.pi_executable = executable;
     }
     Ok(FilesystemAgentScannerV1::new(layout, index))
 }
@@ -1316,6 +1347,7 @@ fn discovered_agent(
                 AgentKindV1::Codex => "codex-responses-v1",
                 AgentKindV1::ClaudeCode => "claude-messages-v1",
                 AgentKindV1::Qoder => QODER_PROFILE_ID_V1,
+                AgentKindV1::Pi => hiroute_integrations::PI_PROFILE_ID_V1,
             }
             .to_owned(),
             version.clone(),

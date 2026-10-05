@@ -9,7 +9,12 @@ pub(super) fn decode_responses_input(
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("input[]"))?;
-    let item_type = required_string(object, "type")?;
+    // Responses EasyInputMessage omits this optional discriminator. The message arm
+    // still validates role/content and unknown fields; explicit malformed types fail.
+    let item_type = match object.get("type") {
+        None => "message".to_owned(),
+        Some(_) => required_string(object, "type")?,
+    };
     match item_type.as_str() {
         "message" => {
             ensure_keys(

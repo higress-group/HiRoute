@@ -33,6 +33,7 @@ fn selection_operation(
         WorkerHarnessV1::CodexCli => "codex_cli",
         WorkerHarnessV1::ClaudeCode => "claude_code",
         WorkerHarnessV1::QoderCli => "qoder_cli",
+        WorkerHarnessV1::Pi => "pi",
     };
     let expected_revisions = RevisionSetV1 {
         target: change.before_revision,

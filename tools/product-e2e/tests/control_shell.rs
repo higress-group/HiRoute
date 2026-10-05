@@ -351,6 +351,7 @@ fn assert_discovery_agent_ids(agents: &[Value]) {
         "agent_codex_default",
         "agent_claude_default",
         "agent_qoder_default",
+        "agent_pi_default",
     ] {
         assert!(ids.contains(required), "missing required Agent: {required}");
     }

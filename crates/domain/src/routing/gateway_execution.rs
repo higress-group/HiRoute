@@ -346,6 +346,46 @@ pub struct GatewayNativeReasoningFieldAssignmentV1 {
     pub value: GatewayNativeReasoningValueV1,
 }
 
+impl GatewayNativeReasoningFieldAssignmentV1 {
+    /// Current native wire locations shared by the renderer and its consumers.
+    pub fn parameter_path(parameter: &str, protocol: UpstreamProtocol) -> Vec<String> {
+        match (protocol, parameter) {
+            (UpstreamProtocol::Responses, "reasoning_effort") => {
+                vec!["reasoning".into(), "effort".into()]
+            }
+            (UpstreamProtocol::Responses, "thinking_budget") => {
+                vec!["reasoning".into(), "max_output_tokens".into()]
+            }
+            (UpstreamProtocol::Messages, "thinking_budget") => {
+                vec!["thinking".into(), "budget_tokens".into()]
+            }
+            _ => parameter.split('.').map(str::to_owned).collect(),
+        }
+    }
+
+    /// Match a binary native switch, including protocol-owned string controls.
+    pub fn matches_toggle_wire(&self, protocol: UpstreamProtocol, enabled: bool) -> bool {
+        let string_value = |path: [&str; 2], value: &str| {
+            self.path.iter().map(String::as_str).eq(path)
+                && matches!(&self.value, GatewayNativeReasoningValueV1::String(actual) if actual == value)
+        };
+        match &self.value {
+            GatewayNativeReasoningValueV1::Bool(value) => *value == enabled,
+            GatewayNativeReasoningValueV1::String(_) => match protocol {
+                UpstreamProtocol::Responses => string_value(
+                    ["reasoning", "effort"],
+                    if enabled { "high" } else { "none" },
+                ),
+                UpstreamProtocol::Messages | UpstreamProtocol::ChatCompletions => string_value(
+                    ["thinking", "type"],
+                    if enabled { "enabled" } else { "disabled" },
+                ),
+            },
+            GatewayNativeReasoningValueV1::U64(_) => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GatewayNativeReasoningRenderV1 {
@@ -630,7 +670,9 @@ fn reasoning_profile_matches(
             GatewayNativeReasoningRenderV1::NoControlParameter,
         ) => profile.profile_id == *fixed,
         (
-            ExactNativeReasoningV1::Toggle { enabled, .. },
+            ExactNativeReasoningV1::Toggle {
+                parameter, enabled, ..
+            },
             GatewayReasoningControlKindV1::Toggle,
             GatewayNativeReasoningRenderV1::ExactFields {
                 protocol: rendered,
@@ -641,7 +683,7 @@ fn reasoning_profile_matches(
                 && *rendered == protocol
                 && fields
                     .iter()
-                    .any(|field| field.value == GatewayNativeReasoningValueV1::Bool(*enabled))
+                    .any(|field| toggle_field_matches(field, parameter, *enabled, protocol))
         }
         (
             ExactNativeReasoningV1::Profile {
@@ -676,6 +718,28 @@ fn reasoning_profile_matches(
                 && *selected_tokens == u64::from(*tokens)
         }
         _ => false,
+    }
+}
+
+fn toggle_field_matches(
+    field: &GatewayNativeReasoningFieldAssignmentV1,
+    parameter: &str,
+    enabled: bool,
+    protocol: UpstreamProtocol,
+) -> bool {
+    match (protocol, parameter) {
+        (UpstreamProtocol::Responses, "enable_thinking" | "deepseek_thinking")
+        | (UpstreamProtocol::Messages, "enable_thinking" | "deepseek_thinking")
+        | (UpstreamProtocol::ChatCompletions, "deepseek_thinking") => {
+            matches!(field.value, GatewayNativeReasoningValueV1::String(_))
+                && field.matches_toggle_wire(protocol, enabled)
+        }
+        _ => {
+            field.path
+                == GatewayNativeReasoningFieldAssignmentV1::parameter_path(parameter, protocol)
+                && matches!(field.value, GatewayNativeReasoningValueV1::Bool(_))
+                && field.matches_toggle_wire(protocol, enabled)
+        }
     }
 }
 
@@ -820,5 +884,122 @@ mod tests {
             &exact,
             UpstreamProtocol::Responses
         ));
+    }
+
+    #[test]
+    fn native_toggle_selection_matches_exact_protocol_wire_values() {
+        for (parameter, protocol, path, values) in [
+            (
+                "enable_thinking",
+                UpstreamProtocol::Responses,
+                "reasoning.effort",
+                Some(["none", "high"]),
+            ),
+            (
+                "deepseek_thinking",
+                UpstreamProtocol::Responses,
+                "reasoning.effort",
+                Some(["none", "high"]),
+            ),
+            (
+                "enable_thinking",
+                UpstreamProtocol::Messages,
+                "thinking.type",
+                Some(["disabled", "enabled"]),
+            ),
+            (
+                "deepseek_thinking",
+                UpstreamProtocol::Messages,
+                "thinking.type",
+                Some(["disabled", "enabled"]),
+            ),
+            (
+                "deepseek_thinking",
+                UpstreamProtocol::ChatCompletions,
+                "thinking.type",
+                Some(["disabled", "enabled"]),
+            ),
+            (
+                "enable_thinking",
+                UpstreamProtocol::ChatCompletions,
+                "enable_thinking",
+                None,
+            ),
+            (
+                "custom_toggle",
+                UpstreamProtocol::Responses,
+                "custom_toggle",
+                None,
+            ),
+            (
+                "reasoning_effort",
+                UpstreamProtocol::Responses,
+                "reasoning.effort",
+                None,
+            ),
+            (
+                "thinking_budget",
+                UpstreamProtocol::Responses,
+                "reasoning.max_output_tokens",
+                None,
+            ),
+            (
+                "thinking_budget",
+                UpstreamProtocol::Messages,
+                "thinking.budget_tokens",
+                None,
+            ),
+        ] {
+            for enabled in [false, true] {
+                let value = |enabled: bool| {
+                    values.map_or(GatewayNativeReasoningValueV1::Bool(enabled), |values| {
+                        GatewayNativeReasoningValueV1::String(values[usize::from(enabled)].into())
+                    })
+                };
+                let mut profile = GatewayReasoningProfileCapabilityV1 {
+                    profile_id: if enabled { "enabled" } else { "disabled" }.into(),
+                    control_kind: GatewayReasoningControlKindV1::Toggle,
+                    render: GatewayNativeReasoningRenderV1::ExactFields {
+                        protocol,
+                        fields: vec![GatewayNativeReasoningFieldAssignmentV1 {
+                            path: path.split('.').map(str::to_owned).collect(),
+                            value: value(enabled),
+                        }],
+                    },
+                    accounting: GatewayReasoningAccountingV1::WithinOutputCap,
+                    additional_reservation_tokens: 0,
+                };
+                let exact = ExactNativeReasoningV1::Toggle {
+                    parameter: parameter.into(),
+                    enabled,
+                    render_mode: ReasoningRenderModeV1::ExplicitNative,
+                };
+                assert!(
+                    reasoning_profile_matches(&profile, &exact, protocol),
+                    "{parameter} {protocol:?} {enabled}"
+                );
+                let other_protocol = if protocol == UpstreamProtocol::Responses {
+                    UpstreamProtocol::Messages
+                } else {
+                    UpstreamProtocol::Responses
+                };
+                assert!(!reasoning_profile_matches(&profile, &exact, other_protocol));
+                let GatewayNativeReasoningRenderV1::ExactFields { fields, .. } =
+                    &mut profile.render
+                else {
+                    unreachable!()
+                };
+                fields[0].value = value(!enabled);
+                assert!(!reasoning_profile_matches(&profile, &exact, protocol));
+                let GatewayNativeReasoningRenderV1::ExactFields { fields, .. } =
+                    &mut profile.render
+                else {
+                    unreachable!()
+                };
+                fields[0].value = value(enabled);
+                fields[0].path = vec!["unrelated".into()];
+                assert!(!reasoning_profile_matches(&profile, &exact, protocol));
+            }
+        }
     }
 }

@@ -78,7 +78,8 @@ impl AgentModelGrantV2 {
             (selection, protocol),
             (
                 AgentModelSelectionV2::CodexDefault { .. }
-                    | AgentModelSelectionV2::QoderAdditional { .. },
+                    | AgentModelSelectionV2::QoderAdditional { .. }
+                    | AgentModelSelectionV2::PiAdditional { .. },
                 AgentIngressProtocolV1::Responses
             ) | (
                 AgentModelSelectionV2::ClaudeLauncher { .. },
@@ -253,7 +254,8 @@ impl AgentModelGrantV2 {
             (selection, self.protocol),
             (
                 AgentModelSelectionV2::CodexDefault { .. }
-                    | AgentModelSelectionV2::QoderAdditional { .. },
+                    | AgentModelSelectionV2::QoderAdditional { .. }
+                    | AgentModelSelectionV2::PiAdditional { .. },
                 AgentIngressProtocolV1::Responses
             ) | (
                 AgentModelSelectionV2::ClaudeLauncher { .. },

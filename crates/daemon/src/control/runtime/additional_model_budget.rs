@@ -1,7 +1,7 @@
 //! Installed native catalog budgets constrain subsequent publication updates.
 use super::LocalControlAdapter;
 use hiroute_application::agent_connection::{
-    QoderModelFileAction, settings_qoder_model_file_for_operation,
+    AdditionalModelFileAction, settings_additional_model_file_for_operation,
 };
 use hiroute_domain::{
     AgentAccessGrantRefV1, AgentModelRouteV2, ControlRepositoryPort, OperationStepKind, PortError,
@@ -12,7 +12,7 @@ use hiroute_domain::{
 impl LocalControlAdapter {
     /// A completed service segment still owns its native tail until exact recovery finishes.
     /// Do not reinterpret a pending generation as an unconfigured native catalog.
-    pub(super) fn guard_qoder_pending_model_change(
+    pub(super) fn guard_additional_pending_model_change(
         &self,
         same_operation: Option<&hiroute_domain::OperationId>,
     ) -> PortResult<()> {
@@ -21,7 +21,7 @@ impl LocalControlAdapter {
 
     /// Run at admission and again before sealing Install. A published smaller budget would
     /// otherwise leave Qoder sending requests under a larger persisted native declaration.
-    pub(super) fn validate_qoder_installed_model_budgets(
+    pub(super) fn validate_additional_installed_model_budgets(
         &self,
         record: &PublicationRecordV1,
     ) -> PortResult<()> {
@@ -31,16 +31,14 @@ impl LocalControlAdapter {
             &WorkspaceId::default(),
             "ApplyAgentConnectionChange",
         )? {
-            let Some(intent) = operation
-                .plan
-                .external()
-                .iter()
-                .find(|intent| super::native_qoder_model::is_settings_qoder_model(intent))
-            else {
+            let Some(intent) = operation.plan.external().iter().find(|intent| {
+                super::native_additional_model::is_settings_additional_model(intent)
+            }) else {
                 continue;
             };
-            let payload = settings_qoder_model_file_for_operation(&operation, intent)?;
-            let QoderModelFileAction::Configure { models, .. } = payload.change else {
+            let payload = settings_additional_model_file_for_operation(&operation, intent)?;
+            let kind = hiroute_application::agent_connection::additional_model_kind(intent)?;
+            let AdditionalModelFileAction::Configure { models, .. } = payload.change else {
                 continue;
             };
             let [mutation] = operation.plan.agent_access_grants() else {
@@ -81,8 +79,12 @@ impl LocalControlAdapter {
                     .clone()
                     .into_current()
                     .map_err(|_| shrinking())?;
-                let budget = hiroute_integrations::qoder_plan_token_budget(&plan.body.materialized)
-                    .map_err(|_| shrinking())?;
+                let budget = (if kind == hiroute_domain::AgentKindV1::Pi {
+                    hiroute_integrations::pi_plan_token_budget(&plan.body.materialized)
+                } else {
+                    hiroute_integrations::qoder_plan_token_budget(&plan.body.materialized)
+                })
+                .map_err(|_| shrinking())?;
                 if budget.context_window_tokens < model.context_window_tokens
                     || budget.max_output_tokens < model.max_output_tokens
                 {
@@ -114,7 +116,7 @@ pub(super) fn guard_pending_model_change(
                 .plan
                 .external()
                 .iter()
-                .any(super::native_qoder_model::is_settings_qoder_model)
+                .any(super::native_additional_model::is_settings_additional_model)
         {
             return Err(PortError::new(
                 PortErrorCode::Conflict,

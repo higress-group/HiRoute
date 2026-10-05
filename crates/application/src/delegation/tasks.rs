@@ -810,6 +810,7 @@ mod tests {
                     unavailable(hiroute_domain::delegation::WorkerHarnessV1::CodexCli),
                     unavailable(hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode),
                     unavailable(hiroute_domain::delegation::WorkerHarnessV1::QoderCli),
+                    unavailable(hiroute_domain::delegation::WorkerHarnessV1::Pi),
                 ],
             })
         }
@@ -877,7 +878,7 @@ mod tests {
                 .iter()
                 .map(|executor| executor["harness"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            ["codex_cli", "claude_code", "qoder_cli"]
+            ["codex_cli", "claude_code", "qoder_cli", "pi"]
         );
 
         let rejected = invoke_worker(

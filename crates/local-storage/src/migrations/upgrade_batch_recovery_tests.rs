@@ -82,43 +82,51 @@ fn missing_original_backup_for_old_mixed_versions_refuses_without_adopting_data(
 }
 
 #[test]
-fn prior_target24_batch_finishes_and_archives_before_a_new_current_batch() {
-    for persist_phase in [false, true] {
-        let directory = crate::test_tempdir().unwrap();
-        let root = directory.path().join("storage");
-        let mut set = source_batch(&root, 24);
-        let backup = set.directory().to_owned();
-        let source_bytes = fs::read(backup.join("control.db")).unwrap();
-        let old_id = set.set_id().to_owned();
-        let key = fs::read(root.join("master-key")).unwrap();
-        commit_step(&root.join("live/control.db"), DatabaseKind::Control, 24);
-        if persist_phase {
-            set.persist_phase(&test_writer_barrier(), BackupSetPhase::ControlMigrated)
-                .unwrap();
-        }
-        drop(set);
-        assert_latest_and_preserved(&root, &key);
-        let archived = backup
-            .parent()
-            .unwrap()
-            .join(format!("migration-set.{old_id}"));
-        let previous = BackupSet::open(&crate::test_storage_authority(), &archived).unwrap();
-        assert_eq!(previous.target_schema_version(), 24);
-        assert_eq!(previous.phase(), BackupSetPhase::Completed);
-        assert_eq!(previous.set_id(), old_id);
-        assert_eq!(fs::read(archived.join("control.db")).unwrap(), source_bytes);
-        let current = BackupSet::open(&crate::test_storage_authority(), &backup).unwrap();
-        assert_ne!(current.set_id(), old_id);
-        assert_eq!(current.control.manifest().schema_version, 24);
-        assert_eq!(current.target_schema_version(), LATEST_SCHEMA_VERSION);
-        assert_eq!(current.phase(), BackupSetPhase::Completed);
-        assert_latest_and_preserved(&root, &key);
-        assert_eq!(
-            BackupSet::open(&crate::test_storage_authority(), backup)
+fn prior_target24_or25_batch_finishes_and_archives_before_a_new_current_batch() {
+    for target in [24, 25] {
+        for persist_phase in [false, true] {
+            let directory = crate::test_tempdir().unwrap();
+            let root = directory.path().join("storage");
+            let mut set = source_batch(&root, target);
+            let backup = set.directory().to_owned();
+            let source_bytes = fs::read(backup.join("control.db")).unwrap();
+            let old_id = set.set_id().to_owned();
+            let key = fs::read(root.join("master-key")).unwrap();
+            for version in 24..=target {
+                commit_step(
+                    &root.join("live/control.db"),
+                    DatabaseKind::Control,
+                    version,
+                );
+            }
+            if persist_phase {
+                set.persist_phase(&test_writer_barrier(), BackupSetPhase::ControlMigrated)
+                    .unwrap();
+            }
+            drop(set);
+            assert_latest_and_preserved(&root, &key);
+            let archived = backup
+                .parent()
                 .unwrap()
-                .set_id(),
-            current.set_id()
-        );
+                .join(format!("migration-set.{old_id}"));
+            let previous = BackupSet::open(&crate::test_storage_authority(), &archived).unwrap();
+            assert_eq!(previous.target_schema_version(), target);
+            assert_eq!(previous.phase(), BackupSetPhase::Completed);
+            assert_eq!(previous.set_id(), old_id);
+            assert_eq!(fs::read(archived.join("control.db")).unwrap(), source_bytes);
+            let current = BackupSet::open(&crate::test_storage_authority(), &backup).unwrap();
+            assert_ne!(current.set_id(), old_id);
+            assert_eq!(current.control.manifest().schema_version, target);
+            assert_eq!(current.target_schema_version(), LATEST_SCHEMA_VERSION);
+            assert_eq!(current.phase(), BackupSetPhase::Completed);
+            assert_latest_and_preserved(&root, &key);
+            assert_eq!(
+                BackupSet::open(&crate::test_storage_authority(), backup)
+                    .unwrap()
+                    .set_id(),
+                current.set_id()
+            );
+        }
     }
 }
 
@@ -127,7 +135,7 @@ fn current_batch_resumes_schema24_commit_for_each_recorded_next_store() {
     for next in 0..3 {
         let directory = crate::test_tempdir().unwrap();
         let root = directory.path().join("storage");
-        let mut set = source_batch(&root, 25);
+        let mut set = source_batch(&root, LATEST_SCHEMA_VERSION);
         let backup = set.directory().to_owned();
         let id = set.set_id().to_owned();
         let source_bytes = fs::read(backup.join("control.db")).unwrap();
@@ -144,7 +152,9 @@ fn current_batch_resumes_schema24_commit_for_each_recorded_next_store() {
         {
             commit_step(&paths[index], kind, 24);
             if index < next {
-                commit_step(&paths[index], kind, 25);
+                for version in 25..=LATEST_SCHEMA_VERSION {
+                    commit_step(&paths[index], kind, version);
+                }
                 let phase = [
                     BackupSetPhase::ControlMigrated,
                     BackupSetPhase::RuntimeMigrated,

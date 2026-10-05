@@ -70,7 +70,7 @@ export function agentEditorSeed(
   const currentModel = facet === 'model' ? agentModelStatus(agent)?.current_selection : undefined;
   const codex = currentModel?.mode === 'codex_default' ? currentModel : undefined;
   const claude = currentModel?.mode === 'claude_launcher' ? currentModel : undefined;
-  const qoder = currentModel?.mode === 'qoder_additional' ? currentModel : undefined;
+  const qoder = (currentModel?.mode === 'qoder_additional' || currentModel?.mode === 'pi_additional') ? currentModel : undefined;
   const collaboration = facet === 'collaboration'
     && selection
     && 'trigger_mode' in selection
@@ -85,7 +85,7 @@ export function agentEditorSeed(
     fixedModels: currentModel && 'fixed_models' in currentModel ? currentModel.fixed_models : [],
     nativeModelMode: codex?.native_model_mode ?? 'hiroute_only',
     allowedPlanIds: codex?.allowed_plan_ids ?? qoder?.allowed_plan_ids
-      ?? (initialPlan && (ecosystem === 'codex' || ecosystem === 'qoder') ? [initialPlan] : []),
+      ?? (initialPlan && (ecosystem === 'codex' || ecosystem === 'qoder' || ecosystem === 'pi') ? [initialPlan] : []),
     defaultChoice: codex?.default_selection ?? (initialPlan && ecosystem === 'codex'
       ? { kind: 'plan', plan_id: initialPlan } : { kind: 'preserve_native' }),
     claudePresets: claude?.preset_mappings ?? {
@@ -113,7 +113,7 @@ export function sharedClaudePlan(planId: string): AgentClaudePresetMappings {
 /** Local form completeness only; Preview remains the authority for capabilities and grants. */
 export function agentModelFormInvalid(agent: Agent | undefined, editorValues: AgentEditorValues, enabledPlanIds: string[]): boolean {
   if (!agent || agentEcosystem(agent.agent_id) === null) return true;
-  if (agentEcosystem(agent.agent_id) === 'qoder') {
+  if (['qoder', 'pi'].includes(agentEcosystem(agent.agent_id) ?? '')) {
     return editorValues.allowedPlanIds.length === 0
       || editorValues.allowedPlanIds.some(id => !enabledPlanIds.includes(id));
   }

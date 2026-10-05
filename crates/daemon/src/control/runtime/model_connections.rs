@@ -35,6 +35,7 @@ use super::LocalControlAdapter;
 
 mod discovered;
 mod key_inputs;
+mod pi_discovered;
 mod presentation;
 mod registered;
 mod saved;

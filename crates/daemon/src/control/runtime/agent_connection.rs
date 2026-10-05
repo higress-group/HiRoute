@@ -337,6 +337,12 @@ impl AgentConnectionControlPort for LocalControlAdapter {
             let cli = std::env::current_exe()
                 .map_err(|_| ControlReadError::Unavailable)?
                 .with_file_name("hiroute");
+            if agent_id == "agent_pi_default" {
+                return self
+                    .scanner
+                    .check_pi_collaboration(&cli)
+                    .map_err(|_| ControlReadError::Unavailable.into());
+            }
             if agent_id == "agent_qoder_default" {
                 return self
                     .scanner

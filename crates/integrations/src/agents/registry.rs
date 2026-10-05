@@ -22,6 +22,7 @@ pub fn builtin_agent_profiles() -> Vec<AgentProfileV1> {
         codex_profile_v1(),
         claude_code_profile_v1(),
         qoder_collaboration_profile_v1(),
+        pi_profile_v1(),
     ]
 }
 
@@ -104,6 +105,28 @@ pub fn qoder_collaboration_profile_v1() -> AgentProfileV1 {
         ingress_protocol: Some(AgentIngressProtocolV1::Responses),
         config_precedence: AgentKindV1::Qoder.config_precedence().to_vec(),
         // Adapter-semantic ownership: only the context-specific provider inside this map.
+        owned_config_fields: vec![field("additional_provider", "hiroute.additional_provider")],
+        dynamic_catalog: false,
+        static_catalog_fallback: false,
+        native_subagent_routing: false,
+        spawn_guidance: None,
+        managed_launch: None,
+    }
+}
+
+/// Pi owns a single additional provider in models.json; defaults and auth stay native.
+pub const PI_PROFILE_ID_V1: &str = "pi-responses-v1";
+pub const PI_INTEGRATION_PROFILE_REF_V1: &str = "builtin/pi-responses/v1";
+
+pub fn pi_profile_v1() -> AgentProfileV1 {
+    AgentProfileV1 {
+        schema: AGENT_PROFILE_SCHEMA_V1.into(),
+        profile_id: "pi-responses-v1".into(),
+        integration_profile_ref: "builtin/pi-responses/v1".into(),
+        kind: AgentKindV1::Pi,
+        legacy_exact_versions: BTreeSet::new(),
+        ingress_protocol: Some(AgentIngressProtocolV1::Responses),
+        config_precedence: AgentKindV1::Pi.config_precedence().to_vec(),
         owned_config_fields: vec![field("additional_provider", "hiroute.additional_provider")],
         dynamic_catalog: false,
         static_catalog_fallback: false,

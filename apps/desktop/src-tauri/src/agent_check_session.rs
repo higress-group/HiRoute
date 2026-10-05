@@ -122,6 +122,7 @@ impl AgentCheckConfirmation {
         let agent = match self.request.agent_id.as_str() {
             "agent_claude_default" => "Claude Code",
             "agent_qoder_default" => "Qoder",
+            "agent_pi_default" => "Pi",
             _ => "Codex",
         };
         if self.request.scope == AgentCheckScopeV1::Live {
@@ -135,6 +136,7 @@ impl AgentCheckConfirmation {
                 AgentModelSurfaceV2::CodexDesktop => "Codex Desktop",
                 AgentModelSurfaceV2::ClaudeCli => "Claude Code CLI",
                 AgentModelSurfaceV2::QoderCli => "Qoder CLI",
+                AgentModelSurfaceV2::PiCli => "Pi CLI",
             };
             let models = target.client_model_ids.join(", ");
             let message = if self.english {
@@ -170,6 +172,15 @@ impl AgentCheckConfirmation {
                 "Check Qoder task collaboration?\nUses the selected Qoder CLI with your normal login and user Skills. The verification uses a separate workspace and a local test endpoint; it does not call an upstream provider or execute a delegated task. If collaboration is enabled, it checks your installed collaboration Skill. Otherwise it checks the capability to enable it. Your daily configuration is not changed.".into()
             } else {
                 "检查 Qoder 任务协作？\n使用所选 Qoder CLI 的正常登录状态和用户技能，在独立验证目录中访问本机测试端点，不调用上游提供方，也不执行委派任务。已启用协作时检查已安装的用户协作技能；尚未启用时检查启用能力。不改写日常配置。".into()
+            };
+        }
+        if self.request.scope == AgentCheckScopeV1::Collaboration
+            && self.request.agent_id == "agent_pi_default"
+        {
+            return if self.english {
+                "Check local Pi task delegation compatibility?\nReads the selected official SDK, native Skill settings and trusted sibling HiRoute CLI. No model call, delegated task or native configuration change.".into()
+            } else {
+                "检查本机 Pi 任务委派兼容性？\n读取所选官方 SDK、原生技能设置和同一安装中的 HiRoute CLI。不发起模型调用、不执行委派任务、不修改原生配置。".into()
             };
         }
         if self.request.scope == AgentCheckScopeV1::Collaboration && self.english {
@@ -255,6 +266,7 @@ impl AgentCheckInput {
         };
         let supported = match self.agent_id.as_str() {
             "agent_codex_default" | "agent_claude_default" => true,
+            "agent_pi_default" => scope == AgentCheckScopeV1::Collaboration,
             "agent_qoder_default" => matches!(
                 scope,
                 AgentCheckScopeV1::Collaboration | AgentCheckScopeV1::Live
@@ -369,31 +381,42 @@ mod tests {
     }
 
     #[test]
-    fn qoder_checks_keep_collaboration_independent_and_require_explicit_live_targets() {
+    fn additional_agents_keep_collaboration_independent_and_require_explicit_live_targets() {
+        for agent in ["agent_qoder_default", "agent_pi_default"] {
+            let mut input = AgentCheckInput {
+                agent_id: agent.into(),
+                language: "en".into(),
+                scope: Some("collaboration".into()),
+                target: None,
+            };
+            let request = input
+                .request()
+                .expect("Task routing can reach its local prerequisite check");
+            assert_eq!(request.scope, AgentCheckScopeV1::Collaboration);
+            assert!(!request.allow_model_call);
+            assert!(request.target.is_none());
+            input.target = Some(live_target());
+            assert!(
+                input.request().is_err(),
+                "Task routing cannot borrow a model target"
+            );
+            input.target = None;
+            for scope in [None, Some("native_authentication"), Some("live")] {
+                input.scope = scope.map(str::to_owned);
+                assert!(input.request().is_err());
+            }
+            if agent == "agent_pi_default" {
+                input.target = Some(live_target());
+                input.target.as_mut().unwrap().surface = AgentModelSurfaceV2::PiCli;
+                assert!(input.request().is_err(), "Pi has no paid Live check");
+            }
+        }
         let mut input = AgentCheckInput {
             agent_id: "agent_qoder_default".into(),
             language: "en".into(),
-            scope: Some("collaboration".into()),
-            target: None,
+            scope: Some("live".into()),
+            target: Some(live_target()),
         };
-        let request = input
-            .request()
-            .expect("Qoder collaboration can reach the protected check");
-        assert_eq!(request.scope, AgentCheckScopeV1::Collaboration);
-        assert!(!request.allow_model_call);
-        assert!(request.target.is_none());
-        input.target = Some(live_target());
-        assert!(
-            input.request().is_err(),
-            "Collaboration cannot borrow a model target"
-        );
-        input.target = None;
-        for scope in [None, Some("native_authentication"), Some("live")] {
-            input.scope = scope.map(str::to_owned);
-            assert!(input.request().is_err());
-        }
-        input.scope = Some("live".into());
-        input.target = Some(live_target());
         let request = input.request().expect("Explicit Qoder Live target");
         assert!(request.allow_model_call);
         assert_eq!(request.target, input.target);
@@ -430,12 +453,14 @@ mod tests {
             ),
             ("agent_claude_default", vec![AgentModelSurfaceV2::ClaudeCli]),
             ("agent_qoder_default", vec![AgentModelSurfaceV2::QoderCli]),
+            ("agent_pi_default", vec![]),
         ] {
             for surface in [
                 AgentModelSurfaceV2::CodexCli,
                 AgentModelSurfaceV2::CodexDesktop,
                 AgentModelSurfaceV2::ClaudeCli,
                 AgentModelSurfaceV2::QoderCli,
+                AgentModelSurfaceV2::PiCli,
             ] {
                 let mut target = live_target();
                 target.surface = surface;

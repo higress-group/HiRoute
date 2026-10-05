@@ -131,6 +131,7 @@ pub fn plan_worker_dependency_selection(
         WorkerHarnessV1::CodexCli => "codex_cli",
         WorkerHarnessV1::ClaudeCode => "claude_code",
         WorkerHarnessV1::QoderCli => "qoder_cli",
+        WorkerHarnessV1::Pi => "pi",
     };
     let spec = ChangeSpecV1 {
         schema_version: CHANGE_SPEC_SCHEMA_V1,
@@ -376,10 +377,11 @@ pub struct WorkerExecutorAvailabilityListV1 {
 impl WorkerExecutorAvailabilityListV1 {
     pub fn valid(&self) -> bool {
         self.schema == WORKER_EXECUTOR_AVAILABILITY_SCHEMA_V1
-            && self.executors.len() == 3
+            && self.executors.len() == 4
             && self.executors[0].harness == WorkerHarnessV1::CodexCli
             && self.executors[1].harness == WorkerHarnessV1::ClaudeCode
             && self.executors[2].harness == WorkerHarnessV1::QoderCli
+            && self.executors[3].harness == WorkerHarnessV1::Pi
             && self
                 .executors
                 .iter()
@@ -1149,7 +1151,7 @@ mod tests {
     }
 
     #[test]
-    fn executor_availability_is_exactly_three_capability_scoped_harnesses() {
+    fn executor_availability_lists_all_supported_capability_scoped_harnesses() {
         let ready = WorkerExecutorCapabilityAvailabilityV1 {
             state: WorkerExecutorAvailabilityStateV1::Ready,
             reason: None,
@@ -1177,6 +1179,7 @@ mod tests {
                 executor(WorkerHarnessV1::CodexCli),
                 executor(WorkerHarnessV1::ClaudeCode),
                 executor(WorkerHarnessV1::QoderCli),
+                executor(WorkerHarnessV1::Pi),
             ],
         };
         assert!(response.valid());

@@ -18,6 +18,7 @@ mod claude;
 mod claude_runtime;
 mod codex;
 mod native_context;
+mod pi;
 mod qoder;
 pub use native_context::NativeWorkerContext;
 
@@ -157,6 +158,8 @@ impl CandidateWorkerProfile {
             }
             (WorkerHarnessV1::ClaudeCode, _) => "default",
             (WorkerHarnessV1::QoderCli, WorkerPermissionPolicyV1::ApproveAll) => "yolo",
+            (WorkerHarnessV1::Pi, WorkerPermissionPolicyV1::ApproveAll) => "approve-all",
+            (WorkerHarnessV1::Pi, _) => return Err(DelegationErrorV1::CapabilityUnavailable),
             (WorkerHarnessV1::QoderCli, _) => return Err(DelegationErrorV1::CapabilityUnavailable),
         };
         let mut env = BTreeMap::new();
@@ -197,9 +200,17 @@ impl CandidateWorkerProfile {
             }
             WorkerHarnessV1::ClaudeCode => claude::render(&input, &projected_tools)?,
             WorkerHarnessV1::QoderCli => qoder::render(&input, &private_root)?,
+            WorkerHarnessV1::Pi => pi::render(&input)?,
         };
         env.extend(rendered.env);
         let (executable, args) = match launch {
+            WorkerLaunchFormV1::NativeSdk { cli, node } => (
+                PathBuf::from(node),
+                vec![
+                    private_root.join("pi-worker-bridge.mjs"),
+                    PathBuf::from(cli),
+                ],
+            ),
             WorkerLaunchFormV1::NativeAcp { cli } => (PathBuf::from(cli), rendered.native_args),
             WorkerLaunchFormV1::AdapterAcp { adapter, node, .. } => {
                 if let Some(bootstrap) = rendered.adapter_bootstrap {

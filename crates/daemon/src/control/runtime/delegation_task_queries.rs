@@ -257,6 +257,7 @@ pub(super) fn run_view(task: &DelegationTaskV1, run: &DelegationRunV1) -> Delega
         hiroute_domain::delegation::WorkerHarnessV1::CodexCli => "Codex",
         hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode => "Claude Code",
         hiroute_domain::delegation::WorkerHarnessV1::QoderCli => "Qoder",
+        hiroute_domain::delegation::WorkerHarnessV1::Pi => "Pi",
     };
     DelegationRunViewV1 {
         task_id: run.task_id.clone(),

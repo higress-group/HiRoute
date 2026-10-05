@@ -12,8 +12,29 @@ pub(super) fn validate_output(tokens: u64) -> Result<(), QoderNativeError> {
 pub fn qoder_plan_token_budget(
     plan: &MaterializedAgentPlanV1,
 ) -> Result<QoderTokenBudget, QoderNativeError> {
-    // Reuse the Plan policy, including total/output/reasoning reservations and
-    // an explicitly chosen smaller window. Do not reconstruct an input capacity.
+    let (context, output) = plan_token_budgets(plan)?;
+    QoderTokenBudget::new(context, output).map_err(Into::into)
+}
+
+pub fn pi_plan_token_budget(
+    plan: &MaterializedAgentPlanV1,
+) -> Result<QoderTokenBudget, QoderNativeError> {
+    let (context, output) = plan_token_budgets(plan)?;
+    let declaration = hiroute_domain::AdditionalAgentModelV1 {
+        alias: "hiroute-budget".into(),
+        context_window_tokens: context,
+        max_output_tokens: output,
+    };
+    declaration
+        .validate_pi()
+        .map_err(|_| qoder_error("Pi frozen budget"))?;
+    Ok(QoderTokenBudget {
+        context_window_tokens: context,
+        max_output_tokens: output,
+    })
+}
+
+fn plan_token_budgets(plan: &MaterializedAgentPlanV1) -> Result<(u64, u64), QoderNativeError> {
     let context = plan
         .context_window_tokens()
         .map_err(|_| qoder_error("frozen Plan context budget"))?;
@@ -36,11 +57,10 @@ pub fn qoder_plan_token_budget(
             output = Some(output.map_or(current, |previous: u64| previous.min(current)));
         }
     }
-    QoderTokenBudget::new(
+    Ok((
         context,
         output.ok_or_else(|| qoder_error("frozen Plan output budget"))?,
-    )
-    .map_err(Into::into)
+    ))
 }
 
 #[cfg(test)]

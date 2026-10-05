@@ -400,6 +400,15 @@ async fn worker_executor_availability_is_an_empty_local_trust_query() {
                             "cancel": {"state":"ready"},
                             "continue_session": {"state":"unknown","reason":"capability_unverified"},
                             "restricted_policy": {"state":"unknown","reason":"restricted_policy_unverified"}
+                        },
+                        {
+                            "harness": "pi",
+                            "state": "unavailable",
+                            "reason": "installation_not_configured",
+                            "start_approve_all": {"state":"unavailable","reason":"installation_not_configured"},
+                            "cancel": {"state":"unavailable","reason":"installation_not_configured"},
+                            "continue_session": {"state":"unavailable","reason":"installation_not_configured"},
+                            "restricted_policy": {"state":"unavailable","reason":"installation_not_configured"}
                         }
                     ]
                 }),
@@ -424,7 +433,8 @@ async fn worker_executor_availability_is_an_empty_local_trust_query() {
         [
             WorkerHarnessV1::CodexCli,
             WorkerHarnessV1::ClaudeCode,
-            WorkerHarnessV1::QoderCli
+            WorkerHarnessV1::QoderCli,
+            WorkerHarnessV1::Pi
         ]
     );
     server.await.unwrap();

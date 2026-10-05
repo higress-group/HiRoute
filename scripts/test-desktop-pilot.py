@@ -589,13 +589,15 @@ class ExistingDataRootTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"HOME": "/real-user-home",
                                         "CODEX_HOME": "/daily-codex",
                                         "CLAUDE_CONFIG_DIR": "/daily-claude",
-                                        "QODER_CONFIG_DIR": "/daily-qoder"}):
+                                        "QODER_CONFIG_DIR": "/daily-qoder",
+                                        "PI_CODING_AGENT_DIR": "/daily-pi"}):
             environment = pilot.launch_environment(runtime, temporary, self.data, self.data)
             self.assertEqual(os.environ["CODEX_HOME"], "/daily-codex")
         self.assertEqual(environment["HOME"], str(self.data))
         self.assertEqual(environment["CODEX_HOME"], str(self.data / ".codex"))
         self.assertEqual(environment["CLAUDE_CONFIG_DIR"], str(self.data / ".claude"))
         self.assertEqual(environment["QODER_CONFIG_DIR"], str(self.data / ".qoder"))
+        self.assertEqual(environment["PI_CODING_AGENT_DIR"], str(self.data / ".pi/agent"))
         self.assertEqual(environment["HIROUTE_DESKTOP_TEST_ROOT"], str(self.data))
         self.assertEqual(environment["XDG_RUNTIME_DIR"], str(runtime))
         self.assertEqual(environment["TMPDIR"], str(temporary))
@@ -606,7 +608,8 @@ class ExistingDataRootTests(unittest.TestCase):
             'CODEX_CONFIG', 'CODEX_API_KEY', 'AWS_PROFILE', 'GOOGLE_APPLICATION_CREDENTIALS',
             'OPENROUTER_API_KEY', 'AZURE_OPENAI_API_KEY', 'HIROUTE_RUN_TOKEN',
             'CLAUDE_CODE_USE_BEDROCK', 'QODER_PERSONAL_ACCESS_TOKEN', 'QODER_MODEL',
-            'QODER_SUBAGENT_MODEL')}
+            'QODER_SUBAGENT_MODEL', 'DEEPSEEK_API_KEY', 'GROQ_API_KEY', 'MISTRAL_API_KEY',
+            'XAI_API_KEY', 'CEREBRAS_API_KEY')}
         with mock.patch.dict(os.environ, variables):
             isolated = pilot.launch_environment(self.session, self.session, self.data, self.data)
             ordinary = pilot.launch_environment(self.session, self.session, self.data, None)

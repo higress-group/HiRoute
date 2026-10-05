@@ -6,6 +6,7 @@ import { agentBrandFromId } from '../../ui/BrandIcon';
 export type ComputeScanItem = {
   agent_id: string;
   supported: boolean;
+  native_provider_id?: string;
   configuration_state: string;
   connection_option_id?: string;
   observed_model_id?: string;
@@ -22,6 +23,7 @@ export type ComputeScanResult = { items: ComputeScanItem[] };
 function agentName(agentId: string, language: 'zh' | 'en') {
   if (agentId.includes('claude')) return 'Claude Code';
   if (agentId.includes('codex')) return 'Codex';
+  if (agentId === 'agent_pi_default') return 'Pi';
   if (agentId.includes('qoder')) return 'Qoder';
   return language === 'zh' ? '本机 Agent' : 'Local agent';
 }
@@ -123,7 +125,7 @@ export function DeviceScanList({
   onViewConnectedSubscription(candidate: SubscriptionCandidate): void;
   onOpenDiscoveredConfiguration(item: ComputeScanItem): void;
 }) {
-  const configurations = computeItems.filter(item => item.connection_option_id);
+  const configurations = computeItems.filter(item => item.connection_option_id || item.native_provider_id);
   const detectedAgents = agents.filter(agent => agent.configuration_state !== 'not_found_in_scope');
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   return <div className="oc-scan-list">
@@ -146,10 +148,10 @@ export function DeviceScanList({
     {subscriptionScanFailed && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{text('暂时无法读取本机 Codex 订阅。', 'The local Codex subscription could not be read.')}</span></div>}
 
     <h3 className="oc-section-label">{text('Agent 中的模型配置', 'Model configurations in agents')}</h3>
-    {configurations.map(item => <div className="oc-status-row" key={`${item.agent_id}:${item.connection_option_id}:${item.observed_model_id ?? 'unknown'}`}>
+    {configurations.map(item => <div className="oc-status-row" key={item.discovery?.discovery_ref ?? `${item.agent_id}:${item.native_provider_id ?? item.connection_option_id}:${item.observed_model_id ?? 'unknown'}`}>
       <BrandIcon kind={agentBrandFromId(item.agent_id)} label={agentName(item.agent_id, language)} />
       <div className="row-main">
-        <strong>{connectionName(item.connection_option_id, language)}</strong>
+        <strong>{item.native_provider_id ?? connectionName(item.connection_option_id, language)}</strong>
         <p>{agentName(item.agent_id, language)} · {configurationMessage(item, language)}</p>
       </div>
       {item.discovery && item.inventory_eligible

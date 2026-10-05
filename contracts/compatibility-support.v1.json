@@ -244,6 +244,10 @@
     "hiroute.operation-step/v1",
     "hiroute.operation-view/v1",
     "hiroute.otel.gen-ai-mapping/v1",
+    "hiroute.pi-additional-model/v1",
+    "hiroute.pi-local-cli/v1",
+    "hiroute.pi-native-resources/v1",
+    "hiroute.pi-native-restore/v1",
     "hiroute.plan-authoring/v2",
     "hiroute.plan-content-change/v2",
     "hiroute.plan-content-preview/v2",
@@ -302,6 +306,7 @@
     "hiroute.settings-codex-model-file/v1",
     "hiroute.settings-login-item/v1",
     "hiroute.settings-model-publication/v1",
+    "hiroute.settings-pi-model-file/v1",
     "hiroute.settings-qoder-model-file/v1",
     "hiroute.settings-service-completion/v2",
     "hiroute.settings-service-proof/v2",
@@ -987,14 +992,16 @@
     },
     {
       "contract": "hiroute.worker-dependency-selection-confirmation/v1",
-      "field": "schema23 selection/effect constraints and original Operation journal bytes",
+      "field": "stable schema23/24/25 selection/effect constraints and original Operation journal bytes",
       "mode": "recovery_read_only",
       "owner": "local-storage",
-      "reason": "Accept only marked stable schema23 through the existing complete three-store backup coordinator; schema24 expands harness constraints without reserializing selections, effects or Operation journals. Interrupted 23/24 sets require validated source backup, identities, key and migration phase.",
-      "removal_condition": "End schema23 upgrade support only by an explicit product decision that preserves a documented usable recovery path for supported stores and backups.",
+      "reason": "Upgrade marked stable schema23/24/25 through the complete three-store backup coordinator; schema26 adds the Pi SDK launch shape without reserializing selection/effect or Operation bytes. Interrupted steps require a contiguous committed ledger, exact source backup, identities, key and phase.",
+      "removal_condition": "End marked schema23/24/25 upgrade support only through an explicit product decision preserving a usable supported recovery path.",
       "allowed_paths": [
         "crates/local-storage/src/migrations/startup_format.rs",
-        "crates/local-storage/src/migrations/worker_dependencies_v24.rs"
+        "crates/local-storage/src/migrations/worker_dependencies_v24.rs",
+        "crates/local-storage/src/migrations/worker_dependencies_v26.rs",
+        "crates/local-storage/src/migrations/mod.rs"
       ]
     },
     {
