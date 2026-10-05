@@ -41,6 +41,30 @@ class NativeBoundaryTests(unittest.TestCase):
                                                      for key in ('contents', 'executed'))})
         return body
 
+    def test_rejected_wrong_route_attempt_cannot_hide_behind_accepted_ledger(self):
+        from native_context_fixture import NativeContextUpstream
+        for path, token, model in [('/v1/responses', 'wrong', 'gpt-5.4'),
+                                   ('/wrong', NativeContextUpstream.token, 'gpt-5.4'),
+                                   ('/v1/responses', NativeContextUpstream.token, 'wrong')]:
+            with self.subTest(path=path, model=model):
+                source = NativeContextUpstream(self.root)
+                try:
+                    ledger = self.root / 'native-context-events.jsonl'
+                    ledger.write_text(json.dumps({'state':'green', 'model':source.model}) + '\n')
+                    boundary.assert_source_routing(source)
+                    connection = http.client.HTTPConnection(*source.server.server_address)
+                    connection.request('POST', path, json.dumps({'model':model}),
+                                       {'Authorization':'Bearer ' + token})
+                    response = connection.getresponse()
+                    self.assertGreaterEqual(response.status, 400)
+                    response.read()
+                    connection.close()
+                    self.assertEqual(len(boundary.source_events(source)), 1)
+                    with self.assertRaisesRegex(AssertionError, 'rejected model request'):
+                        boundary.assert_source_routing(source)
+                finally:
+                    source.close()
+
     def test_cross_routed_request_fails_before_tool_execution(self):
         target = boundary.prepare_heartbeat(self.fixture, 'target')
         body = self.body(target)

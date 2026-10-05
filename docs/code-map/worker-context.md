@@ -234,3 +234,15 @@ Worker change does not implement built-in Jev.
 The implementation retains
 HiRoute's explicit environment and ownership contracts rather than importing an
 entire daemon environment or copying a user's configuration tree.
+
+Pi discovery preserves provider `baseUrl`/`api` overrides on inherited catalog models;
+explicit model overrides retain their precedence. Additional `authHeader` authentication
+is reported as not importable until the import contract can preserve it. A valid Claude
+prepare does not depend on unrelated Pi configuration being readable.
+
+Pi v3 history accepts validated branch-local `context_edit` omissions/replacements,
+including native overflow recovery, without rewriting original messages. Unknown formats,
+missing targets and invalid replacement content still fail closed. The Pi native product
+suite covers both threshold compaction and recoverable-length compaction followed by exact
+Continue. Concurrent-route acceptance checks rejected HTTP attempts as well as accepted
+model receipts, so a rejected wrong credential/endpoint/model cannot disappear from evidence.

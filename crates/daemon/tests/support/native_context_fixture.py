@@ -224,6 +224,8 @@ def events(body, action, protocol):
                 'status': 'completed', 'output': [item],
                 'usage': {'input_tokens': action.get('input_tokens', 1), 'output_tokens': 1,
                           'total_tokens': action.get('input_tokens', 1) + 1}}
+    if action.get('recoverable_length'):
+        response.update(status='incomplete', incomplete_details={'reason':'max_output_tokens'})
     added = dict(item, status='in_progress')
     added['arguments' if action['kind'] == 'tool' else 'content'] = '' if action['kind'] == 'tool' else []
     middle = ([('response.function_call_arguments.delta', {'item_id': item['id'],
@@ -240,7 +242,7 @@ def events(body, action, protocol):
     return [('response.created', {'response': dict(response, status='in_progress', output=[])}),
             ('response.output_item.added', {'output_index': 0, 'item': added}), *middle,
             ('response.output_item.done', {'output_index': 0, 'item': item}),
-            ('response.completed', {'response': response})]
+            ('response.incomplete' if action.get('recoverable_length') else 'response.completed', {'response': response})]
 
 
 def handle(handler, body, controls, lock, reply=decision):
@@ -328,6 +330,7 @@ class NativeContextUpstream:
         self.lock = threading.Lock()
         self.reply = decision
         self.requests = 0
+        self.rejected_requests = 0
         self.proxy_trap = None
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -346,6 +349,11 @@ class NativeContextUpstream:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def reject(self, reason, status):
+                with owner.lock:
+                    owner.rejected_requests += 1
+                self.send({'error': reason}, status)
+
             def do_GET(self):
                 # A manually declared model remains usable without directory discovery.
                 self.send({'error': 'directory not implemented'}, 404)
@@ -354,14 +362,14 @@ class NativeContextUpstream:
                 with owner.lock:
                     owner.requests += 1
                 if self.headers.get('Authorization') != 'Bearer ' + owner.token:
-                    return self.send({'error': 'incorrect synthetic source credential'}, 401)
+                    return self.reject('incorrect synthetic source credential', 401)
                 if self.path not in ('/v1/responses', '/v1/messages'):
-                    return self.send({'error': 'incorrect source endpoint'}, 404)
+                    return self.reject('incorrect source endpoint', 404)
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 if body.get('model') != owner.model:
-                    return self.send({'error': 'incorrect source model'}, 400)
+                    return self.reject('incorrect source model', 400)
                 if not handle(self, body, owner.controls, owner.lock, owner.reply):
-                    self.send({'error': 'native context fixture is not prepared'}, 503)
+                    self.reject('native context fixture is not prepared', 503)
 
             def send_messages_stream(self, frames):
                 encoded = []
@@ -382,6 +390,10 @@ class NativeContextUpstream:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = 'http://%s:%d/v1' % self.server.server_address
+
+    def rejected_count(self):
+        with self.lock:
+            return self.rejected_requests
 
     def request_count(self):
         """All source attempts, including rejected credentials; never record a secret."""

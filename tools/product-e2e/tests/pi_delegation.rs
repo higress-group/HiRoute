@@ -52,3 +52,12 @@ fn pi_static_api_discovery_imports_effective_source_and_rejects_stale_save() {
         "pi-static-source-import",
     );
 }
+
+#[test]
+#[ignore = "requires the selected official Pi SDK/Node and real production binaries"]
+fn pi_worker_recovers_length_overflow_and_continues_edited_history() {
+    worker_product_support::run_real_worker_scenario(
+        "HIROUTE_PRODUCT_PI_RECOVERY",
+        "pi-worker-compaction-route",
+    );
+}

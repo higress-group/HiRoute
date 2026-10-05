@@ -272,3 +272,55 @@ fn pi_disabled_collaboration_skill_does_not_authorize_enable_or_reuse_a_stale_ob
     assert_ne!(inspect().1, CapabilityState::Proven);
     assert!(scanner.pi_default_model().is_err());
 }
+
+#[test]
+fn pi_builtin_provider_proxy_overrides_catalog_defaults() {
+    let root = tempfile::tempdir().unwrap();
+    let package = root.path().join("selected-pi");
+    let cli = package.join("bin/pi.js");
+    fs::create_dir_all(cli.parent().unwrap()).unwrap();
+    write_executable(&cli, "must not execute");
+    write_secret_settings(
+        &package.join("package.json"),
+        json!({
+            "name":crate::PI_NPM_PACKAGE,"version":"1.0.2","bin":{"pi":"bin/pi.js"}
+        }),
+    );
+    let catalog =
+        package.join("node_modules/@earendil-works/pi-ai/dist/providers/data/openai.json");
+    fs::create_dir_all(catalog.parent().unwrap()).unwrap();
+    write_secret_settings(
+        &catalog,
+        json!({"openai-responses":{"native":{
+            "type":"chat","id":"native","api":"openai-responses","baseUrl":"https://inherited.invalid/v1"
+        }}}),
+    );
+    let mut scanner = source_scanner(
+        root.path(),
+        json!({"providers":{"openai":{
+            "baseUrl":"https://user-proxy.invalid/v1","apiKey":"proxy-only-secret"
+        }}}),
+        json!({}),
+    );
+    scanner.layout.pi_executable = cli;
+    let sources = scanner.pi_api_sources().unwrap();
+    let source = sources.iter().find(|s| s.provider_id == "openai").unwrap();
+    let (endpoint, secret) = scanner.read_pi_api_source(source).unwrap();
+    assert_eq!(endpoint.as_str(), "https://user-proxy.invalid/v1");
+    assert_eq!(secret.expose(), b"proxy-only-secret");
+}
+
+#[test]
+fn pi_additional_auth_header_is_reported_not_silently_imported() {
+    for auth_header in [json!(true), json!("invalid")] {
+        let root = tempfile::tempdir().unwrap();
+        let mut declarations = models();
+        declarations["providers"]["private-api"]["api"] = json!("anthropic-messages");
+        declarations["providers"]["private-api"]["authHeader"] = auth_header;
+        let scanner = source_scanner(root.path(), declarations, json!({}));
+        let source = scanner.pi_api_sources().unwrap().remove(0);
+        assert!(!source.supported_auth);
+        assert!(source.credential.is_none());
+        assert!(scanner.read_pi_api_source(&source).is_err());
+    }
+}

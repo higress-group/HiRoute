@@ -125,20 +125,20 @@ impl LocalControlAdapter {
                 Err(_) => return Err(ComputeManagementControlError::Unavailable),
             }
         }
-        if let Some(source) = self
-            .scanner
-            .pi_api_sources()
-            .map_err(|_| ComputeManagementControlError::DiscoveryUnavailable)?
-            .into_iter()
-            .find(|source| super::pi_discovered::pi_discovery(source) == request.discovery)
-        {
-            return self.prepare_pi_discovered_candidate(source, &request.prepare_id);
-        }
         let current_exists = !authorized.is_empty();
         let Some(discovery) = authorized.into_iter().find(|candidate| {
             candidate.discovery.discovery_ref == request.discovery.discovery_ref
                 && candidate.discovery.discovery_revision == request.discovery.discovery_revision
         }) else {
+            if let Some(source) = self
+                .scanner
+                .pi_api_sources()
+                .map_err(|_| ComputeManagementControlError::DiscoveryUnavailable)?
+                .into_iter()
+                .find(|source| super::pi_discovered::pi_discovery(source) == request.discovery)
+            {
+                return self.prepare_pi_discovered_candidate(source, &request.prepare_id);
+            }
             return Err(if current_exists {
                 ComputeManagementControlError::DiscoveryChanged
             } else if recognized_configuration {

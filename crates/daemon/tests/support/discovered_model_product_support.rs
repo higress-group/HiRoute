@@ -99,6 +99,7 @@ impl ProductDaemon {
             ])
             .current_dir(root.join("workspace"))
             .env("HOME", root.join("home"))
+            .env("PI_CODING_AGENT_DIR", root.join("home/.pi/agent"))
             .env("PATH", root.join("bin"))
             .env("HTTP_PROXY", format!("http://{proxy}"))
             .env("HTTPS_PROXY", format!("http://{proxy}"))

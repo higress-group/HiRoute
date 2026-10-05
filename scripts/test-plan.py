@@ -142,6 +142,7 @@ WORKER_PRODUCT_CHECKS = {
             "pi_agent_saved_model_routes_preserve_defaults_and_restore_independently",
             "pi_agent_uses_installed_user_skill_to_delegate_through_public_cli",
             "pi_worker_compaction_uses_frozen_route_and_continues_exact_history",
+            "pi_worker_recovers_length_overflow_and_continues_edited_history",
             "pi_static_api_discovery_imports_effective_source_and_rejects_stale_save"],
         "required_environment": ["HIROUTE_PRODUCT_CANDIDATE_SHA", "HIROUTE_WORKER_PI_BINARY", "HIROUTE_WORKER_NODE"],
         "missing_environment": "fail",

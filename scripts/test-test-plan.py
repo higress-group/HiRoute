@@ -188,7 +188,7 @@ class SelectionTests(unittest.TestCase):
                 self.assertEqual({check['command'][6] for check in checks}, {'qoder_delegation', 'pi_delegation'})
         checks = plan.select(['crates/integrations/src/agents/pi_sources.rs'])['product_checks']
         self.assertEqual([check['command'][6] for check in checks], ['pi_delegation'])
-        self.assertEqual(len(checks[0]['required_tests']), 6)
+        self.assertIn('pi_worker_recovers_length_overflow_and_continues_edited_history', checks[0]['required_tests'])
         self.assertEqual(checks[0]['missing_environment'], 'fail')
 
     def test_qoder_guide_and_settings_docs_do_not_expand_product_scope(self):

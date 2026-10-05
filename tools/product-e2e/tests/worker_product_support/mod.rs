@@ -20,7 +20,9 @@ pub fn run_real_worker_scenario(mode: &str, expected_scenario: &str) {
         "HIROUTE_PRODUCT_PI_BOUNDARIES" => Some("native_context_boundaries.py"),
         "HIROUTE_PRODUCT_PI_MODELS" => Some("additional_model_product.py"),
         "HIROUTE_PRODUCT_PI_MAIN" => Some("collaboration_product.py"),
-        "HIROUTE_PRODUCT_PI_COMPACTION" => Some("native_compaction_product.py"),
+        "HIROUTE_PRODUCT_PI_COMPACTION" | "HIROUTE_PRODUCT_PI_RECOVERY" => {
+            Some("native_compaction_product.py")
+        }
         "HIROUTE_PRODUCT_PI_DISCOVERY" => Some("pi_discovery_product.py"),
         _ => None,
     };

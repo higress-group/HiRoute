@@ -19,7 +19,7 @@ const test = (name, fn) => nodeTest(name, { timeout: 5000 }, fn);
 
 // A selected official-package shape with controlled failures, not native product evidence.
 const sdk = `
-import {appendFileSync} from 'node:fs';
+import {appendFileSync,readFileSync} from 'node:fs';
 const receipt = event => appendFileSync(process.env.FIXTURE_RECEIPT, event+'\\n');
 const secret = 'fixture-private-token-do-not-emit';
 export const CURRENT_SESSION_VERSION = 3;
@@ -40,7 +40,7 @@ export class ModelRuntime {
 }
 export class SessionManager {
   static create() {return new SessionManager();}
-  static open() {receipt('open');return new SessionManager();}
+  static open(file) {receipt('open');const manager=new SessionManager();manager.file=file;return manager;}
   getSessionId() {return 'fixture-session';}
   getSessionFile() {return this.file;}
   setSessionFile(file) {this.file=file;}
@@ -52,6 +52,7 @@ export class AgentSession {
   subscribe(handler) {this.handler=handler;}
   async prompt() {
     receipt('prompt');
+    if(process.env.FIXTURE_FAILURE==='history') {this.messages=readFileSync('native-pi.jsonl','utf8').trim().split('\\n').map(JSON.parse).filter(e=>e.type==='message').map(e=>e.message);return;}
     if(process.env.FIXTURE_FAILURE==='reject') throw new Error(secret);
     if(process.env.FIXTURE_FAILURE==='terminal') {this.messages=[{role:'assistant',stopReason:'error',errorMessage:secret}];return;}
     return new Promise((resolve,reject)=>{this.pending=reject;});
@@ -297,3 +298,75 @@ test("a closed output pipe releases the native session without an unhandled erro
   await f.exit;
   assert.ok(f.events().includes("dispose"));
 });
+
+function editedHistory(f, replacement = null, targetId = "failed") {
+  const timestamp = new Date().toISOString();
+  const assistant = (stopReason) => ({
+    role: "assistant",
+    timestamp: Date.now(),
+    content: [{ type: "text", text: "result" }],
+    api: "openai-responses",
+    provider: "managed",
+    model: "frozen",
+    usage: {},
+    stopReason,
+  });
+  const entries = [
+    { type: "session", version: 3, id: "fixture-session", timestamp, cwd: f.root },
+    {
+      type: "message",
+      id: "user",
+      parentId: null,
+      timestamp,
+      message: { role: "user", timestamp: Date.now(), content: "task" },
+    },
+    { type: "message", id: "failed", parentId: "user", timestamp, message: assistant("error") },
+    { type: "context_edit", id: "omit", parentId: "failed", timestamp, targetId, replacement },
+    { type: "message", id: "recovered", parentId: "omit", timestamp, message: assistant("stop") },
+  ];
+  writeFileSync(join(f.root, "native-pi.jsonl"), entries.map(JSON.stringify).join("\n") + "\n", {
+    mode: 0o600,
+  });
+}
+
+for (const operation of ["prompt", "load"]) {
+  for (const replacement of [null, { content: "recovered content" }]) {
+    test(`valid context edit survives ${operation}: ${replacement === null ? "omit" : "replace"}`, async (t) => {
+      const f = fixture(t, { FIXTURE_FAILURE: "history" });
+      if (operation === "prompt") await f.ready();
+      else await f.send("initialize", { protocolVersion: 1 });
+      editedHistory(f, replacement);
+      const response =
+        operation === "load"
+          ? await f.send("session/load", {
+              cwd: f.root,
+              mcpServers: [],
+              sessionId: "fixture-session",
+            })
+          : await f.send("session/prompt", {
+              sessionId: "fixture-session",
+              prompt: [{ type: "text", text: "continue" }],
+            });
+      assert.ok(response.result, JSON.stringify(response));
+    });
+  }
+}
+for (const [replacement, target] of [
+  [undefined, "failed"],
+  [{ content: 42 }, "failed"],
+  [null, "missing"],
+  [null, "omit"],
+]) {
+  test(`invalid context edit refuses native load: ${JSON.stringify([replacement, target])}`, async (t) => {
+    const f = fixture(t);
+    await f.send("initialize", { protocolVersion: 1 });
+    editedHistory(f, replacement === undefined ? {} : replacement, target);
+    assert.equal(
+      stage(
+        await f.send("session/load", { cwd: f.root, mcpServers: [], sessionId: "fixture-session" }),
+      ),
+      "history",
+    );
+    assert.deepEqual(f.events(), []);
+  });
+}

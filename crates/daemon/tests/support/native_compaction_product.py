@@ -84,15 +84,16 @@ class PiCompactionOracle(CompactionOracle):
     def reply(self, _fixture, body):
         assert body.get('model') == self.model
         text = native_text(body)
+        recovery = self.fixture.get('recovery', False)
         if any(signature in text.lower() for signature in ('conversation to summarize',
                 'structured summary with new information', 'earlier context from an ongoing conversation')):
-            assert self.main_requests == 2 and self.compact_requests == 0, 'unexpected Pi summarization order'
+            assert self.main_requests == (3 if recovery else 2) and self.compact_requests == 0, 'unexpected Pi summarization order'
             assert self.tool_receipt in text, 'native summary omitted the actual tool receipt'
             self.compact_requests += 1
             return dict(kind='text',request_kind='compact',input_tokens=30,
                         text=self.summary_receipt + ': Executed tool receipt ' + self.tool_receipt)
         self.main_requests += 1
-        assert self.main_requests <= 4
+        assert self.main_requests <= (5 if recovery else 4)
         if self.main_requests <= 2:
             assert self.fixture['compaction_prompt'] in text
             if self.main_requests == 2:
@@ -100,22 +101,29 @@ class PiCompactionOracle(CompactionOracle):
                     'pressure turn lacks the independently executed first tool receipt'
             return dict(kind='tool',request_kind='main',id='native_compaction_tool' + ('' if self.main_requests == 1 else '_pressure'),name='bash',
                 arguments={'command':'/bin/sh ' + shlex.quote(self.fixture['compaction_script']),'timeout':10},
-                input_tokens=1 if self.main_requests == 1 else PI_PRESSURE_TOKENS)
+                input_tokens=1 if self.main_requests == 1 or recovery else PI_PRESSURE_TOKENS)
+        if recovery and self.main_requests == 3:
+            return dict(kind='text', request_kind='length', input_tokens=10000, recoverable_length=True, text='incomplete attempt')
         assert self.compact_requests == 1 and self.summary_receipt in text, \
             f'Pi main request lacked native summary: main={self.main_requests}, compact={self.compact_requests}'
         return dict(kind='text',request_kind='main',input_tokens=30,text='compacted-' + self.fixture['receipt'])
 
 
-def assert_pi_compaction(path, receipt):
+def assert_pi_compaction(path, receipt, recovery=False):
     rows = [json.loads(line) for line in Path(path).read_text().splitlines() if line]
     compact = [row for row in rows if row['type'] == 'compaction']
-    assert len(compact) == 1 and compact[0]['tokensBefore'] >= PI_PRESSURE_TOKENS
+    assert len(compact) == 1 and compact[0]['tokensBefore'] >= (1 if recovery else PI_PRESSURE_TOKENS)
+    if recovery:
+        edits = [row for row in rows if row['type'] == 'context_edit']
+        assert edits and all(row['replacement'] is None for row in edits), 'native recovery did not persist context edits'
     assert receipt in compact[0]['summary'], 'native history lost the independent summary'
     return [{'pre_tokens':compact[0]['tokensBefore'],'summary_preserved':True}]
 
 
 def run(repository, candidate):
     harness = os.environ.get('HIROUTE_PRODUCT_WORKER_HARNESS','qoder')
+    recovery = os.environ.get('HIROUTE_PRODUCT_PI_RECOVERY') == '1'
+    assert not recovery or harness == 'pi'
     assert harness in ('qoder','pi')
     cases = CASES if harness == 'qoder' else (CASES[1],)
     repo = Path(repository).resolve()
@@ -139,6 +147,7 @@ def run(repository, candidate):
             settings['model']['summarizeToolOutput'] = {'Bash': {'tokenBudget': 2000}}
             project_settings.write_text(json.dumps(settings))
             protect_configuration(fixture, [project_settings])
+        fixture['recovery'] = recovery
         fixture['compaction_prompt'] = 'QODER-COMPACTION-' + secrets.token_hex(12)
         fixture['compaction_script'] = str(product.project / 'native-compaction-receipt.sh')
         oracle = (PiCompactionOracle if harness == 'pi' else CompactionOracle)(fixture, upstream.model)
@@ -146,7 +155,7 @@ def run(repository, candidate):
         # Pi's compactor estimates actual recent messages as well as provider usage.
         # Two genuine large tool outputs leave an older receipt to summarize and
         # a recent one to retain; fabricated usage alone cannot prove compaction.
-        lines = 1200 if harness == 'pi' else 300
+        lines = (600 if recovery else 1200) if harness == 'pi' else 300
         write_new(script, '#!/bin/sh\ni=0\nwhile [ "$i" -lt ' + str(lines) + ' ]; do\n' +
                   '  /usr/bin/printf "%s\\n" ' + shlex.quote(oracle.tool_receipt) +
                   '\n  i=$((i + 1))\ndone\n', executable=True)
@@ -164,7 +173,8 @@ def run(repository, candidate):
         assert 'compacted-' + fixture['receipt'] in result['result'], 'missing compacted Worker result'
         wait_for_resumable_task(product, first['task_id'], first['run_id'])
         history = exact_history(fixture)
-        report['native_compaction_boundaries'] = (assert_pi_compaction if harness == 'pi' else assert_native_compaction)(history[0], oracle.summary_receipt)
+        report['native_compaction_boundaries'] = (assert_pi_compaction(history[0], oracle.summary_receipt, recovery) if harness == 'pi' else assert_native_compaction(history[0], oracle.summary_receipt))
+        report['recovery_context_edit'] = recovery
         stage = 'continue-native-compacted-history'
         command = ('worker continue --task ' + first['task_id'] + ' --expected-latest-run ' + first['run_id'] +
                    ' --run-timeout 120 --no-wait --submission-key qoder-compaction-continue --file - --output json')
@@ -174,10 +184,10 @@ def run(repository, candidate):
         assert 'compacted-' + fixture['receipt'] in result['result']
         wait_for_resumable_task(product, first['task_id'], continued['run_id'])
         assert exact_history(fixture) == history, 'compacted Continue changed the exact native session'
-        assert oracle.main_requests == (4 if harness == 'pi' else 3) and oracle.compact_requests == 1 and oracle.tool_summary_requests == (0 if harness == "pi" else 1), \
+        assert oracle.main_requests == ((5 if recovery else 4) if harness == 'pi' else 3) and oracle.compact_requests == 1 and oracle.tool_summary_requests == (0 if harness == "pi" else 1), \
             'required native request kinds missing'
         attempts = source_events(upstream)
-        assert [event.get('request_kind') for event in attempts] == (['main','main','compact','main','main'] if harness == 'pi' else ['main', 'tool_summary', 'compact', 'main', 'main']), attempts
+        assert [event.get('request_kind') for event in attempts] == ((['main','main','length','compact','main','main'] if recovery else ['main','main','compact','main','main']) if harness == 'pi' else ['main', 'tool_summary', 'compact', 'main', 'main']), attempts
         assert all(event['state'] == 'green' and event['model'] == upstream.model for event in attempts)
         assert_preserved(fixture)
         if harness == 'qoder':

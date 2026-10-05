@@ -236,6 +236,15 @@ impl FilesystemAgentScannerV1 {
                     .flat_map(|api| api.values())
                     .filter(|m| m["type"] == "chat")
                     .cloned()
+                    .map(|mut model| {
+                        // Catalog values are inherited defaults, not explicit model overrides.
+                        for field in ["baseUrl", "api"] {
+                            if let Some(value) = provider.get(field) {
+                                model[field] = value.clone();
+                            }
+                        }
+                        model
+                    })
                     .collect::<Vec<_>>();
                 catalog_digests.insert(provider_id, CanonicalDigest::of_bytes(&bytes));
                 provider["models"] = declarations.into();
@@ -267,6 +276,8 @@ impl FilesystemAgentScannerV1 {
                 key(provider.get("apiKey"), None)
             };
             let supported_auth = provider.get("oauth").is_none()
+                // Additional Bearer headers are not represented by the import contract.
+                && provider.get("authHeader").is_none_or(|v| v == &Value::Bool(false))
                 && provider.get("modelOverrides").is_none()
                 && provider
                     .get("headers")

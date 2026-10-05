@@ -190,6 +190,11 @@ fn assert_saved_source(snapshot: &ComputeManagementSnapshotV2, source_id: &str) 
 async fn hirouted_client_core_discovery_save_and_restart_are_closed_and_network_free() {
     let directory = tempfile::tempdir().unwrap();
     configure_product_root(directory.path());
+    // Unrelated broken native configuration must not block Claude prepare/save/restart.
+    let pi_root = directory.path().join("home/.pi/agent");
+    std::fs::create_dir_all(&pi_root).unwrap();
+    std::fs::write(pi_root.join("models.json"), b"{broken").unwrap();
+    std::fs::write(pi_root.join("auth.json"), b"{broken").unwrap();
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     proxy.set_nonblocking(true).unwrap();
     let proxy_address = proxy.local_addr().unwrap();

@@ -135,6 +135,13 @@ def source_events(upstream):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
+def assert_source_routing(upstream):
+    attempts = source_events(upstream)
+    assert upstream.rejected_count() == 0, 'rejected model request on concurrent route'
+    assert attempts and all(event['state'] == 'green' and event['model'] == upstream.model
+                            for event in attempts), attempts
+
+
 def transcript_snapshot(fixture):
     root = (qoder_native_context.history_directory(fixture) if fixture['harness'] == 'qoder'
             else pi_native_context.history_directory(fixture) if fixture['harness'] == 'pi' else Path(fixture['config']) / ('sessions' if fixture['harness'] == 'codex' else 'projects'))
@@ -248,9 +255,7 @@ def run(repository, candidate, harness):
         wait_until(lambda: all(heartbeat_size(item) > 0 and running_child(item) for item in fixtures),
                    'both real Workers did not execute their native tools concurrently', 120)
         for fixture, source in zip(fixtures, upstreams):
-            attempts = source_events(source)
-            assert attempts and all(event['state'] == 'green' and event['model'] == source.model
-                                    for event in attempts), attempts
+            assert_source_routing(source)
             assert_preserved(fixture)
         assert runs[0]['task_id'] != runs[1]['task_id']
         report['simultaneous_routes'] = [dict(model=source.model, requests_before_cancel=len(source_events(source)))
@@ -264,6 +269,8 @@ def run(repository, candidate, harness):
         Path(neighbor['boundary']['release']).touch()
         result = wait_for_worker_result(product, runs[1]['run_id'], timeout=45)
         assert neighbor['receipt'] in result['result']
+        for source in upstreams:
+            assert_source_routing(source)
         wait_until(lambda: not running_child(neighbor), 'completed neighbor tool still exists', 10)
         for fixture in fixtures:
             assert_preserved(fixture)

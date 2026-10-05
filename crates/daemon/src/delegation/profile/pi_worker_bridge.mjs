@@ -145,6 +145,7 @@ function ownedFile(path, root) {
   )
     throw new Error();
   const seen = new Set();
+  const byId = new Map();
   for (const entry of entries.slice(1)) {
     if (
       typeof entry.id !== "string" ||
@@ -170,6 +171,31 @@ function ownedFile(path, root) {
         entry.tokensBefore < 0
       )
         throw new Error();
+    } else if (entry.type === "context_edit") {
+      const target = byId.get(entry.targetId);
+      if (
+        target?.type !== "message" ||
+        !["user", "assistant", "toolResult"].includes(target.message.role)
+      )
+        throw new Error();
+      let ancestor = entry.parentId;
+      while (ancestor !== null && ancestor !== entry.targetId)
+        ancestor = byId.get(ancestor).parentId;
+      if (ancestor !== entry.targetId) throw new Error();
+      if (entry.replacement !== null) {
+        const replacement = entry.replacement;
+        if (
+          !replacement ||
+          typeof replacement !== "object" ||
+          Array.isArray(replacement) ||
+          !("content" in replacement)
+        )
+          throw new Error();
+        let content = replacement.content;
+        if (typeof content === "string" && target.message.role !== "user")
+          content = [{ type: "text", text: content }];
+        if (!messageValid({ ...target.message, content })) throw new Error();
+      }
     } else if (entry.type === "usage") {
       if (
         typeof entry.kind !== "string" ||
@@ -181,6 +207,7 @@ function ownedFile(path, root) {
         throw new Error();
     } else throw new Error();
     seen.add(entry.id);
+    byId.set(entry.id, entry);
   }
   const fd = openSync(path, "r");
   try {
