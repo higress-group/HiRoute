@@ -97,6 +97,13 @@ const scenarios = [
     select.value = 'unrated'; select.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => document.querySelector('.quality-score strong')?.textContent === '未评分', 'unrated stage filter');
     assert(document.querySelector('.quality-model-average strong').textContent.includes('0.49'), 'Unrated filtering erased the mean');
+    document.querySelector('[data-model-configuration="model/unused"] .quality-view-stages').click();
+    await until(() => document.querySelector('.quality-stage-section') && document.querySelectorAll('.quality-row').length === 0, 'unused candidate has no execution stages');
+    const beforeUnusedRefresh = reads('plan_quality').length;
+    button('刷新').click();
+    await until(() => reads('plan_quality').length > beforeUnusedRefresh && document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 'refresh of unused candidate retains full-scope summary');
+    assert(!document.querySelector('.quality-row') && !document.querySelector('.quality-more'), 'Unused candidate displayed another model’s stages or pagination');
+    assert(document.querySelector('[data-model-configuration="model/qwen"]').innerText.includes('25 已评分'), 'Unused candidate refresh erased the other model’s counts');
     const version = [...document.querySelectorAll('select')].find(element => element.querySelector('option[value="2"]'));
     assert(version, 'Available retained revision cannot be selected');
     version.value = '2'; version.dispatchEvent(new Event('change', { bubbles: true }));

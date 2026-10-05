@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { qualityExecutionKey, qualityModelRows, qualityReasoningLabel } from '../src/features/plan-quality-state.ts';
+import { qualityExecutionKey, qualityModelRows, qualityNativeModelName, qualityReasoningLabel } from '../src/features/plan-quality-state.ts';
 
 const configured = (branch, model, profile = 'high') => ({ branch_id: branch, model_configuration_id: model, reasoning_profile_id: profile, display_name: model + ' readable' });
 const summary = (branch, model, profile = 'high', digest = profile) => ({
@@ -42,4 +42,8 @@ test('reasoning controls use readable labels and keep opaque identities out of t
   assert.equal(qualityReasoningLabel('budget-16000', 'zh'), '思考预算 16000 tokens');
   assert.equal(qualityReasoningLabel('high', 'en'), 'High reasoning');
   assert.equal(qualityReasoningLabel('sha256:1234', 'zh'), '推理配置未记录');
+  assert.equal(qualityNativeModelName('hiroute-codex-current/gpt-6-astra'), 'gpt-6-astra');
+  assert.equal(qualityNativeModelName('Qwen/Qwen3.8-Flash'), 'Qwen/Qwen3.8-Flash');
+  assert.equal(qualityNativeModelName('other-provider/gpt-6-astra'), 'other-provider/gpt-6-astra');
+  assert.equal(qualityNativeModelName('hiroute-codex-current/'), 'hiroute-codex-current/');
 });

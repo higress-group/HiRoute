@@ -4,7 +4,7 @@ import { safeDiagnosticCode } from '../error-code';
 import { observationRead } from './observation-client';
 import { qualityExecutionModels } from './plan-quality-models';
 import { PlanQualityStage, type PlanQualitySample } from './PlanQualityStage';
-import { qualityBranchLabel, qualityModelRows, qualityReasoningLabel, type PlanQualityModel, type QualityExecution, type QualityModelRow, type QualitySummary } from './plan-quality-state';
+import { qualityBranchLabel, qualityModelRows, qualityNativeModelName, qualityReasoningLabel, type PlanQualityModel, type QualityExecution, type QualityModelRow, type QualitySummary } from './plan-quality-state';
 
 export type { PlanQualityModel } from './plan-quality-state';
 export type { PlanQualitySample } from './PlanQualityStage';
@@ -64,12 +64,13 @@ export function PlanQuality({
       });
       if (epoch !== generation.current) return;
       setSummary(page.summary);
-      setSamples(current => next ? [...current, ...page.samples] : page.samples);
-      setCursor(page.next_cursor ?? null);
+      const stages = selected && !selected.execution ? [] : page.samples;
+      setSamples(current => next ? [...current, ...stages] : stages);
+      setCursor(selected && !selected.execution ? null : page.next_cursor ?? null);
       setLoaded(true);
       // Historical records can lack the native-name projection. Recover only
       // from an exact request in the same session, never a neighbouring request.
-      const models = await qualityExecutionModels(page.samples.filter(sample => !sample.native_model), async (session, request) => {
+      const models = await qualityExecutionModels(stages.filter(sample => !sample.native_model), async (session, request) => {
         const result = await observationRead<{ requests: { session_id: string; request_id: string; final_native_model: string | null }[] }>('timeline', {
           session_id: session, request_id: request, from_ms: 0, to_ms: window.to,
           only_model_switch: false, limit: 1, cursor: null,
@@ -91,7 +92,6 @@ export function PlanQuality({
   useEffect(() => {
     if (!active) { generation.current++; setBusy(false); return; }
     setSamples([]); setExecutionModels({}); setCursor(null); setLoaded(false);
-    if (selected && !selected.execution) { setLoaded(true); return; }
     void load();
     return () => { generation.current++; };
   }, [planId, sessionId, revision, score, selected?.key, window, active]);
@@ -101,13 +101,13 @@ export function PlanQuality({
   const selectedRow = rows.find(row => row.key === selected?.key);
   const rowName = (row: QualityModelRow) => row.summary?.execution.attribution === 'mixed' ? text('多个执行模型', 'Multiple execution models')
     : row.summary?.execution.attribution === 'unknown' ? text('执行模型未确认', 'Execution model unknown')
-    : row.configured?.display_name ?? row.summary?.native_model ?? text('模型名称不可用', 'Model name unavailable');
+    : row.configured?.display_name ?? qualityNativeModelName(row.summary?.native_model ?? text('模型名称不可用', 'Model name unavailable'));
   const modelNames = new Map(currentModels.map(model => [model.model_configuration_id, model.display_name]));
   const sampleName = (sample: PlanQualitySample) => sample.attribution === 'mixed' ? text('多个执行模型', 'Multiple execution models')
     : sample.attribution === 'unknown' ? text('执行模型未确认', 'Execution model unknown')
-    : sample.native_model ?? executionModels[sample.segment_id]
+    : qualityNativeModelName(sample.native_model ?? executionModels[sample.segment_id]
       ?? (sample.model_configuration_id ? modelNames.get(sample.model_configuration_id) : null)
-      ?? text('模型名称不可用', 'Model name unavailable');
+      ?? text('模型名称不可用', 'Model name unavailable'));
   const resetDetail = () => { setSelected(null); setScore('all'); };
   const stageCount = summary.scored_stage_count + summary.unrated_stage_count;
   const filter = <label><span className="sr-only">{text('阶段评分筛选', 'Stage score filter')}</span><select className="select quality-score-filter" value={score} onChange={event => setScore(event.target.value as ScoreFilter)}>
@@ -135,7 +135,7 @@ export function PlanQuality({
     {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{text('模型表现暂时无法读取。', 'Model performance is temporarily unavailable.')}</span><button className="btn" type="button" onClick={() => setReload(value => value + 1)}>{text('重试', 'Retry')}</button></div>}
     {!loaded && busy && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('正在读取模型表现…', 'Reading model performance…')}</p></div>}
     {!compact && <div className="quality-model-scope">{groups.map(branch => <section className="quality-group" key={branch} data-execution-group={branch}>
-      <header className="quality-group-heading"><h4>{qualityBranchLabel(branch, language)}</h4><span>{text(rows.filter(row => row.branch === branch).length + ' 个模型配置', rows.filter(row => row.branch === branch).length + ' model configurations')}</span></header>
+      <header className="quality-group-heading"><h4>{qualityBranchLabel(branch, language)}</h4><span>{text(rows.filter(row => row.branch === branch).length + ' 个模型配置', rows.filter(row => row.branch === branch).length + (rows.filter(row => row.branch === branch).length === 1 ? ' model configuration' : ' model configurations'))}</span></header>
       <div className="quality-model-columns" aria-hidden="true"><span>{text('模型 / 思考设置', 'Model / Reasoning')}</span><span>{text('平均阶段胜任度', 'Average stage competence')}</span><span>{text('阶段样本', 'Stage samples')}</span><span /></div>
       {rows.filter(row => row.branch === branch).map(row => <div className={'quality-model-row' + (selected?.key === row.key ? ' selected' : '')} key={row.key} data-model-configuration={row.configured?.model_configuration_id ?? row.summary?.execution.model_configuration_id ?? ''}>
         <div className="quality-model-name"><strong>{rowName(row)}</strong><span>{qualityReasoningLabel(row.summary ? row.summary.reasoning_profile_id : row.configured?.reasoning_profile_id, language)}{version === 'all' && row.summary && ' · r' + row.summary.execution.plan_revision}</span></div>

@@ -72,6 +72,7 @@ export function PlanQualityStage({ sample, modelName, language, onOpenEvidence }
       <p className="quality-coverage">{text('阶段评分用于观察该阶段的执行表现。', 'The score describes execution of this stage.')}</p>
       <div className="quality-diagnostic-identity">
         {sample.executed_branch_id ?? sample.selected_branch_id} · {sample.model_configuration_id ?? 'unknown'} · {sample.profile_digest ?? 'unknown'}
+        {sample.native_model && sample.native_model !== modelName && <div>{text('原始模型标识', 'Original model ID')} · {sample.native_model}</div>}
       </div>
       {assessment && <button className="btn btn-quiet" type="button" disabled={!triggerRequestId || !onOpenEvidence} onClick={() => triggerRequestId && onOpenEvidence?.(sample.session_id, triggerRequestId)}>{triggerRequestId ? text('打开评分触发请求', 'Open assessment-trigger request') : text('评分触发请求不可用', 'Assessment-trigger request unavailable')}</button>}
     </Disclosure>

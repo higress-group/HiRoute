@@ -112,3 +112,12 @@ export function qualityReasoningLabel(profile: string | null | undefined, langua
   if (profile && profile.length <= 32 && /^[a-zA-Z][a-zA-Z0-9 _-]*$/.test(profile)) return profile;
   return language === 'zh' ? '推理配置未记录' : 'Reasoning configuration unrecorded';
 }
+
+/** CPA uses a routing prefix to pin the current Codex account. It is transport
+ * identity, not part of the model's human-facing name. Preserve other namespaces.
+ */
+export function qualityNativeModelName(nativeModel: string): string {
+  const prefix = 'hiroute-codex-current/';
+  return nativeModel.startsWith(prefix) && nativeModel.length > prefix.length
+    ? nativeModel.slice(prefix.length) : nativeModel;
+}
