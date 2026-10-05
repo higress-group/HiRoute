@@ -362,7 +362,7 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .page-hero h1{font-size:clamp(38px,5vw,58px);letter-spacing:-1.8px;margin:16px 0 19px}
 .page-hero>p{max-width:720px;color:var(--muted);font-size:16px}
 .content-section{padding:55px 0}
-.platform-install{display:grid;gap:24px}
+.platform-install{display:grid;grid-template-columns:minmax(0,1fr);gap:24px}
 .platform-heading{display:flex;align-items:end;justify-content:space-between;gap:32px}
 .platform-heading h2{font-size:28px;margin:15px 0 9px}
 .platform-heading p{max-width:760px;color:var(--muted);font-size:14px}
