@@ -47,6 +47,45 @@ const emptySummary = { models: [], scored_stage_count: 0, unrated_stage_count: 0
 const openQuality = () => { const disclosure = document.querySelector('.session-model-performance summary'); if (disclosure && !disclosure.parentElement.open) disclosure.click(); };
 
 const scenarios = [
+  ['switching from a filtered 21-stage session resets the filter for a two-stage session', async () => {
+    const largeSession = 'observation-session/low-21';
+    const smallSession = 'observation-session/high-2';
+    const at = Date.now() - 60_000;
+    const stages = (session, count) => Array.from({ length: count }, (_, index) => ({
+      segment_id: `${session}/stage/${index}`, session_id: session, plan_id: 'plan/quality', plan_revision: 1,
+      selected_branch_id: 'smart_saving_simple', executed_branch_id: 'smart_saving_simple', attribution: 'single',
+      native_model: 'qwen3.8-flash', reasoning_profile_id: 'low',
+      first_turn_ordinal: index + 1, last_observed_turn_ordinal: index + 1, first_at_ms: at, last_at_ms: at,
+      history_partial: false, execution_evidence_available: false,
+      assessment: { score: session === largeSession && index === 0 ? .4 : .9, partial: false, target_from_ordinal: index + 1, target_through_ordinal: index + 1, evidence_available: false },
+    }));
+    await fresh(control => {
+      control.requests[largeSession] = [control.makeRequest(largeSession, 0, at + 1)];
+      control.requests[smallSession] = [control.makeRequest(smallSession, 0, at)];
+      control.views.plan_quality = query => {
+        const all = stages(query.session_id, query.session_id === largeSession ? 21 : 2);
+        const matched = query.score_lt == null ? all : all.filter(stage => stage.assessment.score < query.score_lt);
+        return { samples: matched.slice(0, 20), summary: { ...emptySummary, scored_stage_count: all.length }, next_cursor: matched.length > 20 ? 'page/two' : null };
+      };
+    });
+    await until(() => rows().length === 2, 'two sessions');
+    rows()[0].click(); openQuality();
+    await until(() => document.querySelectorAll('.quality-row').length === 20 && document.querySelector('.quality-score-filter'), 'large session first page');
+    const filter = document.querySelector('.quality-score-filter');
+    filter.value = 'low'; filter.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => document.querySelectorAll('.quality-row').length === 1, 'low stage filter');
+    const beforeRefresh = reads('plan_quality').length;
+    document.querySelector('.quality-refresh').click();
+    await until(() => reads('plan_quality').length > beforeRefresh && document.querySelectorAll('.quality-row').length === 1, 'same-session filtered refresh');
+    assert(queryOf(reads('plan_quality').at(-1)).score_lt === .5, 'Same-session refresh cleared the score filter');
+    rows()[1].click();
+    await until(() => reads('plan_quality').some(call => queryOf(call).session_id === smallSession) && !document.querySelector('.quality-refresh').disabled, 'small session loaded');
+    const smallReads = reads('plan_quality').filter(call => queryOf(call).session_id === smallSession);
+    assert(smallReads.every(call => queryOf(call).score_lt == null), 'The new session inherited the previous low-score filter');
+    assert(document.querySelectorAll('.quality-row').length === 2, 'The new session hid its two high-score stages');
+    assert([...document.querySelectorAll('.quality-score strong')].every(element => element.textContent === '0.90 / 1'), 'The new session displayed stages from the previous session');
+    assert(!document.querySelector('.quality-more'), 'The new session inherited the previous pagination');
+  }],
   ['plan competence stays full-scope while exact model stages are filtered and paged', async () => {
     const identity = { plan_revision: 1, selected_branch_id: null, executed_branch_id: 'smart_saving_simple', model_configuration_id: 'model/qwen', profile_digest: 'sha256/profile-low', attribution: 'single' };
     const stats = {
