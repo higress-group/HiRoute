@@ -173,8 +173,13 @@ fn qoder_additional_models_preserve_native_default_and_restore_independently_of_
         0o600
     );
     assert_eq!(fs::read(&fixture.skill).unwrap(), skill);
-    let provider =
-        hiroute_application::agent_connection::additional_model_provider_id(&fixture.context);
+    let provider = configured["providers"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .find(|id| id.starts_with("hiroute-main-"))
+        .unwrap()
+        .clone();
     assert_eq!(
         configured["providers"][&provider]["baseUrl"],
         "http://127.0.0.1:5837/_hiroute/qoder/v1"
@@ -252,6 +257,13 @@ fn qoder_restore_rejects_native_default_reference_then_preserves_unrelated_edits
         .unwrap();
     let mut native: serde_json::Value =
         serde_json::from_slice(&fs::read(&fixture.native_config).unwrap()).unwrap();
+    let provider = native["providers"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .find(|id| id.starts_with(&provider))
+        .unwrap()
+        .clone();
     native["model"]["name"] = json!(format!("{provider}/{alias}"));
     native["unknown"]["new_user_value"] = json!(9);
     private_file(
@@ -289,7 +301,13 @@ fn qoder_restore_rejects_native_default_reference_then_preserves_unrelated_edits
     );
     let restored: serde_json::Value =
         serde_json::from_slice(&fs::read(&fixture.native_config).unwrap()).unwrap();
-    assert!(restored["providers"].get(&provider).is_none());
+    assert!(
+        !restored["providers"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|id| id.starts_with(&provider))
+    );
     assert_eq!(restored["unknown"]["new_user_value"], 9);
     assert_eq!(restored["model"]["name"], "native/default");
 }
@@ -702,5 +720,11 @@ fn qoder_managed_bearer_permission_drift_revokes_live_eligibility_but_allows_res
     assert_eq!(restored["model"]["name"], "native/default");
     let provider =
         hiroute_application::agent_connection::additional_model_provider_id(&fixture.context);
-    assert!(restored["providers"].get(&provider).is_none());
+    assert!(
+        !restored["providers"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|id| id.starts_with(&provider))
+    );
 }

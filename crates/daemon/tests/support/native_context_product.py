@@ -24,9 +24,9 @@ import qoder_native_context
 import pi_native_context
 
 
-def save_context_source(product, upstream, variant='', context_tokens=None):
+def save_context_source(product, upstream, variant='', context_tokens=None, protocol=None):
     """Declare a source budget supported by the selected native client contract."""
-    protocol = product.worker_work['protocol']
+    protocol = protocol or product.worker_work['protocol']
     return save_native_source(product, upstream, token=upstream.token, protocol=protocol,
                               upstream_model_id=upstream.model, variant=variant,
                               context_tokens=context_tokens if context_tokens is not None else
@@ -67,7 +67,8 @@ def prepare_product(product, harness, context_tokens=None):
     native = Path(product.env[roots[harness]])
     product.worker_work = {'harness': {'codex': 'codex_cli', 'claude': 'claude_code',
                                        'qoder': 'qoder_cli', 'pi': 'pi'}[harness],
-                           'protocol': 'messages' if harness == 'claude' else 'responses'}
+                           'protocol': 'messages' if harness == 'claude' else (os.environ.get('HIROUTE_PRODUCT_AGENT_PROTOCOL', 'responses') if harness in ('pi', 'qoder') else 'responses')}
+    assert product.worker_work['protocol'] in ('responses', 'messages')
     fixture['source_context_tokens'] = (context_tokens if context_tokens is not None
                                         else native_context_budget(product))
     upstream = NativeContextUpstream(product.root)
@@ -126,10 +127,14 @@ def publish_replacement_route(product, fixture):
     upstream.model = 'gpt-5.5'
     upstream.token = 'synthetic-replacement-native-context-source-token'
     try:
-        saved = save_context_source(product, upstream, variant='native-context-replacement')
+        replacement_work = dict(product.worker_work)
+        if fixture['harness'] in ('qoder', 'pi'):
+            replacement_work['protocol'] = 'messages' if replacement_work['protocol'] == 'responses' else 'responses'
+        upstream.plan_protocol = replacement_work['protocol']
+        saved = save_context_source(product, upstream, variant='native-context-replacement', protocol=upstream.plan_protocol)
         change = plan_change(product, 'update', display_name='Published replacement Worker route',
                              candidates=[{'binding_id': saved['binding_id']}],
-                             delegation_enabled=True, work=product.worker_work)
+                             delegation_enabled=True, work=replacement_work)
         preview = product.preview('routing preview', {'change': change})
         product.apply('routing apply', 'ApplyAgentPlanChange', preview,
                       {'change': change}, 'native-plan-update')
@@ -139,13 +144,15 @@ def publish_replacement_route(product, fixture):
         raise
 
 
-def assert_frozen_route(original_events, before, replacement):
+def assert_frozen_route(original_events, before, replacement, protocol=None):
     """Require actual requests to the old route and no requests to the new route."""
     requests = original_events[before:]
     assert requests and all(event['state'] == 'green' for event in requests), \
         'Continue did not use the original source'
     assert any(event.get('continued') is True for event in requests), \
         'original source did not receive the resumed native history'
+    if protocol is not None:
+        assert all(event.get('protocol') == protocol for event in requests), 'Continue changed the frozen protocol'
     replacement_log = replacement.controls / 'native-context-events.jsonl'
     assert not replacement_log.exists() or not replacement_log.read_text().strip(), \
         'existing task used the newly published route'
@@ -293,7 +300,9 @@ def run(repository, candidate):
             if restart:
                 assert current_history == history, 'Continue changed native session or transcript'
                 assert ready['plan_revision'] == report['frozen_plan_revision']
-                assert_frozen_route(events(product), before_requests, replacement)
+                assert_frozen_route(events(product), before_requests, replacement, product.worker_work['protocol'])
+                report['frozen_protocol'] = product.worker_work['protocol']
+                report['current_plan_protocol'] = replacement.plan_protocol
                 report['continued_after_route_replacement'] = True
             else:
                 # The oracle required the first run's real tool history. Both turns

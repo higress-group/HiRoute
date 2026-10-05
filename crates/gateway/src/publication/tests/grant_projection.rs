@@ -158,3 +158,93 @@ fn restored_plan_can_serve_codex_and_claude_without_a_new_plan_revision() {
     assert!(protocols.contains(&IngressProtocol::Responses));
     assert!(protocols.contains(&IngressProtocol::Messages));
 }
+
+#[test]
+fn mixed_plan_grant_authorizes_only_each_selected_protocol_after_restart() {
+    let product: hiroute_domain::GatewayPublicationV1 = serde_json::from_slice(include_bytes!(
+        "../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap();
+    let mut snapshot: GatewayPublicationSnapshotV3 =
+        serde_json::from_value(serde_json::to_value(product.gateway_snapshot().unwrap()).unwrap())
+            .unwrap();
+    let messages = snapshot
+        .aliases
+        .iter()
+        .find(|alias| {
+            alias.candidates.iter().all(|c| {
+                c.protocol_profiles
+                    .iter()
+                    .any(|p| p.ingress_protocol == hiroute_domain::UpstreamProtocol::Messages)
+            })
+        })
+        .unwrap()
+        .served_model_id
+        .clone();
+    let responses = snapshot
+        .aliases
+        .iter()
+        .find(|alias| {
+            alias.served_model_id != messages
+                && alias.protocols.contains(&IngressProtocol::Responses)
+        })
+        .unwrap()
+        .served_model_id
+        .clone();
+    let routes = [&messages, &responses]
+        .into_iter()
+        .map(|name| {
+            (
+                name.clone(),
+                snapshot
+                    .grants
+                    .iter()
+                    .find_map(|g| g.routes.get(name))
+                    .unwrap()
+                    .clone(),
+            )
+        })
+        .collect();
+    let alias = snapshot
+        .aliases
+        .iter_mut()
+        .find(|a| a.served_model_id == messages)
+        .unwrap();
+    if !alias.protocols.contains(&IngressProtocol::Messages) {
+        alias.protocols.push(IngressProtocol::Messages);
+    }
+    snapshot.grants = vec![GrantV1 {
+        grant_id: "mixed-plan-protocols".into(),
+        generation: 1,
+        bearer_token_sha256: token_sha256("mixed-protocol-token"),
+        protocol: IngressProtocol::Responses,
+        routes,
+        route_protocols: [(messages.clone(), IngressProtocol::Messages)].into(),
+    }];
+    let directory = TestDirectory::new();
+    let path = directory.path().join("mixed.json");
+    let installer = GatewayPublicationInstaller::open(&path).unwrap();
+    publish(&installer, reseal(snapshot));
+    drop(installer);
+    let installer = std::sync::Arc::new(GatewayPublicationInstaller::open(&path).unwrap());
+    let authority = crate::server::dispatch::GatewayRequestAuthority::new(installer);
+    for (protocol, allowed, forbidden) in [
+        (IngressProtocol::Messages, &messages, &responses),
+        (IngressProtocol::Responses, &responses, &messages),
+    ] {
+        assert!(
+            authority
+                .begin(protocol, Some("Bearer mixed-protocol-token"))
+                .unwrap()
+                .authorize_alias(allowed, std::time::Instant::now())
+                .is_ok()
+        );
+        assert!(
+            authority
+                .begin(protocol, Some("Bearer mixed-protocol-token"))
+                .unwrap()
+                .authorize_alias(forbidden, std::time::Instant::now())
+                .is_err()
+        );
+    }
+}

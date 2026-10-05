@@ -203,7 +203,10 @@ impl AgentConfirmation {
         let effect = &self.preview.model_effect;
         let details = match &self.input.spec.model {
             AgentFacetIntent::Configure {
-                settings: AgentModelSelectionV2::QoderAdditional { allowed_plan_ids },
+                settings:
+                    AgentModelSelectionV2::QoderAdditional {
+                        allowed_plan_ids, ..
+                    },
             } => {
                 let routes = allowed_plan_ids
                     .iter()

@@ -59,6 +59,7 @@ const MAX_INPUT_BYTES: usize = 256 * 1024;
 /// model credential is move-only and must be consumed by the profile renderer; it is never put
 /// in a task record, process argument, or diagnostic value.
 pub struct WorkerProfileInput {
+    pub protocol: hiroute_domain::AgentIngressProtocolV1,
     pub task: DelegationTaskV1,
     pub run: DelegationRunV1,
     /// The already-verified frozen task version; native metadata must follow this version.
@@ -405,6 +406,7 @@ impl DelegationRunExecutor {
             .clone();
         let profile_workspace_path = workspace_path.clone();
         let profile = match profiles.build(WorkerProfileInput {
+            protocol: work.protocol,
             task: task.clone(),
             run: run.clone(),
             compiled_plan: version.compiled.clone(),

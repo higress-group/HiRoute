@@ -95,7 +95,11 @@ impl GatewayRequestAuthority {
                 .ok_or(DispatchError::Unauthorized)?;
             (publication, grant, None)
         };
-        if grant.protocol != protocol {
+        if !grant
+            .routes
+            .keys()
+            .any(|name| grant.protocol_for(name) == protocol)
+        {
             return Err(DispatchError::AgentPlanProtocolUnsupported);
         }
         let has_protocol_alias = grant.routes.values().any(|route| match route {
@@ -169,6 +173,9 @@ impl AuthenticatedRequest {
             .routes
             .get(served_model_id)
             .ok_or(DispatchError::AgentModelNotGranted)?;
+        if self.grant.protocol_for(served_model_id) != self.protocol {
+            return Err(DispatchError::AgentPlanProtocolUnsupported);
+        }
         let (execution, provenance, plan_display_name) = match route {
             CompiledGrantRoute::Plan { alias } => {
                 let alias = self

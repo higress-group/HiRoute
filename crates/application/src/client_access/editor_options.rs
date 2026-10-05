@@ -111,6 +111,12 @@ pub(super) fn dispatch(
                 reasoning: fact.reasoning.clone(),
                 billing_class: fact.binding.billing_class,
                 routable: fact.is_routable(),
+                native_ingress_protocols: fact
+                    .protocol_profiles
+                    .iter()
+                    .filter(|p| p.ingress_protocol == p.capability.upstream_protocol)
+                    .map(|p| p.ingress_protocol)
+                    .collect(),
                 ingress_protocols: fact
                     .protocol_profiles
                     .iter()

@@ -71,7 +71,16 @@ pub(super) fn model(
     Ok(model)
 }
 
-pub(super) fn provider(endpoint: &str, credential: &str, models: Vec<Value>) -> Value {
-    json!({"type":"openai-compatible", "protocol":"openai-responses", "authType":"bearer",
+pub(super) fn provider(
+    endpoint: &str,
+    credential: &str,
+    models: Vec<Value>,
+    protocol: hiroute_domain::AgentIngressProtocolV1,
+) -> Value {
+    let protocol = match protocol {
+        hiroute_domain::AgentIngressProtocolV1::Responses => "openai-responses",
+        hiroute_domain::AgentIngressProtocolV1::Messages => "anthropic",
+    };
+    json!({"type":"openai-compatible", "protocol":protocol, "authType":"bearer",
         "baseUrl":endpoint, "apiKey":credential, "models":models})
 }

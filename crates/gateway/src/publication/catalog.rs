@@ -55,7 +55,11 @@ fn render(
                 let Some(alias) = publication.aliases.get(alias) else {
                     continue;
                 };
-                if !alias.execution.protocols.contains(&grant.protocol) {
+                if !alias
+                    .execution
+                    .protocols
+                    .contains(&grant.protocol_for(name))
+                {
                     continue;
                 }
                 (
@@ -72,7 +76,7 @@ fn render(
             owned_by: "hiroute",
             purpose,
             agent_plan_revision: revision,
-            protocols: vec![grant.protocol],
+            protocols: vec![grant.protocol_for(name)],
         });
     }
     let document = CatalogDocument {

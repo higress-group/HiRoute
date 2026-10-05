@@ -233,6 +233,7 @@ fn inputs_in_context(
     let catalog =
         borrowed_root.map(|_| crate::delegation::profile::test_codex_catalog("fixed-alias"));
     let profile = CandidateWorkerProfile::build(ProfileInput {
+        protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
         context_window_tokens: None,
         max_output_tokens: None,
         harness: WorkerHarnessV1::CodexCli,

@@ -374,6 +374,7 @@
 .modal.xwide { width: min(1080px, calc(100vw - 44px)); }
 
 .modal-head {
+  flex-shrink: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -387,6 +388,7 @@
 .modal-head p { margin: 5px 0 0; color: var(--text-muted); font-size:calc(13px * var(--hr-text-scale)); }
 .modal-body { min-height: 0; overflow: auto; padding: 20px 22px; }
 .modal-foot {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;

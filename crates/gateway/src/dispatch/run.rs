@@ -227,6 +227,7 @@ impl VerifiedRunRequestAuthority {
             .authenticate(authorization)
             .ok_or(RunRequestAuthorityError::Denied)?;
         if grant.protocol != protocol
+            || !grant.route_protocols.is_empty()
             || grant.routes.len() != 1
             || !matches!(grant.routes.get(self.publication.model_alias()),
                 Some(crate::server::publication::CompiledGrantRoute::Plan { alias })
@@ -364,6 +365,7 @@ mod tests {
                 candidates: vec![exact_test_candidate(1, IngressProtocol::Responses, None)],
             }],
             vec![GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "delegation-run/run-one".into(),
                 generation: 1,
                 bearer_token_sha256: token_sha256(TOKEN),

@@ -3,13 +3,18 @@ use super::*;
 #[test]
 fn qoder_model_entry_is_explicit_and_never_adopts_worker_or_mixed_credentials() {
     let path = format!("{}/responses", hiroute_domain::QODER_MODEL_BASE_PATH);
+    let messages = format!("{}/messages", hiroute_domain::QODER_MODEL_BASE_PATH);
+    assert_eq!(
+        IngressProtocol::from_path(&messages),
+        Some(IngressProtocol::Messages)
+    );
     let catalog = format!("{}/models", hiroute_domain::QODER_MODEL_BASE_PATH);
     assert_eq!(
         IngressProtocol::from_path(&path),
         Some(IngressProtocol::Responses)
     );
     let mut headers = HeaderMap::new();
-    for target in [&path, &catalog] {
+    for target in [&path, &messages, &catalog] {
         headers.insert(
             AUTHORIZATION,
             HeaderValue::from_static("Bearer local-model-grant"),
@@ -70,7 +75,7 @@ fn x_api_key_never_authenticates_and_bearer_wins_when_both_are_present() {
 }
 
 #[test]
-fn codex_requires_independent_grant_without_native_bearer_fallback() {
+fn model_entry_uses_independent_grant_without_native_bearer_fallback() {
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
@@ -82,7 +87,10 @@ fn codex_requires_independent_grant_without_native_bearer_fallback() {
         inbound_authorization("/v1/responses", &headers).as_deref(),
         Some("Bearer model-grant")
     );
-    assert!(inbound_authorization("/v1/messages", &headers).is_none());
+    assert_eq!(
+        inbound_authorization("/v1/messages", &headers).as_deref(),
+        Some("Bearer model-grant")
+    );
     headers.insert("x-hiroute-token", HeaderValue::from_static(""));
     assert!(inbound_authorization("/v1/responses", &headers).is_none());
 }

@@ -80,9 +80,9 @@ class OwnedModelSettings:
         self.baseline['hirouteAcceptance'] = {'unknown': ['preserve', secrets.token_hex(8)]}
         self.write(self.baseline)
 
-    def install_conflicting_auth(self, provider):
+    def install_conflicting_auth(self, providers):
         assert self.harness == "pi" and not self.auth_path.exists()
-        self.auth_owned = json.dumps({provider:{"type":"api_key","key":"saved-key-must-not-override-route"}}).encode()
+        self.auth_owned = json.dumps({provider:{"type":"api_key","key":"saved-key-must-not-override-route"} for provider in providers}).encode()
         self.auth_path.write_bytes(self.auth_owned)
         self.auth_path.chmod(0o600)
 
@@ -97,7 +97,9 @@ class OwnedModelSettings:
 
     def assert_preserved(self, provider_id, selected_default=None):
         actual = self.read()
-        actual.get('providers', {}).pop(provider_id, None)
+        for name in list(actual.get('providers', {})):
+            if name == provider_id or name.startswith(provider_id + '-'):
+                actual['providers'].pop(name)
         expected = deepcopy(self.baseline)
         if selected_default is not None:
             if self.harness == 'qoder':
@@ -230,4 +232,18 @@ def read_persisted_route(product, binary, selector, source, oracle, label):
     stdout = run_native_command(product, command, timeout=60, label=f'ordinary {harness} model invocation')
     assert oracle.calls[before:] == [label], f'ordinary {harness} did not make one actual persisted-route request'
     native_session_id = successful_native_result(stdout, oracle.receipt, harness)
-    return {'label': label, 'model': source.model, 'native_session_id': native_session_id, 'state': 'green'}
+    from native_context_boundaries import source_events
+    observed_protocol = source_events(source)[-1]['protocol']
+    if hasattr(source, 'expected_protocol'):
+        assert observed_protocol == source.expected_protocol, 'native route did not use its chosen upstream protocol'
+    return {'label': label, 'model': source.model, 'provider': selector.split('/', 1)[0],
+            'protocol': observed_protocol, 'native_session_id': native_session_id, 'state': 'green'}
+
+
+def persisted_plan_provider(settings, namespace, alias):
+    """Select the native entry by its declared route, never by list ordering."""
+    matches = [name for name, provider in settings.read().get('providers', {}).items()
+               if (name == namespace or name.startswith(namespace + '-'))
+               and any(model.get('id', model.get('model')) == alias for model in provider.get('models', []))]
+    assert len(matches) == 1, 'persisted route must have exactly one provider'
+    return matches[0]

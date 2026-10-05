@@ -917,9 +917,20 @@ fn decode_messages_tools(
         ensure_keys(
             context,
             object,
-            &["name", "description", "input_schema", "strict"],
+            &[
+                "name",
+                "description",
+                "input_schema",
+                "strict",
+                "eager_input_streaming",
+                "cache_control",
+            ],
             "messages Tool",
         )?;
+        // Known delivery/cache hints do not grant another tool or execution target.
+        // Native projection preserves them; conversion keeps the canonical function.
+        optional_bool(object, "eager_input_streaming")?;
+        validate_messages_cache_control(context, object.get("cache_control"))?;
         Ok(CanonicalTool {
             kind: ToolKindV1::Function,
             name: required_string(object, "name")?,

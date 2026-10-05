@@ -1,10 +1,10 @@
 //! Non-secret additive Qoder model effects, bound to one settings Operation.
 use hiroute_domain::{
     AdditionalAgentModelV1, AgentConnectionControlIntentV1, AgentConnectionEffectRoleV1,
-    AgentConnectionTransactionKindV1, AgentFacetIntent, AgentIngressProtocolV1, AgentKindV1,
-    AgentModelGrantV2, AgentModelRouteV2, AgentModelSelectionV2, AgentOperationRead,
-    AgentSettingsSpecV2, CanonicalDigest, ExternalEffectIntentV1, OperationId,
-    OperationValidationError, PortError, PortErrorCode, PortResult,
+    AgentConnectionTransactionKindV1, AgentFacetIntent, AgentKindV1, AgentModelGrantV2,
+    AgentModelRouteV2, AgentModelSelectionV2, AgentOperationRead, AgentSettingsSpecV2,
+    CanonicalDigest, ExternalEffectIntentV1, OperationId, OperationValidationError, PortError,
+    PortErrorCode, PortResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -190,8 +190,12 @@ pub fn settings_additional_model_file_for_operation(
         (
             AgentFacetIntent::Configure {
                 settings:
-                    AgentModelSelectionV2::QoderAdditional { allowed_plan_ids }
-                    | AgentModelSelectionV2::PiAdditional { allowed_plan_ids },
+                    AgentModelSelectionV2::QoderAdditional {
+                        allowed_plan_ids, ..
+                    }
+                    | AgentModelSelectionV2::PiAdditional {
+                        allowed_plan_ids, ..
+                    },
             },
             AdditionalModelFileAction::Configure {
                 previous_operation,
@@ -214,10 +218,10 @@ pub fn settings_additional_model_file_for_operation(
                 return Err(invalid());
             };
             let scope = mutation.desired_scope().ok_or_else(invalid)?;
-            if scope.model_grant() != &grant || grant.protocol != AgentIngressProtocolV1::Responses
+            if scope.model_grant() != &grant
                 || previous_operation.as_ref() == Some(operation.operation_id())
                 || models.len() != grant.routes.len() || models.len() != allowed_plan_ids.len()
-                || !models.iter().all(|model| matches!(grant.routes.get(&model.alias), Some(AgentModelRouteV2::Plan { plan_id, alias, .. }) if allowed_plan_ids.contains(plan_id) && alias.as_str() == model.alias))
+                || !models.iter().all(|model| matches!(grant.routes.get(&model.alias), Some(AgentModelRouteV2::Plan { plan_id, alias, .. }) if allowed_plan_ids.contains(plan_id) && alias.as_str() == model.alias && grant.protocol_for(&model.alias) == model.protocol))
             { return Err(invalid()); }
         }
         (

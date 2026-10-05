@@ -47,6 +47,7 @@ pub struct ClientServiceStatusV1 {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPlanStatusV2 {
+    pub protocol_advice: hiroute_domain::AgentProtocolAdviceV1,
     pub agent_plan_id: AgentPlanId,
     pub desired: AgentPlanAuthoringV2,
     pub head: PlanHeadV1,

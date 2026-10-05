@@ -508,6 +508,7 @@ impl Fixture {
                 )],
             }],
             vec![GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "gateway-benchmark-grant".into(),
                 generation: 1,
                 bearer_token_sha256: token_sha256(TOKEN),

@@ -124,7 +124,7 @@ for (const ecosystem of ['qoder', 'pi']) test(`${ecosystem} adds only selected r
   const configure = wire(agentSettingsSpec(capable, 'model', false, draft));
   assert.deepEqual(configure, {
     schema_version: { major: 2, minor: 0 }, context_id: `context/${ecosystem}`,
-    model: { intent: 'configure', settings: { mode: `${ecosystem}_additional`, allowed_plan_ids: ['route/b', 'route/a'] } },
+    model: { intent: 'configure', settings: { mode: `${ecosystem}_additional`, allowed_plan_ids: ['route/b', 'route/a'], plan_protocols: { 'route/b': 'responses', 'route/a': 'responses' } } },
     collaboration: { intent: 'keep' },
   });
   const saved = { ...capable, settings: {
@@ -199,4 +199,12 @@ test('editing model routes retains distinct Codex authorization and Claude prese
   assert.equal(agentModelFormInvalid(retained, draft.values, ['route/a', 'route/b']), false, 'a protected binding does not need reselection');
   assert.equal(agentModelFormInvalid(codex, draft.values, ['route/a', 'route/b']), true, 'an unproven independent fixed source must block Save');
   assert.equal(agentModelFormInvalid(claude, { ...EMPTY_EDITOR_VALUES, fixedModels: [fixed] }, []), false, 'an existing Claude fixed model can survive without a preset route');
+});
+
+for (const ecosystem of ['qoder', 'pi']) test(`${ecosystem} saves each selected plan protocol and excludes deselected plans`, () => {
+  const capable = { ...qoder, agent_id: `agent_${ecosystem}_default`, context_id: `context/${ecosystem}`, settings: { state: 'not_configured' } };
+  const values = { ...draft.values, planProtocols: { 'route/a': 'messages', 'route/b': 'responses', 'removed': 'messages' } };
+  const result = agentSettingsSpec(capable, 'model', false, { ...draft, values });
+  assert.deepEqual(result.model.settings.plan_protocols, { 'route/b': 'responses', 'route/a': 'messages' });
+  assert.deepEqual(result.collaboration, { intent: 'keep' });
 });

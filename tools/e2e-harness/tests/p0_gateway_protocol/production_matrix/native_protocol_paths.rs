@@ -64,6 +64,7 @@ fn one_registered_native_source_uses_matching_messages_and_responses_provider_pa
         [IngressProtocol::Responses, IngressProtocol::Messages]
             .into_iter()
             .map(|protocol| GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: format!("shared-grant-{}", protocol_name(protocol)),
                 generation: 1,
                 bearer_token_sha256: token_sha256(&format!(
@@ -367,6 +368,7 @@ fn real_glm_messages_native_path_handles_repeated_small_and_large_requests() {
             candidates: vec![candidate],
         }],
         vec![GrantV1 {
+            route_protocols: Default::default(),
             grant_id: "real-glm-probe-grant".into(),
             generation: 1,
             bearer_token_sha256: token_sha256("protocol-token-messages"),

@@ -100,8 +100,27 @@ fn native_agent_session_derivation_reuses_the_producer_identity_formula() {
         session,
         derive_native_agent_observation_session_id(&workspace, &key, &other_grant, &qoder).unwrap()
     );
+    let mut messages_trust = trust.clone();
+    messages_trust.ingress_protocol = hiroute_domain::IngressProtocolV1::Messages;
+    let messages_session =
+        derive_native_agent_observation_session_id(&workspace, &key, &messages_trust, &qoder)
+            .unwrap();
+    assert_ne!(
+        session, messages_session,
+        "protocol remains part of the trusted session identity"
+    );
+    assert_eq!(
+        messages_session,
+        derive_native_agent_observation_session_id(
+            &workspace,
+            &key,
+            &messages_trust,
+            &header_session
+        )
+        .unwrap()
+    );
     let mut wrong_protocol = trust;
-    wrong_protocol.ingress_protocol = hiroute_domain::IngressProtocolV1::Messages;
+    wrong_protocol.ingress_protocol = hiroute_domain::IngressProtocolV1::ChatCompletions;
     assert!(
         derive_native_agent_observation_session_id(&workspace, &key, &wrong_protocol, &qoder)
             .is_err()

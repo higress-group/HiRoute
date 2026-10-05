@@ -273,3 +273,13 @@ These checks reject missing explicit context, shadow user Skills, wrong role
 endpoints, fabricated/uncorrelated completion, changed borrowed files and missing
 disk artifacts. They also retain the existing SSE/ownership/boundary assertions.
 They start neither a native Agent nor HiRoute and cannot establish product support.
+
+## Dual-protocol acceptance
+
+The persisted-model journey configures one owned provider per Plan: one Responses
+and one Messages (`anthropic`) provider, with ordinary native calls and upstream
+protocol receipts. Run the existing Worker context/Continue journey once with
+`HIROUTE_PRODUCT_AGENT_PROTOCOL=responses` and once with
+`HIROUTE_PRODUCT_AGENT_PROTOCOL=messages`; record each outcome separately.
+Keep the dedicated logged-in context requirements above. The fixture selector
+does not override saved production choices or the frozen protocol of a task.

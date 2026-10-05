@@ -104,7 +104,7 @@ pub enum NativeAgentObservationIdentityV1 {
     CodexSession {
         session_id: String,
     },
-    /// Qoder 1.1.65 sends its native session UUID in the Responses `session-id` header.
+    /// Qoder native session UUID from the supported API client `session-id` header.
     QoderSession {
         session_id: String,
     },
@@ -169,7 +169,11 @@ pub fn derive_native_agent_observation_session_id(
             ("codex_session", vec![session_id.as_str()])
         }
         NativeAgentObservationIdentityV1::QoderSession { session_id } => {
-            if trust.ingress_protocol != hiroute_domain::IngressProtocolV1::Responses {
+            if !matches!(
+                trust.ingress_protocol,
+                hiroute_domain::IngressProtocolV1::Responses
+                    | hiroute_domain::IngressProtocolV1::Messages
+            ) {
                 return Err(NativeAgentObservationSessionError::UnsupportedIngress);
             }
             // The existing wire producer already accepts this header independently of client

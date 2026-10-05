@@ -69,8 +69,9 @@ Cheap local interface/ownership regressions are in
 `crates/integrations/src/agents/pi_sdk_contract.test.mjs`; synthetic release labels
 prove admission behavior, not actual future-release compatibility.
 
-Main-Agent model settings own only one provider member in `models.json` and the
-local grant inside that private file. Pi's separate user `settings.json` default
+Main-Agent model settings own one provider member per selected Plan in `models.json`
+and the local grant inside that private file. Each provider uses the user-selected
+Responses or Messages protocol; restoring removes only the owned provider set. Pi's separate user `settings.json` default
 is a transaction dependency checked again at activation/retry. Project defaults
 are native project configuration outside this global default ownership contract.
 A helper or OAuth key can be reported but never imported by executing it.
@@ -102,3 +103,12 @@ only when handing it to the user.
 Recovery acceptance also forces a recoverable length stop through the real Pi SDK,
 requires its persisted `context_edit` omission, and continues the exact recovered session.
 This is separate from threshold compaction; fixture-only history parsing is not native recovery proof.
+
+## Dual-protocol acceptance
+
+The saved-model journey creates a Responses Plan and a Messages Plan in the same
+native configuration and checks actual source protocol receipts for both. Reuse
+the native context/Continue journey with `HIROUTE_PRODUCT_AGENT_PROTOCOL=responses`
+and `HIROUTE_PRODUCT_AGENT_PROTOCOL=messages` to cover both frozen Worker routes.
+This selector changes fixture inputs, never the production protocol or native CLI.
+Record both protocol outcomes explicitly; one successful default run is insufficient.

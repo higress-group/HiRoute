@@ -1,7 +1,7 @@
 //! Independent main-Agent settings. An omitted facet means keep, never implicit revocation.
 use crate::{AgentPlanId, SchemaVersion};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const AGENT_SETTINGS_SCHEMA_V2: SchemaVersion = SchemaVersion::new(2, 0);
 
@@ -28,9 +28,13 @@ pub enum AgentModelSelectionV2 {
     },
     PiAdditional {
         allowed_plan_ids: BTreeSet<AgentPlanId>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        plan_protocols: BTreeMap<AgentPlanId, crate::AgentIngressProtocolV1>,
     },
     QoderAdditional {
         allowed_plan_ids: BTreeSet<AgentPlanId>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        plan_protocols: BTreeMap<AgentPlanId, crate::AgentIngressProtocolV1>,
     },
     ClaudeLauncher {
         surfaces: BTreeSet<AgentModelSurfaceV2>,
@@ -95,6 +99,20 @@ pub struct AgentClaudePresetValuesV2 {
 }
 
 impl AgentModelSelectionV2 {
+    pub fn plan_protocol(
+        &self,
+        id: &AgentPlanId,
+        fallback: crate::AgentIngressProtocolV1,
+    ) -> crate::AgentIngressProtocolV1 {
+        match self {
+            Self::QoderAdditional { plan_protocols, .. }
+            | Self::PiAdditional { plan_protocols, .. } => {
+                plan_protocols.get(id).copied().unwrap_or(fallback)
+            }
+            _ => fallback,
+        }
+    }
+
     pub fn fixed_models(&self) -> &[AgentFixedModelSelectionV2] {
         match self {
             Self::CodexDefault { fixed_models, .. } | Self::ClaudeLauncher { fixed_models, .. } => {
@@ -109,8 +127,12 @@ impl AgentModelSelectionV2 {
             Self::CodexDefault {
                 allowed_plan_ids, ..
             }
-            | Self::QoderAdditional { allowed_plan_ids }
-            | Self::PiAdditional { allowed_plan_ids } => allowed_plan_ids.clone(),
+            | Self::QoderAdditional {
+                allowed_plan_ids, ..
+            }
+            | Self::PiAdditional {
+                allowed_plan_ids, ..
+            } => allowed_plan_ids.clone(),
             Self::ClaudeLauncher {
                 preset_mappings, ..
             } => [
@@ -159,7 +181,12 @@ impl AgentModelSelectionV2 {
                 AgentModelDefaultSelectionV2::Plan { plan_id } if plans.contains(plan_id) => {}
                 _ => return Err(invalid),
             },
-            Self::QoderAdditional { .. } | Self::PiAdditional { .. } => {}
+            Self::QoderAdditional { plan_protocols, .. }
+            | Self::PiAdditional { plan_protocols, .. } => {
+                if plan_protocols.keys().any(|id| !plans.contains(id)) {
+                    return Err(crate::AgentConnectionError::InvalidGrant);
+                }
+            }
             Self::ClaudeLauncher { surfaces, .. } => {
                 if *surfaces != BTreeSet::from([AgentModelSurfaceV2::ClaudeCli]) {
                     return Err(invalid);

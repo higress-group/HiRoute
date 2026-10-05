@@ -125,6 +125,7 @@ fn renderer_requires_a_usable_worker_budget_and_keeps_probe_budget_separate() {
     ] {
         let route =
             crate::agents::render_qoder_transient_route(super::super::QoderTransientRouteInput {
+                protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
                 provider_id: "hiroute-budget-test",
                 endpoint: "http://127.0.0.1:4321/v1",
                 alias: "plan/branch:cheap",

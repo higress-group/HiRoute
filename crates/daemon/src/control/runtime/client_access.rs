@@ -170,6 +170,7 @@ impl ClientAccessPort for LocalControlAdapter {
                 .map_err(|_| ControlReadError::Corrupt)?;
             let desired = version.configuration;
             plans.push(AgentPlanStatusV2 {
+                protocol_advice: hiroute_domain::agent_protocol_advice(&compiled.body.materialized),
                 agent_plan_id: compiled.agent_plan_id().clone(),
                 desired,
                 head: head.clone(),

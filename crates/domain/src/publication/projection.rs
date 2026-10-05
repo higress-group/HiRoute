@@ -80,8 +80,12 @@ pub(super) fn rebind_current_grant_routes(
             return Err(PublicationError::InvalidGrant);
         }
     }
-    let model_grant = crate::AgentModelGrantV2::seal(grant.model_grant.protocol, routes)
-        .map_err(|_| PublicationError::InvalidGrant)?;
+    let model_grant = crate::AgentModelGrantV2::seal_routes(
+        grant.model_grant.protocol,
+        routes,
+        grant.model_grant.route_protocols,
+    )
+    .map_err(|_| PublicationError::InvalidGrant)?;
     Ok(GatewayExecutableGrantV2 {
         grant_id: grant.grant_id,
         generation: grant.generation,
@@ -148,7 +152,7 @@ pub(super) fn materialize_aliases(
             let protocols = grants
                 .iter()
                 .filter(|grant| grant.permits_plan(plan.model_alias()))
-                .map(|grant| grant.model_grant.protocol)
+                .map(|grant| grant.model_grant.protocol_for(plan.model_alias().as_str()))
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect::<Vec<_>>();

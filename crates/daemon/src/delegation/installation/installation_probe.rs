@@ -297,6 +297,7 @@ fn build_profile(
     };
     let catalog = (worker == WorkerHarnessV1::CodexCli).then(|| test_codex_catalog(PROBE_MODEL));
     CandidateWorkerProfile::build(ProfileInput {
+        protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
         context_window_tokens: None,
         max_output_tokens: None,
         harness: worker,

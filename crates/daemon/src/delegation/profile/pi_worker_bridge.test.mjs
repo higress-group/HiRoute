@@ -35,7 +35,7 @@ export class SettingsManager {
 export class DefaultResourceLoader {async reload() {} getSkills() {return {skills:[]};}}
 export class ModelRuntime {
   static async create() {return new ModelRuntime();}
-  registerProvider(provider, value) {this.models=value.models.map(model=>({...model,provider,api:value.api,baseUrl:value.baseUrl}));}
+  registerProvider(provider, value) {if(process.env.FIXTURE_API) {receipt('api:'+value.api);receipt('managed-authorization:'+String(value.headers?.Authorization==='Bearer '+secret));}this.models=value.models.map(model=>({...model,provider,api:value.api,baseUrl:value.baseUrl}));}
   setRuntimeApiKey() {}
   getModels() {return this.models;}
 }
@@ -109,6 +109,7 @@ function fixture(t, env = {}) {
       HIROUTE_PI_SESSION_ROOT: root,
       HIROUTE_RUN_TOKEN: "fixture-private-token-do-not-emit",
       HIROUTE_PI_ROUTE: JSON.stringify({
+        api: env.FIXTURE_API || "openai-responses",
         minimumNode: [22, 19],
         provider: "managed",
         endpoint: "http://127.0.0.1:1/v1",
@@ -369,5 +370,14 @@ for (const [replacement, target] of [
       "history",
     );
     assert.deepEqual(f.events(), []);
+  });
+}
+
+for (const api of ["openai-responses", "anthropic-messages"]) {
+  test(`frozen ${api} route reaches SDK with protocol-specific managed authorization`, async (t) => {
+    const f = fixture(t, { FIXTURE_API: api });
+    assert.equal((await f.ready()).result.sessionId, "fixture-session");
+    assert.ok(f.events().includes("api:" + api));
+    assert.ok(f.events().includes("managed-authorization:" + String(api === "anthropic-messages")));
   });
 }

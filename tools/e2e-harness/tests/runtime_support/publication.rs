@@ -227,6 +227,7 @@ pub(super) fn snapshot(
             ]
             .into_iter()
             .map(|(protocol, token)| GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: format!("runtime-grant-{}", protocol.path()),
                 generation: 1,
                 bearer_token_sha256: token_sha256(token),
@@ -236,6 +237,7 @@ pub(super) fn snapshot(
             .collect()
         } else {
             vec![GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: "runtime-grant".into(),
                 generation: 1,
                 bearer_token_sha256: token_sha256(TOKEN),
@@ -330,6 +332,7 @@ pub(super) fn make_isolated_fixed_grants(snapshot: &mut GatewayPublicationSnapsh
                 })
                 .collect();
             GrantV1 {
+                route_protocols: Default::default(),
                 grant_id: format!("isolated-grant-{index}"),
                 generation: 1,
                 bearer_token_sha256: token_sha256(&format!("isolated-token-{index}")),

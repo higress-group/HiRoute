@@ -4,10 +4,10 @@ use hiroute_application::agent_connection::{
     AdditionalModelFileAction, additional_model_kind, settings_additional_model_file_for_operation,
 };
 use hiroute_domain::{
-    AdditionalAgentModelV1, AgentAccessGrantRefV1, AgentIngressProtocolV1, AgentKindV1,
-    AgentModelGrantV2, AgentModelRouteV2, ControlRepositoryPort, ExternalEffectIntentV1,
-    GatewayPublicationV1, OperationState, OperationStepKind, OperationV1, OwnedEffectV1, PortError,
-    PortErrorCode, PortResult, SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
+    AdditionalAgentModelV1, AgentAccessGrantRefV1, AgentKindV1, AgentModelGrantV2,
+    AgentModelRouteV2, ControlRepositoryPort, ExternalEffectIntentV1, GatewayPublicationV1,
+    OperationState, OperationStepKind, OperationV1, OwnedEffectV1, PortError, PortErrorCode,
+    PortResult, SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
 };
 
 pub(super) fn is_settings_additional_model(intent: &ExternalEffectIntentV1) -> bool {
@@ -71,6 +71,7 @@ pub(super) fn additional_models_for_grant(
             .map_err(|_| conflict("qoder.models.budget"))?;
             Ok(AdditionalAgentModelV1 {
                 alias: name.clone(),
+                protocol: grant.protocol_for(name),
                 context_window_tokens: budget.context_window_tokens,
                 max_output_tokens: budget.max_output_tokens,
             })
@@ -136,7 +137,6 @@ impl LocalControlAdapter {
                     .ok_or_else(|| conflict("qoder.settings.scope"))?;
                 if mutation.owner_scope() != operation.workspace_id.as_str()
                     || scope.connection_id() != format!("agent-connection/{}", payload.context_id)
-                    || scope.protocol() != AgentIngressProtocolV1::Responses
                 {
                     return Err(conflict("qoder.settings.grant.binding"));
                 }

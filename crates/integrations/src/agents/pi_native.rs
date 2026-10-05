@@ -24,11 +24,20 @@ pub struct PiDefaultModel {
 }
 impl PiDefaultModel {
     pub fn removes_default(&self, provider: &str, models: &[AdditionalAgentModelV1]) -> bool {
-        self.provider.as_deref() == Some(provider)
-            && self
-                .model
-                .as_ref()
-                .is_none_or(|selected| !models.iter().any(|m| &m.alias == selected))
+        self.provider.as_deref().is_some_and(|selected_provider| {
+            let owned_namespace = selected_provider == provider
+                || selected_provider
+                    .strip_prefix(&format!("{provider}-"))
+                    .is_some_and(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()));
+            owned_namespace
+                && self.model.as_ref().is_none_or(|selected| {
+                    !models.iter().any(|m| {
+                        &m.alias == selected
+                            && hiroute_domain::additional_model_provider_for(provider, models, m)
+                                == selected_provider
+                    })
+                })
+        })
     }
 }
 

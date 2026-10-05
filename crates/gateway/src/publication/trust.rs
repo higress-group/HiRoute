@@ -53,7 +53,7 @@ impl GatewayPublicationSnapshotV3 {
                 None,
             ),
         };
-        let ingress_protocol = match grant.protocol {
+        let ingress_protocol = match grant.protocol_for(served_model_id) {
             IngressProtocol::Responses => IngressProtocolV1::Responses,
             IngressProtocol::Messages => IngressProtocolV1::Messages,
             IngressProtocol::ChatCompletions => IngressProtocolV1::ChatCompletions,

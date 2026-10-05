@@ -404,3 +404,47 @@ fn messages_stop_sequence_is_completion_metadata_not_a_decode_failure() {
     assert!(response.response.completed);
     assert!(!response.response.blocks.is_empty());
 }
+
+#[test]
+fn native_messages_tool_delivery_hints_survive_without_authorizing_unknown_tools() {
+    let body = json!({"model":"alias","max_tokens":1024,"stream":true,
+        "messages":[{"role":"user","content":"read the fixture"}],
+        "tools":[{"name":"read","description":"Read a local fixture",
+            "input_schema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]},
+            "eager_input_streaming":true,"cache_control":{"type":"ephemeral"}}]});
+    let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
+    assert_eq!(request.tools.len(), 1);
+    assert_eq!(request.tools[0].kind, ToolKindV1::Function);
+    let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
+    let projected = project_candidate_request(&request, &profile).unwrap();
+    assert_eq!(projected.body["tools"], body["tools"]);
+    let converted = project_candidate_request(
+        &request,
+        &exact_state_profile(IngressProtocol::Messages, IngressProtocol::Responses),
+    )
+    .unwrap();
+    assert_eq!(converted.body["tools"][0]["name"], "read");
+    assert_eq!(
+        converted.body["tools"][0]["parameters"],
+        body["tools"][0]["input_schema"]
+    );
+    assert!(
+        converted.body["tools"][0]
+            .get("eager_input_streaming")
+            .is_none()
+    );
+    for (key, value) in [
+        ("eager_input_streaming", json!("true")),
+        ("endpoint", json!("http://untrusted.invalid")),
+        ("mcp_servers", json!([])),
+        ("defer_loading", json!(true)),
+        ("type", json!("computer_20250124")),
+    ] {
+        let mut invalid = body.clone();
+        invalid["tools"][0][key] = value;
+        assert!(
+            decode_ingress_request(IngressProtocol::Messages, &invalid).is_err(),
+            "{key}"
+        );
+    }
+}

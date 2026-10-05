@@ -46,11 +46,13 @@ impl LocalControlAdapter {
             .mode(0o600)
             .open(&output_path)
             .map_err(|_| unavailable())?;
-        let native_model = format!(
-            "{}/{}",
-            hiroute_application::agent_connection::additional_model_provider_id(context_id),
-            model
-        );
+        let native_model = self
+            .scanner
+            .qoder_saved_plan_selector(
+                &hiroute_application::agent_connection::additional_model_provider_id(context_id),
+                model,
+            )
+            .map_err(|_| unavailable())?;
         let mut command = Command::new(executable);
         command
             .arg("--cwd")

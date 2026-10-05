@@ -1390,7 +1390,7 @@ fn inbound_authorization<'a>(
 ) -> Option<std::borrow::Cow<'a, str>> {
     if path
         .strip_prefix(hiroute_domain::QODER_MODEL_BASE_PATH)
-        .is_some_and(|resource| matches!(resource, "/responses" | "/models"))
+        .is_some_and(|resource| matches!(resource, "/responses" | "/messages" | "/models"))
     {
         // This explicit native entry consumes only local model-grant credentials.
         // Normal publication authentication still rejects unissued/native account
@@ -1413,7 +1413,7 @@ fn inbound_authorization<'a>(
         return Some(std::borrow::Cow::Borrowed(authorization));
     }
     if headers.contains_key("x-hiroute-token") {
-        if !matches!(path, "/v1/responses" | "/v1/models")
+        if !matches!(path, "/v1/responses" | "/v1/messages" | "/v1/models")
             || headers.get_all("x-hiroute-token").iter().count() != 1
         {
             return None;

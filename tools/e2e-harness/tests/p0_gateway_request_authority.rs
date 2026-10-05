@@ -90,6 +90,7 @@ fn snapshot(publication_revision: u64, fast_plan_revision: u64) -> GatewayPublic
             },
         ],
         vec![GrantV1 {
+            route_protocols: Default::default(),
             grant_id: "agent-a".into(),
             generation: 3,
             bearer_token_sha256: token_sha256("test-agent-token"),

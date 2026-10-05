@@ -74,7 +74,16 @@ pub(crate) struct CompiledGrant {
     pub generation: u64,
     pub bearer_token_sha256: Arc<str>,
     pub protocol: IngressProtocol,
+    pub route_protocols: std::collections::BTreeMap<String, IngressProtocol>,
     pub routes: BTreeMap<Arc<str>, CompiledGrantRoute>,
+}
+impl CompiledGrant {
+    pub(crate) fn protocol_for(&self, name: &str) -> IngressProtocol {
+        self.route_protocols
+            .get(name)
+            .copied()
+            .unwrap_or(self.protocol)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -978,6 +987,7 @@ fn compile_grant(grant: &GrantV1, revision: u64) -> Result<CompiledGrant, Public
         generation: grant.generation,
         bearer_token_sha256: grant.bearer_token_sha256.clone().into(),
         protocol: grant.protocol,
+        route_protocols: grant.route_protocols.clone(),
         routes,
     })
 }

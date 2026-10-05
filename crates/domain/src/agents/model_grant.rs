@@ -63,6 +63,8 @@ impl ModelRequestRouteV2 {
 pub struct AgentModelGrantV2 {
     pub protocol: AgentIngressProtocolV1,
     pub routes: BTreeMap<String, AgentModelRouteV2>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub route_protocols: BTreeMap<String, AgentIngressProtocolV1>,
     pub digest: CanonicalDigest,
 }
 
@@ -88,7 +90,18 @@ impl AgentModelGrantV2 {
         ) {
             return Err(AgentConnectionError::InvalidGrant);
         }
-        let mut routes = Self::plan_routes(protocol, selection.allowed_plan_ids(), publication)?;
+        let mut routes = BTreeMap::new();
+        let mut route_protocols = BTreeMap::new();
+        for id in selection.allowed_plan_ids() {
+            let selected = selection.plan_protocol(&id, protocol);
+            let plan_routes = Self::plan_routes(selected, [id].into(), publication)?;
+            for name in plan_routes.keys() {
+                if selected != protocol {
+                    route_protocols.insert(name.clone(), selected);
+                }
+            }
+            routes.extend(plan_routes);
+        }
         for fixed in selection.fixed_models() {
             let binding = fixed_bindings
                 .get(&fixed.client_model_id)
@@ -107,7 +120,7 @@ impl AgentModelGrantV2 {
                 return Err(AgentConnectionError::InvalidGrant);
             }
         }
-        Self::seal(protocol, routes)
+        Self::seal_routes(protocol, routes, route_protocols)
     }
 
     pub fn from_plan_ids(
@@ -170,7 +183,15 @@ impl AgentModelGrantV2 {
 
     pub fn seal(
         protocol: AgentIngressProtocolV1,
+        routes: BTreeMap<String, AgentModelRouteV2>,
+    ) -> Result<Self, AgentConnectionError> {
+        Self::seal_routes(protocol, routes, BTreeMap::new())
+    }
+
+    pub fn seal_routes(
+        protocol: AgentIngressProtocolV1,
         mut routes: BTreeMap<String, AgentModelRouteV2>,
+        route_protocols: BTreeMap<String, AgentIngressProtocolV1>,
     ) -> Result<Self, AgentConnectionError> {
         for route in routes.values_mut() {
             if let AgentModelRouteV2::Fixed { binding, .. } = route {
@@ -179,19 +200,43 @@ impl AgentModelGrantV2 {
                     .map_err(|_| AgentConnectionError::InvalidGrant)?;
             }
         }
-        let digest = CanonicalDigest::of(&("hiroute.agent-model-grant/v3", protocol, &routes))
-            .map_err(|_| AgentConnectionError::Encoding)?;
+        let digest = Self::route_digest(protocol, &routes, &route_protocols)?;
         let grant = Self {
             protocol,
             routes,
+            route_protocols,
             digest,
         };
         grant.validate()?;
         Ok(grant)
     }
 
+    pub fn protocol_for(&self, name: &str) -> AgentIngressProtocolV1 {
+        self.route_protocols
+            .get(name)
+            .copied()
+            .unwrap_or(self.protocol)
+    }
+    fn route_digest(
+        protocol: AgentIngressProtocolV1,
+        routes: &BTreeMap<String, AgentModelRouteV2>,
+        protocols: &BTreeMap<String, AgentIngressProtocolV1>,
+    ) -> Result<CanonicalDigest, AgentConnectionError> {
+        if protocols.is_empty() {
+            CanonicalDigest::of(&("hiroute.agent-model-grant/v3", protocol, routes))
+        } else {
+            CanonicalDigest::of(&("hiroute.agent-model-grant/v3", protocol, routes, protocols))
+        }
+        .map_err(|_| AgentConnectionError::Encoding)
+    }
+
     pub fn validate(&self) -> Result<(), AgentConnectionError> {
-        if self.routes.is_empty() {
+        if self.routes.is_empty()
+            || self.route_protocols.iter().any(|(name, protocol)| {
+                *protocol == self.protocol
+                    || !matches!(self.routes.get(name), Some(AgentModelRouteV2::Plan { .. }))
+            })
+        {
             return Err(AgentConnectionError::InvalidGrant);
         }
         let ingress = match self.protocol {
@@ -235,10 +280,7 @@ impl AgentModelGrantV2 {
                 }
             }
         }
-        if CanonicalDigest::of(&("hiroute.agent-model-grant/v3", self.protocol, &self.routes))
-            .map_err(|_| AgentConnectionError::Encoding)?
-            != self.digest
-        {
+        if Self::route_digest(self.protocol, &self.routes, &self.route_protocols)? != self.digest {
             return Err(AgentConnectionError::DigestMismatch);
         }
         Ok(())
@@ -272,7 +314,10 @@ impl AgentModelGrantV2 {
                 AgentModelRouteV2::Fixed { .. } => None,
             })
             .collect::<std::collections::BTreeSet<_>>();
-        if plans != selection.allowed_plan_ids()
+        if self.routes.iter().any(|(name, route)| match route {
+            AgentModelRouteV2::Plan { plan_id, .. } => self.protocol_for(name) != selection.plan_protocol(plan_id, self.protocol),
+            _ => false,
+        }) || plans != selection.allowed_plan_ids()
             || self.routes.len() != plans.len() + selection.fixed_models().len()
             || selection.fixed_models().iter().any(|fixed| {
                 !matches!(self.routes.get(&fixed.client_model_id),
@@ -390,6 +435,7 @@ mod tests {
     #[test]
     fn qoder_additional_routes_authorize_only_selected_plans_without_native_defaults() {
         let selection = AgentModelSelectionV2::QoderAdditional {
+            plan_protocols: Default::default(),
             allowed_plan_ids: [AgentPlanId::parse("plan/example").unwrap()].into(),
         };
         let grant = grant();
@@ -397,6 +443,7 @@ mod tests {
         assert!(grant.codex_default_override(&selection).is_err());
         assert!(selection.fixed_models().is_empty());
         let other = AgentModelSelectionV2::QoderAdditional {
+            plan_protocols: Default::default(),
             allowed_plan_ids: [AgentPlanId::parse("plan/other").unwrap()].into(),
         };
         assert!(grant.validate_selection(&other).is_err());
@@ -405,6 +452,7 @@ mod tests {
         assert!(wrong_protocol.validate_selection(&selection).is_err());
         assert!(
             AgentModelSelectionV2::QoderAdditional {
+                plan_protocols: Default::default(),
                 allowed_plan_ids: Default::default(),
             }
             .validate()
@@ -417,6 +465,42 @@ mod tests {
                 .insert(forbidden.into(), serde_json::Value::Null);
             assert!(serde_json::from_value::<AgentModelSelectionV2>(wire).is_err());
         }
+    }
+
+    #[test]
+    fn explicit_plan_protocol_is_sealed_and_cannot_expand_other_clients() {
+        let base = grant();
+        let id = AgentPlanId::parse("plan/example").unwrap();
+        let selected = AgentModelSelectionV2::PiAdditional {
+            allowed_plan_ids: [id.clone()].into(),
+            plan_protocols: [(id.clone(), AgentIngressProtocolV1::Messages)].into(),
+        };
+        assert!(base.validate_selection(&selected).is_err());
+        let messages = AgentModelGrantV2::seal_routes(
+            base.protocol,
+            base.routes.clone(),
+            [("hiroute-example".into(), AgentIngressProtocolV1::Messages)].into(),
+        )
+        .unwrap();
+        assert_ne!(messages.digest, base.digest);
+        assert!(messages.validate_selection(&selected).is_ok());
+        assert_eq!(
+            messages.protocol_for("hiroute-example"),
+            AgentIngressProtocolV1::Messages
+        );
+        let legacy = AgentModelSelectionV2::PiAdditional {
+            allowed_plan_ids: [id].into(),
+            plan_protocols: BTreeMap::new(),
+        };
+        assert!(messages.validate_selection(&legacy).is_err());
+        assert!(
+            AgentModelGrantV2::seal_routes(
+                base.protocol,
+                base.routes,
+                [("ungranted".into(), AgentIngressProtocolV1::Messages)].into()
+            )
+            .is_err()
+        );
     }
 
     #[test]

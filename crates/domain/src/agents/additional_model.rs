@@ -63,6 +63,8 @@ pub fn validate_qoder_output_budget(tokens: u64) -> Result<(), QoderBudgetError>
 #[serde(deny_unknown_fields)]
 pub struct AdditionalAgentModelV1 {
     pub alias: String,
+    #[serde(default = "responses_protocol", skip_serializing_if = "is_responses")]
+    pub protocol: crate::AgentIngressProtocolV1,
     pub context_window_tokens: u64,
     pub max_output_tokens: u64,
 }
@@ -89,4 +91,25 @@ impl AdditionalAgentModelV1 {
             .map_err(|_| crate::AgentConnectionError::InvalidGrant)?;
         Ok(())
     }
+}
+
+pub fn responses_protocol() -> crate::AgentIngressProtocolV1 {
+    crate::AgentIngressProtocolV1::Responses
+}
+fn is_responses(protocol: &crate::AgentIngressProtocolV1) -> bool {
+    *protocol == responses_protocol()
+}
+
+/// Stable per-plan native identity. Alias changes already require a new plan identity.
+pub fn additional_model_provider_for(
+    provider: &str,
+    _models: &[AdditionalAgentModelV1],
+    model: &AdditionalAgentModelV1,
+) -> String {
+    additional_model_plan_provider_id(provider, &model.alias)
+}
+
+pub fn additional_model_plan_provider_id(provider: &str, alias: &str) -> String {
+    let digest = crate::CanonicalDigest::of_bytes(alias.as_bytes());
+    format!("{provider}-{}", &digest.as_str()[7..39])
 }

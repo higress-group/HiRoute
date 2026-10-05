@@ -22,13 +22,14 @@ from publication_process import plan_change
 from publication_product import Product, encoded
 from collaboration_product import apply_collaboration, check_collaboration as _check_collaboration, restore_skill
 from additional_model_fixture import (CASES, OwnedModelSettings, PersistedRouteOracle,
-                                 read_persisted_route, select_model_context)
+                                 read_persisted_route, select_model_context, persisted_plan_provider)
 import qoder_native_context
 
 HARNESS = "qoder"
 AGENT = "agent_qoder_default"
 MODE = "qoder_additional"
 TAIL = "/_hiroute/qoder/v1"
+PLAN_PROTOCOLS = {}
 
 def check_collaboration(product, key):
     return _check_collaboration(product, key, agent=AGENT)
@@ -36,7 +37,7 @@ def check_collaboration(product, key):
 
 def model_spec(context, plans=None, restore_ref=None, regenerate=False):
     model = ({'intent': 'restore', 'restore_point_ref': restore_ref} if restore_ref else
-             {'intent': 'configure', 'settings': {'mode': MODE, 'allowed_plan_ids': plans}})
+             {'intent': 'configure', 'settings': {'mode': MODE, 'allowed_plan_ids': plans, 'plan_protocols': {p: PLAN_PROTOCOLS.get(p, 'responses') for p in plans}}})
     return {'schema_version': {'major': 2, 'minor': 0}, 'context_id': context, 'model': model,
             'collaboration': {'intent': 'keep'},
             'access_token': {'intent': 'regenerate' if regenerate else 'keep'}}
@@ -48,7 +49,7 @@ def apply_models(product, spec, key):
 
 def publish_source_plan(product, source, index):
     saved = save_native_source(product, source, token=source.token, upstream_model_id=source.model,
-                               variant=HARNESS + '-model-' + str(index), context_tokens=100000)
+                               variant=HARNESS + '-model-' + str(index), context_tokens=100000, protocol='responses' if index == 0 else 'messages')
     product.editor = {
         'schema': 'hiroute.plan-editor/v2', 'display_name': 'Additional ' + HARNESS + ' route ' + str(index),
         'purpose': 'Read a persisted additional model route', 'mode': 'fixed_model',
@@ -63,17 +64,21 @@ def publish_source_plan(product, source, index):
     preview = product.preview('routing preview', {'change': change})
     product.apply('routing apply', 'ApplyAgentPlanChange', preview, {'change': change}, 'model-plan-' + str(index))
     product.plan_id = preview['plan_head']['reference']['plan_id']
+    PLAN_PROTOCOLS[product.plan_id] = 'responses' if index == 0 else 'messages'
+    source.expected_protocol = PLAN_PROTOCOLS[product.plan_id]
     return {'plan_id': product.plan_id, 'alias': preview['plan_head']['model_alias']}
 
 
 def assert_configured(status, plans):
     assert status['state'] == 'configured' and status.get('restore_point_ref'), 'model route is not configured'
-    assert status['current_selection'] == {'mode': MODE, 'allowed_plan_ids': sorted(plans)}, \
+    assert status['current_selection'] == {'mode': MODE, 'allowed_plan_ids': sorted(plans), 'plan_protocols': {p: PLAN_PROTOCOLS.get(p, 'responses') for p in plans}}, \
         'model selection changed the selected Plan set'
 
 
 def assert_saved_aliases(settings, provider, aliases):
-    models = settings.read()['providers'][provider]['models']
+    models = [model for name, value in settings.read()['providers'].items() if name == provider or name.startswith(provider + '-') for model in value['models']]
+    for alias in aliases:
+        assert len(settings.read()['providers'][persisted_plan_provider(settings, provider, alias)]['models']) == 1
     assert len(models) == len(aliases) and {item['id' if HARNESS == 'pi' else 'model'] for item in models} == set(aliases), \
         'persisted native choices do not match the selected routes'
 
@@ -97,24 +102,27 @@ def live_check(product, context, aliases, oracles):
         'Live verification must actually request each selected persisted route once'
 
 
-def reject_gateway_request(product, token, alias, sources, expected_statuses):
+def reject_gateway_request(product, token, alias, protocol, sources, expected_codes):
     before = [source.request_count() for source in sources]
     client = http.client.HTTPConnection('127.0.0.1', product.port, timeout=10)
     try:
-        client.request('POST', TAIL + '/responses', body=encoded({
-            'model': alias, 'input': 'Untrusted removed route', 'max_output_tokens': 16, 'stream': True}),
+        body = ({'model': alias, 'input': 'Untrusted removed route', 'max_output_tokens': 16, 'stream': True}
+                if protocol == 'responses' else {'model': alias, 'messages': [{'role':'user','content':'Untrusted removed route'}],
+                    'max_tokens':16, 'stream':True})
+        client.request('POST', TAIL + '/' + protocol, body=encoded(body),
             headers={'Content-Type': 'application/json', **({'X-HiRoute-Token':token} if HARNESS == 'pi'
                 else {'Authorization':'Bearer ' + token})})
         response = client.getresponse()
-        response.read()
-        assert response.status in expected_statuses, f'obsolete authority or removed alias rejection: {response.status}'
+        error = json.loads(response.read())
+        assert response.status in (401, 403, 404, 422) and error.get('code') in expected_codes, \
+            f'obsolete authority or removed alias rejection: {response.status} {error.get("code")}'
     finally:
         client.close()
     assert [source.request_count() for source in sources] == before, 'rejected request reached a source'
 
 
 def assert_default_blocks_removal(product, context, settings, provider, plans, skill):
-    selected = provider + '/' + plans[0]['alias']
+    selected = persisted_plan_provider(settings, provider, plans[0]['alias']) + '/' + plans[0]['alias']
     settings.select_default(settings.native_default, selected)
     try:
         status = settings_status(product, context)
@@ -148,6 +156,7 @@ def restore_models(product, context):
 
 def run(repository, candidate):
     global HARNESS, AGENT, MODE, TAIL
+    PLAN_PROTOCOLS.clear()
     HARNESS = os.environ.get('HIROUTE_PRODUCT_WORKER_HARNESS', 'qoder')
     assert HARNESS in ('qoder', 'pi')
     AGENT = 'agent_' + HARNESS + '_default'
@@ -201,13 +210,13 @@ def run(repository, candidate):
         settings.assert_preserved(provider)
         settings.add_user_edit(provider)
         if HARNESS == 'pi':
-            settings.install_conflicting_auth(provider)
+            settings.install_conflicting_auth([persisted_plan_provider(settings, provider, plan['alias']) for plan in plans])
         for index, plan in enumerate(plans):
-            report['native_reads'].append(read_persisted_route(product, binary, provider + '/' + plan['alias'],
+            report['native_reads'].append(read_persisted_route(product, binary, persisted_plan_provider(settings, provider, plan['alias']) + '/' + plan['alias'],
                 sources[index], oracles[index], 'persisted-' + str(index)))
         product.stop()
         product.start()
-        report['native_reads'].append(read_persisted_route(product, binary, provider + '/' + plans[0]['alias'],
+        report['native_reads'].append(read_persisted_route(product, binary, persisted_plan_provider(settings, provider, plans[0]['alias']) + '/' + plans[0]['alias'],
             sources[0], oracles[0], 'after-daemon-restart'))
         if HARNESS == 'qoder':
             live_check(product, context, [plan['alias'] for plan in plans], oracles)
@@ -219,8 +228,8 @@ def run(repository, candidate):
         assert_configured(status, plan_ids)
         new_token = product.bearer(product.agent_connection)
         assert old_token != new_token, 'model token rotation reused the prior credential'
-        reject_gateway_request(product, old_token, plans[0]['alias'], sources, (401, 403))
-        report['native_reads'].append(read_persisted_route(product, binary, provider + '/' + plans[1]['alias'],
+        reject_gateway_request(product, old_token, plans[0]['alias'], PLAN_PROTOCOLS[plans[0]['plan_id']], sources, ('GATEWAY_GRANT_UNAUTHORIZED',))
+        report['native_reads'].append(read_persisted_route(product, binary, persisted_plan_provider(settings, provider, plans[1]['alias']) + '/' + plans[1]['alias'],
             sources[1], oracles[1], 'after-token-rotation'))
         settings.assert_preserved(provider)
         report['cases'].append({'id': CASES[1], 'state': 'green'})
@@ -238,7 +247,7 @@ def run(repository, candidate):
         restore_skill(product, context, collaboration['restore_point_ref'], before_skill, skill)
         skill_active = False
         assert_configured(settings_status(product, context), plan_ids)
-        report['native_reads'].append(read_persisted_route(product, binary, provider + '/' + plans[0]['alias'],
+        report['native_reads'].append(read_persisted_route(product, binary, persisted_plan_provider(settings, provider, plans[0]['alias']) + '/' + plans[0]['alias'],
             sources[0], oracles[0], 'after-skill-restore'))
         # Restore invalidates evidence about the formerly installed Skill. A new
         # configuration must prove the current capability rather than reuse it.
@@ -252,8 +261,9 @@ def run(repository, candidate):
         _, status = apply_models(product, model_spec(context, [plan_ids[0]]), 'qoder-model-adjust')
         assert_configured(status, [plan_ids[0]])
         assert_saved_aliases(settings, provider, [plans[0]['alias']])
-        reject_gateway_request(product, product.bearer(product.agent_connection), plans[1]['alias'], sources, (403, 404))
-        report['native_reads'].append(read_persisted_route(product, binary, provider + '/' + plans[0]['alias'],
+        reject_gateway_request(product, product.bearer(product.agent_connection), plans[1]['alias'], PLAN_PROTOCOLS[plans[1]['plan_id']], sources,
+            ('AGENT_MODEL_NOT_GRANTED', 'AGENT_PLAN_NOT_AVAILABLE', 'AGENT_PROTOCOL_UNSUPPORTED'))
+        report['native_reads'].append(read_persisted_route(product, binary, persisted_plan_provider(settings, provider, plans[0]['alias']) + '/' + plans[0]['alias'],
             sources[0], oracles[0], 'after-route-adjustment'))
         restore_models(product, context)
         model_active = False

@@ -241,7 +241,17 @@ pub struct GrantV1 {
     pub generation: u64,
     pub bearer_token_sha256: String,
     pub protocol: IngressProtocol,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub route_protocols: std::collections::BTreeMap<String, IngressProtocol>,
     pub routes: std::collections::BTreeMap<String, ModelRouteV2>,
+}
+impl GrantV1 {
+    pub(crate) fn protocol_for(&self, name: &str) -> IngressProtocol {
+        self.route_protocols
+            .get(name)
+            .copied()
+            .unwrap_or(self.protocol)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -549,6 +559,14 @@ impl GatewayPublicationSnapshotV3 {
                 || !is_sha256(&grant.bearer_token_sha256)
                 || !token_verifiers.insert(grant.bearer_token_sha256.as_str())
                 || grant.routes.is_empty()
+                || grant.route_protocols.iter().any(|(name, protocol)| {
+                    *protocol == grant.protocol
+                        || !matches!(grant.routes.get(name), Some(ModelRouteV2::Plan { .. }))
+                        || !matches!(
+                            protocol,
+                            IngressProtocol::Responses | IngressProtocol::Messages
+                        )
+                })
             {
                 return Err(PublicationSchemaError::InvalidGrant(grant.grant_id.clone()));
             }
@@ -567,7 +585,7 @@ impl GatewayPublicationSnapshotV3 {
                                 && self.aliases.iter().any(|target| {
                                     target.served_model_id == *alias
                                         && target.agent_plan_revision == *revision
-                                        && target.protocols.contains(&grant.protocol)
+                                        && target.protocols.contains(&grant.protocol_for(name))
                                         && target
                                             .routing
                                             .as_ref()

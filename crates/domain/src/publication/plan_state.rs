@@ -176,9 +176,14 @@ impl GatewayPublicationV1 {
             });
             if !routes.is_empty() {
                 let mut projected = grant.clone();
-                projected.model_grant =
-                    crate::AgentModelGrantV2::seal(grant.model_grant.protocol, routes)
-                        .map_err(|_| PublicationError::InvalidGrant)?;
+                let mut protocols = grant.model_grant.route_protocols.clone();
+                protocols.retain(|name, _| routes.contains_key(name));
+                projected.model_grant = crate::AgentModelGrantV2::seal_routes(
+                    grant.model_grant.protocol,
+                    routes,
+                    protocols,
+                )
+                .map_err(|_| PublicationError::InvalidGrant)?;
                 enabled.push(projected);
             }
         }

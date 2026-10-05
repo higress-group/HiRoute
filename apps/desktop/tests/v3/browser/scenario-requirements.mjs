@@ -33,6 +33,8 @@ export const routingWorkerRequired = ['routing.capabilities.candidate-vs-fixed',
   'worker.installation.replace',
   'worker.installation.latest-edit',
   'qoder.installation.single-cli',
+  'routing.protocol.pi-reselection',
+  'routing.protocol.qoder-reselection',
   'routing.save.unobserved-editable',
   'routing.publish.qoder-budget-conflict'];
 
@@ -40,7 +42,7 @@ export const focusedRequirements = {
   'claude-collaboration': ['claude.collaboration.check-before-save', 'claude.collaboration.retry-preserves-edit', 'claude.collaboration.obsolete-blocker'],
   'worker-replacement': ['worker.installation.replace', 'worker.installation.latest-edit'],
   'qoder': ['qoder.collaboration.enable-without-model', 'qoder.collaboration.retry-and-restore', 'qoder.routing.additional-plans', 'qoder.routing.adjust-and-restore', 'agent.configuration.shared-interactions', 'qoder.routing.resume-pending', 'qoder.installation.single-cli', 'routing.publish.qoder-budget-conflict', 'desktop.routing.qoder-budget-checkpoint'],
-  'route-save': ['routing.save.unobserved-editable', 'routing.publish.qoder-budget-conflict'],
+  'route-save': ['routing.protocol.pi-reselection', 'routing.protocol.qoder-reselection', 'routing.save.unobserved-editable', 'routing.publish.qoder-budget-conflict'],
 };
 
 export const productShellRequired = [

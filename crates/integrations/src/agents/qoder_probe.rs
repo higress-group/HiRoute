@@ -232,6 +232,7 @@ impl QoderCollaborationProbe {
                 .map_err(|_| qoder_error("loopback address"))?
         );
         let route = render_qoder_transient_route(QoderTransientRouteInput {
+            protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
             provider_id: "hiroute-native-probe",
             endpoint: &endpoint,
             alias: MODEL,

@@ -199,6 +199,7 @@ fn try_request_in_context(
         revoked: false,
     };
     CandidateWorkerProfile::build(ProfileInput {
+        protocol: hiroute_domain::AgentIngressProtocolV1::Responses,
         context_window_tokens: Some(272_000),
         max_output_tokens: (harness == WorkerHarnessV1::QoderCli).then_some(4096),
         harness,

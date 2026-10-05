@@ -12,6 +12,34 @@ impl FilesystemAgentScannerV1 {
 
     /// Identity only. Discovery does not read settings; explicit configuration effects own
     /// one additional provider in this file, independently of collaboration discovery.
+    /// Resolve only a managed plan's current or historical native selector; no configuration writes.
+    pub fn qoder_saved_plan_selector(
+        &self,
+        namespace: &str,
+        alias: &str,
+    ) -> Result<String, QoderNativeError> {
+        let bytes = crate::agents::filesystem_config::read_system_config_bytes(
+            &self.qoder_user_config_target(),
+        )
+        .map_err(|_| qoder_error("saved model configuration"))?
+        .ok_or_else(|| qoder_error("saved model configuration"))?
+        .0;
+        let value = crate::agents::additional_native::parse_native_jsonc(&bytes)?;
+        let current = hiroute_domain::additional_model_plan_provider_id(namespace, alias);
+        let matches = [namespace, current.as_str()]
+            .into_iter()
+            .filter(|id| {
+                value["providers"][*id]["models"]
+                    .as_array()
+                    .is_some_and(|models| models.iter().any(|m| m["model"].as_str() == Some(alias)))
+            })
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(qoder_error("saved model identity"));
+        }
+        Ok(format!("{}/{}", matches[0], alias))
+    }
+
     pub fn qoder_user_config_target(&self) -> PathBuf {
         self.layout.qoder_config_root.join("settings.json")
     }
