@@ -3,7 +3,9 @@
 This note explains the original `unattended-httpx-formal-r02` run. It does not
 introduce a new experiment, change a score, or regrade the archived implementation.
 The [frozen assessment](results/2026-10-04/assessment.json) and
-[request/tool timeline](results/2026-10-04/evidence.json) remain authoritative.
+[archived request/tool timeline](https://github.com/higress-group/HiRoute/releases/tag/experiment-evidence-2026-10-04)
+remain authoritative. The latter restores to `results/2026-10-04/evidence.json`
+after `python3 experiments/reproduce.py fetch` and `unpack`.
 
 ## Complete routing sequence
 

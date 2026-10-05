@@ -22,8 +22,9 @@ they are not whole-delivery acceptance rates.
 Content/verdict correctness separates citation-support-only findings from substantive
 errors. This analysis was introduced after observing the results and is exploratory;
 it does not replace the original rubric or excuse outstanding citation defects. The
-same classification is applied to all three modes. See the [complete analysis and
-finding classifications](results/2026-10-04/posthoc.json).
+same classification is applied to all three modes. The complete analysis and finding
+classifications are in `results/2026-10-04/posthoc.json` in the
+[evidence archive](https://github.com/higress-group/HiRoute/releases/tag/experiment-evidence-2026-10-04).
 
 ## Correctness in every repetition
 
@@ -43,7 +44,7 @@ symmetrically in all nine deliveries. Model answers were not repaired.
 
 The original whole-delivery rule remains complete coverage of 360 unique cards, at least
 353 correct, and an entirely correct critical memo. A high percentage alone does not
-establish that every delivery met this rule. The [recorded outcomes](results/2026-10-04/deliveries.json)
+establish that every delivery met this rule. The archived `results/2026-10-04/deliveries.json`
 and offline scorer preserve the original per-delivery and all-three-pairs acceptance
 results; this presentation changes neither the threshold nor those outcomes.
 
@@ -69,15 +70,19 @@ These are frozen **API-equivalent USD**, not actual subscription charges. Saving
 `1 - mixed_upper / strong_lower`, rounded down for publication. All subject attempts,
 structural retries, and reported Jev costs are included. External evaluator labor and
 case development are outside the per-delivery comparison; the overall spend record is
-retained in [evidence.json](results/2026-10-04/evidence.json). No faster-completion claim.
+retained in the archived `results/2026-10-04/evidence.json`. No faster-completion claim.
 
 ## Inspect and recalculate
 
-- [All 63 answer artifacts, findings, usage and cost](results/2026-10-04/deliveries.json).
-- [Complete historical method and evidence projection](results/2026-10-04/evidence.json).
-- [Task/source identities and exact model settings](inputs.json).
+Download the [frozen evidence Release](https://github.com/higress-group/HiRoute/releases/tag/experiment-evidence-2026-10-04)
+with `python3 experiments/reproduce.py fetch`, then run
+`python3 experiments/reproduce.py unpack`. Paths below are relative to this case:
+
+- `results/2026-10-04/deliveries.json`: all 63 answer artifacts, findings, usage and cost.
+- `results/2026-10-04/evidence.json`: complete historical method and evidence projection.
+- `inputs.json`: task/source identities and exact model settings.
 - [Original quality policy](quality-policy.json) and [Jev semantic criteria](jev-policy.json).
-- [Post-hoc layered analysis](results/2026-10-04/posthoc.json): separates citation-only
+- `results/2026-10-04/posthoc.json`: post-hoc layered analysis separates citation-only
   findings from content/verdict errors uniformly. It yields content-usability counts
   3/3, 3/3, 1/3, but never replaces the original strict gate. It was introduced after
   observing outcomes and is exploratory, with threshold sensitivity retained.
@@ -94,6 +99,8 @@ URLs, timestamps, source identities, and hashes are in `inputs.json`. The origin
 normalization and Kafka-section selection are included in `prepare_sources.py`:
 
 ```sh
+python3 experiments/reproduce.py fetch
+python3 experiments/reproduce.py unpack
 python3 experiments/cases/research-cost-quality/prepare_sources.py --output /tmp/hiroute-research-inputs
 ```
 

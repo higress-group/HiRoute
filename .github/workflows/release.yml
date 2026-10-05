@@ -22,6 +22,8 @@ env:
 
 jobs:
   verify-release:
+    # Experiment evidence Releases contain data, not product distributions.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
     runs-on: macos-15
     timeout-minutes: 20
     outputs:

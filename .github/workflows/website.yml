@@ -62,6 +62,7 @@ jobs:
         working-directory: apps/website
       - name: Verify published experiment evidence
         run: |
+          python3 experiments/reproduce.py fetch
           python3 experiments/reproduce.py verify
           python3 -m unittest discover -s experiments/tests
       - run: npm test

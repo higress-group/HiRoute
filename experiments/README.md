@@ -13,13 +13,25 @@ Chinese prompts are deliberately preserved for reproducibility.
 
 ## Verify published evidence without model calls
 
-From the repository root:
+The 69 bulky JSON records are distributed as a [Release attachment](https://github.com/higress-group/HiRoute/releases/tag/experiment-evidence-2026-10-04),
+instead of source files. The repository keeps readable summaries, tasks, policies,
+test fixtures, the model's patch and the original 106-file checksum manifest.
+
+Download the 394 KB archive once, then verify offline from the repository root:
 
 ```sh
+python3 experiments/reproduce.py fetch
 python3 experiments/reproduce.py verify
 python3 experiments/reproduce.py report
 python3 -m unittest discover -s experiments/tests
 ```
+
+`fetch` checks the pinned archive SHA-256 in [evidence-manifest.json](evidence-manifest.json).
+`verify` and `report` restore the original JSON paths from the local archive and check
+the original file hashes. Downloaded and restored files are ignored by Git; a changed
+local evidence file is rejected, never overwritten. For inspection without scoring,
+use `python3 experiments/reproduce.py unpack`. The archive can also be downloaded
+manually to `experiments/evidence-2026-10-04.zip` before running the offline commands.
 
 Verification checks original artifact hashes, all 3,240 cards and nine memos,
 recorded finding counts, critical-memo findings, per-attempt accounting, Jev cost,
@@ -51,7 +63,9 @@ and independent verification entry. Record the protocol before paid execution:
 comparison groups, order, acceptance gates, retry/stop rules, pricing and uncertainty.
 Keep subject execution separate from grading. Retain failures and unknown cost;
 unknown does not mean zero. Use fresh output directories, and label any subsequent
-scoring change as post hoc. Keep expensive live runs opt-in and CI entirely offline.
+scoring change as post hoc. Keep bulky frozen records in a versioned Release asset
+with pinned checksums, and retain readable results and reproduction code here.
+Keep paid live runs opt-in; CI only downloads the pinned evidence and verifies offline.
 
 Use an allowlist to export public evidence. Do not commit account credentials,
 subscription state, request authorization headers, private reasoning traces, or

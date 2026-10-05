@@ -3,7 +3,9 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -14,8 +16,56 @@ from prepare_sources import normalize
 
 
 class EvidenceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        reproduce.unpack()
+
     def setUp(self):
         self.data=reproduce.read(reproduce.RESULTS/'deliveries.json')
+
+    def test_archive_recovers_original_bytes_and_is_idempotent(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            for name in ('evidence-manifest.json','evidence-2026-10-04.zip'):
+                shutil.copyfile(ROOT/name,root/name)
+            count=reproduce.unpack(root)
+            manifest=reproduce.read(root/'evidence-manifest.json')['files']
+            with zipfile.ZipFile(root/'evidence-2026-10-04.zip') as archive:
+                self.assertEqual(count,69)
+                before={name:((root/name).stat().st_mtime_ns,reproduce.digest(root/name)) for name in archive.namelist()}
+            self.assertTrue(all(sha==manifest[name] for name,(_,sha) in before.items()))
+            self.assertEqual(reproduce.unpack(root),count)
+            self.assertEqual(before,{name:((root/name).stat().st_mtime_ns,reproduce.digest(root/name)) for name in before})
+            changed=root/next(iter(before))
+            changed.write_text('local changes')
+            with self.assertRaisesRegex(ValueError,'local evidence changed'):
+                reproduce.unpack(root)
+            self.assertEqual(changed.read_text(),'local changes')
+
+    def test_archive_rejects_corruption_and_unknown_entries_before_writing(self):
+        import hashlib
+        for name,data,message in [('record.json',b'corrupted','archived evidence mismatch'),('../outside.json',b'original','unregistered evidence archive entry')]:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)
+                archive_path=root/'evidence-2026-10-04.zip'
+                with zipfile.ZipFile(archive_path,'w') as archive:
+                    archive.writestr(name,data)
+                (root/'evidence-manifest.json').write_text(json.dumps({
+                    'files':{'record.json':hashlib.sha256(b'original').hexdigest()},
+                    'archive':{'filename':archive_path.name,'sha256':reproduce.digest(archive_path)}}))
+                with self.assertRaisesRegex(ValueError,message):
+                    reproduce.unpack(root)
+                self.assertFalse((root/'record.json').exists())
+
+    def test_archive_checksum_is_checked_before_extraction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/'evidence-manifest.json').write_bytes((ROOT/'evidence-manifest.json').read_bytes())
+            (root/'evidence-2026-10-04.zip').write_bytes(b'wrong release asset')
+            with self.assertRaisesRegex(ValueError,'archive checksum mismatch'):
+                reproduce.unpack(root)
+            self.assertFalse((root/'cases').exists())
 
     def test_checker_does_not_inherit_host_proxy_or_credentials(self):
         import os

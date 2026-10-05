@@ -1,5 +1,11 @@
 {
   "schema": "hiroute.experiment.evidence-manifest/v1",
+  "archive": {
+    "filename": "evidence-2026-10-04.zip",
+    "url": "https://github.com/higress-group/HiRoute/releases/download/experiment-evidence-2026-10-04/evidence-2026-10-04.zip",
+    "sha256": "121526572226c433dc2b383b0666715fcd7da96eca4a3a3e5826e173df853dbc",
+    "bytes": 393533
+  },
   "files": {
     "cases/research-cost-quality/inputs.json": "f553aba803e0600a579a6ade623663f6c118a423ed494a93cabc8a354eeec62d",
     "cases/research-cost-quality/jev-policy.json": "6138e7e471e8812c6c74ec639efae168c615258c45884e5459e48693a5db47a8",

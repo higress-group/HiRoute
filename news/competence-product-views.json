@@ -5,7 +5,8 @@
   "implementation_status": "The per-model aggregate view is planned product functionality. These images do not establish implementation acceptance.",
   "presentation": "No production-note overlays. The article explains the final product view; this file records provenance.",
   "data_basis": {
-    "experiment": "../experiments/cases/unattended-engineering/results/2026-10-04/evidence.json",
+    "experiment": "https://github.com/higress-group/HiRoute/releases/download/experiment-evidence-2026-10-04/evidence-2026-10-04.zip",
+    "archive_member": "cases/unattended-engineering/results/2026-10-04/evidence.json",
     "scope": "Visible execution stages from the retained historical HTTPX session; stage performance is not whole-delivery acceptance or a same-task model benchmark.",
     "selection": "Use the latest valid assessment per stage with actual execution attribution. Exclude the 0.410 assessment-only record that lacks a visible attributed execution stage.",
     "qwen": {

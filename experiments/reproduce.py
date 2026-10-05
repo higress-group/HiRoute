@@ -5,6 +5,8 @@ from decimal import Decimal, ROUND_FLOOR
 import hashlib
 import json
 from pathlib import Path
+import urllib.request
+import zipfile
 
 ROOT = Path(__file__).resolve().parent
 RESULTS = ROOT / 'cases/research-cost-quality/results/2026-10-04'
@@ -21,6 +23,50 @@ def require(condition, message):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def fetch():
+    """Download the pinned public Release asset once; verification stays offline."""
+    spec = read(ROOT / 'evidence-manifest.json')['archive']
+    target = ROOT / spec['filename']
+    if target.exists():
+        require(digest(target) == spec['sha256'], 'cached evidence archive mismatch')
+        return
+    request = urllib.request.Request(spec['url'], headers={'User-Agent': 'HiRoute-experiment-reproduction/1.0'})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        data = response.read(spec['bytes'] + 1)
+    require(len(data) == spec['bytes'] and hashlib.sha256(data).hexdigest() == spec['sha256'],
+            'downloaded evidence archive mismatch')
+    with target.open('xb') as output:
+        output.write(data)
+
+
+def unpack(root=ROOT):
+    """Restore hash-checked frozen JSON; never overwrite a changed local file."""
+    root = root.resolve()
+    record = read(root / 'evidence-manifest.json')
+    manifest, spec = record['files'], record['archive']
+    source = root / spec['filename']
+    require(source.is_file(), 'Missing evidence archive; run: python3 experiments/reproduce.py fetch')
+    require(digest(source) == spec['sha256'], 'evidence archive checksum mismatch')
+    pending = []
+    with zipfile.ZipFile(source) as archive:
+        names = archive.namelist()
+        require(len(names) == len(set(names)), 'duplicate evidence archive entry')
+        for name in names:
+            path = (root / name).resolve()
+            require(name in manifest and path.is_relative_to(root), 'unregistered evidence archive entry: ' + name)
+            data = archive.read(name)
+            require(hashlib.sha256(data).hexdigest() == manifest[name], 'archived evidence mismatch: ' + name)
+            if path.exists():
+                require(path.is_file() and digest(path) == manifest[name], 'local evidence changed: ' + name)
+            else:
+                pending.append((path, data))
+    for path, data in pending:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('xb') as output:
+            output.write(data)
+    return len(names)
 
 
 def assess(data, root=RESULTS):
@@ -82,6 +128,7 @@ def assess(data, root=RESULTS):
 
 
 def report():
+    unpack()
     result = assess(read(RESULTS / 'deliveries.json'))
     u = read(ROOT / 'cases/unattended-engineering/results/2026-10-04/assessment.json')
     require(u['independent_assertions']['total_passed'] == 343, 'unattended acceptance mismatch')
@@ -91,6 +138,7 @@ def report():
 
 
 def verify_manifest():
+    unpack()
     manifest = read(ROOT / 'evidence-manifest.json')
     for name, sha in manifest['files'].items():
         p = (ROOT / name).resolve()
@@ -100,8 +148,15 @@ def verify_manifest():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('verify', 'report'))
+    parser.add_argument('command', choices=('fetch', 'verify', 'report', 'unpack'))
     args = parser.parse_args()
+    if args.command == 'fetch':
+        fetch()
+        print('Evidence archive downloaded and SHA-256 verified. Subsequent verification is offline.')
+        return
+    if args.command == 'unpack':
+        print(json.dumps(dict(status='pass', unpacked_files=unpack(), paid_model_calls=0)))
+        return
     result = report()
     if args.command == 'verify':
         result = dict(status='pass', frozen_files=verify_manifest(), deliveries=9, cards=3240, memos=9,

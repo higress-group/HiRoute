@@ -22,9 +22,13 @@ assertions = **343 passed**. Protected tests were unchanged. Native validation s
 reported 487 passes with three predeclared transport exclusions; do not add these to 343.
 
 [Final assessment](results/2026-10-04/assessment.json) ·
-[Execution evidence](results/2026-10-04/evidence.json) ·
+[Execution evidence archive](https://github.com/higress-group/HiRoute/releases/tag/experiment-evidence-2026-10-04) ·
 [Actual model-produced source patch](results/2026-10-04/model.patch) ·
 [Task](TASK.md) · [Frozen parameters](case.json)
+
+The Release archive contains `results/2026-10-04/evidence.json` and
+`fixtures/config.json` for this case. Run `python3 experiments/reproduce.py fetch`
+and `python3 experiments/reproduce.py unpack` to inspect their original bytes.
 
 This is one historical case, not a guarantee that all long tasks converge. There is
 no all-Astra cost control, so **no savings claim**. The earlier aborted formal attempt
