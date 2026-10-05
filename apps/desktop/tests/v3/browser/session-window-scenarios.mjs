@@ -104,6 +104,10 @@ const scenarios = [
     await until(() => reads('plan_quality').length > beforeUnusedRefresh && document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 'refresh of unused candidate retains full-scope summary');
     assert(!document.querySelector('.quality-row') && !document.querySelector('.quality-more'), 'Unused candidate displayed another model’s stages or pagination');
     assert(document.querySelector('[data-model-configuration="model/qwen"]').innerText.includes('25 已评分'), 'Unused candidate refresh erased the other model’s counts');
+    const beforeUnusedReentry = reads('plan_quality').length;
+    c().showHome(); await tick(); c().showQualityPlan();
+    await until(() => reads('plan_quality').length > beforeUnusedReentry && document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 're-entry with unused candidate retains full-scope summary');
+    assert(!document.querySelector('.quality-row'), 'Unused candidate re-entry displayed another model’s stages');
     const version = [...document.querySelectorAll('select')].find(element => element.querySelector('option[value="2"]'));
     assert(version, 'Available retained revision cannot be selected');
     version.value = '2'; version.dispatchEvent(new Event('change', { bubbles: true }));
