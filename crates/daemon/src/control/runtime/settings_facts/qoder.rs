@@ -3,15 +3,19 @@ use super::*;
 use hiroute_integrations::QoderCollaborationProbeTarget;
 
 impl LocalControlAdapter {
-    pub(super) fn qoder_settings_snapshot(
+    pub(super) fn additional_settings_snapshot(
         &self,
         spec: &AgentSettingsSpecV2,
+        class: SettingsAgentClass,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
-        let class = SettingsAgentClass::Qoder;
-        let discovery = self.scanner.qoder_settings_discovery(matches!(
-            spec.collaboration,
-            AgentFacetIntent::Configure { .. }
-        ));
+        let discovery = if class == SettingsAgentClass::Pi {
+            self.scanner.pi_settings_discovery()
+        } else {
+            self.scanner.qoder_settings_discovery(matches!(
+                spec.collaboration,
+                AgentFacetIntent::Configure { .. }
+            ))
+        };
         let AgentDiscoveryOutcomeV1::Supported { installation } = discovery.outcome else {
             return Err(ControlReadError::NotFound);
         };

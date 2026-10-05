@@ -40,6 +40,7 @@ mod worker_dependencies_v20;
 mod worker_dependencies_v24;
 #[cfg(test)]
 mod worker_dependencies_v24_tests;
+mod worker_dependencies_v26;
 mod worker_instance_v19;
 
 #[cfg(test)]
@@ -48,7 +49,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 25;
+pub const LATEST_SCHEMA_VERSION: u32 = 26;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -451,7 +452,7 @@ impl MigrationSetCoordinator {
                 LATEST_SCHEMA_VERSION,
             )?
         };
-        if !matches!(set.target_schema_version(), 24 | LATEST_SCHEMA_VERSION)
+        if !matches!(set.target_schema_version(), 24 | 25 | LATEST_SCHEMA_VERSION)
             || (set.target_schema_version() == 24
                 && [
                     set.control.manifest(),
@@ -700,27 +701,33 @@ fn validate_live_database(
     }
     let at_target = version == target_schema_version;
     if !at_target {
-        // Only the published stable 23 -> 25 chain has a supported intermediate commit.
-        // Its original source/target and next-store phase must all agree; arbitrary mixed
-        // versions are not migration sources. Version 24 must have its real committed ledger.
+        // A store may have committed any contiguous step of the published stable chain.
+        // The original source/target, current phase and exact ledger must still agree.
+        let first = source.schema_version + 1;
         if recorded_phase != store_phase
-            || source.schema_version != 23
-            || target_schema_version != 25
-            || version != 24
+            || !(23..=25).contains(&source.schema_version)
+            || !(24..=LATEST_SCHEMA_VERSION).contains(&target_schema_version)
+            || version <= source.schema_version
+            || version >= target_schema_version
             || connection.query_row(
-                "SELECT COUNT(*) FROM schema_migrations WHERE version >= 24",
-                [],
+                "SELECT COUNT(*) FROM schema_migrations WHERE version >= ?1",
+                [first],
                 |row| row.get::<_, u32>(0),
-            )? != 1
-            || !connection.query_row(
-                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 24)",
-                [],
-                |row| row.get::<_, bool>(0),
-            )?
+            )? != version - source.schema_version
         {
             return Err(LocalStorageError::InvalidData);
         }
+        for step in first..=version {
+            if !connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = ?1)",
+                [step],
+                |row| row.get::<_, bool>(0),
+            )? {
+                return Err(LocalStorageError::InvalidData);
+            }
+        }
     }
+
     match kind {
         DatabaseKind::Control | DatabaseKind::Runtime => {
             let binding = connection
@@ -832,6 +839,8 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 24) => Ok(NOOP_V9),
         (DatabaseKind::Control, 25) => Ok(agent_surface_checks_v25::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 25) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 26) => Ok(worker_dependencies_v26::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 26) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }

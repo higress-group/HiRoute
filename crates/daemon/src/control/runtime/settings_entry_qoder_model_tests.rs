@@ -40,6 +40,94 @@ fn restore_spec(fixture: &QoderFixture, status: &serde_json::Value) -> serde_jso
 }
 
 #[test]
+fn pi_default_selected_after_prepare_blocks_final_removal_without_losing_models() {
+    // Supply only the model-capability receipt, without a machine-wide Node dependency.
+    // SDK imports/semantics are independently covered by the SDK contract and native E2E.
+    let tools = crate::test_support::private_tempdir();
+    let node = tools.path().join("node");
+    private_file(&node, b"#!/bin/sh\nif [ \"$1\" = --version ]; then echo v22.19.0; elif [ \"$2\" = --check ] && [ \"$4\" = models ]; then echo hiroute.pi-sdk-capability/v1:ok; else exit 97; fi\n");
+    fs::set_permissions(&node, fs::Permissions::from_mode(0o700)).unwrap();
+    let path =
+        std::env::join_paths([tools.path(), Path::new("/usr/bin"), Path::new("/bin")]).unwrap();
+    if crate::test_support::isolated_agent_home_with_path(
+        "control::runtime::native_model::tests::settings_entry_tests::qoder::models::pi_default_selected_after_prepare_blocks_final_removal_without_losing_models",
+        &path,
+    ) {
+        return;
+    }
+    let fixture = QoderFixture::with_kind(true, AgentKindV1::Pi);
+    let mut spec = model_spec(&fixture);
+    spec["model"]["settings"]["mode"] = json!("pi_additional");
+    apply(&fixture.service, &fixture.runtime, spec, "pi-race-enable");
+    let models_before = fs::read(&fixture.native_config).unwrap();
+    let models: serde_json::Value = serde_json::from_slice(&models_before).unwrap();
+    let (provider, declaration) = models["providers"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .find(|(id, _)| id.starts_with("hiroute-main-"))
+        .unwrap();
+    let default_file = fixture
+        .native_config
+        .parent()
+        .unwrap()
+        .join("settings.json");
+    let default_before = fs::read(&default_file).unwrap();
+    let status = model_status(&fixture);
+    let restore = restore_spec(&fixture, &status);
+    let mut ports = fixture.runtime.application_ports();
+    ports.mutation = Some(Arc::new(fault::FileRace {
+        adapter: fixture.runtime.adapter.clone(),
+        path: default_file.clone(),
+        fail_after_file: false,
+        replacement: Some(
+            serde_json::to_vec(&json!({"defaultProvider":provider,
+            "defaultModel":declaration["models"][0]["id"],"theme":"user-edited"}))
+            .unwrap(),
+        ),
+    }));
+    let racing = LocalControlDaemon::new(ApplicationService::new(ports));
+    let preview = racing
+        .dispatch_wire(request(
+            "PreviewAgentConnectionRestore",
+            json!({"spec":restore}),
+            None,
+        ))
+        .data
+        .unwrap();
+    assert_eq!(preview["applicable"], true);
+    let response = racing.dispatch_wire(request(
+        "ApplyAgentConnectionRestore",
+        json!({"spec":restore,
+        "accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],
+        "expected_revisions":preview["expected_revisions"],"idempotency_key":"pi-race-restore"}),
+        None,
+    ));
+    assert!(response.error.is_none(), "{response:?}");
+    let pending = response.data.unwrap();
+    assert_eq!(
+        pending["state"], "rolled_back",
+        "a restore rejected before its file switch must roll back safely"
+    );
+    assert_eq!(fs::read(&fixture.native_config).unwrap(), models_before);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&fs::read(&default_file).unwrap()).unwrap()["theme"],
+        "user-edited"
+    );
+    assert_eq!(model_status(&fixture)["state"], "configured");
+    fs::write(&default_file, &default_before).unwrap();
+    let retry = apply(
+        &fixture.service,
+        &fixture.runtime,
+        restore,
+        "pi-race-safe-restore",
+    );
+    assert_eq!(retry["state"], "succeeded");
+    assert_eq!(model_status(&fixture)["state"], "not_configured");
+    assert_eq!(fs::read(default_file).unwrap(), default_before);
+}
+
+#[test]
 fn qoder_additional_models_preserve_native_default_and_restore_independently_of_skill() {
     if crate::test_support::isolated_agent_home(
         "control::runtime::native_model::tests::settings_entry_tests::qoder::models::qoder_additional_models_preserve_native_default_and_restore_independently_of_skill",
@@ -85,7 +173,8 @@ fn qoder_additional_models_preserve_native_default_and_restore_independently_of_
         0o600
     );
     assert_eq!(fs::read(&fixture.skill).unwrap(), skill);
-    let provider = hiroute_application::agent_connection::qoder_model_provider_id(&fixture.context);
+    let provider =
+        hiroute_application::agent_connection::additional_model_provider_id(&fixture.context);
     assert_eq!(
         configured["providers"][&provider]["baseUrl"],
         "http://127.0.0.1:5837/_hiroute/qoder/v1"
@@ -156,7 +245,8 @@ fn qoder_restore_rejects_native_default_reference_then_preserves_unrelated_edits
     );
     let status = model_status(&fixture);
     let restore = restore_spec(&fixture, &status);
-    let provider = hiroute_application::agent_connection::qoder_model_provider_id(&fixture.context);
+    let provider =
+        hiroute_application::agent_connection::additional_model_provider_id(&fixture.context);
     let alias = status["live_check_targets"][0]["client_model_ids"][0]
         .as_str()
         .unwrap();
@@ -445,6 +535,7 @@ fn qoder_pending_file_tail_keeps_collaboration_preview_independent_and_retries_e
         adapter: fixture.runtime.adapter.clone(),
         path: fixture.native_config.clone(),
         fail_after_file: false,
+        replacement: None,
     }));
     let racing = LocalControlDaemon::new(ApplicationService::new(ports));
     let preview = racing.dispatch_wire(request(
@@ -471,14 +562,14 @@ fn qoder_pending_file_tail_keeps_collaboration_preview_independent_and_retries_e
         fixture
             .runtime
             .adapter
-            .guard_qoder_pending_model_change(None)
+            .guard_additional_pending_model_change(None)
             .is_err()
     );
     assert!(
         fixture
             .runtime
             .adapter
-            .guard_qoder_pending_model_change(Some(&id))
+            .guard_additional_pending_model_change(Some(&id))
             .is_ok()
     );
     let blocked = fixture.service.dispatch_wire(request(
@@ -556,7 +647,7 @@ fn qoder_pending_file_tail_keeps_collaboration_preview_independent_and_retries_e
         fixture
             .runtime
             .adapter
-            .guard_qoder_pending_model_change(None)
+            .guard_additional_pending_model_change(None)
             .is_ok()
     );
     apply(
@@ -609,6 +700,7 @@ fn qoder_managed_bearer_permission_drift_revokes_live_eligibility_but_allows_res
     let restored: serde_json::Value =
         serde_json::from_slice(&fs::read(&fixture.native_config).unwrap()).unwrap();
     assert_eq!(restored["model"]["name"], "native/default");
-    let provider = hiroute_application::agent_connection::qoder_model_provider_id(&fixture.context);
+    let provider =
+        hiroute_application::agent_connection::additional_model_provider_id(&fixture.context);
     assert!(restored["providers"].get(&provider).is_none());
 }

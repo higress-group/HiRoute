@@ -1,7 +1,8 @@
 //! Optional Qoder model facts. Pure collaboration never enters this file reader.
 use super::*;
 use hiroute_application::agent_connection::{
-    QoderModelFileAction, qoder_model_provider_id, settings_qoder_model_file_for_operation,
+    AdditionalModelFileAction, additional_model_provider_id,
+    settings_additional_model_file_for_operation,
 };
 use hiroute_domain::{
     AgentCapability, AgentIngressProtocolV1, AgentModelSelectionV2, AgentModelSurfaceV2,
@@ -9,9 +10,10 @@ use hiroute_domain::{
 };
 
 impl LocalControlAdapter {
-    pub(super) fn attach_qoder_model_facts(
+    pub(super) fn attach_additional_model_facts(
         &self,
         spec: &AgentSettingsSpecV2,
+        class: SettingsAgentClass,
         mut input: AgentSettingsPlanningInput,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         // A model-capable installation does not make unrelated native settings a dependency
@@ -23,11 +25,38 @@ impl LocalControlAdapter {
             return Ok(input);
         }
         if let AgentFacetIntent::Configure { settings } = &spec.model
-            && !matches!(settings, AgentModelSelectionV2::QoderAdditional { .. })
+            && !matches!(
+                settings,
+                AgentModelSelectionV2::QoderAdditional { .. }
+                    | AgentModelSelectionV2::PiAdditional { .. }
+            )
         {
             return Ok(input);
         }
-        self.guard_qoder_pending_model_change(None)
+        let kind = if class == SettingsAgentClass::Pi {
+            hiroute_domain::AgentKindV1::Pi
+        } else {
+            hiroute_domain::AgentKindV1::Qoder
+        };
+        // Restore remains available even after the installed SDK becomes incompatible.
+        #[cfg(unix)]
+        if kind == hiroute_domain::AgentKindV1::Pi
+            && matches!(spec.model, AgentFacetIntent::Configure { .. })
+        {
+            self.scanner
+                .check_pi_model_configuration()
+                .map_err(|_| ControlReadError::Unavailable)?;
+        }
+        let pi_settings = if kind == hiroute_domain::AgentKindV1::Pi {
+            Some(
+                self.scanner
+                    .pi_default_model()
+                    .map_err(|_| ControlReadError::Denied)?,
+            )
+        } else {
+            None
+        };
+        self.guard_additional_pending_model_change(None)
             .map_err(super::super::map_port)?;
         let target = AgentConnectionEffectRoleV1::ManagedConfiguration
             .settings_target_for(&input.subject)
@@ -104,15 +133,15 @@ impl LocalControlAdapter {
                     .external()
                     .iter()
                     .find(|intent| {
-                        super::super::native_qoder_model::is_settings_qoder_model(intent)
+                        super::super::native_additional_model::is_settings_additional_model(intent)
                     })
                     .cloned()
                 else {
                     continue;
                 };
-                let payload = settings_qoder_model_file_for_operation(&operation, &intent)
+                let payload = settings_additional_model_file_for_operation(&operation, &intent)
                     .map_err(super::super::map_port)?;
-                if !matches!(payload.change, QoderModelFileAction::Configure { .. }) {
+                if !matches!(payload.change, AdditionalModelFileAction::Configure { .. }) {
                     return Err(ControlReadError::Corrupt);
                 }
                 let [mutation] = operation.plan.agent_access_grants() else {
@@ -143,7 +172,7 @@ impl LocalControlAdapter {
             )
             .map_err(super::super::map_port)?;
         drop(stores);
-        let provider_id = qoder_model_provider_id(&spec.context_id);
+        let provider_id = additional_model_provider_id(&spec.context_id);
         let endpoint = self
             .managed_agent_runtime
             .lock()
@@ -151,8 +180,9 @@ impl LocalControlAdapter {
             .as_ref()
             .map(|runtime| runtime.gateway_base_url.clone())
             .ok_or(ControlReadError::Unavailable)?;
-        let endpoint = super::super::native_qoder_model::qoder_model_endpoint(&endpoint)
-            .map_err(super::super::map_port)?;
+        let endpoint =
+            super::super::native_additional_model::additional_model_endpoint(kind, &endpoint)
+                .map_err(super::super::map_port)?;
         let mut restore = None;
         if let (Some((operation, _)), Some(reference)) = (&previous, &current_grant) {
             input.facts.restore_points.insert(
@@ -171,12 +201,14 @@ impl LocalControlAdapter {
                     &BTreeMap::new(),
                 )
                 .map_err(|_| ControlReadError::Denied)?;
-                let models =
-                    super::super::native_qoder_model::qoder_models_for_grant(&active, &grant)
-                        .map_err(super::super::map_port)?;
-                qoder_model_conflict =
-                    qoder_model_validation(hiroute_integrations::validate_qoder_configuration(
+                let models = super::super::native_additional_model::additional_models_for_grant(
+                    kind, &active, &grant,
+                )
+                .map_err(super::super::map_port)?;
+                qoder_model_conflict = qoder_model_validation(
+                    hiroute_integrations::validate_additional_configuration(
                         &self.artifacts,
+                        kind,
                         &target,
                         &provider_id,
                         &endpoint,
@@ -184,7 +216,8 @@ impl LocalControlAdapter {
                         previous
                             .as_ref()
                             .map(|(op, intent)| (&op.operation_id, intent)),
-                    ))?;
+                    ),
+                )?;
                 models
             }
             AgentFacetIntent::Restore { restore_point_ref } => {
@@ -195,8 +228,9 @@ impl LocalControlAdapter {
                     })
                     .ok_or(ControlReadError::Denied)?;
                 qoder_model_conflict =
-                    qoder_model_validation(hiroute_integrations::validate_qoder_restoration(
+                    qoder_model_validation(hiroute_integrations::validate_additional_restoration(
                         &self.artifacts,
+                        kind,
                         &target,
                         &original.operation_id,
                         intent,
@@ -205,11 +239,19 @@ impl LocalControlAdapter {
             }
             AgentFacetIntent::Keep => unreachable!(),
         };
+        let qoder_model_conflict = if pi_settings
+            .as_ref()
+            .is_some_and(|settings| settings.removes_default(&provider_id, &models))
+        {
+            Some(hiroute_application::agent_connection::SettingsBlockReason::AdditionalDefaultInUse)
+        } else {
+            qoder_model_conflict
+        };
         let dependency_digest = CanonicalDigest::of(&serde_json::json!({
             "schema":"qoder-model-facts/v1", "collaboration":input.facts.dependency_digest,
             "content":expected_content,"fingerprint":before_fingerprint,"publication":publication.digest,
             "grant":current_grant,"token":token_input_fingerprint,"provider":provider_id,"endpoint":endpoint,
-            "conflict":qoder_model_conflict,"models":models,"previous":previous.as_ref().map(|(op,_)| &op.operation_id),"restore":restore,
+            "conflict":qoder_model_conflict,"models":models,"kind":kind,"pi_settings":pi_settings,"previous":previous.as_ref().map(|(op,_)| &op.operation_id),"restore":restore,
         })).map_err(|_| ControlReadError::Corrupt)?;
         let old_digest = input.facts.dependency_digest.clone();
         let mut capabilities = [
@@ -238,7 +280,12 @@ impl LocalControlAdapter {
             capabilities.push(CapabilityEvidence {
                 capability,
                 state: CapabilityState::Proven,
-                adapter_contract: "hiroute.qoder-additional-model/v1".into(),
+                adapter_contract: if kind == hiroute_domain::AgentKindV1::Pi {
+                    "hiroute.pi-additional-model/v1"
+                } else {
+                    "hiroute.qoder-additional-model/v1"
+                }
+                .into(),
                 observed_at_unix_ms: self.now_ms()?.max(1) as u64,
                 dependency_digest: dependency_digest.clone(),
                 reason: None,
@@ -248,28 +295,22 @@ impl LocalControlAdapter {
             AgentCapabilitySet::new(capabilities).map_err(|_| ControlReadError::Corrupt)?;
         input.facts.dependency_digest = dependency_digest;
         input.facts.model = Some(SettingsModelFacts {
-            qoder_model_conflict,
-            codex_context_override: false,
-            claude_context_override: false,
-            claude_plan_capability_unavailable: false,
-            ingress: AgentIngressProtocolV1::Responses,
-            available_surfaces: [AgentModelSurfaceV2::QoderCli].into(),
-            model_publication: Some(active),
-            model_catalog: None,
-            login_item_required: false,
-            login_item_removal_required: false,
-            fixed_candidate_facts: Vec::new(),
-            preserved_codex_models: Vec::new(),
-            preserved_codex_bindings: BTreeMap::new(),
-            required_native_model_ids: None,
-            unproven_native_model_ids: Vec::new(),
-            require_native_model_routes: false,
-            native_default_must_be_original: false,
-            native_default_model: None,
-            restore_native_model_ids: None,
-            restore_inherits_root: false,
-            restored_native_model: None,
-            native_claude_presets: None,
+            common: SettingsModelCommonFacts {
+                ingress: AgentIngressProtocolV1::Responses,
+                available_surfaces: [if kind == hiroute_domain::AgentKindV1::Pi {
+                    AgentModelSurfaceV2::PiCli
+                } else {
+                    AgentModelSurfaceV2::QoderCli
+                }]
+                .into(),
+                model_publication: Some(active),
+                login_item_required: false,
+                login_item_removal_required: false,
+                fixed_candidate_facts: Vec::new(),
+            },
+            native: SettingsModelNativeFacts::Additional(SettingsAdditionalModelFacts {
+                model_conflict: qoder_model_conflict,
+            }),
         });
         input.model_file = Some(SettingsModelFileFacts {
             expected_content,
@@ -279,7 +320,9 @@ impl LocalControlAdapter {
             token_input_fingerprint,
             active_configuration: previous.as_ref().map(|(op, _)| op.operation_id.clone()),
             restore,
-            target: SettingsModelTargetFacts::Qoder {
+            target: SettingsModelTargetFacts::Additional {
+                kind,
+                pi_settings_content: pi_settings.map(|settings| settings.content_digest),
                 provider_id,
                 endpoint,
                 models,

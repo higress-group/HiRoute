@@ -120,7 +120,7 @@ impl LocalControlAdapter {
             AdmissionAction::Start,
             &request.submission_key,
         )?;
-        self.ensure_worker_dependencies(selected.binding.harness)?;
+        self.ensure_worker_dependencies(selected.binding.harness, false)?;
         let deadline_ms = now_ms
             .checked_add(execution.duration_ms)
             .ok_or(DelegationErrorV1::DeadlineExceeded)?;
@@ -371,14 +371,18 @@ impl LocalControlAdapter {
     pub(super) fn ensure_worker_dependencies(
         &self,
         harness: hiroute_domain::delegation::WorkerHarnessV1,
+        continuing: bool,
     ) -> Result<(), DelegationErrorV1> {
         let selection =
             crate::delegation::installation::WorkerInstallationSelectionSource::selection(
                 self, harness,
             )?
             .ok_or(DelegationErrorV1::DependenciesMissing)?;
-        crate::delegation::installation::validate_persisted_installation(&selection.config)
-            .map(|_| ())
+        crate::delegation::installation::validate_persisted_installation_for_run(
+            &selection.config,
+            continuing,
+        )
+        .map(|_| ())
     }
 }
 

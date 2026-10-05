@@ -113,6 +113,8 @@ def launch_environment(
                 "CODEX_CONFIG", "CODEX_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY",
                 "OPENROUTER_API_KEY", "HIROUTE_RUN_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
                 "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+                "DEEPSEEK_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "XAI_API_KEY",
+                "CEREBRAS_API_KEY",
             ):
                 environment.pop(key)
         environment["HOME"] = str(process_home)
@@ -121,6 +123,7 @@ def launch_environment(
         environment["CODEX_HOME"] = str(process_home / ".codex")
         environment["CLAUDE_CONFIG_DIR"] = str(process_home / ".claude")
         environment["QODER_CONFIG_DIR"] = str(process_home / ".qoder")
+        environment["PI_CODING_AGENT_DIR"] = str(process_home / ".pi/agent")
     if diagnostic_override is not None:
         environment[DIAGNOSTIC_LEVEL_ENV] = diagnostic_override
     return environment

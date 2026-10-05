@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 #[path = "qoder_budget.rs"]
 mod budget;
-pub use budget::{QoderTokenBudget, qoder_plan_token_budget};
+pub use budget::{QoderTokenBudget, pi_plan_token_budget, qoder_plan_token_budget};
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 #[error("Qoder native check failed: {stage}")]

@@ -5,6 +5,13 @@ mod qoder;
 #[cfg(unix)]
 #[test]
 fn nested_cli_shebang_resolves_the_selected_node_runtime() {
+    // Avoid executing a newly written inode while other test threads fork with
+    // its write descriptor inherited (ETXTBSY), without retrying the assertion.
+    if crate::test_support::isolated_agent_home(
+        "delegation::profile::tests::nested_cli_shebang_resolves_the_selected_node_runtime",
+    ) {
+        return;
+    }
     use std::os::unix::fs::PermissionsExt;
     let fixture = private_fixture();
     let node = fixture.path().join("node");
@@ -199,7 +206,7 @@ fn try_request_in_context(
             WorkerHarnessV1::CodexCli | WorkerHarnessV1::ClaudeCode => {
                 Some(Path::new("/trusted/adapter"))
             }
-            WorkerHarnessV1::QoderCli => None,
+            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi => None,
         },
         harness_binary,
         node_binary,

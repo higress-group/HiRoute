@@ -30,6 +30,8 @@ export function AgentSettingsFeedback({ preview, agent: selected, facet, default
           ? `${text('原 Codex 默认模型没有同账号可用路由；请接入对应来源，或改选“只使用已配置的 HiRoute 模型”：', 'The native Codex default has no proven same-account route. Connect its source or select HiRoute-only: ')}${(block.model_ids ?? []).join(', ')}`
         : block.reason === 'restore_native_model_invalid'
           ? text('恢复将留下无效的原生默认模型。请在“连接详情与恢复”中明确选择一个原生模型后重试。', 'Restoring would leave an invalid native default. Choose a native model under Connection details and recovery, then retry.')
+        : block.reason === 'additional_default_in_use'
+          ? text('当前默认模型仍引用将被移除的路由。请先在 Pi 中通过 /model 切换到其他模型，然后重试。', 'The default model still uses a route being removed. Switch to another model with /model in Pi, then retry.')
         : block.reason === 'qoder_default_in_use'
           ? text('Qoder 当前默认模型仍引用将被移除的 HiRoute 路由。请先在 Qoder 中通过 /model 切换到其他模型，再重试；HiRoute 不会替你更改默认模型。', 'Qoder’s current default still uses a HiRoute route being removed. Switch to another model with /model in Qoder, then retry; HiRoute will not change the default for you.')
         : block.reason === 'qoder_model_file_conflict'

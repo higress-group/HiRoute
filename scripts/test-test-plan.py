@@ -20,6 +20,35 @@ runner_spec.loader.exec_module(runner)
 
 
 class SelectionTests(unittest.TestCase):
+    def test_pi_runtime_contract_changes_select_local_capability_regressions(self):
+        check = ['node', '--test', plan.PI_SDK_CONTRACT_TEST]
+        for path in ('crates/integrations/src/agents/pi_runtime.rs',
+                     'crates/integrations/src/agents/pi_sdk_contract.mjs',
+                     'crates/daemon/src/delegation/profile/pi_worker_bridge.mjs'):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertIn(check, result['commands'])
+                self.assertIn(['node', '--test', plan.PI_WORKER_BRIDGE_TEST], result['commands'])
+                self.assertIn(check, plan.integration_preflight(result)['commands'])
+        self.assertIn(check, plan.select([], full=True)['commands'])
+        self.assertNotIn(check, plan.select(['apps/desktop/src/ui/assets/pi.svg'])['commands'])
+
+    def test_agent_catalog_changes_select_the_source_to_bundle_check(self):
+        command = ['python3', 'assets/release-facts/current/prepare-bundle.py', '--check']
+        for path in (
+            'assets/agent-profiles/current/profile-seed.json',
+            'assets/release-facts/current/bundle/agent-profiles.json',
+            'assets/release-facts/current/prepare-bundle.py',
+            'crates/integrations/src/agents/registry.rs',
+            'tools/release-facts/src/lib.rs',
+        ):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertIn(command, result['commands'])
+                self.assertIn(command, plan.integration_preflight(result)['commands'])
+        self.assertIn(command, plan.select([], full=True)['commands'])
+        self.assertNotIn(command, plan.select(['docs/code-map/testing.md'])['commands'])
+
     def test_worker_contract_alone_requires_feature_enabled_mac_consumers(self):
         for path in ('crates/application-api/src/worker.rs',
                      'crates/domain/src/delegation/mod.rs',
@@ -85,7 +114,7 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(result['native_required'])
         self.assertFalse(any('--ignored' in command for command in result['commands']))
 
-    def test_qoder_leaf_and_shared_collaboration_changes_select_only_qoder_gate(self):
+    def test_native_leaves_and_shared_collaboration_select_their_real_consumers(self):
         for path in (
             'crates/daemon/tests/support/qoder_native_context.py',
             'crates/daemon/tests/support/qoder_collaboration_product.py',
@@ -107,8 +136,8 @@ class SelectionTests(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 result = plan.select([path])
-                self.assertEqual([check['command'][6] for check in result['product_checks']],
-                                 ['qoder_delegation'])
+                expected = ['qoder_delegation', 'pi_delegation'] if (path in plan.QODER_PRODUCT_PATHS or path.startswith(('crates/application/src/agent_connection/skill', 'crates/application/src/agent_connection/settings/'))) else ['qoder_delegation']
+                self.assertEqual([check['command'][6] for check in result['product_checks']], expected)
                 self.assertIn(['python3', 'scripts/test-qoder-product.py'], result['commands'])
         # Model-specific settings are not consumers of the independent Qoder Skill path.
         self.assertEqual(plan.select([
@@ -119,7 +148,7 @@ class SelectionTests(unittest.TestCase):
     def test_shared_agent_journey_helper_selects_current_consumers_and_its_ownership_checks(self):
         result = plan.select(['crates/daemon/tests/support/agent_product_support.py'])
         self.assertEqual(result['mode'], 'affected')
-        self.assertEqual([check['command'][6] for check in result['product_checks']], ['qoder_delegation'])
+        self.assertEqual([check['command'][6] for check in result['product_checks']], ['qoder_delegation', 'pi_delegation'])
         self.assertIn(['python3', 'scripts/test-agent-product-support.py'], result['commands'])
         tooling = plan.select(['scripts/test-agent-product-support.py'])
         self.assertEqual(tooling['product_checks'], [])
@@ -133,7 +162,7 @@ class SelectionTests(unittest.TestCase):
                 result = plan.select([path])
                 self.assertEqual(result['mode'], 'affected')
                 self.assertEqual({check['command'][6] for check in result['product_checks']},
-                                 {'worker_native_context', 'qoder_delegation'})
+                                 {'worker_native_context', 'qoder_delegation', 'pi_delegation'})
 
     def test_qoder_production_gates_preserve_ordinary_owner_checks_and_deduplicate(self):
         result = plan.select(['crates/integrations/src/agents/qoder.rs',
@@ -149,6 +178,19 @@ class SelectionTests(unittest.TestCase):
                          plan.OPT_IN_WORKER_TARGETS)
         self.assertEqual(plan.select(['scripts/test-qoder-product.py'])['product_checks'], [])
 
+    def test_shared_native_model_and_collaboration_journeys_select_both_consumers(self):
+        for path in ('crates/daemon/tests/support/additional_model_product.py',
+                     'crates/daemon/tests/support/collaboration_fixture.py',
+                     'crates/daemon/tests/support/native_compaction_product.py',
+                     'crates/daemon/src/control/runtime/native_additional_model.rs'):
+            with self.subTest(path=path):
+                checks = plan.select([path])['product_checks']
+                self.assertEqual({check['command'][6] for check in checks}, {'qoder_delegation', 'pi_delegation'})
+        checks = plan.select(['crates/integrations/src/agents/pi_sources.rs'])['product_checks']
+        self.assertEqual([check['command'][6] for check in checks], ['pi_delegation'])
+        self.assertIn('pi_worker_recovers_length_overflow_and_continues_edited_history', checks[0]['required_tests'])
+        self.assertEqual(checks[0]['missing_environment'], 'fail')
+
     def test_qoder_guide_and_settings_docs_do_not_expand_product_scope(self):
         result = plan.select(['tools/product-e2e/tests/QODER_DELEGATION.md',
                               'docs/test-selection.md'])
@@ -163,7 +205,7 @@ class SelectionTests(unittest.TestCase):
             with self.subTest(path=path):
                 result = plan.select([path])
                 required = result['product_checks']
-                self.assertEqual(len(required), 1 if path.endswith('worker_native_context.rs') else 4)
+                self.assertEqual(len(required), 1 if path.endswith('worker_native_context.rs') else 5)
                 self.assertEqual(required[0]['id'], 'worker.native-context')
                 self.assertEqual(required[0]['harnesses'], ['codex', 'claude'])
                 self.assertIn('--ignored', required[0]['command'])
@@ -206,7 +248,7 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(result['frontend'])
         targets = plan.e2e_consumers('tools/product-e2e/tests/worker_product_support/mod.rs')
         self.assertEqual({target for _, target in targets},
-                         {'worker_delegation', 'worker_read', 'worker_native_context', 'qoder_delegation'})
+                         plan.OPT_IN_WORKER_TARGETS)
         self.assertIn(['cargo', 'clippy', '--locked', '-p', 'hiroute-product-e2e',
                        '--all-targets', '--all-features', '--', '-D', 'warnings'], result['commands'])
         self.assertFalse(any(command[:2] == ['cargo', 'test'] for command in result['commands']))

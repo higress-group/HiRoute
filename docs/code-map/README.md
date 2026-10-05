@@ -10,7 +10,7 @@ ownership or entry points change.
 | Add model sources and inspect usable models | Model connections | [Application](../../crates/application/src/compute_management), [native integrations](../../crates/integrations/src/model_connections), [daemon assembly](../../crates/daemon/src/control/runtime/model_connections.rs) | [Typed/fixture contracts](../../tools/product-e2e/tests/compute_pool.rs); [installed CLI journey](../../crates/daemon/tests/publication_process.rs) |
 | Create and publish a routing plan | Routing plans | [Authoring and lifecycle](../../crates/application/src/routing), [compiler](../../crates/application/src/compiler), [domain types](../../crates/domain/src/routing) | [Compiler/fixture contracts](../../tools/product-e2e/tests/routing_plans.rs); [installed CLI journey](../../crates/daemon/tests/publication_process.rs) |
 | Connect, edit and safely disable an Agent | Agent connections | [Application transaction](../../crates/application/src/agent_connection), [filesystem adapters](../../crates/integrations/src/agents), [Desktop feature](../../apps/desktop/src/features/agents/README.md) | [Settings ordering](../../crates/application/src/operations/tests/settings_tail.rs), [daemon product entry](../../crates/daemon/src/control/runtime/settings_profile_tests.rs) |
-| Select saved additional Qoder model routes while keeping task collaboration independent | Agent connections | [Shared settings transaction](../../crates/application/src/agent_connection/settings), [native provider ownership](../../crates/integrations/src/agents/qoder_native/README.md), [Desktop model editor](../../apps/desktop/src/features/agents/QoderModelEditor.tsx) | [Ordinary native startup journey](../../crates/daemon/tests/support/qoder_model_product.py), [five Qoder journeys and evidence limits](../../tools/product-e2e/tests/QODER_DELEGATION.md) |
+| Select saved additional Qoder/Pi model routes while keeping task collaboration independent | Agent connections | [Shared settings transaction](../../crates/application/src/agent_connection/settings), [native provider ownership](../../crates/integrations/src/agents/additional_native/README.md), [Desktop model editor](../../apps/desktop/src/features/agents/AdditionalModelEditor.tsx) | [Shared native journeys](../../crates/daemon/tests/support/additional_model_product.py), [Qoder](../../tools/product-e2e/tests/QODER_DELEGATION.md) and [Pi](../../tools/product-e2e/tests/PI_INTEGRATION.md) entry and limits |
 | Route a model request and apply bounded fallback | Request routing | [Gateway map](../../crates/gateway/README.md), [execution core](../../crates/gateway-core/src) | [Real listener scenarios](../../tools/e2e-harness/tests/p0_gateway_runtime.rs) |
 | Ask an external service to select a branch | [Decision API](../../decision-extensions/api/README.md) | [Gateway classification](../../crates/gateway/src/core_runtime/classification.rs), [Jev reference service](../../decision-extensions/extensions/jev-decider/README.md) | [Jev tests](../../decision-extensions/extensions/jev-decider), real listener classifier scenarios above |
 | Delegate, read and continue Worker tasks | Agent delegation | [Application authorization](../../crates/application/src/delegation), [daemon execution](../../crates/daemon/src/delegation), [OS launcher](../../crates/daemon/src/delegation/local_worker/README.md) | [Worker lifecycle](../../tools/product-e2e/tests/worker_delegation.rs), [read/continue](../../tools/product-e2e/tests/worker_read.rs) |
@@ -22,6 +22,35 @@ Read [architecture and ownership](architecture.md) for cross-module changes,
 [remaining cleanup work](maintenance.md) before starting another refactor.
 For later decision features, read the [provider and consumer boundaries](decision-foundation.md).
 Before extending Worker ecosystems, read the [native context, route and history owners](worker-context.md).
+
+Pi static API discovery is owned by [the bounded native reader](../../crates/integrations/src/agents/pi_sources.rs)
+and [closed candidate prepare](../../crates/daemon/src/control/runtime/model_connections/pi_discovered.rs).
+The [Desktop scan projection](../../apps/desktop/src-tauri/src/bridge/model_connection_web.rs)
+keeps provider/model identifiers visible while omitting privileged discovery material.
+Adding a safe scan field also requires this projection and its existing privacy/visibility
+test: a successful machine scan or native compile does not prove that its row reaches the UI.
+Provider/model pairs remain distinct; auth commands and OAuth are reported without execution/import.
+After save, follow [capability qualification](../../crates/application/src/compute_management/compilation.rs)
+and [candidate materialization](../../crates/daemon/src/control/runtime/candidate_execution.rs)
+into the compiler's source-local authority and the published Plan. Native-observed
+facts retain their provenance and observed budgets; they are not a catalog match
+or a runtime fallback. The required saved-source route case in
+[Pi acceptance](../../tools/product-e2e/tests/PI_INTEGRATION.md) covers this path with
+an ordinary native request, including the case where the UI can display a source
+that was not yet usable by Plan consumers.
+
+Native reasoning fields have one current wire owner in
+[Domain](../../crates/domain/src/routing/gateway_execution.rs).
+[Daemon profile rendering](../../crates/daemon/src/control/runtime/candidate_protocol_profiles.rs)
+and [Gateway ingestion](../../crates/gateway/src/profiles/reasoning.rs) reuse its
+paths and toggle semantics. The existing producer/consumer test in
+[candidate materialization tests](../../crates/daemon/src/control/runtime/candidate_execution_tests.rs)
+follows materialization → compilation → Gateway validation across supported
+protocols and parameter aliases. Keep that assertion at the boundary when adding
+a protocol; duplicating local DTOs or testing only the renderer misses drift.
+
+Shared settings facts have common transaction inputs plus typed Codex, Claude and additional-provider
+facts; native model/catalog policies belong to those typed leaves.
 
 For an Agent implementation task, first identify the capability, its state owner,
 and the failing or representative scenario. Give parallel contributors disjoint

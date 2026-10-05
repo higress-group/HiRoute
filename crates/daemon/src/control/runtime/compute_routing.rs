@@ -62,6 +62,19 @@ impl LocalControlAdapter {
             .get(input_slot)
             .cloned()
             .ok_or(ControlReadError::NotFound)?;
+        if descriptor.field_selector == "pi.api-key" {
+            return self
+                .scanner
+                .pi_api_sources()
+                .map_err(|_| ControlReadError::SnapshotChanged)?
+                .iter()
+                .any(|source| {
+                    source.credential.as_ref() == Some(&descriptor)
+                        && &source.evidence_digest == expected_evidence
+                })
+                .then_some(())
+                .ok_or(ControlReadError::SnapshotChanged);
+        }
         let catalog = self
             .release_catalog
             .as_ref()
@@ -241,6 +254,7 @@ impl ComputeFactsPort for LocalControlAdapter {
             .iter()
             .map(|discovery| scan_item(catalog, discovery))
             .collect::<Result<Vec<_>, _>>()?;
+        items.extend(self.pi_compute_scan_items()?);
         // Subscription discovery has its own metadata-only API. Generic ScanCompute must not
         // start CPA or materialize OAuth state merely because a screen was opened.
         items.sort_by(|left, right| left.agent_id.cmp(&right.agent_id));
@@ -517,6 +531,7 @@ fn scan_item(
         agent_id,
         supported,
         configuration_state,
+        native_provider_id: None,
         discovered_source_ref: if protected_prepare {
             None
         } else {

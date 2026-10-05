@@ -178,7 +178,7 @@ fn decode_responses(
                 if let Some(metadata) = internal_metadata {
                     responses_internal_chat_message_metadata.insert(message_index, metadata);
                 }
-                if item_type == Some("message")
+                if matches!(item_type, Some("message") | None)
                     && let Some(phase) = responses_options::message_phase(context, item)?
                 {
                     responses_message_phases.insert(message_index, phase);

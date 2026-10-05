@@ -50,6 +50,9 @@ impl ComputeManagementPreparedPreviewV2 {
 pub(crate) struct ComputePreparedDiscoveryGuardV1 {
     pub(crate) input_slot: String,
     pub(crate) evidence_digest: CanonicalDigest,
+    /// Materialization also requires the plan's Upsert fingerprint at admission.
+    /// A source-only guard can retain an already saved credential unchanged.
+    pub(crate) materializes_secret: bool,
 }
 
 pub struct ComputeManagementPlanner<'a, C, R, S, I> {
@@ -212,7 +215,9 @@ where
         });
         discovery_guards.sort_by(|left, right| left.input_slot.cmp(&right.input_slot));
         discovery_guards.dedup_by(|left, right| {
-            left.input_slot == right.input_slot && left.evidence_digest == right.evidence_digest
+            left.input_slot == right.input_slot
+                && left.evidence_digest == right.evidence_digest
+                && left.materializes_secret == right.materializes_secret
         });
 
         let spec = ChangeSpecV1 {
@@ -464,6 +469,14 @@ where
         secret_mutations: &mut Vec<SecretMutationV1>,
         discovery_guards: &mut Vec<ComputePreparedDiscoveryGuardV1>,
     ) -> Result<(), ComputeManagementPlanningErrorV2> {
+        // Re-saving an existing lineage can retain its key without materializing
+        // a new one. Its native discovery must still match the accepted source.
+        if current.is_some()
+            && let ComputeCredentialBindingV2::NativeProtected { input_slot, .. } =
+                &candidate.credential_binding
+        {
+            self.guard_discovered_input(candidate, input_slot, false, discovery_guards)?;
+        }
         match &candidate.credential_binding {
             ComputeCredentialBindingV2::NativeProtected { input_slot, .. }
                 if current.is_none()
@@ -665,6 +678,26 @@ where
         Ok(facts)
     }
 
+    fn guard_discovered_input(
+        &self,
+        input: &ComputeCandidateFactsV2,
+        input_slot: &str,
+        materializes_secret: bool,
+        discovery_guards: &mut Vec<ComputePreparedDiscoveryGuardV1>,
+    ) -> Result<(), ComputeManagementPlanningErrorV2> {
+        if let Some(guard) = &input.discovery_guard {
+            self.protected_inputs
+                .validate_discovery_evidence(input_slot, &guard.evidence_digest)
+                .map_err(|_| ComputeManagementPlanningErrorV2::PreviewStale)?;
+            discovery_guards.push(ComputePreparedDiscoveryGuardV1 {
+                input_slot: input_slot.to_owned(),
+                evidence_digest: guard.evidence_digest.clone(),
+                materializes_secret,
+            });
+        }
+        Ok(())
+    }
+
     fn materialize_input(
         &self,
         desired: &ComputeManagementSourceV2,
@@ -675,15 +708,7 @@ where
         discovery_guards: &mut Vec<ComputePreparedDiscoveryGuardV1>,
     ) -> Result<(ComputeManagedCredentialV2, SecretMutationV1), ComputeManagementPlanningErrorV2>
     {
-        if let Some(guard) = &input.discovery_guard {
-            self.protected_inputs
-                .validate_discovery_evidence(input_slot, &guard.evidence_digest)
-                .map_err(|_| ComputeManagementPlanningErrorV2::PreviewStale)?;
-            discovery_guards.push(ComputePreparedDiscoveryGuardV1 {
-                input_slot: input_slot.to_owned(),
-                evidence_digest: guard.evidence_digest.clone(),
-            });
-        }
+        self.guard_discovered_input(input, input_slot, true, discovery_guards)?;
         let destinations = desired
             .native_destinations()
             .map_err(|_| ComputeManagementPlanningErrorV2::InvalidCandidate)?;

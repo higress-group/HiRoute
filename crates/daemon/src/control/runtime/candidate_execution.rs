@@ -272,6 +272,7 @@ pub(super) fn materialize_management_candidate(
         (
             hiroute_domain::ComputeManagementProvenanceV2::UserConfigured { .. },
             ComputeManagementEligibilityV2::UserConfirmed
+            | ComputeManagementEligibilityV2::NativeObserved
             | ComputeManagementEligibilityV2::RuntimeQualified,
         ) => None,
         (

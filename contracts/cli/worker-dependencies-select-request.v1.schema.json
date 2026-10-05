@@ -3,9 +3,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "else": {
-    "required": [
-      "adapter_path"
-    ]
+    "else": {
+      "required": [
+        "adapter_path"
+      ]
+    },
+    "if": {
+      "properties": {
+        "harness": {
+          "const": "pi"
+        }
+      }
+    },
+    "then": {
+      "properties": {
+        "adapter_path": false
+      },
+      "required": [
+        "node_path"
+      ]
+    }
   },
   "if": {
     "properties": {
@@ -34,7 +51,8 @@
       "enum": [
         "codex_cli",
         "claude_code",
-        "qoder_cli"
+        "qoder_cli",
+        "pi"
       ]
     },
     "node_path": {

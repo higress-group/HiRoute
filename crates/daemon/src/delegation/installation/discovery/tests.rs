@@ -30,6 +30,39 @@ fn make_file(path: &Path, mode: u32) {
 
 #[test]
 #[cfg(unix)]
+fn pi_resume_checks_its_own_capability_instead_of_new_session_admission() {
+    let root = tempfile::tempdir().unwrap();
+    let cli = root.path().join("bin/pi.js");
+    let node = root.path().join("bin/node");
+    make_file(&cli, 0o700);
+    make_file(&node, 0o700);
+    fs::write(root.path().join("package.json"), br#"{"name":"@earendil-works/pi-coding-agent","version":"9.0.0-fixture","bin":{"pi":"bin/pi.js"}}"#).unwrap();
+    // Emulates only the offline runner receipt. The JS contract tests check the SDK itself.
+    fs::write(&node, b"#!/bin/sh\nif [ \"$1\" = --version ]; then echo v22.19.0; elif [ \"$2\" = --check ] && [ \"$4\" = continue ]; then echo hiroute.pi-sdk-capability/v1:ok; else exit 97; fi\n").unwrap();
+    let config = WorkerInstallationConfig {
+        harness: WorkerHarnessV1::Pi,
+        harness_binary: cli,
+        adapter: None,
+        node_binary: Some(node),
+    };
+    assert!(validate_persisted_installation_for_run(&config, true).is_ok());
+    assert!(matches!(
+        validate_persisted_installation_for_run(&config, false),
+        Err(DelegationErrorV1::DependenciesInvalid)
+    ));
+    fs::write(
+        config.node_binary.as_ref().unwrap(),
+        b"#!/bin/sh\nif [ \"$1\" = --version ]; then echo v22.19.0; else exit 97; fi\n",
+    )
+    .unwrap();
+    assert!(matches!(
+        validate_persisted_installation_for_run(&config, true),
+        Err(DelegationErrorV1::DependenciesInvalid)
+    ));
+}
+
+#[test]
+#[cfg(unix)]
 fn qoder_discovers_native_aliases_and_official_root_without_inventing_dependencies_or_replacing_selection()
  {
     let root = tempfile::tempdir().unwrap();

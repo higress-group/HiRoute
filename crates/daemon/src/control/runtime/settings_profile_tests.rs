@@ -114,6 +114,7 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
         adapter: runtime.adapter.clone(),
         path: profile.clone(),
         fail_after_file: false,
+        replacement: None,
     }));
     let editing = LocalControlDaemon::new(ApplicationService::new(edit_ports));
     let edit_preview = editing
@@ -151,6 +152,7 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
         adapter: runtime.adapter.clone(),
         path: profile.clone(),
         fail_after_file: false,
+        replacement: None,
     }));
     let racing = LocalControlDaemon::new(ApplicationService::new(ports));
     let preview = racing
@@ -438,6 +440,7 @@ fn preexisting_profile_conflict_preserves_connection_and_other_writes() {
         adapter: runtime.adapter.clone(),
         path: profile.clone(),
         fail_after_file: true,
+        replacement: None,
     }));
     let fault_service = LocalControlDaemon::new(ApplicationService::new(fault_ports));
     let preview = fault_service
@@ -554,6 +557,7 @@ fn profile_delete_race_rolls_back_and_releases_writer() {
         adapter: runtime.adapter.clone(),
         path: profile.clone(),
         fail_after_file: false,
+        replacement: None,
     }));
     let racing = LocalControlDaemon::new(ApplicationService::new(ports));
     let preview = racing

@@ -1,7 +1,9 @@
 //! Additional main-Agent providers. No native catalog import or default/purpose takeover.
 use std::collections::BTreeSet;
 
-use hiroute_domain::{AgentAccessGrantMaterial, CanonicalDigest, QoderAdditionalModelV1};
+use hiroute_domain::{
+    AdditionalAgentModelV1, AgentAccessGrantMaterial, AgentKindV1, CanonicalDigest,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::{Zeroize, Zeroizing};
@@ -11,6 +13,10 @@ use super::{QoderNativeError, qoder_error, qoder_provider};
 mod jsonc;
 use jsonc::Document;
 use jsonc::LIMIT;
+
+pub(super) fn parse_native_jsonc(bytes: &[u8]) -> Result<Value, QoderNativeError> {
+    Ok(Document::parse(bytes)?.root.value)
+}
 
 // This structure is serialized only into NativeAgentArtifactPort's encrypted restore envelope.
 // It deliberately has no Debug implementation or public JSON conversion.
@@ -38,11 +44,19 @@ pub(super) struct Edit {
 }
 
 pub(super) fn validate_declaration(
+    kind: AgentKindV1,
     provider_id: &str,
     endpoint: &str,
-    models: &[QoderAdditionalModelV1],
+    models: &[AdditionalAgentModelV1],
 ) -> Result<(), QoderNativeError> {
-    qoder_provider::validate_model_route(provider_id, endpoint)?;
+    if kind == AgentKindV1::Qoder {
+        qoder_provider::validate_model_route(provider_id, endpoint)?;
+    } else if kind != AgentKindV1::Pi
+        || !endpoint.starts_with("http://")
+        || !endpoint.ends_with("/v1")
+    {
+        return Err(qoder_error("additional endpoint"));
+    }
     if provider_id
         .strip_prefix("hiroute-main-")
         .is_none_or(|suffix| {
@@ -59,9 +73,12 @@ pub(super) fn validate_declaration(
         return Err(qoder_error("additional models"));
     }
     for model in models {
-        model
-            .validate()
-            .map_err(|_| qoder_error("additional model"))?;
+        (if kind == AgentKindV1::Pi {
+            model.validate_pi()
+        } else {
+            model.validate()
+        })
+        .map_err(|_| qoder_error("additional model"))?;
         if !aliases.insert(&model.alias) {
             return Err(qoder_error("additional model alias"));
         }
@@ -87,16 +104,20 @@ fn owned<'a>(
 }
 
 pub(super) fn validate_configuration(
+    kind: AgentKindV1,
     current: Option<&[u8]>,
     provider_id: &str,
     endpoint: &str,
-    models: &[QoderAdditionalModelV1],
+    models: &[AdditionalAgentModelV1],
     previous: Option<&Restore>,
 ) -> Result<(), QoderNativeError> {
-    validate_declaration(provider_id, endpoint, models)?;
+    validate_declaration(kind, provider_id, endpoint, models)?;
     let document = document(current)?;
     if let Some(previous) = previous {
-        if previous.provider_id != provider_id || !previous.applied(current)? {
+        if previous.kind()? != kind
+            || previous.provider_id != provider_id
+            || !previous.applied(current)?
+        {
             return Err(qoder_error("owned provider changed"));
         }
         let retain = models
@@ -135,33 +156,44 @@ fn default_not_removed(
 }
 
 pub(super) fn configure(
+    kind: AgentKindV1,
     current: Option<&[u8]>,
     provider_id: &str,
     endpoint: &str,
-    models: &[QoderAdditionalModelV1],
+    models: &[AdditionalAgentModelV1],
     material: &AgentAccessGrantMaterial,
     previous: Option<&Restore>,
 ) -> Result<Edit, QoderNativeError> {
-    validate_configuration(current, provider_id, endpoint, models, previous)?;
+    validate_configuration(kind, current, provider_id, endpoint, models, previous)?;
     let base = match previous {
         Some(previous) => previous.remove_owned(current, false)?,
         None => current.map(|bytes| Zeroizing::new(bytes.to_vec())),
     };
     let credential =
         std::str::from_utf8(material.expose()).map_err(|_| qoder_error("local grant encoding"))?;
-    let models = models
-        .iter()
-        .map(|model| {
-            qoder_provider::model(
-                &model.alias,
-                Some(model.context_window_tokens),
-                model.max_output_tokens,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    // Omit provider.model and routing. Qoder retains the selected model for auxiliary purposes;
-    // a multi-model provider must not redirect every purpose to its first entry.
-    let provider = qoder_provider::provider(endpoint, credential, models);
+    let provider =
+        if kind == AgentKindV1::Qoder {
+            let models = models
+                .iter()
+                .map(|model| {
+                    qoder_provider::model(
+                        &model.alias,
+                        Some(model.context_window_tokens),
+                        model.max_output_tokens,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            qoder_provider::provider(endpoint, credential, models)
+        } else {
+            let models = models.iter().map(|model| serde_json::json!({
+            "id":model.alias,"name":model.alias,"reasoning":false,"input":["text"],
+            "cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},
+            "contextWindow":model.context_window_tokens,"maxTokens":model.max_output_tokens,
+        })).collect::<Vec<_>>();
+            // Pi's saved auth can replace its Bearer. The scoped custom header remains authoritative.
+            serde_json::json!({"api":"openai-responses","baseUrl":endpoint,"apiKey":credential,
+            "headers":{"X-HiRoute-Token":credential},"models":models})
+        };
     let document = document(base.as_deref().map(Vec::as_slice))?;
     let bytes = if let Some(providers) = document.object(&document.root, "providers")? {
         document.edit(&providers, provider_id, Some(&provider))?
@@ -173,7 +205,12 @@ pub(super) fn configure(
         )?
     };
     let restore = Restore {
-        schema: "hiroute.qoder-native-restore/v1".into(),
+        schema: if kind == AgentKindV1::Pi {
+            "hiroute.pi-native-restore/v1"
+        } else {
+            "hiroute.qoder-native-restore/v1"
+        }
+        .into(),
         provider_id: provider_id.into(),
         provider_digest: digest(&provider)?,
         rendered_digest: CanonicalDigest::of_bytes(&bytes),
@@ -184,6 +221,14 @@ pub(super) fn configure(
 }
 
 impl Restore {
+    pub fn kind(&self) -> Result<AgentKindV1, QoderNativeError> {
+        match self.schema.as_str() {
+            "hiroute.qoder-native-restore/v1" => Ok(AgentKindV1::Qoder),
+            "hiroute.pi-native-restore/v1" => Ok(AgentKindV1::Pi),
+            _ => Err(qoder_error("restore schema")),
+        }
+    }
+
     pub fn encode(&self) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
         let header = serde_json::to_vec(self).map_err(|_| qoder_error("restore encoding"))?;
         let size = header
@@ -211,7 +256,7 @@ impl Restore {
         let mut record: Self =
             serde_json::from_slice(&bytes[4..end]).map_err(|_| qoder_error("restore encoding"))?;
         record.original = bytes[end..].to_vec();
-        if record.schema != "hiroute.qoder-native-restore/v1"
+        if record.kind().is_err()
             || record
                 .provider_id
                 .strip_prefix("hiroute-main-")

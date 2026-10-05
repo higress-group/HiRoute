@@ -47,8 +47,8 @@ pub(crate) fn preview(
     result["expected_revisions"] = json!(input.expected_revisions);
     result["applicable"] = json!(preview.blockers.is_empty());
     result["resident_service"] = json!({
-        "login_item_required": input.facts.model.as_ref().is_some_and(|model| model.login_item_required),
-        "login_item_removal_required": input.facts.model.as_ref().is_some_and(|model| model.login_item_removal_required),
+        "login_item_required": input.facts.model.as_ref().is_some_and(|model| model.common.login_item_required),
+        "login_item_removal_required": input.facts.model.as_ref().is_some_and(|model| model.common.login_item_removal_required),
     });
     if matches!(
         &preview.spec.collaboration,
@@ -89,13 +89,14 @@ pub(crate) fn preview(
         }),
         (
             hiroute_application_api::AgentFacetIntent::Configure { settings },
-            Some(SettingsModelTargetFacts::Qoder {
+            Some(SettingsModelTargetFacts::Additional {
+                kind,
                 provider_id,
                 endpoint,
                 ..
             }),
         ) => json!({
-            "action":"configure", "agent_class":"qoder", "provider_id":provider_id, "endpoint":endpoint,
+            "action":"configure", "agent_class":kind.as_str(), "provider_id":provider_id, "endpoint":endpoint,
             "selection":settings, "authentication":"connection_scoped_local_grant",
         }),
         (hiroute_application_api::AgentFacetIntent::Restore { restore_point_ref }, Some(_)) => {
@@ -178,7 +179,7 @@ pub(crate) fn apply(
         .facts
         .model
         .as_ref()
-        .is_some_and(|model| model.login_item_removal_required)
+        .is_some_and(|model| model.common.login_item_removal_required)
         && payload.login_item.is_some()
     {
         // New saves do not own startup state; an unsolicited host declaration must not be
@@ -189,7 +190,7 @@ pub(crate) fn apply(
         .facts
         .model
         .as_ref()
-        .is_some_and(|model| model.login_item_removal_required)
+        .is_some_and(|model| model.common.login_item_removal_required)
         && !payload
             .login_item
             .as_ref()

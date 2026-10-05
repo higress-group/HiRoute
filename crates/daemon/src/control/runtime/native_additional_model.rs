@@ -1,32 +1,42 @@
-//! Qoder's additive model file is an ordinary protected settings effect.
+//! Shared additional-provider settings effects; native cross-file dependencies remain explicit.
 use super::LocalControlAdapter;
 use hiroute_application::agent_connection::{
-    QoderModelFileAction, settings_qoder_model_file_for_operation,
+    AdditionalModelFileAction, additional_model_kind, settings_additional_model_file_for_operation,
 };
 use hiroute_domain::{
-    AgentAccessGrantRefV1, AgentIngressProtocolV1, AgentModelGrantV2, AgentModelRouteV2,
-    ControlRepositoryPort, ExternalEffectIntentV1, GatewayPublicationV1, OperationState,
-    OperationStepKind, OperationV1, OwnedEffectV1, PortError, PortErrorCode, PortResult,
-    QoderAdditionalModelV1, SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
+    AdditionalAgentModelV1, AgentAccessGrantRefV1, AgentIngressProtocolV1, AgentKindV1,
+    AgentModelGrantV2, AgentModelRouteV2, ControlRepositoryPort, ExternalEffectIntentV1,
+    GatewayPublicationV1, OperationState, OperationStepKind, OperationV1, OwnedEffectV1, PortError,
+    PortErrorCode, PortResult, SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
 };
 
-pub(super) fn is_settings_qoder_model(intent: &ExternalEffectIntentV1) -> bool {
+pub(super) fn is_settings_additional_model(intent: &ExternalEffectIntentV1) -> bool {
     intent.effect_id() == "agent-connection-managed-configuration"
         && intent.desired()["transaction"] == "settings"
-        && intent.desired()["subject"]["agent_id"] == "agent_qoder_default"
+        && matches!(
+            intent.desired()["subject"]["agent_id"].as_str(),
+            Some("agent_qoder_default" | "agent_pi_default")
+        )
 }
 
-pub(super) fn qoder_model_endpoint(gateway_base_url: &str) -> PortResult<String> {
+pub(super) fn additional_model_endpoint(
+    kind: AgentKindV1,
+    gateway_base_url: &str,
+) -> PortResult<String> {
+    if kind == AgentKindV1::Pi {
+        return Ok(gateway_base_url.to_owned());
+    }
     let origin = gateway_base_url
         .strip_suffix("/v1")
         .ok_or_else(|| conflict("qoder.settings.endpoint"))?;
     Ok(format!("{origin}{}", hiroute_domain::QODER_MODEL_BASE_PATH))
 }
 
-pub(super) fn qoder_models_for_grant(
+pub(super) fn additional_models_for_grant(
+    kind: AgentKindV1,
     publication: &GatewayPublicationV1,
     grant: &AgentModelGrantV2,
-) -> PortResult<Vec<QoderAdditionalModelV1>> {
+) -> PortResult<Vec<AdditionalAgentModelV1>> {
     grant
         .routes
         .iter()
@@ -53,9 +63,13 @@ pub(super) fn qoder_models_for_grant(
             if &plan.body.materialized_route_digest != semantic_digest {
                 return Err(conflict("qoder.models.plan.digest"));
             }
-            let budget = hiroute_integrations::qoder_plan_token_budget(&plan.body.materialized)
-                .map_err(|_| conflict("qoder.models.budget"))?;
-            Ok(QoderAdditionalModelV1 {
+            let budget = (if kind == AgentKindV1::Pi {
+                hiroute_integrations::pi_plan_token_budget(&plan.body.materialized)
+            } else {
+                hiroute_integrations::qoder_plan_token_budget(&plan.body.materialized)
+            })
+            .map_err(|_| conflict("qoder.models.budget"))?;
+            Ok(AdditionalAgentModelV1 {
                 alias: name.clone(),
                 context_window_tokens: budget.context_window_tokens,
                 max_output_tokens: budget.max_output_tokens,
@@ -65,7 +79,37 @@ pub(super) fn qoder_models_for_grant(
 }
 
 impl LocalControlAdapter {
-    pub(super) fn stage_settings_qoder_model(
+    /// Recheck independent native files at stage and final activation, including recovery.
+    pub(super) fn validate_additional_model_dependencies(
+        &self,
+        operation: &OperationV1,
+        intent: &ExternalEffectIntentV1,
+    ) -> PortResult<()> {
+        let payload = settings_additional_model_file_for_operation(operation, intent)?;
+        if let Some(expected) = &payload.pi_settings_content {
+            let settings = self
+                .scanner
+                .pi_default_model()
+                .map_err(|_| conflict("pi.settings.default"))?;
+            let models = match &payload.change {
+                AdditionalModelFileAction::Configure { models, .. } => models.as_slice(),
+                _ => &[],
+            };
+            if &settings.content_digest != expected
+                || settings.removes_default(
+                    &hiroute_application::agent_connection::additional_model_provider_id(
+                        &payload.context_id,
+                    ),
+                    models,
+                )
+            {
+                return Err(conflict("pi.settings.default.changed"));
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn stage_settings_additional_model(
         &self,
         operation: &OperationV1,
         intent: &ExternalEffectIntentV1,
@@ -73,10 +117,12 @@ impl LocalControlAdapter {
         if operation.state != OperationState::ApplyingAgentArtifacts {
             return Err(conflict("qoder.settings.phase"));
         }
-        let payload = settings_qoder_model_file_for_operation(operation, intent)?;
+        let payload = settings_additional_model_file_for_operation(operation, intent)?;
+        let kind = additional_model_kind(intent)?;
+        self.validate_additional_model_dependencies(operation, intent)?;
         let stores = self.stores_lock()?;
         match &payload.change {
-            QoderModelFileAction::Configure {
+            AdditionalModelFileAction::Configure {
                 previous_operation,
                 provider_id,
                 endpoint,
@@ -101,7 +147,7 @@ impl LocalControlAdapter {
                     .as_ref()
                     .map(|runtime| runtime.gateway_base_url.clone())
                     .ok_or_else(|| conflict("qoder.settings.runtime"))?;
-                if qoder_model_endpoint(&gateway_base_url)? != *endpoint {
+                if additional_model_endpoint(kind, &gateway_base_url)? != *endpoint {
                     return Err(conflict("qoder.settings.endpoint"));
                 }
                 let active = stores
@@ -112,7 +158,7 @@ impl LocalControlAdapter {
                         .control()
                         .load_operation(id)?
                         .ok_or_else(|| conflict("qoder.settings.previous"))?;
-                    let previous_intent = qoder_original_intent(&original, operation, intent)?;
+                    let previous_intent = additional_original_intent(&original, operation, intent)?;
                     let [previous_mutation] = original.plan.agent_access_grants() else {
                         return Err(conflict("qoder.settings.previous.grant"));
                     };
@@ -141,7 +187,7 @@ impl LocalControlAdapter {
                     .secrets()
                     .resolve_prepared_agent_access_grant(&operation.operation_id, mutation)?;
                 drop(stores);
-                let configuration = hiroute_integrations::QoderFileConfiguration {
+                let configuration = hiroute_integrations::AdditionalFileConfiguration {
                     expected_content: &payload.expected_content,
                     provider_id,
                     endpoint,
@@ -150,7 +196,7 @@ impl LocalControlAdapter {
                 };
                 match previous {
                     Some((original, previous_intent)) => {
-                        hiroute_integrations::stage_qoder_reconfiguration(
+                        hiroute_integrations::stage_additional_reconfiguration(
                             &self.artifacts,
                             &operation.operation_id,
                             intent,
@@ -159,7 +205,7 @@ impl LocalControlAdapter {
                             configuration,
                         )
                     }
-                    None => hiroute_integrations::stage_qoder_configuration(
+                    None => hiroute_integrations::stage_additional_configuration(
                         &self.artifacts,
                         &operation.operation_id,
                         intent,
@@ -167,14 +213,14 @@ impl LocalControlAdapter {
                     ),
                 }
             }
-            QoderModelFileAction::Restore { original_operation } => {
+            AdditionalModelFileAction::Restore { original_operation } => {
                 let original = stores
                     .control()
                     .load_operation(original_operation)?
                     .ok_or_else(|| conflict("qoder.settings.restore.original"))?;
-                let original_intent = qoder_original_intent(&original, operation, intent)?;
+                let original_intent = additional_original_intent(&original, operation, intent)?;
                 drop(stores);
-                hiroute_integrations::stage_qoder_restoration(
+                hiroute_integrations::stage_additional_restoration(
                     &self.artifacts,
                     &operation.operation_id,
                     intent,
@@ -186,7 +232,7 @@ impl LocalControlAdapter {
     }
 }
 
-fn qoder_original_intent(
+fn additional_original_intent(
     original: &OperationV1,
     operation: &OperationV1,
     intent: &ExternalEffectIntentV1,
@@ -202,13 +248,13 @@ fn qoder_original_intent(
         .external()
         .iter()
         .find(|candidate| {
-            candidate.target() == intent.target() && is_settings_qoder_model(candidate)
+            candidate.target() == intent.target() && is_settings_additional_model(candidate)
         })
         .ok_or_else(|| conflict("qoder.settings.original.intent"))?;
-    let before = settings_qoder_model_file_for_operation(original, original_intent)?;
-    let after = settings_qoder_model_file_for_operation(operation, intent)?;
+    let before = settings_additional_model_file_for_operation(original, original_intent)?;
+    let after = settings_additional_model_file_for_operation(operation, intent)?;
     if before.context_id != after.context_id
-        || !matches!(before.change, QoderModelFileAction::Configure { .. })
+        || !matches!(before.change, AdditionalModelFileAction::Configure { .. })
     {
         return Err(conflict("qoder.settings.original.context"));
     }

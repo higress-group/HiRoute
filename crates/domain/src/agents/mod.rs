@@ -1,5 +1,6 @@
 //! Exact-version Agent integration profiles and probe contracts.
 
+mod additional_model;
 mod capability;
 mod collaboration;
 mod context_window;
@@ -9,11 +10,11 @@ mod model_grant;
 mod native_artifacts;
 mod plan_references;
 mod profile;
-mod qoder_model;
 mod settings;
 mod skill_installation;
 mod surface_check;
 
+pub use additional_model::*;
 pub use capability::*;
 pub use collaboration::*;
 pub use context_window::*;
@@ -23,7 +24,6 @@ pub use model_grant::*;
 pub use native_artifacts::*;
 pub use plan_references::*;
 pub use profile::*;
-pub use qoder_model::*;
 pub use settings::*;
 pub use skill_installation::*;
 pub use surface_check::*;

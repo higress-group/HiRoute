@@ -108,6 +108,13 @@ impl ScanEnvironment {
 pub(crate) fn validate_selection(
     request: &WorkerDependenciesSelectRequestV1,
 ) -> Result<WorkerDependenciesSelectRequestV1, DelegationErrorV1> {
+    validate_selection_for(request, hiroute_integrations::PiSdkCapability::Worker)
+}
+
+fn validate_selection_for(
+    request: &WorkerDependenciesSelectRequestV1,
+    capability: hiroute_integrations::PiSdkCapability,
+) -> Result<WorkerDependenciesSelectRequestV1, DelegationErrorV1> {
     if !request.valid() {
         return Err(DelegationErrorV1::InvalidArguments);
     }
@@ -117,11 +124,25 @@ pub(crate) fn validate_selection(
         .map(|path| normalize_required(Path::new(path), request.node_path.is_none()))
         .transpose()?;
     let cli = normalize_required(Path::new(&request.cli_path), true)?;
+    if request.harness == WorkerHarnessV1::Pi {
+        hiroute_integrations::pi_cli_installation(&cli)
+            .map_err(|_| DelegationErrorV1::DependenciesInvalid)?;
+    }
     let node = request
         .node_path
         .as_deref()
         .map(|path| normalize_required(Path::new(path), true))
         .transpose()?;
+    #[cfg(unix)]
+    if request.harness == WorkerHarnessV1::Pi {
+        hiroute_integrations::check_pi_sdk_capability(
+            &cli,
+            node.as_deref()
+                .ok_or(DelegationErrorV1::DependenciesInvalid)?,
+            capability,
+        )
+        .map_err(|_| DelegationErrorV1::DependenciesInvalid)?;
+    }
     Ok(WorkerDependenciesSelectRequestV1 {
         harness: request.harness,
         adapter_path: adapter.map(path_string).transpose()?,
@@ -131,8 +152,16 @@ pub(crate) fn validate_selection(
     })
 }
 
-pub(crate) fn validate_persisted_installation(
+#[cfg(test)]
+fn validate_persisted_installation(
     selection: &WorkerInstallationConfig,
+) -> Result<WorkerInstallationConfig, DelegationErrorV1> {
+    validate_persisted_installation_for_run(selection, false)
+}
+
+pub(crate) fn validate_persisted_installation_for_run(
+    selection: &WorkerInstallationConfig,
+    continuing: bool,
 ) -> Result<WorkerInstallationConfig, DelegationErrorV1> {
     let request = WorkerDependenciesSelectRequestV1 {
         harness: selection.harness,
@@ -147,7 +176,12 @@ pub(crate) fn validate_persisted_installation(
             .map(|path| path.to_string_lossy().into_owned()),
         expected_selection_revision: 0,
     };
-    let normalized = validate_selection(&request)?;
+    let capability = if continuing {
+        hiroute_integrations::PiSdkCapability::Continue
+    } else {
+        hiroute_integrations::PiSdkCapability::Worker
+    };
+    let normalized = validate_selection_for(&request, capability)?;
     if normalized.adapter_path != request.adapter_path
         || normalized.cli_path != request.cli_path
         || normalized.node_path != request.node_path
@@ -444,8 +478,13 @@ impl HarnessScan {
         package_root: &Path,
         source: WorkerDependencyCandidateSourceV1,
     ) {
-        let Some(adapter) = names(self.harness).1 else {
-            return;
+        let adapter = if self.harness == WorkerHarnessV1::Pi {
+            "pi"
+        } else {
+            let Some(adapter) = names(self.harness).1 else {
+                return;
+            };
+            adapter
         };
         let package_json = package_root.join("package.json");
         let entry = match package_bin(&package_json, adapter) {
@@ -459,7 +498,11 @@ impl HarnessScan {
             }
         };
         self.add_discovered(
-            WorkerDependencyComponentV1::Adapter,
+            if self.harness == WorkerHarnessV1::Pi {
+                WorkerDependencyComponentV1::Cli
+            } else {
+                WorkerDependencyComponentV1::Adapter
+            },
             &package_root.join(entry),
             source,
             false,
@@ -524,8 +567,10 @@ impl HarnessScan {
             WorkerDependencyComponentV1::Adapter,
             WorkerDependencyComponentV1::Node,
         ] {
-            if self.harness == WorkerHarnessV1::QoderCli
-                && component != WorkerDependencyComponentV1::Cli
+            if (self.harness == WorkerHarnessV1::QoderCli
+                && component != WorkerDependencyComponentV1::Cli)
+                || (self.harness == WorkerHarnessV1::Pi
+                    && component == WorkerDependencyComponentV1::Adapter)
             {
                 continue;
             }
@@ -537,7 +582,9 @@ impl HarnessScan {
                     harness: self.harness,
                     component,
                     platform: platform().to_owned(),
-                    command: None,
+                    command: (self.harness == WorkerHarnessV1::Pi
+                        && component == WorkerDependencyComponentV1::Cli)
+                        .then(|| "npm install -g @earendil-works/pi-coding-agent".into()),
                     reason_code: "worker.dependencies.install_required".to_owned(),
                 });
             }
@@ -671,6 +718,7 @@ fn names(harness: WorkerHarnessV1) -> (&'static [&'static str], Option<&'static 
         WorkerHarnessV1::CodexCli => (&["codex"], Some("codex-acp")),
         WorkerHarnessV1::ClaudeCode => (&["claude"], Some("claude-agent-acp")),
         WorkerHarnessV1::QoderCli => (&["qoder", "qodercli"], None),
+        WorkerHarnessV1::Pi => (&["pi"], None),
     }
 }
 
@@ -679,6 +727,7 @@ fn package_name(harness: WorkerHarnessV1) -> Option<&'static Path> {
         WorkerHarnessV1::CodexCli => Some(Path::new("@agentclientprotocol/codex-acp")),
         WorkerHarnessV1::ClaudeCode => Some(Path::new("@agentclientprotocol/claude-agent-acp")),
         WorkerHarnessV1::QoderCli => None,
+        WorkerHarnessV1::Pi => Some(Path::new("@earendil-works/pi-coding-agent")),
     }
 }
 

@@ -407,18 +407,5 @@ pub(super) fn field(
 }
 
 pub(super) fn parameter_path(parameter: &str, protocol: UpstreamProtocol) -> Vec<String> {
-    // ModelData names the portable discrete control. The exact protocol
-    // renderer owns its wire location: OpenAI Responses nests effort while
-    // Chat Completions keeps the historical top-level field.
-    if protocol == UpstreamProtocol::Responses && parameter == "reasoning_effort" {
-        return vec!["reasoning".into(), "effort".into()];
-    }
-    if parameter == "thinking_budget" {
-        return match protocol {
-            UpstreamProtocol::Responses => vec!["reasoning".into(), "max_output_tokens".into()],
-            UpstreamProtocol::Messages => vec!["thinking".into(), "budget_tokens".into()],
-            UpstreamProtocol::ChatCompletions => vec!["thinking_budget".into()],
-        };
-    }
-    parameter.split('.').map(str::to_owned).collect()
+    GatewayNativeReasoningFieldAssignmentV1::parameter_path(parameter, protocol)
 }

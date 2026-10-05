@@ -36,7 +36,7 @@ pub(crate) fn validate_startup_format(root: &Path) -> Result<(), LocalStorageErr
         // Schema 23 is the first stable format; 24 preserves that same marker.
         // A mixed supported live set is only a candidate for the existing coordinator:
         // it must still prove its complete source backup, store identities, key and phase.
-        if !matches!(version, 23 | 24 | LATEST_SCHEMA_VERSION) {
+        if !matches!(version, 23 | 24 | 25 | LATEST_SCHEMA_VERSION) {
             return Err(LocalStorageError::UpgradeSourceUnsupported);
         }
         let marker = connection.query_row(

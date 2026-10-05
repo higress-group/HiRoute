@@ -15,6 +15,27 @@ const REQUIRED_INSTALLATIONS: [&str; 5] = [
 ];
 
 pub fn run_real_worker_scenario(mode: &str, expected_scenario: &str) {
+    let pi_script = match mode {
+        "HIROUTE_PRODUCT_PI_CORE" => Some("native_context_product.py"),
+        "HIROUTE_PRODUCT_PI_BOUNDARIES" => Some("native_context_boundaries.py"),
+        "HIROUTE_PRODUCT_PI_MODELS" => Some("additional_model_product.py"),
+        "HIROUTE_PRODUCT_PI_MAIN" => Some("collaboration_product.py"),
+        "HIROUTE_PRODUCT_PI_COMPACTION" | "HIROUTE_PRODUCT_PI_RECOVERY" => {
+            Some("native_compaction_product.py")
+        }
+        "HIROUTE_PRODUCT_PI_DISCOVERY" => Some("pi_discovery_product.py"),
+        _ => None,
+    };
+    if let Some(script) = pi_script {
+        run_scenario(
+            script,
+            mode,
+            expected_scenario,
+            &["pi"],
+            &["HIROUTE_WORKER_PI_BINARY", "HIROUTE_WORKER_NODE"],
+        );
+        return;
+    }
     let qoder_script = match mode {
         "HIROUTE_PRODUCT_QODER_MAIN" => Some("qoder_collaboration_product.py"),
         "HIROUTE_PRODUCT_QODER_CORE" => Some("native_context_product.py"),
@@ -162,12 +183,18 @@ fn assert_scenario(output: Output, scenario: &str, harness: &str, candidate: &st
             "worker.context.tool-summary-route",
             "worker.context.compaction-route",
         ],
-        "qoder-main-agent-delegation" => &[
+        "pi-worker-compaction-route" => &["worker.context.compaction-route"],
+        "pi-static-source-import" => &[
+            "agent.sources.effective-static-import",
+            "agent.sources.changed-source-rejected",
+            "agent.sources.imported-route-usable",
+        ],
+        "qoder-main-agent-delegation" | "pi-main-agent-delegation" => &[
             "agent.collaboration.user-skill",
             "agent.collaboration.public-worker-delegation",
             "agent.collaboration.disable-owned-skill",
         ],
-        "qoder-persisted-model-routes" => &[
+        "qoder-persisted-model-routes" | "pi-persisted-model-routes" => &[
             "agent.models.persisted-routes",
             "agent.models.credential-rotation",
             "agent.models.independent-restore",

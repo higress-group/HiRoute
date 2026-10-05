@@ -470,3 +470,83 @@ async fn finite_acp_does_not_replay_after_prompt_disconnect() {
     );
     assert_eq!(*journal.0.lock().unwrap(), ["session", "send_intent"]);
 }
+
+#[tokio::test]
+async fn pi_bridge_failure_preserves_the_failed_operation_without_replay() {
+    for (stage, failing_method, expected) in [
+        (
+            "sdk_load",
+            "initialize",
+            DelegationErrorV1::DependenciesInvalid,
+        ),
+        (
+            "resources",
+            "initialize",
+            DelegationErrorV1::CapabilityUnavailable,
+        ),
+        (
+            "history",
+            "session/load",
+            DelegationErrorV1::ResumeUnavailable,
+        ),
+        ("prompt", "session/prompt", DelegationErrorV1::PromptFailed),
+    ] {
+        let (client, server) = tokio::io::duplex(16_384);
+        let server = tokio::spawn(async move {
+            let (reader, mut writer) = tokio::io::split(server);
+            let mut lines = BufReader::new(reader).lines();
+            let mut methods = vec![];
+            while let Some(line) = lines.next_line().await.unwrap() {
+                let request: Value = serde_json::from_str(&line).unwrap();
+                let method = request["method"].as_str().unwrap();
+                methods.push(method.to_owned());
+                let response = if method == failing_method {
+                    json!({"jsonrpc":"2.0", "id":request["id"], "error":{
+                        "code":-32000, "message":"opaque native error must not reach results",
+                        "data":{"schema":"hiroute.pi-worker-failure/v1","stage":stage}
+                    }})
+                } else {
+                    let result = match method {
+                        "initialize" => {
+                            json!({"protocolVersion":1,"agentCapabilities":{"loadSession":true}})
+                        }
+                        "session/new" => {
+                            json!({"sessionId":"acp-a","_meta":{"agentSessionId":"native-a"}})
+                        }
+                        other => panic!("unexpected request after failure: {other}"),
+                    };
+                    json!({"jsonrpc":"2.0", "id":request["id"], "result":result})
+                };
+                writer
+                    .write_all(format!("{response}\n").as_bytes())
+                    .await
+                    .unwrap();
+            }
+            methods
+        });
+        let (reader, writer) = tokio::io::split(client);
+        let mut request = input();
+        if failing_method == "session/load" {
+            request.session = AcpSessionStart::Load(AcpSessionBinding {
+                acp_session_id: "acp-a".into(),
+                native_session_id: Some("native-a".into()),
+            });
+        }
+        let journal = Arc::new(Journal::default());
+        let result = run_acp(reader, writer, request, journal.clone()).await;
+        assert_eq!(result.err(), Some(expected));
+        let methods = server.await.unwrap();
+        assert_eq!(methods.last().map(String::as_str), Some(failing_method));
+        assert_eq!(
+            methods
+                .iter()
+                .filter(|method| *method == failing_method)
+                .count(),
+            1
+        );
+        assert_eq!(
+            journal.0.lock().unwrap().contains(&"send_intent"),
+            failing_method == "session/prompt"
+        );
+    }
+}

@@ -121,7 +121,7 @@ impl LocalControlAdapter {
             &request.submission_key,
         )
         .map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
-        self.ensure_worker_dependencies(prior_task.plan.harness)?;
+        self.ensure_worker_dependencies(prior_task.plan.harness, true)?;
         let execution = request.execution(prior_task.workspace.root_identity.clone());
         let deadline_ms = now_ms
             .checked_add(execution.duration_ms)

@@ -26,6 +26,7 @@ impl NativeWorkerContext {
         let (variable, default) = match harness {
             WorkerHarnessV1::CodexCli => ("CODEX_HOME", ".codex"),
             WorkerHarnessV1::ClaudeCode => ("CLAUDE_CONFIG_DIR", ".claude"),
+            WorkerHarnessV1::Pi => ("PI_CODING_AGENT_DIR", ".pi/agent"),
             WorkerHarnessV1::QoderCli => {
                 let selected = lookup("QODER_CONFIG_DIR").map(PathBuf::from);
                 let context = hiroute_integrations::agents::QoderNativeContext::from_selected(

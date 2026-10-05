@@ -12,6 +12,11 @@ pub enum WorkerLaunchFormV1<'a> {
     NativeAcp {
         cli: &'a str,
     },
+    /// A product-owned ACP bridge loads the SDK adjacent to this official npm CLI.
+    NativeSdk {
+        cli: &'a str,
+        node: &'a str,
+    },
 }
 
 impl<'a> WorkerLaunchFormV1<'a> {
@@ -38,6 +43,11 @@ impl<'a> WorkerLaunchFormV1<'a> {
                 Ok(Self::NativeAcp { cli })
             }
             WorkerHarnessV1::QoderCli => Err(invalid()),
+            WorkerHarnessV1::Pi if adapter.is_none() => Ok(Self::NativeSdk {
+                cli,
+                node: node.ok_or_else(invalid)?,
+            }),
+            WorkerHarnessV1::Pi => Err(invalid()),
         }
     }
 }

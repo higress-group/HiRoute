@@ -53,7 +53,7 @@ export function WorkerDependencies({
 }) {
   const zh = language === 'zh';
   const text = (cn: string, en: string) => zh ? cn : en;
-  const name = { codex_cli: 'Codex CLI', claude_code: 'Claude Code', qoder_cli: 'Qoder CLI' }[harness];
+  const name = { codex_cli: 'Codex CLI', claude_code: 'Claude Code', qoder_cli: 'Qoder CLI', pi: 'Pi' }[harness];
   const components = workerDependencyComponents(harness);
   const [view, setView] = useState<WorkerDependenciesView | null>(null);
   const [selection, setSelection] = useState<WorkerDependencySelectionRequest | null>(null);
@@ -125,7 +125,7 @@ export function WorkerDependencies({
     setSelection(current => ({
       harness,
       cli_path: '',
-      ...(harness === 'qoder_cli' ? {} : { adapter_path: '', node_path: null }),
+      ...(harness === 'qoder_cli' ? {} : { ...(harness === 'pi' ? {} : { adapter_path: '' }), node_path: null }),
       expected_selection_revision: view ? workerDependencyRevision(view, harness) : 0,
       ...current,
       ...patch,
@@ -143,7 +143,7 @@ export function WorkerDependencies({
     try {
       const input = harness === 'qoder_cli'
         ? { harness, cli_path: selection.cli_path, expected_selection_revision: selection.expected_selection_revision }
-        : selection;
+        : harness === 'pi' ? { harness, cli_path: selection.cli_path, node_path: selection.node_path, expected_selection_revision: selection.expected_selection_revision } : selection;
       const prepared = await invoke<Confirmation>('worker_dependencies_select_prepare', { input });
       if (!mounted.current) {
         await invoke('worker_dependencies_select_cancel', {
@@ -222,9 +222,10 @@ export function WorkerDependencies({
       {text('选择已安装的 Qoder CLI（qoder 或 qodercli）。需要登录时，请在终端正常启动该 CLI 并完成登录，再返回使用。', 'Select your installed Qoder CLI (qoder or qodercli). When sign-in is needed, start that CLI normally in a terminal and sign in, then return here.')} {' '}
       <a href="https://docs.qoder.com/cli/installation" target="_blank" rel="noreferrer" onClick={event => void openInstallationGuide(event)}>{text('官方安装与升级说明', 'Official installation and upgrade guide')}</a>
     </p>}
+    {harness === 'pi' && <p className="field-help" data-pi-installation-guide>{text('使用官方 npm 安装的 Pi 和 Node.js。检测安装位置后，保存时会检查所需能力；也可查看安装命令。', 'Use the official npm installation of Pi and Node.js. Detect installation paths; saving checks the required capabilities. Installation commands are also available.')}</p>}
     {!view && <div className="option-panel"><div className="option-row"><div><strong>{text('检测本机安装', 'Detect local installation')}</strong><span>{harness === 'qoder_cli'
       ? text('查找当前环境中的 Qoder CLI。', 'Find Qoder CLI in the current environment.')
-      : text(`查找 ${name}、连接组件和必要的 Node.js。`, `Find ${name}, its adapter, and Node.js when required.`)}</span></div><button className="btn btn-primary" type="button" disabled={refreshing} onClick={() => void discover()}>{refreshing ? text('正在检测…', 'Detecting…') : text('一键检测', 'Detect')}</button></div></div>}
+      : harness === 'pi' ? text('查找 Pi 和 Node.js。', 'Find Pi and Node.js.') : text(`查找 ${name}、连接组件和必要的 Node.js。`, `Find ${name}, its adapter, and Node.js when required.`)}</span></div><button className="btn btn-primary" type="button" disabled={refreshing} onClick={() => void discover()}>{refreshing ? text('正在检测…', 'Detecting…') : text('一键检测', 'Detect')}</button></div></div>}
 
     {view && <div className={`callout ${state === 'configured' ? 'good' : state === 'found' ? '' : 'warn'}`}>
       <UiIcon name={state === 'incomplete' ? 'warning' : 'check'} />
@@ -249,7 +250,7 @@ export function WorkerDependencies({
     </div>}
 
     {advanced && view && <Disclosure className="native-details" defaultOpen label={text('安装路径与候选', 'Installation paths and candidates')} language={language}>{components.map(component => <div className="field" key={component}>
-      <label className="field-label" htmlFor={`worker-${harness}-${component}`}>{componentName(component)} {component === 'node' && <span className="muted">{text('按连接组件需要选填', 'Optional when the adapter does not require it')}</span>}</label>
+      <label className="field-label" htmlFor={`worker-${harness}-${component}`}>{componentName(component)} {component === 'node' && harness !== 'pi' && <span className="muted">{text('按连接组件需要选填', 'Optional when the adapter does not require it')}</span>}</label>
       <input id={`worker-${harness}-${component}`} className="input" value={inputValue(component)} placeholder={text('输入绝对路径', 'Enter an absolute path')} onChange={event => selectCandidate(component, event.target.value)} />
       {!!candidates(component).length && <div className="native-list">{candidates(component).map(candidate => <button className={`list-row${inputValue(component) === candidate.path ? ' active' : ''}`} type="button" key={`${component}:${candidate.path}`} onClick={() => selectCandidate(component, candidate.path)}><span className="row-main"><span className="row-title">{candidate.path}</span><span className="row-meta">{candidate.source} · {candidate.state}</span></span>{inputValue(component) === candidate.path && <UiIcon name="check" />}</button>)}</div>}
     </div>)}</Disclosure>}

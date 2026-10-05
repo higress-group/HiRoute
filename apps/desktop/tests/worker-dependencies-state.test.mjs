@@ -90,6 +90,27 @@ test('a CLI alone remains incomplete for Codex and Claude adapter installations'
   }
 });
 
+test('Pi uses its selected CLI and Node without an external adapter and never replaces a missing saved Node', () => {
+  const selection = { harness: 'pi', cli_path: '/selected/pi', node_path: '/selected/node' };
+  const detected = view({ selection_revisions: [{ harness: 'pi', revision: 3 }], candidates: [
+    { harness: 'pi', component: 'cli', path: selection.cli_path, source: 'path', state: 'found' },
+    { harness: 'pi', component: 'node', path: selection.node_path, source: 'path', state: 'found' },
+  ] });
+  const request = recommendedWorkerDependencies(detected, 'pi');
+  assert.deepEqual(request, { ...selection, expected_selection_revision: 3 });
+  assert.deepEqual(workerDependencyComponents('pi'), ['cli', 'node']);
+  assert.equal(workerDependencySelectionState(detected, 'pi'), 'found');
+  assert.equal(workerDependencySelectionComplete({ ...selection, node_path: null }), false);
+  assert.equal(workerDependencySelectionComplete({ ...selection, adapter_path: '/foreign/adapter' }), false);
+  const saved = { ...detected, selected: [selection] };
+  assert.equal(workerDependencySelectionState(saved, 'pi'), 'configured');
+  saved.candidates = [detected.candidates[0],
+    { ...detected.candidates[1], state: 'missing' },
+    { harness: 'pi', component: 'node', path: '/other/node', source: 'path', state: 'found' }];
+  assert.equal(workerDependencySelectionState(saved, 'pi'), 'incomplete');
+  assert.deepEqual(recommendedWorkerDependencies(saved, 'pi'), request);
+});
+
 test('an explicit selected path remains authoritative even when another candidate is found', () => {
   const selected = {
     harness: 'codex_cli',

@@ -35,9 +35,26 @@ def write_new(path, text, executable=False):
     path.chmod(0o700 if executable else 0o600)
 
 
+def prepare_skill(parent, name, scope, writer=write_new):
+    nonce = secrets.token_hex(12)
+    directory = parent / name
+    discovery, contents, executed = ('discovery-' + nonce, 'contents-' + nonce, 'executed-' + nonce)
+    script = directory / 'receipt.sh'
+    writer(script, '#!/bin/sh\nprintf "%s\\n" ' + shlex.quote(executed) + '\n', True)
+    skill = directory / 'SKILL.md'
+    writer(skill, '\n'.join((
+        '---', 'name: ' + name,
+        'description: Native context read-only receipt ' + discovery, '---', '',
+        'Read this skill and run its receipt script using the native shell tool.',
+        'Content receipt: ' + contents, 'Script: ' + str(script), '',
+    )))
+    return dict(name=name, scope=scope, discovery=discovery, contents=contents,
+                       executed=executed, skill=str(skill), script=str(script))
+
+
 def prepare(home, config, project, harness, suffix='', owned_files=None):
     """Add only new fixture-owned skills and neighbors; never replace existing files."""
-    assert harness in ('codex', 'claude', 'qoder')
+    assert harness in ('codex', 'claude', 'qoder', 'pi')
     home, config, project = map(lambda path: Path(path).resolve(), (home, config, project))
     def owned_write(path, text, executable=False):
         write_new(path, text, executable)
@@ -47,23 +64,9 @@ def prepare(home, config, project, harness, suffix='', owned_files=None):
     skills = []
     for scope, parent in (
         ('user', home / '.agents/skills' if harness == 'codex' else config / 'skills'),
-        ('project', project / {'codex': '.agents/skills', 'claude': '.claude/skills', 'qoder': '.qoder/skills'}[harness]),
+        ('project', project / {'codex': '.agents/skills', 'claude': '.claude/skills', 'qoder': '.qoder/skills', 'pi': '.pi/skills'}[harness]),
     ):
-        nonce = secrets.token_hex(12)
-        name = 'native-context-' + scope + suffix
-        directory = parent / name
-        discovery, contents, executed = ('discovery-' + nonce, 'contents-' + nonce, 'executed-' + nonce)
-        script = directory / 'receipt.sh'
-        owned_write(script, '#!/bin/sh\nprintf "%s\\n" ' + shlex.quote(executed) + '\n', True)
-        skill = directory / 'SKILL.md'
-        owned_write(skill, '\n'.join((
-            '---', 'name: ' + name,
-            'description: Native context read-only receipt ' + discovery, '---', '',
-            'Read this skill and run its receipt script using the native shell tool.',
-            'Content receipt: ' + contents, 'Script: ' + str(script), '',
-        )))
-        skills.append(dict(name=name, scope=scope, discovery=discovery, contents=contents,
-                           executed=executed, skill=str(skill), script=str(script)))
+        skills.append(prepare_skill(parent, 'native-context-' + scope + suffix, scope, owned_write))
     neighbor = config / ('native-context-neighbor' + suffix + '.txt')
     owned_write(neighbor, 'A neighboring user file must survive Worker cleanup.\n')
     protected = [neighbor, *(Path(item[key]) for item in skills for key in ('skill', 'script'))]
@@ -93,7 +96,7 @@ def assert_preserved(fixture):
 
 def tool_results(body, harness):
     """Only correlated tool-result records count, never arbitrary prompt substrings."""
-    if harness in ('codex', 'qoder'):
+    if harness in ('codex', 'qoder', 'pi'):
         source = body.get('input', [])
         return {item.get('call_id'): item.get('output', '') for item in source
                 if isinstance(item, dict) and item.get('type') == 'function_call_output'} \
@@ -178,6 +181,9 @@ def decision(fixture, body):
                     'expected native Skill directory was not loaded'
         assert 'Bash' in names, 'native Bash tool unavailable'
         name = 'Bash'
+    elif harness == 'pi':
+        assert 'bash' in names and 'read' in names, 'native Pi tools unavailable'
+        name = 'bash'
     else:
         name = next((name for name in ('exec_command', 'shell_command') if name in names), None)
         assert name, 'native shell tool unavailable'
@@ -185,7 +191,7 @@ def decision(fixture, body):
                           + shlex.quote(skill['script']) for skill in fixture['skills'])
     arguments = ({'cmd': command, 'max_output_tokens': 2000, 'yield_time_ms': 1000}
                  if name == 'exec_command' else {'command': command, 'timeout_ms': 10000}
-                 if name == 'shell_command' else {'command': command, 'timeout': 10000})
+                 if name == 'shell_command' else {'command': command, 'timeout': 10 if harness == 'pi' else 10000})
     return dict(kind='tool', id='native_context_execute', name=name, arguments=arguments)
 
 
@@ -218,6 +224,8 @@ def events(body, action, protocol):
                 'status': 'completed', 'output': [item],
                 'usage': {'input_tokens': action.get('input_tokens', 1), 'output_tokens': 1,
                           'total_tokens': action.get('input_tokens', 1) + 1}}
+    if action.get('recoverable_length'):
+        response.update(status='incomplete', incomplete_details={'reason':'max_output_tokens'})
     added = dict(item, status='in_progress')
     added['arguments' if action['kind'] == 'tool' else 'content'] = '' if action['kind'] == 'tool' else []
     middle = ([('response.function_call_arguments.delta', {'item_id': item['id'],
@@ -234,7 +242,7 @@ def events(body, action, protocol):
     return [('response.created', {'response': dict(response, status='in_progress', output=[])}),
             ('response.output_item.added', {'output_index': 0, 'item': added}), *middle,
             ('response.output_item.done', {'output_index': 0, 'item': item}),
-            ('response.completed', {'response': response})]
+            ('response.incomplete' if action.get('recoverable_length') else 'response.completed', {'response': response})]
 
 
 def handle(handler, body, controls, lock, reply=decision):
@@ -322,6 +330,7 @@ class NativeContextUpstream:
         self.lock = threading.Lock()
         self.reply = decision
         self.requests = 0
+        self.rejected_requests = 0
         self.proxy_trap = None
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -340,6 +349,11 @@ class NativeContextUpstream:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def reject(self, reason, status):
+                with owner.lock:
+                    owner.rejected_requests += 1
+                self.send({'error': reason}, status)
+
             def do_GET(self):
                 # A manually declared model remains usable without directory discovery.
                 self.send({'error': 'directory not implemented'}, 404)
@@ -348,14 +362,14 @@ class NativeContextUpstream:
                 with owner.lock:
                     owner.requests += 1
                 if self.headers.get('Authorization') != 'Bearer ' + owner.token:
-                    return self.send({'error': 'incorrect synthetic source credential'}, 401)
+                    return self.reject('incorrect synthetic source credential', 401)
                 if self.path not in ('/v1/responses', '/v1/messages'):
-                    return self.send({'error': 'incorrect source endpoint'}, 404)
+                    return self.reject('incorrect source endpoint', 404)
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 if body.get('model') != owner.model:
-                    return self.send({'error': 'incorrect source model'}, 400)
+                    return self.reject('incorrect source model', 400)
                 if not handle(self, body, owner.controls, owner.lock, owner.reply):
-                    self.send({'error': 'native context fixture is not prepared'}, 503)
+                    self.reject('native context fixture is not prepared', 503)
 
             def send_messages_stream(self, frames):
                 encoded = []
@@ -376,6 +390,10 @@ class NativeContextUpstream:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = 'http://%s:%d/v1' % self.server.server_address
+
+    def rejected_count(self):
+        with self.lock:
+            return self.rejected_requests
 
     def request_count(self):
         """All source attempts, including rejected credentials; never record a secret."""

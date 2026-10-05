@@ -5,10 +5,10 @@ const PROVIDER: &str =
     "hiroute-main-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const ENDPOINT: &str = "http://127.0.0.1:4321/_hiroute/qoder/v1";
 
-fn models() -> Vec<QoderAdditionalModelV1> {
+fn models() -> Vec<AdditionalAgentModelV1> {
     ["plan-branch-cheap", "hiroute/0011223344556677"]
         .into_iter()
-        .map(|alias| QoderAdditionalModelV1 {
+        .map(|alias| AdditionalAgentModelV1 {
             alias: alias.into(),
             context_window_tokens: 32_768,
             max_output_tokens: 4096,
@@ -21,7 +21,16 @@ fn token(byte: u8) -> AgentAccessGrantMaterial {
 }
 
 fn install(bytes: Option<&[u8]>) -> Edit {
-    configure(bytes, PROVIDER, ENDPOINT, &models(), &token(3), None).unwrap()
+    configure(
+        hiroute_domain::AgentKindV1::Qoder,
+        bytes,
+        PROVIDER,
+        ENDPOINT,
+        &models(),
+        &token(3),
+        None,
+    )
+    .unwrap()
 }
 
 fn value(bytes: &[u8]) -> Value {
@@ -86,6 +95,7 @@ fn unrelated_edits_survive_rotation_and_final_restore_without_adopting_owned_dri
         .replace("\"unrelated\":1", "\"unrelated\":2 /* user changed this */");
     assert!(first.restore.applied(Some(edited.as_bytes())).unwrap());
     let rotated = configure(
+        hiroute_domain::AgentKindV1::Qoder,
         Some(edited.as_bytes()),
         PROVIDER,
         ENDPOINT,
@@ -118,6 +128,7 @@ fn unrelated_edits_survive_rotation_and_final_restore_without_adopting_owned_dri
     assert!(rotated.restore.restore(Some(&drift)).is_err());
     assert!(
         configure(
+            hiroute_domain::AgentKindV1::Qoder,
             Some(&drift),
             PROVIDER,
             ENDPOINT,
@@ -145,6 +156,7 @@ fn removing_selected_native_default_requires_user_switch_but_retaining_it_is_all
     );
     assert_eq!(
         validate_configuration(
+            hiroute_domain::AgentKindV1::Qoder,
             Some(&current),
             PROVIDER,
             ENDPOINT,
@@ -156,6 +168,7 @@ fn removing_selected_native_default_requires_user_switch_but_retaining_it_is_all
         "default in use"
     );
     let adjusted = configure(
+        hiroute_domain::AgentKindV1::Qoder,
         Some(&current),
         PROVIDER,
         ENDPOINT,
@@ -186,6 +199,7 @@ fn existing_provider_is_never_claimed_by_name_and_missing_original_is_removed_ex
     let first = install(None);
     assert!(
         configure(
+            hiroute_domain::AgentKindV1::Qoder,
             Some(&first.bytes),
             PROVIDER,
             ENDPOINT,
@@ -280,7 +294,18 @@ fn ambiguous_or_malformed_documents_fail_without_normalizing_foreign_settings() 
         br#"{"providers":[]}"#,
         br#"{"model":{"name":"auto"}} trailing"#,
     ] {
-        assert!(configure(Some(bytes), PROVIDER, ENDPOINT, &models(), &token(3), None).is_err());
+        assert!(
+            configure(
+                hiroute_domain::AgentKindV1::Qoder,
+                Some(bytes),
+                PROVIDER,
+                ENDPOINT,
+                &models(),
+                &token(3),
+                None
+            )
+            .is_err()
+        );
     }
     for separator in ["\r", "\u{2028}", "\u{2029}"] {
         let ambiguous = format!(
@@ -288,6 +313,7 @@ fn ambiguous_or_malformed_documents_fail_without_normalizing_foreign_settings() 
         );
         assert!(
             configure(
+                hiroute_domain::AgentKindV1::Qoder,
                 Some(ambiguous.as_bytes()),
                 PROVIDER,
                 ENDPOINT,
@@ -319,11 +345,45 @@ fn ambiguous_or_malformed_documents_fail_without_normalizing_foreign_settings() 
 fn declarations_reject_unknown_budget_duplicate_alias_and_unowned_namespace() {
     let mut selected = models();
     selected.push(selected[0].clone());
-    assert!(validate_declaration(PROVIDER, ENDPOINT, &selected).is_err());
-    assert!(validate_declaration("hiroute-worker-123", ENDPOINT, &models()).is_err());
-    assert!(validate_declaration(PROVIDER, "https://external.example/v1", &models()).is_err());
+    assert!(
+        validate_declaration(
+            hiroute_domain::AgentKindV1::Qoder,
+            PROVIDER,
+            ENDPOINT,
+            &selected
+        )
+        .is_err()
+    );
+    assert!(
+        validate_declaration(
+            hiroute_domain::AgentKindV1::Qoder,
+            "hiroute-worker-123",
+            ENDPOINT,
+            &models()
+        )
+        .is_err()
+    );
+    assert!(
+        validate_declaration(
+            hiroute_domain::AgentKindV1::Qoder,
+            PROVIDER,
+            "https://external.example/v1",
+            &models()
+        )
+        .is_err()
+    );
     selected = models();
     selected[0].max_output_tokens = 32_000; // the exact 32K/32K zero-threshold regression
-    assert!(validate_declaration(PROVIDER, ENDPOINT, &selected).is_err());
-    assert!(validate_declaration(PROVIDER, ENDPOINT, &[]).is_err());
+    assert!(
+        validate_declaration(
+            hiroute_domain::AgentKindV1::Qoder,
+            PROVIDER,
+            ENDPOINT,
+            &selected
+        )
+        .is_err()
+    );
+    assert!(
+        validate_declaration(hiroute_domain::AgentKindV1::Qoder, PROVIDER, ENDPOINT, &[]).is_err()
+    );
 }

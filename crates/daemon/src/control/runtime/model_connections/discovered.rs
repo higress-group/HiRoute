@@ -130,6 +130,18 @@ impl LocalControlAdapter {
             candidate.discovery.discovery_ref == request.discovery.discovery_ref
                 && candidate.discovery.discovery_revision == request.discovery.discovery_revision
         }) else {
+            if let Some(source) = self
+                .scanner
+                .pi_api_sources()
+                // An unreadable unrelated source must not replace the selected
+                // discovery result (including stale/forged Claude handles).
+                // No matching Pi source still fails below; no candidate is created.
+                .unwrap_or_default()
+                .into_iter()
+                .find(|source| super::pi_discovered::pi_discovery(source) == request.discovery)
+            {
+                return self.prepare_pi_discovered_candidate(source, &request.prepare_id);
+            }
             return Err(if current_exists {
                 ComputeManagementControlError::DiscoveryChanged
             } else if recognized_configuration {

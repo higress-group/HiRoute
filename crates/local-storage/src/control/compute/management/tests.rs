@@ -332,14 +332,14 @@ fn discovery_change(
     }
 }
 
-fn apply_preview(
+fn apply_preview<I: ProtectedInputPort>(
     _stores: &LocalStorageSet,
     planner: &ComputeManagementPlanner<
         '_,
         TrustedComputeCandidateRegistry,
         ControlStore,
         LocalSecretStore,
-        ProtectedInput,
+        I,
     >,
     coordinator: &TransactionCoordinator<
         '_,
@@ -347,7 +347,7 @@ fn apply_preview(
         LocalSecretStore,
         RuntimeStore,
         NoExternal,
-        ProtectedInput,
+        I,
     >,
     workspace: &WorkspaceId,
     preview: ComputeManagementPreparedPreviewV2,
@@ -843,6 +843,99 @@ fn discovered_candidate_config_change_between_preview_and_apply_is_stale_before_
         .sources
         .is_empty()
     );
+}
+
+#[test]
+fn reimport_of_saved_native_source_still_rejects_changed_discovery_without_key_edits() {
+    let directory = tempdir().unwrap();
+    let stores = LocalStorageSet::open_for_daemon_startup(directory.path()).unwrap();
+    let workspace = WorkspaceId::default();
+    let registry = TrustedComputeCandidateRegistry::new();
+    let evidence = CanonicalDigest::of_bytes(b"static-native-source/v1");
+    let mut facts = discovered_candidate(evidence.clone());
+    facts.provenance = ComputeCandidateProvenanceV2::UserConfigured {
+        configuration_revision: 1,
+        evidence_digest: facts.evidence_digest.clone(),
+    };
+    registry.register_compute_candidate(facts.clone()).unwrap();
+    let input = DiscoveryProtectedInput::new(evidence);
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    coordinator.reconcile_startup_and_open().unwrap();
+    let snapshot = || {
+        hiroute_domain::ComputeManagementRepositoryPort::compute_management_snapshot(
+            stores.control(),
+            &workspace,
+        )
+        .unwrap()
+    };
+    let first = planner
+        .preview(discovery_change(&facts, snapshot().revisions))
+        .unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &workspace,
+        first,
+        "native-source-first-save",
+    );
+    let before = snapshot();
+    // A no-key-edit reimport with the same evidence remains a valid product save.
+    let repeat = planner
+        .preview(discovery_change(&facts, before.revisions))
+        .unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &workspace,
+        repeat,
+        "native-source-unchanged-reimport",
+    );
+    assert_eq!(
+        snapshot().sources[0].credentials,
+        before.sources[0].credentials
+    );
+    let before = snapshot();
+    let change = discovery_change(&facts, before.revisions.clone());
+    let preview = planner.preview(change.clone()).unwrap();
+    let request = ComputeConnectionApplyRequestV1 {
+        spec: preview.result.spec,
+        accept_digest: preview.result.accept_digest,
+        expected_revisions: preview.result.expected_revisions,
+        idempotency_key: "native-source-reimport".into(),
+    };
+    let prepared = planner.prepare_apply(request.clone()).unwrap();
+    input.evidence_valid.store(false, Ordering::Release);
+    assert!(matches!(
+        planner.preview(change),
+        Err(ComputeManagementPlanningErrorV2::PreviewStale)
+    ));
+    assert!(matches!(
+        planner.prepare_apply(request),
+        Err(ComputeManagementPlanningErrorV2::PreviewStale)
+    ));
+    assert!(matches!(
+        coordinator.accept_prepared(
+            &workspace,
+            &VerifiedPrincipal::for_local_control(),
+            prepared
+        ),
+        Err(TransactionError::ChangePreviewStale)
+    ));
+    assert_eq!(snapshot().sources, before.sources);
+    assert_eq!(snapshot().revisions, before.revisions);
 }
 
 mod disabled;

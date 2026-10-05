@@ -21,10 +21,15 @@ impl QoderFixture {
     }
 
     fn with_models(models: bool) -> Self {
+        Self::with_kind(models, AgentKindV1::Qoder)
+    }
+
+    fn with_kind(models: bool, kind: AgentKindV1) -> Self {
+        let pi = kind == AgentKindV1::Pi;
         let root = tempfile::tempdir().unwrap();
         fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-        let config_root = home.join("selected-qoder");
+        let config_root = home.join(if pi { "selected-pi" } else { "selected-qoder" });
         private_file(
             &config_root.join("settings.json"),
             b"native settings are opaque to HiRoute\n",
@@ -35,9 +40,32 @@ impl QoderFixture {
         let mut layout = AgentFilesystemLayoutV1::from_process(&home, root.path());
         layout.codex_executable = root.path().join("missing-codex");
         layout.claude_executable = root.path().join("missing-claude");
-        layout.qoder_executable = executable;
+        if pi {
+            let package = root.path().join("selected-pi-package");
+            private_file(&package.join("package.json"), br#"{"name":"@earendil-works/pi-coding-agent","version":"1.0.2","bin":{"pi":"dist/bundle/cli.js"}}"#);
+            private_file(&package.join("dist/index.js"), b"test SDK location only");
+            private_file(&package.join("dist/bundle/cli.js"), b"#!/bin/sh\nexit 97\n");
+            fs::set_permissions(
+                package.join("dist/bundle/cli.js"),
+                fs::Permissions::from_mode(0o700),
+            )
+            .unwrap();
+            layout.pi_executable = package.join("dist/bundle/cli.js");
+            layout.pi_config_root = config_root.clone();
+            private_file(
+                &config_root.join("settings.json"),
+                br#"{"defaultProvider":"native","defaultModel":"default","theme":"dark"}"#,
+            );
+        } else {
+            layout.pi_executable = root.path().join("missing-pi");
+            layout.qoder_executable = executable;
+        }
         layout.qoder_home = home.clone();
-        layout.qoder_config_root = config_root.clone();
+        if !pi {
+            layout.qoder_config_root = config_root.clone();
+        } else {
+            layout.qoder_executable = root.path().join("missing-qoder");
+        }
         let registry = serde_json::from_slice(include_bytes!(
             "../../../../../assets/connector-registry/current/registry-seed.json"
         ))
@@ -51,8 +79,16 @@ impl QoderFixture {
             ClaudeRegistrationIndexV1::from_verified_model_data(&registry, &model_data.data)
                 .unwrap(),
         );
-        let native_config = scanner.qoder_user_config_target();
-        let skill = scanner.qoder_user_skill_target();
+        let native_config = if pi {
+            scanner.pi_user_models_target()
+        } else {
+            scanner.qoder_user_config_target()
+        };
+        let skill = if pi {
+            scanner.pi_user_skill_target()
+        } else {
+            scanner.qoder_user_skill_target()
+        };
         // Native executables/workspace are not storage contents. Production deliberately
         // refuses to initialize a store over an unrelated pre-existing file tree.
         let storage = root.path().join("storage");
@@ -69,12 +105,23 @@ impl QoderFixture {
             runtime
         };
         if models {
-            private_file(&native_config, br#"{"model":{"name":"native/default"},"providers":{"native":{"user":"preserved"}},"unknown":{"keep":true}}"#);
+            private_file(
+                &native_config,
+                if pi {
+                    br#"{"providers":{"native":{"user":"preserved"}},"unknown":{"keep":true}}"#
+                } else {
+                    br#"{"model":{"name":"native/default"},"providers":{"native":{"user":"preserved"}},"unknown":{"keep":true}}"#
+                },
+            );
         }
         runtime.adapter.reconcile_startup_and_open().unwrap();
         let context = runtime
             .adapter
-            .settings_context_for_agent("agent_qoder_default")
+            .settings_context_for_agent(if pi {
+                "agent_pi_default"
+            } else {
+                "agent_qoder_default"
+            })
             .unwrap();
         let service = LocalControlDaemon::new(ApplicationService::new(
             runtime.application_ports().with_agent_connection(Arc::new(

@@ -13,6 +13,7 @@ pub(super) struct FileRace {
     pub adapter: Arc<LocalControlAdapter>,
     pub path: std::path::PathBuf,
     pub fail_after_file: bool,
+    pub replacement: Option<Vec<u8>>,
 }
 impl ApplicationMutationPort for FileRace {
     fn preview_change(
@@ -116,11 +117,12 @@ impl ExternalEffectPort for FileRace {
             && op.plan.external().iter().any(|i| {
                 i.target() == e.target
                     && (crate::control::runtime::native_model::is_settings_codex_model(i)
-                        || crate::control::runtime::native_qoder_model::is_settings_qoder_model(i))
+                        || crate::control::runtime::native_additional_model::is_settings_additional_model(i))
             })
         {
             let original = fs::read_to_string(&self.path).unwrap();
-            fs::write(&self.path, format!("# user's concurrent edit\n{original}")).unwrap();
+            fs::write(&self.path, self.replacement.clone().unwrap_or_else(||
+                format!("# user's concurrent edit\n{original}").into_bytes())).unwrap();
             return self.adapter.activate_external(op, e);
         }
         self.adapter.activate_external(op, e)

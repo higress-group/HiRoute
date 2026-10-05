@@ -1224,6 +1224,77 @@ fn unknown_native_text_uses_execution_defaults_without_overwriting_unknown_facts
     assert!(fact.capabilities.tool.value.is_none());
     assert!(candidate.free_evidence.is_none());
     assert!(candidate.ordering_price.is_none());
+    // Native observations keep their measured limits and source-local target,
+    // including a loopback HTTP API, rather than acquiring Registry authority.
+    let mut imported = fact.clone();
+    imported.eligibility = ComputeManagementEligibilityV2::NativeObserved;
+    imported.capabilities.context_tokens = hiroute_domain::ComputeManagementFactValueV2 {
+        value: Some(16_384),
+        basis: hiroute_domain::ComputeManagementFactBasisV2::Observed,
+    };
+    imported.capabilities.max_output_tokens = hiroute_domain::ComputeManagementFactValueV2 {
+        value: Some(4_096),
+        basis: hiroute_domain::ComputeManagementFactBasisV2::Observed,
+    };
+    let native = materialize_management_candidate(&imported, None).unwrap();
+    assert_eq!(native.authority, CandidateFactAuthorityV1::SourceLocalUser);
+    assert_eq!(native.model.capabilities.context_tokens, 16_384);
+    assert_eq!(native.model.capabilities.max_output_tokens, 4_096);
+    assert_eq!(native.operational_target, candidate.operational_target);
+    for (protocol, path) in [
+        (UpstreamProtocol::Responses, "/v1/responses"),
+        (UpstreamProtocol::ChatCompletions, "/v1/chat/completions"),
+        (UpstreamProtocol::Messages, "/v1/messages"),
+    ] {
+        for parameter in [
+            "enable_thinking",
+            "deepseek_thinking",
+            "reasoning_effort",
+            "thinking_budget",
+            "custom_toggle",
+        ] {
+            let mut toggled = imported.clone();
+            toggled.target.upstream_protocol = protocol;
+            toggled.target.request_path = path.into();
+            toggled.native_reasoning = NativeReasoningCapabilityV1::Toggle {
+                parameter: parameter.into(),
+            };
+            let native = materialize_management_candidate(&toggled, None).unwrap();
+            for enabled in [false, true] {
+                let selection = hiroute_domain::AgentFixedModelSelectionV2 {
+                    client_model_id: "native-route".into(),
+                    candidate: hiroute_domain::CandidateSelectionV1 {
+                        binding_id: native.binding.binding_id.clone(),
+                        reasoning: Some(hiroute_domain::ReasoningSelectionV1::Toggle { enabled }),
+                    },
+                };
+                // Follow actual renderer output through both the compiler and
+                // Gateway ingestion; matching the Domain alone is insufficient.
+                let routes = hiroute_application::compiler::compile_fixed_model_bindings(
+                    &[selection],
+                    std::slice::from_ref(&native),
+                )
+                .unwrap();
+                assert_eq!(
+                    routes["native-route"].operational_target,
+                    native.operational_target
+                );
+                for profile in &routes["native-route"].protocol_profiles {
+                    let gateway: hiroute_gateway::server::core_runtime::profiles::CandidateProtocolProfile =
+                        serde_json::from_value(serde_json::to_value(profile).unwrap()).unwrap();
+                    assert!(
+                        gateway
+                            .capability
+                            .reasoning_profiles
+                            .iter()
+                            .all(|reasoning| reasoning
+                                .validate_for(gateway.capability.upstream_protocol)),
+                        "{parameter} {protocol:?} {enabled}"
+                    );
+                }
+            }
+        }
+    }
     let mut second_source = fact.clone();
     second_source.source_id = "second-source-same-model".into();
     second_source.binding_id = "binding/second-source".into();

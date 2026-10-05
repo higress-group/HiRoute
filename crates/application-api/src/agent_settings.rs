@@ -242,6 +242,7 @@ impl AgentModelSettingsStatusV2 {
                 AgentModelSurfaceV2::CodexCli | AgentModelSurfaceV2::CodexDesktop
             ),
             AgentModelSelectionV2::ClaudeLauncher { surfaces, .. } => surfaces.contains(surface),
+            AgentModelSelectionV2::PiAdditional { .. } => *surface == AgentModelSurfaceV2::PiCli,
             AgentModelSelectionV2::QoderAdditional { .. } => {
                 *surface == AgentModelSurfaceV2::QoderCli
             }

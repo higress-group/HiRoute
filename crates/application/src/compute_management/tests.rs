@@ -819,6 +819,51 @@ fn local_compilation_preserves_no_credential_and_user_confirmed_reasoning() {
     assert_eq!(compiled[0].capabilities.tool.value, None);
 }
 
+#[test]
+fn imported_native_model_keeps_observed_capabilities_when_compiled_for_routing() {
+    use hiroute_domain::{ComputeManagementFactBasisV2 as Basis, ComputeManagementMembershipV2};
+
+    let mut source = complete_management_source();
+    let model = &mut source.models[0];
+    model.membership = ComputeManagementMembershipV2::Observed;
+    model.capabilities.vision.basis = Basis::Observed;
+    model.capabilities.context_tokens.basis = Basis::Observed;
+    model.capabilities.max_output_tokens.basis = Basis::Observed;
+    model.capabilities.tool.value = None;
+    model.capabilities.tool.basis = Basis::Unknown;
+    model.capabilities.streaming.value = None;
+    model.capabilities.streaming.basis = Basis::Unknown;
+    model.capabilities.native_reasoning.value = None;
+    model.capabilities.native_reasoning.basis = Basis::Unknown;
+
+    let facts = compile_compute_management_source(&source).unwrap();
+    assert_eq!(facts.len(), 1);
+    assert_eq!(
+        facts[0].eligibility,
+        ComputeManagementEligibilityV2::NativeObserved
+    );
+    assert_eq!(facts[0].capabilities, source.models[0].capabilities);
+    assert_eq!(
+        facts[0].upstream_model_id,
+        source.models[0].upstream_model_id
+    );
+    assert_eq!(facts[0].target, source.target);
+
+    // Neither manually declared membership nor a catalog assertion can acquire
+    // the native observation path by changing a fact's basis.
+    source.models[0].membership = ComputeManagementMembershipV2::UserDeclared;
+    assert_eq!(
+        compile_compute_management_source(&source),
+        Err(ComputeManagementCompilationErrorV2::EligibilityMismatch)
+    );
+    source.models[0].membership = ComputeManagementMembershipV2::Observed;
+    source.models[0].capabilities.vision.basis = Basis::RegisteredCatalog;
+    assert_eq!(
+        compile_compute_management_source(&source),
+        Err(ComputeManagementCompilationErrorV2::EligibilityMismatch)
+    );
+}
+
 struct OneSourceRepository(hiroute_domain::ComputeManagementSourceV2);
 
 impl hiroute_domain::ComputeManagementRepositoryPort for OneSourceRepository {

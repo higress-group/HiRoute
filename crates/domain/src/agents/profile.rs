@@ -14,6 +14,7 @@ pub enum AgentKindV1 {
     Codex,
     ClaudeCode,
     Qoder,
+    Pi,
 }
 
 impl AgentKindV1 {
@@ -35,6 +36,12 @@ impl AgentKindV1 {
                 ConfigLayerV1::Project,
                 ConfigLayerV1::User,
             ],
+            Self::Pi => &[
+                ConfigLayerV1::Process,
+                ConfigLayerV1::Launch,
+                ConfigLayerV1::Project,
+                ConfigLayerV1::User,
+            ],
             Self::Qoder => &[
                 ConfigLayerV1::Process,
                 ConfigLayerV1::Local,
@@ -49,6 +56,7 @@ impl AgentKindV1 {
             Self::Codex => "codex",
             Self::ClaudeCode => "claude_code",
             Self::Qoder => "qoder",
+            Self::Pi => "pi",
         }
     }
 }
@@ -205,7 +213,7 @@ impl AgentProfileV1 {
         if self.config_precedence.as_slice() != self.kind.config_precedence() {
             return Err(AgentProfileError::InvalidConfigPrecedence);
         }
-        if self.kind == AgentKindV1::Qoder
+        if matches!(self.kind, AgentKindV1::Qoder | AgentKindV1::Pi)
             && (self.dynamic_catalog
                 || self.static_catalog_fallback
                 || self.native_subagent_routing
@@ -246,7 +254,10 @@ impl AgentProfileV1 {
             return Err(AgentProfileError::InvalidManagedLaunch);
         }
         match (self.kind, self.ingress_protocol) {
-            (AgentKindV1::Codex | AgentKindV1::Qoder, Some(AgentIngressProtocolV1::Responses))
+            (
+                AgentKindV1::Codex | AgentKindV1::Qoder | AgentKindV1::Pi,
+                Some(AgentIngressProtocolV1::Responses),
+            )
             | (AgentKindV1::ClaudeCode, Some(AgentIngressProtocolV1::Messages)) => Ok(()),
             _ => Err(AgentProfileError::ProtocolKindMismatch),
         }

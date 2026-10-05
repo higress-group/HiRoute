@@ -11,6 +11,8 @@ use crate::agents::{
 
 #[path = "filesystem_tests/claude_routing.rs"]
 mod claude_routing;
+#[path = "filesystem_tests/pi.rs"]
+mod pi;
 #[path = "filesystem_tests/qoder.rs"]
 mod qoder;
 
@@ -81,6 +83,8 @@ fn layout_with_claude_version(root: &Path, claude_version: &str) -> AgentFilesys
         codex_desktop_executable: None,
         claude_executable: claude,
         qoder_executable: bin.join("qoder-not-installed"),
+        pi_executable: root.join("bin/pi"),
+        pi_config_root: root.join("home/.pi/agent"),
         qoder_home: home.clone(),
         qoder_config_root: home.join(".qoder"),
         codex_user_config: home.join(".codex/config.toml"),
@@ -108,7 +112,7 @@ fn filesystem_scanner_registers_claude_and_never_serializes_token() {
     );
     let scanner = FilesystemAgentScannerV1::new(layout, registry());
     let results = scanner.scan();
-    assert_eq!(results.len(), 3);
+    assert_eq!(results.len(), 4);
     let claude = results
         .iter()
         .find(|result| outcome_agent_id(&result.outcome) == "agent_claude_default")
@@ -897,7 +901,7 @@ fn filesystem_scan_keeps_missing_installation_and_other_agent_result() {
     let mut layout = layout(directory.path());
     layout.codex_executable = directory.path().join("not-installed");
     let results = FilesystemAgentScannerV1::new(layout, registry()).scan();
-    assert_eq!(results.len(), 3);
+    assert_eq!(results.len(), 4);
     assert!(results.iter().any(|result| matches!(
         &result.outcome,
         AgentDiscoveryOutcomeV1::ReportOnly {

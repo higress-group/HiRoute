@@ -1,4 +1,4 @@
-export type WorkerHarness = 'codex_cli' | 'claude_code' | 'qoder_cli';
+export type WorkerHarness = 'codex_cli' | 'claude_code' | 'qoder_cli' | 'pi';
 export type WorkerDependencyComponent = 'cli' | 'adapter' | 'node';
 export type WorkerDependencyCandidateState = 'found' | 'missing' | 'invalid' | 'unavailable';
 
@@ -37,14 +37,14 @@ export type WorkerDependencySelectionRequest = WorkerDependencySelection & {
 };
 
 export function workerDependencyComponents(harness: WorkerHarness): WorkerDependencyComponent[] {
-  return harness === 'qoder_cli' ? ['cli'] : ['cli', 'adapter', 'node'];
+  return harness === 'qoder_cli' ? ['cli'] : harness === 'pi' ? ['cli', 'node'] : ['cli', 'adapter', 'node'];
 }
 
 export function workerDependencySelectionComplete(selection: WorkerDependencySelection | null): boolean {
   if (!selection?.cli_path) return false;
   return selection.harness === 'qoder_cli'
     ? selection.adapter_path == null && selection.node_path == null
-    : Boolean(selection.adapter_path);
+    : selection.harness === 'pi' ? selection.adapter_path == null && Boolean(selection.node_path) : Boolean(selection.adapter_path);
 }
 
 export type WorkerMachineEnvelope<T> = {
@@ -105,7 +105,7 @@ export function recommendedWorkerDependencies(
     harness,
     cli_path: found('cli')?.path ?? '',
     ...(harness === 'qoder_cli' ? {} : {
-      adapter_path: found('adapter')?.path ?? '',
+      ...(harness === 'pi' ? {} : { adapter_path: found('adapter')?.path ?? '' }),
       node_path: found('node')?.path ?? null,
     }),
     expected_selection_revision: workerDependencyRevision(view, harness),
@@ -123,13 +123,13 @@ export function workerDependencySelectionState(
         && candidate.component === component
         && candidate.path === path)?.state
     : undefined;
-  const nodeRequired = harness !== 'qoder_cli' && (Boolean(request.node_path)
+  const nodeRequired = harness === 'pi' || harness !== 'qoder_cli' && (Boolean(request.node_path)
     || (!selected && view.install_hints.some(hint => hint.harness === harness
       && hint.component === 'node'
       && hint.reason_code === 'worker.dependencies.install_required')));
   const complete = workerDependencySelectionComplete(request)
     && fact('cli', request.cli_path) === 'found'
-    && (harness === 'qoder_cli' || fact('adapter', request.adapter_path) === 'found')
+    && (harness === 'qoder_cli' || harness === 'pi' || fact('adapter', request.adapter_path) === 'found')
     && (!nodeRequired || fact('node', request.node_path) === 'found');
   if (selected && complete) return 'configured';
   if (complete) return 'found';

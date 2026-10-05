@@ -25,6 +25,7 @@ pub(super) fn parse_dependencies_discover(
                     "codex_cli" => WorkerHarnessV1::CodexCli,
                     "claude_code" => WorkerHarnessV1::ClaudeCode,
                     "qoder_cli" => WorkerHarnessV1::QoderCli,
+                    "pi" => WorkerHarnessV1::Pi,
                     _ => return Err(ErrorCode::InvalidArguments),
                 };
                 harness = unique(harness, parsed)?;

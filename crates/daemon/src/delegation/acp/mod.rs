@@ -21,6 +21,7 @@ use super::progress::ProgressSink;
 
 mod identity;
 mod model;
+mod pi_failure;
 mod transport;
 pub use identity::AcpNativeIdentityContract;
 pub use transport::MAX_ACP_FRAME_BYTES;
@@ -363,7 +364,7 @@ async fn run_session(
         biased;
         _ = input.cancellation.cancelled() => None,
         _ = tokio::time::sleep_until(input.deadline) => None,
-        response = &mut prompt => Some(response.map_err(|_| DelegationErrorV1::ProtocolFailed)?),
+        response = &mut prompt => Some(response.map_err(pi_failure::map_error)?),
     };
     let stop_reason = if let Some(response) = response {
         let prompt_failed = prompt_session_failure(response.meta.as_ref())?;
@@ -500,7 +501,7 @@ async fn phase<T>(
         biased;
         _ = cancellation.cancelled() => Err(DelegationErrorV1::Cancelled),
         _ = tokio::time::sleep_until(deadline) => Err(DelegationErrorV1::DeadlineExceeded),
-        result = future => result.map_err(|_| DelegationErrorV1::ProtocolFailed),
+        result = future => result.map_err(pi_failure::map_error),
     }
 }
 

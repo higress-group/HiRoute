@@ -80,7 +80,7 @@ impl TaskSessionRoot {
                 if binding.native_session_id != native_session_id {
                     return Err(DelegationErrorV1::ResumeUnavailable);
                 }
-                verify_borrowed_history(&context, native_session_id)
+                verify_borrowed_history(&self.path, &context, native_session_id)
             }
             None => legacy_native_history(&self.path, self.harness, native_session_id).map(|_| ()),
         }
@@ -94,7 +94,11 @@ impl TaskSessionRoot {
         native_session_id: &str,
     ) -> Result<PathBuf, DelegationErrorV1> {
         if let Some(context) = read_context(root, harness)? {
-            return claude_transcript(&context, native_session_id);
+            return if harness == WorkerHarnessV1::Pi {
+                pi_transcript(root, &context, native_session_id)
+            } else {
+                claude_transcript(&context, native_session_id)
+            };
         }
         legacy_native_history(root, harness, native_session_id)?
             .pop()
@@ -113,7 +117,7 @@ pub(super) fn read_context(
             return match fs::symlink_metadata(root.join(SESSION_FILE)) {
                 Err(error)
                     if error.kind() == std::io::ErrorKind::NotFound
-                        && harness != WorkerHarnessV1::QoderCli =>
+                        && !matches!(harness, WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi) =>
                 {
                     Ok(None)
                 }
@@ -152,7 +156,7 @@ pub(super) fn retain_borrowed_session(
     native_session_id: &str,
 ) -> Result<Vec<String>, DelegationErrorV1> {
     let context = read_context(root, harness)?.ok_or(DelegationErrorV1::ResumeUnavailable)?;
-    verify_borrowed_history(&context, native_session_id)?;
+    verify_borrowed_history(root, &context, native_session_id)?;
     write_owned_json(
         root,
         SESSION_FILE,
@@ -162,7 +166,11 @@ pub(super) fn retain_borrowed_session(
             native_session_id: native_session_id.to_owned(),
         },
     )?;
-    Ok(vec![SESSION_FILE.to_owned()])
+    Ok(if harness == WorkerHarnessV1::Pi {
+        vec![SESSION_FILE.to_owned(), "native-pi.jsonl".into()]
+    } else {
+        vec![SESSION_FILE.to_owned()]
+    })
 }
 
 pub(super) fn verify_continuation_materials(
@@ -171,11 +179,19 @@ pub(super) fn verify_continuation_materials(
     required: &[PathBuf],
 ) -> Result<(), DelegationErrorV1> {
     if let Some(context) = read_context(root, harness)? {
-        if required != [PathBuf::from(SESSION_FILE)] {
+        let expected = if harness == WorkerHarnessV1::Pi {
+            vec![
+                PathBuf::from(SESSION_FILE),
+                PathBuf::from("native-pi.jsonl"),
+            ]
+        } else {
+            vec![PathBuf::from(SESSION_FILE)]
+        };
+        if required != expected {
             return Err(DelegationErrorV1::ResumeUnavailable);
         }
         let binding = read_binding(root, &context)?;
-        verify_borrowed_history(&context, &binding.native_session_id)?;
+        verify_borrowed_history(root, &context, &binding.native_session_id)?;
     }
     Ok(())
 }
@@ -197,14 +213,46 @@ fn context_digest(context: &ContextDescriptor) -> Result<CanonicalDigest, Delega
 }
 
 fn verify_borrowed_history(
+    root: &Path,
     context: &ContextDescriptor,
     native_session_id: &str,
 ) -> Result<(), DelegationErrorV1> {
     validate_session_id(native_session_id)?;
+    if context.harness == WorkerHarnessV1::Pi {
+        pi_transcript(root, context, native_session_id)?;
+    }
     if context.harness == WorkerHarnessV1::ClaudeCode {
         claude_transcript(context, native_session_id)?;
     }
     Ok(())
+}
+
+/// Pi's exact file is owned by this task; native open must never recreate missing history.
+fn pi_transcript(
+    root: &Path,
+    context: &ContextDescriptor,
+    id: &str,
+) -> Result<PathBuf, DelegationErrorV1> {
+    let relative = Path::new("native-pi.jsonl");
+    check_history(root, relative).map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
+    let path = root.join(relative);
+    let file = fs::File::open(&path).map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
+    use std::io::BufRead;
+    let mut reader = std::io::BufReader::new(file.take(METADATA_LIMIT));
+    let mut header = String::new();
+    reader
+        .read_line(&mut header)
+        .map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
+    let header: serde_json::Value =
+        serde_json::from_str(&header).map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
+    if header["type"] != "session"
+        || header["version"] != 3
+        || header["id"] != id
+        || header["cwd"].as_str() != context.context.workspace.to_str()
+    {
+        return Err(DelegationErrorV1::ResumeUnavailable);
+    }
+    Ok(path)
 }
 
 fn claude_transcript(

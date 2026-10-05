@@ -11,7 +11,10 @@ impl LocalControlAdapter {
         if request.schema != "hiroute.agent-settings-retry/v1"
             || self
                 .settings_agent_for_context(&request.context_id)
-                .is_none_or(|class| !class.is_codex() && class != SettingsAgentClass::Qoder)
+                .is_none_or(|class| {
+                    !class.is_codex()
+                        && !matches!(class, SettingsAgentClass::Qoder | SettingsAgentClass::Pi)
+                })
         {
             return Err(ControlReadError::Denied);
         }
@@ -33,14 +36,17 @@ impl LocalControlAdapter {
         if matches!(spec.model, AgentFacetIntent::Keep) {
             return Err(ControlReadError::Denied);
         }
-        if self.settings_agent_for_context(&request.context_id) == Some(SettingsAgentClass::Qoder) {
+        if matches!(
+            self.settings_agent_for_context(&request.context_id),
+            Some(SettingsAgentClass::Qoder | SettingsAgentClass::Pi)
+        ) {
             let intent = op
                 .plan
                 .external()
                 .iter()
-                .find(|intent| super::native_qoder_model::is_settings_qoder_model(intent))
+                .find(|intent| super::native_additional_model::is_settings_additional_model(intent))
                 .ok_or(ControlReadError::Denied)?;
-            hiroute_application::agent_connection::settings_qoder_model_file_for_operation(
+            hiroute_application::agent_connection::settings_additional_model_file_for_operation(
                 &op, intent,
             )
             .map_err(super::map_port)?;

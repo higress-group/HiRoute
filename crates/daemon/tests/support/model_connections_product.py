@@ -232,12 +232,17 @@ def save_native_source(product, upstream, token=None, unknown=False,
                   if model['upstream_model_id'] == upstream_model_id)
     assert manual['selectable'] and manual['membership'] == 'user_declared', manual
 
+    return save_compute_candidate(product, checked['candidate'], manual['model_ref'], 'native-product-save' + suffix)
+
+
+def save_compute_candidate(product, candidate, model_ref, idempotency_key):
+    """Complete the public preview/save/result transaction for a prepared native candidate."""
     snapshot = control(product, 'ListCompute', {})['data']
     change = {
         'schema': 'hiroute.compute-management-change/v2',
-        'subject': {'kind': 'candidate', 'candidate': checked['candidate']['candidate']},
+        'subject': {'kind': 'candidate', 'candidate': candidate['candidate']},
         'expected_revisions': snapshot['revisions'],
-        'selected_model_refs': [manual['model_ref']],
+        'selected_model_refs': [model_ref],
         'intent': 'save_ready',
         'key_edits': [],
     }
@@ -246,7 +251,7 @@ def save_native_source(product, upstream, token=None, unknown=False,
         'spec': preview['spec'],
         'accept_digest': preview['accept_digest'],
         'expected_revisions': preview['expected_revisions'],
-        'idempotency_key': 'native-product-save' + suffix,
+        'idempotency_key': idempotency_key,
     })
     assert applied['data']['state'] == 'succeeded', applied
     saved = control(product, 'GetComputeSaveResult', {

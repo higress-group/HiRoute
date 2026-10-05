@@ -36,7 +36,7 @@ export type CollaborationStatus = {
   restore_point_ref: string | null;
   current_selection?: { trigger_mode: AgentCollaborationTriggerMode } | null;
 };
-export type AgentModelSurface = 'codex_cli' | 'codex_desktop' | 'claude_cli' | 'qoder_cli';
+export type AgentModelSurface = 'codex_cli' | 'codex_desktop' | 'claude_cli' | 'qoder_cli' | 'pi_cli';
 export type AgentReasoningSelection =
   | { kind: 'profile'; profile: string }
   | { kind: 'toggle'; enabled: boolean }
@@ -85,7 +85,8 @@ export type QoderModelSelection = {
   mode: 'qoder_additional';
   allowed_plan_ids: string[];
 };
-export type AgentModelSelection = CodexModelSelection | ClaudeModelSelection | QoderModelSelection;
+export type PiModelSelection = { mode: 'pi_additional'; allowed_plan_ids: string[] };
+export type AgentModelSelection = CodexModelSelection | ClaudeModelSelection | QoderModelSelection | PiModelSelection;
 export type AgentSurfaceResult = {
   surface: AgentModelSurface;
   applied_revision: number;

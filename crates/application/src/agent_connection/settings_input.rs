@@ -43,10 +43,12 @@ pub enum SettingsModelTargetFacts {
         endpoint: String,
     },
     Claude(SettingsClaudeModelFacts),
-    Qoder {
+    Additional {
+        kind: hiroute_domain::AgentKindV1,
+        pi_settings_content: Option<CanonicalDigest>,
         provider_id: String,
         endpoint: String,
-        models: Vec<hiroute_domain::QoderAdditionalModelV1>,
+        models: Vec<hiroute_domain::AdditionalAgentModelV1>,
     },
 }
 
@@ -109,31 +111,45 @@ impl AgentSettingsPlanningInput {
                             .codex_default_override(settings)
                             .map_err(|_| invalid())?,
                         model_catalog: model
-                            .model_catalog
-                            .as_ref()
+                            .codex()
+                            .and_then(|facts| facts.model_catalog.as_ref())
                             .map(|catalog| catalog.content_digest.clone()),
                     }),
-                    SettingsModelTargetFacts::Qoder {
+                    SettingsModelTargetFacts::Additional {
+                        kind,
+                        pi_settings_content,
                         provider_id,
                         endpoint,
                         models,
                     } => {
-                        if !matches!(settings, AgentModelSelectionV2::QoderAdditional { .. }) {
+                        if !matches!(
+                            settings,
+                            AgentModelSelectionV2::QoderAdditional { .. }
+                                | AgentModelSelectionV2::PiAdditional { .. }
+                        ) || matches!(settings, AgentModelSelectionV2::PiAdditional { .. })
+                            != (*kind == hiroute_domain::AgentKindV1::Pi)
+                        {
                             return Err(invalid());
                         }
-                        SettingsModelAction::Qoder(super::QoderModelFileAction::Configure {
-                            previous_operation: file.active_configuration.clone(),
-                            provider_id: provider_id.clone(),
-                            endpoint: endpoint.clone(),
-                            models: models.clone(),
-                        })
+                        SettingsModelAction::Additional(
+                            pi_settings_content.clone(),
+                            super::AdditionalModelFileAction::Configure {
+                                previous_operation: file.active_configuration.clone(),
+                                provider_id: provider_id.clone(),
+                                endpoint: endpoint.clone(),
+                                models: models.clone(),
+                            },
+                        )
                     }
                     SettingsModelTargetFacts::Claude(claude) => {
                         let mut snapshot = claude_model_snapshot(
                             settings,
                             grant,
                             claude,
-                            model.native_claude_presets.as_ref().ok_or_else(invalid)?,
+                            model
+                                .claude()
+                                .and_then(|facts| facts.presets.as_ref())
+                                .ok_or_else(invalid)?,
                         )?;
                         snapshot.context_window_tokens = preview.claude_context_window;
                         SettingsModelAction::Claude(ClaudeModelFileAction::Configure {
@@ -194,11 +210,15 @@ impl AgentSettingsPlanningInput {
                             native_model: preview.spec.restore_native_model.clone(),
                         })
                     }
-                    SettingsModelTargetFacts::Qoder { .. } => {
-                        SettingsModelAction::Qoder(super::QoderModelFileAction::Restore {
+                    SettingsModelTargetFacts::Additional {
+                        pi_settings_content,
+                        ..
+                    } => SettingsModelAction::Additional(
+                        pi_settings_content.clone(),
+                        super::AdditionalModelFileAction::Restore {
                             original_operation: operation.clone(),
-                        })
-                    }
+                        },
+                    ),
                     SettingsModelTargetFacts::Claude(_) => {
                         SettingsModelAction::Claude(ClaudeModelFileAction::Restore {
                             original_operation: operation.clone(),
@@ -245,7 +265,7 @@ impl AgentSettingsPlanningInput {
                     .facts
                     .model
                     .as_ref()
-                    .is_some_and(|model| model.login_item_removal_required)
+                    .is_some_and(|model| model.common.login_item_removal_required)
                 {
                     // The last managed connection's restore releases the login item this
                     // feature created in an older version. New connections never create one.
@@ -261,7 +281,9 @@ impl AgentSettingsPlanningInput {
                     let model = self.facts.model.as_ref().ok_or_else(invalid)?;
                     match action {
                         SettingsModelAction::Codex(change) => {
-                            if let Some(catalog) = model.model_catalog.as_ref() {
+                            if let Some(catalog) =
+                                model.codex().and_then(|facts| facts.model_catalog.as_ref())
+                            {
                                 // The immutable catalog artifact is staged before the managed
                                 // configuration so the rendered pointer always has a target.
                                 external.push(settings_codex_catalog_intent(
@@ -284,13 +306,14 @@ impl AgentSettingsPlanningInput {
                                 change,
                             )?);
                         }
-                        SettingsModelAction::Qoder(change) => {
-                            external.push(super::settings_qoder_model_file_intent(
+                        SettingsModelAction::Additional(pi_settings_content, change) => {
+                            external.push(super::settings_additional_model_file_intent(
                                 control,
                                 &self.facts.context_id,
                                 file.expected_content.clone(),
                                 file.before_fingerprint.clone(),
                                 change,
+                                pi_settings_content,
                             )?);
                         }
                         SettingsModelAction::Claude(change) => {
@@ -403,7 +426,7 @@ impl AgentSettingsPlanningInput {
 }
 
 enum SettingsModelAction {
-    Qoder(super::QoderModelFileAction),
+    Additional(Option<CanonicalDigest>, super::AdditionalModelFileAction),
     Codex(CodexModelFileAction),
     Claude(ClaudeModelFileAction),
 }

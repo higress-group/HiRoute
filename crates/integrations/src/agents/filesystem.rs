@@ -33,8 +33,11 @@ use super::{
 mod claude_settings;
 #[path = "claude_observation.rs"]
 mod main_observation;
+#[path = "pi_native.rs"]
+mod pi_native;
 #[path = "qoder_discovery.rs"]
 mod qoder_discovery;
+pub use pi_native::PiDefaultModel;
 #[path = "settings_discovery.rs"]
 mod settings_discovery;
 
@@ -123,6 +126,8 @@ pub struct AgentFilesystemLayoutV1 {
     pub codex_desktop_executable: Option<PathBuf>,
     pub claude_executable: PathBuf,
     pub qoder_executable: PathBuf,
+    pub pi_executable: PathBuf,
+    pub pi_config_root: PathBuf,
     pub qoder_home: PathBuf,
     pub qoder_config_root: PathBuf,
     pub codex_user_config: PathBuf,
@@ -166,6 +171,11 @@ impl AgentFilesystemLayoutV1 {
             codex_desktop_executable: None,
             claude_executable: PathBuf::from("claude"),
             qoder_executable: PathBuf::from("qoder"),
+            pi_executable: PathBuf::from("pi"),
+            pi_config_root: std::env::var_os("PI_CODING_AGENT_DIR")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".pi/agent")),
             qoder_home: home.to_owned(),
             qoder_config_root: std::env::var_os("QODER_CONFIG_DIR")
                 .filter(|value| !value.is_empty())
@@ -195,6 +205,8 @@ impl AgentFilesystemLayoutV1 {
 
 #[derive(Clone)]
 pub struct FilesystemAgentScannerV1 {
+    pi_collaboration_cli:
+        std::sync::Arc<std::sync::Mutex<Option<(PathBuf, hiroute_domain::CanonicalDigest)>>>,
     pub(super) layout: AgentFilesystemLayoutV1,
     registry: ClaudeRegistrationIndexV1,
     legacy_recovery_version: Option<String>,
@@ -262,6 +274,7 @@ impl FilesystemAgentScannerV1 {
             claude_ingress: Default::default(),
             #[cfg(unix)]
             qoder_collaboration: Default::default(),
+            pi_collaboration_cli: Default::default(),
         }
     }
 
@@ -365,7 +378,11 @@ impl FilesystemAgentScannerV1 {
     }
 
     pub fn scan(&self) -> Vec<FilesystemAgentDiscoveryV1> {
-        let mut results = vec![self.scan_codex(), self.qoder_settings_discovery(false)];
+        let mut results = vec![
+            self.scan_codex(),
+            self.qoder_settings_discovery(false),
+            self.pi_settings_discovery(),
+        ];
         match executable_probe(&self.layout.claude_executable) {
             ExecutableProbe::Installed(executable) => {
                 results.push(self.scan_claude(Some(executable), None, false));
@@ -399,7 +416,7 @@ impl FilesystemAgentScannerV1 {
                         );
                         self.layout.claude_executable.clone()
                     }
-                    AgentKindV1::Qoder => continue,
+                    AgentKindV1::Qoder | AgentKindV1::Pi => continue,
                 };
                 #[cfg(unix)]
                 if installation.profile.kind == AgentKindV1::Codex
@@ -467,6 +484,9 @@ impl FilesystemAgentScannerV1 {
         &self,
         descriptor: &DiscoveredCredentialRefV1,
     ) -> Result<ProtectedSecret, AgentFilesystemScanError> {
+        if descriptor.field_selector == "pi.api-key" {
+            return self.read_pi_secret(descriptor);
+        }
         validate_descriptor(descriptor)?;
         let source = self
             .claude_sources()
@@ -530,7 +550,8 @@ impl FilesystemAgentScannerV1 {
                 self.layout.codex_desktop_executable.clone()
             }
             hiroute_domain::AgentModelSurfaceV2::ClaudeCli
-            | hiroute_domain::AgentModelSurfaceV2::QoderCli => None,
+            | hiroute_domain::AgentModelSurfaceV2::QoderCli
+            | hiroute_domain::AgentModelSurfaceV2::PiCli => None,
         }
     }
 
@@ -561,6 +582,9 @@ impl FilesystemAgentScannerV1 {
                 [hiroute_domain::AgentModelSurfaceV2::ClaudeCli]
                     .into_iter()
                     .collect()
+            }
+            "agent_pi_default" if self.pi_executable_target().is_some() => {
+                [hiroute_domain::AgentModelSurfaceV2::PiCli].into()
             }
             "agent_qoder_default" if self.qoder_executable_target().is_some() => {
                 [hiroute_domain::AgentModelSurfaceV2::QoderCli]

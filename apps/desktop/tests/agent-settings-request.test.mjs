@@ -117,29 +117,31 @@ test('collaboration-only Qoder and cross-ecosystem selections cannot authorize m
   }
 });
 
-test('Qoder adds only selected routes and keeps token rotation and both restores independent', () => {
-  const capable = { ...qoder, settings: { state: 'not_configured', collaboration: qoder.settings.collaboration } };
+for (const ecosystem of ['qoder', 'pi']) test(`${ecosystem} adds only selected routes and keeps token rotation and both restores independent`, () => {
+  const native = { ...qoder, agent_id: `agent_${ecosystem}_default`, context_id: `context/${ecosystem}`,
+    settings: { collaboration: { ...qoder.settings.collaboration, restore_point_ref: `restore/${ecosystem}-skill` } } };
+  const capable = { ...native, settings: { state: 'not_configured', collaboration: native.settings.collaboration } };
   const configure = wire(agentSettingsSpec(capable, 'model', false, draft));
   assert.deepEqual(configure, {
-    schema_version: { major: 2, minor: 0 }, context_id: 'context/qoder',
-    model: { intent: 'configure', settings: { mode: 'qoder_additional', allowed_plan_ids: ['route/b', 'route/a'] } },
+    schema_version: { major: 2, minor: 0 }, context_id: `context/${ecosystem}`,
+    model: { intent: 'configure', settings: { mode: `${ecosystem}_additional`, allowed_plan_ids: ['route/b', 'route/a'] } },
     collaboration: { intent: 'keep' },
   });
   const saved = { ...capable, settings: {
-    state: 'configured', current_selection: configure.model.settings, restore_point_ref: 'restore/qoder-model',
-    collaboration: qoder.settings.collaboration,
+    state: 'configured', current_selection: configure.model.settings, restore_point_ref: `restore/${ecosystem}-model`,
+    collaboration: native.settings.collaboration,
   } };
   assert.deepEqual(agentTokenSpec(saved, true), {
-    schema_version: { major: 2, minor: 0 }, context_id: 'context/qoder',
+    schema_version: { major: 2, minor: 0 }, context_id: `context/${ecosystem}`,
     model: configure.model, collaboration: { intent: 'keep' }, access_token: { intent: 'regenerate' },
   });
   assert.deepEqual(wire(agentSettingsSpec(saved, 'model', true, draft)), {
-    schema_version: { major: 2, minor: 0 }, context_id: 'context/qoder',
-    model: { intent: 'restore', restore_point_ref: 'restore/qoder-model' }, collaboration: { intent: 'keep' },
+    schema_version: { major: 2, minor: 0 }, context_id: `context/${ecosystem}`,
+    model: { intent: 'restore', restore_point_ref: `restore/${ecosystem}-model` }, collaboration: { intent: 'keep' },
   });
   assert.deepEqual(wire(agentSettingsSpec(saved, 'collaboration', true, draft)), {
-    schema_version: { major: 2, minor: 0 }, context_id: 'context/qoder',
-    model: { intent: 'keep' }, collaboration: { intent: 'restore', restore_point_ref: 'restore/qoder-skill' },
+    schema_version: { major: 2, minor: 0 }, context_id: `context/${ecosystem}`,
+    model: { intent: 'keep' }, collaboration: { intent: 'restore', restore_point_ref: `restore/${ecosystem}-skill` },
   });
   for (const agent of [codex, claude]) {
     const mixed = { ...agent, settings: saved.settings };

@@ -201,8 +201,11 @@ impl LocalControlAdapter {
         status.operation_state = Some(operation.state.as_str().into());
         let (active_grant, configured_join) = match action {
             ModelAction::Configure => {
-                let file_applied = if class == SettingsAgentClass::Qoder {
-                    hiroute_integrations::qoder_native_configuration_is_applied(
+                let file_applied = if matches!(
+                    class,
+                    SettingsAgentClass::Qoder | SettingsAgentClass::Pi
+                ) {
+                    hiroute_integrations::additional_native_configuration_is_applied(
                         &self.artifacts,
                         &operation.operation_id,
                         intent,
@@ -319,6 +322,10 @@ impl LocalControlAdapter {
                             hiroute_domain::AgentModelSelectionV2::QoderAdditional { .. },
                             SettingsAgentClass::Qoder,
                         ) => [hiroute_domain::AgentModelSurfaceV2::QoderCli].into(),
+                        (
+                            hiroute_domain::AgentModelSelectionV2::PiAdditional { .. },
+                            SettingsAgentClass::Pi,
+                        ) => [hiroute_domain::AgentModelSurfaceV2::PiCli].into(),
                         _ => return Err(ControlReadError::Corrupt),
                     };
                     // The applied revision is the installed publication this configuration was
@@ -452,8 +459,9 @@ fn model_intent(
             super::settings_facts::SettingsAgentClass::Claude => {
                 super::native_claude_model::is_settings_claude_model(intent)
             }
-            super::settings_facts::SettingsAgentClass::Qoder => {
-                super::native_qoder_model::is_settings_qoder_model(intent)
+            super::settings_facts::SettingsAgentClass::Qoder
+            | super::settings_facts::SettingsAgentClass::Pi => {
+                super::native_additional_model::is_settings_additional_model(intent)
             }
         })
 }
@@ -464,16 +472,16 @@ fn model_action(
     intent: &hiroute_domain::ExternalEffectIntentV1,
 ) -> hiroute_domain::PortResult<ModelAction> {
     match class {
-        super::settings_facts::SettingsAgentClass::Qoder => {
-            match hiroute_application::agent_connection::settings_qoder_model_file_for_operation(
+        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi => {
+            match hiroute_application::agent_connection::settings_additional_model_file_for_operation(
                 operation, intent,
             )?
             .change
             {
-                hiroute_application::agent_connection::QoderModelFileAction::Configure {
+                hiroute_application::agent_connection::AdditionalModelFileAction::Configure {
                     ..
                 } => Ok(ModelAction::Configure),
-                hiroute_application::agent_connection::QoderModelFileAction::Restore { .. } => {
+                hiroute_application::agent_connection::AdditionalModelFileAction::Restore { .. } => {
                     Ok(ModelAction::Restore)
                 }
             }

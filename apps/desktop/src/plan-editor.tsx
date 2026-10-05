@@ -16,7 +16,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { invoke } from '@tauri-apps/api/core';
 export type Selection = { binding_id: string; reasoning?: { kind: 'profile'; profile: string } | { kind: 'toggle'; enabled: boolean } | { kind: 'budget'; tokens: number } };
 type Mode = 'fixed_model' | 'smart_saving' | 'free_first';
-type Work = { harness: 'codex_cli' | 'claude_code' | 'qoder_cli'; protocol: 'responses' | 'messages' };
+type Work = { harness: 'codex_cli' | 'claude_code' | 'qoder_cli' | 'pi'; protocol: 'responses' | 'messages' };
 type ClassifierAuthHeader = { name: string; value_secret_ref: string };
 type SmartClassifier = { kind: 'local_rules' } | {
   kind: 'rest';
@@ -109,7 +109,7 @@ function activePlanQualityModels(plan: Plan, candidates: Candidate[]): PlanQuali
   }
   return models;
 }
-export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Draft; creating?: boolean; initialBindingId?: string; editingMemory?: PlanEditorMemory; language: 'zh' | 'en'; active?: boolean; usedBy?: { id: string; name: string; brand: 'codex' | 'claude-code' | 'qoder' | 'agent'; isDefault: boolean }[]; onOpenAgent?: (agentId: string) => void; onOpenSession?: (sessionId: string, requestId: string) => void; onDone: () => Promise<void>; onClose: () => void; onDirty?: (dirty: boolean) => void; onEdit?: () => void; onBusyChange?: (busy: boolean) => void; onOperation?: (operation: PlanOperation | null) => void; onPersisted?: (editor: PersistedEditor<Plan, Draft> | null, action: 'save_draft' | 'publish', identity: PersistenceIdentity, operation: PlanOperation | null) => void }>(function PlanEditor({ plan, draft, creating = false, initialBindingId, editingMemory, language, active = true, usedBy = [], onOpenAgent, onOpenSession, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted }, ref) {
+export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Draft; creating?: boolean; initialBindingId?: string; editingMemory?: PlanEditorMemory; language: 'zh' | 'en'; active?: boolean; usedBy?: { id: string; name: string; brand: 'codex' | 'claude-code' | 'qoder' | 'pi' | 'agent'; isDefault: boolean }[]; onOpenAgent?: (agentId: string) => void; onOpenSession?: (sessionId: string, requestId: string) => void; onDone: () => Promise<void>; onClose: () => void; onDirty?: (dirty: boolean) => void; onEdit?: () => void; onBusyChange?: (busy: boolean) => void; onOperation?: (operation: PlanOperation | null) => void; onPersisted?: (editor: PersistedEditor<Plan, Draft> | null, action: 'save_draft' | 'publish', identity: PersistenceIdentity, operation: PlanOperation | null) => void }>(function PlanEditor({ plan, draft, creating = false, initialBindingId, editingMemory, language, active = true, usedBy = [], onOpenAgent, onOpenSession, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted }, ref) {
   const en = language === 'en', text = (zh: string, eng: string) => en ? eng : zh;
   const [editor, setEditor] = useState<Editor>(() => structuredClone(draft?.editor ?? (plan ? reopen(plan) : emptyEditor())));
   const [draftId] = useState(() => draft?.draft_id ?? 'draft/' + crypto.randomUUID());
@@ -482,8 +482,9 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
     {editor.delegation_enabled && <div className="field"><label className="field-label">{text('执行任务的 Agent', 'Task execution agent')}</label><p className="field-help">{text('每份计划选择一个执行 Agent，不做自动回退。', 'Choose one execution agent per plan; there is no automatic fallback.')}</p><div className="v3-executors">{([
       ['codex_cli', 'Codex CLI', text('使用 Codex CLI 执行委派任务', 'Use Codex CLI for delegated tasks')],
       ['claude_code', 'Claude Code', text('使用 Claude Code 执行委派任务', 'Use Claude Code for delegated tasks')],
+      ['pi', 'Pi', text('使用 Pi 执行委派任务', 'Use Pi for delegated tasks')],
       ['qoder_cli', 'Qoder CLI', text('使用 Qoder CLI 执行委派任务', 'Use Qoder CLI for delegated tasks')],
-    ] as const).map(([value, title, description]) => <button className={`v3-executor${editor.work?.harness === value ? ' selected' : ''}`} type="button" key={value} aria-pressed={editor.work?.harness === value} onClick={() => update({ work: { harness: value, protocol: value === 'claude_code' ? 'messages' : 'responses' } })}><BrandIcon kind={value === 'codex_cli' ? 'codex' : value === 'claude_code' ? 'claude-code' : 'qoder'} label={`${title} logo`} /><div><strong>{title}</strong><span>{description}</span></div>{editor.work?.harness === value && <UiIcon name="check" />}</button>)}</div>{validationIssue?.group === 'executor' && <p className="oc-inline-error route-lane-error">{validationIssue.message}</p>}
+    ] as const).map(([value, title, description]) => <button className={`v3-executor${editor.work?.harness === value ? ' selected' : ''}`} type="button" key={value} aria-pressed={editor.work?.harness === value} onClick={() => update({ work: { harness: value, protocol: value === 'claude_code' ? 'messages' : 'responses' } })}><BrandIcon kind={value === 'codex_cli' ? 'codex' : value === 'claude_code' ? 'claude-code' : value === 'pi' ? 'pi' : 'qoder'} label={`${title} logo`} /><div><strong>{title}</strong><span>{description}</span></div>{editor.work?.harness === value && <UiIcon name="check" />}</button>)}</div>{validationIssue?.group === 'executor' && <p className="oc-inline-error route-lane-error">{validationIssue.message}</p>}
       {editor.work && <WorkerDependencies key={editor.work.harness} harness={editor.work.harness} language={language} active={active && moreSettingsOpen} onOperation={onOperation} />}
     </div>}</section>
       </Disclosure>

@@ -1,6 +1,46 @@
 use super::*;
 
 #[test]
+fn responses_easy_input_messages_preserve_the_same_context_as_explicit_messages() {
+    let input = json!([
+        {"role":"system","content":"routing rules"},
+        {"role":"user","content":[{"type":"input_text","text":"inspect the file"}]},
+        {"role":"assistant","content":"done","phase":"final_answer"}
+    ]);
+    let mut explicit = input.clone();
+    for message in explicit.as_array_mut().unwrap() {
+        message["type"] = "message".into();
+    }
+    let decode = |input| {
+        decode_ingress_request(
+            IngressProtocol::Responses,
+            &json!({"model":"alias","input":input}),
+        )
+    };
+    let mut easy = decode(input.clone()).unwrap();
+    let mut typed = decode(explicit.clone()).unwrap();
+    assert_eq!(
+        easy.native_body.take(),
+        Some(json!({"model":"alias","input":input}))
+    );
+    assert_eq!(
+        typed.native_body.take(),
+        Some(json!({"model":"alias","input":explicit}))
+    );
+    assert_eq!(
+        easy, typed,
+        "Equivalent messages preserve canonical context and metadata"
+    );
+    for invalid in [
+        json!({"role":"user"}),
+        json!({"content":"no role"}),
+        json!({"type":null,"role":"user","content":"bad type"}),
+    ] {
+        assert!(decode(json!([invalid])).is_err());
+    }
+}
+
+#[test]
 fn responses_previous_response_id_has_an_explicit_http_boundary() {
     for body in [
         json!({"model":"alias","input":"hello"}),

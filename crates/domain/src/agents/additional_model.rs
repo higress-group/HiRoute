@@ -61,13 +61,27 @@ pub fn validate_qoder_output_budget(tokens: u64) -> Result<(), QoderBudgetError>
 /// Non-secret native model declaration sealed in a settings Operation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct QoderAdditionalModelV1 {
+pub struct AdditionalAgentModelV1 {
     pub alias: String,
     pub context_window_tokens: u64,
     pub max_output_tokens: u64,
 }
 
-impl QoderAdditionalModelV1 {
+pub type QoderAdditionalModelV1 = AdditionalAgentModelV1;
+
+impl AdditionalAgentModelV1 {
+    pub fn validate_pi(&self) -> Result<(), crate::AgentConnectionError> {
+        crate::ModelAlias::parse(&self.alias)
+            .map_err(|_| crate::AgentConnectionError::InvalidGrant)?;
+        if self.max_output_tokens == 0
+            || self.context_window_tokens <= self.max_output_tokens
+            || self.context_window_tokens > MAX_NATIVE_INTEGER
+        {
+            return Err(crate::AgentConnectionError::InvalidGrant);
+        }
+        Ok(())
+    }
+
     pub fn validate(&self) -> Result<(), crate::AgentConnectionError> {
         crate::ModelAlias::parse(&self.alias)
             .map_err(|_| crate::AgentConnectionError::InvalidGrant)?;

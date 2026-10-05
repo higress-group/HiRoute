@@ -441,7 +441,8 @@
               "enum": [
                 "codex_cli",
                 "claude_code",
-                "qoder_cli"
+                "qoder_cli",
+                "pi"
               ]
             },
             "protocol": {
