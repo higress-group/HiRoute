@@ -93,21 +93,7 @@ export function qualityBranchLabel(branch: string, language: 'zh' | 'en'): strin
 }
 
 export function qualityReasoningLabel(profile: string | null | undefined, language: 'zh' | 'en'): string {
-  const labels: Record<string, [string, string]> = {
-    fixed: ['固定思考设置', 'Fixed reasoning'],
-    default: ['默认思考设置', 'Default reasoning'],
-    none: ['关闭思考', 'Reasoning off'],
-    disabled: ['关闭思考', 'Reasoning off'],
-    enabled: ['开启思考', 'Reasoning on'],
-    minimal: ['最小思考强度', 'Minimal reasoning'],
-    low: ['低思考强度', 'Low reasoning'],
-    medium: ['中等思考强度', 'Medium reasoning'],
-    high: ['高思考强度', 'High reasoning'],
-    xhigh: ['更高思考强度', 'Extra high reasoning'],
-  };
-  if (profile && labels[profile]) return labels[profile][language === 'zh' ? 0 : 1];
-  if (profile && /^budget-[0-9]+$/.test(profile)) return language === 'zh'
-    ? '思考预算 ' + profile.slice(7) + ' tokens' : 'Reasoning budget ' + profile.slice(7) + ' tokens';
+  if (profile && /^budget-[0-9]+$/.test(profile)) return profile.slice(7) + ' tokens';
   // Native authored profile names are readable; a digest/path is diagnostic only.
   if (profile && profile.length <= 32 && /^[a-zA-Z][a-zA-Z0-9 _-]*$/.test(profile)) return profile;
   return language === 'zh' ? '推理配置未记录' : 'Reasoning configuration unrecorded';
