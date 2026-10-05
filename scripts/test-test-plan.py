@@ -28,6 +28,7 @@ class SelectionTests(unittest.TestCase):
             with self.subTest(path=path):
                 result = plan.select([path])
                 self.assertIn(check, result['commands'])
+                self.assertIn(['node', '--test', plan.PI_WORKER_BRIDGE_TEST], result['commands'])
                 self.assertIn(check, plan.integration_preflight(result)['commands'])
         self.assertIn(check, plan.select([], full=True)['commands'])
         self.assertNotIn(check, plan.select(['apps/desktop/src/ui/assets/pi.svg'])['commands'])

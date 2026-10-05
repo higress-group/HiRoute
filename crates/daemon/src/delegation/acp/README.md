@@ -32,3 +32,11 @@ correct selection, a corrected selection, and each failure before prompt intent.
 They prove protocol behavior, not that a real installed Agent loaded user skills
 or sent the selected model to Gateway. The real Worker product journey must prove
 those effects through its actual adapter and native client.
+
+Pi's bundled bridge has a closed `hiroute.pi-worker-failure/v1` error payload.
+[Failure ingestion](pi_failure.rs) recognizes only the exact schema, error code
+and allowed stage values, and preserves existing public error categories. Unknown
+or extended payloads remain protocol failures; raw adapter messages are not copied.
+[Protocol tests](tests.rs) verify startup/load errors precede prompt intent and
+model errors fail the accepted run without replay. The bridge's process tests live
+beside its producer under `profile/pi_worker_bridge.test.mjs`.

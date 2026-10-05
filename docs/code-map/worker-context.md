@@ -66,6 +66,19 @@ future releases' semantics. Preserve runtime guards and run the [same native pro
 journeys](../../tools/product-e2e/tests/PI_INTEGRATION.md) against another explicit
 official release before claiming it was actually validated.
 
+The [bridge lifecycle regressions](../../crates/daemon/src/delegation/profile/pi_worker_bridge.test.mjs)
+exercise the shipped subprocess with a controlled SDK: overlapping session creation,
+model rejection, cancellation before history exists, disconnect during creation,
+malformed input and a closed output pipe. They do not substitute for native journeys.
+Only cancellation can overtake an active request. Disconnect aborts and disposes even
+an asynchronously created session; the daemon retains final process-group authority.
+The bridge returns `hiroute.pi-worker-failure/v1` with a closed stage vocabulary;
+[ACP ingestion](../../crates/daemon/src/delegation/acp/pi_failure.rs) maps those stages
+to existing dependency, capability, resume and prompt errors. Raw native exception
+messages never enter task results. Startup errors remain correlated with initialize,
+because Worker stderr is intentionally discarded. Extend these shared failure cases
+when changing the bridge, rather than adding another complete native fixture.
+
 For later ecosystems, separate an acceptance pin, an adapter capability contract
 and each persisted history format. Reuse shared lifecycle/fixture owners; extend
 only the native leaf and capability regression when the startup protocol differs.
