@@ -118,7 +118,7 @@ This case shows execution feedback influencing model selection throughout the ta
 
 ### Inspect each stage in HiRoute
 
-These screenshots show the updated HiRoute Desktop reading the observation records retained from this case. A session's **Model performance** view shows the actual model, reasoning setting, stage competence and execution turns. Open execution evidence to inspect the activity; expand assessment details to check coverage and open the assessment-trigger request. Stages that have not received a score remain visible too.
+A session's **Model performance** view shows the actual model, reasoning setting, stage competence and execution turns. Open execution evidence to inspect the activity; expand assessment details to check coverage and open the assessment-trigger request. Stages that have not received a score remain visible too.
 
 [![Session model performance: inspect Qwen and Astra stage scores, assessment coverage and evidence links](assets/desktop-session-competence-en.png)](assets/desktop-session-competence-en.png)
 
