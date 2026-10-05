@@ -56,6 +56,12 @@ and unique identities, rather than freeze the total number of registered Agents.
 Keep exact inventory completeness checks at the registry/catalog boundary. Adding
 an ecosystem should extend its own product assertions without forcing unrelated
 process, privacy or configuration journeys to change their expected list length.
+When adding an Agent profile, update the [built-in registry](../../crates/integrations/src/agents/registry.rs)
+and [bundle source](../../assets/agent-profiles/current/profile-seed.json) together.
+The [bundle producer](../../assets/release-facts/current/prepare-bundle.py) must reproduce
+the committed artifacts without changes on two successive runs. The test planner
+selects its `--check` gate for catalog changes and full plans, including integration
+preflight; Rust catalog checks alone do not exercise this Python producer.
 For Agent settings, start from the shared enable/adjust/disable and blocked-action
 recovery journeys in the [feature guide](../../apps/desktop/src/features/agents/README.md).
 Compare an added ecosystem's interactions with existing ones before turning a new

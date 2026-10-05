@@ -20,6 +20,22 @@ runner_spec.loader.exec_module(runner)
 
 
 class SelectionTests(unittest.TestCase):
+    def test_agent_catalog_changes_select_the_source_to_bundle_check(self):
+        command = ['python3', 'assets/release-facts/current/prepare-bundle.py', '--check']
+        for path in (
+            'assets/agent-profiles/current/profile-seed.json',
+            'assets/release-facts/current/bundle/agent-profiles.json',
+            'assets/release-facts/current/prepare-bundle.py',
+            'crates/integrations/src/agents/registry.rs',
+            'tools/release-facts/src/lib.rs',
+        ):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertIn(command, result['commands'])
+                self.assertIn(command, plan.integration_preflight(result)['commands'])
+        self.assertIn(command, plan.select([], full=True)['commands'])
+        self.assertNotIn(command, plan.select(['docs/code-map/testing.md'])['commands'])
+
     def test_worker_contract_alone_requires_feature_enabled_mac_consumers(self):
         for path in ('crates/application-api/src/worker.rs',
                      'crates/domain/src/delegation/mod.rs',

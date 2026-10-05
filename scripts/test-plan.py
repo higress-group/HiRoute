@@ -383,6 +383,13 @@ def select(paths, full=False):
                             (feature_flags if target == "p0_gateway_runtime" else []) +
                             (["--", "--test-threads=1"] if target in PROCESS_TARGETS else []))
     rust = bool(commands)
+    if full or any(path.startswith(("assets/agent-profiles/", "assets/release-facts/",
+                                    "tools/release-facts/"))
+                   or path == "crates/integrations/src/agents/registry.rs"
+                   for path in paths):
+        # Rust catalog tests use builtin profiles; the Python bundle producer
+        # also consumes profile-seed.json. Check that path before integration.
+        commands.append(["python3", "assets/release-facts/current/prepare-bundle.py", "--check"])
     if "diagnostics" in groups and not full:
         reasons.append("diagnostic implementation: expand if caller API, protocol, routing or Worker behavior changes")
         commands.append(["python3", "scripts/test-desktop-pilot.py"])
