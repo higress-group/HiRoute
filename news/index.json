@@ -6,6 +6,10 @@
       "zh": "HiRoute 智能路由实战：GPT-6 Astra × Qwen-3.8 Flash，同等质量下成本降低 90%",
       "en": "HiRoute Smart Routing in Action: GPT-6 Astra × Qwen-3.8 Flash, Same Quality at 90% Lower Cost"
     },
+    "shortTitle": {
+      "zh": "Astra × Qwen：同等质量，成本降低 90%",
+      "en": "Astra × Qwen: same quality, 90% lower cost"
+    },
     "description": {
       "zh": "用真实 Desktop 配置，看看 HiRoute 如何让 Qwen 做常规工作、Astra 接住关键决策：同等交付标准下降本超 90%，长任务还能依据执行表现自主切换模型。",
       "en": "See the real Desktop setup: Qwen handles routine work, Astra handles critical decisions. Over 90% lower cost at the same delivery standard, plus an unattended coding handoff."
