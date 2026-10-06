@@ -196,7 +196,12 @@ const scenarios = [
       ['apply_compute_save', 'application.error.change_preview_stale'],
       ['preview_compute_save', 'application.error.revision_conflict'],
     ]) {
-      await fresh(control => { control.handlers[stage] = () => { throw { code }; }; });
+      await fresh(control => {
+        control.handlers[stage] = () => { throw {
+          source: 'backend',
+          envelope: { error: { code: code.split('.').at(-1).toLocaleUpperCase(), message_key: code }, operation: null },
+        }; };
+      });
       await scan(); await connect('智谱 Coding Plan');
       await until(() => button('保存接入'), 'discovery prepared');
       await click('保存接入');
