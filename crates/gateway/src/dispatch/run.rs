@@ -64,7 +64,7 @@ impl RunObservationMetadata {
             || !valid_observation_reference(&value.publication_ref)
             || !matches!(
                 value.harness_id.as_str(),
-                "codex" | "claude" | "qoder" | "pi"
+                "codex" | "claude" | "qoder" | "pi" | "dsh"
             )
             || [
                 &value.native_session_id,

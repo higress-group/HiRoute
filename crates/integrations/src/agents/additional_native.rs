@@ -54,7 +54,7 @@ pub(super) fn validate_declaration(
 ) -> Result<(), QoderNativeError> {
     if kind == AgentKindV1::Qoder {
         qoder_provider::validate_model_route(provider_id, endpoint)?;
-    } else if kind != AgentKindV1::Pi
+    } else if !matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness)
         || !endpoint.starts_with("http://")
         || !endpoint.ends_with("/v1")
     {
@@ -76,7 +76,7 @@ pub(super) fn validate_declaration(
         return Err(qoder_error("additional models"));
     }
     for model in models {
-        (if kind == AgentKindV1::Pi {
+        (if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
             model.validate_pi()
         } else {
             model.validate()
@@ -93,17 +93,41 @@ fn document(current: Option<&[u8]>) -> Result<Document<'_>, QoderNativeError> {
     Document::parse(current.unwrap_or(b"{}"))
 }
 
-fn owned<'a>(
-    document: &'a Document<'_>,
-    provider: &str,
-) -> Result<Option<&'a Value>, QoderNativeError> {
-    let Some(providers) = document.root.value.get("providers") else {
+fn native_root(kind: AgentKindV1, current: Option<&[u8]>) -> Result<Value, QoderNativeError> {
+    if kind == AgentKindV1::DeepseekHarness {
+        super::dsh_config::Patch::parse(current)?.model_root()
+    } else {
+        Ok(document(current)?.root.value)
+    }
+}
+fn owned<'a>(root: &'a Value, provider: &str) -> Result<Option<&'a Value>, QoderNativeError> {
+    let Some(providers) = root.get("providers") else {
         return Ok(None);
     };
     Ok(providers
         .as_object()
         .ok_or_else(|| qoder_error("native providers object"))?
         .get(provider))
+}
+fn edit_provider(
+    kind: AgentKindV1,
+    bytes: &[u8],
+    id: &str,
+    provider: Option<&Value>,
+) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
+    if kind == AgentKindV1::DeepseekHarness {
+        return super::dsh_config::Patch::parse(Some(bytes))?.edit_provider(id, provider);
+    }
+    let document = document(Some(bytes))?;
+    if let Some(providers) = document.object(&document.root, "providers")? {
+        document.edit(&providers, id, provider)
+    } else {
+        document.edit(
+            &document.root,
+            "providers",
+            Some(&serde_json::json!({(id):provider})),
+        )
+    }
 }
 
 pub(super) fn validate_configuration(
@@ -115,7 +139,7 @@ pub(super) fn validate_configuration(
     previous: Option<&Restore>,
 ) -> Result<(), QoderNativeError> {
     validate_declaration(kind, provider_id, endpoint, models)?;
-    let document = document(current)?;
+    let document = native_root(kind, current)?;
     let desired: BTreeSet<_> = models
         .iter()
         .map(|m| hiroute_domain::additional_model_provider_for(provider_id, models, m))
@@ -152,11 +176,11 @@ pub(super) fn validate_configuration(
 }
 
 fn default_not_removed(
-    document: &Document<'_>,
+    document: &Value,
     provider: &str,
     retain: &BTreeSet<String>,
 ) -> Result<(), QoderNativeError> {
-    let Some(model) = document.root.value.get("model") else {
+    let Some(model) = document.get("model") else {
         return Ok(());
     };
     let model = model
@@ -203,26 +227,25 @@ pub(super) fn configure(
             .push(model.clone());
     }
     let mut bytes = base.as_deref().map_or_else(
-        || Zeroizing::new(b"{}".to_vec()),
+        || {
+            Zeroizing::new(if kind == AgentKindV1::DeepseekHarness {
+                b"[]\n".to_vec()
+            } else {
+                b"{}".to_vec()
+            })
+        },
         |b| Zeroizing::new(b.to_vec()),
     );
     let mut digests = std::collections::BTreeMap::new();
     for (id, models) in groups {
         let provider = render_provider(kind, endpoint, credential, &models)?;
         digests.insert(id.clone(), digest(&provider)?);
-        let document = document(Some(&bytes))?;
-        bytes = if let Some(providers) = document.object(&document.root, "providers")? {
-            document.edit(&providers, &id, Some(&provider))?
-        } else {
-            document.edit(
-                &document.root,
-                "providers",
-                Some(&serde_json::json!({(id):provider})),
-            )?
-        };
+        bytes = edit_provider(kind, &bytes, &id, Some(&provider))?;
     }
     let restore = Restore {
-        schema: if kind == AgentKindV1::Pi {
+        schema: if kind == AgentKindV1::DeepseekHarness {
+            "hiroute.dsh-native-restore/v2"
+        } else if kind == AgentKindV1::Pi {
             "hiroute.pi-native-restore/v2"
         } else {
             "hiroute.qoder-native-restore/v2"
@@ -274,8 +297,15 @@ fn render_provider(
         // Pi's saved auth can replace its Bearer. The scoped custom header remains authoritative.
         let (api, base_url) = super::pi_native_provider_api(protocol, endpoint)
             .map_err(|_| qoder_error("Pi native endpoint"))?;
-        serde_json::json!({"api":api,"baseUrl":base_url,"apiKey":credential,
+        if kind == AgentKindV1::DeepseekHarness {
+            // A unique custom route has no ambient catalog auth. Both public wire implementations
+            // accept explicit Authorization; X-HiRoute-Token binds the independent local grant.
+            serde_json::json!({"api":api,"baseURL":base_url,
+                "headers":{"Authorization":format!("Bearer {credential}"),"X-HiRoute-Token":credential},"models":models})
+        } else {
+            serde_json::json!({"api":api,"baseUrl":base_url,"apiKey":credential,
             "headers":{"X-HiRoute-Token":credential},"models":models})
+        }
     })
 }
 
@@ -286,6 +316,7 @@ impl Restore {
                 Ok(AgentKindV1::Qoder)
             }
             "hiroute.pi-native-restore/v1" | "hiroute.pi-native-restore/v2" => Ok(AgentKindV1::Pi),
+            "hiroute.dsh-native-restore/v2" => Ok(AgentKindV1::DeepseekHarness),
             _ => Err(qoder_error("restore schema")),
         }
     }
@@ -340,7 +371,10 @@ impl Restore {
         }
         CanonicalDigest::parse(record.rendered_digest.as_str())
             .map_err(|_| qoder_error("restore digest"))?;
-        let original = document(record.original_exists.then_some(record.original.as_slice()))?;
+        let original = native_root(
+            record.kind()?,
+            record.original_exists.then_some(record.original.as_slice()),
+        )?;
         for (id, digest) in record.owned_providers() {
             if !legacy
                 && id
@@ -371,7 +405,7 @@ impl Restore {
     }
 
     pub fn applied(&self, current: Option<&[u8]>) -> Result<bool, QoderNativeError> {
-        let document = document(current)?;
+        let document = native_root(self.kind()?, current)?;
         for (id, expected) in self.owned_providers() {
             if owned(&document, &id)?.map(digest).transpose()?.as_ref() != Some(&expected) {
                 return Ok(false);
@@ -396,7 +430,7 @@ impl Restore {
         current: Option<&[u8]>,
         check_default: bool,
     ) -> Result<Option<Zeroizing<Vec<u8>>>, QoderNativeError> {
-        let document = document(current)?;
+        let document = native_root(self.kind()?, current)?;
         if check_default {
             for id in self.owned_providers().keys() {
                 default_not_removed(&document, id, &BTreeSet::new())?;
@@ -420,11 +454,7 @@ impl Restore {
                 .to_vec(),
         );
         for id in self.owned_providers().keys() {
-            let document = Document::parse(&bytes)?;
-            let providers = document
-                .object(&document.root, "providers")?
-                .ok_or_else(|| qoder_error("owned provider missing"))?;
-            bytes = document.edit(&providers, id, None)?;
+            bytes = edit_provider(self.kind()?, &bytes, id, None)?;
         }
         Ok(Some(bytes))
     }

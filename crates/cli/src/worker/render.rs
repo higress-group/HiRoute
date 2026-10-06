@@ -712,6 +712,7 @@ fn worker_harness_wire_name(harness: WorkerHarnessV1) -> &'static str {
         WorkerHarnessV1::ClaudeCode => "claude_code",
         WorkerHarnessV1::QoderCli => "qoder_cli",
         WorkerHarnessV1::Pi => "pi",
+        WorkerHarnessV1::DeepseekHarness => "deepseek_harness",
     }
 }
 

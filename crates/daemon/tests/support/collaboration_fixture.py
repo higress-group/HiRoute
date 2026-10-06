@@ -51,6 +51,9 @@ def worker_decision(fixture, body):
         return action
     command = ('/usr/bin/printf "%s\\n" ' + shlex.quote(artifact['receipt']) + ' > ' +
                shlex.quote(artifact['path']) + ' && /bin/cat ' + shlex.quote(artifact['path']))
+    if fixture.get('harness') == 'dsh':
+        return dict(kind='tool',id='delegated_artifact',name='bash',
+            arguments={'command':command,'description':'Write delegated receipt','timeoutMs':10000})
     return dict(kind='tool', id='delegated_artifact', name='bash' if fixture.get('harness') == 'pi' else 'Bash',
                 arguments={'command': command, 'timeout': 10 if fixture.get('harness') == 'pi' else 10000})
 
@@ -75,12 +78,20 @@ class MainAgentOracle:
         assert self.fixture['main_marker'] in rendered, 'Worker request reached the main Agent source'
         results = tool_results(body, self.fixture.get('harness', 'qoder'))
         names = {item.get('name') for item in body.get('tools', [])}
-        if self.fixture.get('harness') == 'pi':
+        if self.fixture.get('harness') == 'dsh':
+            assert {'skill','bash'} <= names, 'native DSH Skill/bash tools unavailable'
+            if 'main_skill' not in results:
+                assert 'hiroute-collaboration' in rendered, 'installed user collaboration Skill not discovered'
+                return dict(kind='tool',id='main_skill',name='skill',arguments={'name':'hiroute-collaboration'})
+            loaded = results['main_skill']
+            assert 'Base directory for this skill: '+str(self.skill.parent) in loaded, 'native Skill loaded a different directory'
+            assert all(line in loaded for line in self.skill_body.splitlines() if line.strip()), 'actual user Skill body was not loaded'
+        elif self.fixture.get('harness') == 'pi':
             assert {'read','bash'} <= names, 'native Pi read/bash tools unavailable'
             if 'main_skill' not in results:
-                assert 'hiroute-collaboration' in rendered and str(self.skill) in rendered
-                return dict(kind='tool', id='main_skill', name='read', arguments={'path':str(self.skill)})
-            assert self.skill_body in results['main_skill'], 'actual user Skill body was not read'
+                assert 'hiroute-collaboration' in rendered and str(self.skill) in rendered, 'installed collaboration Skill summary/path unavailable'
+                return dict(kind='tool', id='main_skill', name='read', arguments={('file_path' if self.fixture.get('harness')=='dsh' else 'path'):str(self.skill)})
+            assert all(line in results['main_skill'] for line in self.skill_body.splitlines() if line.strip()), 'actual user Skill body was not read'
         else:
             assert {'Skill', 'Bash'} <= names, 'native main Agent Skill/Bash tools unavailable'
             if 'main_skill' not in results:
@@ -97,7 +108,7 @@ class MainAgentOracle:
             return self.bash('main_plans', shlex.quote(self.cli) + ' worker plans --output json')
         directory = output_envelope(results['main_plans'])
         plans = [plan for plan in directory['plans'] if plan['agent_plan_id'] == self.fixture['plan_id']]
-        assert len(plans) == 1 and plans[0]['harness'] == ('pi' if self.fixture.get('harness') == 'pi' else 'qoder_cli') and plans[0]['availability'] == 'ready', \
+        assert len(plans) == 1 and plans[0]['harness'] == {'pi':'pi','dsh':'deepseek_harness','qoder':'qoder_cli'}[self.fixture.get('harness','qoder')] and plans[0]['availability'] == 'ready', \
             'the public directory did not offer the published Qoder Worker Plan'
         if 'main_exec' not in results:
             prompt = 'Use ' + ' and '.join(item['name'] for item in self.fixture['skills']) + \
@@ -155,6 +166,9 @@ class MainAgentOracle:
             'public observation switched the accepted Worker identity'
 
     def bash(self, call_id, command, timeout=10000):
+        if self.fixture.get("harness") == "dsh":
+            return dict(kind="tool",id=call_id,name="bash",
+                arguments={"command":command,"description":"Use public HiRoute CLI","timeoutMs":timeout})
         pi = self.fixture.get("harness") == "pi"
         return dict(kind="tool", id=call_id, name="bash" if pi else "Bash",
                     arguments={"command":command,"timeout":timeout / 1000 if pi else timeout})

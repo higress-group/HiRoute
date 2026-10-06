@@ -59,7 +59,7 @@ fn qoder_model_entry_is_explicit_and_never_adopts_worker_or_mixed_credentials() 
 }
 
 #[test]
-fn x_api_key_never_authenticates_and_bearer_wins_when_both_are_present() {
+fn ordinary_x_api_key_never_authenticates_and_bearer_wins_when_both_are_present() {
     let mut headers = HeaderMap::new();
     headers.insert("x-api-key", HeaderValue::from_static("not-an-agent-grant"));
     assert_eq!(inbound_authorization("/v1/messages", &headers), None);
@@ -72,6 +72,52 @@ fn x_api_key_never_authenticates_and_bearer_wins_when_both_are_present() {
         inbound_authorization("/v1/messages", &headers).as_deref(),
         Some("Bearer agent-grant")
     );
+}
+
+#[test]
+fn native_messages_api_key_carrier_is_limited_to_run_model_authority() {
+    let mut headers = HeaderMap::new();
+    for token in [
+        "native-key",
+        "local-model-grant",
+        "hr_run_control_fixture",
+        "hr_run_model_first,second",
+        "hr_run_model_first second",
+    ] {
+        headers.insert("x-api-key", HeaderValue::from_str(token).unwrap());
+        assert!(
+            inbound_authorization("/v1/messages", &headers).is_none(),
+            "{token}"
+        );
+    }
+    headers.insert(
+        "x-api-key",
+        HeaderValue::from_static("hr_run_model_fixture"),
+    );
+    assert_eq!(
+        inbound_authorization("/v1/messages", &headers).as_deref(),
+        Some("Bearer hr_run_model_fixture")
+    );
+    for path in [
+        "/v1/models",
+        "/v1/responses",
+        "/v1/messages/extra",
+        "/qoder/messages",
+    ] {
+        assert!(inbound_authorization(path, &headers).is_none(), "{path}");
+    }
+    headers.append("x-api-key", HeaderValue::from_static("hr_run_model_second"));
+    assert!(inbound_authorization("/v1/messages", &headers).is_none());
+    headers.remove("x-api-key");
+    headers.insert(
+        "x-api-key",
+        HeaderValue::from_static("hr_run_model_fixture"),
+    );
+    headers.insert(
+        "x-hiroute-token",
+        HeaderValue::from_static("hr_run_model_fixture"),
+    );
+    assert!(inbound_authorization("/v1/messages", &headers).is_none());
 }
 
 #[test]

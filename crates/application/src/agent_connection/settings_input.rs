@@ -126,8 +126,11 @@ impl AgentSettingsPlanningInput {
                             settings,
                             AgentModelSelectionV2::QoderAdditional { .. }
                                 | AgentModelSelectionV2::PiAdditional { .. }
+                                | AgentModelSelectionV2::DshAdditional { .. }
                         ) || matches!(settings, AgentModelSelectionV2::PiAdditional { .. })
                             != (*kind == hiroute_domain::AgentKindV1::Pi)
+                            || matches!(settings, AgentModelSelectionV2::DshAdditional { .. })
+                                != (*kind == hiroute_domain::AgentKindV1::DeepseekHarness)
                         {
                             return Err(invalid());
                         }

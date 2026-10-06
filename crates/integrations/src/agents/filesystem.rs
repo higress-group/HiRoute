@@ -31,6 +31,8 @@ use super::{
 
 #[path = "filesystem/claude_settings.rs"]
 mod claude_settings;
+#[path = "dsh_native.rs"]
+mod dsh_native;
 #[path = "claude_observation.rs"]
 mod main_observation;
 #[path = "pi_native.rs"]
@@ -128,6 +130,8 @@ pub struct AgentFilesystemLayoutV1 {
     pub qoder_executable: PathBuf,
     pub pi_executable: PathBuf,
     pub pi_config_root: PathBuf,
+    pub dsh_executable: PathBuf,
+    pub dsh_config_root: PathBuf,
     pub qoder_home: PathBuf,
     pub qoder_config_root: PathBuf,
     pub codex_user_config: PathBuf,
@@ -172,6 +176,11 @@ impl AgentFilesystemLayoutV1 {
             claude_executable: PathBuf::from("claude"),
             qoder_executable: PathBuf::from("qoder"),
             pi_executable: PathBuf::from("pi"),
+            dsh_executable: PathBuf::from("dsh"),
+            dsh_config_root: std::env::var_os("DSH_HOME")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".dsh")),
             pi_config_root: std::env::var_os("PI_CODING_AGENT_DIR")
                 .filter(|v| !v.is_empty())
                 .map(PathBuf::from)
@@ -207,6 +216,7 @@ impl AgentFilesystemLayoutV1 {
 pub struct FilesystemAgentScannerV1 {
     pi_collaboration_cli:
         std::sync::Arc<std::sync::Mutex<Option<(PathBuf, hiroute_domain::CanonicalDigest)>>>,
+    dsh_collaboration_cli: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, CanonicalDigest)>>>,
     pub(super) layout: AgentFilesystemLayoutV1,
     registry: ClaudeRegistrationIndexV1,
     legacy_recovery_version: Option<String>,
@@ -275,6 +285,7 @@ impl FilesystemAgentScannerV1 {
             #[cfg(unix)]
             qoder_collaboration: Default::default(),
             pi_collaboration_cli: Default::default(),
+            dsh_collaboration_cli: Default::default(),
         }
     }
 
@@ -382,6 +393,7 @@ impl FilesystemAgentScannerV1 {
             self.scan_codex(),
             self.qoder_settings_discovery(false),
             self.pi_settings_discovery(),
+            self.dsh_settings_discovery(),
         ];
         match executable_probe(&self.layout.claude_executable) {
             ExecutableProbe::Installed(executable) => {
@@ -416,7 +428,7 @@ impl FilesystemAgentScannerV1 {
                         );
                         self.layout.claude_executable.clone()
                     }
-                    AgentKindV1::Qoder | AgentKindV1::Pi => continue,
+                    AgentKindV1::Qoder | AgentKindV1::Pi | AgentKindV1::DeepseekHarness => continue,
                 };
                 #[cfg(unix)]
                 if installation.profile.kind == AgentKindV1::Codex
@@ -487,6 +499,9 @@ impl FilesystemAgentScannerV1 {
         if descriptor.field_selector == "pi.api-key" {
             return self.read_pi_secret(descriptor);
         }
+        if descriptor.field_selector == "dsh.api-key" {
+            return self.read_dsh_secret(descriptor);
+        }
         validate_descriptor(descriptor)?;
         let source = self
             .claude_sources()
@@ -551,7 +566,8 @@ impl FilesystemAgentScannerV1 {
             }
             hiroute_domain::AgentModelSurfaceV2::ClaudeCli
             | hiroute_domain::AgentModelSurfaceV2::QoderCli
-            | hiroute_domain::AgentModelSurfaceV2::PiCli => None,
+            | hiroute_domain::AgentModelSurfaceV2::PiCli
+            | hiroute_domain::AgentModelSurfaceV2::DshCli => None,
         }
     }
 
@@ -582,6 +598,9 @@ impl FilesystemAgentScannerV1 {
                 [hiroute_domain::AgentModelSurfaceV2::ClaudeCli]
                     .into_iter()
                     .collect()
+            }
+            "agent_dsh_default" if self.dsh_executable_target().is_some() => {
+                [hiroute_domain::AgentModelSurfaceV2::DshCli].into()
             }
             "agent_pi_default" if self.pi_executable_target().is_some() => {
                 [hiroute_domain::AgentModelSurfaceV2::PiCli].into()

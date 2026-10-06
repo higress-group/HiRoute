@@ -53,7 +53,7 @@ export function WorkerDependencies({
 }) {
   const zh = language === 'zh';
   const text = (cn: string, en: string) => zh ? cn : en;
-  const name = { codex_cli: 'Codex CLI', claude_code: 'Claude Code', qoder_cli: 'Qoder CLI', pi: 'Pi' }[harness];
+  const name = { codex_cli: 'Codex CLI', claude_code: 'Claude Code', qoder_cli: 'Qoder CLI', pi: 'Pi', deepseek_harness: 'DeepSeek Harness' }[harness];
   const components = workerDependencyComponents(harness);
   const [view, setView] = useState<WorkerDependenciesView | null>(null);
   const [selection, setSelection] = useState<WorkerDependencySelectionRequest | null>(null);
@@ -125,7 +125,7 @@ export function WorkerDependencies({
     setSelection(current => ({
       harness,
       cli_path: '',
-      ...(harness === 'qoder_cli' ? {} : { ...(harness === 'pi' ? {} : { adapter_path: '' }), node_path: null }),
+      ...((harness === 'qoder_cli' || harness === 'deepseek_harness') ? {} : { ...(harness === 'pi' ? {} : { adapter_path: '' }), node_path: null }),
       expected_selection_revision: view ? workerDependencyRevision(view, harness) : 0,
       ...current,
       ...patch,
@@ -222,6 +222,7 @@ export function WorkerDependencies({
       {text('选择已安装的 Qoder CLI（qoder 或 qodercli）。需要登录时，请在终端正常启动该 CLI 并完成登录，再返回使用。', 'Select your installed Qoder CLI (qoder or qodercli). When sign-in is needed, start that CLI normally in a terminal and sign in, then return here.')} {' '}
       <a href="https://docs.qoder.com/cli/installation" target="_blank" rel="noreferrer" onClick={event => void openInstallationGuide(event)}>{text('官方安装与升级说明', 'Official installation and upgrade guide')}</a>
     </p>}
+    {harness === 'deepseek_harness' && <p className="field-help" data-dsh-installation-guide>{text('安装官方 dsh CLI 并检测安装位置。npm 安装需要受支持的 Node.js；任务通过原生 ACP 执行，无需连接组件。', 'Install the official dsh CLI and detect its location. npm installations need supported Node.js; tasks use native ACP with no adapter.')}</p>}
     {harness === 'pi' && <p className="field-help" data-pi-installation-guide>{text('使用官方 npm 安装的 Pi 和 Node.js。检测安装位置后，保存时会检查所需能力；也可查看安装命令。', 'Use the official npm installation of Pi and Node.js. Detect installation paths; saving checks the required capabilities. Installation commands are also available.')}</p>}
     {!view && <div className="option-panel"><div className="option-row"><div><strong>{text('检测本机安装', 'Detect local installation')}</strong><span>{harness === 'qoder_cli'
       ? text('查找当前环境中的 Qoder CLI。', 'Find Qoder CLI in the current environment.')

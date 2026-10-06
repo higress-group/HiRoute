@@ -325,7 +325,12 @@ impl DelegationRunExecutor {
             (Some(previous), Some(binding))
                 if previous != &run.run_id && binding.native_session_id.is_some() =>
             {
-                AcpSessionStart::Load(binding.clone())
+                if task.plan.harness == hiroute_domain::delegation::WorkerHarnessV1::DeepseekHarness
+                {
+                    AcpSessionStart::Resume(binding.clone())
+                } else {
+                    AcpSessionStart::Load(binding.clone())
+                }
             }
             _ => return Err(DelegationErrorV1::ResumeUnavailable),
         };
@@ -446,7 +451,8 @@ impl DelegationRunExecutor {
         }
         let identity_contract = profile.identity_contract.clone();
         let session_meta = profile.session_meta.clone();
-        let native_session_mode = Some(profile.native_session_mode().to_owned());
+        let native_session_mode = (!profile.native_session_mode().is_empty())
+            .then(|| profile.native_session_mode().to_owned());
         let expected_model = Some(profile.native_selected_model_id().to_owned());
         let cwd = profile.cwd.clone();
         let launch = WorkerLaunchRequest {

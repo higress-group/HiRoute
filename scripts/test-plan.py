@@ -147,6 +147,18 @@ WORKER_PRODUCT_CHECKS = {
         "required_environment": ["HIROUTE_PRODUCT_CANDIDATE_SHA", "HIROUTE_WORKER_PI_BINARY", "HIROUTE_WORKER_NODE"],
         "missing_environment": "fail",
     },
+    "dsh_delegation": {
+        "id": "dsh.delegation", "harnesses": ["dsh"],
+        "guide": "tools/product-e2e/tests/DSH_INTEGRATION.md",
+        "required_tests": [
+            "dsh_worker_uses_native_skills_and_continues_the_frozen_task",
+            "dsh_workers_route_independently_cancel_and_reject_missing_history",
+            "dsh_agent_saved_model_routes_preserve_defaults_and_restore_independently",
+            "dsh_agent_uses_installed_user_skill_to_delegate_through_public_cli",
+            "dsh_static_api_discovery_imports_effective_source_and_rejects_stale_save"],
+        "required_environment": ["HIROUTE_PRODUCT_CANDIDATE_SHA", "HIROUTE_WORKER_DSH_BINARY"],
+        "missing_environment": "fail",
+    },
 }
 OPT_IN_WORKER_TARGETS = set(WORKER_PRODUCT_CHECKS)
 PRODUCT_GUIDES = {entry["guide"] for entry in WORKER_PRODUCT_CHECKS.values()} | {
@@ -181,6 +193,10 @@ QODER_PRODUCT_PATHS = {
     "crates/integrations/src/agents/settings_discovery.rs",
     "crates/integrations/src/agents/executable.rs",
 }
+DSH_PRODUCT_PREFIXES = (
+    "crates/integrations/src/agents/dsh", "crates/daemon/src/delegation/profile/dsh",
+    "crates/integrations/src/agents/filesystem_tests/dsh",
+)
 PI_PRODUCT_PREFIXES = (
     "crates/integrations/src/agents/pi", "crates/daemon/src/delegation/profile/pi",
     "crates/daemon/src/control/runtime/model_connections/pi",
@@ -214,9 +230,15 @@ def e2e_consumers(path):
     if path.startswith("tools/product-e2e/tests/") and Path(path).stem in OPT_IN_WORKER_TARGETS:
         return [("hiroute-product-e2e", Path(path).stem)]
     if path.startswith("crates/daemon/tests/support/native_context_"):
-        return [("hiroute-product-e2e", name) for name in ("worker_native_context", "qoder_delegation", "pi_delegation")]
+        return [("hiroute-product-e2e", name) for name in ("worker_native_context", "qoder_delegation", "pi_delegation", "dsh_delegation")]
+    if path == "crates/daemon/tests/support/native_task_witness.py":
+        return [("hiroute-product-e2e", name) for name in ("qoder_delegation", "dsh_delegation")]
     if path == "crates/daemon/tests/support/agent_product_support.py" or path.startswith(ADDITIONAL_NATIVE_FIXTURE_PREFIXES):
-        return [("hiroute-product-e2e", name) for name in ("qoder_delegation", "pi_delegation")]
+        return [("hiroute-product-e2e", name) for name in ("qoder_delegation", "pi_delegation", "dsh_delegation")]
+    if path.startswith("crates/daemon/tests/support/dsh_") or path == "crates/daemon/tests/support/native_acp_client.py":
+        return [("hiroute-product-e2e", "dsh_delegation")]
+    if path == "crates/daemon/tests/support/pi_discovery_product.py":
+        return [("hiroute-product-e2e", "pi_delegation"),("hiroute-product-e2e", "dsh_delegation")]
     if path.startswith("crates/daemon/tests/support/pi_"):
         return [("hiroute-product-e2e", "pi_delegation")]
     if path.startswith("crates/daemon/tests/support/qoder_"):
@@ -251,14 +273,16 @@ def worker_product_checks(paths):
             continue
         selected.update(target for package, target in e2e_consumers(path)
                         if package == "hiroute-product-e2e" and target in OPT_IN_WORKER_TARGETS)
-        if path.startswith(PI_PRODUCT_PREFIXES):
+        if path.startswith(DSH_PRODUCT_PREFIXES):
+            selected.add("dsh_delegation")
+        elif path.startswith(PI_PRODUCT_PREFIXES):
             selected.add("pi_delegation")
         elif path.startswith(ADDITIONAL_MODEL_PREFIXES):
-            selected.update(("qoder_delegation", "pi_delegation"))
+            selected.update(("qoder_delegation", "pi_delegation", "dsh_delegation"))
         elif path in QODER_PRODUCT_PATHS or path.startswith(QODER_PRODUCT_PREFIXES):
             selected.add("qoder_delegation")
             if path in QODER_PRODUCT_PATHS or path.startswith(("crates/application/src/agent_connection/settings/", "crates/application/src/agent_connection/skill")):
-                selected.add("pi_delegation")
+                selected.update(("pi_delegation", "dsh_delegation"))
         elif path.startswith(("crates/daemon/src/delegation/", "crates/application/src/delegation/",
                               "crates/domain/src/delegation/")) or path in SHARED_WORKER_FIXTURES:
             selected.update(OPT_IN_WORKER_TARGETS)

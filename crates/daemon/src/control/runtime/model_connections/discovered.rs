@@ -138,9 +138,10 @@ impl LocalControlAdapter {
                 // No matching Pi source still fails below; no candidate is created.
                 .unwrap_or_default()
                 .into_iter()
+                .chain(self.scanner.dsh_api_sources().unwrap_or_default())
                 .find(|source| super::pi_discovered::pi_discovery(source) == request.discovery)
             {
-                return self.prepare_pi_discovered_candidate(source, &request.prepare_id);
+                return self.prepare_native_api_candidate(source, &request.prepare_id);
             }
             return Err(if current_exists {
                 ComputeManagementControlError::DiscoveryChanged

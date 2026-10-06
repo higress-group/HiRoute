@@ -22,14 +22,19 @@ to their production owners and executable contracts.
 | [mutation-feedback.ts](mutation-feedback.ts) | Submitted, pre-apply cancelled and uncertain outcomes; truthful disable/recovery messages. |
 | [Agents page](../../agents.tsx) | Snapshot refresh, selected Agent/tab, in-memory draft and mode, discard guard, native calls, Operation handoff, confirmation-dependent copy effect and task-history composition. |
 
-Qoder adds only explicitly selected Plan IDs through `qoder_additional`. It does not
+Qoder, Pi and DSH share the additional-route editor and explicitly selected Plan IDs
+through `qoder_additional`, `pi_additional` and `dsh_additional`. It does not
 edit the native default or show native catalogs, fixed-source choices or import controls.
 Its model configuration uses the existing Preview, protected token and independent
 restore flow. A model restore keeps the collaboration Skill; a collaboration restore
 keeps the model routes. Token updates retain the saved ecosystem-specific selection.
 
 Task collaboration remains independently usable without any model connection or
-published Plan: its form submits `model: keep`. Both model-capable status and actual
+published Plan: its form submits `model: keep`. DSH configures the standard Web profile model picker; global provider shadowing is
+reported by the backend before Apply. Each selected Plan has its own provider and
+user-selected Responses/Messages protocol.
+
+Both model-capable status and actual
 collaboration-only status retain this path. Capability and installed-Skill checks
 provide scoped prerequisite or diagnostic facts; neither proves a delegated task
 completed or a model route worked. They do not create another settings workflow.
@@ -90,7 +95,7 @@ additional enable/save steps or model-verification badges on the settings page.
 
 | User journey or invariant | Representative evidence |
 | --- | --- |
-| Shared configuration actions and state across Codex, Claude Code and Qoder, without an automatic live model call | `agent.configuration.shared-interactions` in the [Agent browser scenarios](../../../tests/v3/browser/agent-trust-scenarios.mjs) |
+| Shared configuration actions and state across the supported Agent ecosystems, without an automatic live model call | `agent.configuration.shared-interactions` in the [Agent browser scenarios](../../../tests/v3/browser/agent-trust-scenarios.mjs) |
 | First enable, exact existing selections, unknown state and discard protection | [agent-editor-state.test.mjs](../../../tests/agent-editor-state.test.mjs) |
 | Correct ecosystem intent, independent restores, saved-selection token rotation and unsupported identity rejection | [agent-settings-request.test.mjs](../../../tests/agent-settings-request.test.mjs) |
 | Collaboration without a model or published Plan, prerequisite failure/retry and restore; independent single-CLI selection | `qoder.collaboration.enable-without-model`, `qoder.collaboration.retry-and-restore`, `qoder.installation.single-cli` in the browser scenarios; [status projection](../../../tests/agent-status.test.mjs) |

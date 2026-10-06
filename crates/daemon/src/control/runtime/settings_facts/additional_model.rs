@@ -29,11 +29,14 @@ impl LocalControlAdapter {
                 settings,
                 AgentModelSelectionV2::QoderAdditional { .. }
                     | AgentModelSelectionV2::PiAdditional { .. }
+                    | AgentModelSelectionV2::DshAdditional { .. }
             )
         {
             return Ok(input);
         }
-        let kind = if class == SettingsAgentClass::Pi {
+        let kind = if class == SettingsAgentClass::Dsh {
+            hiroute_domain::AgentKindV1::DeepseekHarness
+        } else if class == SettingsAgentClass::Pi {
             hiroute_domain::AgentKindV1::Pi
         } else {
             hiroute_domain::AgentKindV1::Qoder
@@ -45,6 +48,14 @@ impl LocalControlAdapter {
         {
             self.scanner
                 .check_pi_model_configuration()
+                .map_err(|_| ControlReadError::Unavailable)?;
+        }
+        #[cfg(unix)]
+        if kind == hiroute_domain::AgentKindV1::DeepseekHarness
+            && matches!(spec.model, AgentFacetIntent::Configure { .. })
+        {
+            self.scanner
+                .check_dsh_model_configuration()
                 .map_err(|_| ControlReadError::Unavailable)?;
         }
         let pi_settings = if kind == hiroute_domain::AgentKindV1::Pi {
@@ -240,9 +251,20 @@ impl LocalControlAdapter {
             }
             AgentFacetIntent::Keep => unreachable!(),
         };
-        let qoder_model_conflict = if pi_settings
-            .as_ref()
-            .is_some_and(|settings| settings.removes_default(&provider_id, &models))
+        let dsh_default_in_use = kind == hiroute_domain::AgentKindV1::DeepseekHarness
+            && self
+                .scanner
+                .dsh_web_default_in_use(&provider_id, &models)
+                .map_err(|_| ControlReadError::Denied)?;
+        let qoder_model_conflict = if dsh_default_in_use
+            || pi_settings
+                .as_ref()
+                .is_some_and(|settings| settings.removes_default(&provider_id, &models))
+            || (kind != hiroute_domain::AgentKindV1::Qoder
+                && qoder_model_conflict
+                    == Some(
+                    hiroute_application::agent_connection::SettingsBlockReason::QoderDefaultInUse,
+                ))
         {
             Some(hiroute_application::agent_connection::SettingsBlockReason::AdditionalDefaultInUse)
         } else {
@@ -281,10 +303,12 @@ impl LocalControlAdapter {
             capabilities.push(CapabilityEvidence {
                 capability,
                 state: CapabilityState::Proven,
-                adapter_contract: if kind == hiroute_domain::AgentKindV1::Pi {
-                    "hiroute.pi-additional-model/v1"
-                } else {
-                    "hiroute.qoder-additional-model/v1"
+                adapter_contract: match kind {
+                    hiroute_domain::AgentKindV1::Pi => "hiroute.pi-additional-model/v1",
+                    hiroute_domain::AgentKindV1::DeepseekHarness => {
+                        "hiroute.dsh-additional-model/v1"
+                    }
+                    _ => "hiroute.qoder-additional-model/v1",
                 }
                 .into(),
                 observed_at_unix_ms: self.now_ms()?.max(1) as u64,
@@ -298,7 +322,9 @@ impl LocalControlAdapter {
         input.facts.model = Some(SettingsModelFacts {
             common: SettingsModelCommonFacts {
                 ingress: protocol,
-                available_surfaces: [if kind == hiroute_domain::AgentKindV1::Pi {
+                available_surfaces: [if kind == hiroute_domain::AgentKindV1::DeepseekHarness {
+                    AgentModelSurfaceV2::DshCli
+                } else if kind == hiroute_domain::AgentKindV1::Pi {
                     AgentModelSurfaceV2::PiCli
                 } else {
                     AgentModelSurfaceV2::QoderCli

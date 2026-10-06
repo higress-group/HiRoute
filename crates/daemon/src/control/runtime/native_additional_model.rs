@@ -15,7 +15,7 @@ pub(super) fn is_settings_additional_model(intent: &ExternalEffectIntentV1) -> b
         && intent.desired()["transaction"] == "settings"
         && matches!(
             intent.desired()["subject"]["agent_id"].as_str(),
-            Some("agent_qoder_default" | "agent_pi_default")
+            Some("agent_qoder_default" | "agent_pi_default" | "agent_dsh_default")
         )
 }
 
@@ -23,7 +23,7 @@ pub(super) fn additional_model_endpoint(
     kind: AgentKindV1,
     gateway_base_url: &str,
 ) -> PortResult<String> {
-    if kind == AgentKindV1::Pi {
+    if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
         return Ok(gateway_base_url.to_owned());
     }
     let origin = gateway_base_url
@@ -63,7 +63,7 @@ pub(super) fn additional_models_for_grant(
             if &plan.body.materialized_route_digest != semantic_digest {
                 return Err(conflict("qoder.models.plan.digest"));
             }
-            let budget = (if kind == AgentKindV1::Pi {
+            let budget = (if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
                 hiroute_integrations::pi_plan_token_budget(&plan.body.materialized)
             } else {
                 hiroute_integrations::qoder_plan_token_budget(&plan.body.materialized)
@@ -87,6 +87,24 @@ impl LocalControlAdapter {
         intent: &ExternalEffectIntentV1,
     ) -> PortResult<()> {
         let payload = settings_additional_model_file_for_operation(operation, intent)?;
+        if additional_model_kind(intent)? == AgentKindV1::DeepseekHarness {
+            let models = match &payload.change {
+                AdditionalModelFileAction::Configure { models, .. } => models.as_slice(),
+                _ => &[],
+            };
+            if self
+                .scanner
+                .dsh_web_default_in_use(
+                    &hiroute_application::agent_connection::additional_model_provider_id(
+                        &payload.context_id,
+                    ),
+                    models,
+                )
+                .map_err(|_| conflict("dsh.settings.home.changed"))?
+            {
+                return Err(conflict("dsh.settings.default.changed"));
+            }
+        }
         if let Some(expected) = &payload.pi_settings_content {
             let settings = self
                 .scanner

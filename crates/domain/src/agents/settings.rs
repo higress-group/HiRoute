@@ -20,6 +20,11 @@ pub enum AgentFacetIntent<T> {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentModelSelectionV2 {
+    DshAdditional {
+        allowed_plan_ids: BTreeSet<AgentPlanId>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        plan_protocols: BTreeMap<AgentPlanId, crate::AgentIngressProtocolV1>,
+    },
     CodexDefault {
         native_model_mode: CodexNativeModelModeV2,
         fixed_models: Vec<AgentFixedModelSelectionV2>,
@@ -58,6 +63,7 @@ pub enum AgentModelSurfaceV2 {
     ClaudeCli,
     QoderCli,
     PiCli,
+    DshCli,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -109,6 +115,9 @@ impl AgentModelSelectionV2 {
             | Self::PiAdditional { plan_protocols, .. } => {
                 plan_protocols.get(id).copied().unwrap_or(fallback)
             }
+            Self::DshAdditional { plan_protocols, .. } => {
+                plan_protocols.get(id).copied().unwrap_or(fallback)
+            }
             _ => fallback,
         }
     }
@@ -118,7 +127,9 @@ impl AgentModelSelectionV2 {
             Self::CodexDefault { fixed_models, .. } | Self::ClaudeLauncher { fixed_models, .. } => {
                 fixed_models
             }
-            Self::QoderAdditional { .. } | Self::PiAdditional { .. } => &[],
+            Self::QoderAdditional { .. }
+            | Self::PiAdditional { .. }
+            | Self::DshAdditional { .. } => &[],
         }
     }
 
@@ -131,6 +142,9 @@ impl AgentModelSelectionV2 {
                 allowed_plan_ids, ..
             }
             | Self::PiAdditional {
+                allowed_plan_ids, ..
+            }
+            | Self::DshAdditional {
                 allowed_plan_ids, ..
             } => allowed_plan_ids.clone(),
             Self::ClaudeLauncher {
@@ -182,7 +196,8 @@ impl AgentModelSelectionV2 {
                 _ => return Err(invalid),
             },
             Self::QoderAdditional { plan_protocols, .. }
-            | Self::PiAdditional { plan_protocols, .. } => {
+            | Self::PiAdditional { plan_protocols, .. }
+            | Self::DshAdditional { plan_protocols, .. } => {
                 if plan_protocols.keys().any(|id| !plans.contains(id)) {
                     return Err(crate::AgentConnectionError::InvalidGrant);
                 }

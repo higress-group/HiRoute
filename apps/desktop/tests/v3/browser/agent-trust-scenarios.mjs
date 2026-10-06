@@ -526,14 +526,18 @@ const scenarios = [
     const pick = () => [...dialog().querySelectorAll('[data-agent-plan-id] input')].slice(0, 2).forEach(input => input.click());
     pick(); await tick();
     assert(dialog().textContent.includes('当前默认模型保持不变') && dialog().textContent.includes('/model'), 'Additional routing does not explain native preservation and selection');
-    assert(!dialog().querySelector('[data-agent-default], [data-client-model-id], [data-agent-fixed-models], select'), 'Qoder borrowed native model, source or default controls');
+    assert(!dialog().querySelector('[data-agent-default], [data-client-model-id], [data-agent-fixed-models]'), 'Qoder borrowed native model, source or default controls');
+    assert(dialog().querySelectorAll('[data-plan-protocol] select').length === 2, 'Each selected route needs its own protocol choice');
     [...dialog().querySelectorAll('button')].find(button => button.textContent === '取消').click(); await tick();
     assert(configureSpecs().length === 0 && !dialog(), 'Cancelling Qoder model draft changed configuration');
     await openEditor('model'); pick(); await tick();
     const selected = [...dialog().querySelectorAll('[data-agent-plan-id]')].filter(row => row.querySelector('input').checked).map(row => row.dataset.agentPlanId);
+    changeSelect(dialog().querySelector(`[data-agent-plan-id="${selected[1]}"] [data-plan-protocol] select`), 'messages');
+    await tick();
     await save();
     const spec = configureSpecs().at(-1);
-    assert(JSON.stringify(spec.model.settings) === JSON.stringify({ mode: 'qoder_additional', allowed_plan_ids: selected }), 'Qoder submitted another ecosystem or changed the route set');
+    assert(JSON.stringify(spec.model.settings) === JSON.stringify({ mode: 'qoder_additional', allowed_plan_ids: selected,
+      plan_protocols: { [selected[0]]: 'responses', [selected[1]]: 'messages' } }), 'Qoder changed the ecosystem, selected routes or their independent protocols');
     assert(spec.collaboration.intent === 'keep' && !spec.restore_native_model, 'Model save changed collaboration or a native default');
     assert(!c().commands.some(({ command }) => /subscription|discovered_model|model_catalog/.test(command)), 'Additional routing opened model discovery or import');
     assert(calls('check_agent_live').length === 0, 'Saving routes implicitly invoked a model');
@@ -588,6 +592,26 @@ const scenarios = [
     await until(() => configureSpecs().some(spec => spec.collaboration.intent === 'restore'), 'independent collaboration restore');
     assert(configureSpecs().at(-1).model.intent === 'keep' && agent.settings.current_selection.mode === 'qoder_additional', 'Collaboration restore removed model routes');
   }),
+  ...['pi', 'dsh'].map(ecosystem => scenario(`${ecosystem}.routing.default-in-use`, ['agent-recovery'], `${ecosystem} preserves a route used by its native default and directs recovery to the selected client`, async () => {
+    c().reset(); c().agents = c().additionalRouted(ecosystem); await tick();
+    await until(() => facet('model')?.textContent === '调整' && !facet('model').disabled, 'additional model routing');
+    const agent = c().agents.agents[0];
+    const before = structuredClone(agent.settings);
+    c().handlers.preview_agent_settings = () => ({
+      preview: { applicable: false, blockers: [{ reason: 'additional_default_in_use' }] }, mutation: null,
+    });
+    [...document.querySelectorAll('.detail-section-head button')].find(button => button.textContent === '停用').click();
+    await until(() => document.querySelector('.agent-feedback')?.textContent.includes('当前默认模型仍引用'), 'default reference recovery');
+    const guidance = document.querySelector('.agent-feedback').textContent;
+    assert(guidance.includes('所选客户端中切换到其他模型') && guidance.includes('HiRoute 不会替你更改默认模型'), 'Recovery did not direct the user to their selected client');
+    assert(!guidance.includes('Pi 中') && !guidance.includes('/model'), 'Shared recovery assumed another ecosystem or a CLI-only selector');
+    assert(c().operations.length === 0 && JSON.stringify(agent.settings) === JSON.stringify(before), 'Blocked removal changed model routes or task collaboration');
+    assert(configureSpecs().at(-1).collaboration.intent === 'keep', 'Model recovery tried to restore task collaboration');
+    assert(calls('check_agent_live').length === 0, 'Recovery called a model');
+    const spec = configureSpecs().at(-1);
+    assert(spec.context_id === agent.context_id && spec.model.intent === 'restore'
+      && spec.model.restore_point_ref === before.restore_point_ref, 'Removal targeted another client or restore point');
+  })),
   scenario('qoder.routing.resume-pending', ['qoder', 'qoder-model-routing'], 'Qoder resumes the original incomplete model operation without replacing task collaboration', async () => {
     c().reset(); c().agents = c().qoderRouted();
     const agent = c().agents.agents[0];

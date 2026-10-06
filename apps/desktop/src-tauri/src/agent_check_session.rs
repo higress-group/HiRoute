@@ -123,6 +123,7 @@ impl AgentCheckConfirmation {
             "agent_claude_default" => "Claude Code",
             "agent_qoder_default" => "Qoder",
             "agent_pi_default" => "Pi",
+            "agent_dsh_default" => "DeepSeek Harness",
             _ => "Codex",
         };
         if self.request.scope == AgentCheckScopeV1::Live {
@@ -137,6 +138,7 @@ impl AgentCheckConfirmation {
                 AgentModelSurfaceV2::ClaudeCli => "Claude Code CLI",
                 AgentModelSurfaceV2::QoderCli => "Qoder CLI",
                 AgentModelSurfaceV2::PiCli => "Pi CLI",
+                AgentModelSurfaceV2::DshCli => "DeepSeek Harness",
             };
             let models = target.client_model_ids.join(", ");
             let message = if self.english {
@@ -181,6 +183,15 @@ impl AgentCheckConfirmation {
                 "Check local Pi task delegation compatibility?\nReads the selected official SDK, native Skill settings and trusted sibling HiRoute CLI. No model call, delegated task or native configuration change.".into()
             } else {
                 "检查本机 Pi 任务委派兼容性？\n读取所选官方 SDK、原生技能设置和同一安装中的 HiRoute CLI。不发起模型调用、不执行委派任务、不修改原生配置。".into()
+            };
+        }
+        if self.request.scope == AgentCheckScopeV1::Collaboration
+            && self.request.agent_id == "agent_dsh_default"
+        {
+            return if self.english {
+                "Check local DeepSeek Harness task delegation compatibility?\nReads the native CLI's public composition, Skill locations and trusted sibling HiRoute CLI. No model call, delegated task or native configuration change.".into()
+            } else {
+                "检查本机 DeepSeek Harness 任务委派兼容性？\n读取原生 CLI 的公开配置能力、技能位置及同一安装中的 HiRoute CLI。不发起模型调用、不执行委派任务、不修改原生配置。".into()
             };
         }
         if self.request.scope == AgentCheckScopeV1::Collaboration && self.english {
@@ -266,7 +277,7 @@ impl AgentCheckInput {
         };
         let supported = match self.agent_id.as_str() {
             "agent_codex_default" | "agent_claude_default" => true,
-            "agent_pi_default" => scope == AgentCheckScopeV1::Collaboration,
+            "agent_pi_default" | "agent_dsh_default" => scope == AgentCheckScopeV1::Collaboration,
             "agent_qoder_default" => matches!(
                 scope,
                 AgentCheckScopeV1::Collaboration | AgentCheckScopeV1::Live

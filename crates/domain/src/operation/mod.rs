@@ -842,6 +842,9 @@ impl TransactionPlanV1 {
         let resource = match harness {
             crate::delegation::WorkerHarnessV1::QoderCli => "worker-dependency-selection/qoder_cli",
             crate::delegation::WorkerHarnessV1::Pi => "worker-dependency-selection/pi",
+            crate::delegation::WorkerHarnessV1::DeepseekHarness => {
+                "worker-dependency-selection/deepseek_harness"
+            }
             crate::delegation::WorkerHarnessV1::CodexCli => "worker-dependency-selection/codex_cli",
             crate::delegation::WorkerHarnessV1::ClaudeCode => {
                 "worker-dependency-selection/claude_code"

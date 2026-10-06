@@ -103,19 +103,19 @@ function splitCodexStatus(): AgentSnapshot {
   return snapshot;
 }
 
-function qoder(configured: boolean): AgentSnapshot {
-  const context = `agent-context/qoder/sha256:${'a'.repeat(64)}`;
+function additionalAgent(configured: boolean, ecosystem: 'qoder' | 'pi' | 'dsh' = 'qoder'): AgentSnapshot {
+  const context = `agent-context/${ecosystem}/sha256:${'a'.repeat(64)}`;
   return {
     trusted_authority: true, plans: { plans: [] },
     agents: [{
-      agent_id: 'agent_qoder_default', version: 'fixture', context_id: context,
+      agent_id: `agent_${ecosystem}_default`, version: 'fixture', context_id: context,
       configuration_state: configured ? 'configured' : 'not_configured',
-      available_surfaces: ['qoder_cli'], native_model_catalog: null, status_error: null,
+      available_surfaces: [`${ecosystem}_cli`], native_model_catalog: null, status_error: null,
       settings: {
         state: 'not_configured', model_verified: false, restore_point_ref: null, current_selection: null,
         collaboration: {
           state: configured ? 'configured' : 'not_configured',
-          restore_point_ref: configured ? 'task-restore/qoder' : null,
+          restore_point_ref: configured ? `task-restore/${ecosystem}` : null,
           current_selection: configured ? { trigger_mode: 'explicit' } : null,
         },
       },
@@ -123,17 +123,17 @@ function qoder(configured: boolean): AgentSnapshot {
   };
 }
 
-function qoderRouted(): AgentSnapshot {
-  const snapshot = qoder(true);
+function additionalRouted(ecosystem: 'qoder' | 'pi' | 'dsh' = 'qoder'): AgentSnapshot {
+  const snapshot = additionalAgent(true, ecosystem);
   snapshot.plans = structuredClone(readyAgents.plans);
-  const agent = modelAgent(snapshot, 'agent_qoder_default');
+  const agent = modelAgent(snapshot, `agent_${ecosystem}_default`);
   const plans = snapshot.plans.plans.slice(0, 2);
   agent.settings = {
-    ...agent.settings, state: 'configured', applied_revision: 23, restore_point_ref: 'model-restore/qoder',
-    current_selection: { mode: 'qoder_additional', allowed_plan_ids: plans.map(plan => plan.agent_plan_id) },
-    live_check_targets: [{ context_id: agent.context_id!, surface: 'qoder_cli', expected_applied_revision: 23,
+    ...agent.settings, state: 'configured', applied_revision: 23, restore_point_ref: `model-restore/${ecosystem}`,
+    current_selection: { mode: `${ecosystem}_additional`, allowed_plan_ids: plans.map(plan => plan.agent_plan_id) },
+    live_check_targets: [{ context_id: agent.context_id!, surface: `${ecosystem}_cli`, expected_applied_revision: 23,
       client_model_ids: plans.map(plan => `fixture-hiroute/${plan.model_alias}`) }],
-    surface_results: [{ surface: 'qoder_cli', applied_revision: 23, state: 'not_verified', reason_code: null }],
+    surface_results: [{ surface: `${ecosystem}_cli`, applied_revision: 23, state: 'not_verified', reason_code: null }],
   };
   return snapshot;
 }
@@ -156,9 +156,10 @@ const control = {
   protectedCodex,
   cliOnly: () => freshCodex('codex_cli'),
   splitCodexStatus,
-  qoderFresh: () => qoder(false),
-  qoderConfigured: () => qoder(true),
-  qoderRouted,
+  qoderFresh: () => additionalAgent(false),
+  qoderConfigured: () => additionalAgent(true),
+  qoderRouted: () => additionalRouted(),
+  additionalRouted,
 };
 Object.assign(window, { agentTrust: control });
 

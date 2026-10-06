@@ -29,10 +29,14 @@ mod native_ingress_probe;
 mod native_probe_process;
 #[cfg(unix)]
 pub use native_probe_process::NativeProbeProcess;
+mod dsh_config;
+mod dsh_sources;
+#[cfg(test)]
+mod dsh_tests;
 mod observed_capabilities;
 mod pi_runtime;
 mod pi_sources;
-pub use pi_sources::PiApiSource;
+pub use pi_sources::{NativeApiSource, PiApiSource};
 mod qoder;
 pub use pi_runtime::*;
 mod additional_native;

@@ -81,7 +81,10 @@ impl LocalControlAdapter {
             )?;
         }
         // Only historical clients ever owned sealed collaboration credentials.
-        if matches!(class, SettingsAgentClass::Qoder | SettingsAgentClass::Pi) {
+        if matches!(
+            class,
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh
+        ) {
             return Ok(());
         }
         let legacy = self.legacy_collaboration_artifact_path(&spec.context_id)?;
@@ -109,7 +112,9 @@ impl LocalControlAdapter {
                 self.scanner.codex_user_config_target()
             }
             SettingsAgentClass::Claude => self.scanner.claude_user_settings_target(),
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi => return Err(error()),
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
+                return Err(error());
+            }
         };
         let home = native
             .parent()
@@ -121,7 +126,9 @@ impl LocalControlAdapter {
             .join(match class {
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => "codex.sealed",
                 SettingsAgentClass::Claude => "claude-code.sealed",
-                SettingsAgentClass::Qoder | SettingsAgentClass::Pi => return Err(error()),
+                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
+                    return Err(error());
+                }
             }))
     }
 }

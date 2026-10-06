@@ -478,7 +478,9 @@ impl HarnessScan {
         package_root: &Path,
         source: WorkerDependencyCandidateSourceV1,
     ) {
-        let adapter = if self.harness == WorkerHarnessV1::Pi {
+        let adapter = if self.harness == WorkerHarnessV1::DeepseekHarness {
+            "dsh"
+        } else if self.harness == WorkerHarnessV1::Pi {
             "pi"
         } else {
             let Some(adapter) = names(self.harness).1 else {
@@ -498,7 +500,10 @@ impl HarnessScan {
             }
         };
         self.add_discovered(
-            if self.harness == WorkerHarnessV1::Pi {
+            if matches!(
+                self.harness,
+                WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+            ) {
                 WorkerDependencyComponentV1::Cli
             } else {
                 WorkerDependencyComponentV1::Adapter
@@ -567,8 +572,10 @@ impl HarnessScan {
             WorkerDependencyComponentV1::Adapter,
             WorkerDependencyComponentV1::Node,
         ] {
-            if (self.harness == WorkerHarnessV1::QoderCli
-                && component != WorkerDependencyComponentV1::Cli)
+            if (matches!(
+                self.harness,
+                WorkerHarnessV1::QoderCli | WorkerHarnessV1::DeepseekHarness
+            ) && component != WorkerDependencyComponentV1::Cli)
                 || (self.harness == WorkerHarnessV1::Pi
                     && component == WorkerDependencyComponentV1::Adapter)
             {
@@ -582,9 +589,15 @@ impl HarnessScan {
                     harness: self.harness,
                     component,
                     platform: platform().to_owned(),
-                    command: (self.harness == WorkerHarnessV1::Pi
-                        && component == WorkerDependencyComponentV1::Cli)
-                        .then(|| "npm install -g @earendil-works/pi-coding-agent".into()),
+                    command: if self.harness == WorkerHarnessV1::DeepseekHarness
+                        && component == WorkerDependencyComponentV1::Cli
+                    {
+                        Some("npm install -g @deepseek-ai/dsh".into())
+                    } else {
+                        (self.harness == WorkerHarnessV1::Pi
+                            && component == WorkerDependencyComponentV1::Cli)
+                            .then(|| "npm install -g @earendil-works/pi-coding-agent".into())
+                    },
                     reason_code: "worker.dependencies.install_required".to_owned(),
                 });
             }
@@ -719,6 +732,7 @@ fn names(harness: WorkerHarnessV1) -> (&'static [&'static str], Option<&'static 
         WorkerHarnessV1::ClaudeCode => (&["claude"], Some("claude-agent-acp")),
         WorkerHarnessV1::QoderCli => (&["qoder", "qodercli"], None),
         WorkerHarnessV1::Pi => (&["pi"], None),
+        WorkerHarnessV1::DeepseekHarness => (&["dsh"], None),
     }
 }
 
@@ -728,6 +742,7 @@ fn package_name(harness: WorkerHarnessV1) -> Option<&'static Path> {
         WorkerHarnessV1::ClaudeCode => Some(Path::new("@agentclientprotocol/claude-agent-acp")),
         WorkerHarnessV1::QoderCli => None,
         WorkerHarnessV1::Pi => Some(Path::new("@earendil-works/pi-coding-agent")),
+        WorkerHarnessV1::DeepseekHarness => Some(Path::new("@deepseek-ai/dsh")),
     }
 }
 

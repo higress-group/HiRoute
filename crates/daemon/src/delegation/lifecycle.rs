@@ -40,7 +40,8 @@ impl ClaudeHistoryCheckpoint {
         }
         let baseline = match &input.session {
             super::acp::AcpSessionStart::New => HistoryBaseline::New,
-            super::acp::AcpSessionStart::Load(binding) => binding
+            super::acp::AcpSessionStart::Load(binding)
+            | super::acp::AcpSessionStart::Resume(binding) => binding
                 .native_session_id
                 .as_deref()
                 .and_then(|id| claude_history_len(&profile.session_root, id))

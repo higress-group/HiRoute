@@ -15,6 +15,24 @@ const REQUIRED_INSTALLATIONS: [&str; 5] = [
 ];
 
 pub fn run_real_worker_scenario(mode: &str, expected_scenario: &str) {
+    let dsh_script = match mode {
+        "HIROUTE_PRODUCT_DSH_CORE" => Some("native_context_product.py"),
+        "HIROUTE_PRODUCT_DSH_BOUNDARIES" => Some("native_context_boundaries.py"),
+        "HIROUTE_PRODUCT_DSH_MODELS" => Some("additional_model_product.py"),
+        "HIROUTE_PRODUCT_DSH_MAIN" => Some("collaboration_product.py"),
+        "HIROUTE_PRODUCT_DSH_DISCOVERY" => Some("pi_discovery_product.py"),
+        _ => None,
+    };
+    if let Some(script) = dsh_script {
+        run_scenario(
+            script,
+            mode,
+            expected_scenario,
+            &["dsh"],
+            &["HIROUTE_WORKER_DSH_BINARY"],
+        );
+        return;
+    }
     let pi_script = match mode {
         "HIROUTE_PRODUCT_PI_CORE" => Some("native_context_product.py"),
         "HIROUTE_PRODUCT_PI_BOUNDARIES" => Some("native_context_boundaries.py"),
@@ -184,17 +202,21 @@ fn assert_scenario(output: Output, scenario: &str, harness: &str, candidate: &st
             "worker.context.compaction-route",
         ],
         "pi-worker-compaction-route" => &["worker.context.compaction-route"],
-        "pi-static-source-import" => &[
+        "pi-static-source-import" | "dsh-static-source-import" => &[
             "agent.sources.effective-static-import",
             "agent.sources.changed-source-rejected",
             "agent.sources.imported-route-usable",
         ],
-        "qoder-main-agent-delegation" | "pi-main-agent-delegation" => &[
+        "qoder-main-agent-delegation"
+        | "pi-main-agent-delegation"
+        | "dsh-main-agent-delegation" => &[
             "agent.collaboration.user-skill",
             "agent.collaboration.public-worker-delegation",
             "agent.collaboration.disable-owned-skill",
         ],
-        "qoder-persisted-model-routes" | "pi-persisted-model-routes" => &[
+        "qoder-persisted-model-routes"
+        | "pi-persisted-model-routes"
+        | "dsh-persisted-model-routes" => &[
             "agent.models.persisted-routes",
             "agent.models.credential-rotation",
             "agent.models.independent-restore",

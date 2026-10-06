@@ -15,12 +15,14 @@ pub fn additional_model_kind(intent: &ExternalEffectIntentV1) -> PortResult<Agen
     match intent.desired()["subject"]["agent_id"].as_str() {
         Some("agent_qoder_default") => Ok(AgentKindV1::Qoder),
         Some("agent_pi_default") => Ok(AgentKindV1::Pi),
+        Some("agent_dsh_default") => Ok(AgentKindV1::DeepseekHarness),
         _ => Err(invalid()),
     }
 }
 fn schema(kind: AgentKindV1) -> &'static str {
     match kind {
         AgentKindV1::Pi => PI_SCHEMA,
+        AgentKindV1::DeepseekHarness => "hiroute.settings-dsh-model-file/v1",
         _ => QODER_SCHEMA,
     }
 }
@@ -68,7 +70,9 @@ pub fn settings_additional_model_file_intent(
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }
     let payload = AdditionalModelFilePayload {
-        schema: schema(if control.subject().agent_id() == "agent_pi_default" {
+        schema: schema(if control.subject().agent_id() == "agent_dsh_default" {
+            AgentKindV1::DeepseekHarness
+        } else if control.subject().agent_id() == "agent_pi_default" {
             AgentKindV1::Pi
         } else {
             AgentKindV1::Qoder
@@ -107,6 +111,11 @@ pub fn decode_settings_additional_model_file(
     let value = intent.desired();
     let kind = additional_model_kind(intent)?;
     let (agent, profile, integration) = match kind {
+        AgentKindV1::DeepseekHarness => (
+            "agent_dsh_default",
+            "dsh-responses-v1",
+            "builtin/dsh-responses/v1",
+        ),
         AgentKindV1::Pi => (
             "agent_pi_default",
             "pi-responses-v1",
@@ -147,7 +156,7 @@ pub fn decode_settings_additional_model_file(
                 || models.is_empty()
                 || models.len() > 256
                 || models.iter().any(|model| {
-                    (if kind == AgentKindV1::Pi {
+                    (if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
                         model.validate_pi()
                     } else {
                         model.validate()
@@ -195,6 +204,9 @@ pub fn settings_additional_model_file_for_operation(
                     }
                     | AgentModelSelectionV2::PiAdditional {
                         allowed_plan_ids, ..
+                    }
+                    | AgentModelSelectionV2::DshAdditional {
+                        allowed_plan_ids, ..
                     },
             },
             AdditionalModelFileAction::Configure {
@@ -209,6 +221,12 @@ pub fn settings_additional_model_file_for_operation(
                     settings: AgentModelSelectionV2::PiAdditional { .. }
                 }
             ) != (kind == AgentKindV1::Pi)
+                || matches!(
+                    &spec.model,
+                    AgentFacetIntent::Configure {
+                        settings: AgentModelSelectionV2::DshAdditional { .. }
+                    }
+                ) != (kind == AgentKindV1::DeepseekHarness)
             {
                 return Err(invalid());
             }
@@ -239,11 +257,13 @@ fn local_endpoint(value: &str, kind: AgentKindV1) -> bool {
         .strip_prefix("http://127.0.0.1:")
         .or_else(|| value.strip_prefix("http://[::1]:"))
         .and_then(|rest| {
-            rest.strip_suffix(if kind == AgentKindV1::Pi {
-                "/v1"
-            } else {
-                hiroute_domain::QODER_MODEL_BASE_PATH
-            })
+            rest.strip_suffix(
+                if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
+                    "/v1"
+                } else {
+                    hiroute_domain::QODER_MODEL_BASE_PATH
+                },
+            )
         })
         .is_some_and(|port| {
             !port.is_empty()

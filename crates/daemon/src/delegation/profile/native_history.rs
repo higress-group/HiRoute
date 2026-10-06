@@ -117,7 +117,12 @@ pub(super) fn read_context(
             return match fs::symlink_metadata(root.join(SESSION_FILE)) {
                 Err(error)
                     if error.kind() == std::io::ErrorKind::NotFound
-                        && !matches!(harness, WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi) =>
+                        && !matches!(
+                            harness,
+                            WorkerHarnessV1::QoderCli
+                                | WorkerHarnessV1::Pi
+                                | WorkerHarnessV1::DeepseekHarness
+                        ) =>
                 {
                     Ok(None)
                 }

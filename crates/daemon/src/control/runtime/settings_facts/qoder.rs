@@ -8,7 +8,9 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
-        let discovery = if class == SettingsAgentClass::Pi {
+        let discovery = if class == SettingsAgentClass::Dsh {
+            self.scanner.dsh_settings_discovery()
+        } else if class == SettingsAgentClass::Pi {
             self.scanner.pi_settings_discovery()
         } else {
             self.scanner.qoder_settings_discovery(matches!(

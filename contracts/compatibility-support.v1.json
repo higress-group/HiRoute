@@ -162,6 +162,9 @@
     "hiroute.diagnostic-settings/v1",
     "hiroute.diagnostic-status/v1",
     "hiroute.discovered-model-candidate/v1",
+    "hiroute.dsh-additional-model/v1",
+    "hiroute.dsh-native-restore/v2",
+    "hiroute.dsh-public-native-resources/v1",
     "hiroute.empty-request/v1",
     "hiroute.fixed-local-id/v2",
     "hiroute.frozen-candidate-ledger/v1",
@@ -308,6 +311,7 @@
     "hiroute.session-store-status/v1",
     "hiroute.settings-claude-model-file/v1",
     "hiroute.settings-codex-model-file/v1",
+    "hiroute.settings-dsh-model-file/v1",
     "hiroute.settings-login-item/v1",
     "hiroute.settings-model-publication/v1",
     "hiroute.settings-pi-model-file/v1",
@@ -992,7 +996,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -1083,13 +1087,15 @@
     },
     {
       "contract": "hiroute.delegation-native-root/v1",
-      "field": "current runtime task/run record_json identity witness for a cancelled Qoder acceptance task",
+      "field": "current runtime task/run record_json identity witness for a cancelled native acceptance task",
       "mode": "frozen_fixture",
       "owner": "worker-product-acceptance",
-      "reason": "Cancellation does not grant successful-Continue eligibility. The opt-in fixture reads only its own runtime.db in read-only mode with exact workspace/task/run keys, verifies the task-owned context descriptor, Qoder harness, cancelled state, completed cleanup and matching native/ACP identity, then locates that exact native transcript. It never scans a daily database or changes the production Continue reader.",
+      "reason": "Cancellation does not grant successful-Continue eligibility. The opt-in fixture reads only its own runtime.db in read-only mode with exact workspace/task/run keys, verifies the task-owned context descriptor, selected native harness, cancelled state, completed cleanup and matching native/ACP identity, then locates that exact native transcript. It never scans a daily database or changes the production Continue reader.",
       "removal_condition": "Replace this test-only current-storage reader when a public exact-native-session identity projection can establish cancellation history retention independently of successful-Continue material; update the fixture if the task/run storage contract changes.",
       "allowed_paths": [
         "crates/daemon/tests/support/qoder_native_context.py",
+        "crates/daemon/tests/support/native_task_witness.py",
+        "crates/daemon/tests/support/dsh_native_context.py",
         "scripts/test-qoder-product.py",
         "tools/product-e2e/tests/QODER_DELEGATION.md"
       ]

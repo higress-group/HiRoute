@@ -57,6 +57,7 @@ pub(super) enum SettingsAgentClass {
     Claude,
     Qoder,
     Pi,
+    Dsh,
 }
 
 impl SettingsAgentClass {
@@ -70,6 +71,7 @@ impl SettingsAgentClass {
             Self::Claude => "agent_claude_default",
             Self::Qoder => "agent_qoder_default",
             Self::Pi => "agent_pi_default",
+            Self::Dsh => "agent_dsh_default",
         }
     }
 
@@ -79,6 +81,7 @@ impl SettingsAgentClass {
             Self::Claude => "claude",
             Self::Qoder => "qoder",
             Self::Pi => "pi",
+            Self::Dsh => "dsh",
         }
     }
 
@@ -89,6 +92,7 @@ impl SettingsAgentClass {
             Self::Claude => scanner.claude_user_settings_target(),
             Self::Qoder => scanner.qoder_user_config_target(),
             Self::Pi => scanner.pi_user_models_target(),
+            Self::Dsh => scanner.dsh_user_models_target(),
         }
     }
 
@@ -98,6 +102,7 @@ impl SettingsAgentClass {
             Self::Claude => "skill-root/agent_claude_default",
             Self::Qoder => "skill-root/agent_qoder_default",
             Self::Pi => "skill-root/agent_pi_default",
+            Self::Dsh => "skill-root/agent_dsh_default",
         }
     }
 
@@ -114,6 +119,10 @@ impl SettingsAgentClass {
             Self::Pi => (
                 hiroute_integrations::PI_PROFILE_ID_V1,
                 hiroute_integrations::PI_INTEGRATION_PROFILE_REF_V1,
+            ),
+            Self::Dsh => (
+                hiroute_integrations::DSH_PROFILE_ID_V1,
+                hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,
             ),
             Self::Qoder => (
                 hiroute_integrations::QODER_PROFILE_ID_V1,
@@ -136,6 +145,7 @@ impl LocalControlAdapter {
             "agent_claude_default" => SettingsAgentClass::Claude,
             "agent_qoder_default" => SettingsAgentClass::Qoder,
             "agent_pi_default" => SettingsAgentClass::Pi,
+            "agent_dsh_default" => SettingsAgentClass::Dsh,
             _ => return None,
         };
         Some(self.settings_context(class))
@@ -148,6 +158,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Claude,
             SettingsAgentClass::Qoder,
             SettingsAgentClass::Pi,
+            SettingsAgentClass::Dsh,
         ]
         .into_iter()
         .find(|class| context == self.settings_context(*class))
@@ -184,7 +195,10 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
-        if matches!(class, SettingsAgentClass::Qoder | SettingsAgentClass::Pi) {
+        if matches!(
+            class,
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh
+        ) {
             return self.attach_additional_model_facts(
                 spec,
                 class,
@@ -394,7 +408,7 @@ impl LocalControlAdapter {
                 SettingsAgentClass::Claude
             }
             SettingsAgentClass::Claude => SettingsAgentClass::Codex,
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi => {
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
                 return Err(ControlReadError::Denied);
             }
         };
@@ -462,7 +476,7 @@ impl LocalControlAdapter {
                 selected_collaboration_restore = Some(original.operation_id.clone());
             }
             let model = match class {
-                SettingsAgentClass::Qoder | SettingsAgentClass::Pi => return Err(ControlReadError::Denied),
+                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => return Err(ControlReadError::Denied),
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => original
                     .plan
                     .external()
@@ -598,7 +612,7 @@ impl LocalControlAdapter {
             None
         };
         let native_default_model = match class {
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi => {
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
                 return Err(ControlReadError::Denied);
             }
             SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => codex_catalog_summary
@@ -888,7 +902,7 @@ impl LocalControlAdapter {
             ))
             .map_err(|_| ControlReadError::Corrupt)?;
         let model_target = match class {
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi => {
+            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
                 return Err(ControlReadError::Denied);
             }
             SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => {

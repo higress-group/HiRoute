@@ -37,43 +37,43 @@ test('detection recommends but never invents a persisted selection', () => {
   assert.deepEqual(detected.selected, []);
 });
 
-test('Qoder recommends and recognizes a saved native CLI without adapter or Node fields', () => {
-  const selected = { harness: 'qoder_cli', cli_path: '/bin/qodercli' };
+for (const native of ['qoder_cli','deepseek_harness']) test(`${native} recommends and recognizes a saved native CLI without adapter or Node fields`, () => {
+  const selected = { harness: native, cli_path: '/bin/qodercli' };
   const detected = view({
-    selection_revisions: [{ harness: 'qoder_cli', revision: 7 }],
+    selection_revisions: [{ harness: native, revision: 7 }],
     candidates: [
       ...view().candidates,
-      { harness: 'qoder_cli', component: 'cli', path: '/bin/qodercli', source: 'path', state: 'found' },
+      { harness: native, component: 'cli', path: '/bin/qodercli', source: 'path', state: 'found' },
     ],
   });
-  const request = recommendedWorkerDependencies(detected, 'qoder_cli');
+  const request = recommendedWorkerDependencies(detected, native);
   assert.deepEqual(request, { ...selected, expected_selection_revision: 7 });
-  assert.deepEqual(workerDependencyComponents('qoder_cli'), ['cli']);
+  assert.deepEqual(workerDependencyComponents(native), ['cli']);
   assert.equal(workerDependencySelectionComplete(request), true);
-  assert.equal(workerDependencySelectionState(detected, 'qoder_cli'), 'found');
+  assert.equal(workerDependencySelectionState(detected, native), 'found');
   assert.deepEqual(detected.selected, []);
   const saved = { ...detected, selected: [selected] };
-  assert.deepEqual(recommendedWorkerDependencies(saved, 'qoder_cli'), request);
+  assert.deepEqual(recommendedWorkerDependencies(saved, native), request);
   assert.equal(workerDependencySelectionMatches(saved, request), true);
-  assert.equal(workerDependencySelectionState(saved, 'qoder_cli'), 'configured');
+  assert.equal(workerDependencySelectionState(saved, native), 'configured');
 });
 
-test('a missing selected Qoder CLI stays incomplete and does not fall back to a discovered installation', () => {
-  const selected = { harness: 'qoder_cli', cli_path: '/old/qoder' };
+for (const native of ['qoder_cli','deepseek_harness']) test(`a missing selected ${native} CLI stays incomplete and does not fall back to a discovered installation`, () => {
+  const selected = { harness: native, cli_path: '/old/qoder' };
   const detected = view({
-    selection_revisions: [{ harness: 'qoder_cli', revision: 7 }],
+    selection_revisions: [{ harness: native, revision: 7 }],
     selected: [selected],
     candidates: [
-      { harness: 'qoder_cli', component: 'cli', path: '/old/qoder', source: 'selected', state: 'missing' },
-      { harness: 'qoder_cli', component: 'cli', path: '/bin/qodercli', source: 'path', state: 'found' },
+      { harness: native, component: 'cli', path: '/old/qoder', source: 'selected', state: 'missing' },
+      { harness: native, component: 'cli', path: '/bin/qodercli', source: 'path', state: 'found' },
     ],
   });
-  assert.deepEqual(recommendedWorkerDependencies(detected, 'qoder_cli'), {
+  assert.deepEqual(recommendedWorkerDependencies(detected, native), {
     ...selected, expected_selection_revision: 7,
   });
-  assert.equal(workerDependencySelectionState(detected, 'qoder_cli'), 'incomplete');
+  assert.equal(workerDependencySelectionState(detected, native), 'incomplete');
   assert.equal(workerDependencySelectionMatches(detected, {
-    harness: 'qoder_cli', cli_path: '/bin/qodercli', expected_selection_revision: 7,
+    harness: native, cli_path: '/bin/qodercli', expected_selection_revision: 7,
   }), false);
 });
 

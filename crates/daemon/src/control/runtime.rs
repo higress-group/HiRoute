@@ -295,38 +295,31 @@ impl ProductionControlRuntime {
         let scanner = match overrides.scanner {
             Some(scanner) => scanner,
             None => {
-                let selected_claude = stores
-                    .control()
-                    .worker_dependency_selection(
-                        &WorkspaceId::default(),
-                        hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode,
-                    )
-                    .map_err(|error| error.to_string())?
-                    .map(|(selection, _)| PathBuf::from(selection.cli_path));
-                let selected_qoder = stores
-                    .control()
-                    .worker_dependency_selection(
-                        &WorkspaceId::default(),
-                        hiroute_domain::delegation::WorkerHarnessV1::QoderCli,
-                    )
-                    .map_err(|error| error.to_string())?
-                    .map(|(selection, _)| PathBuf::from(selection.cli_path));
-                let selected_pi = stores
-                    .control()
-                    .worker_dependency_selection(
-                        &WorkspaceId::default(),
-                        hiroute_domain::delegation::WorkerHarnessV1::Pi,
-                    )
-                    .map_err(|error| error.to_string())?
-                    .map(|(selection, _)| PathBuf::from(selection.cli_path));
+                use hiroute_domain::delegation::WorkerHarnessV1;
+                let mut selected = Vec::new();
+                for (kind, harness) in [
+                    (AgentKindV1::ClaudeCode, WorkerHarnessV1::ClaudeCode),
+                    (AgentKindV1::Qoder, WorkerHarnessV1::QoderCli),
+                    (AgentKindV1::Pi, WorkerHarnessV1::Pi),
+                    (
+                        AgentKindV1::DeepseekHarness,
+                        WorkerHarnessV1::DeepseekHarness,
+                    ),
+                ] {
+                    if let Some((selection, _)) = stores
+                        .control()
+                        .worker_dependency_selection(&WorkspaceId::default(), harness)
+                        .map_err(|error| error.to_string())?
+                    {
+                        selected.push((kind, PathBuf::from(selection.cli_path)));
+                    }
+                }
                 release_agent_scanner(
                     &home,
                     &project,
                     &release_catalog,
                     overrides.codex_desktop_engine,
-                    selected_claude,
-                    selected_qoder,
-                    selected_pi,
+                    &selected,
                 )?
             }
         };
@@ -369,11 +362,29 @@ impl ProductionControlRuntime {
             hiroute_integrations::PI_INTEGRATION_PROFILE_REF_V1,
         )
         .map_err(|error| error.to_string())?;
+        let dsh_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            "agent_dsh_default",
+            hiroute_integrations::DSH_PROFILE_ID_V1,
+            hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,
+        )
+        .map_err(|e| e.to_string())?;
         let artifacts = stores
             .open_managed_artifacts_with_external_targets(
                 storage_root.join("managed-artifacts"),
                 storage_root.join("artifact-restores"),
                 [
+                    (
+                        AgentConnectionEffectRoleV1::ManagedConfiguration
+                            .target_for(&dsh_subject)
+                            .map_err(|e| e.to_string())?,
+                        scanner.dsh_user_models_target(),
+                    ),
+                    (
+                        AgentConnectionEffectRoleV1::RoutingSkill
+                            .target_for(&dsh_subject)
+                            .map_err(|e| e.to_string())?,
+                        scanner.dsh_user_skill_target(),
+                    ),
                     (
                         AgentConnectionEffectRoleV1::ManagedConfiguration
                             .target_for(&pi_subject)
@@ -1294,9 +1305,7 @@ fn release_agent_scanner(
     project: &Path,
     catalog: &TrustedReleaseCatalog,
     codex_desktop_engine: Option<PathBuf>,
-    selected_claude: Option<PathBuf>,
-    selected_qoder: Option<PathBuf>,
-    selected_pi: Option<PathBuf>,
+    selected: &[(AgentKindV1, PathBuf)],
 ) -> Result<FilesystemAgentScannerV1, String> {
     // ReleaseFacts verification already validated the registered connector/model metadata.
     // Agent registration consumes that payload after the current rating snapshot and all
@@ -1308,14 +1317,15 @@ fn release_agent_scanner(
     .map_err(|_| "verified Agent discovery facts are inconsistent".to_owned())?;
     let mut layout = AgentFilesystemLayoutV1::from_process(home, project);
     layout.codex_desktop_executable = codex_desktop_engine;
-    if let Some(executable) = selected_claude {
-        layout.claude_executable = executable;
-    }
-    if let Some(executable) = selected_qoder {
-        layout.qoder_executable = executable;
-    }
-    if let Some(executable) = selected_pi {
-        layout.pi_executable = executable;
+    for (kind, executable) in selected {
+        let target = match kind {
+            AgentKindV1::Codex => &mut layout.codex_executable,
+            AgentKindV1::ClaudeCode => &mut layout.claude_executable,
+            AgentKindV1::Qoder => &mut layout.qoder_executable,
+            AgentKindV1::Pi => &mut layout.pi_executable,
+            AgentKindV1::DeepseekHarness => &mut layout.dsh_executable,
+        };
+        *target = executable.clone();
     }
     Ok(FilesystemAgentScannerV1::new(layout, index))
 }
@@ -1348,6 +1358,7 @@ fn discovered_agent(
                 AgentKindV1::ClaudeCode => "claude-messages-v1",
                 AgentKindV1::Qoder => QODER_PROFILE_ID_V1,
                 AgentKindV1::Pi => hiroute_integrations::PI_PROFILE_ID_V1,
+                AgentKindV1::DeepseekHarness => hiroute_integrations::DSH_PROFILE_ID_V1,
             }
             .to_owned(),
             version.clone(),

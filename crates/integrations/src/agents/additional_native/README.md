@@ -1,17 +1,18 @@
 # Additional native model routes
 
-The shared adapter owns one `providers.hiroute-main-<context digest>` entry. The
+The shared adapter owns one provider per selected Plan, identified by the context
+namespace and model alias. The
 application owns authorization, grants, publication and restore ordering; native
 leaves own effective configuration, model budgets and result interpretation.
 See the [Agent map](../../../../../docs/code-map/README.md) before changing owners.
 
-| Native boundary | Qoder | Pi |
-| --- | --- | --- |
-| Selected user target | `QODER_CONFIG_DIR/settings.json` | `PI_CODING_AGENT_DIR/models.json` (effective HOME fallback) |
-| Model declaration / budget | [Qoder provider](../qoder_provider.rs), [Plan budget](../qoder_budget.rs) | [Shared provider renderer](../additional_native.rs), [Pi Plan budget](../qoder_budget.rs) |
-| Separate default dependency | `model.name` in the target file | `defaultProvider/defaultModel` in user `settings.json` |
-| Ordinary Gateway authentication | Dedicated `/_hiroute/qoder/v1` bearer channel | `/v1`, fixed `X-HiRoute-Token` header; saved native auth may override ordinary Bearer |
-| Actual native acceptance | [Qoder journeys](../../../../../tools/product-e2e/tests/QODER_DELEGATION.md) | [Pi journeys](../../../../../tools/product-e2e/tests/PI_INTEGRATION.md) |
+| Native boundary | Qoder | Pi | DSH |
+| --- | --- | --- | --- |
+| Selected user target | `QODER_CONFIG_DIR/settings.json` | `PI_CODING_AGENT_DIR/models.json` (effective HOME fallback) | `DSH_HOME/profiles/web/cordis.patch.yml` |
+| Model declaration / budget | [Qoder provider](../qoder_provider.rs), [Plan budget](../qoder_budget.rs) | [Shared provider renderer](../additional_native.rs), [Pi Plan budget](../qoder_budget.rs) | [Public YAML leaf](../dsh_config.rs), [shared budget](../qoder_budget.rs) |
+| Separate default dependency | `model.name` in the target file | `defaultProvider/defaultModel` in user `settings.json` | `agent-default-model` in Web and home patches; home provider shadowing is refused |
+| Ordinary Gateway authentication | Dedicated `/_hiroute/qoder/v1` bearer channel | `/v1`, fixed `X-HiRoute-Token` header; saved native auth may override ordinary Bearer | Fixed `X-HiRoute-Token` header; Responses base ends in `/v1`, Messages base does not |
+| Actual native acceptance | [Qoder journeys](../../../../../tools/product-e2e/tests/QODER_DELEGATION.md) | [Pi journeys](../../../../../tools/product-e2e/tests/PI_INTEGRATION.md) | [DSH journeys](../../../../../tools/product-e2e/tests/DSH_INTEGRATION.md) |
 
 Main-Agent configuration adds only selected Plan aliases. It leaves native defaults,
 purpose routing, extensions, hooks, MCP and Skills to their existing owners. The
@@ -23,7 +24,8 @@ A native provider name alone never grants ownership of an existing user entry.
 - [Native edits](../additional_native.rs) enforce the independent namespace,
   semantic ownership, default reference and encrypted restore binding.
 - [JSONC edits](../qoder_jsonc.rs) preserve unrelated bytes and comments. The name
-  is historical; it is the single bounded parser/editor shared by both adapters.
+  is historical; it is the single bounded parser/editor for Qoder/Pi. DSH uses
+  its static YAML leaf below.
   Ambiguous duplicate keys, invalid JSON and oversized files fail closed. Line
   comments accept LF/CRLF; standalone CR and Unicode line separators are rejected
   because native readers disagree about where such comments end.
@@ -45,7 +47,9 @@ The prepared local grant is written only to the private native provider, mode
 0600. Public journals contain no bearer or original native settings. Status reads
 use the protected artifact port; restoration can still remove an owned secret
 following permission drift. Preserve existing Qoder journal/restore wire strings
-as registered recovery contracts; new Pi writes use its current closed kind.
+as registered recovery contracts; Pi/DSH use their current closed kinds. Current
+multi-provider writes produce V2 restore records; V1 remains a registered reader
+for historical single-provider writes.
 
 ## Adjustment and recovery
 
@@ -70,3 +74,11 @@ arguments, rotates its grant, rejects removed routes, and restores model/Skill
 facets separately. Unit fixtures do not prove native model calls. Neither native
 protocol differences nor backend capability evidence require an extra user-facing
 verification button or status badge.
+
+DSH uses the same per-provider ownership, protected grant, stale-preview and
+restore engine. Its leaf is [dsh_config.rs](../dsh_config.rs): bounded static YAML
+patch sequences, one affected `llm-pi-ai` row, public `baseURL` and
+`agent-default-model` references. Unrelated rows retain their bytes.
+[DSH native admission](../dsh_native.rs) rejects a higher-priority global provider
+row that would shadow the managed standard Web profile. It never evaluates JS,
+includes, plugins or credential helpers. See [the DSH code map](../../../../../docs/code-map/dsh.md).

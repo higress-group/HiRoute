@@ -7,9 +7,13 @@ from pathlib import Path
 
 def expose_native_installation(product, harness, binary, node=None):
     """Expose selected native entries in the fixture's private PATH, never the host PATH."""
-    assert harness in ('pi', 'qoder')
+    assert harness in ('pi', 'qoder', 'dsh')
     assert harness != 'pi' or node is not None, 'Pi fixture requires its selected Node'
-    entries = [('pi' if harness == 'pi' else 'qodercli', binary)]
+    entries = [({'pi':'pi','qoder':'qodercli','dsh':'dsh'}[harness], binary)]
+    if harness == 'dsh':
+        import shutil
+        runtime = Path(shutil.which('node')).resolve(strict=True)
+        entries.append(('node',runtime))
     if harness == 'pi':
         entries.append(('node', node))
     for name, path in entries:

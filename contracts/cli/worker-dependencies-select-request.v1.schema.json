@@ -27,7 +27,10 @@
   "if": {
     "properties": {
       "harness": {
-        "const": "qoder_cli"
+        "enum": [
+          "qoder_cli",
+          "deepseek_harness"
+        ]
       }
     }
   },
@@ -52,7 +55,8 @@
         "codex_cli",
         "claude_code",
         "qoder_cli",
-        "pi"
+        "pi",
+        "deepseek_harness"
       ]
     },
     "node_path": {

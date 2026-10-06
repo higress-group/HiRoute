@@ -79,7 +79,10 @@ impl LocalControlAdapter {
                     .clone()
                     .into_current()
                     .map_err(|_| shrinking())?;
-                let budget = (if kind == hiroute_domain::AgentKindV1::Pi {
+                let budget = (if matches!(
+                    kind,
+                    hiroute_domain::AgentKindV1::Pi | hiroute_domain::AgentKindV1::DeepseekHarness
+                ) {
                     hiroute_integrations::pi_plan_token_budget(&plan.body.materialized)
                 } else {
                     hiroute_integrations::qoder_plan_token_budget(&plan.body.materialized)
