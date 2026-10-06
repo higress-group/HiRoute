@@ -35,7 +35,13 @@ their tests or documentation keep the ordinary tooling-only selection.
 
 The toolchain comes from `rust-toolchain.toml`. Cargo sources are cached, not
 `target/`; shards do not exchange compiled binaries or claim another runner's build
-evidence. Build concurrency defaults to the runner CPU count; incremental compilation is
+evidence. The shared Rust setup exports `CARGO_NET_GIT_FETCH_WITH_CLI=true` for
+subsequent job steps, so pinned Git dependencies use the installed Git client
+instead of Cargo's embedded libgit2 transport. This avoids the libgit2 SSL failure
+observed when fetching Pingora on a cold hosted runner; TLS verification and locked
+dependency revisions remain enforced. Fetch failures still fail the job, and the
+setup does not retry test commands.
+Build concurrency defaults to the runner CPU count; incremental compilation is
 disabled. Every job keeps its own checkout-local Cargo output. The hosted job is
 disposable, so there is no persistent worktree cleanup service.
 
