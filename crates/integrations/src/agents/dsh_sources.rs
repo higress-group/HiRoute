@@ -12,10 +12,78 @@ type Snapshot = (
     Option<(Zeroizing<String>, ProtectedSecret)>,
 );
 
-fn read(path: &std::path::Path) -> Result<Zeroizing<Vec<u8>>, Error> {
-    Ok(super::filesystem_config::read_validated_config_bytes(path)?
-        .map(|(bytes, _)| bytes)
-        .unwrap_or_default())
+fn read_credentials(path: &std::path::Path) -> Result<Zeroizing<Vec<u8>>, Error> {
+    let Some((bytes, metadata)) = super::filesystem_config::read_validated_config_bytes(path)?
+    else {
+        return Ok(Zeroizing::new(Vec::new()));
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return Err(Error::UnsafePermissions);
+        }
+    }
+    Ok(bytes)
+}
+
+fn credentials_path(
+    root: &std::path::Path,
+    home: &super::dsh_config::Patch,
+    profile: &super::dsh_config::Patch,
+) -> Result<std::path::PathBuf, Error> {
+    let profile = profile
+        .credentials_config()
+        .map_err(|_| Error::InvalidConfig)?;
+    let home = home
+        .credentials_config()
+        .map_err(|_| Error::InvalidConfig)?;
+    // Home follows Web; each supplied config replaces the whole earlier object.
+    let config = home.or(profile);
+    if config.is_some_and(|c| {
+        !c.is_object()
+            || c.as_object().is_some_and(|o| {
+                o.keys()
+                    .any(|k| !matches!(k.as_str(), "path" | "dshHome" | "watch" | "debounceMs"))
+            })
+    }) {
+        return Err(Error::InvalidConfig);
+    }
+    let configured = config.and_then(|c| c.get("path").or_else(|| c.get("dshHome")));
+    let path = if let Some(configured) = configured {
+        let path = configured
+            .as_str()
+            .filter(|s| !s.is_empty() && s.len() <= 4096 && !s.contains('\0'))
+            .ok_or(Error::InvalidConfig)?;
+        let path = std::path::Path::new(path);
+        // Native relative/tilde resolution depends on invocation context; reject
+        // instead of borrowing HiRoute's cwd or HOME to guess a different file.
+        if !path.is_absolute() {
+            return Err(Error::InvalidConfig);
+        }
+        if config.is_some_and(|c| c.get("path").is_some()) {
+            path.to_path_buf()
+        } else {
+            path.join(".credentials.yaml")
+        }
+    } else {
+        root.join(".credentials.yaml")
+    };
+    if !path.is_absolute() {
+        return Err(Error::InvalidConfig);
+    }
+    // Match Node's lexical resolve, including `..` before following symlinks.
+    let mut resolved = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                resolved.pop();
+            }
+            _ => resolved.push(component.as_os_str()),
+        }
+    }
+    Ok(resolved)
 }
 impl FilesystemAgentScannerV1 {
     pub fn dsh_api_sources(&self) -> Result<Vec<NativeApiSource>, Error> {
@@ -63,15 +131,9 @@ impl FilesystemAgentScannerV1 {
             }
             .map_err(|_| Error::InvalidConfig)?,
         );
-        let credentials_path = self.layout.dsh_config_root.join(".credentials.yaml");
-        #[cfg(unix)]
-        if let Ok(metadata) = std::fs::metadata(&credentials_path) {
-            use std::os::unix::fs::PermissionsExt;
-            if metadata.permissions().mode() & 0o077 != 0 {
-                return Err(Error::UnsafePermissions);
-            }
-        }
-        let credentials = read(&credentials_path)?;
+        let credentials_path =
+            credentials_path(&self.layout.dsh_config_root, &home_patch, &profile_patch)?;
+        let credentials = read_credentials(&credentials_path)?;
         let credentials_value = super::pi_sources::Document(if credentials.is_empty() {
             json!({"version":1})
         } else {
@@ -151,6 +213,7 @@ impl FilesystemAgentScannerV1 {
                     &source_ref,
                     CanonicalDigest::of_bytes(&home),
                     CanonicalDigest::of_bytes(&profile),
+                    &credentials_path,
                     CanonicalDigest::of_bytes(&credentials),
                     secret
                         .as_ref()

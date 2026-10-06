@@ -98,6 +98,26 @@ impl Patch {
         }
         Ok(row.and_then(|r| r.get("config")))
     }
+    pub fn credentials_config(&self) -> Result<Option<&Value>, QoderNativeError> {
+        // Nested insert/remove operations can replace the module. Do not infer
+        // the default store from a composition this passive reader cannot prove.
+        if self.rows.iter().any(|r| {
+            r["id"].as_str().is_none()
+                || r.as_object().expect("validated row").keys().any(|k| {
+                    !matches!(k.as_str(), "id" | "name" | "config" | "disabled" | "remove")
+                })
+        }) {
+            return Err(qoder_error("DSH static credentials composition required"));
+        }
+        if let Some(row) = self.rows.iter().find(|r| r["id"] == "credentials")
+            && row
+                .get("name")
+                .is_some_and(|v| v != "@deepseek-ai/dsh-credentials-local")
+        {
+            return Err(qoder_error("DSH standard credentials module required"));
+        }
+        self.config("credentials")
+    }
     pub fn providers(&self) -> Result<Value, QoderNativeError> {
         let providers = self
             .config("llm-pi-ai")?

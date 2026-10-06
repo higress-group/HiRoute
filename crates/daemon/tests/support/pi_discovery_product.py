@@ -107,14 +107,15 @@ def run(repository, candidate):
         controls.mkdir(mode=0o700)
         write_new(controls / 'native-context.json', '{}')
         source = NativeContextUpstream(controls)
+        credential_context_paths = ()
         if HARNESS=='dsh':
-            from dsh_native_context import encode_patch
+            from dsh_native_context import encode_patch, source_credentials
             models_path = config/'profiles/web/cordis.patch.yml'
-            auth_path = config/'.credentials.yaml'
             provider = {'api':'openai-responses','baseURL':source.base_url,'apiKeyEnv':'IMPORT_KEY',
                 'models':[{'id':source.model,'contextWindow':16384,'maxTokens':4096,'input':['text']}]}
             write_new(models_path,encode_patch([{'id':'llm-pi-ai','config':{'providers':{'native-source':provider}}}]))
-            write_new(auth_path,json.dumps({'version':1,'refs':{'IMPORT_KEY':source.token}}))
+            auth_path, credential_context_paths = source_credentials(config, source.token)
+            product.env.pop('IMPORT_KEY', None)
             changed_auth = json.dumps({'version':1,'refs':{'IMPORT_KEY':'changed-native-key'}})
         else:
             models_path,auth_path = config/'models.json',config/'auth.json'
@@ -123,7 +124,7 @@ def run(repository, candidate):
             write_new(models_path,NATIVE_PREFIX+json.dumps({'providers':{'native-source':provider}}))
             write_new(auth_path,json.dumps({'native-source':{'type':'api_key','key':'${IMPORT_KEY}','env':{'IMPORT_KEY':source.token}}}))
             changed_auth = json.dumps({'native-source':{'type':'api_key','key':'changed-native-key'}})
-        before = {path:digest(path) for path in (models_path,auth_path)}
+        before = {path:digest(path) for path in (models_path,auth_path,*credential_context_paths)}
         original_auth = auth_path.read_bytes()
         product.secrets.update((source.token, 'provider-fallback'))
         product.start()

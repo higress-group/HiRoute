@@ -1,5 +1,6 @@
 """DSH's fixture-owned public patch and opaque history; common journeys own assertions."""
 import json
+import os
 from pathlib import Path
 from native_context_fixture import write_new, protect_configuration
 
@@ -20,6 +21,22 @@ def read_patch(path):
 
 def encode_patch(rows):
     return ''.join('- '+json.dumps(row,indent=2).replace('\n','\n  ')+'\n' for row in rows) or '[]\n'
+
+def source_credentials(config, token):
+    """The active native store differs from a valid, private default decoy."""
+    config = Path(config)
+    variant = os.environ.get('HIROUTE_PRODUCT_DSH_CREDENTIAL_SOURCE', 'path')
+    assert variant in ('path', 'dsh-home'), 'select a known static credential override'
+    directory = config/'source-credentials'
+    active = directory/('current.yaml' if variant == 'path' else '.credentials.yaml')
+    default, home_patch = config/'.credentials.yaml', config/'cordis.patch.yml'
+    write_new(default, json.dumps({'version':1,'refs':{'IMPORT_KEY':'inactive-dsh-key'}}))
+    write_new(active, json.dumps({'version':1,'refs':{'IMPORT_KEY':token}}))
+    settings = {'dshHome':str(directory)}
+    if variant == 'path':
+        settings.update(path=str(active), dshHome=str(config))
+    write_new(home_patch, encode_patch([{'id':'credentials','config':settings}]))
+    return active, (default, home_patch)
 
 def prepare_context(product, fixture):
     root = Path(fixture['config'])

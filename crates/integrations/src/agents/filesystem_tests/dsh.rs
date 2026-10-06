@@ -211,6 +211,213 @@ fn dsh_static_import_is_secret_free_and_rejects_changed_credential_or_custom_aut
     assert!(scanner.read_dsh_api_source(&selected).is_err());
 }
 
+fn credentials_source(key: &str) -> serde_json::Value {
+    json!({"id":"llm-pi-ai","config":{"providers":{"native":{
+        "api":"openai-responses","baseURL":"https://credentials-source.invalid/v1",
+        "apiKeyEnv":key,"models":[{"id":"explicit-model"}]
+    }}}})
+}
+
+#[test]
+fn dsh_credentials_use_the_effective_static_path_and_home_overrides() {
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    let key = "HIROUTE_DSH_CREDENTIAL_PATH_TEST_KEY";
+    assert!(std::env::var_os(key).is_none());
+    let file = root.path().join("custom.yaml");
+    let home = root.path().join("custom-home");
+    for (path, token) in [
+        (
+            scanner.layout.dsh_config_root.join(".credentials.yaml"),
+            "default",
+        ),
+        (file.clone(), "explicit-path"),
+        (home.join(".credentials.yaml"), "explicit-home"),
+    ] {
+        write_secret_settings(&path, json!({"version":1,"refs":{key:token}}));
+    }
+    for (profile_config, home_config, expected) in [
+        (json!({"path":file}), None, "explicit-path"),
+        (json!({"dshHome":home}), None, "explicit-home"),
+        (
+            json!({"path":file}),
+            Some(json!({"dshHome":home})),
+            "explicit-home",
+        ),
+        (
+            json!({"dshHome":home}),
+            Some(json!({"path":file,"dshHome":home})),
+            "explicit-path",
+        ),
+        (json!({"path":file}), Some(json!({})), "default"),
+    ] {
+        write_patch(
+            &scanner.dsh_user_models_target(),
+            json!([
+                credentials_source(key),
+                {"id":"credentials","name":"@deepseek-ai/dsh-credentials-local","config":profile_config}
+            ]),
+        );
+        write_patch(
+            &scanner.layout.dsh_config_root.join("cordis.patch.yml"),
+            home_config.map_or_else(
+                || json!([]),
+                |config| json!([{"id":"credentials","config":config}]),
+            ),
+        );
+        let selected = scanner.dsh_api_sources().unwrap().remove(0);
+        let public = serde_json::to_string(&selected).unwrap();
+        assert!(!public.contains(file.to_str().unwrap()) && !public.contains("explicit-path"));
+        assert_eq!(
+            scanner.read_dsh_api_source(&selected).unwrap().1.expose(),
+            expected.as_bytes()
+        );
+    }
+}
+
+#[test]
+fn dsh_active_credentials_rotation_rejects_the_previous_import_selection() {
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    let key = "HIROUTE_DSH_CREDENTIAL_ROTATION_TEST_KEY";
+    assert!(std::env::var_os(key).is_none());
+    let default = scanner.layout.dsh_config_root.join(".credentials.yaml");
+    let active = root.path().join("active.yaml");
+    for path in [&default, &active] {
+        write_secret_settings(path, json!({"version":1,"refs":{key:"original"}}));
+    }
+    write_patch(
+        &scanner.dsh_user_models_target(),
+        json!([credentials_source(key)]),
+    );
+    write_patch(
+        &scanner.layout.dsh_config_root.join("cordis.patch.yml"),
+        json!([{"id":"credentials","config":{"path":active}}]),
+    );
+    let selected = scanner.dsh_api_sources().unwrap().remove(0);
+    write_secret_settings(&active, json!({"version":1,"refs":{key:"rotated"}}));
+    assert!(matches!(
+        scanner.read_dsh_api_source(&selected),
+        Err(AgentFilesystemScanError::SourceChanged)
+    ));
+    let refreshed = scanner.dsh_api_sources().unwrap().remove(0);
+    assert_eq!(
+        scanner.read_dsh_api_source(&refreshed).unwrap().1.expose(),
+        b"rotated"
+    );
+    write_secret_settings(&default, json!({"version":1,"refs":{key:"unused-default"}}));
+    assert!(
+        scanner.dsh_api_sources().unwrap().remove(0) == refreshed,
+        "inactive default credentials must not change an effective-source selection"
+    );
+}
+
+#[test]
+fn dsh_disabled_removed_or_unknown_credentials_modules_block_import() {
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    let key = "HIROUTE_DSH_CREDENTIAL_REJECTION_TEST_KEY";
+    assert!(std::env::var_os(key).is_none());
+    write_secret_settings(
+        &scanner.layout.dsh_config_root.join(".credentials.yaml"),
+        json!({"version":1,"refs":{key:"must-not-import"}}),
+    );
+    for module in [
+        json!({"id":"credentials","disabled":true}),
+        json!({"id":"credentials","remove":true}),
+        json!({"id":"credentials","name":"custom-credential-helper"}),
+        json!({"id":"credentials","config":{"path":"relative.yaml"}}),
+        json!({"id":"credentials","config":{"dshHome":"~/unresolved-home"}}),
+        json!({"id":"credentials","config":{"path":false}}),
+        json!({"id":"credentials","config":{"unknownProvider":"custom"}}),
+        json!({"insert":[{"id":"credentials","name":"custom-credential-helper"}]}),
+        json!({"id":"other","insert":[{"id":"credentials","name":"custom-credential-helper"}]}),
+    ] {
+        for home_layer in [false, true] {
+            let profile = if home_layer {
+                json!([credentials_source(key)])
+            } else {
+                json!([credentials_source(key), module])
+            };
+            write_patch(&scanner.dsh_user_models_target(), profile);
+            write_patch(
+                &scanner.layout.dsh_config_root.join("cordis.patch.yml"),
+                if home_layer {
+                    json!([module])
+                } else {
+                    json!([])
+                },
+            );
+            assert!(
+                scanner.dsh_api_sources().is_err(),
+                "unsupported credentials module was importable"
+            );
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn dsh_effective_credentials_file_must_stay_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    let key = "HIROUTE_DSH_CREDENTIAL_PERMISSION_TEST_KEY";
+    let active = root.path().join("active.yaml");
+    for path in [
+        &scanner.layout.dsh_config_root.join(".credentials.yaml"),
+        &active,
+    ] {
+        write_secret_settings(path, json!({"version":1,"refs":{key:"private"}}));
+    }
+    write_patch(
+        &scanner.dsh_user_models_target(),
+        json!([
+            credentials_source(key), {"id":"credentials","config":{"path":active}}
+        ]),
+    );
+    fs::set_permissions(&active, fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(matches!(
+        scanner.dsh_api_sources(),
+        Err(AgentFilesystemScanError::UnsafePermissions)
+    ));
+    fs::set_permissions(&active, fs::Permissions::from_mode(0o600)).unwrap();
+    let selected = scanner.dsh_api_sources().unwrap().remove(0);
+    scanner.read_dsh_api_source(&selected).unwrap();
+}
+
+#[test]
+fn dsh_inherited_environment_precedes_the_selected_credentials_file() {
+    let key = "HIROUTE_DSH_CREDENTIAL_ENVIRONMENT_TEST_KEY";
+    if std::env::var_os(key).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "agents::filesystem::tests::dsh::dsh_inherited_environment_precedes_the_selected_credentials_file"])
+            .env(key, "inherited-key").output().unwrap();
+        assert!(output.status.success());
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("test result: ok. 1 passed;")
+        );
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let scanner = scanner(root.path());
+    let active = root.path().join("active.yaml");
+    write_secret_settings(&active, json!({"version":1,"refs":{key:"stored-key"}}));
+    write_patch(
+        &scanner.dsh_user_models_target(),
+        json!([
+            credentials_source(key), {"id":"credentials","config":{"path":active}}
+        ]),
+    );
+    let selected = scanner.dsh_api_sources().unwrap().remove(0);
+    assert_eq!(
+        scanner.read_dsh_api_source(&selected).unwrap().1.expose(),
+        b"inherited-key"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn dsh_admission_uses_required_public_modules_not_cli_version() {

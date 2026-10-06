@@ -35,8 +35,14 @@ an owned patch row.
 Passive discovery checks both the home and Web files; a home `llm-pi-ai` row
 replaces the Web module, rather than merging providers. It imports only explicit
 nonempty model declarations, not catalog-only providers or placeholder model IDs.
-API-key environment values precede the private version-1 credentials refs. Source
-evidence binds home/profile/credential bytes and the selected environment secret;
+API-key environment values precede the private version-1 credentials refs. Resolve
+the standard credentials module before reading a store: Web config precedes home
+config, and each supplied config replaces the earlier object. Static absolute
+`path` wins over `dshHome/.credentials.yaml`, then the selected DSH root's default.
+Disabled/removed modules, replacement plugins, unsupported composition operations
+and relative/tilde paths are refused; do not borrow HiRoute's cwd or HOME to guess.
+Only the effective file needs private-file validation. Source
+evidence binds home/profile bytes, the effective credential path/bytes and the selected environment secret;
 Prepare and Save recheck that evidence without executing helpers or inference.
 Provider/model compatibility options and custom authentication that cannot be
 preserved remain ineligible. Only a nonempty explicit model `input` establishes
@@ -71,6 +77,10 @@ is a test consumer, not a production adapter. Required positive outcomes include
 upstream request counts and protocol, independent tool artifacts, preserved user
 files, exact Continue and real public CLI delegation. Fixture rejection or process
 exit alone does not establish product completion.
+The static-import journey reuses the common Scan → Prepare → Save → restart →
+native-call oracle with a different valid default credential as a decoy. Select
+`HIROUTE_PRODUCT_DSH_CREDENTIAL_SOURCE=path` or `dsh-home` to exercise either
+override; rotation of the active store must reject the previous Save preview.
 
 Public references: [CLI](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/reference/README.md),
 [providers](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.md),
