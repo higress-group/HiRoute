@@ -5,6 +5,7 @@ edits, deletion API, or private execution port. This entry never builds binaries
 """
 import qoder_native_context
 import pi_native_context
+import dsh_native_context
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import copy
@@ -85,6 +86,9 @@ def boundary_decision(fixture, body):
     if fixture['harness'] in ('claude', 'qoder'):
         assert 'Bash' in names, 'native Bash tool unavailable'
         name, arguments = 'Bash', {'command': command, 'timeout': 120000}
+    elif fixture['harness'] == 'dsh':
+        assert 'bash' in names
+        name,arguments='bash',{'command':command,'description':'Run the owned heartbeat script','timeoutMs':120000}
     elif fixture['harness'] == 'pi':
         assert 'bash' in names
         name, arguments = 'bash', {'command': command, 'timeout': 120}
@@ -144,7 +148,7 @@ def assert_source_routing(upstream):
 
 def transcript_snapshot(fixture):
     root = (qoder_native_context.history_directory(fixture) if fixture['harness'] == 'qoder'
-            else pi_native_context.history_directory(fixture) if fixture['harness'] == 'pi' else Path(fixture['config']) / ('sessions' if fixture['harness'] == 'codex' else 'projects'))
+            else dsh_native_context.history_directory(fixture) if fixture['harness'] == 'dsh' else pi_native_context.history_directory(fixture) if fixture['harness'] == 'pi' else Path(fixture['config']) / ('sessions' if fixture['harness'] == 'codex' else 'projects'))
     paths = list(root.rglob('*.jsonl'))
     assert all(not path.is_symlink() for path in paths), 'unexpected linked fixture history'
     return {str(path): digest(path) for path in paths if path.is_file()}
@@ -241,6 +245,9 @@ def run(repository, candidate, harness):
         install_oracle(neighbor_source, neighbor)
         neighbor_plan = publish_neighbor(product, neighbor_source)
         binary, adapter, node = selected_installation(harness)
+        if harness=='dsh':
+            from agent_product_support import expose_native_installation
+            expose_native_installation(product,harness,binary)
         configure_worker_installation(product, product.worker_work['harness'], adapter, binary, node)
         # This standalone journey creates its own native roots. No core journey,
         # native initialization, or completed Worker may warm them before these requests.
@@ -276,7 +283,8 @@ def run(repository, candidate, harness):
             assert_preserved(fixture)
         cancelled = dict(target, receipt=target['boundary']['marker'])
         target_history = (qoder_native_context.cancelled_history(cancelled, runs[0]['run_id'])
-                          if harness == 'qoder' else exact_history(cancelled))
+                          if harness == 'qoder' else dsh_native_context.cancelled_history(cancelled,runs[0]['run_id'])
+                          if harness == 'dsh' else exact_history(cancelled))
         wait_for_resumable_task(product, runs[1]['task_id'], runs[1]['run_id'])
         neighbor_history = exact_history(neighbor)
         assert target_history[1] != neighbor_history[1], 'concurrent tasks shared a native session'
@@ -321,6 +329,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('repository')
     parser.add_argument('candidate')
-    parser.add_argument('--harness', choices=('codex', 'claude', 'qoder', 'pi'), required=True)
+    parser.add_argument('--harness', choices=('codex', 'claude', 'qoder', 'pi', 'dsh'), required=True)
     args = parser.parse_args()
     run(args.repository, args.candidate, args.harness)

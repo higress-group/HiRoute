@@ -54,7 +54,7 @@ def prepare_skill(parent, name, scope, writer=write_new):
 
 def prepare(home, config, project, harness, suffix='', owned_files=None):
     """Add only new fixture-owned skills and neighbors; never replace existing files."""
-    assert harness in ('codex', 'claude', 'qoder', 'pi')
+    assert harness in ('codex', 'claude', 'qoder', 'pi', 'dsh')
     home, config, project = map(lambda path: Path(path).resolve(), (home, config, project))
     def owned_write(path, text, executable=False):
         write_new(path, text, executable)
@@ -64,7 +64,7 @@ def prepare(home, config, project, harness, suffix='', owned_files=None):
     skills = []
     for scope, parent in (
         ('user', home / '.agents/skills' if harness == 'codex' else config / 'skills'),
-        ('project', project / {'codex': '.agents/skills', 'claude': '.claude/skills', 'qoder': '.qoder/skills', 'pi': '.pi/skills'}[harness]),
+        ('project', project / {'codex': '.agents/skills', 'claude': '.claude/skills', 'qoder': '.qoder/skills', 'pi': '.pi/skills', 'dsh': '.dsh/skills'}[harness]),
     ):
         skills.append(prepare_skill(parent, 'native-context-' + scope + suffix, scope, owned_write))
     neighbor = config / ('native-context-neighbor' + suffix + '.txt')
@@ -182,6 +182,9 @@ def decision(fixture, body):
                     'expected native Skill directory was not loaded'
         assert 'Bash' in names, 'native Bash tool unavailable'
         name = 'Bash'
+    elif harness == 'dsh':
+        assert 'bash' in names and 'read' in names, 'native DSH tools unavailable'
+        return dict(kind='tool',id='native_context_execute',name='bash', arguments={'command':' && '.join('/bin/cat '+shlex.quote(skill['skill'])+' && /bin/sh '+shlex.quote(skill['script']) for skill in fixture['skills']), 'description':'Read native Skills and run receipt scripts','timeoutMs':10000})
     elif harness == 'pi':
         assert 'bash' in names and 'read' in names, 'native Pi tools unavailable'
         name = 'bash'
@@ -255,6 +258,10 @@ def handle(handler, body, controls, lock, reply=decision):
     try:
         action = reply(fixture, body)
     except AssertionError as error:
+        # Bounded controlled-source evidence stays private for native protocol diagnosis.
+        failed = controls / 'last-failed-request.json'
+        failed.write_text(json.dumps(body))
+        failed.chmod(0o600)
         with lock, (controls / 'native-context-events.jsonl').open('a') as stream:
             stream.write(json.dumps({'state': 'red', 'reason': str(error)}) + '\n')
         handler.send({'error': {'message': str(error), 'type': 'invalid_request_error'}}, 400)

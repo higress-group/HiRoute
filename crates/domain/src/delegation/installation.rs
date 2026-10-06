@@ -39,10 +39,12 @@ impl<'a> WorkerLaunchFormV1<'a> {
                 cli,
                 node,
             }),
-            WorkerHarnessV1::QoderCli if adapter.is_none() && node.is_none() => {
+            WorkerHarnessV1::QoderCli | WorkerHarnessV1::DeepseekHarness
+                if adapter.is_none() && node.is_none() =>
+            {
                 Ok(Self::NativeAcp { cli })
             }
-            WorkerHarnessV1::QoderCli => Err(invalid()),
+            WorkerHarnessV1::QoderCli | WorkerHarnessV1::DeepseekHarness => Err(invalid()),
             WorkerHarnessV1::Pi if adapter.is_none() => Ok(Self::NativeSdk {
                 cli,
                 node: node.ok_or_else(invalid)?,

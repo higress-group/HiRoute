@@ -101,7 +101,9 @@ impl LocalControlAdapter {
 
         for (model, trust) in target.client_model_ids.iter().zip(&expected) {
             let result = match target.surface {
-                AgentModelSurfaceV2::PiCli => return Err(ControlReadError::Denied),
+                AgentModelSurfaceV2::PiCli | AgentModelSurfaceV2::DshCli => {
+                    return Err(ControlReadError::Denied);
+                }
                 AgentModelSurfaceV2::QoderCli => {
                     self.execute_qoder_live_attempt(&target.context_id, model, trust, deadline)
                 }

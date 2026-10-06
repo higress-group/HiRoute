@@ -17,6 +17,7 @@ mod capabilities;
 mod claude;
 mod claude_runtime;
 mod codex;
+mod dsh;
 mod native_context;
 mod pi;
 mod qoder;
@@ -161,6 +162,10 @@ impl CandidateWorkerProfile {
             (WorkerHarnessV1::QoderCli, WorkerPermissionPolicyV1::ApproveAll) => "yolo",
             (WorkerHarnessV1::Pi, WorkerPermissionPolicyV1::ApproveAll) => "approve-all",
             (WorkerHarnessV1::Pi, _) => return Err(DelegationErrorV1::CapabilityUnavailable),
+            (WorkerHarnessV1::DeepseekHarness, WorkerPermissionPolicyV1::ApproveAll) => "",
+            (WorkerHarnessV1::DeepseekHarness, _) => {
+                return Err(DelegationErrorV1::CapabilityUnavailable);
+            }
             (WorkerHarnessV1::QoderCli, _) => return Err(DelegationErrorV1::CapabilityUnavailable),
         };
         let mut env = BTreeMap::new();
@@ -202,6 +207,7 @@ impl CandidateWorkerProfile {
             WorkerHarnessV1::ClaudeCode => claude::render(&input, &projected_tools)?,
             WorkerHarnessV1::QoderCli => qoder::render(&input, &private_root)?,
             WorkerHarnessV1::Pi => pi::render(&input)?,
+            WorkerHarnessV1::DeepseekHarness => dsh::render(&input)?,
         };
         env.extend(rendered.env);
         let (executable, args) = match launch {

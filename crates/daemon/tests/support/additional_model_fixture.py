@@ -1,4 +1,4 @@
-"""Owned native settings and reads for Qoder/Pi persisted-model product journeys.
+"""Owned native settings and reads for Qoder/Pi/DSH persisted-model product journeys.
 
 Only this leaf may write the explicitly selected MODEL context. It never reads
 authentication, and it never supplies native provider/settings/credential overrides.
@@ -27,6 +27,10 @@ def select_model_context(product, harness="qoder"):
         config.mkdir(mode=0o700, parents=True)
         product.env["PI_CODING_AGENT_DIR"] = str(config)
         return config
+    if harness == "dsh":
+        config = Path(product.env["DSH_HOME"])
+        (config / 'profiles/web').mkdir(mode=0o700, parents=True, exist_ok=True)
+        return config
     home = selected_directory('HIROUTE_QODER_MODEL_CONTEXT_HOME')
     config = selected_directory('HIROUTE_QODER_MODEL_CONFIG_DIR')
     assert home != Path.home().resolve() and config.is_relative_to(home), \
@@ -36,6 +40,11 @@ def select_model_context(product, harness="qoder"):
 
 
 class OwnedModelSettings:
+    def __new__(cls, config, foreign_endpoint, harness="qoder"):
+        if harness == 'dsh':
+            from dsh_native_context import DshModelSettings
+            return DshModelSettings(config, foreign_endpoint)
+        return super().__new__(cls)
     """Seed a synthetic user baseline; undo only our unchanged final baseline."""
     def __init__(self, config, foreign_endpoint, harness="qoder"):
         self.harness = harness
@@ -102,7 +111,7 @@ class OwnedModelSettings:
                 actual['providers'].pop(name)
         expected = deepcopy(self.baseline)
         if selected_default is not None:
-            if self.harness == 'qoder':
+            if self.harness in ('qoder','dsh'):
                 expected['model']['name'] = selected_default
         if self.harness == 'pi':
             default = dict(self.default_baseline)
@@ -225,13 +234,20 @@ def successful_native_result(stdout, receipt, harness='qoder'):
 def read_persisted_route(product, binary, selector, source, oracle, label):
     prompt = oracle.arm(label)
     before = len(oracle.calls)
-    command = native_command(product, binary, selector, prompt)
     # Product already strips inherited provider/auth variables. Only its selected
     # native config root and private runtime/receipt roots enter this process.
     harness = getattr(product, 'additional_harness', 'qoder')
-    stdout = run_native_command(product, command, timeout=60, label=f'ordinary {harness} model invocation')
+    if harness == 'dsh':
+        from native_acp_client import prompt as acp_prompt
+        saved = Path(product.env['DSH_HOME']) / 'profiles/web/cordis.patch.yml'
+        stdout, native_session_id = acp_prompt(product,
+            [str(binary),'--profile','acp','--patch',str(saved)], prompt, selector)
+        assert stdout.decode().strip() == oracle.receipt, 'native DSH result lost source receipt'
+    else:
+        stdout = run_native_command(product, native_command(product,binary,selector,prompt),
+            timeout=60,label=f'ordinary {harness} model invocation')
+        native_session_id = successful_native_result(stdout, oracle.receipt, harness)
     assert oracle.calls[before:] == [label], f'ordinary {harness} did not make one actual persisted-route request'
-    native_session_id = successful_native_result(stdout, oracle.receipt, harness)
     from native_context_boundaries import source_events
     observed_protocol = source_events(source)[-1]['protocol']
     if hasattr(source, 'expected_protocol'):

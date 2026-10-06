@@ -27,6 +27,9 @@ Its protected-input/grant channel belongs to the daemon that the fixture starts;
 it cannot be attached to an already running Desktop. Prepare sources before handing
 that instance to Desktop, then perform protected user mutations through the real UI.
 Native main-Agent delegation separately invokes the actual public Worker CLI.
+`Product` leases its listener address outside the host's outbound ephemeral range
+until fixture cleanup, including daemon restarts. Keep this shared ownership rule;
+a closed `bind(0)` probe can be claimed by concurrent clients before startup.
 
 Start from the representative cases in the [capability map](README.md). In
 `tools/product-e2e`, inspect the declared proof level: `transaction_recovery.rs`

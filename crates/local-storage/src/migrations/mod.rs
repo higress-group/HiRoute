@@ -41,6 +41,7 @@ mod worker_dependencies_v24;
 #[cfg(test)]
 mod worker_dependencies_v24_tests;
 mod worker_dependencies_v26;
+mod worker_dependencies_v27;
 mod worker_instance_v19;
 
 #[cfg(test)]
@@ -49,7 +50,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 26;
+pub const LATEST_SCHEMA_VERSION: u32 = 27;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -840,7 +841,8 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Control, 25) => Ok(agent_surface_checks_v25::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 25) => Ok(NOOP_V9),
         (DatabaseKind::Control, 26) => Ok(worker_dependencies_v26::CONTROL),
-        (DatabaseKind::Runtime | DatabaseKind::Secrets, 26) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 27) => Ok(worker_dependencies_v27::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 26 | 27) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }

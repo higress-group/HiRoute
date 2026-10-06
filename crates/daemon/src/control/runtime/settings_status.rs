@@ -203,7 +203,7 @@ impl LocalControlAdapter {
             ModelAction::Configure => {
                 let file_applied = if matches!(
                     class,
-                    SettingsAgentClass::Qoder | SettingsAgentClass::Pi
+                    SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh
                 ) {
                     hiroute_integrations::additional_native_configuration_is_applied(
                         &self.artifacts,
@@ -326,6 +326,10 @@ impl LocalControlAdapter {
                             hiroute_domain::AgentModelSelectionV2::PiAdditional { .. },
                             SettingsAgentClass::Pi,
                         ) => [hiroute_domain::AgentModelSurfaceV2::PiCli].into(),
+                        (
+                            hiroute_domain::AgentModelSelectionV2::DshAdditional { .. },
+                            SettingsAgentClass::Dsh,
+                        ) => [hiroute_domain::AgentModelSurfaceV2::DshCli].into(),
                         _ => return Err(ControlReadError::Corrupt),
                     };
                     // The applied revision is the installed publication this configuration was
@@ -460,7 +464,8 @@ fn model_intent(
                 super::native_claude_model::is_settings_claude_model(intent)
             }
             super::settings_facts::SettingsAgentClass::Qoder
-            | super::settings_facts::SettingsAgentClass::Pi => {
+            | super::settings_facts::SettingsAgentClass::Pi
+            | super::settings_facts::SettingsAgentClass::Dsh => {
                 super::native_additional_model::is_settings_additional_model(intent)
             }
         })
@@ -472,7 +477,7 @@ fn model_action(
     intent: &hiroute_domain::ExternalEffectIntentV1,
 ) -> hiroute_domain::PortResult<ModelAction> {
     match class {
-        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi => {
+        super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi | super::settings_facts::SettingsAgentClass::Dsh => {
             match hiroute_application::agent_connection::settings_additional_model_file_for_operation(
                 operation, intent,
             )?

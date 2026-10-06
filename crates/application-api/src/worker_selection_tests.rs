@@ -17,7 +17,11 @@ fn harness_rule<'a>(
 ) -> &'a serde_json::Value {
     let mut rule = schema;
     while let Some(condition) = rule.get("if") {
-        let selected = condition["properties"]["harness"]["const"] == *harness;
+        let discriminator = &condition["properties"]["harness"];
+        let selected = discriminator["const"] == *harness
+            || discriminator["enum"]
+                .as_array()
+                .is_some_and(|values| values.contains(harness));
         rule = &rule[if selected { "then" } else { "else" }];
     }
     rule
@@ -83,57 +87,60 @@ fn saved_adapter_selections_preserve_json_and_confirmation_identity() {
 
 #[test]
 fn native_acp_requires_only_cli_and_rejects_cross_form_fields() {
-    let json =
-        r#"{"harness":"qoder_cli","cli_path":"/opt/bin/qodercli","expected_selection_revision":0}"#;
-    let request: WorkerDependenciesSelectRequestV1 = serde_json::from_str(json).unwrap();
-    let schema = generated_schema("worker-dependencies-select-request.v1.schema.json");
-    assert_eq!(
-        schema["required"],
-        serde_json::json!(["harness", "cli_path", "expected_selection_revision"])
-    );
-    assert_eq!(
-        harness_rule(&schema, &serde_json::to_value(request.harness).unwrap())["properties"],
-        serde_json::json!({"adapter_path":false,"node_path":false})
-    );
-    assert_eq!(serde_json::to_string(&request).unwrap(), json);
-    let plan = plan_worker_dependency_selection(&request).unwrap();
-    assert!(matches!(
-        plan.change.after_selection.validated_launch().unwrap(),
-        hiroute_domain::delegation::WorkerLaunchFormV1::NativeAcp {
-            cli: "/opt/bin/qodercli"
-        }
-    ));
-    for (adapter, node) in [
-        (Some("/opt/adapter".into()), None),
-        (None, Some("/opt/node".into())),
+    for json in [
+        r#"{"harness":"qoder_cli","cli_path":"/opt/bin/qodercli","expected_selection_revision":0}"#,
+        r#"{"harness":"deepseek_harness","cli_path":"/opt/bin/dsh","expected_selection_revision":0}"#,
     ] {
-        let invalid = WorkerDependenciesSelectRequestV1 {
-            adapter_path: adapter,
-            node_path: node,
-            ..request.clone()
-        };
-        assert!(plan_worker_dependency_selection(&invalid).is_none());
-    }
-    for harness in [WorkerHarnessV1::CodexCli, WorkerHarnessV1::ClaudeCode] {
-        assert!(
-            plan_worker_dependency_selection(&WorkerDependenciesSelectRequestV1 {
-                harness,
-                ..request.clone()
-            })
-            .is_none()
+        let request: WorkerDependenciesSelectRequestV1 = serde_json::from_str(json).unwrap();
+        let schema = generated_schema("worker-dependencies-select-request.v1.schema.json");
+        assert_eq!(
+            schema["required"],
+            serde_json::json!(["harness", "cli_path", "expected_selection_revision"])
         );
+        assert_eq!(
+            harness_rule(&schema, &serde_json::to_value(request.harness).unwrap())["properties"],
+            serde_json::json!({"adapter_path":false,"node_path":false})
+        );
+        assert_eq!(serde_json::to_string(&request).unwrap(), json);
+        let plan = plan_worker_dependency_selection(&request).unwrap();
+        let hiroute_domain::delegation::WorkerLaunchFormV1::NativeAcp { cli } =
+            plan.change.after_selection.validated_launch().unwrap()
+        else {
+            panic!("native ACP CLI")
+        };
+        assert_eq!(cli, request.cli_path);
+        for (adapter, node) in [
+            (Some("/opt/adapter".into()), None),
+            (None, Some("/opt/node".into())),
+        ] {
+            let invalid = WorkerDependenciesSelectRequestV1 {
+                adapter_path: adapter,
+                node_path: node,
+                ..request.clone()
+            };
+            assert!(plan_worker_dependency_selection(&invalid).is_none());
+        }
+        for harness in [WorkerHarnessV1::CodexCli, WorkerHarnessV1::ClaudeCode] {
+            assert!(
+                plan_worker_dependency_selection(&WorkerDependenciesSelectRequestV1 {
+                    harness,
+                    ..request.clone()
+                })
+                .is_none()
+            );
+        }
+        let invalid = WorkerDependencySelectionRecordV1 {
+            harness: request.harness,
+            adapter_path: Some("/opt/adapter".into()),
+            cli_path: "/opt/qoder".into(),
+            node_path: None,
+        };
+        let mut forged = plan.change;
+        forged.after_selection = invalid;
+        let mut spec = plan.spec;
+        spec.desired_state = serde_json::to_value(&forged.after_selection).unwrap();
+        assert!(TransactionPlanV1::from_worker_dependency_selection_planner(spec, forged).is_err());
     }
-    let invalid = WorkerDependencySelectionRecordV1 {
-        harness: WorkerHarnessV1::QoderCli,
-        adapter_path: Some("/opt/adapter".into()),
-        cli_path: "/opt/qoder".into(),
-        node_path: None,
-    };
-    let mut forged = plan.change;
-    forged.after_selection = invalid;
-    let mut spec = plan.spec;
-    spec.desired_state = serde_json::to_value(&forged.after_selection).unwrap();
-    assert!(TransactionPlanV1::from_worker_dependency_selection_planner(spec, forged).is_err());
 }
 
 #[test]
@@ -141,7 +148,13 @@ fn published_worker_harnesses_match_typed_discovery_selection_and_plan_bindings(
     let discover = generated_schema("worker-dependencies-discover-request.v1.schema.json");
     let select = generated_schema("worker-dependencies-select-request.v1.schema.json");
     let editor = generated_schema("plan-editor.v2.schema.json");
-    let expected = serde_json::json!(["codex_cli", "claude_code", "qoder_cli", "pi"]);
+    let expected = serde_json::json!([
+        "codex_cli",
+        "claude_code",
+        "qoder_cli",
+        "pi",
+        "deepseek_harness"
+    ]);
     for declared in [
         &discover["properties"]["harness"]["enum"],
         &select["properties"]["harness"]["enum"],

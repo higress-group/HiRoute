@@ -5,7 +5,7 @@ pub(super) fn identity_contract(
 ) -> Result<AcpNativeIdentityContract, DelegationErrorV1> {
     if matches!(
         input.harness,
-        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi
+        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
     ) && !input.native_context.is_borrowed()
     {
         return Err(DelegationErrorV1::CapabilityUnavailable);
@@ -14,7 +14,10 @@ pub(super) fn identity_contract(
     // modes have no proven permission contract; neither client may silently upgrade them.
     if matches!(
         input.harness,
-        WorkerHarnessV1::CodexCli | WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi
+        WorkerHarnessV1::CodexCli
+            | WorkerHarnessV1::QoderCli
+            | WorkerHarnessV1::Pi
+            | WorkerHarnessV1::DeepseekHarness
     ) && input.permission_policy != WorkerPermissionPolicyV1::ApproveAll
     {
         return Err(DelegationErrorV1::CapabilityUnavailable);
@@ -24,5 +27,6 @@ pub(super) fn identity_contract(
         WorkerHarnessV1::ClaudeCode => AcpNativeIdentityContract::ClaudeSessionV1,
         WorkerHarnessV1::QoderCli => AcpNativeIdentityContract::QoderSessionV1,
         WorkerHarnessV1::Pi => AcpNativeIdentityContract::ExplicitResponseMetadata,
+        WorkerHarnessV1::DeepseekHarness => AcpNativeIdentityContract::DshSessionV1,
     })
 }

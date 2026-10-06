@@ -25,6 +25,57 @@ class NativeContextOracleTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
+    def test_product_listener_is_outside_the_hosts_outbound_ephemeral_range(self):
+        product = Product(REPO, root=self.root / 'listener-product')
+        try:
+            bounds = (subprocess.check_output(['sysctl', '-n', 'net.inet.ip.portrange.first',
+                       'net.inet.ip.portrange.last'], text=True).split() if sys.platform == 'darwin'
+                      else Path('/proc/sys/net/ipv4/ip_local_port_range').read_text().split())
+            first, last = map(int, bounds)
+            self.assertFalse(first <= product.port <= last,
+                             'a closed bind(0) probe can be stolen by a concurrent outbound client')
+        finally:
+            product.close()
+
+    def test_product_listener_lease_survives_service_stop_and_releases_with_the_fixture(self):
+        product = Product(REPO, root=self.root / 'lease-product')
+        other_tmp = self.root / 'competing-run-tmp'
+        other_tmp.mkdir()
+        command = [sys.executable, '-B', '-c', '''
+import sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from publication_product import fixture_listener_port
+with patch('publication_product.secrets.SystemRandom') as chooser:
+    chooser.return_value.sample.return_value = [int(sys.argv[2])]
+    try:
+        lease, port = fixture_listener_port()
+        lease.close()
+        print('available')
+    except RuntimeError as error:
+        assert str(error) == 'no unoccupied fixture listener address available', str(error)
+        print('leased')
+''', str(REPO/'crates/daemon/tests/support'), str(product.port)]
+        environment = dict(os.environ, TMPDIR=str(other_tmp))
+        process = None
+        try:
+            # Exercise the actual nonempty stop branch with a bounded local process
+            # that exits on the same shutdown pipe EOF as the real daemon.
+            product.shutdown_r, product.shutdown_w = os.pipe()
+            product.cap_r, product.cap_w = os.pipe()
+            product.cap_ack_r, product.cap_ack_w = os.pipe()
+            process = product.process = subprocess.Popen([sys.executable, '-c',
+                'import os,sys; os.read(int(sys.argv[1]),1)', str(product.shutdown_r)],
+                pass_fds=(product.shutdown_r,), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            product.stop()
+            self.assertEqual(subprocess.check_output(command, text=True, env=environment).strip(), 'leased')
+        finally:
+            product.close()
+            if process is not None:
+                process.stdout.close()
+                process.stderr.close()
+        self.assertEqual(subprocess.check_output(command, text=True, env=environment).strip(), 'available')
+
     def context(self, harness):
         root = self.root / harness
         home, project = root / 'home', root / 'project'
@@ -227,6 +278,7 @@ class NativeContextOracleTests(unittest.TestCase):
                                     'HIROUTE_WORKER_RECEIPT_DIR': '/daily/worker-receipts',
                                     'QODER_PERSONAL_ACCESS_TOKEN': 'synthetic-qoder-secret'}):
             product = Product(REPO, root=self.root / 'product')
+        self.addCleanup(product.close)
         home = Path(product.env['HOME'])
         self.assertEqual(product.env['CODEX_HOME'], str(home / '.codex'))
         self.assertEqual(product.env['CLAUDE_CONFIG_DIR'], str(home / '.claude'))
@@ -239,6 +291,7 @@ class NativeContextOracleTests(unittest.TestCase):
         product.env['HOME'] = '/explicitly-borrowed/native-home'
         self.assertEqual(product.env['HIROUTE_WORKER_RECEIPT_DIR'], receipt_root)
         neighbor = Product(REPO, root=self.root / 'neighbor-product')
+        self.addCleanup(neighbor.close)
         neighbor.env['HOME'] = product.env['HOME']
         self.assertNotEqual(neighbor.env['HIROUTE_WORKER_RECEIPT_DIR'], receipt_root)
         for key in ('CLAUDE_CODE_OAUTH_TOKEN', 'CODEX_CONFIG', 'AWS_PROFILE', 'QODER_PERSONAL_ACCESS_TOKEN',
@@ -421,7 +474,7 @@ class NativeContextOracleTests(unittest.TestCase):
         project.mkdir()
         selected = home / 'custom-native-configuration'
         value = fixture.prepare(home, selected, project, 'claude')
-        self.assertEqual(Path(value['skills'][0]['skill']).parent.parent, selected / 'skills')
+        self.assertEqual(Path(value['skills'][0]['skill']).parent.parent, (selected / 'skills').resolve())
         self.assertFalse((home / '.claude').exists())
 
 

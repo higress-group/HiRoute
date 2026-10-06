@@ -6,14 +6,16 @@ import codexLight from './assets/codex-light.png?inline';
 import claudeCode from './assets/claude-code.svg';
 import qoder from './assets/qoder.svg';
 import pi from './assets/pi.svg';
+import dsh from './assets/providers/deepseek.svg';
 
-export type BrandKind = 'codex' | 'claude-code' | 'qoder' | 'pi' | 'agent' | 'model';
+export type BrandKind = 'codex' | 'claude-code' | 'qoder' | 'pi' | 'dsh' | 'agent' | 'model';
 
 export function agentBrandFromId(agentId: string): BrandKind {
   const normalized = agentId.toLowerCase();
   if (normalized.includes('codex')) return 'codex';
   if (normalized.includes('claude')) return 'claude-code';
   if (normalized.includes('qoder')) return 'qoder';
+  if (normalized === 'agent_dsh_default') return 'dsh';
   if (normalized === 'agent_pi_default') return 'pi';
   return 'agent';
 }
@@ -49,9 +51,9 @@ export function BrandIcon({
     );
   }
 
-  if (kind === 'qoder' || kind === 'pi') {
+  if (kind === 'qoder' || kind === 'pi' || kind === 'dsh') {
     return <span className={classes} data-size={size} data-brand={kind} {...accessibility}>
-      <img src={kind === 'pi' ? pi : qoder} alt="" />
+      <img src={kind === 'pi' ? pi : kind === 'dsh' ? dsh : qoder} alt="" />
     </span>;
   }
 

@@ -3,13 +3,17 @@
 Fixtures are user-owned Agent files only; no test writes business database rows.
 """
 import hashlib
+import errno
+import fcntl
 import http.client
 import json
 import os
 from pathlib import Path
 import select
+import secrets
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -47,6 +51,44 @@ def startup_frame(process, timeout):
         index = phases.index(value['phase'])
         assert index > previous, 'repeated or reversed progress'
         previous = index
+
+
+def fixture_listener_port():
+    """Lease an explicit address outside the host's outbound ephemeral-port range.
+
+    Closing a bind(0) probe lets concurrent clients claim that ephemeral port before
+    the daemon binds it. A per-address file lease also separates parallel fixtures
+    and survives this Product's daemon restarts; the real daemon still owns its socket.
+    """
+    if sys.platform == 'darwin':
+        bounds = subprocess.check_output([
+            'sysctl', '-n', 'net.inet.ip.portrange.first', 'net.inet.ip.portrange.last',
+        ], text=True, timeout=2).split()
+    else:
+        bounds = Path('/proc/sys/net/ipv4/ip_local_port_range').read_text().split()
+    first, last = map(int, bounds)
+    candidates = [port for port in range(10000, 30000) if not first <= port <= last]
+    # Runner TMPDIRs differ even on one host. A UID-owned stable namespace must
+    # coordinate their addresses; a per-run lease directory cannot do that.
+    directory = Path('/tmp') / f'hiroute-product-listener-ports-{os.getuid()}'
+    directory.mkdir(mode=0o700, exist_ok=True)
+    metadata = directory.lstat()
+    if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o700):
+        raise RuntimeError('fixture listener lease directory is not private and owned')
+    for port in secrets.SystemRandom().sample(candidates, min(128, len(candidates))):
+        fd = os.open(directory / f'{port}.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        lease = os.fdopen(fd, 'r+b')
+        try:
+            fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with socket.socket() as probe:
+                probe.bind(('127.0.0.1', port))
+            return lease, port
+        except OSError as error:
+            lease.close()
+            if error.errno not in (errno.EADDRINUSE, errno.EAGAIN, errno.EACCES):
+                raise
+    raise RuntimeError('no unoccupied fixture listener address available')
 
 
 class Product:
@@ -147,13 +189,12 @@ finally:
                         CLAUDE_CONFIG_DIR=str(home / '.claude'),
                         QODER_CONFIG_DIR=str(home / '.qoder'),
                         PI_CODING_AGENT_DIR=str(home / '.pi/agent'),
+                        DSH_HOME=str(home / '.dsh'),
                         PATH=str(bin_dir) + ':/usr/bin:/bin',
                         HIROUTE_RUNTIME_DIR=str(self.root / 'runtime'),
                         HIROUTE_WORKER_RECEIPT_DIR=str(self.root / 'worker-receipts'),
                         HIROUTE_REPLAY_ROOT=str(self.root / 'replay'))
-        with socket.socket() as sock:
-            sock.bind(('127.0.0.1', 0))
-            self.port = sock.getsockname()[1]
+        self.listener_port_lease, self.port = fixture_listener_port()
         self.process = None
         self.outputs = []
         self.secrets = {SENTINEL, 'fixture.id.token', 'fixture-refresh-sentinel'}
@@ -601,6 +642,7 @@ finally:
             assert all(secret.encode() not in output for secret in self.secrets
                        for output in self.outputs), 'public secret leak'
         finally:
+            self.listener_port_lease.close()
             if failed and self.temporary is not None:
                 # Keep failed frames, stderr and data private; do not replace the original
                 # assertion with a shutdown error or erase the evidence in finally.

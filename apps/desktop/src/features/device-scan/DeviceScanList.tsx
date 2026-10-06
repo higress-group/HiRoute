@@ -23,6 +23,7 @@ export type ComputeScanResult = { items: ComputeScanItem[] };
 function agentName(agentId: string, language: 'zh' | 'en') {
   if (agentId.includes('claude')) return 'Claude Code';
   if (agentId.includes('codex')) return 'Codex';
+  if (agentId === 'agent_dsh_default') return 'DeepSeek Harness';
   if (agentId === 'agent_pi_default') return 'Pi';
   if (agentId.includes('qoder')) return 'Qoder';
   return language === 'zh' ? '本机 Agent' : 'Local agent';

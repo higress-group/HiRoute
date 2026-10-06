@@ -13,7 +13,12 @@ impl LocalControlAdapter {
                 .settings_agent_for_context(&request.context_id)
                 .is_none_or(|class| {
                     !class.is_codex()
-                        && !matches!(class, SettingsAgentClass::Qoder | SettingsAgentClass::Pi)
+                        && !matches!(
+                            class,
+                            SettingsAgentClass::Qoder
+                                | SettingsAgentClass::Pi
+                                | SettingsAgentClass::Dsh
+                        )
                 })
         {
             return Err(ControlReadError::Denied);
@@ -38,7 +43,7 @@ impl LocalControlAdapter {
         }
         if matches!(
             self.settings_agent_for_context(&request.context_id),
-            Some(SettingsAgentClass::Qoder | SettingsAgentClass::Pi)
+            Some(SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh)
         ) {
             let intent = op
                 .plan

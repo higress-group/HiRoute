@@ -117,7 +117,7 @@ test('collaboration-only Qoder and cross-ecosystem selections cannot authorize m
   }
 });
 
-for (const ecosystem of ['qoder', 'pi']) test(`${ecosystem} adds only selected routes and keeps token rotation and both restores independent`, () => {
+for (const ecosystem of ['qoder', 'pi', 'dsh']) test(`${ecosystem} adds only selected routes and keeps token rotation and both restores independent`, () => {
   const native = { ...qoder, agent_id: `agent_${ecosystem}_default`, context_id: `context/${ecosystem}`,
     settings: { collaboration: { ...qoder.settings.collaboration, restore_point_ref: `restore/${ecosystem}-skill` } } };
   const capable = { ...native, settings: { state: 'not_configured', collaboration: native.settings.collaboration } };
@@ -201,7 +201,7 @@ test('editing model routes retains distinct Codex authorization and Claude prese
   assert.equal(agentModelFormInvalid(claude, { ...EMPTY_EDITOR_VALUES, fixedModels: [fixed] }, []), false, 'an existing Claude fixed model can survive without a preset route');
 });
 
-for (const ecosystem of ['qoder', 'pi']) test(`${ecosystem} saves each selected plan protocol and excludes deselected plans`, () => {
+for (const ecosystem of ['qoder', 'pi', 'dsh']) test(`${ecosystem} saves each selected plan protocol and excludes deselected plans`, () => {
   const capable = { ...qoder, agent_id: `agent_${ecosystem}_default`, context_id: `context/${ecosystem}`, settings: { state: 'not_configured' } };
   const values = { ...draft.values, planProtocols: { 'route/a': 'messages', 'route/b': 'responses', 'removed': 'messages' } };
   const result = agentSettingsSpec(capable, 'model', false, { ...draft, values });

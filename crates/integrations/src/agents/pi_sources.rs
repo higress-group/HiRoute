@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use zeroize::{Zeroize, Zeroizing};
 
 #[derive(Clone, Eq, PartialEq, Serialize)]
-pub struct PiApiSource {
+pub struct NativeApiSource {
     pub provider_id: String,
     pub model_id: String,
     pub protocol: Option<UpstreamProtocol>,
@@ -26,23 +26,25 @@ pub struct PiApiSource {
     pub credential: Option<DiscoveredCredentialRefV1>,
     pub supported_auth: bool,
 }
+pub type PiApiSource = NativeApiSource;
+
 type PiSourceSnapshot = (
     Vec<PiApiSource>,
     Option<(Zeroizing<String>, ProtectedSecret)>,
 );
 /// Raw provider values stay privileged and are cleared after each bounded scan.
-struct Document(Value);
+pub(super) struct Document(pub(super) Value);
 impl Drop for Document {
     fn drop(&mut self) {
-        fn clear(v: &mut Value) {
-            match v {
-                Value::String(s) => s.zeroize(),
-                Value::Array(a) => a.iter_mut().for_each(clear),
-                Value::Object(o) => o.values_mut().for_each(clear),
-                _ => {}
-            }
-        }
-        clear(&mut self.0);
+        clear_native_value(&mut self.0);
+    }
+}
+pub(super) fn clear_native_value(v: &mut Value) {
+    match v {
+        Value::String(s) => s.zeroize(),
+        Value::Array(a) => a.iter_mut().for_each(clear_native_value),
+        Value::Object(o) => o.values_mut().for_each(clear_native_value),
+        _ => {}
     }
 }
 fn read(path: &std::path::Path) -> Result<(Document, CanonicalDigest), Error> {

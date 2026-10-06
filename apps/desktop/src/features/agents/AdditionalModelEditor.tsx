@@ -8,6 +8,7 @@ import type { AgentModelEditorProps } from './AgentModelEditor';
 /** Shared Plan selection for ecosystems that add an independent native provider. */
 export function AdditionalModelEditor({ agent, values, plans, language, disabled, invalid, onChange, onEdited, onCreatePlan }: AgentModelEditorProps) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  const dsh = agent.agent_id === 'agent_dsh_default';
   const name = agentDisplayName(agent.agent_id, language);
   const enabledPlans = plans.filter(plan => plan.head.status === 'enabled');
   const unavailable = values.allowedPlanIds.filter(id => !enabledPlans.some(plan => plan.agent_plan_id === id));
@@ -30,7 +31,7 @@ export function AdditionalModelEditor({ agent, values, plans, language, disabled
       </label>)}
     </fieldset>
     <div className="additional-model-editor__help">
-    <p className="field-help" data-agent-activation>{text(`保存后重新启动 ${name}，通过 /model 明确选用已添加的 HiRoute 路由。未选择时继续使用原来的模型。`, `Restart ${name} after saving, then explicitly select an added HiRoute route with /model. Otherwise it keeps using your previous model.`)}</p>
+    <p className="field-help" data-agent-activation>{dsh ? text('保存后启动 dsh web，在模型选择器中选用 HiRoute 路由。此配置作用于标准 web profile；其他 profile 保留原有配置。', 'After saving, start dsh web and select a HiRoute route in the model picker. This configures the standard web profile; other profiles retain their configuration.') : text(`保存后重新启动 ${name}，通过 /model 明确选用已添加的 HiRoute 路由。未选择时继续使用原来的模型。`, `Restart ${name} after saving, then explicitly select an added HiRoute route with /model. Otherwise it keeps using your previous model.`)}</p>
     <p className="field-help">{text(`在 HiRoute 中调整或移除这些路由。如果已将某条路由设为 ${name} 默认模型，移除前请先在 ${name} 中切换到其他模型。`, `Adjust or remove these routes in HiRoute. If one is now your ${name} default, switch to another model in ${name} before removing it.`)}</p>
     </div>
     {invalid && <span className="oc-inline-error">{text(`至少选择一条已启用路由，并取消不可用的选择。`, `Select at least one enabled route and remove unavailable selections.`)}</span>}

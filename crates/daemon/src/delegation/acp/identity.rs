@@ -11,6 +11,7 @@ pub enum AcpNativeIdentityContract {
     CodexThreadV1,
     ClaudeSessionV1,
     QoderSessionV1,
+    DshSessionV1,
 }
 
 impl AcpNativeIdentityContract {
@@ -22,7 +23,10 @@ impl AcpNativeIdentityContract {
         match self {
             Self::Unverified => Ok(None),
             Self::ExplicitResponseMetadata => Ok(metadata_id(response)),
-            Self::CodexThreadV1 | Self::ClaudeSessionV1 | Self::QoderSessionV1 => {
+            Self::CodexThreadV1
+            | Self::ClaudeSessionV1
+            | Self::QoderSessionV1
+            | Self::DshSessionV1 => {
                 if !valid_id(acp_id) {
                     return Err(DelegationErrorV1::ProtocolFailed);
                 }
@@ -37,7 +41,10 @@ impl AcpNativeIdentityContract {
             Self::ExplicitResponseMetadata => {
                 metadata_id(response).as_ref() == binding.native_session_id.as_ref()
             }
-            Self::CodexThreadV1 | Self::ClaudeSessionV1 | Self::QoderSessionV1 => {
+            Self::CodexThreadV1
+            | Self::ClaudeSessionV1
+            | Self::QoderSessionV1
+            | Self::DshSessionV1 => {
                 valid_id(&binding.acp_session_id)
                     && binding.native_session_id.as_deref() == Some(binding.acp_session_id.as_str())
             }

@@ -24,6 +24,8 @@ export const agentTrustRequired = ['codex.restore.conflict-active',
   'qoder.routing.additional-plans',
   'qoder.routing.adjust-and-restore',
   'qoder.routing.resume-pending',
+  'pi.routing.default-in-use',
+  'dsh.routing.default-in-use',
   'agent.diagnostics.configuration-state',
   'codex.routing.unproven-native-model'];
 

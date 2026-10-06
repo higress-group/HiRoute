@@ -79,7 +79,7 @@ def assert_saved_aliases(settings, provider, aliases):
     models = [model for name, value in settings.read()['providers'].items() if name == provider or name.startswith(provider + '-') for model in value['models']]
     for alias in aliases:
         assert len(settings.read()['providers'][persisted_plan_provider(settings, provider, alias)]['models']) == 1
-    assert len(models) == len(aliases) and {item['id' if HARNESS == 'pi' else 'model'] for item in models} == set(aliases), \
+    assert len(models) == len(aliases) and {item['id' if HARNESS in ('pi','dsh') else 'model'] for item in models} == set(aliases), \
         'persisted native choices do not match the selected routes'
 
 
@@ -110,7 +110,7 @@ def reject_gateway_request(product, token, alias, protocol, sources, expected_co
                 if protocol == 'responses' else {'model': alias, 'messages': [{'role':'user','content':'Untrusted removed route'}],
                     'max_tokens':16, 'stream':True})
         client.request('POST', TAIL + '/' + protocol, body=encoded(body),
-            headers={'Content-Type': 'application/json', **({'X-HiRoute-Token':token} if HARNESS == 'pi'
+            headers={'Content-Type': 'application/json', **({'X-HiRoute-Token':token} if HARNESS in ('pi','dsh')
                 else {'Authorization':'Bearer ' + token})})
         response = client.getresponse()
         error = json.loads(response.read())
@@ -133,7 +133,7 @@ def assert_default_blocks_removal(product, context, settings, provider, plans, s
             command = 'agents restore' if spec['model']['intent'] == 'restore' else 'agents connect'
             preview = product.preview(command + ' preview', {'spec': spec})
             assert not preview['applicable'] and any(
-                item['reason'] == ('additional_default_in_use' if HARNESS == 'pi' else 'qoder_default_in_use') for item in preview['blockers']), \
+                item['reason'] == ('additional_default_in_use' if HARNESS in ('pi','dsh') else 'qoder_default_in_use') for item in preview['blockers']), \
                 'removing the selected native default must fail closed'
             assert digest(settings.path) == before and digest(skill) == skill_before, 'blocked removal changed files'
             assert settings_status(product, context) == status, 'blocked removal changed settings authority'
@@ -158,10 +158,10 @@ def run(repository, candidate):
     global HARNESS, AGENT, MODE, TAIL
     PLAN_PROTOCOLS.clear()
     HARNESS = os.environ.get('HIROUTE_PRODUCT_WORKER_HARNESS', 'qoder')
-    assert HARNESS in ('qoder', 'pi')
+    assert HARNESS in ('qoder', 'pi', 'dsh')
     AGENT = 'agent_' + HARNESS + '_default'
     MODE = HARNESS + '_additional'
-    TAIL = '/v1' if HARNESS == 'pi' else '/_hiroute/qoder/v1'
+    TAIL = '/v1' if HARNESS in ('pi','dsh') else '/_hiroute/qoder/v1'
     repo = Path(repository).resolve()
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == candidate
     product = Product(repo)
@@ -236,7 +236,7 @@ def run(repository, candidate):
 
         stage = 'independent-model-and-skill'
         (config / 'skills').mkdir(mode=0o700, exist_ok=True)
-        skill = (config / 'skills/hiroute-collaboration/SKILL.md' if HARNESS == 'pi' else
+        skill = (config / 'skills/hiroute-collaboration/SKILL.md' if HARNESS in ('pi','dsh') else
                  qoder_native_context.prepare_collaboration_target(product))
         before_skill = skill.read_bytes() if skill.exists() else None
         check_collaboration(product, 'model-skill-preflight')

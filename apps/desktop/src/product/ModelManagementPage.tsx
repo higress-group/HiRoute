@@ -88,7 +88,9 @@ function discoveryFailureMessage(code: string, language: 'zh' | 'en'): string {
   switch (code.toLocaleLowerCase()) {
     case 'compute.discovery_changed':
     case 'revision_conflict':
+    case 'application.error.revision_conflict':
     case 'change_preview_stale':
+    case 'application.error.change_preview_stale':
       return zh ? '本机配置或保存依据已发生变化，请重新扫描后再接入。' : 'The local configuration or save context changed. Scan again before connecting it.';
     case 'compute.discovery_unavailable':
       return zh ? '暂时无法重新读取这项配置，请重新扫描。' : 'This configuration cannot be read right now. Scan again.';
@@ -946,7 +948,7 @@ export function ModelManagementPage({
   const subscriptionSaving = subscriptionAction === 'saving';
   const discoverySaving = discoveryAction === 'saving';
   const scanWorking = subscriptionWorking || discoveryAction !== null;
-  const discoveryFailureNeedsRescan = ['compute.discovery_changed', 'compute.discovery_unavailable', 'revision_conflict', 'change_preview_stale']
+  const discoveryFailureNeedsRescan = ['compute.discovery_changed', 'compute.discovery_unavailable', 'revision_conflict', 'application.error.revision_conflict', 'change_preview_stale', 'application.error.change_preview_stale']
     .includes(discoveryError.toLocaleLowerCase());
   const discoveryFailureCanRetry = Boolean(discoveryError
     && !['compute.discovery_not_importable', 'registered_option_unavailable'].includes(discoveryError.toLocaleLowerCase()));

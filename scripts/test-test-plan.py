@@ -136,7 +136,7 @@ class SelectionTests(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 result = plan.select([path])
-                expected = ['qoder_delegation', 'pi_delegation'] if (path in plan.QODER_PRODUCT_PATHS or path.startswith(('crates/application/src/agent_connection/skill', 'crates/application/src/agent_connection/settings/'))) else ['qoder_delegation']
+                expected = ['qoder_delegation', 'pi_delegation', 'dsh_delegation'] if (path in plan.QODER_PRODUCT_PATHS or path.startswith(('crates/application/src/agent_connection/skill', 'crates/application/src/agent_connection/settings/'))) else ['qoder_delegation']
                 self.assertEqual([check['command'][6] for check in result['product_checks']], expected)
                 self.assertIn(['python3', 'scripts/test-qoder-product.py'], result['commands'])
         # Model-specific settings are not consumers of the independent Qoder Skill path.
@@ -148,7 +148,7 @@ class SelectionTests(unittest.TestCase):
     def test_shared_agent_journey_helper_selects_current_consumers_and_its_ownership_checks(self):
         result = plan.select(['crates/daemon/tests/support/agent_product_support.py'])
         self.assertEqual(result['mode'], 'affected')
-        self.assertEqual([check['command'][6] for check in result['product_checks']], ['qoder_delegation', 'pi_delegation'])
+        self.assertEqual([check['command'][6] for check in result['product_checks']], ['qoder_delegation', 'pi_delegation', 'dsh_delegation'])
         self.assertIn(['python3', 'scripts/test-agent-product-support.py'], result['commands'])
         tooling = plan.select(['scripts/test-agent-product-support.py'])
         self.assertEqual(tooling['product_checks'], [])
@@ -162,7 +162,7 @@ class SelectionTests(unittest.TestCase):
                 result = plan.select([path])
                 self.assertEqual(result['mode'], 'affected')
                 self.assertEqual({check['command'][6] for check in result['product_checks']},
-                                 {'worker_native_context', 'qoder_delegation', 'pi_delegation'})
+                                 {'worker_native_context', 'qoder_delegation', 'pi_delegation', 'dsh_delegation'})
 
     def test_qoder_production_gates_preserve_ordinary_owner_checks_and_deduplicate(self):
         result = plan.select(['crates/integrations/src/agents/qoder.rs',
@@ -185,7 +185,7 @@ class SelectionTests(unittest.TestCase):
                      'crates/daemon/src/control/runtime/native_additional_model.rs'):
             with self.subTest(path=path):
                 checks = plan.select([path])['product_checks']
-                self.assertEqual({check['command'][6] for check in checks}, {'qoder_delegation', 'pi_delegation'})
+                self.assertEqual({check['command'][6] for check in checks}, {'qoder_delegation', 'pi_delegation', 'dsh_delegation'})
         checks = plan.select(['crates/integrations/src/agents/pi_sources.rs'])['product_checks']
         self.assertEqual([check['command'][6] for check in checks], ['pi_delegation'])
         self.assertIn('pi_worker_recovers_length_overflow_and_continues_edited_history', checks[0]['required_tests'])
@@ -198,6 +198,18 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(result['frontend'])
         self.assertEqual(result['product_checks'], [])
 
+    def test_dsh_native_leaf_and_shared_acp_fixture_select_their_actual_consumers(self):
+        for path in ('crates/integrations/src/agents/dsh_native.rs',
+                     'crates/daemon/tests/support/dsh_native_context.py',
+                     'crates/daemon/tests/support/native_acp_client.py'):
+            checks = plan.worker_product_checks([path])
+            self.assertEqual([row['id'] for row in checks],['dsh.delegation'])
+            self.assertEqual(checks[0]['missing_environment'],'fail')
+        shared = plan.worker_product_checks(['crates/daemon/tests/support/pi_discovery_product.py'])
+        self.assertEqual({row['id'] for row in shared},{'pi.delegation','dsh.delegation'})
+        witness = plan.worker_product_checks(['crates/daemon/tests/support/native_task_witness.py'])
+        self.assertEqual({row['id'] for row in witness},{'qoder.delegation','dsh.delegation'})
+
     def test_worker_context_changes_require_explicit_real_harness_cases(self):
         for path in ('crates/daemon/src/delegation/profile/mod.rs',
                      'crates/daemon/src/delegation/executor/resume.rs',
@@ -205,7 +217,7 @@ class SelectionTests(unittest.TestCase):
             with self.subTest(path=path):
                 result = plan.select([path])
                 required = result['product_checks']
-                self.assertEqual(len(required), 1 if path.endswith('worker_native_context.rs') else 5)
+                self.assertEqual(len(required), 1 if path.endswith('worker_native_context.rs') else len(plan.WORKER_PRODUCT_CHECKS))
                 self.assertEqual(required[0]['id'], 'worker.native-context')
                 self.assertEqual(required[0]['harnesses'], ['codex', 'claude'])
                 self.assertIn('--ignored', required[0]['command'])

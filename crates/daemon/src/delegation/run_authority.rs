@@ -281,6 +281,7 @@ fn build_entry(
                 hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode => "claude",
                 hiroute_domain::delegation::WorkerHarnessV1::QoderCli => "qoder",
                 hiroute_domain::delegation::WorkerHarnessV1::Pi => "pi",
+                hiroute_domain::delegation::WorkerHarnessV1::DeepseekHarness => "dsh",
             },
             task.session
                 .as_ref()

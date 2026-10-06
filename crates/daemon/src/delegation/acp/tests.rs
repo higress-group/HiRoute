@@ -550,3 +550,64 @@ async fn pi_bridge_failure_preserves_the_failed_operation_without_replay() {
         );
     }
 }
+
+#[tokio::test]
+async fn dsh_continue_uses_exact_native_resume_and_never_falls_back_to_new() {
+    for capable in [true, false] {
+        let (client, server) = tokio::io::duplex(16_384);
+        let server = tokio::spawn(async move {
+            let (reader, mut writer) = tokio::io::split(server);
+            let mut lines = BufReader::new(reader).lines();
+            let mut methods = vec![];
+            while let Some(line) = lines.next_line().await.unwrap() {
+                let request: Value = serde_json::from_str(&line).unwrap();
+                let method = request["method"].as_str().unwrap();
+                methods.push(method.to_owned());
+                let result = match method {
+                    "initialize" => json!({"protocolVersion":1,"agentCapabilities":{
+                        "sessionCapabilities":if capable { json!({"resume":{}}) } else { json!({}) }
+                    }}),
+                    "session/resume" => {
+                        assert_eq!(request["params"]["sessionId"], "exact-native-session");
+                        assert_eq!(
+                            request["params"]["cwd"],
+                            serde_json::to_value(std::env::temp_dir()).unwrap()
+                        );
+                        json!({})
+                    }
+                    "session/prompt" => json!({"stopReason":"end_turn"}),
+                    other => panic!("unexpected DSH method: {other}"),
+                };
+                writer
+                    .write_all(
+                        format!(
+                            "{}\n",
+                            json!({"jsonrpc":"2.0","id":request["id"],"result":result})
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            methods
+        });
+        let mut request = input();
+        request.identity_contract = AcpNativeIdentityContract::DshSessionV1;
+        request.session = AcpSessionStart::Resume(AcpSessionBinding {
+            acp_session_id: "exact-native-session".into(),
+            native_session_id: Some("exact-native-session".into()),
+        });
+        let (read, write) = tokio::io::split(client);
+        let result = run_acp(read, write, request, Arc::new(Journal::default())).await;
+        if capable {
+            assert!(result.is_ok());
+            assert_eq!(
+                server.await.unwrap(),
+                ["initialize", "session/resume", "session/prompt"]
+            );
+        } else {
+            assert_eq!(result.err(), Some(DelegationErrorV1::ResumeUnavailable));
+            assert_eq!(server.await.unwrap(), ["initialize"]);
+        }
+    }
+}

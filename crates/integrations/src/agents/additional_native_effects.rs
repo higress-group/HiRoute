@@ -144,6 +144,7 @@ fn stage(
     let kind = match intent.desired()["subject"]["agent_id"].as_str() {
         Some("agent_qoder_default") => AgentKindV1::Qoder,
         Some("agent_pi_default") => AgentKindV1::Pi,
+        Some("agent_dsh_default") => AgentKindV1::DeepseekHarness,
         _ => return Err(error(PortErrorCode::InvalidData, "additional.native.kind")),
     };
     let edit = additional_native::configure(

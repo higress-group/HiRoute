@@ -22,6 +22,7 @@ class CodexFixtureSelectionTests(unittest.TestCase):
         self.selected = root / 'installed-codex'
         self.selected.write_bytes(b'installed native Codex remains intact\n')
         self.product = Product(REPO, root=root / 'product')
+        self.addCleanup(self.product.close)
 
     def test_fixture_refuses_to_write_through_selected_engine_symlink(self):
         (self.product.root / 'bin/codex').symlink_to(self.selected)

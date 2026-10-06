@@ -207,7 +207,9 @@ fn try_request_in_context(
             WorkerHarnessV1::CodexCli | WorkerHarnessV1::ClaudeCode => {
                 Some(Path::new("/trusted/adapter"))
             }
-            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi => None,
+            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness => {
+                None
+            }
         },
         harness_binary,
         node_binary,

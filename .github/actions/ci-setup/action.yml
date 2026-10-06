@@ -3,6 +3,9 @@ description: Prepare the hosted Linux checkout without using the SSH workbench
 runs:
   using: composite
   steps:
+    - name: Cargo Git transport
+      shell: bash
+      run: printf '%s\n' 'CARGO_NET_GIT_FETCH_WITH_CLI=true' >> "$GITHUB_ENV"
     - name: Native build prerequisites
       shell: bash
       run: sudo apt-get update && sudo apt-get install --yes cmake clang pkg-config libssl-dev

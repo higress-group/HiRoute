@@ -442,7 +442,8 @@
                 "codex_cli",
                 "claude_code",
                 "qoder_cli",
-                "pi"
+                "pi",
+                "deepseek_harness"
               ]
             },
             "protocol": {

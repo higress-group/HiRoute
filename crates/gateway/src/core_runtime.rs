@@ -1429,6 +1429,24 @@ fn inbound_authorization<'a>(
         }
         return Some(std::borrow::Cow::Owned(format!("Bearer {token}")));
     }
+    // Native Anthropic clients may send a run credential through x-api-key.
+    // Only the issued run-model namespace uses this carrier; ordinary native keys,
+    // model grants and control credentials still cannot authenticate this way.
+    if path == "/v1/messages" && !headers.contains_key(AUTHORIZATION) {
+        if headers.get_all("x-api-key").iter().count() != 1 {
+            return None;
+        }
+        let token = headers.get("x-api-key")?.to_str().ok()?;
+        if !token.starts_with("hr_run_model_")
+            || token
+                .bytes()
+                .any(|byte| byte.is_ascii_whitespace() || byte == b',')
+        {
+            return None;
+        }
+        // The run authority must still verify the signed token, live run and frozen protocol.
+        return Some(std::borrow::Cow::Owned(format!("Bearer {token}")));
+    }
     if headers.get_all(AUTHORIZATION).iter().count() != 1 {
         return None;
     }

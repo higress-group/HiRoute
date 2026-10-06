@@ -327,7 +327,7 @@ fn serve_probe_request(
     let response = match endpoint.harness {
         WorkerHarnessV1::CodexCli => responses_stream(endpoint.model),
         WorkerHarnessV1::ClaudeCode => messages_stream(endpoint.model),
-        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi => {
+        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness => {
             return Err(DelegationErrorV1::CapabilityUnavailable);
         }
     };

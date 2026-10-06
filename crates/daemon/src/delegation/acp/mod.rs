@@ -4,7 +4,7 @@ use agent_client_protocol::schema::v1::{
     AuthenticateRequest, CancelNotification, ClientCapabilities, InitializeRequest,
     LoadSessionRequest, NewSessionRequest, PermissionOptionKind, PromptRequest,
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SetSessionModeRequest,
+    ResumeSessionRequest, SelectedPermissionOutcome, SessionNotification, SetSessionModeRequest,
 };
 use agent_client_protocol::{Agent, ConnectionTo};
 use hiroute_domain::delegation::DelegationErrorV1;
@@ -32,6 +32,7 @@ pub use hiroute_domain::delegation::DelegationSessionBindingV1 as AcpSessionBind
 pub enum AcpSessionStart {
     New,
     Load(AcpSessionBinding),
+    Resume(AcpSessionBinding),
 }
 
 /// Internal profile output, never a raw Local Control payload. Authentication can contain
@@ -261,6 +262,39 @@ async fn run_session(
                 response.modes,
                 response.config_options,
             )
+        }
+        AcpSessionStart::Resume(expected) => {
+            if initialized
+                .agent_capabilities
+                .session_capabilities
+                .resume
+                .is_none()
+                || input.identity_contract != AcpNativeIdentityContract::DshSessionV1
+                || expected.native_session_id.as_deref() != Some(expected.acp_session_id.as_str())
+                || expected.acp_session_id.is_empty()
+            {
+                return Err(DelegationErrorV1::ResumeUnavailable);
+            }
+            updates.lock().unwrap_or_else(|e| e.into_inner()).session =
+                Some(expected.acp_session_id.clone());
+            let request: ResumeSessionRequest = serde_json::from_value(json!({
+                "sessionId":expected.acp_session_id,"cwd":input.cwd,"mcpServers":[],
+            }))
+            .map_err(|_| DelegationErrorV1::InvalidArguments)?;
+            let response = phase(
+                &input.cancellation,
+                input.deadline,
+                connection.send_request(request).block_task(),
+            )
+            .await
+            .map_err(|error| {
+                if error == DelegationErrorV1::ProtocolFailed {
+                    DelegationErrorV1::ResumeUnavailable
+                } else {
+                    error
+                }
+            })?;
+            (expected, response.modes, response.config_options)
         }
         AcpSessionStart::Load(expected) => {
             let prerequisites_ready = initialized.agent_capabilities.load_session

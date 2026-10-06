@@ -30,11 +30,12 @@ pub(crate) use discovery::{
     validate_selection,
 };
 
-const WORKER_HARNESSES: [WorkerHarnessV1; 4] = [
+const WORKER_HARNESSES: [WorkerHarnessV1; 5] = [
     WorkerHarnessV1::CodexCli,
     WorkerHarnessV1::ClaudeCode,
     WorkerHarnessV1::QoderCli,
     WorkerHarnessV1::Pi,
+    WorkerHarnessV1::DeepseekHarness,
 ];
 
 #[derive(Clone, Debug)]
@@ -304,7 +305,7 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         )?;
         if matches!(
             installation.harness,
-            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi
+            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
         ) && input.run.configuration.permission_policy
             != hiroute_domain::delegation::WorkerPermissionPolicyV1::ApproveAll
         {
@@ -453,7 +454,7 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             }
             None if matches!(
                 installation.harness,
-                WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi
+                WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
             ) =>
             {
                 return Err(DelegationErrorV1::ResumeUnavailable);
@@ -486,10 +487,13 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
         }
         let qoder_budget = (matches!(
             installation.harness,
-            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi
+            WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
         ))
         .then(|| {
-            if installation.harness == WorkerHarnessV1::Pi {
+            if matches!(
+                installation.harness,
+                WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness
+            ) {
                 hiroute_integrations::agents::pi_plan_token_budget(
                     &input.compiled_plan.body.materialized,
                 )

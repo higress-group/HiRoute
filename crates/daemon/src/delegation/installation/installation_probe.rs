@@ -258,7 +258,9 @@ fn harness_kind(harness: WorkerHarnessV1) -> HarnessKind {
         WorkerHarnessV1::CodexCli => HarnessKind::Codex,
         WorkerHarnessV1::ClaudeCode => HarnessKind::Claude,
         // This historical adapter-only, private-HOME probe is not Qoder acceptance.
-        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi => HarnessKind::Unknown,
+        WorkerHarnessV1::QoderCli | WorkerHarnessV1::Pi | WorkerHarnessV1::DeepseekHarness => {
+            HarnessKind::Unknown
+        }
     }
 }
 

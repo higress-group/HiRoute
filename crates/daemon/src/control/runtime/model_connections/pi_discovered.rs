@@ -10,14 +10,24 @@ pub(super) fn pi_discovery(source: &PiApiSource) -> ComputeDiscoveryRefV1 {
     }
 }
 impl LocalControlAdapter {
-    pub(in crate::control::runtime) fn pi_compute_scan_items(
+    pub(in crate::control::runtime) fn native_compute_scan_items(
         &self,
+        dsh: bool,
     ) -> Result<Vec<ComputeScanItemV1>, hiroute_application::control::ControlReadError> {
-        let sources = match self.scanner.pi_api_sources() {
+        let agent_id = if dsh {
+            "agent_dsh_default"
+        } else {
+            "agent_pi_default"
+        };
+        let sources = match if dsh {
+            self.scanner.dsh_api_sources()
+        } else {
+            self.scanner.pi_api_sources()
+        } {
             Ok(sources) => sources,
             Err(_) => {
                 return Ok(vec![ComputeScanItemV1 {
-                    agent_id: "agent_pi_default".into(),
+                    agent_id: agent_id.into(),
                     supported: false,
                     native_provider_id: None,
                     configuration_state: "configuration_unavailable".into(),
@@ -29,7 +39,14 @@ impl LocalControlAdapter {
                     model_configuration_id: None,
                     inventory_eligible: false,
                     discovery: None,
-                    actions_required: vec!["check_pi_configuration".into()],
+                    actions_required: vec![
+                        if dsh {
+                            "check_dsh_configuration"
+                        } else {
+                            "check_pi_configuration"
+                        }
+                        .into(),
+                    ],
                     permission_action: None,
                     credential_import: None,
                 }]);
@@ -56,7 +73,7 @@ impl LocalControlAdapter {
                 };
                 let discovery = ready.then(|| pi_discovery(&source));
                 Ok(ComputeScanItemV1 {
-                    agent_id: "agent_pi_default".into(),
+                    agent_id: agent_id.into(),
                     supported: true,
                     native_provider_id: Some(source.provider_id),
                     configuration_state: if ready {
@@ -84,7 +101,7 @@ impl LocalControlAdapter {
             })
             .collect()
     }
-    pub(super) fn prepare_pi_discovered_candidate(
+    pub(super) fn prepare_native_api_candidate(
         &self,
         source: PiApiSource,
         prepare_id: &str,
@@ -95,10 +112,13 @@ impl LocalControlAdapter {
         let protocol = source
             .protocol
             .ok_or(ComputeManagementControlError::DiscoveryNotImportable)?;
-        let (base_url, secret) = self
-            .scanner
-            .read_pi_api_source(&source)
-            .map_err(|_| ComputeManagementControlError::DiscoveryChanged)?;
+        let dsh = source.source_ref.starts_with("dsh-source/");
+        let (base_url, secret) = (if dsh {
+            self.scanner.read_dsh_api_source(&source)
+        } else {
+            self.scanner.read_pi_api_source(&source)
+        })
+        .map_err(|_| ComputeManagementControlError::DiscoveryChanged)?;
         let credential = source
             .credential
             .as_ref()
@@ -113,7 +133,11 @@ impl LocalControlAdapter {
             observed_revision: credential.observed_revision,
         };
         let candidate_digest = hiroute_domain::CanonicalDigest::of(&(
-            "pi-discovered-candidate/v1",
+            if dsh {
+                "dsh-discovered-candidate/v1"
+            } else {
+                "pi-discovered-candidate/v1"
+            },
             &source.evidence_digest,
             prepare_id,
         ))
@@ -171,7 +195,11 @@ impl LocalControlAdapter {
             candidate_ref: Some(candidate.candidate_ref),
             lineage_ref: pi_discovery(&source).discovery_ref,
             trusted_lineage_digest: None,
-            display_name: format!("Pi · {}", source.provider_id),
+            display_name: format!(
+                "{} · {}",
+                if dsh { "DSH" } else { "Pi" },
+                source.provider_id
+            ),
             existing_source_id: None,
             edit_revision: source.revision,
             check_id: prepare_id.into(),

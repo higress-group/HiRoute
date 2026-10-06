@@ -124,6 +124,7 @@ def launch_environment(
         environment["CLAUDE_CONFIG_DIR"] = str(process_home / ".claude")
         environment["QODER_CONFIG_DIR"] = str(process_home / ".qoder")
         environment["PI_CODING_AGENT_DIR"] = str(process_home / ".pi/agent")
+        environment["DSH_HOME"] = str(process_home / ".dsh")
     if diagnostic_override is not None:
         environment[DIAGNOSTIC_LEVEL_ENV] = diagnostic_override
     return environment

@@ -15,6 +15,7 @@ pub enum AgentKindV1 {
     ClaudeCode,
     Qoder,
     Pi,
+    DeepseekHarness,
 }
 
 impl AgentKindV1 {
@@ -36,7 +37,7 @@ impl AgentKindV1 {
                 ConfigLayerV1::Project,
                 ConfigLayerV1::User,
             ],
-            Self::Pi => &[
+            Self::Pi | Self::DeepseekHarness => &[
                 ConfigLayerV1::Process,
                 ConfigLayerV1::Launch,
                 ConfigLayerV1::Project,
@@ -57,6 +58,7 @@ impl AgentKindV1 {
             Self::ClaudeCode => "claude_code",
             Self::Qoder => "qoder",
             Self::Pi => "pi",
+            Self::DeepseekHarness => "deepseek_harness",
         }
     }
 }
@@ -213,12 +215,14 @@ impl AgentProfileV1 {
         if self.config_precedence.as_slice() != self.kind.config_precedence() {
             return Err(AgentProfileError::InvalidConfigPrecedence);
         }
-        if matches!(self.kind, AgentKindV1::Qoder | AgentKindV1::Pi)
-            && (self.dynamic_catalog
-                || self.static_catalog_fallback
-                || self.native_subagent_routing
-                || self.spawn_guidance.is_some()
-                || self.managed_launch.is_some())
+        if matches!(
+            self.kind,
+            AgentKindV1::Qoder | AgentKindV1::Pi | AgentKindV1::DeepseekHarness
+        ) && (self.dynamic_catalog
+            || self.static_catalog_fallback
+            || self.native_subagent_routing
+            || self.spawn_guidance.is_some()
+            || self.managed_launch.is_some())
         {
             return Err(AgentProfileError::InvalidCatalogCapability);
         }
@@ -255,7 +259,10 @@ impl AgentProfileV1 {
         }
         match (self.kind, self.ingress_protocol) {
             (
-                AgentKindV1::Codex | AgentKindV1::Qoder | AgentKindV1::Pi,
+                AgentKindV1::Codex
+                | AgentKindV1::Qoder
+                | AgentKindV1::Pi
+                | AgentKindV1::DeepseekHarness,
                 Some(AgentIngressProtocolV1::Responses),
             )
             | (AgentKindV1::ClaudeCode, Some(AgentIngressProtocolV1::Messages)) => Ok(()),

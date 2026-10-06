@@ -48,7 +48,7 @@ fn agent_connection_current_proof_allows_unlisted_version_without_version_allowl
 
 fn installation(kind: AgentKindV1) -> SupportedAgentInstallationV1 {
     let version = match kind {
-        AgentKindV1::Qoder | AgentKindV1::Pi => {
+        AgentKindV1::Qoder | AgentKindV1::Pi | AgentKindV1::DeepseekHarness => {
             panic!("this fixture covers default-model replacement, not additional providers")
         }
         AgentKindV1::Codex => CODEX_VERIFIED_VERSION_V1,
@@ -85,7 +85,7 @@ fn installation(kind: AgentKindV1) -> SupportedAgentInstallationV1 {
 fn profile(kind: AgentKindV1) -> AgentProfileV1 {
     let precedence = kind.config_precedence().to_vec();
     match kind {
-        AgentKindV1::Qoder | AgentKindV1::Pi => {
+        AgentKindV1::Qoder | AgentKindV1::Pi | AgentKindV1::DeepseekHarness => {
             panic!("this fixture covers default-model replacement, not additional providers")
         }
         AgentKindV1::Codex => {
@@ -252,7 +252,7 @@ fn facts(kind: AgentKindV1) -> AgentConnectionPlanningFactsV1 {
 
 fn spec(kind: AgentKindV1, native: bool, dynamic: bool) -> AgentConnectSpecV1 {
     let profile = match kind {
-        AgentKindV1::Qoder | AgentKindV1::Pi => {
+        AgentKindV1::Qoder | AgentKindV1::Pi | AgentKindV1::DeepseekHarness => {
             panic!("this fixture covers default-model replacement, not additional providers")
         }
         AgentKindV1::Codex => profile(AgentKindV1::Codex),
@@ -263,7 +263,7 @@ fn spec(kind: AgentKindV1, native: bool, dynamic: bool) -> AgentConnectSpecV1 {
         agent_id: format!("agent/{}", kind.as_str()),
         profile_id: profile.profile_id,
         installed_version: match kind {
-            AgentKindV1::Qoder | AgentKindV1::Pi => {
+            AgentKindV1::Qoder | AgentKindV1::Pi | AgentKindV1::DeepseekHarness => {
                 panic!("this fixture covers default-model replacement, not additional providers")
             }
             AgentKindV1::Codex => CODEX_VERIFIED_VERSION_V1,
