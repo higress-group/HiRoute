@@ -44,6 +44,10 @@ and relative/tilde paths are refused; do not borrow HiRoute's cwd or HOME to gue
 Only the effective file needs private-file validation. Source
 evidence binds home/profile bytes, the effective credential path/bytes and the selected environment secret;
 Prepare and Save recheck that evidence without executing helpers or inference.
+The shared [Desktop scan flow](../../apps/desktop/src/product/ModelManagementPage.tsx)
+maps both bare and application-qualified stale/revision-conflict errors to the
+existing rescan action. It discards the old candidate, then prepares and saves the
+fresh scan; cover that recovery in the shared subscription-repair browser journey.
 Provider/model compatibility options and custom authentication that cannot be
 preserved remain ineligible. Only a nonempty explicit model `input` establishes
 vision support; empty/missing input stays Unknown because native catalog/default

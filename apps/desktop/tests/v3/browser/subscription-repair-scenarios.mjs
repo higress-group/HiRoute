@@ -191,19 +191,30 @@ const scenarios = [
     assert(calls('apply_compute_save').length === 0 && calls('cancel_model_connection_check').length === 0, 'Prepare close wrote or called cancellation');
   }],
   ['stale discovery Preview requires a new scan and Prepare', async () => {
-    await fresh(control => { control.handlers.preview_compute_save = () => { throw { code: 'CHANGE_PREVIEW_STALE' }; }; });
-    await scan(); await connect('智谱 Coding Plan');
-    await until(() => button('保存接入'), 'discovery prepared');
-    await click('保存接入');
-    await until(() => button('重新扫描'), 'stale requires rescan');
-    assert(!button('保存接入') && calls('apply_compute_save').length === 0, 'Stale candidate still saveable');
-    const next = { ...c().discovered, discovery: { discovery_ref: `discovery/${'b'.repeat(64)}`, discovery_revision: '2' } };
-    c().handlers.compute_scan = () => ({ items: [next] });
-    delete c().handlers.preview_compute_save;
-    await click('重新扫描'); await until(() => text().includes('可复用的订阅'), 'rescan complete');
-    await connect('智谱 Coding Plan');
-    await until(() => button('保存接入'), 'new candidate prepared');
-    assert(calls('prepare_discovered_model_connection').at(-1).payload.discovery.discovery_ref === next.discovery.discovery_ref, 'Old discovery reused');
+    for (const [stage, code] of [
+      ['preview_compute_save', 'CHANGE_PREVIEW_STALE'],
+      ['apply_compute_save', 'application.error.change_preview_stale'],
+      ['preview_compute_save', 'application.error.revision_conflict'],
+    ]) {
+      await fresh(control => { control.handlers[stage] = () => { throw { code }; }; });
+      await scan(); await connect('智谱 Coding Plan');
+      await until(() => button('保存接入'), 'discovery prepared');
+      await click('保存接入');
+      await until(() => button('重新扫描'), 'stale requires rescan');
+      assert(text().includes('请重新扫描后再接入'), 'Stale discovery did not explain the recovery action');
+      assert(!button('保存接入') && c().changes === 0, 'Stale candidate was saved');
+      assert(calls('apply_compute_save').length === (stage === 'apply_compute_save' ? 1 : 0), 'Unexpected Apply attempt');
+      const next = { ...c().discovered, discovery: { discovery_ref: `discovery/${'b'.repeat(64)}`, discovery_revision: '2' } };
+      c().handlers.compute_scan = () => ({ items: [next] });
+      delete c().handlers[stage];
+      await click('重新扫描'); await until(() => text().includes('可复用的订阅'), 'rescan complete');
+      await connect('智谱 Coding Plan');
+      await until(() => button('保存接入'), 'new candidate prepared');
+      assert(calls('prepare_discovered_model_connection').at(-1).payload.discovery.discovery_ref === next.discovery.discovery_ref, 'Old discovery reused');
+      await click('保存接入');
+      await until(() => text().includes('模型接入已保存'), 'refreshed discovery saved');
+      assert(c().changes === 1, 'Fresh discovery was not saved exactly once');
+    }
   }],
   ['late admitted save failure does not close a newer scan', async () => {
     const late = deferred();
