@@ -44,6 +44,13 @@ PI_WORKER_BRIDGE_TEST = "crates/daemon/src/delegation/profile/pi_worker_bridge.t
 PI_SDK_CONTRACT_TEST = "crates/integrations/src/agents/pi_sdk_contract.test.mjs"
 INTEGRATION_SKILL = ".agents/skills/hiroute-integrate/SKILL.md"
 WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/release.yml"}
+RELEASE_BUILD_TESTS = ("test-build-cpa.py", "test-build-release.py", "test-package-desktop.py",
+                       "test-standalone-install.py", "test-third-party-licenses.py")
+RELEASE_BUILD_TOOLING = {".github/workflows/build-release.yml", "scripts/build-release.py",
+                         "scripts/build-cpa.py", "scripts/package-desktop.py",
+                         "scripts/package-standalone.py", "scripts/install-standalone.py",
+                         "scripts/collect-third-party-licenses.py",
+                         *("scripts/" + name for name in RELEASE_BUILD_TESTS)}
 WEBSITE_PREFIXES = ("apps/website/", ".github/scripts/", "news/", "experiments/")
 RELEASE_CONTRACT_TOOLING = {"scripts/release-contracts.py", "scripts/test-release-contracts.py",
                           "scripts/test-release-contract-pr.py", ".github/scripts/release-contract-pr.sh",
@@ -304,8 +311,12 @@ def select(paths, full=False):
     worker_fixture_tooling = False
     validation_tooling = False
     release_contract_tooling = False
+    release_build_tooling = False
     targets = set()
     for path in sorted(set(paths)):
+        if path in RELEASE_BUILD_TOOLING:
+            release_build_tooling = True
+            continue
         if path in PRODUCT_GUIDES:
             continue  # Navigation-only guide; not embedded in a product binary.
         if path in WORKER_FIXTURE_TOOLING:
@@ -426,6 +437,8 @@ def select(paths, full=False):
                              "--", "--exact"])
     if selection_tooling:
         commands.append(["python3", "scripts/test-test-plan.py"])
+    if full or release_build_tooling:
+        commands.extend([["python3", "scripts/" + name] for name in RELEASE_BUILD_TESTS])
     product_checks = worker_product_checks(paths)
     if full or worker_fixture_tooling or product_checks:
         commands.append(["python3", "scripts/test-agent-product-support.py"])

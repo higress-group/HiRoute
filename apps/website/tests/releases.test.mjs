@@ -60,6 +60,21 @@ test('standalone artifacts publish an archive and companion package manifest', (
     [standalone.filename, standalone.manifest_filename]);
 });
 
+test('one release accepts both Mac architectures and both Linux architectures', () => {
+  const intel = { ...artifact, architecture: 'x86_64', filename: artifact.filename.replace('arm64', 'x86_64') };
+  const arm = { ...standalone, architecture: 'aarch64', target: 'aarch64-unknown-linux-gnu',
+    filename: standalone.filename.replace('x86_64', 'aarch64'),
+    manifest_filename: standalone.manifest_filename.replace('x86_64', 'aarch64') };
+  const value = structuredClone(manifest);
+  value.releases[0].artifacts = [artifact, intel, standalone, arm];
+  assert.equal(validateReleaseManifest(value), value);
+  assert.equal(value.releases[0].artifacts.flatMap(a => artifactAssets(value.releases[0], a)).length, 6);
+  const identity = { version: release.version, revision, architecture: 'x86_64',
+    distribution: 'controlled-trial', dmg_sha256: intel.sha256,
+    integrity: 'green', mounted_components: 'green', detach: 'green' };
+  assert.equal(verifyDesktopIdentity(value.releases[0], intel, identity, revision), identity);
+});
+
 test('public release manifest rejects mismatched distribution, duplicate and unsafe artifacts', () => {
   const copy = value => structuredClone(value);
   for (const mutate of [

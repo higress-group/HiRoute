@@ -1,0 +1,89 @@
+name: build-release-candidates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      CARGO_INCREMENTAL: '0'
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes cmake clang pkg-config libssl-dev binutils
+      - name: Mac build prerequisites
+        if: runner.os == 'macOS'
+        run: command -v cmake >/dev/null || brew install cmake
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: mozilla-actions/sccache-action@v0.0.11
+      - name: Prepare pinned CPA source
+        run: |
+          repository=$(python3 -c 'import json; print(json.load(open("vendor/cpa/source.json"))["repository"])')
+          revision=$(python3 -c 'import json; print(json.load(open("vendor/cpa/source.json"))["commit"])')
+          git init "$RUNNER_TEMP/cpa"
+          git -C "$RUNNER_TEMP/cpa" fetch --depth=1 "$repository" "$revision"
+          git -C "$RUNNER_TEMP/cpa" checkout --detach FETCH_HEAD
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ runner.temp }}/cpa/go.mod
+          cache: false
+      - name: Repository Rust toolchain
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: rustup show active-toolchain && rustup target add "$RELEASE_TARGET"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: release-sources-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+      - name: Build and verify the exact candidate
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          python3 scripts/ci-run.py --name release-candidate --expected-sha "$GITHUB_SHA" \
+            --timeout 6600 --plan release-platforms --phase final -- \
+            python3 scripts/build-release.py --target "$RELEASE_TARGET" \
+            --cpa-source-repo "$RUNNER_TEMP/cpa"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-${{ matrix.target }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            target/release-candidate/**/assets/*
+            target/release-candidate/**/result.json
+            target/release-candidate/**/build.log
+            target/release-candidate/**/*.provenance.json
+            target/desktop-package/**/result.json
+            target/desktop-package/**/build.log
+            artifacts/ci
+          if-no-files-found: error
+          retention-days: 14
