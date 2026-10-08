@@ -55,8 +55,10 @@ simple probability meets the threshold (default **0.8**) and there is no applica
 complete score below the competence floor (default **0.5**). Otherwise HiRoute
 selects primary models. Low-score protection uses only a fresh score for the
 preceding actual stage with the same category, published plan version and assessment
-standard. Missing or partial evidence is unrated, not zero; a saved old score does
-not become a fresh low score on later turns. A writing score does not upgrade a review task.
+standard. Missing assessments remain unscored; assessments based on partial evidence
+retain that marker and are excluded from averages. Neither is treated as zero or
+triggers low-score protection. A saved old score does not become a fresh low score
+on later turns. A writing score does not upgrade a review task.
 
 Each new user message is decided again and may choose either group. Tool
 continuations and same-turn replay reuse the frozen decision only when HiRoute can

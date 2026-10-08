@@ -2,75 +2,61 @@
 
 [简体中文](README.zh-CN.md) · [Decision models and routing mechanism](../README.md) · [Download OpenAPI 3.1](decision.openapi.json)
 
-Use this API to implement an HTTP decision extension for HiRoute. Built-in decision
-models call the provider's System One API directly using a different request shape;
-see the [provider mapping](system-one-design.md). Deploying an extension is optional.
+A custom extension is an **HTTP decision service that you deploy**. HiRoute sends it the current task, decision criteria and available history. The service returns a task category or complexity probabilities, optionally assessing the preceding execution stage. HiRoute then applies the routing plan, selects a model and calls that model to carry out the user's task.
 
-HiRoute sends one `POST` to the complete endpoint saved for the custom connection.
-The official extension serves **`POST /v1/decisions`**; HiRoute does not append a path.
-One call can judge the current task and assess the preceding actual execution stage.
-The extension follows the supplied definitions and frozen assessment standard;
-HiRoute owns thresholds, model groups, candidate selection and availability relay.
+This guide covers connecting a service, handling requests and returning results. You can deploy the [official Jev extension](../extensions/jev-decider/README.md), or implement the same interface with another decision model, an LLM or your own rules.
 
-## Request contract
+## Where an extension fits
 
-The request has exactly five top-level fields:
+```text
+Published routing plan: task criteria, assessment rubric, thresholds and model groups
+  → HiRoute sends: definition + current input + visible history + assessment target
+  → Your HTTP extension returns: decision + optional assessment
+  → HiRoute applies thresholds and competence protection, then selects a model group
+  → Execution model handles the task; its recorded work informs later decisions
+```
 
-| Field | Meaning |
+The extension turns the supplied questions into judgments. It controls provider calls, prompt construction or rule evaluation, along with any upstream credentials and response conversion. Definitions and assessment criteria arrive with each request. Following them allows one service to handle different routing plans.
+
+| Configuration or behavior | Owner |
 | --- | --- |
-| `decision` | An ordinal degree definition or a categorical task definition with optional degree refinements |
-| `latest_user` | The complete current user content parts; repeated text is allowed |
-| `visible_conversation` | Retained sealed execution turns in original order: `{user,status,steps}` |
-| `history_partial` | Whether HiRoute knows of a gap in the visible history |
-| `assessment_target` | `null`, or `{from,instructions,criteria}` for one preceding actual stage |
+| Task categories, complexity criteria and assessment rubric | HiRoute, from the published plan |
+| Computing a category, complexity probabilities and optional assessment | The extension |
+| Thresholds, execution-model lists, eligibility checks and failover | HiRoute |
+| Attributing assessments to actual execution stages and storing observations | HiRoute |
 
-An **ordinal** definition contains `kind`, `instructions` and ordered
-`levels:[{id,criterion}]`. Its level IDs are unique; their order represents increasing
-degree. HiRoute's current routing uses two levels, `simple` and `complex`.
+The response contains judgments. HiRoute manages execution-model IDs, model groups and candidate ordering; these are not extension response fields. The extension does not take over execution of the user's task.
 
-A **categorical** definition contains `kind`, `instructions` and
-`options:[{id,criterion,refinement?}]`. Custom routing has 2–16 task categories.
-Each category with primary models has an ordinal `refinement`; a category with
-only regular models omits it. Choose by the current request's main intent using
-the supplied conditions, including its overlap and default-category rules.
-Category conditions describe what the task is; degree conditions describe the
-work required within that category.
+**Built-in connections and custom extensions use different interfaces.** With a built-in decision model, HiRoute calls the provider's System One API directly. A custom extension receives the HTTP JSON request documented here. The [System One mapping](system-one-design.md) is relevant inside an extension that uses a compatible provider such as Jev. Your service can use a different upstream protocol.
 
-Instructions and criteria are non-empty text with **no per-field character quota**.
-IDs and the surrounding structures retain the constraints in the OpenAPI.
-Overall transport budgets and provider context limits still apply; they do not
-permit silently truncating conditions or assessment standards.
+## Connect a service
 
-### Visible history and the assessment target
+1. Implement an HTTP `POST` endpoint accepting JSON, or deploy the [official Jev extension](../extensions/jev-decider/README.md). Its path is `/v1/decisions`; a custom service may use another path.
+2. Under **Models → Decision models**, open the add menu and choose **Connect custom extension**. Enter the complete endpoint, connection timeout and optional authentication header name and full value.
+3. Save and test the connection. The test checks transport and required response fields; use representative tasks to evaluate decision quality.
+4. Select the saved connection in a routing plan, configure task criteria and model groups, and publish. After editing a connection or draft, select the intended connection revision and republish to apply it.
 
-A history turn has `user` content parts, a `status` of `completed`, `failed`,
-`interrupted` or `unknown`, and `steps`, an array of content-part arrays. Each step
-represents one business-model request. Parts contain accepted text, tool names with
-explicit coarse status, or unavailable-content markers. HiRoute omits credentials,
-system/developer instructions, tool arguments and tool-result bodies.
+HiRoute posts to the **complete configured endpoint** without appending a path. For example, `http://127.0.0.1:8080/v1/decisions` must point to the extension. For a remote deployment, use an address reachable from HiRoute. Configure the extension's upstream provider URL inside the extension.
 
-`assessment_target.from` is a zero-based index in `visible_conversation`. The
-suffix from that index through the end belongs to one actual preceding stage.
-`instructions` and the three `{score,criterion}` anchors, ordered **0, 0.5, 1**,
-are frozen for that stage. Use them rather than deployment-specific scoring rules.
-HiRoute binds the score to the actual stage locally; the extension does not return
-internal model or execution identifiers.
+## Two decision kinds and a separate assessment
 
-`history_partial` describes gaps in the whole visible history. Assessment `partial`
-describes missing evidence within the target stage. An uncaptured earlier prefix
-alone does not make a later fully captured target stage partial. If the target is
-`null`, omit assessment. Repeated user text, a summary or a continuation is not by
-itself evidence of failure.
+Field names, `kind` values and status values are literal protocol identifiers. The current `decision.kind` values are `ordinal` and `categorical`:
 
-## Complete examples
+| Structure | Question it answers | Extension output |
+| --- | --- | --- |
+| `ordinal` | How demanding is the current task? | `probabilities`: a complete distribution over the requested level IDs; current model routing uses `simple` and `complex` |
+| `categorical` | What kind of task is this, such as writing or reviewing? | `choice`: one allowed option ID, plus its `ordinal` result if that option defines a `refinement` |
+| `assessment` | How well was the preceding execution stage handled? | An optional object with required `score` and `partial`, plus optional `reason`; a separate response field, not a `decision.kind` |
 
-These are illustrative requests and responses from the
-[canonical examples](decision-examples.json), not measured provider results.
-The same JSON is used in both language guides to keep sample IDs and criteria aligned.
+A `refinement` is a further judgment within the chosen category. In current routing it measures that category's task complexity; return only the chosen category's result. IDs such as `simple`, `complex`, `writing` and `review` must exactly match the request. Do not translate or rename them. Instructions, criteria, user text and assessment reasons are natural-language content and may be written in any language.
 
-### Smart saving: first decision, no assessment
+## Minimal example: judge task complexity
 
-Request:
+The payloads below come from the [canonical examples](decision-examples.json). Numbers are illustrative. Both language editions use the same payloads; the Chinese instructions and user messages are valid example input, not protocol identifiers.
+
+Smart saving submits one `ordinal` definition. The first request has no previous stage to assess, so `assessment_target` is `null`.
+
+Request (save as `request.json`):
 
 ```json
 {
@@ -100,7 +86,15 @@ Request:
 }
 ```
 
-Response:
+Send it to the running service. Include the configured authentication header if enabled:
+
+```sh
+curl --fail-with-body 'http://127.0.0.1:8080/v1/decisions' \
+  --header 'Content-Type: application/json' \
+  --data-binary @request.json
+```
+
+Return HTTP `200`, `Content-Type: application/json` and this response:
 
 ```json
 {
@@ -114,12 +108,57 @@ Response:
 }
 ```
 
-There is no prior stage: `assessment_target` is `null`, and the response has no
-`assessment`. With the default threshold, this distribution selects economy models.
+The extension reports a **0.93** probability for `simple`. HiRoute compares it with the plan's threshold, **0.8** by default. With no competence protection applying here, HiRoute selects the economy group. The extension does not return a group or model ID. Omit `assessment` when there is no assessment target.
 
-### Writing and review: category, selected degree and prior-stage score
+## Request fields
 
-Request:
+All five top-level fields are required. Use `[]` for empty history and `null` for an absent assessment target:
+
+| Field | Meaning |
+| --- | --- |
+| `decision` | The current `ordinal` or `categorical` definition, including criteria and allowed IDs |
+| `latest_user` | Complete, non-empty user content parts from the current request; repeated text is allowed |
+| `visible_conversation` | Retained, closed execution turns in their original order; each item is `{user,status,steps}` |
+| `history_partial` | Whether HiRoute knows of a gap anywhere in the visible history |
+| `assessment_target` | `null`, or `{from,instructions,criteria}` identifying the preceding actual stage to assess |
+
+### decision definitions
+
+- **`ordinal`** contains `kind: "ordinal"`, `instructions` and `levels: [{id,criterion}]`. IDs are unique, with levels ordered from lowest to highest. The protocol allows multiple levels; current HiRoute model routing produces `simple` and `complex`.
+- **`categorical`** contains `kind: "categorical"`, `instructions` and `options: [{id,criterion,refinement?}]`. Custom routing supplies 2–16 categories. Select one by the current task's main intent, following the supplied overlap and default-category rules.
+- **`refinement`** is an optional nested `ordinal` definition. A category with a primary model group includes it; a category with only regular models omits it. Category criteria describe the type of task, while refinement criteria describe its complexity within that category.
+
+`instructions` and `criterion` are non-empty text with no per-field character quota. See the [OpenAPI](decision.openapi.json) for ID, array-length and other structural constraints. Overall transport and upstream context limits still apply; they do not permit silently truncating decision criteria or assessment rubrics.
+
+### visible_conversation: execution history
+
+Each turn contains its original `user` content, `status` and `steps`. One step represents one execution-model request, so `steps` is an array of content-part arrays.
+
+| Location | Supported values or content |
+| --- | --- |
+| Turn `status` | `completed`, `failed`, `interrupted`, `unknown` |
+| Content parts in `user` and `latest_user` | `text`, or `unavailable` with a `source_kind` identifying the missing content type |
+| Content parts in `steps` | `text`, `unavailable`, or `tool_activity` with a tool name in `tool` and a coarse `status` |
+| Tool `status` | `completed`, `failed`, `unknown` |
+
+`unknown` means there is no explicit terminal outcome; it does not establish success or failure. Tool status comes from explicit protocol facts. History excludes credentials, system/developer instructions, tool arguments and tool-result bodies.
+
+### assessment_target: which work to assess
+
+`assessment_target.from` is a zero-based index into `visible_conversation`. The suffix starting at that index belongs to one actual execution stage. For example, in a three-item history, `from: 1` targets only the last two items. The new task, which has not executed yet, is outside this target.
+
+`instructions` and `criteria` contain the rubric frozen when that stage executed. The three `{score,criterion}` anchors are **0, 0.5 and 1**, in that order. The returned `score` may be any finite number in `[0,1]`, not just an anchor value. HiRoute retains the target's model and stage identity locally; the extension need not infer or echo it.
+
+`history_partial` describes the whole visible history; `assessment.partial` concerns missing evidence within the target stage. A missing earlier prefix does not make an otherwise complete target partial. Return `partial: true` if the extension trims target evidence; omit assessment if it removes the entire target. Repeated user text, summaries or continuation messages do not by themselves establish failure.
+
+## categorical examples: category and task complexity
+
+### Select reviewing while assessing earlier writing
+
+The request defines `writing` and `review`, each with its own `refinement`. The current task asks for a review, while the assessment target refers to the preceding writing stage.
+
+<details>
+<summary>Full request: two categories, their refinements and a historical assessment target</summary>
 
 ```json
 {
@@ -212,6 +251,8 @@ Request:
 }
 ```
 
+</details>
+
 Response:
 
 ```json
@@ -235,14 +276,14 @@ Response:
 }
 ```
 
-The current task selects `review`; only review's degree appears in the response.
-The score **0.35** belongs to the previous **writing** stage. It does not evaluate
-review work that has not happened and does not apply writing's low-score protection
-to the review category. HiRoute uses review's current degree to select its group.
+`choice: "review"` selects reviewing, and `refinement` describes only the current review's complexity. Its `P(simple) = 0.28` is below the default threshold, so HiRoute selects the review category's primary group. The **0.35** assessment belongs to the earlier **writing** stage. A low writing score cannot trigger competence protection for reviewing.
 
-### A category with only regular models
+### Select a category with one model group
 
-Request:
+A plan can mix categories with one or two model groups. Here, `writing` still has a `refinement`, while `review` has only regular models and omits it.
+
+<details>
+<summary>Full request: writing has a refinement; review does not</summary>
 
 ```json
 {
@@ -286,7 +327,9 @@ Request:
 }
 ```
 
-Response:
+</details>
+
+The response only needs to select `review`:
 
 ```json
 {
@@ -297,76 +340,46 @@ Response:
 }
 ```
 
-The review option has no `refinement`, so its response omits `refinement` too.
-HiRoute uses that category's regular group. The writing option can still have two
-groups; this does not require degree evaluation for review. A later request can
-also assess the single-group category's preceding stage.
+HiRoute uses the review category's regular group. The extension does not invent complexity probabilities for that category. A later request can still assess its completed execution stage.
 
-## Response validation
+## Response rules and error handling
 
-Return HTTP **200** and one strict JSON object, at most **64 KiB**. Markdown,
-duplicate or unknown fields, and native provider envelopes are invalid.
+Return HTTP **200** and one JSON object, at most **64 KiB**. Do not wrap it in Markdown or a native provider response, or add duplicate or unknown fields.
 
-An ordinal result returns the exact requested level IDs and finite probabilities
-in `[0,1]`, covering every level and summing to one within `1e-6`. HiRoute validates
-and normalizes this permitted floating-point error. A categorical result returns
-an allowed `choice` and only that option's defined `refinement`, when present.
-The extension cannot return model IDs, candidate order or routing thresholds.
+| Field | Requirement |
+| --- | --- |
+| `decision.kind` | Must match the request |
+| `decision.probabilities` | For `ordinal`: exactly the requested level IDs; every value finite and in `[0,1]`, with the sum within `1e-6` of 1; HiRoute normalizes this permitted floating-point error |
+| `decision.choice` | For `categorical`: one exact ID from the request's `options` |
+| `decision.refinement` | The selected option's defined `ordinal` result; omit when that option has no refinement |
+| `assessment` | Optional; finite `score` in `[0,1]`, required `partial`, and optional `reason` of 1–1024 Unicode scalars |
 
-Optional `assessment` contains a finite `score` in `[0,1]`, required `partial`,
-and an optional `reason` of 1–1024 Unicode scalars. Preserve a valid zero score.
-Missing, invalid or partial assessment is not zero and cannot drive low-score
-protection. Omission does not delete saved observations; an old score is not reused
-as a fresh assessment.
+Omit `assessment` when `assessment_target` is `null`. Preserve a valid zero score; an absent score is not zero and does not delete saved observations.
 
-An invalid category invalidates the decision. A valid category with an invalid
-selected degree remains selected, and HiRoute uses its primary group while
-recording degree as unavailable. An invalid optional assessment is discarded
-independently of a valid current decision. Errors in unselected upstream degree
-answers must not invalidate the selected path.
+| Condition | HiRoute behavior |
+| --- | --- |
+| `choice` outside the allowed set, or an invalid overall response | Decision failure; use the plan fallback described below |
+| Missing or invalid smart-saving `ordinal` probabilities | Use primary and record complexity as unavailable |
+| Valid category but missing or invalid required `refinement` | Keep the category, use its primary group and record complexity as unavailable |
+| Missing, invalid or untargeted optional assessment | Do not use that assessment; a valid current decision remains usable |
+| Assessment with `partial: true` | Record partial evidence; do not trigger competence protection |
 
-## How HiRoute consumes the result
+If your upstream answers complexity questions for several categories at once, convert only the selected category's answer. An invalid unselected answer must not discard a valid selected path.
 
-For a category with two groups, HiRoute selects regular/economy models when the
-current `P(simple)` is at or above the configured threshold (default **0.8**) and
-there is no applicable fresh score below the competence floor (default **0.5**).
-Otherwise it selects primary. Protection requires a complete valid score for one
-actual preceding stage with the same category, published plan version and rubric.
-A single-group category records competence without an upgrade group.
+## How HiRoute acts on the result
 
-Each new user message decides again; it can select either group. Tool continuations
-and same-turn replay reuse the frozen decision only when HiRoute can recognize the
-same turn and that decision remains reusable. Discontinuous reconstructed history
-or a decision that cannot be inherited requires a new judgment. Availability relay
-follows regular → same-category primary → failure, or stays within primary when that
-group was selected directly. A candidate failure does not manufacture a competence score.
+For a category with two groups, HiRoute selects regular/economy models when the current `P(simple)` reaches the configured threshold (default **0.8**) and no applicable fresh score is below the competence floor (default **0.5**). Otherwise it selects primary. Protection requires a complete valid assessment of the actual preceding stage, matching the current category, published plan version and rubric. Saved scores are not reused as new low scores on later requests. A single-group category records competence without a primary group to upgrade to.
 
-A whole decision failure uses heuristic smart saving or the custom plan's default
-category, preferring its primary group when configured. Source cancellation,
-source deadline and current-input integrity failures terminate the request.
+Each new user message triggers a fresh decision. Recognized tool continuations and same-turn replay inherit a frozen decision while it remains reusable; discontinuous history or a decision that cannot be inherited triggers another call. The extension should process each request without requiring the user text to change.
 
-## Provider integration and request limits
+HiRoute tries eligible models in the selected group in order. Exhausting regular models can lead to the same category's primary group; selecting primary directly stays within that group. Candidate failures do not create zero competence scores. A whole decision failure uses heuristic rules for smart saving, or the custom plan's default category with its primary group when available.
 
-The extension owns its provider integration and context preparation. Preserve the
-complete current user input. To fit provider limits, remove only the oldest whole
-history turns and adjust the retained target index. If trimming removes target
-evidence, return `partial:true`; if it removes the whole target, omit assessment.
-HiRoute also accounts for target evidence it knows is missing; the extension's
-`partial:false` cannot override those facts.
+## Context, timeouts and call boundaries
 
-The built-in adapter bounds the complete provider request, including questions and
-state, to **256 KiB**. The official Jev extension defaults to the same budget and
-allows deployment configuration. This is a byte allocation budget, not a token
-count or a replacement for provider context limits. If current input and questions
-alone exceed the budget, reject the request instead of truncating them.
-Business-model context remains the routing plan's setting.
+The extension owns upstream integration and context preparation. Preserve the complete current user input, decision criteria and assessment rubric. If trimming is necessary, remove the oldest whole history turns first and adjust the target index passed upstream. Determine assessment coverage from the actual target range. HiRoute also includes target gaps it knows about; an extension's `partial: false` cannot override them.
 
-HiRoute's total deadline covers preparation, credential access, connection and
-response reading. The production transport makes one call with no automatic
-background retry and does not follow redirects. Configure the extension's own
-budget to fit within the HiRoute connection timeout.
+The official Jev extension defaults to a **256 KiB** complete provider-request budget, configurable at deployment. HiRoute's built-in adapter also uses 256 KiB. This is a byte budget for the provider request, not a token or context limit imposed on every custom implementation by this API. If the current input and questions alone do not fit, reject the request instead of truncating them. The routing plan still controls the execution model's context.
 
-The [protocol design](decision-design.md) describes the current v1 boundary;
-the [System One mapping](system-one-design.md) describes provider Choice/Score calls.
-Tool subset selection remains future documentation only and is not supported by
-current routing or the extension API runtime.
+HiRoute makes one production call to the extension, with no automatic background retries or redirects. Its total deadline includes preparation, credential access, connection and response reading. Keep the extension's own budget below the HiRoute connection timeout. Extension outages and request failures use the decision fallback above; source cancellation, source deadline or current-input integrity errors terminate the request.
+
+See the [OpenAPI](decision.openapi.json) for exact types, the [canonical examples](decision-examples.json) for reusable payloads, and the [protocol design](decision-design.md) for background. The current runtime supports `ordinal` and `categorical`; the documented `subset` tool-selection design is not yet implemented.
