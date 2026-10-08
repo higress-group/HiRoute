@@ -49,25 +49,7 @@ pub struct CandidateBindingV1 {
     pub pricing_identity: Option<GatewayCandidatePricingIdentityV1>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AliasGroupIdV1 {
-    Economy,
-    Primary,
-    Free,
-    Custom,
-}
-
-impl AliasGroupIdV1 {
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Economy => "economy",
-            Self::Primary => "primary",
-            Self::Free => "free",
-            Self::Custom => "custom",
-        }
-    }
-}
+pub type AliasGroupIdV1 = hiroute_domain::MaterializedGroupId;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -88,8 +70,15 @@ pub struct AliasComplexityClassifierV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "strategy", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AliasRequestOwnedRouteV1 {
+    Branches {
+        classifier: AliasComplexityClassifierV1,
+        branches: Vec<hiroute_domain::MaterializedBranchV1>,
+        default_branch_id: String,
+        reselect_on_user_message: bool,
+    },
     Classified {
         classifier: AliasComplexityClassifierV1,
+        judgment: hiroute_domain::JudgmentSettingsV1,
         reselect_on_user_message: bool,
         simple_groups: Vec<AliasGroupIdV1>,
         complex_groups: Vec<AliasGroupIdV1>,

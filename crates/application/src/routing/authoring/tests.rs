@@ -7,7 +7,7 @@ fn change() -> PlanContentChangeV2 {
         editor: serde_json::from_value(serde_json::json!({
             "schema": PLAN_EDITOR_SCHEMA_V2, "display_name": "日常编码", "purpose": "辅助日常编码",
             "mode":"fixed_model", "candidates":[{"binding_id":"binding/free-b"}],
-            "smart":{"economy":[],"primary":[],"primary_fallback":false,"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
+            "smart":{"economy":[],"primary":[],"judgment":hiroute_domain::JudgmentSettingsV1::default(),"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
             "free":{"candidates":[],"primary":[],"primary_fallback":false},
             "delegation_enabled": false,
             "requirements":{},"limits":{"maximum_attempts":6,"request_timeout_ms":60000,"attempt_timeout_ms":30000}
@@ -24,10 +24,74 @@ fn state() -> PlanAuthoringSnapshotV2 {
         legacy_source: None,
         draft: None,
         facts: compilation_facts(),
+        decision_service: None,
         expected_revisions: RevisionSetV1 {
             target: 1,
             dependencies: Default::default(),
         },
+    }
+}
+
+#[test]
+fn publication_requires_the_exact_saved_decision_revision_for_both_modes() {
+    let service = DecisionServiceV1 {
+        id: "decision/authoring".into(),
+        revision: 1,
+        name: "Saved extension".into(),
+        connection: DecisionConnectionV1::Custom {
+            endpoint: "https://extension.example/v1/decisions".into(),
+            timeout_ms: 3000,
+            auth_header: None,
+        },
+    };
+    for mode in [PlanEditorMode::SmartSaving, PlanEditorMode::CustomBranches] {
+        let mut change = change();
+        let mut state = state();
+        let classifier = ComplexityClassifierModeV1::DecisionService {
+            service: Box::new(service.clone()),
+        };
+        change.editor.mode = mode;
+        change.editor.smart.economy = change.editor.candidates.clone();
+        change.editor.smart.primary = change.editor.candidates.clone();
+        change.editor.smart.classifier = classifier.clone();
+        change.editor.branch_routing = Some(BranchRoutingV1 {
+            classifier,
+            branches: ["writing", "review"]
+                .map(|id| RouteBranchV1 {
+                    id: id.into(),
+                    name: id.into(),
+                    condition: format!("Handle {id}"),
+                    candidates: change.editor.candidates.clone(),
+                    primary_candidates: vec![],
+                    judgment: None,
+                })
+                .into(),
+            default_branch_id: "review".into(),
+            judgment: Default::default(),
+            reselect_on_user_message: false,
+        });
+        assert_eq!(
+            preview_plan_content(&change, &state),
+            Err(PlanPreviewError::InvalidDecisionService)
+        );
+        state.decision_service = Some(service.clone());
+        let preview = preview_plan_content(&change, &state).unwrap();
+        assert_eq!(
+            preview.plan_version.configuration.decision_service(),
+            Some(&service)
+        );
+        // Matching identity is insufficient: every frozen field must match its saved revision.
+        state.decision_service.as_mut().unwrap().name = "Different saved content".into();
+        assert_eq!(
+            preview_plan_content(&change, &state),
+            Err(PlanPreviewError::InvalidDecisionService)
+        );
+        state.decision_service = Some(service.clone());
+        state.decision_service.as_mut().unwrap().revision = 2;
+        assert_eq!(
+            preview_plan_content(&change, &state),
+            Err(PlanPreviewError::InvalidDecisionService)
+        );
     }
 }
 #[test]

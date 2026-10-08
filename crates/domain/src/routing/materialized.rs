@@ -23,20 +23,59 @@ thread_local! {
     pub(crate) static CANDIDATE_VALIDATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MaterializedGroupId {
     Economy,
     Primary,
     Free,
     Custom,
+    Branch(u16),
+    BranchPrimary(u16),
+}
+
+impl MaterializedGroupId {
+    pub fn as_name(self) -> String {
+        match self {
+            Self::Economy => "economy".into(),
+            Self::Primary => "primary".into(),
+            Self::Free => "free".into(),
+            Self::Custom => "custom".into(),
+            Self::Branch(index) => format!("branch_{index}"),
+            Self::BranchPrimary(index) => format!("branch_primary_{index}"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MaterializedBranchV1 {
+    pub id: String,
+    pub name: String,
+    pub condition: String,
+    pub group: MaterializedGroupId,
+    pub primary_group: Option<MaterializedGroupId>,
+    pub judgment: super::JudgmentSettingsV1,
+}
+
+impl MaterializedBranchV1 {
+    pub fn execution_policy(&self) -> super::BranchExecutionPolicyV1 {
+        self.judgment.execution_policy(&self.name)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "strategy", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RequestOwnedRouteV1 {
+    Branches {
+        classifier: ComplexityClassifierV1,
+        branches: Vec<MaterializedBranchV1>,
+        default_branch_id: String,
+        reselect_on_user_message: bool,
+    },
     Classified {
         classifier: ComplexityClassifierV1,
+        judgment: super::JudgmentSettingsV1,
         reselect_on_user_message: bool,
         simple_groups: Vec<MaterializedGroupId>,
         complex_groups: Vec<MaterializedGroupId>,
@@ -377,7 +416,7 @@ impl MaterializedAgentPlanV1 {
             .limits
             .validate()
             .map_err(|_| CompiledPlanError::InvalidLimits)?;
-        if self.attempt_owned.groups.is_empty() || self.attempt_owned.groups.len() > 4 {
+        if self.attempt_owned.groups.is_empty() || self.attempt_owned.groups.len() > 32 {
             return Err(CompiledPlanError::InvalidGroups);
         }
         let mut groups = BTreeMap::new();
@@ -501,8 +540,40 @@ fn validate_request_groups(
             && ids.iter().copied().collect::<BTreeSet<_>>().len() == ids.len()
     };
     match request {
+        RequestOwnedRouteV1::Branches {
+            classifier,
+            branches,
+            default_branch_id,
+            ..
+        } => {
+            classifier
+                .validate()
+                .map_err(|_| CompiledPlanError::InvalidClassifier)?;
+            let ids: BTreeSet<_> = branches.iter().map(|b| &b.id).collect();
+            let used: BTreeSet<_> = branches
+                .iter()
+                .flat_map(|b| [Some(b.group), b.primary_group])
+                .flatten()
+                .collect();
+            if !(2..=16).contains(&branches.len())
+                || ids.len() != branches.len()
+                || !ids.contains(default_branch_id)
+                || used != groups.keys().copied().collect()
+                || branches.iter().any(|b| {
+                    !super::valid_task_category_id(&b.id)
+                        || b.name.trim().is_empty()
+                        || b.condition.trim().is_empty()
+                        || b.name.len() > 512
+                        || !b.judgment.validate()
+                })
+            {
+                return Err(CompiledPlanError::InvalidGroups);
+            }
+            Ok(())
+        }
         RequestOwnedRouteV1::Classified {
             classifier,
+            judgment,
             simple_groups,
             complex_groups,
             ..
@@ -510,9 +581,10 @@ fn validate_request_groups(
             classifier
                 .validate()
                 .map_err(|_| CompiledPlanError::InvalidClassifier)?;
-            if (simple_groups.as_slice() != [MaterializedGroupId::Economy]
-                && simple_groups.as_slice()
-                    != [MaterializedGroupId::Economy, MaterializedGroupId::Primary])
+            if !judgment.validate()
+                || (simple_groups.as_slice() != [MaterializedGroupId::Economy]
+                    && simple_groups.as_slice()
+                        != [MaterializedGroupId::Economy, MaterializedGroupId::Primary])
                 || complex_groups.as_slice() != [MaterializedGroupId::Primary]
                 || groups.keys().copied().collect::<BTreeSet<_>>()
                     != BTreeSet::from([MaterializedGroupId::Economy, MaterializedGroupId::Primary])

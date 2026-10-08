@@ -3,11 +3,11 @@ use crate::WriterCycleOutcome;
 use crate::{DigestAuthority, LocalObservationStore};
 use hiroute_domain::{ObservationRoutingContextNameStateV1, ObservationRoutingContextStateV1};
 
-fn open(root: &std::path::Path) -> LocalObservationStore {
+pub(super) fn open(root: &std::path::Path) -> LocalObservationStore {
     LocalObservationStore::open(root, DigestAuthority::new([3; 32])).unwrap()
 }
 
-fn seed(store: &LocalObservationStore, id: &str, time: i64) {
+pub(super) fn seed(store: &LocalObservationStore, id: &str, time: i64) {
     let connection = store.connection.lock();
     connection.execute(
         "INSERT OR IGNORE INTO sessions(workspace_id,session_id,started_at_ms,updated_at_ms) VALUES(?1,'session',1,1)",
@@ -19,7 +19,7 @@ fn seed(store: &LocalObservationStore, id: &str, time: i64) {
     ).unwrap();
 }
 
-fn link(request: &str, run: &str) -> RunObservationLink {
+pub(super) fn link(request: &str, run: &str) -> RunObservationLink {
     RunObservationLink {
         workspace_id: WorkspaceId::default(),
         request_id: LogicalRequestId::parse(request).unwrap(),
@@ -39,7 +39,7 @@ fn link(request: &str, run: &str) -> RunObservationLink {
     }
 }
 
-fn reader(run: Option<&str>) -> ObservationReaderContext {
+pub(super) fn reader(run: Option<&str>) -> ObservationReaderContext {
     match run {
         Some(run) => ObservationReaderContext::run_scoped(
             WorkspaceId::default(),
@@ -63,7 +63,7 @@ fn reader(run: Option<&str>) -> ObservationReaderContext {
     }
 }
 
-fn query(limit: u16) -> ObservationRequestQuery {
+pub(super) fn query(limit: u16) -> ObservationRequestQuery {
     ObservationRequestQuery {
         from_ms: 0,
         to_ms: 1000,

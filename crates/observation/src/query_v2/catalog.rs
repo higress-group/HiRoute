@@ -116,20 +116,32 @@ impl crate::LocalObservationStore {
         } else {
             None
         };
-        let mut transcript_roots = {
-            let mut stmt=tx.prepare("SELECT t.transcript_root FROM transcript_roots_v2 t JOIN logical_requests r ON r.workspace_id=t.workspace_id AND r.request_id=t.request_id WHERE t.workspace_id=?1 AND t.request_id=?2 AND r.started_at_ms>?3 ORDER BY t.transcript_root LIMIT 33")?;
+        let transcript_rows = {
+            let mut stmt=tx.prepare("SELECT t.transcript_root,t.state FROM transcript_roots_v2 t JOIN logical_requests r ON r.workspace_id=t.workspace_id AND r.request_id=t.request_id WHERE t.workspace_id=?1 AND t.request_id=?2 AND r.started_at_ms>?3 ORDER BY t.transcript_root LIMIT 33")?;
             stmt.query_map(
                 params![
                     reader.workspace().as_str(),
                     query.request_id.as_str(),
                     now_ms.saturating_sub(crate::managed_text::RETENTION_MS)
                 ],
-                |r| r.get::<_, String>(0),
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
             )?
             .collect::<Result<Vec<_>, _>>()?
         };
-        let roots_partial = transcript_roots.len() > 32;
-        transcript_roots.truncate(32);
+        // Every saved chunk may be complete even if capture stopped before the
+        // answer. Preserve that stream-level gap for all catalog consumers.
+        let roots_partial = transcript_rows.len() > 32
+            || transcript_rows.iter().any(|(_, state)| state != "finish")
+            || crate::content::completeness::request_state(
+                &tx,
+                reader.workspace().as_str(),
+                query.request_id.as_str(),
+            )? != "complete";
+        let transcript_roots = transcript_rows
+            .into_iter()
+            .take(32)
+            .map(|(root, _)| root)
+            .collect();
         tx.commit()?;
         check_visibility(&connection, visibility)?;
         Ok(ObservationCatalogPageV2 {

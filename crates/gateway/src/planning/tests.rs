@@ -1,5 +1,8 @@
 use serde_json::json;
 
+#[path = "branch_tests.rs"]
+pub(crate) mod branches;
+
 use super::*;
 use crate::server::core_runtime::model_ir::{
     CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource,
@@ -239,8 +242,8 @@ fn refresh_profile(candidate: &mut PlannerCandidateFactsV1) {
 fn planner_complexity_v1_matches_bilingual_and_structural_contract() {
     let readme = decision("把 README.md 标题改成 HiRoute");
     assert_eq!(
-        readme.branch_id,
-        hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID
+        readme.execution_group,
+        hiroute_domain::ExecutionGroupV1::Regular
     );
     assert_eq!(readme.complexity_score, Some(1));
     assert_eq!(
@@ -250,8 +253,8 @@ fn planner_complexity_v1_matches_bilingual_and_structural_contract() {
 
     let complex = decision("修复并发状态机，涉及 a.rs、b.rs，并补两个验收场景：1. 正常；2. 失败");
     assert_eq!(
-        complex.branch_id,
-        hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID
+        complex.execution_group,
+        hiroute_domain::ExecutionGroupV1::Primary
     );
     assert_eq!(complex.complexity_score, Some(6));
     assert_eq!(
@@ -267,8 +270,8 @@ fn planner_complexity_v1_matches_bilingual_and_structural_contract() {
     let constraints = decision("两个要求：1. 分析生产竞态根因；2. 给出迁移方案");
     assert_eq!(constraints.complexity_score, Some(3));
     assert_eq!(
-        constraints.branch_id,
-        hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID
+        constraints.execution_group,
+        hiroute_domain::ExecutionGroupV1::Primary
     );
     assert_eq!(
         constraints.reason_codes,
@@ -285,14 +288,14 @@ fn planner_complexity_v1_matches_bilingual_and_structural_contract() {
         "解释这些引用：\n```text\na.rs b.rs\n```",
     ] {
         assert_eq!(
-            decision(simple).branch_id,
-            hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID
+            decision(simple).execution_group,
+            hiroute_domain::ExecutionGroupV1::Regular
         );
     }
     let bullets = decision("- architecture design\n- implement the change");
     assert_eq!(
-        bullets.branch_id,
-        hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID
+        bullets.execution_group,
+        hiroute_domain::ExecutionGroupV1::Primary
     );
     assert_eq!(bullets.complexity_score, Some(4));
 
@@ -307,8 +310,8 @@ fn planner_complexity_v1_matches_bilingual_and_structural_contract() {
     assert_eq!(facts.distinct_file_or_module_refs, 1);
     assert_eq!(single_file_diff.complexity_score, Some(1));
     assert_eq!(
-        single_file_diff.branch_id,
-        hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID
+        single_file_diff.execution_group,
+        hiroute_domain::ExecutionGroupV1::Regular
     );
 
     let (_, diff_with_requirements) = ComplexityV1::decide(
@@ -363,8 +366,8 @@ fn planner_complexity_uses_only_latest_human_not_history_tools_or_request_effort
         .unwrap()
         .0;
     assert_eq!(
-        decided.branch_id,
-        hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID
+        decided.execution_group,
+        hiroute_domain::ExecutionGroupV1::Regular
     );
     assert_eq!(decided.complexity_score, Some(0));
     assert!(decided.reason_codes.is_empty());
@@ -401,8 +404,8 @@ fn planner_user_phrase_and_continuations_have_fixed_precedence() {
         .0;
     assert!(embedded_token.matched_user_phrase_ids.is_empty());
     assert_eq!(
-        embedded_token.branch_id,
-        hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID
+        embedded_token.execution_group,
+        hiroute_domain::ExecutionGroupV1::Regular
     );
 
     let original = decision("把 README.md 标题改成 HiRoute");
@@ -452,8 +455,8 @@ fn planner_user_phrase_and_continuations_have_fixed_precedence() {
 
     let assert_unresolved = |decision: BranchDecisionV1| {
         assert_eq!(
-            decision.branch_id,
-            hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID
+            decision.execution_group,
+            hiroute_domain::ExecutionGroupV1::Primary
         );
         assert_eq!(decision.complexity_score, Some(COMPLEXITY_THRESHOLD));
         assert_eq!(
@@ -517,8 +520,8 @@ fn planner_user_phrase_and_continuations_have_fixed_precedence() {
     tool_request.messages.clear();
     let unresolved = ComplexityV1::decide(None, None, &strategy()).unwrap().0;
     assert_eq!(
-        unresolved.branch_id,
-        hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID
+        unresolved.execution_group,
+        hiroute_domain::ExecutionGroupV1::Primary
     );
     assert_eq!(
         unresolved.reason_codes,
@@ -560,6 +563,7 @@ fn planner_smart_saving_ranks_only_inside_materialized_groups() {
     ];
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            judgment: Default::default(),
             simple_group_id: "economy".into(),
             simple_fallback_group_ids: vec!["primary".into()],
             complex_group_id: "primary".into(),
@@ -703,6 +707,7 @@ fn context_hold_applies_only_inside_the_current_branch() {
     );
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            judgment: Default::default(),
             simple_group_id: "simple-group".into(),
             simple_fallback_group_ids: Vec::new(),
             complex_group_id: "complex-group".into(),
@@ -785,13 +790,14 @@ fn context_hold_applies_only_inside_the_current_branch() {
 }
 
 #[test]
-fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback() {
+fn smart_saving_preserves_lossless_state_without_reviving_old_groups() {
     let luna = stateful_messages_candidate("luna");
     let glm = stateful_messages_candidate("glm");
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            judgment: Default::default(),
             simple_group_id: "simple-group".into(),
-            simple_fallback_group_ids: Vec::new(),
+            simple_fallback_group_ids: vec!["complex-group".into()],
             complex_group_id: "complex-group".into(),
             reselect_on_user_message: false,
         },
@@ -835,10 +841,12 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
     assert_eq!(output.branch, PlannedBranchV1::SmartSavingSimple);
     assert_eq!(output.ledger.ordered_candidates[0].candidate_id, "luna");
     assert_eq!(output.ledger.ordered_candidates[1].candidate_id, "glm");
-    assert!(output.reason_ledger.iter().any(|reason| {
-        reason.code == LedgerReasonCodeV1::PreviousSuccessFallback
-            && reason.group_id.as_deref() == Some("complex-group")
-    }));
+    assert!(
+        output
+            .reason_ledger
+            .iter()
+            .any(|reason| reason.code == LedgerReasonCodeV1::GroupExhaustedFallback)
+    );
 
     let mut no_state = simple_request.clone();
     no_state.messages.remove(0);
@@ -875,11 +883,11 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
     let reverse = Planner.plan(&reverse_input).unwrap();
     assert_eq!(reverse.branch, PlannedBranchV1::SmartSavingComplex);
     assert_eq!(reverse.ledger.ordered_candidates[0].candidate_id, "glm");
-    assert_eq!(reverse.ledger.ordered_candidates[1].candidate_id, "luna");
-    assert!(reverse.reason_ledger.iter().any(|reason| {
-        reason.code == LedgerReasonCodeV1::PreviousSuccessFallback
-            && reason.group_id.as_deref() == Some("simple-group")
-    }));
+    assert_eq!(
+        reverse.ledger.ordered_candidates.len(),
+        1,
+        "primary never falls back to the previous regular model"
+    );
     assert!(
         reverse
             .reason_ledger
@@ -903,15 +911,9 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
         unavailable_complex.branch,
         PlannedBranchV1::SmartSavingComplex
     );
-    assert_eq!(
-        unavailable_complex.ledger.ordered_candidates[0].candidate_id,
-        "luna"
-    );
     assert!(
-        unavailable_complex
-            .reason_ledger
-            .iter()
-            .any(|reason| { reason.code == LedgerReasonCodeV1::PreviousSuccessFallback })
+        unavailable_complex.ledger.ordered_candidates.is_empty(),
+        "unavailable primary is not a reason to downgrade"
     );
 
     let unavailable = Planner
@@ -943,14 +945,15 @@ fn smart_saving_tries_lossless_cross_owner_state_then_freezes_previous_fallback(
 }
 
 #[test]
-fn smart_saving_uses_owner_group_when_selected_group_cannot_serialize() {
+fn smart_saving_uses_explicit_primary_relay_when_regular_cannot_serialize() {
     let mut luna = stateful_messages_candidate("luna");
     let glm = stateful_messages_candidate("glm");
     luna.request_projection_exclusion = Some(ExclusionReasonCodeV1::OpaqueStateUnportable);
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            judgment: Default::default(),
             simple_group_id: "simple-group".into(),
-            simple_fallback_group_ids: Vec::new(),
+            simple_fallback_group_ids: vec!["complex-group".into()],
             complex_group_id: "complex-group".into(),
             reselect_on_user_message: false,
         },
@@ -992,12 +995,12 @@ fn smart_saving_uses_owner_group_when_selected_group_cannot_serialize() {
         output
             .reason_ledger
             .iter()
-            .any(|reason| { reason.code == LedgerReasonCodeV1::PreviousSuccessFallback })
+            .any(|reason| { reason.code == LedgerReasonCodeV1::GroupExhaustedFallback })
     );
 }
 
 #[test]
-fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capability() {
+fn smart_saving_cannot_downgrade_to_state_owner_when_primary_lacks_image_capability() {
     let luna = stateful_messages_candidate("luna");
     let mut glm = stateful_messages_candidate("glm");
     glm.protocol_profile.capability.request.image_url = Fidelity::Unsupported;
@@ -1005,6 +1008,7 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
     refresh_profile(&mut glm);
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            judgment: Default::default(),
             simple_group_id: "simple-group".into(),
             simple_fallback_group_ids: Vec::new(),
             complex_group_id: "complex-group".into(),
@@ -1063,11 +1067,7 @@ fn smart_saving_continues_unique_state_owner_when_complex_group_lacks_image_capa
         evaluate_candidate(&complex_request, &glm, smart.cost_policy, &smart.limits).unwrap_err(),
         ExclusionReasonCodeV1::VisionUnsupported
     );
-    assert_eq!(output.ledger.ordered_candidates[0].candidate_id, "luna");
-    assert!(output.reason_ledger.iter().any(|reason| {
-        reason.code == LedgerReasonCodeV1::PreviousSuccessFallback
-            && reason.group_id.as_deref() == Some("simple-group")
-    }));
+    assert!(output.ledger.ordered_candidates.is_empty());
 
     let mut without_state_request = complex_request.clone();
     without_state_request.messages.remove(0);
@@ -1108,6 +1108,7 @@ fn external_classification_drives_existing_smart_groups_without_rule_score() {
     .unwrap();
     let smart = policy(
         MaterializedRouteV1::SmartSaving {
+            judgment: Default::default(),
             simple_group_id: "simple-group".into(),
             simple_fallback_group_ids: Vec::new(),
             complex_group_id: "complex-group".into(),
@@ -1149,10 +1150,16 @@ fn external_classification_drives_existing_smart_groups_without_rule_score() {
         ],
     );
     planner_input.classification_decision = Some(BranchDecisionV1 {
+        policy: None,
+        competence_trigger: None,
+        execution_group: hiroute_domain::ExecutionGroupV1::Primary,
+        simple_probability: None,
+        simple_threshold_millis: None,
+        selection_reason: hiroute_domain::ModelGroupReasonV1::Heuristic,
         strategy_id: strategy.strategy_id.clone(),
         schema_version: strategy.schema_version.clone(),
         payload_digest: strategy.payload_digest.clone(),
-        branch_id: hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID.into(),
+        branch_id: hiroute_domain::SMART_SAVING_SCOPE_ID.into(),
         complexity_score: None,
         threshold: None,
         decision_source: ComplexityDecisionSourceV1::ExternalClassifier,
@@ -1194,10 +1201,16 @@ fn external_decision_can_be_inherited_without_inventing_a_rule_threshold() {
     )
     .unwrap();
     let previous = BranchDecisionV1 {
+        policy: None,
+        competence_trigger: None,
+        execution_group: hiroute_domain::ExecutionGroupV1::Primary,
+        simple_probability: None,
+        simple_threshold_millis: None,
+        selection_reason: hiroute_domain::ModelGroupReasonV1::Heuristic,
         strategy_id: strategy.strategy_id.clone(),
         schema_version: strategy.schema_version.clone(),
         payload_digest: strategy.payload_digest.clone(),
-        branch_id: hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID.into(),
+        branch_id: hiroute_domain::SMART_SAVING_SCOPE_ID.into(),
         complexity_score: None,
         threshold: None,
         decision_source: ComplexityDecisionSourceV1::ExternalClassifier,
@@ -1222,8 +1235,8 @@ fn external_decision_can_be_inherited_without_inventing_a_rule_threshold() {
         ComplexityDecisionSourceV1::Inherited
     );
     assert_eq!(
-        inherited.branch_id,
-        hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID
+        inherited.execution_group,
+        hiroute_domain::ExecutionGroupV1::Primary
     );
     assert_eq!(inherited.complexity_score, None);
     assert_eq!(inherited.threshold, None);

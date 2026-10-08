@@ -68,20 +68,55 @@ pub fn compile_agent_plan_v2(
         })
     };
     let (request_owned, groups) = match &desired.strategy {
+        AgentPlanStrategyV2::Branches { routing } => {
+            let mut groups = Vec::new();
+            let mut branches = Vec::new();
+            for (index, branch) in routing.branches.iter().enumerate() {
+                let id = MaterializedGroupId::Branch(index as u16);
+                groups.push(group(id, &branch.candidates)?);
+                let primary = &branch.primary_candidates;
+                let primary_group = if primary.is_empty() {
+                    None
+                } else {
+                    let primary_id = MaterializedGroupId::BranchPrimary(index as u16);
+                    groups.push(group(primary_id, primary)?);
+                    Some(primary_id)
+                };
+                branches.push(MaterializedBranchV1 {
+                    id: branch.id.clone(),
+                    name: branch.name.clone(),
+                    condition: branch.condition.clone(),
+                    group: id,
+                    primary_group,
+                    judgment: routing.judgment_for(branch).clone(),
+                });
+            }
+            (
+                RequestOwnedRouteV1::Branches {
+                    classifier: ComplexityClassifierV1::with_mode(
+                        Vec::new(),
+                        routing.classifier.clone(),
+                    )
+                    .map_err(|_| AgentPlanCompilerError::InvalidDesiredPlan)?,
+                    branches,
+                    default_branch_id: routing.default_branch_id.clone(),
+                    reselect_on_user_message: routing.reselect_on_user_message,
+                },
+                groups,
+            )
+        }
         AgentPlanStrategyV2::SmartSaving {
             economy,
             primary,
-            primary_fallback,
+            judgment,
             reselect_on_user_message,
             classifier,
             complex_keywords,
         } => {
-            let mut simple_groups = vec![MaterializedGroupId::Economy];
-            if *primary_fallback {
-                simple_groups.push(MaterializedGroupId::Primary);
-            }
+            let simple_groups = vec![MaterializedGroupId::Economy, MaterializedGroupId::Primary];
             (
                 RequestOwnedRouteV1::Classified {
+                    judgment: judgment.clone(),
                     reselect_on_user_message: *reselect_on_user_message,
                     classifier: ComplexityClassifierV1::with_mode(
                         complex_keywords.clone(),

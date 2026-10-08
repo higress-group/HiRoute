@@ -2,6 +2,62 @@ use super::*;
 use serde_json::Value;
 
 #[test]
+fn native_responses_empty_tool_name_remains_history_not_execution_authority() {
+    for (kind, payload, result_kind) in [
+        ("function_call", "arguments", "function_call_output"),
+        ("custom_tool_call", "input", "custom_tool_call_output"),
+    ] {
+        let mut call = json!({"type":kind,"call_id":"failed-call","name":""});
+        call[payload] = json!("");
+        let body = json!({"model":"alias","input":[
+            call,
+            {"type":result_kind,"call_id":"failed-call","output":"unsupported call: "},
+            {"type":"message","role":"user","content":"Continue after the tool failure"}
+        ]});
+        let request = decode_ingress_request(IngressProtocol::Responses, &body)
+            .expect("model-generated empty name must not poison native continuation");
+        assert!(request.native_only);
+        assert!(crate::context_hold::visible_history(&request, &[0; 32]).is_none());
+        let native = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+        assert_eq!(
+            project_candidate_request(&request, &native).unwrap().body["input"],
+            body["input"]
+        );
+        assert!(
+            project_candidate_request_template_with_cleanup(&request, &native, Some(1)).is_err()
+        );
+        for upstream in [IngressProtocol::ChatCompletions, IngressProtocol::Messages] {
+            assert!(
+                project_candidate_request(
+                    &request,
+                    &exact_state_profile(IngressProtocol::Responses, upstream)
+                )
+                .is_err()
+            );
+        }
+        for value in [Value::Null, json!(7)] {
+            let mut invalid = body.clone();
+            invalid["input"][0]["name"] = value;
+            assert!(decode_ingress_request(IngressProtocol::Responses, &invalid).is_err());
+        }
+        let mut missing = body.clone();
+        missing["input"][0].as_object_mut().unwrap().remove("name");
+        assert!(decode_ingress_request(IngressProtocol::Responses, &missing).is_err());
+        let mut invalid_id = body;
+        invalid_id["input"][0]["call_id"] = json!("");
+        assert!(decode_ingress_request(IngressProtocol::Responses, &invalid_id).is_err());
+    }
+    for kind in ["function", "custom"] {
+        let body = json!({"model":"alias","input":"hello","tools":[{"type":kind,"name":""}]});
+        assert!(decode_ingress_request(IngressProtocol::Responses, &body).is_err());
+    }
+    let choice = json!({"model":"alias","input":"hello",
+        "tools":[{"type":"function","name":"valid","parameters":{"type":"object"}}],
+        "tool_choice":{"type":"function","name":""}});
+    assert!(decode_ingress_request(IngressProtocol::Responses, &choice).is_err());
+}
+
+#[test]
 fn native_messages_reminder_keeps_replay_boundaries_and_cache_fields() {
     let root = std::env::temp_dir().join(format!(
         "hiroute-native-reminder-{}-{}",

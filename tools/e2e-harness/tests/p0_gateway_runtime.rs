@@ -1,5 +1,8 @@
 mod runtime_support;
 
+#[path = "p0_gateway_runtime/decision_branches.rs"]
+mod decision_branches;
+
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -14,10 +17,12 @@ const RESPONSES_OK: &[u8] = br#"{"id":"accepted","model":"runtime-native","statu
 const RESPONSES_TOOL_CALL: &[u8] = br#"{"id":"tool-call","model":"runtime-native","status":"completed","output":[{"type":"function_call","id":"fc-native","call_id":"native-call","namespace":"tools","name":"lookup","arguments":"{}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
 const RESPONSES_STREAM_OK: &[u8] = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"stream-ok\",\"model\":\"runtime-native\"}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"runtime-message\",\"output_index\":0,\"content_index\":0,\"delta\":\"ok\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"stream-ok\",\"model\":\"runtime-native\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"runtime-message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n";
 const FALLBACK_OK: &[u8] = br#"{"id":"accepted-fallback","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"fallback"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
-const CLASSIFIER_COMPLEX: &[u8] = br#"{"branch_id":"smart_saving_complex"}"#;
-const CLASSIFIER_SIMPLE: &[u8] = br#"{"branch_id":"smart_saving_simple"}"#;
+const CLASSIFIER_COMPLEX: &[u8] =
+    br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}}}"#;
+const CLASSIFIER_SIMPLE: &[u8] =
+    br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}}}"#;
 const CLASSIFIER_SIMPLE_WITH_ASSESSMENT: &[u8] =
-    br#"{"branch_id":"smart_saving_simple","assessment":{"score":0.75,"partial":false}}"#;
+    br#"{"decision":{"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}},"assessment":{"score":0.75,"partial":false}}"#;
 const CLASSIFIER_INVALID: &[u8] = br#"{"id":"classification","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"category\":\"simple\"}"}]}]}"#;
 const AUTH_ERROR: &[u8] =
     br#"{"error":{"type":"invalid_api_key","message":"private auth marker"}}"#;
@@ -880,14 +885,14 @@ fn real_listener_rest_classifier_uses_the_existing_gateway_and_selects_complex()
     );
     assert_eq!(body["visible_conversation"], serde_json::json!([]));
     assert_eq!(
-        body.pointer("/branches/smart_saving_simple")
+        body.pointer("/decision/levels/0/criterion")
             .and_then(|value| value.as_str()),
-        Some(hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_DESCRIPTION)
+        Some(hiroute_domain::DEFAULT_SIMPLE_CRITERION)
     );
     assert_eq!(
-        body.pointer("/branches/smart_saving_complex")
+        body.pointer("/decision/levels/1/criterion")
             .and_then(|value| value.as_str()),
-        Some(hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_DESCRIPTION)
+        Some(hiroute_domain::DEFAULT_COMPLEX_CRITERION)
     );
     assert_eq!(body.as_object().unwrap().len(), 5);
     assert!(body.get("model").is_none());
@@ -1249,7 +1254,7 @@ fn real_listener_rest_classifier_reclassifies_each_decision_boundary() {
 }
 
 #[test]
-fn real_listener_context_hold_boundary_seals_unknown_and_scores_the_previous_model() {
+fn real_listener_context_hold_boundary_seals_unknown_without_reusing_old_competence() {
     let simple = NativeProvider::start(vec![ProviderReply::Complete {
         status: 200,
         error_kind: None,
@@ -1350,7 +1355,10 @@ fn real_listener_context_hold_boundary_seals_unknown_and_scores_the_previous_mod
         Some("look up the record"),
         "unchanged latest_user must not suppress a ContextHold boundary"
     );
-    assert_eq!(body["assessment_from"], 0);
+    assert!(
+        body["assessment_target"].is_null(),
+        "rebuilt context cannot grade an old stage"
+    );
     assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
     assert_eq!(body["visible_conversation"][0]["status"], "unknown");
     assert_eq!(
@@ -1388,38 +1396,14 @@ fn real_listener_context_hold_boundary_seals_unknown_and_scores_the_previous_mod
                 == Some("completed")
         })
         .expect("the newly selected branch completes its own round");
-    let assessment = facts
-        .iter()
-        .find(|fact| {
-            fact.pointer("/fact/kind")
-                .and_then(serde_json::Value::as_str)
-                == Some("branch_assessment_recorded")
-        })
-        .expect("the preceding model stage receives the assessment");
-    assert_eq!(
-        assessment.pointer("/fact/model_configuration_id"),
-        prior.pointer("/fact/model_configuration_id"),
-        "the boundary assessment belongs to the model that produced prior accepted output"
-    );
-    assert_eq!(
-        assessment.pointer("/fact/segment_id"),
+    assert_ne!(
         prior.pointer("/fact/segment_id"),
-        "the score must bind to the segment sealed before the new branch executes"
+        current.pointer("/fact/segment_id")
     );
-    assert_ne!(
-        assessment.pointer("/fact/segment_id"),
-        current.pointer("/fact/segment_id"),
-        "the newly executed branch must start unscored"
-    );
-    assert_eq!(
-        assessment.pointer("/fact/target_through_turn_id"),
-        prior.pointer("/fact/agent_turn_id"),
-        "the score range must end at the prior routing round"
-    );
-    assert_ne!(
-        assessment.pointer("/fact/target_through_turn_id"),
-        current.pointer("/fact/agent_turn_id"),
-        "the current routing round must not enter the preceding-stage score"
+    assert!(
+        facts.iter().all(|fact| fact.pointer("/fact/kind")
+            != Some(&serde_json::json!("branch_assessment_recorded"))),
+        "an unsolicited response score without an eligible target must be ignored"
     );
 }
 
@@ -1506,7 +1490,7 @@ fn real_listener_rest_classifier_sends_and_persists_the_previous_segment_assessm
         + 4;
     let body: serde_json::Value = serde_json::from_slice(&second_wire[body_start..]).unwrap();
     assert_eq!(body.as_object().unwrap().len(), 5);
-    assert_eq!(body["assessment_from"], 0);
+    assert_eq!(body["assessment_target"]["from"], 0);
     assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
     assert_eq!(
         body["visible_conversation"][0]["steps"][0][0]["text"], "ok",

@@ -1,4 +1,5 @@
 const c = () => window.sessionWindow;
+const execution = (group = 'regular') => ({ group, candidate_index: 0, policy: { name: 'Smart saving', floor_millis: 500, criteria_digest: null } });
 const tick = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -47,13 +48,91 @@ const emptySummary = { models: [], scored_stage_count: 0, unrated_stage_count: 0
 const openQuality = () => { const disclosure = document.querySelector('.session-model-performance summary'); if (disclosure && !disclosure.parentElement.open) disclosure.click(); };
 
 const scenarios = [
+  ['replayed history keeps attribution while reading skips hidden response pages', async () => {
+    await fresh(control => {
+      seedSimple(control, Date.now() - 60_000, { final_native_model: 'glm-5.3', within_request_fallback: true });
+      const request = control.requests['observation-session/simple'][0];
+      const content = (id, role, direction, kind = 'text') => ({ content_id: id, role, direction, kind, state: 'complete', media_type: 'text/plain', message_occurrence_id: id });
+      control.catalog[request.request_id] = [
+        content('earlier-user', 'user', 'request_input'),
+        content('earlier-answer', 'assistant', 'request_input'),
+        content('current-user', 'user', 'request_input'),
+      ];
+      Object.assign(control.texts, {
+        'earlier-user': 'Create a draft.', 'earlier-answer': 'DRAFT_ONLY from a previous model.',
+        'current-user': 'Verify the draft.', 'current-answer': 'VERIFIED_COMPLETE from this request.',
+      });
+      control.views.catalog = query => {
+        if (query.cursor === 'delivered-response') return {
+          contents: [content('private-thought', 'assistant', 'response_delivered', 'reasoning_delta')],
+          transcript_roots: [], roots_partial: false, next_cursor: 'response-block',
+        };
+        if (query.cursor === 'response-block') return {
+          contents: [content('stream-control', 'assistant', 'response_delivered', 'content_block_started')],
+          transcript_roots: [], roots_partial: false, next_cursor: 'actual-response',
+        };
+        return {
+          contents: query.cursor ? [content('current-answer', 'assistant', 'response_delivered')] : control.catalog[request.request_id],
+          transcript_roots: [], roots_partial: false, next_cursor: query.cursor ? null : 'delivered-response',
+        };
+      };
+    });
+    await until(() => rows().length === 1, 'session with replayed history');
+    rows()[0].click();
+    const historical = () => [...document.querySelectorAll('.message')].find(element => element.textContent.includes('DRAFT_ONLY'));
+    await until(() => historical(), 'historical assistant response');
+    assert(!historical().querySelector('.message-role .badge'), 'Replayed history was signed by the current model');
+    assert(!document.querySelector('.switch-marker'), 'Fallback marker was attached to historical input');
+    button('继续读取').click();
+    const delivered = () => [...document.querySelectorAll('.message')].find(element => element.textContent.includes('VERIFIED_COMPLETE'));
+    await until(() => delivered()?.querySelector('.message-role .badge')?.textContent === 'glm-5.3', 'actual delivered response model');
+    assert(!historical().querySelector('.message-role .badge'), 'Loading the current response relabeled old history');
+    assert(document.querySelector('.switch-marker')?.nextElementSibling === delivered(), 'Fallback marker is not attached to the delivered response');
+    assert(!reads('content').some(call => ['private-thought', 'stream-control'].includes(queryOf(call).content_id)), 'Hidden-only page content was unnecessarily read');
+  }],
+  ['session completeness survives a successful first-title preview and refreshes after recovery', async () => {
+    const session = 'observation-session/completeness';
+    let completeness = 'partial';
+    await fresh(control => {
+      control.requests[session] = [control.makeRequest(session, 0, Date.now() - 2000), control.makeRequest(session, 1, Date.now() - 1000)];
+      const first = control.requests[session][0].request_id;
+      control.catalog[first] = [{ content_id: 'first-title', role: 'user', kind: 'text', state: 'complete', direction: 'request_input', media_type: 'text/plain', message_occurrence_id: 'first' }];
+      control.texts['first-title'] = 'The first prompt was saved';
+      control.views.sessions = query => {
+        const page = control.defaultRead('sessions', query);
+        return { ...page, sessions: page.sessions.map(row => ({ ...row, content_completeness: completeness })) };
+      };
+    });
+    await until(() => rows()[0]?.textContent.includes('The first prompt was saved'), 'completed first-title preview');
+    assert(rows()[0].textContent.includes('记录不完整'), 'A complete first preview erased a later request gap');
+    completeness = 'complete'; c().bumpRefresh();
+    await until(() => rows()[0] && !rows()[0].textContent.includes('记录不完整'), 'recovered authoritative summary');
+  }],
+  ['unfinished empty search pages never claim that no match exists', async () => {
+    await fresh(control => {
+      seedSimple(control);
+      control.views.search = query => query.keyword === 'settled'
+        ? { hits: [], next_cursor: null, index_partial: false, budget_exhausted: false }
+        : query.cursor
+          ? { hits: [], next_cursor: null, index_partial: true, budget_exhausted: false }
+          : { hits: [], next_cursor: 'continue-search', index_partial: false, budget_exhausted: true };
+    });
+    await type('pending');
+    await until(() => button('加载更多结果'), 'unfinished search window');
+    assert(text().includes('尚未找到匹配') && !text().includes('没有匹配的会话'), 'Unsearched history was reported as no matches');
+    button('加载更多结果').click();
+    await until(() => !button('加载更多结果') && text().includes('部分内容尚未建立索引'), 'incomplete index after scanning');
+    assert(!text().includes('没有匹配的会话'), 'An index gap was reported as no matches');
+    await type('settled');
+    await until(() => text().includes('没有匹配的会话'), 'complete empty search');
+  }],
   ['switching from a filtered 21-stage session resets the filter for a two-stage session', async () => {
     const largeSession = 'observation-session/low-21';
     const smallSession = 'observation-session/high-2';
     const at = Date.now() - 60_000;
     const stages = (session, count) => Array.from({ length: count }, (_, index) => ({
       segment_id: `${session}/stage/${index}`, session_id: session, plan_id: 'plan/quality', plan_revision: 1,
-      selected_branch_id: 'smart_saving_simple', executed_branch_id: 'smart_saving_simple', attribution: 'single',
+      selected_branch_id: 'smart_saving', executed_branch_id: 'smart_saving', branch_execution: execution(), attribution: 'single',
       native_model: 'qwen3.8-flash', reasoning_profile_id: 'low',
       first_turn_ordinal: index + 1, last_observed_turn_ordinal: index + 1, first_at_ms: at, last_at_ms: at,
       history_partial: false, execution_evidence_available: false,
@@ -64,7 +143,7 @@ const scenarios = [
       control.requests[smallSession] = [control.makeRequest(smallSession, 0, at)];
       control.views.plan_quality = query => {
         const all = stages(query.session_id, query.session_id === largeSession ? 21 : 2);
-        const matched = query.score_lt == null ? all : all.filter(stage => stage.assessment.score < query.score_lt);
+        const matched = query.competence === 'below_floor' ? all.filter(stage => stage.assessment.score < .5) : all;
         return { samples: matched.slice(0, 20), summary: { ...emptySummary, scored_stage_count: all.length }, next_cursor: matched.length > 20 ? 'page/two' : null };
       };
     });
@@ -77,25 +156,25 @@ const scenarios = [
     const beforeRefresh = reads('plan_quality').length;
     document.querySelector('.quality-refresh').click();
     await until(() => reads('plan_quality').length > beforeRefresh && document.querySelectorAll('.quality-row').length === 1, 'same-session filtered refresh');
-    assert(queryOf(reads('plan_quality').at(-1)).score_lt === .5, 'Same-session refresh cleared the score filter');
+    assert(queryOf(reads('plan_quality').at(-1)).competence === 'below_floor', 'Same-session refresh cleared the score filter');
     rows()[1].click();
     await until(() => reads('plan_quality').some(call => queryOf(call).session_id === smallSession) && !document.querySelector('.quality-refresh').disabled, 'small session loaded');
     const smallReads = reads('plan_quality').filter(call => queryOf(call).session_id === smallSession);
-    assert(smallReads.every(call => queryOf(call).score_lt == null), 'The new session inherited the previous low-score filter');
+    assert(smallReads.every(call => queryOf(call).competence == null), 'The new session inherited the previous low-score filter');
     assert(document.querySelectorAll('.quality-row').length === 2, 'The new session hid its two high-score stages');
     assert([...document.querySelectorAll('.quality-score strong')].every(element => element.textContent === '0.90 / 1'), 'The new session displayed stages from the previous session');
     assert(!document.querySelector('.quality-more'), 'The new session inherited the previous pagination');
   }],
   ['plan competence stays full-scope while exact model stages are filtered and paged', async () => {
-    const identity = { plan_revision: 1, selected_branch_id: null, executed_branch_id: 'smart_saving_simple', model_configuration_id: 'model/qwen', profile_digest: 'sha256/profile-low', attribution: 'single' };
+    const identity = { plan_revision: 1, selected_branch_id: null, executed_branch_id: 'smart_saving', group: 'regular', candidate_index: 0, model_configuration_id: 'model/runtime-fallback/recorded-qwen', profile_digest: 'sha256/profile-low', attribution: 'single' };
     const stats = {
       models: [{ execution: identity, native_model: 'qwen3.8-flash', reasoning_profile_id: 'low', scored_stage_count: 25, unrated_stage_count: 1, average_score: .492 }],
       scored_stage_count: 25, unrated_stage_count: 1, session_count: 2, available_revisions: [2, 1],
     };
     const stage = index => ({
       segment_id: 'bulk/' + index, session_id: 'session/bulk', plan_id: 'plan/quality', plan_revision: 1,
-      selected_branch_id: 'smart_saving_simple', executed_branch_id: 'smart_saving_simple',
-      model_configuration_id: 'model/qwen', profile_digest: identity.profile_digest,
+      selected_branch_id: 'smart_saving', executed_branch_id: 'smart_saving', branch_execution: execution(),
+      model_configuration_id: identity.model_configuration_id, profile_digest: identity.profile_digest,
       native_model: 'qwen3.8-flash', reasoning_profile_id: 'low', attribution: 'single',
       first_turn_ordinal: index + 1, last_observed_turn_ordinal: index + 1,
       first_at_ms: Date.now() - 60000, last_at_ms: Date.now() - 60000,
@@ -105,20 +184,21 @@ const scenarios = [
     await fresh(control => {
       seedSimple(control);
       control.qualityModels = [
-        { model_configuration_id: 'model/qwen', display_name: 'Qwen Flash', reasoning_profile_id: 'low', branch_id: 'smart_saving_simple' },
-        { model_configuration_id: 'model/unused', display_name: 'Unused model', reasoning_profile_id: 'high', branch_id: 'smart_saving_complex' },
+        { plan_revision: 1, model_configuration_id: 'model/qwen', display_name: 'Qwen Flash', reasoning_profile_id: 'low', branch_id: 'smart_saving', group: 'regular', candidate_index: 0 },
+        { plan_revision: 1, model_configuration_id: 'model/unused', display_name: 'Unused model', reasoning_profile_id: 'high', branch_id: 'smart_saving', group: 'primary', candidate_index: 0 },
       ];
       control.views.plan_quality = query => ({
         summary: stats,
-        samples: query.unrated_only ? [stage(25)] : query.score_lt ? [stage(0)]
+        samples: query.unrated_only ? [stage(25)] : query.competence === 'below_floor' ? [stage(0)]
           : Array.from({ length: query.cursor ? 6 : 20 }, (_, index) => stage(index + (query.cursor ? 20 : 0))),
-        next_cursor: query.unrated_only || query.score_lt || query.cursor ? null : 'page/two',
+        next_cursor: query.unrated_only || query.competence || query.cursor ? null : 'page/two',
       });
     });
     c().showQualityPlan();
     await until(() => document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 'full-scope mean');
     const modelRows = [...document.querySelectorAll('.quality-model-row')];
-    assert(modelRows[0].innerText.includes('25 已评分') && modelRows[0].innerText.includes('1 待评分'), 'Full-scope sample counts disappeared');
+    assert(modelRows.length === 2 && modelRows[0].innerText.includes('Qwen Flash'), 'A refreshed source created a duplicate empty candidate row');
+    assert(modelRows[0].innerText.includes('25 已评分') && modelRows[0].innerText.includes('1 未评分'), 'Full-scope sample counts disappeared');
     assert(modelRows[1].innerText.includes('暂无记录') && !modelRows[1].innerText.includes('0.00'), 'Unused candidate was assigned a zero score');
     assert(!document.querySelector('.quality-row'), 'The overview starts with a long stage list');
     modelRows[0].querySelector('button').click();
@@ -158,7 +238,7 @@ const scenarios = [
     const page = () => ({
       samples: [{
         segment_id: 'stage/refresh', session_id: 'observation-session/simple', plan_id: 'plan/quality', plan_revision: 1,
-        selected_branch_id: 'smart_saving_complex', executed_branch_id: 'smart_saving_complex', attribution: 'single',
+        selected_branch_id: 'smart_saving', executed_branch_id: 'smart_saving', branch_execution: execution('primary'), attribution: 'single',
         native_model: 'gpt-6-astra', reasoning_profile_id: 'high',
         first_turn_ordinal: 1, last_observed_turn_ordinal: 1, first_at_ms: Date.now() - 60000, last_at_ms: Date.now() - 60000,
         history_partial: false, execution_evidence_available: false,
@@ -195,8 +275,9 @@ const scenarios = [
       control.views.plan_quality = () => ({ samples: [cheap, strong].map((request, index) => ({
         segment_id: `stage/${index}`, session_id: session, plan_id: 'plan/quality', plan_revision: 1,
         model_configuration_id: `model/runtime-fallback/opaque-${index}`,
-        attribution: 'single', selected_branch_id: index ? 'smart_saving_complex' : 'smart_saving_simple',
-        executed_branch_id: index ? 'smart_saving_complex' : 'smart_saving_simple',
+        attribution: 'single', selected_branch_id: 'smart_saving', executed_branch_id: 'smart_saving',
+        branch_execution: execution(index ? 'primary' : 'regular'),
+        selection: { execution_group: index ? 'primary' : 'regular', simple_probability: .95, simple_threshold_millis: 800, selection_reason: index ? 'availability_relay' : 'simple_task' },
         first_turn_ordinal: index + 1, last_observed_turn_ordinal: index + 1,
         first_at_ms: request.started_at_ms, last_at_ms: request.started_at_ms,
         first_request_id: request.request_id, last_request_id: request.request_id,
@@ -220,8 +301,38 @@ const scenarios = [
     assert(quality.includes('历史记录不完整') && quality.includes('评分证据不完整'), 'Distinct evidence gaps are not explained');
     assert(quality.includes('尚未产生该阶段的胜任度评分'), 'Unrated stage lacks an explanation');
     assert(quality.includes('评分覆盖轮次 1–1'), 'Assessment coverage disappeared');
-    button('执行证据').click();
+    assert(quality.includes('沿用本轮故障接力') && quality.includes('简单任务'), 'The inherited relay reason replaced or hid the original selection reason');
+    button('查看执行过程').click();
     await until(() => reads('timeline').some(call => queryOf(call).request_id === 'request/quality/0' && queryOf(call).limit === 50), 'execution evidence navigation');
+  }],
+  ['historical stages expose actual group and candidate position without inferring a relay', async () => {
+    const positions = [
+      ['smart_saving', 'regular', 1, '省钱'], ['writing', 'regular', 1, '常规'],
+      ['writing', 'primary', 1, '主力'], ['smart_saving', 'primary', 0, '主力'],
+    ];
+    await fresh(control => {
+      seedSimple(control);
+      control.views.plan_quality = () => ({ samples: positions.map(([branch, group, index], stage) => ({
+        segment_id: `stage/position/${stage}`, session_id: 'observation-session/simple', plan_id: 'plan/quality', plan_revision: 5,
+        model_configuration_id: `model/historical-${stage}`, native_model: `Historical model ${stage}`, attribution: 'single',
+        selected_branch_id: branch, executed_branch_id: branch,
+        branch_execution: { ...execution(group), candidate_index: index },
+        selection: stage === 3 ? null : { execution_group: group, simple_probability: group === 'regular' ? .95 : .2, simple_threshold_millis: 800, selection_reason: group === 'regular' ? 'simple_task' : 'complex_task' },
+        first_turn_ordinal: stage + 1, last_observed_turn_ordinal: stage + 1,
+        first_at_ms: Date.now() - 60000, last_at_ms: Date.now() - 60000,
+        history_partial: false, execution_evidence_available: false, assessment: null,
+      })), summary: { ...emptySummary, unrated_stage_count: 4 }, next_cursor: null });
+    });
+    await until(() => rows().length === 1, 'historical execution session');
+    rows()[0].click(); openQuality();
+    await until(() => document.querySelectorAll('.quality-row').length === positions.length, 'recorded positions');
+    for (const [stage, [, , index, label]] of positions.entries()) {
+      const row = document.querySelector(`[data-stage-id="stage/position/${stage}"]`);
+      assert(row.innerText.includes(`实际执行 · ${label} · 候选 ${index + 1}`), `Historical stage ${stage} omits its actual ${label} candidate ${index + 1}`);
+      row.querySelector('summary').click();
+    }
+    await tick();
+    assert(!document.querySelector('.plan-quality').innerText.includes('故障接力'), 'A later candidate index was misrepresented as proof of failover');
   }],
   ['missing model evidence preserves scores without exposing opaque identities', async () => {
     await fresh(control => {
@@ -229,7 +340,7 @@ const scenarios = [
       control.views.plan_quality = () => ({ samples: [{
         segment_id: 'stage/missing', session_id: 'observation-session/simple', plan_id: 'plan/quality', plan_revision: 1,
         model_configuration_id: 'model/runtime-fallback/opaque-missing', attribution: 'single',
-        selected_branch_id: 'smart_saving_simple', executed_branch_id: 'smart_saving_simple',
+        selected_branch_id: 'smart_saving', executed_branch_id: 'smart_saving', branch_execution: execution(),
         first_turn_ordinal: 1, last_observed_turn_ordinal: 1, first_at_ms: Date.now() - 60000, last_at_ms: Date.now() - 60000,
         history_partial: false, execution_evidence_available: false,
         assessment: { trigger_request_id: 'request/missing', target_from_ordinal: 1, target_through_ordinal: 1, score: 0.6, partial: false, evidence_available: false },
@@ -332,7 +443,7 @@ const scenarios = [
   ['a failed session without captured content still renders and lists its requests', async () => {
     await fresh(control => {
       const at = Date.now() - 60_000;
-      control.requests['observation-session/complex'] = Array.from({ length: 30 }, (_, index) => control.makeRequest('observation-session/complex', index, at + index * 1000, { outcome: 'failed', attempted_model_count: 0 }));
+      control.requests['observation-session/complex'] = Array.from({ length: 30 }, (_, index) => control.makeRequest('observation-session/complex', index, at + index * 1000, { outcome: 'failed', attempted_model_count: 0, content_completeness: 'partial' }));
     });
     await until(() => rows().length === 1, 'complex session row');
     await until(() => rows()[0].querySelector('.badge')?.textContent.includes('记录不完整'), 'incomplete-content badge');

@@ -63,7 +63,7 @@ pub(super) fn schema23_source(root: &Path, case: &Value) {
         let connection = Connection::open(&path).unwrap();
         if path.file_name().unwrap() == "control.db" {
             connection
-                .execute_batch("DROP TABLE agent_surface_checks")
+                .execute_batch("DROP TABLE decision_service_operations; DROP TABLE decision_services; DROP TABLE agent_surface_checks")
                 .unwrap();
             connection
                 .execute_batch(agent_surface_checks_v22::CONTROL)

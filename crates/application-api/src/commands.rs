@@ -787,13 +787,31 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Apply an exact AgentPlan change and closed publication revision."
     ),
     command!(
-        "routing.classifier.test",
-        ["routing", "classifier", "test"],
+        "decision.services.list",
+        ["decision", "services", "list"],
+        "ListDecisionServices",
+        [],
+        Released,
+        Query,
+        "List saved decision services and their latest immutable connection versions."
+    ),
+    command!(
+        "decision.services.apply",
+        ["decision", "services", "apply"],
+        "ApplyDecisionService",
+        [],
+        Released,
+        Apply,
+        "Save a decision service version or delete an unreferenced service with revision checking."
+    ),
+    command!(
+        "decision.services.test",
+        ["decision", "services", "test"],
         "TestClassifierDecision",
         [],
-        Planned,
+        Released,
         ExternalProbe,
-        "Run one explicit synthetic decision through the configured REST classifier."
+        "Run one explicit synthetic decision through a configured decision service."
     ),
     command!(
         "routing.classifier.secret.apply",
@@ -962,7 +980,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         ["observation", "plan-quality", "samples"],
         "GetPlanQualitySamples",
         ["CLI-058", "APP-058"],
-        Planned,
+        Released,
         Query,
         "List the latest competence assessment for each persisted execution segment."
     ),
@@ -1002,7 +1020,7 @@ pub fn staged_control_commands() -> Vec<CommandDescriptorV1> {
         "routing.list",
         "routing.show",
         "routing.options",
-        "routing.classifier.test",
+        "decision.services.test",
         "routing.classifier.secret.apply",
         "system.status",
         "setup.preview",

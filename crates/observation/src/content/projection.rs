@@ -453,15 +453,26 @@ pub(super) fn content_digest(
 pub(super) fn touch_content_session(
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
-    next: &str,
 ) -> Result<(), ContentProjectionError> {
-    transaction.execute(
-        "UPDATE sessions SET updated_at_ms=MAX(updated_at_ms, ?3), content_completeness=CASE
-           WHEN content_completeness='partial' THEN 'partial' WHEN ?4='unknown' THEN content_completeness ELSE ?4 END
+    transaction
+        .execute(
+            "UPDATE sessions SET updated_at_ms=MAX(updated_at_ms, ?3)
          WHERE workspace_id=?1 AND session_id=?2",
-        params![envelope.correlation.workspace_id.as_str(), envelope.correlation.conversation_id.as_str(),
-            i64_from_u64(envelope.occurred_at_unix_nanos / 1_000_000)?, next],
-    ).map_err(|_| ContentProjectionError::ActivityStorage)?;
+            params![
+                envelope.correlation.workspace_id.as_str(),
+                envelope.correlation.conversation_id.as_str(),
+                i64_from_u64(envelope.occurred_at_unix_nanos / 1_000_000)?
+            ],
+        )
+        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+    if envelope.phase != hiroute_domain::ConversationContentPhaseV2::Append {
+        super::completeness::refresh_session(
+            transaction,
+            envelope.correlation.workspace_id.as_str(),
+            envelope.correlation.conversation_id.as_str(),
+        )
+        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+    }
     Ok(())
 }
 

@@ -235,6 +235,245 @@
     "editor": {
       "additionalProperties": false,
       "properties": {
+        "branch_routing": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "branches": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "candidates": {
+                        "$ref": "#/$defs/candidates"
+                      },
+                      "condition": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "not": {
+                          "const": "smart_saving"
+                        },
+                        "type": "string"
+                      },
+                      "judgment": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "$ref": "#/$defs/judgment"
+                          }
+                        ]
+                      },
+                      "name": {
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      "primary_candidates": {
+                        "$ref": "#/$defs/candidates"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "condition",
+                      "candidates",
+                      "primary_candidates"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
+                },
+                "classifier": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "local_rules"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "decision_service"
+                        },
+                        "service": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "connection": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "auth_header": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "name": {
+                                          "maxLength": 128,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "value_secret_ref": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "value_secret_ref"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "endpoint": {
+                                      "maxLength": 2048,
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "system_one"
+                                    },
+                                    "model": {
+                                      "maxLength": 256,
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "maxLength": 128,
+                                      "type": "string"
+                                    },
+                                    "timeout_ms": {
+                                      "maximum": 3600000,
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "provider",
+                                    "model",
+                                    "endpoint",
+                                    "timeout_ms",
+                                    "auth_header"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "auth_header": {
+                                      "oneOf": [
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "name": {
+                                              "maxLength": 128,
+                                              "minLength": 1,
+                                              "type": "string"
+                                            },
+                                            "value_secret_ref": {
+                                              "maxLength": 256,
+                                              "minLength": 1,
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "name",
+                                            "value_secret_ref"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "endpoint": {
+                                      "maxLength": 2048,
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "custom"
+                                    },
+                                    "timeout_ms": {
+                                      "maximum": 3600000,
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "endpoint",
+                                    "timeout_ms"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "id": {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            "name": {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            "revision": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "revision",
+                            "name",
+                            "connection"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "service"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "default_branch_id": {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                "judgment": {
+                  "$ref": "#/$defs/judgment"
+                },
+                "reselect_on_user_message": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "classifier",
+                "branches",
+                "default_branch_id",
+                "judgment",
+                "reselect_on_user_message"
+              ],
+              "type": "object"
+            }
+          ]
+        },
         "candidates": {
           "$ref": "#/$defs/candidates"
         },
@@ -304,6 +543,7 @@
           "enum": [
             "fixed_model",
             "smart_saving",
+            "custom_branches",
             "free_first"
           ]
         },
@@ -360,44 +600,145 @@
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "auth_header": {
+                    "kind": {
+                      "const": "decision_service"
+                    },
+                    "service": {
                       "additionalProperties": false,
                       "properties": {
-                        "name": {
+                        "connection": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "auth_header": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "name": {
+                                      "maxLength": 128,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "value_secret_ref": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "value_secret_ref"
+                                  ],
+                                  "type": "object"
+                                },
+                                "endpoint": {
+                                  "maxLength": 2048,
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "system_one"
+                                },
+                                "model": {
+                                  "maxLength": 256,
+                                  "type": "string"
+                                },
+                                "provider": {
+                                  "maxLength": 128,
+                                  "type": "string"
+                                },
+                                "timeout_ms": {
+                                  "maximum": 3600000,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "provider",
+                                "model",
+                                "endpoint",
+                                "timeout_ms",
+                                "auth_header"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "auth_header": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "name": {
+                                          "maxLength": 128,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "value_secret_ref": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "value_secret_ref"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  ]
+                                },
+                                "endpoint": {
+                                  "maxLength": 2048,
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "custom"
+                                },
+                                "timeout_ms": {
+                                  "maximum": 3600000,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "endpoint",
+                                "timeout_ms"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "id": {
                           "maxLength": 128,
-                          "minLength": 1,
                           "type": "string"
                         },
-                        "value_secret_ref": {
-                          "maxLength": 256,
-                          "minLength": 1,
+                        "name": {
+                          "maxLength": 128,
                           "type": "string"
+                        },
+                        "revision": {
+                          "minimum": 1,
+                          "type": "integer"
                         }
                       },
                       "required": [
+                        "id",
+                        "revision",
                         "name",
-                        "value_secret_ref"
+                        "connection"
                       ],
                       "type": "object"
-                    },
-                    "endpoint": {
-                      "maxLength": 2048,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "kind": {
-                      "const": "rest"
-                    },
-                    "timeout_ms": {
-                      "maximum": 3600000,
-                      "minimum": 1,
-                      "type": "integer"
                     }
                   },
                   "required": [
                     "kind",
-                    "endpoint",
-                    "timeout_ms"
+                    "service"
                   ],
                   "type": "object"
                 }
@@ -414,11 +755,11 @@
             "economy": {
               "$ref": "#/$defs/candidates"
             },
+            "judgment": {
+              "$ref": "#/$defs/judgment"
+            },
             "primary": {
               "$ref": "#/$defs/candidates"
-            },
-            "primary_fallback": {
-              "type": "boolean"
             },
             "reselect_on_user_message": {
               "type": "boolean"
@@ -427,7 +768,7 @@
           "required": [
             "economy",
             "primary",
-            "primary_fallback",
+            "judgment",
             "reselect_on_user_message",
             "classifier",
             "complex_keywords"
@@ -471,6 +812,69 @@
         "delegation_enabled",
         "requirements",
         "limits"
+      ],
+      "type": "object"
+    },
+    "judgment": {
+      "additionalProperties": false,
+      "properties": {
+        "competence": {
+          "additionalProperties": false,
+          "properties": {
+            "criteria": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "floor_millis": {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "instructions": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "floor_millis",
+            "instructions",
+            "criteria"
+          ],
+          "type": "object"
+        },
+        "degree": {
+          "additionalProperties": false,
+          "properties": {
+            "complex": {
+              "type": "string"
+            },
+            "instructions": {
+              "type": "string"
+            },
+            "simple": {
+              "type": "string"
+            },
+            "simple_threshold_millis": {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "simple_threshold_millis",
+            "instructions",
+            "simple",
+            "complex"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "degree",
+        "competence"
       ],
       "type": "object"
     },

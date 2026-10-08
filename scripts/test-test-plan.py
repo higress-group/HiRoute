@@ -547,6 +547,22 @@ class SelectionTests(unittest.TestCase):
 
 
 class IntegrationPreflightTests(unittest.TestCase):
+    def test_command_descriptors_check_both_generated_contract_consumers_early(self):
+        for path in ['crates/application-api/src/commands.rs',
+                     'crates/application-api/src/commands/help.rs',
+                     'contracts/cli/contract-set.v1.json',
+                     'e2e/product/schema/contract-set.v1.json']:
+            final = plan.select([path])
+            original = json.dumps(final, sort_keys=True)
+            early = plan.integration_preflight(final)
+            self.assertIn('contracts', early['targets'])
+            self.assertIn('product_oracle', early['targets'])
+            command = next(c for c in early['commands'] if 'product_oracle' in c)
+            self.assertIn('contracts', command)
+            self.assertIn('--workspace', command)
+            self.assertIn('--all-features', command)
+            self.assertEqual(json.dumps(final, sort_keys=True), original)
+
     def test_merge_with_lockfile_keeps_early_checks_and_final_obligations(self):
         paths = ['Cargo.lock', 'tools/e2e-harness/tests/p0_gateway_runtime.rs',
                  'crates/gateway/src/adapters/ingress.rs']

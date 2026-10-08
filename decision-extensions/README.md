@@ -1,72 +1,113 @@
-# HiRoute decision extensions
+# Decision models and routing mechanism
 
-[简体中文](README.zh-CN.md) · [Decision API](api/README.md) · [Official Jev extension](extensions/jev-decider/README.md)
+[简体中文](README.zh-CN.md) · [Custom extension API](api/README.md) · [Official Jev extension](extensions/jev-decider/README.md)
 
-HiRoute can ask a trusted decision service which branch should handle a routing execution round. The same response can assess how well the model handled the preceding execution stage. The protocol describes branch decisions and competence assessments; it is not inherently a simple/complex binary classifier. The current smart-saving integration supplies two branches, while the API's `branches` map and the Jev extension's `auto` mode support multiple allowed branches. This does not add new routing modes to the current product.
+HiRoute uses a decision model to choose the models for the current task and, when
+enough evidence is available, assess the preceding execution stage. You configure
+the task conditions and model groups; HiRoute applies them on each new user turn.
 
-## Start with the official extension
+## Connect a decision model
 
-Deploy the [Jev service](extensions/jev-decider/README.md), backed by one OpenRouter Jev request per decision. In a smart-saving plan, select the custom classification service, set its full endpoint to `http://127.0.0.1:8080/v1/decisions`, and configure the timeout and optional authentication header. Use the explicit test action before publishing. Saving or publishing does not invoke the service.
+1. Open **Models → Decision models** and add a connection. Built-in connections
+   support **Bailian**, **OpenRouter Jev**, **TypeSafe**, and compatible System One
+   endpoints.
+2. Enter the provider, model, complete endpoint and credential, then save and test
+   the connection.
+3. Select the saved connection in a routing plan and configure smart saving or
+   custom task branches with their execution models.
+4. Publish the plan to apply it. Editing a connection or a draft takes effect only
+   after the plan selects that version and is published again.
 
-![Decision service configuration with synthetic data](assets/config-en.png)
+Built-in decision models need no self-hosted service. The connection test checks
+the saved connection's transport and required response fields with synthetic input;
+it does not establish the accuracy of decisions on your tasks.
 
-All screenshots here use synthetic data rendered with real product components; [their evidence boundary](#illustration-evidence-boundaries) distinguishes them from native or live-provider acceptance evidence.
+A **custom extension** is an optional HTTP service that integrates its own provider
+and follows the task definitions and assessment standards sent by HiRoute. Add it
+from the same page using its complete endpoint. The form provides copyable request
+examples and an OpenAPI download. The [official Jev extension](extensions/jev-decider/README.md)
+is a deployable reference implementation.
 
-## When a decision takes effect
+## Choose a routing mode
 
-```text
-No inheritable decision OR no ContextHold preference OR enabled follow-up re-selection
-  → choose branch + optionally assess the prior stage
-  → model request(s) inherit while ContextHold remains valid
-  → the next decision boundary seals this routing execution round
-```
+| Mode | What the decision model judges | Execution models |
+| --- | --- | --- |
+| Smart saving | Whether the current task is simple or complex | Economy and primary groups |
+| Custom branches | The current task category, then its required degree when it has two groups | Regular models and optional primary models per category |
 
-HiRoute decides again whenever no valid decision can be inherited or ContextHold no longer supplies a preferred candidate. A real user message appended to proven continuous history asks for a new decision only when the plan's follow-up re-selection setting is enabled; new plans default to disabled. An appended user always starts a new execution round, even when the branch is inherited. HiRoute does not ask the service to detect compaction and does not require the latest user text to change. A replay or tool continuation with a valid hold and decision stays in the current round. A failed model candidate can still trigger the plan's existing failover within a round; that is an execution fallback, not a new classification. HiRoute records a different executed branch when accepted output came entirely from that fallback branch. Mixed-model output is not attributed as the competence of one model.
+Category, degree and competence answer different questions:
 
-A routing execution round starts on a decision or an appended real user message and includes subsequent inherited model requests; one user task can span several rounds. A stage can span several rounds when the plan revision, selected and executed branch, actual model configuration, and effective profile remain the same. Credential rotation alone does not create a new stage. Internal model identities stay in HiRoute; the decision service sees branch meanings and observed round activity, not a model ID on every step.
+| Question | Example | Effect |
+| --- | --- | --- |
+| What is the current task? | Writing or reviewing an article | Select one task branch |
+| What degree of work does this task require? | A local wording edit or a full argument review | Select a model group within that branch |
+| How well did the preceding stage perform? | A draft has useful structure but unsupported claims | Record competence and, when applicable, protect the next turn with primary models |
 
-## What each side owns
+For custom branches, overlapping conditions are resolved by the current request's
+main intent; no match uses the configured default branch. A category with only
+regular models skips degree evaluation and can still collect competence scores.
+Smart saving uses one task scope, so simple and complex are not separate task branches.
 
-| HiRoute | Decision service |
+## How HiRoute selects and executes models
+
+For a task with two groups, regular/economy models are selected when this call's
+simple probability meets the threshold (default **0.8**) and there is no applicable
+complete score below the competence floor (default **0.5**). Otherwise HiRoute
+selects primary models. Low-score protection uses only a fresh score for the
+preceding actual stage with the same category, published plan version and assessment
+standard. Missing or partial evidence is unrated, not zero; a saved old score does
+not become a fresh low score on later turns. A writing score does not upgrade a review task.
+
+Each new user message is decided again and may choose either group. Tool
+continuations and same-turn replay reuse the frozen decision only when HiRoute can
+recognize the same turn and that decision remains reusable. Discontinuous
+reconstructed history or a decision that cannot be inherited requires a new judgment.
+The preference to keep the current model applies only among eligible models in the
+newly selected group.
+
+HiRoute tries the selected group's candidates in order. If regular/economy
+candidates are exhausted, it can relay to the same category's primary group.
+Primary exhaustion fails the request. Starting in primary keeps relay within that
+group; a single-group category fails when its candidates are exhausted. A candidate
+failure does not create a competence score.
+
+If the category is valid but its degree result is unavailable, HiRoute uses that
+category's primary group. If the whole decision fails, smart saving uses its
+heuristic rules; custom branches use the default category and its primary group
+when configured.
+
+## Adjust judgment settings and inspect results
+
+Advanced judgment settings start collapsed. Expand them to edit the simple/complex
+criteria, thresholds, assessment instructions and the **0 / 0.5 / 1** competence
+anchors. Category conditions describe task intent, degree conditions describe work
+within a category, and competence standards assess work that has already happened.
+
+Custom categories follow the plan's judgment settings by default. Independent
+editing copies the complete settings; resetting resumes following the plan.
+Smart saving also offers explicit heuristic rules, which do not produce model
+competence scores.
+
+Published definitions, connection versions and assessment standards are frozen.
+Session and plan views show why a group was selected, the group and model that
+actually executed, and any later score for that stage. Later scores and draft edits
+do not rewrite earlier selection reasons.
+
+## Built-in integration and custom extension responsibilities
+
+| Responsibility | Owner |
 | --- | --- |
-| Allowed branches, decision boundaries and actual execution | Branch-selection policy, prompts and model calls |
-| Complete current user projection and retained routing-round history | Context selection and trimming for its own model limit |
-| Deadline, cancellation and local-rules fallback on service failure | Deployment, upstream credentials and optional inbound authentication |
-| Assessment target, model/plan attribution and durable latest stage score | Optional competence score and truthful partial-evidence flag |
+| Task definitions, assessment standards, thresholds and model groups | HiRoute, from the published plan |
+| Selection, eligibility, availability relay and actual-stage observations | HiRoute |
+| Direct System One provider calls and answer mapping for built-in connections | HiRoute's [built-in adapter](api/system-one-design.md) |
+| Provider calls, answer mapping and necessary history trimming for a custom connection | The custom extension, following the supplied definitions and standards |
 
-The in-memory routing-round history supplies accepted assistant text and ordered tool names/statuses. It omits tool arguments/results, system instructions and reasoning. A round sealed only because HiRoute reached another decision boundary can have `unknown` status without being failed or completed. History can be incomplete after eviction or restart; replacing client history alone does not create a gap. Current user content is not truncated to a fixed classifier budget. It is always a non-empty projection from the actual request, but it may repeat the preceding round or be a client-generated summary/continuation. Non-text content may be represented as unavailable. See the [API](api/README.md) for exact fields and failure behavior.
+The custom [extension API](api/README.md) can return the current decision and a
+preceding-stage assessment in one call. Its current **v1** has one request shape;
+the [canonical examples](api/decision-examples.json) and [OpenAPI](api/decision.openapi.json)
+describe that boundary. Complete current input is preserved, while missing target
+evidence must remain visible as partial. The [routing guide](../docs/smart-saving-model-classification.md)
+describes the product configuration.
 
-## Use competence to improve routing plans
-
-**Competence guards against risky cost-cutting; complexity identifies opportunities to save.** This is the official extension's `rules` policy. Its alternative `auto` mode lets Jev choose the branch directly. Both may assess the preceding stage using current `latest_user` content together with observed execution. Explicit feedback such as an unresolved error can inform that assessment; repeated text, a summary, a continuation message, or silence is not by itself praise or a complaint.
-
-A score in `[0,1]` means competence for that stage, not confidence, task complexity, a measured success probability or a global model ranking. A new valid assessment replaces the latest score for the same stage. An omitted assessment leaves the stored score unchanged; unscored is not zero. `partial` and the scored coverage matter, especially when the latest score covers only an earlier part of an ongoing stage. There may be no final assessment if no later decision boundary occurs.
-
-![Synthetic stage competence samples](assets/quality-en.png)
-
-The illustration shows an order-service maintenance plan across four separate sessions, with realistic model names and fabricated scores and times. It includes an unrated stage, partial history, and an assessment that does not yet cover the latest turn. It is not a comparison of actual model capability; Jev supplies no textual reason in these examples.
-
-The plan's performance section shows configured models for its active revision over the selected period, without asking users to type model IDs. The session view shows stage-level performance and available evidence.
-
-![Synthetic session performance](assets/session-en.png)
-
-An authorized delegating agent can query the same samples, first looking for weak stages and then inspecting retained session evidence:
-
-```sh
-hiroute observation plan-quality samples --plan-id plan/code-maintenance --score-lt 0.5 --output json
-hiroute observation plan-quality samples --plan-id plan/code-maintenance --score-gt 0.8 --output json
-```
-
-Replace the example plan ID with a real one. Bounds are strict; unscored stages do not match score filters. The CLI also supports session, revision, exact model, time and pagination filters. Evidence access follows the existing content-retention and authorization rules.
-
-For example, repeated samples might show that an economical model handles local fixes well but struggles with cross-module changes. A main agent can propose a specialized local-fix plan and delegate broader work to a stronger model, then evaluate subsequent samples. Compare task evidence, versions and partial coverage before drawing that conclusion. HiRoute does not automatically create plans, retrain a selector or treat one low score as a model verdict.
-
-## Build another extension
-
-Implement the [five-field HTTP JSON contract](api/README.md) using Jev, an LLM or your own policy. Return one of the supplied branch IDs and, optionally, an assessment of the requested prior stage. Provider-specific formats and context limits belong inside your service. The [official extension](extensions/jev-decider/README.md) includes deployment instructions and offline tests of the real HTTP handler.
-
-<span id="illustration-evidence-boundaries"></span>
-
-## Illustration evidence boundaries
-
-The configuration and performance images are captured from current HiRoute product components populated with synthetic plans, sessions, scores and times. They demonstrate the documented layout and states; they are not native WebView acceptance evidence, live Jev responses or comparative model benchmarks. Product and provider validation remains attached to its exact test evidence rather than inferred from these illustrations.
+Tool subset selection is future protocol documentation only; it has no supported
+runtime or product entry.

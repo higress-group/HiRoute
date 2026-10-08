@@ -5,9 +5,9 @@ import { renderDecisionDoc } from '../lib/decision-docs.mjs';
 const { language = 'zh', page } = Astro.props;
 const english = language === 'en';
 const pages = {
-  mechanism: ['决策扩展', 'Decision extensions', 'decision-extensions'],
-  api: ['决策 API', 'Decision API', 'decision-api'],
-  jev: ['官方 Jev 决策器', 'Official Jev decider', 'jev-decider'],
+  mechanism: ['决策模型与路由机制', 'Decision models and routing mechanism', 'decision-extensions'],
+  api: ['自定义扩展 API', 'Custom extension API', 'decision-api'],
+  jev: ['Jev 参考扩展', 'Jev reference extension', 'jev-decider'],
 };
 const [zhTitle, enTitle, slug] = pages[page];
 const title = english ? enTitle : zhTitle;
@@ -17,7 +17,7 @@ const alternatePath = `${english ? '' : '/en'}/docs/${slug}/`;
 const html = await renderDecisionDoc(page, language);
 ---
 <SiteLayout language={language} title={`${title} · HiRoute`}
-  description={english ? 'HiRoute model-selection decision mechanism, API and official extensions.' : 'HiRoute 模型选择决策机制、API 与官方扩展。'}
+  description={english ? 'HiRoute decision models, routing judgments and custom extension API.' : 'HiRoute 决策模型、路由判断与自定义扩展 API。'}
   path={path} alternatePath={alternatePath}>
   <div class="docs-shell wrap">
     <DocsNav language={language} active={page} />

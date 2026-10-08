@@ -17,7 +17,7 @@ from agent_product_support import apply_settings, run_native_command, expose_nat
 class NativeInstallationTests(unittest.TestCase):
     def test_selected_cli_and_required_runtime_share_the_private_fixture_path(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / 'bin').mkdir()
             cli = root / 'selected-cli'; cli.write_text('fixture'); cli.chmod(0o700)
             node = root / 'selected-node'; node.write_text('fixture'); node.chmod(0o700)

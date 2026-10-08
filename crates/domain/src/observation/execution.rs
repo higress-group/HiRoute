@@ -19,7 +19,7 @@ use super::{
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:de91d4f2333db66f0ec3f8b63ce192267dee0a56b65f34180b06996b232fb2c6";
+    "sha256:80b4ff13af8abc79d7721fea42141300beade2acf1d2659983ceaafcdc6e4799";
 
 /// Gateway profile digests are canonical except on its explicit degraded-observation path.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -243,6 +243,14 @@ pub enum ComplexityReasonCodeV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BranchDecisionV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<crate::BranchExecutionPolicyV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub competence_trigger: Option<crate::CompetenceProtectionV1>,
+    pub execution_group: crate::ExecutionGroupV1,
+    pub simple_probability: Option<serde_json::Number>,
+    pub simple_threshold_millis: Option<u16>,
+    pub selection_reason: crate::ModelGroupReasonV1,
     pub strategy_id: String,
     pub schema_version: String,
     pub payload_digest: CanonicalDigest,
@@ -266,6 +274,25 @@ impl BranchDecisionV1 {
             || self.branch_id.len() > 128
             || self.branch_id.chars().any(char::is_control)
             || self.complexity_score.is_some() != self.threshold.is_some()
+            || self
+                .policy
+                .as_ref()
+                .is_some_and(|policy| !policy.validate())
+            || self.simple_threshold_millis.is_some_and(|t| t > 1000)
+            || self.simple_probability.as_ref().is_some_and(|p| {
+                p.as_f64()
+                    .is_none_or(|p| !p.is_finite() || !(0.0..=1.0).contains(&p))
+            })
+            || self.competence_trigger.as_ref().is_some_and(|upgrade| {
+                upgrade.segment_id.trim().is_empty()
+                    || upgrade.segment_id.len() > 256
+                    || upgrade.floor_millis > 1000
+                    || upgrade.score.as_f64().is_none_or(|score| {
+                        !score.is_finite()
+                            || !(0.0..=1.0).contains(&score)
+                            || score >= f64::from(upgrade.floor_millis) / 1000.0
+                    })
+            })
         {
             return Err(ExecutionFactError::InvalidFact);
         }
@@ -627,6 +654,8 @@ pub enum ExecutionFactV1 {
         facts_completeness: FactsCompleteness,
     },
     AgentTurnFinished {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch_execution: Option<crate::BranchExecutionV1>,
         agent_turn_id: String,
         segment_id: String,
         ordinal: u64,

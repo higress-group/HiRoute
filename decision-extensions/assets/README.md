@@ -1,108 +1,101 @@
 # Decision documentation illustrations
 
-## Native Desktop homepage screenshots
+## Native session captures
 
-`quality-native-en.png` and `quality-native-zh-CN.png` are unmodified screenshots
-of the running macOS Desktop WebView (1200 × 813), not a browser composition.
-Both show the Sessions page with Model performance expanded and the latest
-stage's Assessment feedback selected. The app reads the records through its
-real daemon. No CSS changes, simulated IPC, rearranged components or image
-retouching were used.
+The README, homepage and model-routing guide use
+[English](quality-native-en.png) and [Chinese](quality-native-zh-CN.png) captures
+of the real macOS Desktop Sessions page. Both are 2400×2100 pixels, captured at
+1200×1050 logical points, with the navigation, session list and two complete
+model-performance cards visible. The website scales them proportionally to its
+content width without cropping or fixed-height distortion.
 
-The isolated observation store was populated with a synthetic order-reconciliation
-conversation, two scored stages and the corresponding feedback. The conversation
-is marked as a demonstration. Model scores, execution outcomes and user feedback
-are illustrative, not measurements of model quality. These captures establish
-the displayed UI and evidence navigation only, not end-to-end classification,
-score production, persistence ingestion or live provider execution.
+Capture used the production Desktop/daemon and isolated observation stores,
+not browser IPC mocks. Computer Use produced the window images; JPEG-to-PNG
+conversion preserved their dimensions without repainting or compositing the UI.
 
-To reproduce the view, use an isolated Desktop instance with matching-language
-demonstration records, open Sessions, expand Model performance and select the
-latest stage's Assessment feedback. Capture the whole WebView with no layout
-overrides. The website selects the corresponding screenshot for each language.
+The stores contain constructed order-callback repair records: Qwen 3.8 Flash in
+the economy group scores 0.37, and Qwen 3.8 Max in the primary group scores 0.91.
+There are two scored stages, a 0.5 competence floor and a 0.8 simple-probability
+threshold. The low first-stage score activates primary protection on the next
+stage. Three request records retain execution and assessment context without
+creating a third model stage. These are documentation fixtures, not provider
+benchmark results or evidence of live ingestion. Public captions describe the
+product capability; capture provenance is maintained here.
 
-## Component-based documentation previews
+No credentials or
+existing observation stores were copied. The original development app and system
+language preference were restored after capture. A native rendering check does
+not replace routing or provider acceptance.
 
-These documentation previews use HiRoute's real `HomeNavigation`, `RoutingPage`,
-`PlanEditor` and `PlanQuality` components and shared product styles. They were
-captured in Chromium on the configured macOS workbench, not from a native Desktop
-window. Model names come from the repository catalog; scores, dates, sessions and
-task outcomes are fabricated. Every image is labeled as illustrative, not a model
-benchmark. No model evaluation or paid provider request was performed.
+## Current product component captures
 
-| Illustration | English | Simplified Chinese | Purpose |
+The current images use HiRoute's actual `HomeNavigation`, `DecisionServicesPage`,
+`RoutingPage`, `PlanEditor` and `PlanQuality` components and shared product styles.
+They are captured in isolated Chromium on macOS. They are not native Desktop
+screenshots. Only the surrounding documentation canvas is styled; forms, tables,
+selectors, provider logos and disclosure controls come from the product.
+
+All data is synthetic. No real credentials, daemon,
+model provider, saved user settings or paid calls are involved. Connection tests
+are not simulated as passing. These captures demonstrate the current UI, not
+provider quality, persistence, evidence navigation or native window acceptance.
+
+| View | English | Chinese | What it shows |
 | --- | --- | --- | --- |
-| Connect a decision service | [config-en.png](config-en.png) | [config-zh-CN.png](config-zh-CN.png) | Selected mode, endpoint, timeout, authentication and explicit test action |
-| Interpret competence | [quality-en.png](quality-en.png) | [quality-zh-CN.png](quality-zh-CN.png) | Stage scores, coverage, partial evidence and an unrated stage |
-| Inspect a session stage | [session-en.png](session-en.png) | [session-zh-CN.png](session-zh-CN.png) | The session's compact model-performance component and assessment coverage |
+| Decision models | [English](decision-models-en.png) | [中文](decision-models-zh-CN.png) | Two-pane model page, provider logos, Bailian connection form |
+| Smart saving | [English](config-en.png) | [中文](config-zh-CN.png) | Decision method, economy/primary candidates, collapsed judgment settings |
+| Custom branches | [English](custom-branches-en.png) | [中文](custom-branches-zh-CN.png) | Writing/review conditions, regular/primary groups and branch settings |
+| Plan performance | [English](quality-en.png) | [中文](quality-zh-CN.png) | One row per configured execution slot; stage counts and averages |
+| Session detail excerpt | [English](session-en.png) | [中文](session-zh-CN.png) | Actual stage selection, frozen threshold and later assessment coverage |
+| Compact session excerpt | [English](quality-session-en.png) | [中文](quality-session-zh-CN.png) | Two stages in the session's model-performance component; not the homepage image |
 
-The configuration illustration uses the official endpoint
-`http://127.0.0.1:8080/v1/decisions`. Do not treat this illustration as a successful
-connection test.
+The sample plans are order-service maintenance and writing/review (revision 3).
+The writing branch uses Qwen 3.8 Max with distinct reasoning profiles; review uses
+Qwen 3.8 Flash and Qwen 3.8 Max. Five stages span four sessions. Illustrative scores
+include a complete 0.88, a partial 0.37 excluded from averages, an unrated stage,
+and a review session with 0.38 followed by 0.91. The latter shows primary protection
+from a fresh low score even though simple probability meets 0.8. It is not evidence
+that one model outperforms another. Synthetic editor/publication IDs intentionally
+differ so a configured slot and its observation must join into one row.
 
-## Placement in the article
-
-Use the matching-language configuration image next to the setup instructions.
-Use the matching-language performance image when explaining stage assessments
-and when introducing plan specialization. The four displayed samples belong to
-different demonstration sessions, not four successive stages of one unchanged
-execution configuration.
-
-The example is an order-service maintenance plan (revision 3) with DeepSeek V4.1
-Flash and Claude Sonnet 5. Separate sessions concern pagination validation,
-reconciliation debugging, payment idempotency and callback retries. Scores include
-0.88, 0.37 with partial history, 0.91 covering turns 6–9 while execution has reached
-turn 10, and an unrated stage. The sidebar includes local-fix and research plans.
-The simulated differences are not evidence of either model's real capability or
-of specialization improving performance. Inspect multiple real samples and
-execution evidence before an authorized agent proposes or changes a plan.
-
-No textual assessment reason is invented: Jev currently omits `reason`.
-Evidence buttons are disabled because this fixture
-has no underlying transcript. Do not claim these screenshots demonstrate
-evidence navigation, scoring persistence or an end-to-end decision call.
-
-Additional protocol-dialog and evidence-view screenshots require synthetic
-retained transcripts and their own capture. Keep those
-images next to the corresponding instructions; do not illustrate controls that
-have not been implemented. An Agent-turn boundary diagram belongs beside the
-mechanism explanation because a screenshot cannot show that timing reliably.
+No textual Jev reason or transcript is fabricated. Evidence buttons are disabled
+because the fixture has no retained conversation. The session images are component
+excerpts, not the entire Sessions page or a demonstration of user-feedback navigation.
 
 ## Reproduce
 
-The development-only entry is
-[`apps/desktop/decision-docs.html`](../../apps/desktop/decision-docs.html) and its
-[`fixture`](../../apps/desktop/decision-docs.tsx), with
-[`data`](../../apps/desktop/decision-docs-data.ts). Neither is referenced by the
-production entry or emitted by the default build. The fixture supplies only the
-read responses needed by the product components and rejects other IPC commands.
+The development-only entry is [decision-docs.html](../../apps/desktop/decision-docs.html),
+with its [wrapper](../../apps/desktop/decision-docs.tsx) and
+[data](../../apps/desktop/decision-docs-data.ts). None is emitted by the production
+build. Mock IPC permits only the required read operations and rejects writes/tests.
 
-From `apps/desktop`, run:
+From `apps/desktop`, start Vite:
 
 ```sh
 npm run dev -- --host 127.0.0.1 --port 5186 --strictPort
 ```
 
-Open `/decision-docs.html?lang=en&view=quality`, replacing `en` with `zh` for
-Chinese and `quality` with `config` or `session` for the other crops. Use the configured
-macOS workbench and a dedicated browser profile. If Vite runs on Linux, forward
-the loopback port over SSH, along with the isolated Chrome CDP port. Then run:
+Open `/decision-docs.html?lang=en&view=quality`. Replace `en` with `zh` and `quality`
+with any view name in the capture script. Use a dedicated browser profile under
+HOME, not a temporary directory or your everyday browser profile. Start isolated
+Chrome with a loopback CDP port, then run:
 
 ```sh
 node --experimental-strip-types --test tests/decision-docs-data.test.mjs
-node tests/decision-docs-capture.mjs <local-cdp-port> http://127.0.0.1:<mac-vite-forward-port> --capture
+node tests/decision-docs-capture.mjs <cdp-port> http://127.0.0.1:5186 --capture
 ```
 
-The capture command checks all six views, score filters, model labels, and read-only
-IPC; omit `--capture` to verify without writing images. It fixes the browser clock
-to September 20, 2026 and the timezone to Asia/Shanghai for repeatability. Data in
-an interactive preview uses the current time so the seven-day filter keeps working.
-Use light theme, scale 1, device scale factor 2: 1600×880 for quality; width 1200
-with heights 400 for session, 980 for English config and 1050 for Chinese config.
-The quality view scrolls the real editor to its performance section. Only the
-canvas and crop are styled; product controls, row layout and text are unchanged.
+The script checks 12 bilingual views, exact model-row counts, stage filtering,
+read-only calls and visible errors. It uses October 8, 2026 at 17:40 Asia/Shanghai,
+light theme, scale 1 and device scale 1. Viewport sizes and scroll positions live
+in the capture script. The compact excerpt is 1200×813. This script never writes
+the `quality-native-*` images. Compare repeated captures for stable layout and content; browser edge anti-aliasing
+can vary PNG bytes. Protocol artifacts generated by `decision-contracts.py` must
+remain byte-identical on a second run. A documentation capture does not replace real product acceptance.
 
-Capture provenance: product components and shared styles from the same repository
-revision as these images. The documentation wrapper and images are updated together.
-These checks do not validate native window integration, evidence navigation, model
-scoring or persistence.
+## Mechanism diagrams
+
+The bilingual `jev-decision-*.svg` files illustrate the built-in decision path and
+optional custom extension: category, degree and preceding-stage assessment are
+separate questions, while HiRoute owns thresholds and execution. They are editable
+vector diagrams, not measured traces.

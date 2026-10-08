@@ -6,7 +6,8 @@
   "cases": [
     {
       "id": "readme-responses",
-      "branch": "smart_saving_simple",
+      "branch": "smart_saving",
+      "execution_group": "regular",
       "score": 1,
       "source": "builtin_rules",
       "reasons": ["IMPLEMENTATION_ACTION"],
@@ -14,7 +15,8 @@
     },
     {
       "id": "readme-chat",
-      "branch": "smart_saving_simple",
+      "branch": "smart_saving",
+      "execution_group": "regular",
       "score": 1,
       "source": "builtin_rules",
       "reasons": ["IMPLEMENTATION_ACTION"],
@@ -22,7 +24,8 @@
     },
     {
       "id": "readme-messages",
-      "branch": "smart_saving_simple",
+      "branch": "smart_saving",
+      "execution_group": "regular",
       "score": 1,
       "source": "builtin_rules",
       "reasons": ["IMPLEMENTATION_ACTION"],
@@ -30,7 +33,8 @@
     },
     {
       "id": "complex-zh",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 6,
       "source": "builtin_rules",
       "reasons": ["DEEP_REASONING", "MULTI_FILE_SCOPE", "MULTI_CONSTRAINT", "IMPLEMENTATION_ACTION"],
@@ -38,7 +42,8 @@
     },
     {
       "id": "constraints-zh",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 3,
       "source": "builtin_rules",
       "reasons": ["DEEP_REASONING", "MULTI_CONSTRAINT"],
@@ -46,7 +51,8 @@
     },
     {
       "id": "complex-en",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 6,
       "source": "builtin_rules",
       "reasons": ["DEEP_REASONING", "MULTI_FILE_SCOPE", "MULTI_CONSTRAINT", "IMPLEMENTATION_ACTION"],
@@ -54,7 +60,8 @@
     },
     {
       "id": "capital-token-boundary",
-      "branch": "smart_saving_simple",
+      "branch": "smart_saving",
+      "execution_group": "regular",
       "score": 0,
       "source": "builtin_rules",
       "reasons": [],
@@ -62,7 +69,8 @@
     },
     {
       "id": "human-ambiguous-character",
-      "branch": "smart_saving_simple",
+      "branch": "smart_saving",
+      "execution_group": "regular",
       "score": 0,
       "source": "builtin_rules",
       "reasons": [],
@@ -70,7 +78,8 @@
     },
     {
       "id": "history-tool-excluded",
-      "branch": "smart_saving_simple",
+      "branch": "smart_saving",
+      "execution_group": "regular",
       "score": 0,
       "source": "builtin_rules",
       "reasons": [],
@@ -78,7 +87,8 @@
     },
     {
       "id": "user-phrase",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 3,
       "source": "user_phrase",
       "reasons": ["USER_COMPLEX_PHRASE"],
@@ -86,7 +96,8 @@
     },
     {
       "id": "task-root-continuation",
-      "branch": "smart_saving_simple",
+      "branch": "smart_saving",
+      "execution_group": "regular",
       "score": 1,
       "source": "inherited",
       "reasons": ["INHERITED_TASK_ROOT", "IMPLEMENTATION_ACTION"],
@@ -94,7 +105,8 @@
     },
     {
       "id": "unresolved-pure-continuation-en",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 3,
       "source": "unresolved",
       "reasons": ["TASK_CONTEXT_UNRESOLVED"],
@@ -102,7 +114,8 @@
     },
     {
       "id": "unresolved-pure-continuation-zh",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 3,
       "source": "unresolved",
       "reasons": ["TASK_CONTEXT_UNRESOLVED"],
@@ -110,7 +123,8 @@
     },
     {
       "id": "wrong-kind-pure-continuation",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 3,
       "source": "unresolved",
       "reasons": ["TASK_CONTEXT_UNRESOLVED"],
@@ -118,7 +132,8 @@
     },
     {
       "id": "tool-continuation",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 6,
       "source": "inherited",
       "reasons": ["INHERITED_TOOL_CONTINUATION", "DEEP_REASONING", "MULTI_FILE_SCOPE", "MULTI_CONSTRAINT", "IMPLEMENTATION_ACTION"],
@@ -126,7 +141,8 @@
     },
     {
       "id": "unresolved-continuation",
-      "branch": "smart_saving_complex",
+      "branch": "smart_saving",
+      "execution_group": "primary",
       "score": 3,
       "source": "unresolved",
       "reasons": ["TASK_CONTEXT_UNRESOLVED"],

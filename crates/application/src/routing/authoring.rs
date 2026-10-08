@@ -16,6 +16,8 @@ pub struct PlanAuthoringSnapshotV2 {
     pub legacy_source: Option<PlanVersionV1>,
     pub draft: Option<PlanDraftV1>,
     pub facts: AgentPlanCompilationFactsV1,
+    /// Exact saved connection revision selected by the effective editor, not its latest version.
+    pub decision_service: Option<DecisionServiceV1>,
     pub expected_revisions: RevisionSetV1,
 }
 
@@ -57,6 +59,11 @@ pub fn preview_plan_content(
         .editor
         .effective()
         .map_err(|_| PlanPreviewError::Invalid)?;
+    if let Some(service) = configuration.decision_service()
+        && state.decision_service.as_ref() != Some(service)
+    {
+        return Err(PlanPreviewError::InvalidDecisionService);
+    }
     if let Some(selected) = &change.consumed_draft {
         let draft = state.draft.as_ref().ok_or(PlanPreviewError::Stale)?;
         draft.validate().map_err(|_| PlanPreviewError::Invalid)?;
@@ -178,6 +185,8 @@ pub enum PlanPreviewError {
     Referenced,
     #[error("invalid plan content")]
     Invalid,
+    #[error("select an unchanged saved decision connection revision")]
+    InvalidDecisionService,
     #[error("plan, draft or alias registry changed; preview again")]
     Stale,
     #[error("the requested alias is unavailable")]

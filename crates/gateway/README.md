@@ -12,11 +12,11 @@ resource cleanup; the Gateway does not run a second execution loop.
 ## Decision operation
 
 [core_runtime/classification.rs](src/core_runtime/classification.rs) owns the
-current local/REST classifier operation. Its clock starts before history
+local, built-in System One and custom REST classifier operation. Its clock starts before history
 preparation in `core_runtime.rs`; preparation, Secret resolution, DNS, connection,
 write and read share the bounded operation. The earlier source deadline and
 source cancellation remain authoritative. A classifier failure can use the
-existing local fallback only while the source request remains active.
+published failure policy only while the source request remains active: heuristic rules for smart saving, or the configured default for custom branches.
 
 [classification/protocol.rs](src/core_runtime/classification/protocol.rs)
 serializes the five-field Decision API request from Replay-backed current input
@@ -33,10 +33,10 @@ uses the caller's `ExecutionScope`, keeps the existing error categories, and
 does not read credentials or runtime-state stores. E2E configuration remains
 captured at construction, not reloaded on each resolution.
 
-[planner.rs](src/planner.rs) validates the selected branch and chooses eligible
-groups/candidates under the frozen policy. Selected branch and actual executed
-branch can differ after an authorized fallback; history and assessment must
-retain that distinction. They cannot be reconstructed from display names.
+[planner.rs](src/planner.rs) validates the selected category and chooses eligible
+groups/candidates under the frozen policy. Availability relay may move execution
+from regular to primary within that category. History and assessment retain the
+selection and actual execution separately; neither is inferred from model names.
 
 ## Extension ownership
 
@@ -48,18 +48,23 @@ allowed IDs; a provider handles its wire protocol and credentials; only the
 calling product authorizes actual execution. The current smart-saving policy is
 not a universal inference or tool-routing contract.
 
-The Decision API can carry a generic branch map, but current published Gateway
-smart-saving policies remain binary. Future natural-language branch conditions
-need caller-owned stable IDs, a publication-pinned allowed set and explicit
-failure/default policy. Keep provider response interpretation outside candidate
-execution. This responsibility map adds no provider, branch or fallback behavior.
-See the shared [decision foundation map](../../docs/code-map/decision-foundation.md)
-for provider references and the separately owned future selection contracts.
+The current compiler freezes category IDs and conditions, the default category,
+regular/primary candidates, and effective degree and competence standards. The
+[System One codec](src/core_runtime/classification/system_one.rs) owns the built-in
+Choice/Score questions; it shares transport with the custom REST codec.
+[Group policy](src/core_runtime/classification/group_policy.rs) decides each new
+user turn from the current degree probability and a fresh, applicable preceding-stage
+assessment. It keeps no persistent upgrade cursor. Tool continuations inherit the
+same-turn decision while its history and authority remain valid. The existing
+history store owns stage identity; there is no second session or execution loop. See the shared
+[decision map](../../docs/code-map/decision-foundation.md) for service persistence,
+provider references, observation and the future tool-selection boundary.
 
 ## Representative capability tests
 
 | User capability or invariant | Existing entry |
 | --- | --- |
+| Built-in decisions assess the previous actual stage, protect the primary group when needed and decide again on each new user turn | [decision_branches.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches.rs) covers both presets and observation |
 | One decision selects the actual business model across supported ingress protocols | `real_listener_rest_classifier_*` in [p0_gateway_runtime.rs](../../tools/e2e-harness/tests/p0_gateway_runtime.rs) |
 | Classifier timeout may fall back; source deadline or disconnect must not start a model | The three timeout/deadline/disconnect cases in the same target |
 | Decision diagnostics use the production transport/parser without running a business model | `classifier_diagnostic_uses_the_production_transport_and_exact_protocol` in [classification.rs](src/core_runtime/classification.rs) |

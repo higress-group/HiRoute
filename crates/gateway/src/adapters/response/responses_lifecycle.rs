@@ -385,7 +385,12 @@ fn finish_reasoning_item(
         )
         .into());
     }
-    let content = array_field(item, "content", true)?;
+    // Reasoning content is optional and providers may serialize its absence as
+    // null alongside the summary. Non-null content still has to be an array.
+    let content = match item.get("content") {
+        None | Some(Value::Null) => &[][..],
+        Some(value) => array(value, "content")?,
+    };
     if summary.is_empty() && content.len() > 1 {
         return Err(ModelIrError::UnsupportedField(
             "response reasoning with multiple content parts".into(),

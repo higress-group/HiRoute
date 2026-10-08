@@ -47,7 +47,7 @@ class ContractConvergenceTests(unittest.TestCase):
                     '"hiroute.sample/v2"'
                 ),
                 "crates/local-storage/src/migrations/mod.rs": (
-                    "pub const LATEST_SCHEMA_VERSION: u32 = 27;\n"
+                    "pub const LATEST_SCHEMA_VERSION: u32 = 29;\n"
                 ),
                 # Historical/test text must never stand in for the production declaration.
                 "tests/old_schema_fixture.rs": "pub const LATEST_SCHEMA_VERSION: u32 = 17;",
@@ -60,34 +60,34 @@ class ContractConvergenceTests(unittest.TestCase):
             return MODULE.audit(root, value or registry(), files)
 
     def test_database_schema_change_is_not_hidden_by_a_fixture(self):
-        for version in (17, 22, 23, 24, 25, 26, 28):
+        for version in (17, 22, 23, 24, 25, 26, 27, 28, 30):
             with self.subTest(version=version):
                 errors = self.run_audit({
                     "legacy.rs": '"hiroute.sample/v1"',
                     "crates/local-storage/src/migrations/mod.rs": (
                         f"pub const LATEST_SCHEMA_VERSION: u32 = {version};\n"
                     ),
-                    "tests/current_schema_fixture.rs": "pub const LATEST_SCHEMA_VERSION: u32 = 27;",
+                    "tests/current_schema_fixture.rs": "pub const LATEST_SCHEMA_VERSION: u32 = 29;",
                 })
                 self.assertTrue(any("database schema" in error for error in errors), errors)
 
     def test_database_schema_requires_the_authoritative_production_declaration(self):
         for source in (
             "// declaration removed\n",
-            "#[cfg(test)]\nmod fixture {\n    pub const LATEST_SCHEMA_VERSION: u32 = 27;\n}\n",
-            "/*\npub const LATEST_SCHEMA_VERSION: u32 = 27;\n*/\n",
-            "pub const LATEST_SCHEMA_VERSION: u32 = 27;\npub const LATEST_SCHEMA_VERSION: u32 = 27;\n",
+            "#[cfg(test)]\nmod fixture {\n    pub const LATEST_SCHEMA_VERSION: u32 = 29;\n}\n",
+            "/*\npub const LATEST_SCHEMA_VERSION: u32 = 29;\n*/\n",
+            "pub const LATEST_SCHEMA_VERSION: u32 = 29;\npub const LATEST_SCHEMA_VERSION: u32 = 30;\n",
         ):
             with self.subTest(source=source):
                 errors = self.run_audit({
                     "legacy.rs": '"hiroute.sample/v1"',
                     "crates/local-storage/src/migrations/mod.rs": source,
-                    "tests/current_schema_fixture.rs": "pub const LATEST_SCHEMA_VERSION: u32 = 27;",
+                    "tests/current_schema_fixture.rs": "pub const LATEST_SCHEMA_VERSION: u32 = 29;",
                 })
                 self.assertTrue(any("database schema" in error for error in errors), errors)
 
     def test_database_schema_requires_an_unconditional_top_level_constant(self):
-        declaration = "pub const LATEST_SCHEMA_VERSION: u32 = 27;\n"
+        declaration = "pub const LATEST_SCHEMA_VERSION: u32 = 29;\n"
         for source in (
             "#[cfg(all(unix, test))]\n" + declaration,
             "#[cfg(any(unix, test))]\n" + declaration,
@@ -108,7 +108,7 @@ class ContractConvergenceTests(unittest.TestCase):
                 self.assertTrue(any("database schema" in error for error in errors), errors)
 
     def test_database_schema_fails_closed_on_unterminated_lexical_input(self):
-        declaration = "pub const LATEST_SCHEMA_VERSION: u32 = 27;\n"
+        declaration = "pub const LATEST_SCHEMA_VERSION: u32 = 29;\n"
         for suffix in ('/* unclosed', 'const TEXT: &str = r#"unclosed',
                        'const TEXT: &str = "unclosed', 'mod fixture {', ']'):
             with self.subTest(suffix=suffix):
@@ -119,7 +119,7 @@ class ContractConvergenceTests(unittest.TestCase):
                 self.assertTrue(any("database schema" in error for error in errors), errors)
 
     def test_database_schema_ignores_literal_and_comment_declarations(self):
-        declaration = "pub const LATEST_SCHEMA_VERSION: u32 = 27;\n"
+        declaration = "pub const LATEST_SCHEMA_VERSION: u32 = 29;\n"
         for source in (
             'const FIXTURE: &str = "\n' + declaration + '";\n',
             'const FIXTURE: &str = r"\n' + declaration + '";\n',
@@ -147,7 +147,7 @@ const BRACE: char = '}';
 mod fixture {
 pub const LATEST_SCHEMA_VERSION: u32 = 17;
 }
-pub const LATEST_SCHEMA_VERSION: u32 = 27;
+pub const LATEST_SCHEMA_VERSION: u32 = 29;
 '''
         self.assertEqual(self.run_audit({
             "legacy.rs": '"hiroute.sample/v1"',

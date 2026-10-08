@@ -63,6 +63,14 @@ pub enum ComplexityReasonCodeV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BranchDecisionV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<hiroute_domain::BranchExecutionPolicyV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub competence_trigger: Option<hiroute_domain::CompetenceProtectionV1>,
+    pub execution_group: hiroute_domain::ExecutionGroupV1,
+    pub simple_probability: Option<serde_json::Number>,
+    pub simple_threshold_millis: Option<u16>,
+    pub selection_reason: hiroute_domain::ModelGroupReasonV1,
     pub strategy_id: String,
     pub schema_version: String,
     pub payload_digest: String,
@@ -101,6 +109,10 @@ pub struct CompiledComplexPhraseV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompiledComplexityStrategyV1 {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_branch_id: Option<String>,
     pub strategy_id: String,
     pub schema_version: String,
     pub strategy_version: u32,
@@ -153,7 +165,13 @@ pub struct MaterializedModelGroupV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MaterializedRouteV1 {
+    Branches {
+        branches: Vec<hiroute_domain::MaterializedBranchV1>,
+        default_branch_id: String,
+        reselect_on_user_message: bool,
+    },
     SmartSaving {
+        judgment: Box<hiroute_domain::JudgmentSettingsV1>,
         simple_group_id: String,
         simple_fallback_group_ids: Vec<String>,
         complex_group_id: String,
@@ -344,7 +362,6 @@ pub enum ExclusionReasonCodeV1 {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RankingReasonCodeV1 {
     ContextModelHold,
-    PreviousSuccessFallback,
     PublishedManualOrder,
     QualityFirst,
     LowestApiEquivalentCost,
@@ -358,7 +375,6 @@ pub enum RankingReasonCodeV1 {
 pub enum LedgerReasonCodeV1 {
     ContextHoldApplied,
     ContextHoldInvalidated,
-    PreviousSuccessFallback,
     SmartSavingSimple,
     SmartSavingComplex,
     FreeFirstNoClassification,

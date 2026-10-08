@@ -88,6 +88,9 @@ pub(super) fn effects(command_id: &str, kind: CommandKind) -> &'static str {
     if command_id == "agents.check" {
         return "Configuration, native-authentication, and collaboration are bounded same-UID local checks. Live creates bounded connectivity-probe runtime state and may update real credential cooldown after authentic 401/429 responses; probe traffic is excluded from Session and Value.";
     }
+    if command_id == "decision.services.test" {
+        return "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.";
+    }
     if command_id == "compute.connection.test" {
         return "Runs one explicit bounded source check. It keeps protected input in daemon memory and does not persist source state until the separate Preview/Apply flow.";
     }
@@ -95,6 +98,7 @@ pub(super) fn effects(command_id: &str, kind: CommandKind) -> &'static str {
         command_id,
         "compute.connection.apply"
             | "routing.apply"
+            | "decision.services.apply"
             | "agents.connect.apply"
             | "agents.restore.apply"
     ) {
@@ -125,6 +129,9 @@ pub(super) fn network_and_model_use(command_id: &str, kind: CommandKind) -> &'st
     }
     if command_id == "agents.check" {
         return "Local checks make no provider call and require no second authorization channel. Live quick sends one fixed inference request, tool sends a fixed inference request with a built-in no-side-effect tool, and conformance may send a bounded protocol matrix; every live suite may consume real provider quota and requires explicit consent plus a protected probe grant.";
+    }
+    if command_id == "decision.services.test" {
+        return "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.";
     }
     if command_id == "compute.connection.test" {
         return "Contacts only the explicitly selected, typed endpoint. Inventory checks make no inference call; selecting an inference model may send one bounded model request and consume provider quota.";
@@ -185,6 +192,8 @@ pub(super) fn example(command_id: &str, joined_path: &str) -> String {
         "compute.show" => {
             "hiroute compute show source/example --non-interactive --output json".to_owned()
         }
+        "decision.services.list" => "hiroute decision services list --output json".to_owned(),
+        "decision.services.apply" | "decision.services.test" => format!("hiroute {joined_path} --request-stdin --output json < request.json"),
         "routing.list" => "hiroute routing list --non-interactive --output json".to_owned(),
         "routing.show" => {
             "hiroute routing show plan/example --non-interactive --output json".to_owned()

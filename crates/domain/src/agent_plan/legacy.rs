@@ -66,17 +66,19 @@ impl PlanVersionV1 {
                 .ok_or(PlanVersionError::Invalid)
         };
         let (mode, strategy) = match &materialized.request_owned {
+            // Branch plans always have an authoring version; never invent one from recovery data.
+            RequestOwnedRouteV1::Branches { .. } => return Err(PlanVersionError::Invalid),
             RequestOwnedRouteV1::Classified {
                 classifier,
                 reselect_on_user_message,
-                simple_groups,
+                judgment,
                 ..
             } => (
                 PlanEditorMode::SmartSaving,
                 AgentPlanStrategyV2::SmartSaving {
                     economy: group(MaterializedGroupId::Economy)?,
                     primary: group(MaterializedGroupId::Primary)?,
-                    primary_fallback: simple_groups.contains(&MaterializedGroupId::Primary),
+                    judgment: judgment.clone(),
                     reselect_on_user_message: *reselect_on_user_message,
                     classifier: classifier.mode.clone(),
                     complex_keywords: classifier.user_keywords.clone(),

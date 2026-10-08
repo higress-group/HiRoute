@@ -37,6 +37,7 @@ test('guides cover Desktop, Linux headless, and the released management CLI', as
   assert.match(linuxEn, /<code>authorize<\/code>/);
   assert.match(routing, /固定模型/);
   assert.match(routing, /智能省钱/);
+  assert.match(routing, /自定义分支/);
   assert.match(routing, /免费优先/);
   assert.match(worker, /hiroute worker exec/);
   assert.match(worker, /--submission my-check-001 --operation start/);
@@ -49,4 +50,24 @@ test('guides cover Desktop, Linux headless, and the released management CLI', as
   assert.match(all, /standalone/i);
   assert.doesNotMatch(all, /commands for creating model sources, editing routes, or connecting agents are available yet/i);
   assert.doesNotMatch(all, /这些配置入口仍由 Desktop 提供/);
+});
+
+test('decision guidance exposes current routing choices and released CLI paths in both languages', async () => {
+  const manifest = JSON.parse(await fs.readFile(path.join(root, '../../contracts/cli/manifest.v1.json'), 'utf8'));
+  const commandIds = ['decision.services.list', 'decision.services.apply', 'decision.services.test', 'observation.plan-quality.samples'];
+  for (const language of ['zh', 'en']) {
+    const routing = await renderUserGuide('model-routing', language);
+    const modes = language === 'zh'
+      ? ['固定模型', '智能省钱', '自定义分支', '免费优先']
+      : ['Fixed model', 'Smart saving', 'Custom branches', 'Free first'];
+    for (const mode of modes) assert.ok(routing.includes(`<td>${mode}</td>`), `${language} routing table is missing ${mode}`);
+
+    const cli = await renderUserGuide('cli', language);
+    for (const commandId of commandIds) {
+      const command = manifest.commands.find(entry => entry.command_id === commandId);
+      assert.equal(command?.lifecycle, 'released', `${commandId} must be public`);
+      assert.ok(cli.includes(`hiroute ${command.path.join(' ')}`), `${language} CLI is missing ${commandId}`);
+    }
+    assert.doesNotMatch(cli, /(?:publishes|公开)\s*\d+\s*(?:Released|个)/);
+  }
 });

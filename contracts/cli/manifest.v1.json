@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:977c6c3de2ed68f4437db403b16db9b0684616acd41124abfe2ff06caf364022",
+  "descriptor_digest": "sha256:abc35e142a0e31f2529450a545a6b9c6d57575d0212e844609cff5216623337b",
   "visibility": "release",
   "commands": [
     {
@@ -1813,6 +1813,148 @@
       }
     },
     {
+      "command_id": "decision.services.list",
+      "path": [
+        "decision",
+        "services",
+        "list"
+      ],
+      "operation_id": "ListDecisionServices",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.decision-services/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "List saved decision services and their latest immutable connection versions.",
+        "usage": "hiroute decision services list --output json",
+        "arguments_and_options": "No request body or secret material. Returns the latest saved version of each service; published plans retain their exact immutable version.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision services list --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.services.list"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.services.list.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.services.list.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.services.apply",
+      "path": [
+        "decision",
+        "services",
+        "apply"
+      ],
+      "operation_id": "ApplyDecisionService",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "apply",
+      "request_schema": "hiroute.change-preview-or-apply-request/v1",
+      "response_schema": "hiroute.change-preview-or-operation/v1",
+      "effect": "high_impact_write",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin"
+      ],
+      "idempotency": "required",
+      "help": {
+        "purpose": "Save a decision service version or delete an unreferenced service with revision checking.",
+        "usage": "hiroute decision services apply --request-stdin --output json",
+        "arguments_and_options": "--request-stdin accepts a ChangeSpec preview request first, then the exact ApplyRequest with accept_digest, expected_revisions and idempotency_key. spec.desired_state contains id, expected_revision, service (null to delete), and optional protected input_slot. Replacing a credential requires a new reference. A referenced service cannot be deleted.",
+        "effects": "Same-UID Application-owned journaled operation after exact spec, digest, revision, and idempotency checks.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision services apply --request-stdin --output json < request.json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.services.apply"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.services.apply.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.services.apply.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.services.test",
+      "path": [
+        "decision",
+        "services",
+        "test"
+      ],
+      "operation_id": "TestClassifierDecision",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "external_probe",
+      "request_schema": "hiroute.classifier-decision-test/v1",
+      "response_schema": "hiroute.classifier-decision-test-result/v1",
+      "effect": "bounded_probe",
+      "network": "local_control_then_registered_gateway",
+      "model_call": "explicit_probe_may_call_model",
+      "stdin_channels": [
+        "request_stdin"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Run one explicit synthetic decision through a configured decision service.",
+        "usage": "hiroute decision services test --request-stdin --output json",
+        "arguments_and_options": "--request-stdin accepts schema hiroute.classifier-decision-test/v1 and classifier {kind: decision_service, service: <saved version>}. Sends one fixed synthetic decision; no session history is read. Failure is reported in data.outcome and failure_code, even when the command query succeeds.",
+        "effects": "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.",
+        "network_and_model_use": "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision services test --request-stdin --output json < request.json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.services.test"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.services.test.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.services.test.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "models.show",
       "path": [
         "models",
@@ -2155,6 +2297,58 @@
       },
       "negative": {
         "scenario_id": "p0.value.show.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "observation.plan-quality.samples",
+      "path": [
+        "observation",
+        "plan-quality",
+        "samples"
+      ],
+      "operation_id": "GetPlanQualitySamples",
+      "trace_ids": [
+        "CLI-058",
+        "APP-058"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.observation.query/v2",
+      "response_schema": "hiroute.plan-quality-samples-page/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "capability_fd"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "List the latest competence assessment for each persisted execution segment.",
+        "usage": "hiroute observation plan-quality samples ([OPTIONS] | --request-stdin) [--capability-fd <FD>] --non-interactive --output json",
+        "arguments_and_options": "Provide at least --plan-id or --session-id. Use --competence below-floor|meets-floor to compare the latest reliable score with the floor saved for that stage, or --unrated for missing/partial scores. Score bounds remain strict open bounds. Detail filters do not alter full-scope summaries. Facts are same-UID reads; protected evidence content is never returned.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute observation plan-quality samples --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id observation.plan-quality.samples"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.observation.plan-quality.samples.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.observation.plan-quality.samples.negative",
         "polarity": "negative",
         "state": "executable"
       }

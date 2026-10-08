@@ -7,7 +7,9 @@
 
 use std::collections::BTreeMap;
 
-use hiroute_gateway_core::runtime::body::{BudgetTree, MemoryRole, Reservation, StreamBudget};
+#[cfg(test)]
+use hiroute_gateway_core::runtime::body::BudgetTree;
+use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
 use hiroute_gateway_core::runtime::sse::{EofPolicy, SseFramer, SseLimits};
 use serde_json::{Map, Value};
 
@@ -27,7 +29,6 @@ use helpers::*;
 mod evidence;
 
 const RETAINED_SSE_CAPACITY: usize = 256 * 1024;
-const OBSERVATION_STREAM_BUDGET: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeTerminalOutcome {
@@ -74,6 +75,7 @@ impl NativeResponseProjector {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn new_for_observation(
         profile: &CandidateProtocolProfile,
         streaming: bool,
@@ -81,13 +83,30 @@ impl NativeResponseProjector {
         chat_projection: Option<ChatToolProjection>,
         tool_projection: ToolIdProjection,
     ) -> Result<Self, ProtocolAdapterError> {
-        // Capture already reserves its own bounded input/output copies. This
-        // local framer budget is off-path and cannot grant execution authority.
+        const OBSERVATION_STREAM_BUDGET: usize = 1024 * 1024;
         let tree = BudgetTree::new(OBSERVATION_STREAM_BUDGET, OBSERVATION_STREAM_BUDGET)
             .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?;
         let budget = tree
             .stream(OBSERVATION_STREAM_BUDGET)
             .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?;
+        Self::new_for_observation_with_budget(
+            profile,
+            streaming,
+            served_model_alias,
+            chat_projection,
+            tool_projection,
+            budget,
+        )
+    }
+
+    pub(crate) fn new_for_observation_with_budget(
+        profile: &CandidateProtocolProfile,
+        streaming: bool,
+        served_model_alias: String,
+        chat_projection: Option<ChatToolProjection>,
+        tool_projection: ToolIdProjection,
+        budget: StreamBudget,
+    ) -> Result<Self, ProtocolAdapterError> {
         Self::new(
             profile,
             streaming,
@@ -228,6 +247,13 @@ impl NativeResponseProjector {
 
     pub(crate) fn usage(&self) -> &ModelUsage {
         &self.state.usage
+    }
+
+    pub(crate) fn awaiting_responses_eof(&self) -> bool {
+        self.streaming
+            && self.state.protocol == IngressProtocol::Responses
+            && self.state.terminal.is_some()
+            && !self.ended
     }
 }
 

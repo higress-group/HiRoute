@@ -107,7 +107,9 @@ fn v15_and_both_experimental_v16_layouts_converge_without_losing_data_or_keys() 
             .unwrap();
             if index == 0 {
                 conn.execute_batch(
-                    "DROP INDEX IF EXISTS compute_subscription_validations_candidate_idx;
+                    "DROP TABLE decision_service_operations;
+                     DROP TABLE decision_services;
+                     DROP INDEX IF EXISTS compute_subscription_validations_candidate_idx;
                      DROP TABLE IF EXISTS compute_subscription_validations;
                      DROP INDEX IF EXISTS worker_dependency_selection_effects_state;
                      DROP TABLE IF EXISTS worker_dependency_selection_effects;

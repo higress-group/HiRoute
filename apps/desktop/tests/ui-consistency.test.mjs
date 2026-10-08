@@ -89,26 +89,18 @@ test('the native classifier download embeds the public OpenAPI contract byte for
   const embedded = native.match(/include_str!\("([^"]+)"\)/)[1];
   assert.equal(readFileSync(join(desktop, 'src-tauri/src/bridge', embedded), 'utf8'), readFileSync(contractPath, 'utf8'));
   assert.deepEqual(openapi.components.schemas.ClassifierRequest.required, [
-    'branches',
+    'decision',
     'latest_user',
     'visible_conversation',
     'history_partial',
-    'assessment_from',
+    'assessment_target',
   ]);
   assert.equal(openapi.components.schemas.ClassifierRequest.additionalProperties, false);
-  assert.deepEqual(openapi.components.schemas.ClassifierResponse.required, ['branch_id']);
+  assert.deepEqual(openapi.components.schemas.ClassifierResponse.required, ['decision']);
   assert.equal(openapi.components.schemas.ClassifierResponse.additionalProperties, false);
-  assert.equal(openapi.components.schemas.CompetenceAssessment.properties.score.minimum, 0);
-  assert.equal(openapi.components.schemas.CompetenceAssessment.properties.score.maximum, 1);
+  assert.equal(openapi.components.schemas.Assessment.properties.score.minimum, 0);
+  assert.equal(openapi.components.schemas.Assessment.properties.score.maximum, 1);
 });
-
-test('the classifier diagnostic warning is fully localized', () => {
-  const editor = read('src/plan-editor.tsx');
-  assert.match(editor, /要求选择省钱分支的固定合成问题/);
-  assert.match(editor, /asks for the economy branch/);
-  assert.doesNotMatch(editor, /This is a synthetic connectivity test/);
-});
-
 
 test('native window configuration keeps macOS controls and shared localization', () => {
   const config = JSON.parse(read('src-tauri/tauri.conf.json'));

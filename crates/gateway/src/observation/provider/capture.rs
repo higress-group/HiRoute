@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
 use hiroute_gateway_core::runtime::attempt::PrecommitEvent;
+use hiroute_gateway_core::runtime::body::{BudgetTree, MemoryRole, Reservation, StreamBudget};
 
 use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 
@@ -23,9 +24,9 @@ const CAPTURE_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CAPTURE_METADATA_BYTES: usize = 512;
 const CAPTURE_BEGIN_BYTES: usize = 4 * 1024;
 // Reserve before copying. The native multiplier conservatively covers the
-// raw copy, canonical decoder state and rendered correlation units; accepted
-// bytes need only their queue copy because the native reservation stays live
-// until the capture reaches a terminal accepted frame.
+// raw copy and temporary decode/render allocations. Persistent decoder state
+// and pending correlation units reserve the same budget independently, so a
+// processed wire frame is released instead of charged for the whole response.
 const CAPTURE_NATIVE_EXPANSION: usize = 8;
 const CAPTURE_ACCEPTED_EXPANSION: usize = 2;
 const MAX_CAPTURE_FRAME_BYTES: usize = 64 * 1024;
@@ -38,26 +39,11 @@ pub(in crate::server::core_runtime::observation) struct CanonicalCaptureProducer
 
 struct CaptureShared {
     sender: SyncSender<CaptureJob>,
-    budget: Arc<CaptureBudget>,
+    budget: StreamBudget,
     next_id: AtomicU64,
 }
 
-struct CaptureBudget {
-    capacity: usize,
-    used: AtomicUsize,
-}
-
-struct CaptureReservation {
-    budget: Arc<CaptureBudget>,
-    bytes: usize,
-}
-
-impl Drop for CaptureReservation {
-    fn drop(&mut self) {
-        let previous = self.budget.used.fetch_sub(self.bytes, Ordering::AcqRel);
-        debug_assert!(previous >= self.bytes);
-    }
-}
+type CaptureReservation = Reservation;
 
 struct CaptureStatus {
     finished: AtomicBool,
@@ -124,7 +110,7 @@ struct CaptureWorkerState {
     request: RequestObservation,
     tracker: CanonicalResponseTracker,
     status: Arc<CaptureStatus>,
-    reservations: Vec<CaptureReservation>,
+    _reservation: CaptureReservation,
     accepted_started: bool,
 }
 
@@ -162,10 +148,11 @@ impl CanonicalCaptureProducer {
         }
         let slots = (capacity_bytes / CAPTURE_METADATA_BYTES).clamp(1, CAPTURE_EVENT_SLOTS);
         let (sender, receiver) = sync_channel(slots);
-        let budget = Arc::new(CaptureBudget {
-            capacity: capacity_bytes,
-            used: AtomicUsize::new(0),
-        });
+        let budget = BudgetTree::new(capacity_bytes, capacity_bytes)
+            .ok()?
+            .stream(capacity_bytes)
+            .ok()?;
+        let worker_budget = budget.clone();
         let shared = Arc::new(CaptureShared {
             sender,
             budget,
@@ -173,7 +160,7 @@ impl CanonicalCaptureProducer {
         });
         if thread::Builder::new()
             .name("hiroute-canonical-capture".into())
-            .spawn(move || capture_worker(receiver))
+            .spawn(move || capture_worker(receiver, worker_budget))
             .is_err()
         {
             return None;
@@ -385,35 +372,18 @@ fn capture_charge(bytes: usize, expansion: usize) -> Option<usize> {
         .and_then(|bytes| bytes.checked_add(CAPTURE_METADATA_BYTES))
 }
 
-fn reserve(budget: &Arc<CaptureBudget>, bytes: usize) -> Option<CaptureReservation> {
-    let mut used = budget.used.load(Ordering::Acquire);
-    loop {
-        let next = used.checked_add(bytes)?;
-        if next > budget.capacity {
-            return None;
-        }
-        match budget
-            .used
-            .compare_exchange_weak(used, next, Ordering::AcqRel, Ordering::Acquire)
-        {
-            Ok(_) => {
-                return Some(CaptureReservation {
-                    budget: Arc::clone(budget),
-                    bytes,
-                });
-            }
-            Err(observed) => used = observed,
-        }
-    }
+fn reserve(budget: &StreamBudget, bytes: usize) -> Option<CaptureReservation> {
+    budget.reserve(MemoryRole::OutputQueue, bytes).ok()
 }
 
-fn capture_worker(receiver: Receiver<CaptureJob>) {
+fn capture_worker(receiver: Receiver<CaptureJob>, budget: StreamBudget) {
     let mut states = BTreeMap::<u64, CaptureWorkerState>::new();
     loop {
         match receiver.recv_timeout(CAPTURE_POLL_INTERVAL) {
             Ok(job) => {
                 let id = job_id(&job);
-                if catch_unwind(AssertUnwindSafe(|| process_job(job, &mut states))).is_err()
+                if catch_unwind(AssertUnwindSafe(|| process_job(job, &mut states, &budget)))
+                    .is_err()
                     && let Some(id) = id
                     && let Some(state) = states.get(&id)
                 {
@@ -437,7 +407,11 @@ fn job_id(job: &CaptureJob) -> Option<u64> {
     }
 }
 
-fn process_job(job: CaptureJob, states: &mut BTreeMap<u64, CaptureWorkerState>) {
+fn process_job(
+    job: CaptureJob,
+    states: &mut BTreeMap<u64, CaptureWorkerState>,
+    budget: &StreamBudget,
+) {
     match job {
         CaptureJob::Begin {
             id,
@@ -458,15 +432,16 @@ fn process_job(job: CaptureJob, states: &mut BTreeMap<u64, CaptureWorkerState>) 
                 id,
                 CaptureWorkerState {
                     request,
-                    tracker: CanonicalResponseTracker::new(
+                    tracker: CanonicalResponseTracker::new_with_budget(
                         profile,
                         tool_id_projection,
                         chat_tool_projection,
                         streaming,
                         alias,
+                        budget.clone(),
                     ),
                     status,
-                    reservations: vec![reservation],
+                    _reservation: reservation,
                     accepted_started: false,
                 },
             );
@@ -474,12 +449,11 @@ fn process_job(job: CaptureJob, states: &mut BTreeMap<u64, CaptureWorkerState>) 
         CaptureJob::Native {
             id,
             event,
-            reservation,
+            reservation: _reservation,
         } => {
             let Some(state) = states.get_mut(&id) else {
                 return;
             };
-            state.reservations.push(reservation);
             if let Err(reason) = state.tracker.observe(event) {
                 mark_failed(&state.status, reason);
             }

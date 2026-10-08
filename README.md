@@ -15,7 +15,7 @@
   <a href="https://hiroute.ai/">Website</a> ·
   <a href="https://hiroute.ai/download/">Download</a> ·
   <a href="https://hiroute.ai/en/docs/">Documentation</a> ·
-  <a href="https://hiroute.ai/en/docs/decision-api/">Decision API</a> ·
+  <a href="https://hiroute.ai/en/docs/decision-extensions/">Decision models</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
@@ -29,11 +29,10 @@ HiRoute is a local control and execution layer for long-horizon agents. It bring
 sources, reusable routing plans, agent connections, bounded failover, and execution evidence
 into one system, available through a Desktop application or a headless CLI and daemon.
 
-It is not a proxy that swaps models on every tool call. HiRoute keeps a selected branch stable
-through an execution stage. Smart saving plans keep the current model for ordinary follow-ups by
-default; an operator can enable re-selection on each follow-up. A context rebuild after compaction
-can also start a new decision. This preserves reusable prefixes within a stage
-and makes model switching friendly to provider KV caches.
+Decision-based routes choose again on each new user turn. Tool continuations in the same turn
+keep the frozen decision, helping the model reuse its growing context prefix. A context rebuild
+can require a new decision when HiRoute can no longer recognize the continuation or reuse its
+previous decision. Choosing again can also keep the same model; cache reuse depends on the provider.
 
 ## News
 
@@ -47,11 +46,12 @@ and makes model switching friendly to provider KV caches.
 | **Route long tasks by stage** | Use the model that fits the work ahead instead of committing an entire task to one model. |
 | **Protect quality while saving** | Use observed competence to block risky downgrades, while task complexity creates opportunities to use economical models. |
 | **Keep handoffs bounded** | Enforce capability requirements, ordered candidates, and explicit exhaustion instead of silently changing behavior. |
-| **Learn from execution** | Retain the selected branch, actual model, tool outcomes, accepted output, and optional stage competence for later decisions. |
+| **Learn from execution** | Retain the task category, actual model group and candidate, tool outcomes, accepted output, and optional stage competence for later decisions. |
 
-HiRoute currently provides fixed-model, smart-saving, free-first, and ordered-fallback routing;
-agent work plans and Worker delegation; local session, usage, cost, and competence views; and a
-public Decision API for custom selection strategies.
+HiRoute currently provides four routing modes: fixed model, smart saving, custom branches, and free first.
+Each mode uses the plan's ordered candidates for bounded failover. It also provides agent work plans
+and Worker delegation; local session, usage, cost, and competence views; and a custom extension API
+for connecting your own decision service.
 
 ## Get started
 
@@ -79,9 +79,13 @@ and [CLI reference](docs/standalone-cli.md) for service lifecycle and machine-re
 ### Configure your first route
 
 1. Connect a supported subscription, registered API, or compatible custom API.
-2. Create and publish a routing plan for the task and cost profile you want.
-3. Connect an Agent client, or expose a Worker plan for delegated tasks.
-4. Inspect sessions and runtime performance to understand the selected branch and actual model.
+2. For model-based judgment, open **Models → Decision models** and connect Bailian,
+   OpenRouter Jev, TypeSafe, or a compatible endpoint. Built-in connections need no self-hosted
+   Jev service.
+3. Create and publish a routing plan, using smart saving or custom task branches when needed.
+4. Connect an Agent client, or expose a Worker plan for delegated tasks.
+5. Inspect sessions and model performance to understand the task category, actual model group,
+   and execution result.
 
 Continue with [model routing](https://hiroute.ai/en/docs/model-routing/),
 [task routing](https://hiroute.ai/en/docs/task-routing/), or the
@@ -90,43 +94,49 @@ Continue with [model routing](https://hiroute.ai/en/docs/model-routing/),
 ## See routing performance
 
 <p align="center">
-  <img src="decision-extensions/assets/quality-native-en.png" alt="HiRoute Desktop session showing two model-stage assessments and user feedback" width="100%">
+  <img src="decision-extensions/assets/quality-native-en.png" alt="HiRoute desktop session: stage competence and model routing" width="100%">
 </p>
 
 Review model performance within a task, alongside execution records and user feedback, to inform
-the next model choice and task delegation. This is an actual Desktop screenshot with illustrative
-data, not a model benchmark.
+the next model choice and task delegation. Each score stays linked to its execution stage.
 
 ## How routing works
 
-![Jev decision flow: one request selects the next branch and optionally assesses the prior stage](decision-extensions/assets/jev-decision-en.svg)
+![Decision flow: judge the current task, assess the prior stage, then let HiRoute choose and execute a model group](decision-extensions/assets/jev-decision-en.svg)
 
-A routing execution round begins with a branch decision or inherits the previous one for a new
-user message. Ordinary tool continuations stay in the current round while the context remains
-reusable. With follow-up re-selection enabled, a new user message asks for another decision.
-HiRoute also decides again when a long session rebuilds its context. The routing
-engine determines whether a decision can be inherited; clients do not need to emit a separate
-compaction event. A provider or model failure can still use the plan's bounded fallback inside
-the round; fallback is distinct from a new classification decision.
+Built-in decision models judge the task category when needed and return simple/complex
+probabilities for routes with two model groups. They can also assess the previous execution stage.
+HiRoute supplies the published conditions and scoring criteria, applies your thresholds,
+and chooses the model group and ordered candidates.
+Configure these connections in **Models → Decision models**; you do not need to deploy an extension.
 
-At a decision boundary, a service may do two related jobs in one response:
+**Smart saving** has one task scope with economy and primary model groups. Economy is selected
+when this turn's simple-task probability meets your threshold and no applicable, complete
+assessment falls below the competence floor. Otherwise HiRoute selects primary. Missing or
+partial scores stay unrated. An old low score does not lock future turns to primary, and a new
+turn does not automatically return to economy: HiRoute judges the current work again.
 
-- choose one of the branch IDs allowed by HiRoute for the next round;
-- optionally assess how competently the previous model handled its execution stage.
+**Custom branches** separate task categories such as drafting and review. HiRoute first uses
+the category choice, then the simple/complex degree within that category to choose its regular
+or optional primary group. A category with only a regular group needs no degree judgment.
+An assessment belongs to the stage that actually ran; a low drafting score does not upgrade
+the review category. Only a complete, applicable assessment for the same category, published
+revision, and frozen criteria can affect this turn's group choice.
 
-The official [TypeSafe Jev extension](decision-extensions/extensions/jev-decider/README.md)
-implements this contract with one OpenRouter request. Its Rules policy uses task complexity
-and the optional assessment together: choose economy only when the simple-task probability
-meets the threshold and no valid current score falls below the competence floor. Otherwise,
-choose primary. A missing score leaves the decision to complexity alone.
+Tool continuations keep the decision when HiRoute can recognize the same turn and reuse its
+frozen decision. Candidate failures use bounded failover: regular candidates may relay to the
+same category's primary group, while a primary selection stays within primary. Exhaustion fails
+explicitly. Failover does not create a competence score or change the task category.
 
 The principle is:
 
 > **Competence blocks risky cost-cutting; complexity creates opportunities to save.**
 
-Jev is optional. You can use built-in rules or implement the same general multi-branch contract
-with an LLM or your own policy. Start with the [decision mechanism](decision-extensions/README.md),
-the [API guide](decision-extensions/api/README.md), or the canonical
+Smart saving also supports heuristic rules. A custom extension is optional: use it when you
+want to own the model integration, judgment, scoring, and context trimming. The official
+[Jev extension](decision-extensions/extensions/jev-decider/README.md) is one implementation
+of that boundary. Start with [decision models and the routing mechanism](decision-extensions/README.md),
+the [custom extension API guide](decision-extensions/api/README.md), or the canonical
 [OpenAPI document](decision-extensions/api/decision.openapi.json).
 
 ## For technical contributors
@@ -167,7 +177,7 @@ production owners and representative tests.
 | `crates/application`, `crates/client-core` | Application workflows and shared client behavior |
 | `crates/gateway`, `crates/gateway-core` | Agent-facing protocols, routing, execution, and fallback |
 | `crates/observation`, `crates/local-storage` | Local execution evidence, queries, and persistence |
-| `decision-extensions` | Decision mechanism, OpenAPI contract, screenshots, and official Jev service |
+| `decision-extensions` | Decision model guides, routing mechanism, extension API, screenshots, and optional Jev extension |
 | `contracts`, `assets` | Current runtime contracts, model metadata, and product resources |
 | `apps/website` | Bilingual `hiroute.ai` site, downloads, and release publication |
 | `e2e`, `tools`, `scripts` | Product scenarios, validation tools, packaging, and automation |

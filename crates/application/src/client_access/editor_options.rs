@@ -306,6 +306,7 @@ mod tests {
             unreachable!()
         };
         PlanEditorStateV2 {
+            branch_routing: None,
             schema: PLAN_EDITOR_SCHEMA_V2.into(),
             display_name: desired.display_name.as_str().to_owned(),
             purpose: desired.purpose.as_str().to_owned(),
@@ -315,7 +316,7 @@ mod tests {
             smart: SmartEditorV2 {
                 economy: Vec::new(),
                 primary: Vec::new(),
-                primary_fallback: false,
+                judgment: Default::default(),
                 reselect_on_user_message: false,
                 classifier: ComplexityClassifierModeV1::LocalRules,
                 complex_keywords: Vec::new(),

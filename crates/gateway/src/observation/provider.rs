@@ -29,7 +29,7 @@ use super::{RequestObservation, active_request};
 #[path = "provider/capture.rs"]
 mod capture;
 #[path = "provider/wire_diagnostic.rs"]
-mod wire_diagnostic;
+pub(super) mod wire_diagnostic;
 
 pub(super) use capture::{CanonicalCaptureHandle, CanonicalCaptureProducer};
 
@@ -108,9 +108,6 @@ impl ProviderRuntimePort for ObservedProductionProvider {
             .then(|| context.credential_ref().as_str().to_owned());
         let (request, inner) = self.inner.materialize_attempt(logical, context).await?;
         let observation = active_request().filter(RequestObservation::is_enabled);
-        if let Some(observation) = &observation {
-            observation.wire_diagnostic(wire_diagnostic::request(&request.head.headers));
-        }
         if let (Some(observation), Some(credential_ref)) = (&observation, no_credential_ref) {
             observation.no_credential_materialized(&stable_binding_id, &credential_ref);
         }

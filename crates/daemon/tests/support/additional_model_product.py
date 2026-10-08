@@ -4,6 +4,7 @@ Uses production Local Control settings, publication and Gateway. Native starts
 read only the persisted provider in an explicitly selected native context.
 The original four Worker/collaboration journeys remain separate.
 """
+from publication_process import judgment_fixture
 import hashlib
 import http.client
 import json
@@ -54,7 +55,7 @@ def publish_source_plan(product, source, index):
         'schema': 'hiroute.plan-editor/v2', 'display_name': 'Additional ' + HARNESS + ' route ' + str(index),
         'purpose': 'Read a persisted additional model route', 'mode': 'fixed_model',
         'candidates': [{'binding_id': saved['binding_id']}],
-        'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+        'smart': {'economy': [], 'primary': [], 'judgment': judgment_fixture(),
                   'reselect_on_user_message': False, 'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
         'free': {'candidates': [], 'primary': [], 'primary_fallback': False},
         'delegation_enabled': False, 'requirements': {},

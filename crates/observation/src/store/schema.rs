@@ -495,6 +495,8 @@ const AUXILIARY_SCHEMA_V2: &str = r#"
         deleted_at_ms INTEGER NOT NULL,
         PRIMARY KEY(workspace_id, session_id, reason, delete_scope)
     );
+    CREATE INDEX IF NOT EXISTS observation_gaps_scope
+        ON observation_gaps(workspace_id, session_id, channel);
     "#;
 
 const EXECUTION_FACT_SCHEMA_V3: &str = r#"
@@ -630,6 +632,8 @@ const CONVERSATION_CONTENT_SCHEMA_V4: &str = r#"
         created_at_unix_nanos INTEGER NOT NULL,
         PRIMARY KEY(workspace_id, blob_digest)
     );
+    CREATE INDEX IF NOT EXISTS content_blobs_v2_workspace_bytes
+        ON content_blobs_v2(workspace_id, byte_count);
 
     CREATE TABLE IF NOT EXISTS request_content_refs_v2 (
         workspace_id TEXT NOT NULL,
@@ -670,6 +674,8 @@ const CONVERSATION_CONTENT_SCHEMA_V4: &str = r#"
         feedback_json TEXT NOT NULL,
         created_at_unix_nanos INTEGER NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS transcript_roots_v2_request
+        ON transcript_roots_v2(workspace_id, request_id, direction, state);
     CREATE INDEX IF NOT EXISTS observation_feedback_v2_lookup
         ON observation_feedback_v2(channel, producer_id, producer_epoch, stream_id,
                                    rejected_or_acked_sequence, event_id, envelope_digest,

@@ -189,6 +189,7 @@ async fn observation_session_correlation_survives_typed_transport() {
                 request_count: 2,
                 fallback_request_count: 0,
                 unknown_model_request_count: 0,
+                content_completeness: serde_json::from_value(json!("partial")).unwrap(),
                 correlation_kind: ObservationSessionCorrelationKindV1::VerifiedWorker,
             }],
             next_cursor: None,
@@ -224,9 +225,14 @@ async fn observation_session_correlation_survives_typed_transport() {
         )
         .await
         .unwrap();
+    let summary = &response.data.unwrap().sessions[0];
     assert_eq!(
-        response.data.unwrap().sessions[0].correlation_kind,
+        summary.correlation_kind,
         ObservationSessionCorrelationKindV1::VerifiedWorker
+    );
+    assert_eq!(
+        serde_json::to_value(summary.content_completeness).unwrap(),
+        json!("partial")
     );
     server.await.unwrap();
 }

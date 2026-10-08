@@ -1,0 +1,6 @@
+[
+  "Write the first draft of the feature requested in TASK.md using MATERIALS.md. Choose your own title and narrative structure. Save the complete article as draft.md, check the assignment's constraints, and briefly confirm completion. Do not review or revise it in this stage.",
+  "Review draft.md as an exacting but fair editor. Read TASK.md and MATERIALS.md, check factual scope and attribution, and evaluate the explanation, narrative, counterarguments and readability. Save actionable editorial findings in review.json using the required schema. Do not edit draft.md or write a replacement article.",
+  "Revise the feature using draft.md, review.json, TASK.md and MATERIALS.md. Independently check the review: apply justified suggestions and reject unsupported ones. Save the complete publication-ready revision as final.md. Preserve draft.md and review.json. Briefly state which substantive changes you made, without appending commentary to the article.",
+  "Evaluate final.md for publication against TASK.md and MATERIALS.md. Check whether the revision fixed or introduced factual and editorial problems. Save an independent final verdict and specific findings in final-review.json using the required schema. Do not modify final.md or perform another revision."
+]

@@ -5,43 +5,29 @@ import { renderDecisionDoc } from '../src/lib/decision-docs.mjs';
 
 test('canonical decision documents render into bilingual website routes', async () => {
   const zh = await renderDecisionDoc('mechanism', 'zh');
-  const en = await renderDecisionDoc('api', 'en');
-  const jevZh = await renderDecisionDoc('jev', 'zh');
-  const jevEn = await renderDecisionDoc('jev', 'en');
   const rendered = await Promise.all(['mechanism', 'api', 'jev'].flatMap(page =>
     ['zh', 'en'].map(language => renderDecisionDoc(page, language))));
   assert.match(zh, /href="\/docs\/jev-decider\/"/);
-  assert.match(zh, /src="\/decision-assets\/quality-zh-CN\.png"/);
-  assert.match(en, /href="\/api\/decision\.openapi\.json"/);
-  assert.match(en, /href="\/en\/docs\/model-routing\/"/);
-  assert.match(jevZh, /href="\/api\/jev-policy\.default\.json"/);
-  assert.match(jevEn, /href="\/api\/jev-policy\.default\.json"/);
-  assert.match(zh, /href="#illustration-evidence-boundaries"/);
-  assert.match(zh, /id="illustration-evidence-boundaries"/);
-  assert.match(rendered.find(html => html.includes('Illustration evidence boundaries')), /id="illustration-evidence-boundaries"/);
-  assert.doesNotMatch(rendered.join(''), /href="(?!https:\/\/)[^" ]+\.md(?:#[^"]*)?"/);
-  for (const html of rendered.slice(4)) {
-    for (const file of ['settings', 'protocol', 'decision', 'server']) {
-      assert.ok(html.includes(`href="https://github.com/higress-group/HiRoute/blob/main/decision-extensions/extensions/jev-decider/jev_decider/${file}.py"`));
-    }
-    assert.ok(html.includes('https://github.com/higress-group/HiRoute/blob/main/decision-extensions/extensions/jev-decider/tests/README.md'));
+  for (const html of rendered.slice(0, 4)) {
+    assert.match(html, /href="\/api\/decision\.openapi\.json"/);
+    assert.match(html, /href="\/api\/decision-examples\.json"/);
   }
-  assert.match(rendered[4], /href="\/en\/docs\/jev-decider\/#code-and-responsibility-map"/);
-  assert.ok(rendered[5].includes('https://github.com/higress-group/HiRoute/blob/main/docs/code-map/decision-foundation.md'));
+  for (const html of rendered.slice(2, 4)) assert.match(html, /assessment_target/);
+  assert.doesNotMatch(rendered.join(''), /href="(?!https:\/\/)[^" ]+\.md(?:#[^"]*)?"/);
+  assert.match(rendered[4], /href="\/docs\/decision-api\/"/);
+  assert.match(rendered[5], /href="\/en\/docs\/decision-api\/"/);
 });
 
-test('prepared OpenAPI is byte-identical to the one repository contract', () => {
+test('prepared OpenAPI and examples retain their canonical bytes', () => {
   const canonical = fs.readFileSync(new URL('../../../decision-extensions/api/decision.openapi.json', import.meta.url));
   const prepared = fs.readFileSync(new URL('../public/api/decision.openapi.json', import.meta.url));
-  assert.deepEqual(prepared, canonical);
+  assert.ok(prepared.equals(canonical), 'Prepared OpenAPI differs from the current canonical contract; run prepare:content');
   const parsed = JSON.parse(prepared);
   assert(parsed.paths['/v1/decisions']);
-});
-
-test('prepared Jev policy is byte-identical to the bundled default', () => {
-  const canonical = fs.readFileSync(new URL('../../../decision-extensions/extensions/jev-decider/jev_decider/policy.default.json', import.meta.url));
-  const prepared = fs.readFileSync(new URL('../public/api/jev-policy.default.json', import.meta.url));
-  assert.deepEqual(prepared, canonical);
+  const examples = fs.readFileSync(new URL('../public/api/decision-examples.json', import.meta.url));
+  assert.ok(examples.equals(fs.readFileSync(new URL('../../../decision-extensions/api/decision-examples.json', import.meta.url))), 'Prepared examples differ from the canonical examples');
+  assert.deepEqual(JSON.parse(examples).cases.map(example => example.request.decision.kind), ['ordinal', 'categorical', 'categorical', 'subset']);
+  assert.equal(fs.existsSync(new URL('../public/api/jev-policy.default.json', import.meta.url)), false, 'Removed extension policy must not survive in the website download assets');
 });
 
 test('native homepage screenshots are distinct, correctly sized and copied unchanged', () => {
@@ -51,9 +37,24 @@ test('native homepage screenshots are distinct, correctly sized and copied uncha
     const prepared = fs.readFileSync(new URL(`../public/decision-assets/${name}`, import.meta.url));
     assert.deepEqual(prepared, source);
     assert.equal(source.subarray(1, 4).toString(), 'PNG');
-    assert.equal(source.readUInt32BE(16), 1200);
-    assert.equal(source.readUInt32BE(20), 813);
+    assert.equal(source.readUInt32BE(16), 2400);
+    assert.equal(source.readUInt32BE(20), 2100);
     return source;
   });
   assert.notDeepEqual(captures[0], captures[1]);
+});
+
+// Rendered prose examples must stay identical to the maintained protocol examples.
+test('API guides and OpenAPI expose current examples without future tool selection', () => {
+  const source = JSON.parse(fs.readFileSync(new URL('../../../decision-extensions/api/decision-examples.json', import.meta.url)));
+  const current = source.cases.filter(c => c.scope !== 'future-docs-only');
+  for (const filename of ['README.md', 'README.zh-CN.md']) {
+    const markdown = fs.readFileSync(new URL(`../../../decision-extensions/api/${filename}`, import.meta.url), 'utf8');
+    const blocks = [...markdown.matchAll(/```json\n([\s\S]*?)\n```/g)].map(match => JSON.parse(match[1]));
+    assert.deepEqual(blocks, current.flatMap(c => [c.request, c.response]));
+  }
+  const openapi = JSON.parse(fs.readFileSync(new URL('../public/api/decision.openapi.json', import.meta.url)));
+  const examples = openapi.paths['/v1/decisions'].post.requestBody.content['application/json'].examples;
+  assert.deepEqual(Object.keys(examples), current.map(c => c.name));
+  assert.equal(examples.single_group_category.value.decision.options[1].refinement, undefined);
 });

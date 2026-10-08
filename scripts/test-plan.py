@@ -512,6 +512,18 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
         if "--workspace" not in context and "hiroute-product-e2e" not in context:
             context.extend(["-p", "hiroute-product-e2e"])
         commands.append([*context, "--test", "publication_process", "--test", "pre_gateway_compute_routing"])
+    if any(path == "crates/application-api/src/commands.rs" or path.startswith((
+            "crates/application-api/src/commands/", "contracts/cli/", "e2e/product/schema/"))
+           for path in plan["paths"]):
+        targets.update({"contracts", "product_oracle"})
+        reasons.append("command descriptors feed both CLI and Product E2E generated contracts")
+        broad = next((c for c in context_plan["commands"] if c[:2] == ["cargo", "test"]
+                      and "--test" not in c and "--lib" not in c), None)
+        context = broad[:] if broad else ["cargo", "test", "--locked", "--all-features"]
+        for package in ("hiroute-cli", "hiroute-product-e2e"):
+            if "--workspace" not in context and package not in context:
+                context.extend(["-p", package])
+        commands.append([*context, "--test", "contracts", "--test", "product_oracle"])
     return {"diagnostic_only": True, "targets": sorted(targets), "reasons": reasons,
             "commands": commands, "remote_exclusive": bool(targets) and context_plan["execution"]["remote_exclusive"],
             "collect_failures": collect_failures,

@@ -35,6 +35,19 @@ const SECOND_PROVIDER_JSON: &[u8] = br#"{"id":"provider-continuation-done","mode
 const NAMESPACE_ONLY_PROVIDER_JSON: &[u8] = br#"{"id":"provider-namespace-only","model":"provider-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"namespace accepted"}]}],"usage":{"input_tokens":6,"output_tokens":2,"total_tokens":8}}"#;
 const NAMESPACE_REJECTED: &[u8] =
     br#"{"error":{"type":"invalid_request_error","message":"namespace unsupported"}}"#;
+const EMPTY_TOOL_PROVIDER_STREAM: &[u8] = br#"event: response.created
+data: {"type":"response.created","response":{"id":"empty-response","model":"provider-native"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"empty-item","call_id":"empty-call","name":"","arguments":"","status":"in_progress"}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"empty-item","call_id":"empty-call","name":"","arguments":"","status":"completed"}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"empty-response","model":"provider-native","status":"completed","output":[{"type":"function_call","id":"empty-item","call_id":"empty-call","name":"","arguments":"","status":"completed"}]}}
+
+"#;
 
 /// Deliberately split headers, event names, JSON punctuation, and terminal
 /// usage across writes. The production listener must reconstruct the native
@@ -50,6 +63,8 @@ fn production_native_tool_history_survives_restart_with_request_authentication()
         ProviderReply::Sse(FIRST_PROVIDER_STREAM),
         ProviderReply::Json(SECOND_PROVIDER_JSON),
         ProviderReply::Json(NAMESPACE_ONLY_PROVIDER_JSON),
+        ProviderReply::Json(SECOND_PROVIDER_JSON),
+        ProviderReply::Sse(EMPTY_TOOL_PROVIDER_STREAM),
         ProviderReply::Json(SECOND_PROVIDER_JSON),
     ]);
     let rejecting_provider = ContinuationProvider::start(vec![ProviderReply::JsonStatus {
@@ -314,6 +329,46 @@ fn production_native_tool_history_survives_restart_with_request_authentication()
     assert_eq!(resumed_body["input"][1]["output"], large_result);
     assert_eq!(resumed_body["input"][2]["call_id"], "provider-weather-7");
     assert_eq!(resumed_body["input"][3]["output"], "second occurrence");
+
+    // A provider may emit an unusable call. The native client records the
+    // failure and continues; replaying that history must not poison the session.
+    let empty = request(
+        address,
+        "continuation-token",
+        &namespace_request("continuation", true, "Continue after a failed tool"),
+    );
+    assert_eq!(empty.status, 200);
+    wait_for_calls(&provider, 5);
+    let delivered = decode_downstream_sse(&empty.body)
+        .into_iter()
+        .find(|(event, _)| event == "response.output_item.done")
+        .unwrap_or_else(|| {
+            panic!(
+                "missing tool item in {}",
+                String::from_utf8_lossy(&empty.body)
+            )
+        })
+        .1["item"]
+        .clone();
+    assert_eq!(delivered["name"], "");
+    assert_eq!(delivered["arguments"], "");
+    let mut recovery = namespace_request("continuation", false, "unused");
+    recovery["input"] = json!([
+        delivered,
+        {"type":"function_call_output","call_id":"empty-call","output":"unsupported call: "}
+    ]);
+    let recovered = request(address, "continuation-token", &recovery);
+    assert_eq!(
+        recovered.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&recovered.body)
+    );
+    wait_for_calls(&provider, 6);
+    let recovery_requests = provider.requests();
+    let recovery_body: Value = serde_json::from_slice(http_body(&recovery_requests[5])).unwrap();
+    assert_eq!(recovery_body["input"], recovery["input"]);
+    assert_eq!(forbidden_provider.calls(), 0);
     restarted.stop();
     receipt.mark_assertion("protocol.continuation_restart_native_history");
     receipt.finish();

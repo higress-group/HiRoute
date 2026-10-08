@@ -7,6 +7,14 @@ import sys
 from publication_product import Product, encoded
 
 
+def judgment_fixture():
+    """Current two-group settings for product fixtures, independent of product wording."""
+    return {'degree': {'simple_threshold_millis': 800, 'instructions': 'Assess the current task.',
+                       'simple': 'Routine bounded work', 'complex': 'Uncertain intricate work'},
+            'competence': {'floor_millis': 500, 'instructions': 'Assess the completed stage.',
+                           'criteria': ['Failed', 'Partly competent', 'Competent']}}
+
+
 def plan_change(product, intent, creation_key=None, **editor_changes):
     target = {'intent': intent, 'creation_key': creation_key} if intent == 'create' else {
         'intent': 'update', 'plan_id': product.plan_id,
@@ -267,7 +275,7 @@ def bootstrap(product):
         selection['reasoning'] = {'kind': 'profile', 'profile': 'low'}
     product.editor = {'schema': 'hiroute.plan-editor/v2', 'display_name': '\u65e5\u5e38\u7f16\u7801',
                       'purpose': 'Production recovery', 'mode': 'fixed_model', 'candidates': [selection],
-                      'smart': {'economy': [], 'primary': [], 'primary_fallback': False, 'reselect_on_user_message': False, 'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
+                      'smart': {'economy': [], 'primary': [], 'judgment': judgment_fixture(), 'reselect_on_user_message': False, 'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
                       'free': {'candidates': [], 'primary': [], 'primary_fallback': False},
                       'delegation_enabled': False,
                       'requirements': {}, 'limits': {'maximum_attempts': 1, 'request_timeout_ms': 30000, 'attempt_timeout_ms': 30000}}

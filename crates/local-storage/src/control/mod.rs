@@ -37,6 +37,7 @@ pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
 mod compute;
+mod decision_services;
 mod journal;
 #[path = "../agents/native_artifacts.rs"]
 mod native_artifacts;
@@ -835,6 +836,7 @@ impl ControlRepositoryPort for ControlStore {
             return Err(port(PortErrorCode::Conflict, "control.effect.revision"));
         }
         compute::management::stage_control(&transaction, workspace, operation_id, desired)?;
+        decision_services::stage(&transaction, workspace, desired)?;
 
         let desired_json = serde_json::to_string(&json!({
             "schema": "hiroute.control-desired/v1",
@@ -1466,6 +1468,7 @@ impl ControlRepositoryPort for ControlStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| port(PortErrorCode::Unavailable, "control.finish.begin"))?;
         plans::finish_draft_operation(&transaction, operation)?;
+        decision_services::finish(&transaction, operation)?;
         compute::finish_save_handoff_in(&transaction, operation)?;
         let generation = journal::save(&transaction, operation)?;
         if operation.state != OperationState::NeedsAttention {

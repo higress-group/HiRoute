@@ -463,6 +463,8 @@ fn queue_accepted_stream_output(
 ) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
     if let Some(bytes) = rendered.filter(|bytes| !bytes.is_empty()) {
         push_queue_bytes(&mut readiness.prefix, &readiness.budget, bytes)?;
+    }
+    if !readiness.prefix.is_empty() {
         if terminal {
             readiness.prefix_terminal_chunks = Some(readiness.prefix.len());
         }
@@ -482,6 +484,16 @@ fn queue_accepted_stream_output(
 pub(super) fn take_accepted_prefix(
     readiness: &mut ProductionReadiness,
 ) -> Option<ProviderAcceptedEvent<ProductionDecodedSse>> {
+    // Responses certifies its terminal only after checking the optional native
+    // tail. Keep that terminal in the existing budgeted queue until its final
+    // write can carry EOS too: native clients exit as soon as they see it.
+    if readiness
+        .projector
+        .as_ref()
+        .is_some_and(|p| p.awaiting_responses_eof())
+    {
+        return None;
+    }
     if let Some(bytes) = readiness.prefix.pop_front() {
         let end_stream = readiness
             .prefix_terminal_chunks

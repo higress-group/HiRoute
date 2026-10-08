@@ -119,7 +119,7 @@ fn real_hirouted_failed_cleaned_retry_returns_to_original_without_mutating_its_h
             body: REASONING_ERROR,
         },
     ]);
-    let complex = NativeProvider::start(vec![complete(), complete(), complete()]);
+    let complex = NativeProvider::start(vec![complete(), complete(), complete(), complete()]);
     let fixture = RuntimeFixture::launch_classified(&[&simple, &complex], 3);
     assert_eq!(
         send(
@@ -147,18 +147,26 @@ fn real_hirouted_failed_cleaned_retry_returns_to_original_without_mutating_its_h
         send(&fixture, "cleanup-fallback", history.clone()).status,
         200
     );
-    // The selected simple branch may try B again; A was only its fallback.
-    // Continuous history gives B no cleanup retry and the failed cleanup was
-    // never committed. Both attempts must receive the original history.
-    assert_eq!((simple.calls(), complex.calls()), (3, 3));
-    assert_eq!(
-        request_json_body(&simple.requests()[2])["input"],
-        json!(history)
-    );
+    // Exact same-turn replay stays in the primary group that actually ran.
+    // The failed cleanup never commits, so primary still gets original history.
+    assert_eq!((simple.calls(), complex.calls()), (2, 3));
     assert_eq!(
         request_json_body(&complex.requests()[2])["input"],
         json!(history)
     );
+    // A new user decides again and may try regular. Continuous history gives
+    // it no second cleanup retry; neither attempt may lose the original prefix.
+    let mut next_turn = history;
+    next_turn.push(message("assistant", "ok"));
+    next_turn.push(message("user", "rename the label again"));
+    assert_eq!(
+        send(&fixture, "cleanup-fallback", next_turn.clone()).status,
+        200
+    );
+    assert_eq!((simple.calls(), complex.calls()), (3, 4));
+    for request in [&simple.requests()[2], &complex.requests()[3]] {
+        assert_eq!(request_json_body(request)["input"], json!(next_turn));
+    }
 }
 
 fn complete() -> ProviderReply {

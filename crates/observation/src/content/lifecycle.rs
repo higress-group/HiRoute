@@ -133,7 +133,7 @@ fn apply_begin(
             rejected: ConversationContentPhaseV2::Begin,
         });
     }
-    touch_content_session(transaction, envelope, "unknown")?;
+    touch_content_session(transaction, envelope)?;
     Ok(ContentProjectionAck {
         delta_parent_transcript_root: envelope
             .parent_transcript_root
@@ -314,7 +314,7 @@ fn apply_append(
             )
             .map_err(|_| ContentProjectionError::ActivityStorage)?;
     }
-    touch_content_session(transaction, envelope, "unknown")?;
+    touch_content_session(transaction, envelope)?;
     Ok(ContentProjectionAck {
         delta_parent_transcript_root: stream.parent_root,
         acknowledged_blobs,
@@ -400,7 +400,7 @@ fn apply_terminal(
             ],
         )
         .map_err(|_| ContentProjectionError::ActivityStorage)?;
-    touch_content_session(transaction, envelope, completeness)?;
+    touch_content_session(transaction, envelope)?;
     Ok(ContentProjectionAck {
         transcript_root: Some(result.to_string()),
         delta_parent_transcript_root: stream.parent_root,

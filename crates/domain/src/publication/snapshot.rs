@@ -199,8 +199,13 @@ pub(super) fn project_pricing_identities(
             .ok_or(PublicationError::InvalidExecutableProjection)?;
         let by_binding = ordered_candidates(plan)?
             .into_iter()
-            .map(|candidate| (candidate.binding_id.as_str(), candidate))
-            .collect::<BTreeMap<_, _>>();
+            .map(|candidate| {
+                Ok((
+                    super::projection::candidate_execution_key(plan, candidate)?,
+                    candidate,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>, PublicationError>>()?;
         for projected in &mut alias.candidates {
             let candidate = by_binding
                 .get(projected.stable_target_key.as_str())

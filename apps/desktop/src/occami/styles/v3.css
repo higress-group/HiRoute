@@ -108,7 +108,7 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 .plan-editor{padding:26px 30px;}
 .plan-mode-switcher{gap:8px;}
 .mode-card{padding:14px 12px;}
-.mode-card:not(.active)>span{display:none;}
+.plan-mode-switcher .mode-card>span{display:block;}
 .mode-card.active>span{line-height:1.7;}
 .editor-actions{flex-wrap:wrap;}
 .session-layout,.session-layout.with-inspector{position:relative;grid-template-columns:290px minmax(0,1fr);}
@@ -126,3 +126,8 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 /* Packaged monochrome marks remain legible in both themes. */
 .model-avatar.provider-icon { display: grid; place-items: center; margin-top: 0; background: #fff; color: #303443; border: 1px solid rgba(100,110,130,.18); }
 .provider-icon img { display: block; width: 24px; height: 24px; object-fit: contain; }
+
+.decision-judgment-fields{border:0;padding:0;margin:0;min-width:0;display:grid;gap:12px;}
+.decision-thresholds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+.decision-judgment-fields:disabled{opacity:.8;}
+@media(max-width:720px){.decision-thresholds{grid-template-columns:minmax(0,1fr);}}

@@ -45,6 +45,8 @@
     "allow-observation-read",
     "allow-observation-delete",
     "allow-test-classifier-decision",
+    "allow-decision-services",
+    "allow-save-decision-service",
     "allow-save-classifier-header-secret",
     "allow-save-classifier-openapi",
     "allow-agent-snapshot",

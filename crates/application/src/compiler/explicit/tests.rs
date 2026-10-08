@@ -45,6 +45,129 @@ fn selection(id: &str) -> CandidateSelectionV1 {
 }
 
 #[test]
+fn branches_publish_distinct_reasoning_and_freeze_whole_judgment_overrides() {
+    let mut desired = desired();
+    let low = selection("primary-a");
+    let mut high = low.clone();
+    high.reasoning = Some(ReasoningSelectionV1::Profile {
+        profile: "high".into(),
+    });
+    let branch = |id: &str, candidate| RouteBranchV1 {
+        id: id.into(),
+        name: id.into(),
+        condition: format!("Choose {id} tasks"),
+        candidates: vec![candidate],
+        primary_candidates: vec![],
+        judgment: None,
+    };
+    let mut code = branch("code", low);
+    code.primary_candidates = vec![high.clone()];
+    code.judgment = Some(JudgmentSettingsV1 {
+        competence: CompetencePolicyV1 {
+            floor_millis: 700,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    desired.mode = PlanEditorMode::CustomBranches;
+    desired.strategy = AgentPlanStrategyV2::Branches {
+        routing: BranchRoutingV1 {
+            classifier: ComplexityClassifierModeV1::DecisionService {
+                service: Box::new(hiroute_domain::DecisionServiceV1 {
+                    id: "decision-fixture".into(),
+                    revision: 1,
+                    name: "Fixture extension".into(),
+                    connection: hiroute_domain::DecisionConnectionV1::Custom {
+                        endpoint: "https://decision.example/choose".into(),
+                        timeout_ms: 3000,
+                        auth_header: None,
+                    },
+                }),
+            },
+            branches: vec![code, branch("docs", high)],
+            default_branch_id: "docs".into(),
+            judgment: JudgmentSettingsV1::default(),
+            reselect_on_user_message: false,
+        },
+    };
+    let plan = compile(&desired, &compilation_facts()).unwrap();
+    let mut reserved = desired.clone();
+    let AgentPlanStrategyV2::Branches { routing } = &mut reserved.strategy else {
+        unreachable!()
+    };
+    routing.branches[0].id = SMART_SAVING_SCOPE_ID.into();
+    assert!(!routing.validate(true));
+    assert!(compile(&reserved, &compilation_facts()).is_err());
+    let mut materialized = plan.body.materialized.clone();
+    let RequestOwnedRouteV1::Branches { branches, .. } = &mut materialized.request_owned else {
+        unreachable!()
+    };
+    branches[0].id = SMART_SAVING_SCOPE_ID.into();
+    assert_eq!(
+        materialized.validate(),
+        Err(CompiledPlanError::InvalidGroups)
+    );
+    PlanVersionV1::new(WorkspaceId::default(), desired, plan.clone()).unwrap();
+    let mut registry = AliasRegistryV1::default();
+    registry
+        .active
+        .insert(plan.agent_plan_id().clone(), plan.model_alias().clone());
+    let access = AgentModelGrantV2::seal(
+        AgentIngressProtocolV1::Responses,
+        BTreeMap::from([(
+            plan.model_alias().as_str().into(),
+            AgentModelRouteV2::Plan {
+                plan_id: plan.agent_plan_id().clone(),
+                alias: plan.model_alias().clone(),
+                revision: plan.body.agent_plan_revision,
+                semantic_digest: plan.body.materialized_route_digest.clone(),
+            },
+        )]),
+    )
+    .unwrap();
+    let publication = crate::compiler::compile_publication(
+        WorkspaceId::default(),
+        "workspace/personal/default/gateway",
+        1,
+        GatewayPublicationRevision::new(1).unwrap(),
+        DEFAULT_CATALOG_RENDERER_REVISION,
+        registry,
+        vec![plan],
+        vec![
+            GatewayAccessGrantV1::new(
+                "grant/branches",
+                1,
+                CanonicalDigest::of_bytes(b"branch-fixture-token"),
+                AgentIngressProtocolV1::Responses,
+                access,
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+    let snapshot = publication.gateway_snapshot().unwrap();
+    let alias = &snapshot.aliases[0];
+    assert_eq!(
+        alias.candidates.len(),
+        2,
+        "only exact execution identities may deduplicate"
+    );
+    assert_ne!(
+        alias.candidates[0].protocol_profile_digest,
+        alias.candidates[1].protocol_profile_digest
+    );
+    let routing = alias.routing.as_ref().unwrap();
+    let groups = &routing.groups;
+    assert_ne!(groups[0].candidate_local_ids, groups[1].candidate_local_ids);
+    assert_eq!(groups[1].candidate_local_ids, groups[2].candidate_local_ids);
+    let RequestOwnedRouteV1::Branches { branches, .. } = &routing.request_owned else {
+        panic!("branches")
+    };
+    assert_eq!(branches[0].judgment.competence.floor_millis, 700);
+    assert_eq!(branches[1].judgment.competence.floor_millis, 500);
+}
+
+#[test]
 fn explicit_order_survives_missing_ratings_and_price_changes() {
     let desired = desired();
     let mut facts = compilation_facts();
@@ -85,13 +208,13 @@ fn explicit_order_survives_missing_ratings_and_price_changes() {
 }
 
 #[test]
-fn smart_fallback_off_keeps_primary_exclusively_for_complex_requests() {
+fn smart_regular_failover_always_includes_primary_group() {
     let mut desired = desired();
     desired.mode = PlanEditorMode::SmartSaving;
     desired.strategy = AgentPlanStrategyV2::SmartSaving {
         economy: vec![selection("economy-b"), selection("economy-a")],
         primary: vec![selection("primary-b"), selection("primary-a")],
-        primary_fallback: false,
+        judgment: JudgmentSettingsV1::default(),
         reselect_on_user_message: false,
         classifier: ComplexityClassifierModeV1::LocalRules,
         complex_keywords: vec!["complex".into()],
@@ -105,26 +228,36 @@ fn smart_fallback_off_keeps_primary_exclusively_for_complex_requests() {
     else {
         panic!("classified")
     };
-    assert_eq!(simple_groups, &[MaterializedGroupId::Economy]);
+    assert_eq!(
+        simple_groups,
+        &[MaterializedGroupId::Economy, MaterializedGroupId::Primary]
+    );
     assert_eq!(complex_groups, &[MaterializedGroupId::Primary]);
     PlanVersionV1::new(WorkspaceId::default(), desired, compiled).unwrap();
 }
 
 #[test]
-fn smart_rest_classifier_is_preserved_in_the_materialized_route() {
+fn saved_classifier_is_preserved_in_the_materialized_route() {
     let mut desired = desired();
     desired.mode = PlanEditorMode::SmartSaving;
     desired.strategy = AgentPlanStrategyV2::SmartSaving {
         economy: vec![selection("economy-a")],
         primary: vec![selection("primary-a")],
-        primary_fallback: false,
+        judgment: JudgmentSettingsV1::default(),
         reselect_on_user_message: false,
-        classifier: ComplexityClassifierModeV1::Rest {
-            endpoint: "https://classifier.example/v1/branch".into(),
-            timeout_ms: hiroute_domain::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS,
-            auth_header: Some(ClassifierAuthHeaderV1 {
-                name: "Authorization".into(),
-                value_secret_ref: "classifier/main".into(),
+        classifier: ComplexityClassifierModeV1::DecisionService {
+            service: Box::new(hiroute_domain::DecisionServiceV1 {
+                id: "decision-fixture".into(),
+                revision: 1,
+                name: "Fixture extension".into(),
+                connection: hiroute_domain::DecisionConnectionV1::Custom {
+                    endpoint: "https://classifier.example/v1/branch".into(),
+                    timeout_ms: hiroute_domain::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS,
+                    auth_header: Some(ClassifierAuthHeaderV1 {
+                        name: "Authorization".into(),
+                        value_secret_ref: "classifier/main".into(),
+                    }),
+                },
             }),
         },
         complex_keywords: Vec::new(),
@@ -137,8 +270,8 @@ fn smart_rest_classifier_is_preserved_in_the_materialized_route() {
     };
     assert!(matches!(
         &classifier.mode,
-        ComplexityClassifierModeV1::Rest { endpoint, .. }
-            if endpoint == "https://classifier.example/v1/branch"
+        ComplexityClassifierModeV1::DecisionService { service }
+            if service.connection.transport().0 == "https://classifier.example/v1/branch"
     ));
 }
 
@@ -149,7 +282,7 @@ fn follow_up_reselection_is_published_and_changes_route_digest() {
     desired.strategy = AgentPlanStrategyV2::SmartSaving {
         economy: vec![selection("economy-a")],
         primary: vec![selection("primary-a")],
-        primary_fallback: false,
+        judgment: JudgmentSettingsV1::default(),
         reselect_on_user_message: false,
         classifier: ComplexityClassifierModeV1::LocalRules,
         complex_keywords: Vec::new(),

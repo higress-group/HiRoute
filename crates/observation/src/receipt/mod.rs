@@ -55,7 +55,13 @@ pub(crate) fn apply_fact(
             )
             .map_err(|_| FactProjectionError::Storage)?;
     }
-    touch_session(transaction, envelope)
+    touch_session(transaction, envelope)?;
+    crate::content::completeness::refresh_session(
+        transaction,
+        envelope.correlation.workspace_id.as_str(),
+        envelope.correlation.conversation_id.as_str(),
+    )
+    .map_err(|_| FactProjectionError::Storage)
 }
 
 pub(crate) fn build_receipt_for_request(

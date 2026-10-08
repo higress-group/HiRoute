@@ -744,8 +744,37 @@ mod tests {
         assert_eq!(execution.exit_code, 0);
         assert_eq!(execution.stdout.lines().count(), 1);
         let value: Value = serde_json::from_str(&execution.stdout).unwrap();
-        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 45);
+        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 49);
         assert!(!execution.stdout.contains(HIDDEN_AGENT_GRANT_HELPER_VERB_V1));
+    }
+
+    #[test]
+    fn plan_quality_is_discoverable_through_public_schema_and_leaf_help() {
+        let help = execute(["observation", "plan-quality", "samples", "--help"]);
+        assert_eq!(help.exit_code, 0, "{}", help.stdout);
+        assert!(help.stdout.contains("--session-id"));
+        assert!(help.stdout.contains("--competence"));
+        let list = execute(["schema", "list", "--output", "json"]);
+        let list: Value = serde_json::from_str(&list.stdout).unwrap();
+        assert!(
+            list["data"]["commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| {
+                    entry["command_id"] == "observation.plan-quality.samples"
+                        && entry["operation_id"] == "GetPlanQualitySamples"
+                })
+        );
+        let descriptor = execute([
+            "schema",
+            "show",
+            "--command-id",
+            "observation.plan-quality.samples",
+        ]);
+        assert_eq!(descriptor.exit_code, 0, "{}", descriptor.stdout);
+        let descriptor: Value = serde_json::from_str(&descriptor.stdout).unwrap();
+        assert_eq!(descriptor["data"]["kind"], "query");
     }
 
     #[test]

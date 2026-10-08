@@ -1,0 +1,2 @@
+{"request_id":"r-a","attempt":1,"revision":1,"team":"research","model":"small","status":"succeeded","input_tokens":100,"output_tokens":20,"cached_input_tokens":40}
+{"request_id":"r-b","attempt":1,"revision":1,"team":"support","model":"large","status":"failed","input_tokens":null,"output_tokens":0,"cached_input_tokens":null}

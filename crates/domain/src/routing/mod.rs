@@ -7,6 +7,10 @@
 mod authoring;
 mod capability_compiler;
 mod classifier;
+mod decision;
+pub use decision::*;
+mod decision_definition;
+pub use decision_definition::*;
 mod context_window;
 mod gateway_execution;
 mod materialized;

@@ -127,6 +127,7 @@ pub(super) fn snapshot(
         );
         (
             AliasRequestOwnedRouteV1::Classified {
+                judgment: Default::default(),
                 // These classified-route fixtures explicitly exercise branch
                 // changes on a new user turn; the product authoring default
                 // remains false.
@@ -134,14 +135,21 @@ pub(super) fn snapshot(
                 classifier: AliasComplexityClassifierV1 {
                     revision: "runtime-complexity/v1".into(),
                     mode: if let Some(endpoint) = classifier_endpoint {
-                        hiroute_domain::ComplexityClassifierModeV1::Rest {
-                            endpoint,
-                            timeout_ms: classifier_timeout_ms,
-                            auth_header: Some(hiroute_domain::ClassifierAuthHeaderV1 {
-                                name: "Authorization".into(),
-                                value_secret_ref: credential_refs(2, 1)
-                                    .pop()
-                                    .expect("classifier fixture credential"),
+                        hiroute_domain::ComplexityClassifierModeV1::DecisionService {
+                            service: Box::new(hiroute_domain::DecisionServiceV1 {
+                                id: "runtime-decision".into(),
+                                revision: 1,
+                                name: "Runtime custom extension".into(),
+                                connection: hiroute_domain::DecisionConnectionV1::Custom {
+                                    endpoint,
+                                    timeout_ms: classifier_timeout_ms,
+                                    auth_header: Some(hiroute_domain::ClassifierAuthHeaderV1 {
+                                        name: "Authorization".into(),
+                                        value_secret_ref: credential_refs(2, 1)
+                                            .pop()
+                                            .expect("classifier fixture credential"),
+                                    }),
+                                },
                             }),
                         }
                     } else {
@@ -149,7 +157,7 @@ pub(super) fn snapshot(
                     },
                     user_keywords: vec!["complex-route".into()],
                 },
-                simple_groups: vec![AliasGroupIdV1::Economy],
+                simple_groups: vec![AliasGroupIdV1::Economy, AliasGroupIdV1::Primary],
                 complex_groups: vec![AliasGroupIdV1::Primary],
             },
             vec![
@@ -352,4 +360,107 @@ fn parse_protocol(value: &str) -> IngressProtocol {
         "messages" => IngressProtocol::Messages,
         other => panic!("unknown fixture protocol {other}"),
     }
+}
+
+pub(super) fn use_builtin_branch_decision(
+    snapshot: &mut GatewayPublicationSnapshotV3,
+    smart: bool,
+) {
+    use hiroute_domain::{
+        CompetencePolicyV1, ComplexityClassifierModeV1, DecisionConnectionV1, DecisionServiceV1,
+        MaterializedBranchV1,
+    };
+    let alias = &mut snapshot.aliases[0];
+    let routing = alias.routing.as_mut().unwrap();
+    let AliasRequestOwnedRouteV1::Classified { classifier, .. } = &routing.request_owned else {
+        panic!("classified fixture required")
+    };
+    let ComplexityClassifierModeV1::DecisionService { service } = &classifier.mode else {
+        panic!("decision service required")
+    };
+    let DecisionConnectionV1::Custom {
+        endpoint,
+        timeout_ms,
+        auth_header,
+    } = &service.connection
+    else {
+        panic!("transport required")
+    };
+    let mode = ComplexityClassifierModeV1::DecisionService {
+        service: Box::new(DecisionServiceV1 {
+            id: "decision-fixture".into(),
+            revision: 1,
+            name: "Decision fixture".into(),
+            connection: DecisionConnectionV1::SystemOne {
+                provider: "compatible".into(),
+                model: "fixture-jev".into(),
+                endpoint: endpoint.clone(),
+                timeout_ms: *timeout_ms,
+                auth_header: auth_header.clone().unwrap(),
+            },
+        }),
+    };
+    let classifier = AliasComplexityClassifierV1 {
+        revision: "fixture-decision/v1".into(),
+        mode,
+        user_keywords: vec![],
+    };
+    let judgment = |id: &str| hiroute_domain::JudgmentSettingsV1 {
+        competence: CompetencePolicyV1 {
+            instructions: format!("Evaluate actual {id} execution"),
+            floor_millis: 500,
+            criteria: [
+                format!("{id} failed"),
+                format!("{id} partly competent"),
+                format!("{id} competent"),
+            ],
+        },
+        ..Default::default()
+    };
+    if smart {
+        routing.request_owned = AliasRequestOwnedRouteV1::Classified {
+            classifier,
+            judgment: judgment(hiroute_domain::SMART_SAVING_SCOPE_ID),
+            reselect_on_user_message: false,
+            simple_groups: vec![AliasGroupIdV1::Economy, AliasGroupIdV1::Primary],
+            complex_groups: vec![AliasGroupIdV1::Primary],
+        };
+        snapshot.payload_digest = snapshot.canonical_digest().unwrap();
+        snapshot.validate().unwrap();
+        return;
+    }
+    let ids = ["code", "docs"];
+    routing.groups = vec![
+        AliasModelGroupV1 {
+            group_id: AliasGroupIdV1::Branch(0),
+            candidate_local_ids: vec![alias.candidates[0].local_id],
+        },
+        AliasModelGroupV1 {
+            group_id: AliasGroupIdV1::Branch(1),
+            candidate_local_ids: vec![alias.candidates[1].local_id],
+        },
+        AliasModelGroupV1 {
+            group_id: AliasGroupIdV1::BranchPrimary(0),
+            candidate_local_ids: vec![alias.candidates[1].local_id],
+        },
+    ];
+    routing.request_owned = AliasRequestOwnedRouteV1::Branches {
+        classifier,
+        branches: ids
+            .into_iter()
+            .enumerate()
+            .map(|(index, id)| MaterializedBranchV1 {
+                id: id.into(),
+                name: id.into(),
+                condition: format!("Condition for {id}"),
+                group: AliasGroupIdV1::Branch(index as u16),
+                primary_group: (index == 0).then_some(AliasGroupIdV1::BranchPrimary(0)),
+                judgment: judgment(id),
+            })
+            .collect(),
+        default_branch_id: ids[1].into(),
+        reselect_on_user_message: false,
+    };
+    snapshot.payload_digest = snapshot.canonical_digest().unwrap();
+    snapshot.validate().unwrap();
 }

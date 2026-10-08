@@ -48,6 +48,14 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.quality.evidence-return',
+  'desktop.models.return-from-decisions',
+  'desktop.routing.judgment-settings',
+  'desktop.models.branch-route-references',
+  'desktop.decisions.hidden-invalid-field',
+  'desktop.decisions.save-test-revision',
+  'desktop.decisions.route-detour',
+  'desktop.decisions.discard-navigation',
   'desktop.settings.persisted-scale',
   'desktop.operation.dismiss-observes',
   'desktop.operation.identity-retry-converges',

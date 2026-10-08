@@ -10,6 +10,14 @@ Chinese prompts are deliberately preserved for reproducibility.
 | --- | --- | --- |
 | [Research cost and quality](cases/research-cost-quality/README.md) | Can economical bulk research plus strong critical reasoning meet a delivery standard at lower cost? | `python3 experiments/reproduce.py report` |
 | [Unattended engineering](cases/unattended-engineering/README.md) | Can a native coding agent automatically upgrade at a context boundary and complete independent acceptance? | Prepare a pinned HTTPX task, then verify its implementation |
+| [Usage reconciliation](cases/usage-reconciliation/README.md) | Does built-in smart saving complete a changing data-audit workflow with less model usage? | [Completed local results and limits](results/decision-routing-20261006/README.md); independent staged verifier |
+| [Writer and reviewer](cases/writer-reviewer/README.md) | Does routing drafting to Qwen and review to GLM improve an article over either model alone? | [Completed blinded assessment](results/decision-routing-20261006/README.md); all six conditions retained |
+
+The October 6 result report includes all registered outcomes, partial runs,
+actual routing deviations and later product repairs. Its compact result record
+is in this repository; the article/review package and raw observation evidence
+remain local and have not been published as a Release asset. The following
+download commands still apply only to the earlier October 4 research experiment.
 
 ## Verify published evidence without model calls
 

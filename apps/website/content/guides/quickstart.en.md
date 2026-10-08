@@ -11,7 +11,7 @@ Steps 2–5 below show the visual Desktop path. Linux users complete the corresp
 
 ## 2. Connect a model
 
-Open Models and select Add model. You can connect a supported local subscription, or open Advanced connection and choose Custom API.
+Open Models → General models and select Add model. You can connect a supported local subscription, or open Advanced connection and choose Custom API. General models execute your tasks; this connection is enough for your first route.
 
 Check the connection, select the model you want HiRoute to use, and save it. “Ready to route” means that the connection has the facts required by routing; it does not claim that every upstream model has completed a live inference test.
 
@@ -23,7 +23,7 @@ Open Smart routing and select New smart routing:
 2. For the first route, choose Fixed model and add the model you just connected.
 3. Select Enable. Only published and enabled routes handle new requests.
 
-Once this path works, explore Smart saving and Free first in [Use smart model routing](/en/docs/model-routing/).
+Once this path works, configure Smart saving, Custom branches, or Free first in [Use smart model routing](/en/docs/model-routing/). When you need model judgment and stage assessment, add a built-in connection under Models → Decision models, or connect a self-hosted custom extension.
 
 ## 4. Connect your agent
 
@@ -40,13 +40,9 @@ HiRoute keeps a restore point. If you disable model routing later, use Connectio
 
 Return to your usual agent and submit a small task with a clear result. After it starts, open Sessions in HiRoute to inspect the route, actual model, usage, and execution state.
 
-![Routing and model details in a HiRoute session; the image uses illustrative data](/decision-assets/session-en.png)
-
-The screenshot uses illustrative data and is not a model benchmark.
-
 ## Next steps
 
-- [Use smart model routing](/en/docs/model-routing/) for routing modes, decision boundaries, and runtime performance.
+- [Use smart model routing](/en/docs/model-routing/) to configure the four routing types, decision models, and custom branches, then inspect turn selection, actual execution, and later stage assessment.
 - [Use smart task routing](/en/docs/task-routing/) to delegate independently executable work.
 - [Run HiRoute headless on Linux](/en/docs/install-linux/) to install from an empty environment and configure models, routes, and Agents from the CLI.
 - [HiRoute CLI](/en/docs/cli/) to manage HiRoute, inspect runtime facts, start tasks, and recover uncertain submissions from Terminal.

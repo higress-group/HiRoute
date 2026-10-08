@@ -257,19 +257,7 @@ fn refresh_session_completeness(
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
         return Ok(());
     }
-    let sql = match channel {
-        ObservationChannel::Fact => unreachable!("fact completeness returned above"),
-        ObservationChannel::Content => {
-            "UPDATE sessions SET content_completeness=CASE
-               WHEN EXISTS(SELECT 1 FROM conversation_content_streams_v2 c WHERE c.workspace_id=?1
-                           AND c.conversation_id=?2 AND c.state='abort') THEN 'partial'
-               WHEN EXISTS(SELECT 1 FROM conversation_content_streams_v2 c WHERE c.workspace_id=?1
-                           AND c.conversation_id=?2 AND c.state='finish') THEN 'complete'
-               ELSE 'unknown' END WHERE workspace_id=?1 AND session_id=?2"
-        }
-    };
-    transaction
-        .execute(sql, params![workspace, session])
+    crate::content::completeness::refresh_session(transaction, workspace, session)
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
     Ok(())
 }

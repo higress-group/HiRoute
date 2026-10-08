@@ -21,6 +21,8 @@ fn main() {
             "observation_read",
             "observation_delete",
             "test_classifier_decision",
+            "decision_services",
+            "save_decision_service",
             "save_classifier_header_secret",
             "save_classifier_openapi",
             "preview_rename",

@@ -1,220 +1,46 @@
-# Custom decision service for smart saving
+# Decision models for smart routing
 
 [简体中文](smart-saving-model-classification.zh-CN.md)
 
-Smart saving uses HiRoute's deterministic built-in rules by default. To use a custom policy,
-select “Custom decision service” in the plan editor and enter its address. Authentication may
-be omitted or configured with a header name and a newly created or existing Secret. The
-service may use Jev, an LLM, or another custom policy. HiRoute consumes only the HTTP JSON
-contract below and never calls or parses a provider-specific protocol directly.
+Add a decision model or custom extension under **Models → Decision models**. Configure provider,
+model, complete endpoint and credential, save and test, then select its saved revision in a route.
+Saving/publishing a plan does not silently invoke the service. Credentials reuse protected input
+and existing storage. Built-in providers need no separate Jev deployment.
 
-The official deployable reference is
-[`decision-extensions/extensions/jev-decider`](../decision-extensions/extensions/jev-decider/README.md).
-It demonstrates one OpenRouter Jev Decisions call that both selects the current branch and,
-when applicable, scores the previous execution stage. It is also a starting point for custom
-policies.
+Save-and-test checks the exact saved revision with fixed synthetic input, without reading real
+conversations, executing a task or producing competence samples. Editing the connection creates
+a new immutable revision; a published route keeps its selected revision until explicitly republished.
+The list shows the latest revision, while an already saved historical revision remains publishable.
 
-Desktop's “View integration protocol” dialog provides copyable `curl` request/response
-examples and downloads the single current
-[OpenAPI 3.1 document](../decision-extensions/api/decision.openapi.json). Its endpoint is an
-example only; runtime always calls the complete endpoint configured in the AgentPlan.
+Smart saving defaults to the decision-model choice; users may explicitly choose heuristic rules or
+a custom extension. Economy and primary groups retain the existing candidate picker, ordering and
+reasoning controls. Judgment settings start collapsed: simple probability defaults to 0.8, competence
+floor to 0.5, and both degree and assessment prompts are editable.
 
-## Configuration
+Every new user message decides again. Regular/economy requires this call's simple probability to meet
+the threshold with no applicable complete low score. Complex or fresh low competence selects primary.
+Only a fresh complete score bound to the preceding actual stage, in the same category and compatible
+with the published configuration and assessment criteria, can trigger protection. Missing/partial
+scores do not preserve old protection; new turns do not automatically reset to regular.
+Tool continuation and replay reuse the frozen decision only when the same turn is identifiable,
+history continues, and the decision remains reusable. Compaction or history reconstruction that
+breaks continuity or prevents reuse triggers a fresh decision. Candidate hold stays inside the newly
+selected group. Availability relay never downgrades from primary or crosses task categories.
 
-```json
-{
-  "kind": "rest",
-  "endpoint": "http://127.0.0.1:8080/v1/decisions",
-  "timeout_ms": 3000,
-  "auth_header": {
-    "name": "Authorization",
-    "value_secret_ref": "secret/jev-decider"
-  }
-}
-```
+Custom branches first classify task intent, then optionally judge degree within that category. Each branch
+has regular candidates and optional primary candidates, and follows plan judgment or copies the complete
+settings for independent editing. No primary means no degree question, while competence remains observable.
+Category conditions, degree criteria and assessment criteria are separate inputs.
 
-- `endpoint` is a complete HTTP/HTTPS URL trusted by the operator. Userinfo and fragments are
-  rejected, and redirects are not followed.
-- `timeout_ms` is the millisecond deadline for the whole decision path. Its valid range is
-  `1..=3_600_000`; Desktop starts at `3000`. The source request deadline can shorten the
-  effective deadline.
-- `auth_header` is optional. Its Secret stores the complete header value, such as `Bearer ...`;
-  HiRoute does not add a scheme.
-- A plan stores no plaintext Secret and configures no classifier instructions, plan purpose,
-  or editable branch descriptions.
-- “Test decision” explicitly sends a fixed synthetic first-turn request through the same
-  Secret, HTTP, timeout, and response validation as production. Save and publish never call
-  the service automatically. A test may incur an external charge and never creates a quality
-  sample.
-- The external service's own total timeout should be slightly shorter than `timeout_ms` so
-  HiRoute can serialize and close the network operation. The official Jev decider uses
-  `JEV_REQUEST_TIMEOUT_SECONDS`, defaulting to `2.8` seconds.
+Existing plan/session views show actual group/model/profile, frozen thresholds and selection reasons
+separately from latest competence. Draft edits cannot reinterpret published evidence.
 
-## Request contract
+The CLI keeps `decision services list/apply/test` and the existing routing preview/apply workflow.
+Editor data uses `smart.judgment`, or `branch_routing.judgment` with branch `primary_candidates` and optional
+complete `judgment`. Custom extensions follow the supplied definition and rubric; their form provides
+examples and the single current OpenAPI. No separate Secret-management UI is needed.
 
-Each new Agent turn sends at most one `POST`. Tool continuations within that turn inherit the
-frozen branch and do not call the decision service again.
-
-```json
-{
-  "branches": {
-    "smart_saving_simple": "Use the economy model group for a clear, well-scoped task.",
-    "smart_saving_complex": "Use the primary model group for an ambiguous, cross-module, diagnostic, concurrent, or deep-reasoning task."
-  },
-  "latest_user": [{"kind": "text", "text": "Fix this failing test."}],
-  "visible_conversation": [{
-    "branch_id": "smart_saving_simple",
-    "user": [{"kind": "text", "text": "Fix the type error first."}],
-    "status": "completed",
-    "steps": [
-      [{"kind": "tool_activity", "tool": "functions.run_tests", "status": "failed"}],
-      [{"kind": "text", "text": "Fixed and verified again."}]
-    ]
-  }],
-  "history_partial": false,
-  "assessment_from": 0
-}
-```
-
-The top level has exactly five fields:
-
-- `branches`: allowed branch IDs and HiRoute's built-in descriptions. The service must return
-  one of these IDs.
-- `latest_user`: complete content parts for this turn. A service may choose to inspect only
-  this field.
-- `visible_conversation`: completed Agent turns held in memory. Each step is one business-model
-  request and retains only accepted response text plus tool name, order, and coarse status.
-- `history_partial`: true when restart, TTL, LRU eviction, or a capture gap made history
-  incomplete.
-- `assessment_from`: the start index of the previous contiguous execution stage to assess;
-  null means that no reliable assessment target exists.
-
-Tool status comes only from explicit ingress-protocol facts. Messages uses `is_error`;
-Responses function output uses `completed/incomplete/in_progress`; provider-native web search
-uses its explicit terminal state. Chat tool results, Responses custom output, and Responses
-function output without a status are `unknown`. HiRoute never parses tool-output prose to
-guess failure. A Chat Agent can still tell the business model about an error in result text,
-but classification history does not promote that free-form text to a structured failure.
-
-The protocol excludes system/developer text, reasoning, tool arguments and results, provider
-state, credentials, plan purpose, plan/model/session internal IDs, and per-step models. If only
-the actual fallback branch produced accepted output, a turn also includes
-`executed_branch_id`; mixed-model contribution is not a single-model assessment target.
-
-HiRoute imposes no extra byte limit on a decision request and does not truncate `latest_user`
-or text blocks. Fields above 8 KiB are streamed from the request's ReplayStore; 8 KiB is a
-storage-location threshold, not a REST protocol limit. A decision service with a 32K-token
-model limit must use its own tokenizer and policy to trim complete turns and return `partial`
-accurately.
-
-## Response contract
-
-Minimal success:
-
-```json
-{"branch_id":"smart_saving_complex"}
-```
-
-With previous-stage competence:
-
-```json
-{
-  "branch_id": "smart_saving_complex",
-  "assessment": {
-    "score": 0.25,
-    "partial": false,
-    "reason": "Optional explanation of visible behavior"
-  }
-}
-```
-
-- `branch_id` is required and must be present in request `branches`.
-- `assessment` is optional. Omission means “do not update the score,” not zero.
-- `score` is model competence in `[0,1]`, not confidence, success probability, or task
-  complexity.
-- `partial` is required within an assessment and states whether the service reduced the
-  assessed interval.
-- `reason` is optional. A Jev implementation should not invent text when Jev supplies none.
-
-With a valid branch and invalid assessment, HiRoute uses the branch and drops the score. An
-invalid branch invalidates the complete response and stores no score. A successful body is at
-most 64 KiB. Unknown fields, duplicate fields, multiple objects, Markdown, and provider
-envelopes are rejected.
-
-## Stage scoring and queries
-
-HiRoute identifies an execution stage by contiguous plan revision, selected/actual branch,
-actual model configuration, and effective profile. Credential rotation does not split a
-stage. A real change of model, profile, branch, or plan revision starts a new stage after
-execution. A service may return a score every turn or omit it. A valid new score replaces the
-latest score for that stage rather than creating a per-turn series.
-
-Desktop's session “Model performance” and plan-editor “Runtime performance” read the same
-data. The plan page lists models selected by the current effective revision and shows their
-stage competence over the selected time range, without asking for an internal model ID. CLI
-queries can still filter by plan or session and combine revision, exact model, time, strict
-greater-than, and strict less-than filters, for example:
-
-```sh
-hiroute observation plan-quality samples \
-  --plan-id plan/codex-daily \
-  --model model/config-a \
-  --score-lt 0.5
-```
-
-An unrated sample is not zero, and `score_lt 0.5` excludes exactly 0.5. A human or authorized
-main Agent can use scores to judge whether a model is competent under a specific AgentPlan and
-whether a narrower scenario would help. HiRoute never modifies or creates a plan automatically.
-
-## Failure boundary
-
-- History preparation, Secret resolution, DNS/connect, and HTTP I/O share `timeout_ms` and
-  remain bounded by the source request deadline and cancellation.
-- A turn calls the service at most once, with no retry and no trim-and-retry path.
-- External timeout, unavailability, input rejection, or invalid output uses the local rules
-  once and records a structured reason.
-- Source cancellation, source deadline, Replay integrity failure, or local resource failure
-  terminates directly; it cannot masquerade as a REST failure followed by fallback.
-- Observation-write failure does not block the model answer. Only a persisted score appears in
-  queries.
-
-## Reasoning history across model changes
-
-Client-supplied reasoning history does not need a record from an earlier Gateway process.
-HiRoute still checks authentication, the current plan, candidate permissions and credentials;
-the upstream model decides whether it accepts that history. Same-protocol native fields are
-preserved. Cross-protocol projection preserves representable plaintext, but never relabels
-a Messages signature as Responses encrypted content or vice versa. Reasoning that cannot be
-represented is omitted, without removing ordinary messages or tool history.
-
-If history changes discontinuously (for example, after compaction), the first selected model
-differs from a still-eligible previous successful model, and it explicitly rejects reasoning
-history, HiRoute may retry that model once with historical reasoning omitted. Generic errors,
-cold starts, ordinary follow-ups, changes only to tools/instructions, and ordinary failure
-fallback do not grant this recovery attempt. Existing attempt limits, deadlines, cancellation
-and the prohibition on replay after semantic delivery still apply.
-
-After complete success, continuous requests to that same binding/profile omit only the fixed
-original prefix. New reasoning is retained; later failures do not expand the prefix. This
-in-memory ContextHold hint is lost on restart or eviction, but history remains admissible.
-Lossy projection can reduce reasoning continuity and does not guarantee upstream acceptance.
-
-Actual omissions emit a `reasoning_cleanup` warning with protocols, reason, request/attempt
-correlation, prefix and count—not reasoning text, signatures, ciphertext or credentials.
-Request warnings occur before sending; response loss is reported once and the attempt-end
-record retains the total. Check the associated attempt outcome rather than treating the
-warning as proof of success. Responses server-side history handles (`conversation`,
-`previous_response_id`, `store: true`) remain unsupported; clients must send their history.
-
-## Native payloads and provider validation
-
-On the same protocol, ordinary provider-defined payload fields are preserved instead of
-being rejected because local capability metadata is incomplete. Empty text or an absent
-thinking signature is not proof of an invalid provider request. Authentication, destination
-authorization, hosted-tool policy, framing and complete-stream checks still apply.
-
-An unknown extension is native-only: it cannot silently disappear through protocol conversion,
-nor establish history continuity for ContextHold or reasoning cleanup. Cross-protocol requests
-still need an executable mapping. Fixed bindings preserve explicit native reasoning controls;
-smart-routing plans apply their configured reasoning and output limits. Unknown accounting
-remains unknown, so a strict paid budget still requires a provable upper bound.
+See [HiRoute extension API semantics](../decision-extensions/api/README.md), [optional self-hosted Jev deployment](../decision-extensions/extensions/jev-decider/README.md),
+[System One mapping](../decision-extensions/api/system-one-design.md) and [code owners](code-map/decision-foundation.md).
+Development v1 is replaced in place using fresh data, without migration or old-format compatibility.
+Tool selection is documentation-only.

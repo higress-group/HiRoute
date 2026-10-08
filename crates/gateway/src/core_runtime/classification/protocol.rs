@@ -1,15 +1,18 @@
-use serde::Deserialize;
-use serde_json::{Map, Value, json, value::RawValue};
+//! One strict custom v1 contract, shared by native System One reduction.
+use std::collections::BTreeMap;
+
+use hiroute_domain::{DecisionDefinitionV1, OrdinalLevelV1, SMART_SAVING_SCOPE_ID};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json, value::RawValue};
 
 use super::super::adapters::{
-    PreparedReplayTemplate, ProtocolAdapterError, ReplacementEncoding, RequestedReplacement,
-    prepare_replay_json_template,
+    ProtocolAdapterError, ReplacementEncoding, RequestedReplacement, prepare_replay_json_template,
 };
 use super::super::model_ir::{ContentPart, ImageSource, MessageRole, ModelRequestIRV1};
-use super::CallFailure;
-use crate::agent_turn_history::AgentTurnHistorySnapshot;
+use super::{CallFailure, PreparedDecisionRequest};
+use crate::agent_turn_history::{AgentTurnHistorySnapshot, ExecutionAttribution};
 use crate::content_ref::ContentValueExt;
-use crate::server::request_plan::ClassifierBranchAuthorityV1;
+use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ClassifierAssessment {
@@ -17,41 +20,87 @@ pub(super) struct ClassifierAssessment {
     pub(super) partial: bool,
     pub(super) reason: Option<String>,
 }
-
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ClassifierResponse {
     pub(super) branch_id: String,
+    pub(super) probabilities: Option<BTreeMap<String, f64>>,
+    pub(super) degree_failed: bool,
     pub(super) assessment: Option<ClassifierAssessment>,
     pub(super) invalid_assessment: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(super) struct AssessmentDefinition {
+    pub(super) from: usize,
+    pub(super) instructions: String,
+    pub(super) criteria: [AssessmentCriterion; 3],
+}
+#[derive(Clone, Debug, Serialize)]
+pub(super) struct AssessmentCriterion {
+    score: f64,
+    pub(super) criterion: String,
+}
+
+/// Target identity remains local; use only the standard frozen for its actual execution.
+pub(super) fn assessment_definition(
+    history: &AgentTurnHistorySnapshot,
+    authority: &RestBranchClassifierAuthorityV1,
+) -> Option<AssessmentDefinition> {
+    let target = history.assessment_target.as_ref()?;
+    let from = history
+        .assessment_from
+        .filter(|i| *i < history.visible_conversation.len())?;
+    let ExecutionAttribution::Single {
+        executed_branch_id, ..
+    } = &target.attribution
+    else {
+        return None;
+    };
+    let (judgment, name) = if executed_branch_id == SMART_SAVING_SCOPE_ID {
+        (authority.smart_judgment.as_ref()?, "Smart saving")
+    } else {
+        let branch = authority
+            .branch_policies
+            .iter()
+            .find(|b| b.id == *executed_branch_id)?;
+        (&branch.judgment, branch.name.as_str())
+    };
+    if target.branch_execution.as_ref()?.policy != judgment.execution_policy(name) {
+        return None;
+    }
+    Some(AssessmentDefinition {
+        from,
+        instructions: judgment.competence.instructions.clone(),
+        criteria: std::array::from_fn(|i| AssessmentCriterion {
+            score: i as f64 / 2.0,
+            criterion: judgment.competence.criteria[i].clone(),
+        }),
+    })
 }
 
 pub(super) fn classifier_request_template(
     request: &ModelRequestIRV1,
     history: &AgentTurnHistorySnapshot,
-    branches: &[ClassifierBranchAuthorityV1],
-) -> Result<PreparedReplayTemplate, ProtocolAdapterError> {
+    authority: &RestBranchClassifierAuthorityV1,
+) -> Result<PreparedDecisionRequest, ProtocolAdapterError> {
     let mut refs = Vec::new();
     let latest_user = latest_user_wire_value(request, &mut refs)?;
-    let mut branch_map = Map::new();
-    for branch in branches {
-        branch_map.insert(
-            branch.id.to_string(),
-            Value::String(branch.description.to_string()),
-        );
-    }
-    let visible_conversation = serde_json::to_value(&history.visible_conversation)
-        .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
+    let target = assessment_definition(history, authority);
     let body = json!({
-        "branches": Value::Object(branch_map),
+        "decision": authority.decision,
         "latest_user": latest_user,
-        "visible_conversation": visible_conversation,
+        "visible_conversation": history.visible_conversation,
         "history_partial": history.history_partial,
-        "assessment_from": history.assessment_from,
+        "assessment_target": target,
     });
-    prepare_replay_json_template(&body, refs)
+    Ok(PreparedDecisionRequest {
+        template: prepare_replay_json_template(&body, refs)?,
+        has_target: target.is_some(),
+        target_partial: false,
+        bindings: None,
+    })
 }
-
-fn latest_user_wire_value(
+pub(super) fn latest_user_wire_value(
     request: &ModelRequestIRV1,
     refs: &mut Vec<RequestedReplacement>,
 ) -> Result<Value, ProtocolAdapterError> {
@@ -107,11 +156,24 @@ fn project_text(value: &str, refs: &mut Vec<RequestedReplacement>) -> Value {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ClassifierOutput {
-    branch_id: String,
+    decision: Box<RawValue>,
     #[serde(default)]
     assessment: Option<Box<RawValue>>,
 }
-
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CategoricalOutput {
+    kind: String,
+    choice: String,
+    #[serde(default)]
+    refinement: Option<Box<RawValue>>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OrdinalOutput {
+    kind: String,
+    probabilities: UniqueMap<f64>,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AssessmentOutput {
@@ -121,266 +183,133 @@ struct AssessmentOutput {
     reason: Option<String>,
 }
 
+/// Raw nested values isolate malformed optional assessment/refinement from valid categories.
 pub(super) fn parse_classifier_response(
     body: &[u8],
-    allowed: &[&str],
-    has_assessment_target: bool,
+    definition: &DecisionDefinitionV1,
+    has_target: bool,
 ) -> Result<ClassifierResponse, CallFailure> {
     let output: ClassifierOutput =
         serde_json::from_slice(body).map_err(|_| CallFailure::InvalidOutput)?;
-    if !allowed.iter().any(|allowed| *allowed == output.branch_id) {
-        return Err(CallFailure::InvalidOutput);
-    }
+    let (branch_id, probabilities, degree_failed) = match definition {
+        DecisionDefinitionV1::Ordinal { levels, .. } => {
+            let parsed = parse_ordinal(output.decision.get(), levels);
+            (
+                SMART_SAVING_SCOPE_ID.into(),
+                parsed.clone().ok(),
+                parsed.is_err(),
+            )
+        }
+        DecisionDefinitionV1::Categorical { options, .. } => {
+            let selected: CategoricalOutput = serde_json::from_str(output.decision.get())
+                .map_err(|_| CallFailure::InvalidOutput)?;
+            if selected.kind != "categorical" {
+                return Err(CallFailure::InvalidOutput);
+            }
+            let option = options
+                .iter()
+                .find(|o| o.id == selected.choice)
+                .ok_or(CallFailure::InvalidOutput)?;
+            match (&option.refinement, selected.refinement) {
+                (Some(degree), raw) => {
+                    let parsed = raw
+                        .ok_or(CallFailure::InvalidOutput)
+                        .and_then(|raw| parse_ordinal(raw.get(), &degree.levels));
+                    (selected.choice, parsed.clone().ok(), parsed.is_err())
+                }
+                (None, None) => (selected.choice, None, false),
+                (None, Some(_)) => return Err(CallFailure::InvalidOutput),
+            }
+        }
+    };
     let mut invalid_assessment = false;
     let assessment = output.assessment.and_then(|raw| {
         let parsed = serde_json::from_str::<AssessmentOutput>(raw.get()).ok();
-        let valid = has_assessment_target
-            && parsed.as_ref().is_some_and(|assessment| {
-                assessment.score.is_finite()
-                    && (0.0..=1.0).contains(&assessment.score)
-                    && assessment
-                        .reason
+        let valid = has_target
+            && parsed.as_ref().is_some_and(|a| {
+                a.score.is_finite()
+                    && (0.0..=1.0).contains(&a.score)
+                    && a.reason
                         .as_ref()
-                        .is_none_or(|reason| !reason.is_empty() && reason.chars().count() <= 1_024)
+                        .is_none_or(|r| !r.is_empty() && r.chars().count() <= 1024)
             });
         if !valid {
             invalid_assessment = true;
             return None;
         }
-        parsed.map(|assessment| ClassifierAssessment {
-            score: assessment.score,
-            partial: assessment.partial,
-            reason: assessment.reason,
+        parsed.map(|a| ClassifierAssessment {
+            score: a.score,
+            partial: a.partial,
+            reason: a.reason,
         })
     });
     Ok(ClassifierResponse {
-        branch_id: output.branch_id,
+        branch_id,
+        probabilities,
+        degree_failed,
         assessment,
         invalid_assessment,
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use super::*;
-    use crate::agent_turn_history::{
-        AgentTurnHistorySnapshot, AgentTurnStatus, VisibleAgentTurn, VisibleContentPart,
-    };
-    use crate::server::core_runtime::model_ir::{
-        CanonicalMessage, MODEL_REQUEST_IR_SCHEMA, RequestedReasoningControl, ToolChoice,
-    };
-    use crate::server::request_plan::IngressProtocol;
-
-    fn request(text: &str) -> ModelRequestIRV1 {
-        ModelRequestIRV1 {
-            native_body: None,
-            native_only: false,
-            schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
-            ingress_protocol: IngressProtocol::Responses,
-            served_model_id: "smart-route".into(),
-            stream: false,
-            instructions: Vec::new(),
-            messages: vec![CanonicalMessage {
-                role: MessageRole::User,
-                content: vec![ContentPart::Text { text: text.into() }],
-                name: None,
-            }],
-            tools: Vec::new(),
-            tool_namespaces: Vec::new(),
-            responses_tool_order: Vec::new(),
-            web_search: None,
-            responses_search_history: Default::default(),
-            responses_annotations: Default::default(),
-            tool_choice: ToolChoice::Auto,
-            parallel_tool_calls: false,
-            requested_reasoning: RequestedReasoningControl::absent(),
-            requested_max_output_tokens: None,
-            provider_state: Vec::new(),
-            responses_options: None,
-            responses_item_ids: Default::default(),
-            responses_item_statuses: Default::default(),
-            responses_message_phases: Default::default(),
-            responses_internal_chat_message_metadata: Default::default(),
-            responses_reasoning_history: Default::default(),
-        }
+fn parse_ordinal(
+    raw: &str,
+    levels: &[OrdinalLevelV1],
+) -> Result<BTreeMap<String, f64>, CallFailure> {
+    let output: OrdinalOutput =
+        serde_json::from_str(raw).map_err(|_| CallFailure::InvalidOutput)?;
+    if output.kind != "ordinal" {
+        return Err(CallFailure::InvalidOutput);
     }
-
-    fn history(target: bool) -> AgentTurnHistorySnapshot {
-        AgentTurnHistorySnapshot {
-            visible_conversation: vec![Arc::new(VisibleAgentTurn {
-                branch_id: Some("smart_saving_simple".into()),
-                executed_branch_id: None,
-                user: vec![VisibleContentPart::Text {
-                    text: "Fix the test".into(),
-                }],
-                status: AgentTurnStatus::Completed,
-                steps: vec![vec![VisibleContentPart::Text {
-                    text: "Done".into(),
-                }]],
-            })],
-            history_partial: false,
-            assessment_from: target.then_some(0),
-            assessment_target: None,
-            _pin: None,
-        }
-    }
-
-    fn branches() -> [ClassifierBranchAuthorityV1; 2] {
-        [
-            ClassifierBranchAuthorityV1 {
-                id: "smart_saving_simple".into(),
-                description: "Economy".into(),
-            },
-            ClassifierBranchAuthorityV1 {
-                id: "smart_saving_complex".into(),
-                description: "Primary".into(),
-            },
-        ]
-    }
-
-    #[test]
-    fn latest_user_streams_full_spilled_cjk_and_marker_literal_without_a_size_fallback() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-        use hiroute_gateway_core::runtime::body::BudgetTree;
-
-        use crate::content_ref::{externalize_model_request, model_content_refs};
-        use crate::replay::{ReplayConfig, ReplayManager};
-        use crate::server::core_runtime::adapters::{
-            decode_ingress_request, sequential_replay_body,
-        };
-
-        let latest_user = format!(
-            "{} literal-marker=__hiroute_content_ref_v2_0_0_1_1__",
-            "界".repeat(400_000)
-        );
-        let document = json!({
-            "model": "smart-route",
-            "instructions": "must not be sent to the classifier",
-            "input": latest_user,
-            "stream": false,
-        });
-        let mut request =
-            decode_ingress_request(IngressProtocol::Responses, &document).expect("decode request");
-        let root = std::env::temp_dir().join(format!(
-            "hiroute-classifier-protocol-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock")
-                .as_nanos()
-        ));
-        let manager = ReplayManager::open(ReplayConfig {
-            root: root.clone(),
-            memory_threshold_bytes: 128,
-            record_bytes: 64,
-            orphan_ttl: Duration::from_secs(60),
+    normalize_probabilities(output.probabilities.0, levels.iter().map(|l| l.id.as_str()))
+}
+pub(super) fn normalize_probabilities<'a>(
+    mut probabilities: BTreeMap<String, f64>,
+    expected: impl Iterator<Item = &'a str>,
+) -> Result<BTreeMap<String, f64>, CallFailure> {
+    let expected: std::collections::BTreeSet<_> = expected.collect();
+    if probabilities.len() != expected.len()
+        || probabilities.iter().any(|(id, p)| {
+            !expected.contains(id.as_str()) || !p.is_finite() || !(0.0..=1.0).contains(p)
         })
-        .expect("open replay manager");
-        let tree = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024).expect("budget tree");
-        let budget = tree.stream(8 * 1024 * 1024).expect("stream budget");
-        let store = manager
-            .begin_request(budget.clone())
-            .expect("begin replay request");
-        externalize_model_request(&mut request, &store, 8 * 1024).expect("externalize request");
-        store
-            .prevalidate(&model_content_refs(&request))
-            .expect("prevalidate replay");
+    {
+        return Err(CallFailure::InvalidOutput);
+    }
+    let sum: f64 = probabilities.values().sum();
+    if (sum - 1.0).abs() > 1e-6 || sum == 0.0 {
+        return Err(CallFailure::InvalidOutput);
+    }
+    probabilities.values_mut().for_each(|p| *p /= sum);
+    Ok(probabilities)
+}
 
-        let template = classifier_request_template(&request, &history(false), &branches())
-            .expect("classification request template");
-        assert!(template.wire_len > 1024 * 1024);
-        let mut reader = sequential_replay_body(template, store.clone(), &budget, 16 * 1024)
-            .expect("classification request reader");
-        let mut bytes = Vec::new();
-        while let Some(chunk) = reader.next_chunk().expect("request chunk") {
-            bytes.extend_from_slice(chunk.bytes());
+/// serde maps ordinarily overwrite duplicates; decisions must never silently choose the last.
+pub(super) struct UniqueMap<T>(pub(super) BTreeMap<String, T>);
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for UniqueMap<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct Visitor<T>(std::marker::PhantomData<T>);
+        impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for Visitor<T> {
+            type Value = UniqueMap<T>;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("an object with unique keys")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut access: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut entries = BTreeMap::new();
+                while let Some((key, value)) = access.next_entry::<String, T>()? {
+                    if entries.insert(key, value).is_some() {
+                        return Err(serde::de::Error::custom("duplicate decision key"));
+                    }
+                }
+                Ok(UniqueMap(entries))
+            }
         }
-        reader.release();
-        let body: Value = serde_json::from_slice(&bytes).expect("valid classifier JSON");
-        assert_eq!(body["latest_user"][0]["text"], document["input"]);
-        assert_eq!(body["visible_conversation"].as_array().unwrap().len(), 1);
-        assert!(
-            !String::from_utf8(bytes)
-                .unwrap()
-                .contains("must not be sent")
-        );
-
-        drop(request);
-        drop(store);
-        drop(manager);
-        assert_eq!(budget.snapshot().unwrap().live, 0);
-        std::fs::remove_dir_all(root).expect("remove replay fixture");
-    }
-
-    #[test]
-    fn request_has_exact_five_fields_and_no_plan_or_tool_details() {
-        let template =
-            classifier_request_template(&request("next question"), &history(true), &branches())
-                .unwrap();
-        let body: Value = serde_json::from_slice(&template.bytes).unwrap();
-        assert_eq!(body.as_object().unwrap().len(), 5);
-        assert_eq!(body["latest_user"][0]["text"], "next question");
-        assert_eq!(body["assessment_from"], 0);
-        let encoded = String::from_utf8(template.bytes.to_vec()).unwrap();
-        for absent in [
-            "schema",
-            "instructions",
-            "plan_id",
-            "model_configuration_id",
-        ] {
-            assert!(!encoded.contains(absent));
-        }
-    }
-
-    #[test]
-    fn response_keeps_valid_branch_when_optional_assessment_is_invalid() {
-        let allowed = ["smart_saving_simple", "smart_saving_complex"];
-        let output = parse_classifier_response(
-            br#"{"branch_id":"smart_saving_complex","assessment":{"score":2,"partial":false}}"#,
-            &allowed,
-            true,
-        )
-        .unwrap();
-        assert_eq!(output.branch_id, "smart_saving_complex");
-        assert!(output.assessment.is_none());
-        assert!(output.invalid_assessment);
-    }
-
-    #[test]
-    fn response_rejects_unknown_duplicate_and_vendor_envelopes() {
-        let allowed = ["smart_saving_simple"];
-        for body in [
-            br#"{"branch_id":"smart_saving_simple","extra":1}"#.as_slice(),
-            br#"{"branch_id":"smart_saving_simple","branch_id":"smart_saving_simple"}"#.as_slice(),
-            br#"{"choices":[{"message":{"content":"smart_saving_simple"}}]}"#.as_slice(),
-        ] {
-            assert_eq!(
-                parse_classifier_response(body, &allowed, false),
-                Err(CallFailure::InvalidOutput)
-            );
-        }
-    }
-
-    #[test]
-    fn assessment_reason_is_optional_and_duplicate_nested_fields_are_dropped() {
-        let allowed = ["smart_saving_simple"];
-        let valid = parse_classifier_response(
-            br#"{"branch_id":"smart_saving_simple","assessment":{"score":0.4,"partial":true}}"#,
-            &allowed,
-            true,
-        )
-        .unwrap();
-        assert_eq!(valid.assessment.unwrap().score, 0.4);
-        let duplicate = parse_classifier_response(
-            br#"{"branch_id":"smart_saving_simple","assessment":{"score":0.4,"score":0.5,"partial":true}}"#,
-            &allowed,
-            true,
-        )
-        .unwrap();
-        assert!(duplicate.assessment.is_none());
-        assert!(duplicate.invalid_assessment);
+        d.deserialize_map(Visitor(std::marker::PhantomData))
     }
 }
+
+#[cfg(test)]
+#[path = "protocol_tests.rs"]
+mod tests;

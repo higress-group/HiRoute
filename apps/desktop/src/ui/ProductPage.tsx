@@ -4,6 +4,7 @@ export type ProductPageProps = PropsWithChildren<{
   title: string;
   subtitle?: string;
   actions?: ReactNode;
+  tabs?: ReactNode;
   flush?: boolean;
   className?: string;
 }>;
@@ -16,6 +17,7 @@ export function ProductPage({
   title,
   subtitle,
   actions,
+  tabs,
   flush = false,
   className = '',
   children,
@@ -29,6 +31,7 @@ export function ProductPage({
         </div>
         <div className="toolbar-actions">{actions}</div>
       </header>
+      {tabs}
       <div className={`page-content${flush ? ' no-padding' : ''}`}>
         {children}
       </div>

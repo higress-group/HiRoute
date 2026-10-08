@@ -57,6 +57,23 @@ pub(crate) fn migrate(transaction: &Connection) -> Result<(), ObservationStoreEr
          CREATE INDEX IF NOT EXISTS plan_quality_by_model
             ON plan_quality_segments(workspace_id,model_configuration_id,last_at_ms DESC,segment_id);"
     ).map_err(|_|ObservationStoreError::ActivityUnavailable)?;
+    let columns = transaction
+        .prepare("PRAGMA table_info(plan_quality_segments)")
+        .map_err(|_| ObservationStoreError::ActivityUnavailable)?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|_| ObservationStoreError::ActivityUnavailable)?
+        .collect::<Result<std::collections::BTreeSet<_>, _>>()
+        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
+    for column in ["branch_execution_json", "upgrade_json"] {
+        if !columns.contains(column) {
+            transaction
+                .execute(
+                    &format!("ALTER TABLE plan_quality_segments ADD COLUMN {column} TEXT"),
+                    [],
+                )
+                .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
+        }
+    }
     Ok(())
 }
 

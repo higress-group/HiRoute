@@ -17,6 +17,10 @@ const maps = {
   mechanism: {
     'README.md': '/en/docs/decision-extensions/', 'README.zh-CN.md': '/docs/decision-extensions/',
     'api/README.md': '/en/docs/decision-api/', 'api/README.zh-CN.md': '/docs/decision-api/',
+    'api/decision.openapi.json': '/api/decision.openapi.json',
+    'api/decision-examples.json': '/api/decision-examples.json',
+    'api/decision-design.md': sourceLink('decision-extensions/api/decision-design.md'),
+    'api/system-one-design.md': sourceLink('decision-extensions/api/system-one-design.md'),
     'extensions/jev-decider/README.md': '/en/docs/jev-decider/',
     'extensions/jev-decider/README.zh-CN.md': '/docs/jev-decider/',
   },
@@ -24,6 +28,9 @@ const maps = {
     'README.md': '/en/docs/decision-api/', 'README.zh-CN.md': '/docs/decision-api/',
     '../README.md': '/en/docs/decision-extensions/', '../README.zh-CN.md': '/docs/decision-extensions/',
     'decision.openapi.json': '/api/decision.openapi.json',
+    'decision-examples.json': '/api/decision-examples.json',
+    'decision-design.md': sourceLink('decision-extensions/api/decision-design.md'),
+    'system-one-design.md': sourceLink('decision-extensions/api/system-one-design.md'),
   },
   jev: {
     'jev_decider/settings.py': sourceLink('decision-extensions/extensions/jev-decider/jev_decider/settings.py'),
@@ -36,14 +43,17 @@ const maps = {
     'README.md': '/en/docs/jev-decider/', 'README.zh-CN.md': '/docs/jev-decider/',
     '../../README.md': '/en/docs/decision-extensions/', '../../README.zh-CN.md': '/docs/decision-extensions/',
     '../../api/README.md': '/en/docs/decision-api/', '../../api/README.zh-CN.md': '/docs/decision-api/',
-    'jev_decider/policy.default.json': '/api/jev-policy.default.json',
+    '../../api/decision-design.md': sourceLink('decision-extensions/api/decision-design.md'),
+    '../../api/system-one-design.md': sourceLink('decision-extensions/api/system-one-design.md'),
   },
 };
 
 function rewriteTarget(target, page, language) {
   if (/^(?:https?:|mailto:|#)/.test(target)) return target;
   if (target.startsWith('assets/') && target.endsWith('.png')) return `/decision-assets/${path.basename(target)}`;
-  if (target === '../../docs/smart-saving-model-classification.md'
+  if (target === '../docs/smart-saving-model-classification.md'
+      || target === '../docs/smart-saving-model-classification.zh-CN.md'
+      || target === '../../docs/smart-saving-model-classification.md'
       || target === '../../docs/smart-saving-model-classification.zh-CN.md') {
     return route(language, 'model-routing');
   }

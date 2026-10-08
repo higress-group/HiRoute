@@ -51,6 +51,8 @@
     "hiroute.candidate-capability/v1",
     "hiroute.candidate-protocol-profile/v1",
     "hiroute.change-preview-consent/v1",
+    "hiroute.change-preview-or-apply-request/v1",
+    "hiroute.change-preview-or-operation/v1",
     "hiroute.change-preview/v1",
     "hiroute.classifier-decision-test-result/v1",
     "hiroute.classifier-decision-test/v1",
@@ -132,6 +134,7 @@
     "hiroute.daemon-ready/v1",
     "hiroute.daemon-startup-failure/v1",
     "hiroute.daemon-upgrade-progress/v1",
+    "hiroute.decision-services/v1",
     "hiroute.delegation-accepted/v1",
     "hiroute.delegation-cancel-request/v1",
     "hiroute.delegation-cancel/v1",
@@ -1163,6 +1166,17 @@
         "crates/domain/src/agents/additional_model.rs",
         "crates/domain/src/publication/snapshot.rs",
         "crates/gateway/src/publication/schema.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "pre-branch execution digest sha256:de91d4f2333db66f0ec3f8b63ce192267dee0a56b65f34180b06996b232fb2c6",
+      "mode": "recovery_read_only",
+      "owner": "domain/observation",
+      "reason": "Read retained immutable observations made before branch competence metadata. New ingestion accepts only the current digest.",
+      "removal_condition": "Remove after the retained observation window no longer includes pre-branch producers.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs"
       ]
     }
   ]

@@ -1939,6 +1939,74 @@ mod tests {
         (directory, store)
     }
 
+    #[test]
+    fn decision_header_versions_share_values_without_weakening_key_pool_uniqueness() {
+        let (_directory, store) = store();
+        let secret = ProtectedSecret::new(b"shared-decision-key".to_vec()).unwrap();
+        for (index, id) in ["decision/a/r1", "decision/b/r1", "decision/a/r3"]
+            .into_iter()
+            .enumerate()
+        {
+            let reference = CredentialRefV1::new(
+                id,
+                "personal/default",
+                "hirouted",
+                "http-header",
+                std::iter::empty(),
+                0,
+            )
+            .unwrap();
+            let mutation = SecretMutationV1::upsert(
+                reference,
+                0,
+                "input",
+                Some(store.fingerprint(&secret).unwrap()),
+            )
+            .unwrap();
+            let effect = store
+                .apply_secret(
+                    &operation_id(char::from(b'1' + index as u8)),
+                    &mutation,
+                    Some(&secret),
+                )
+                .unwrap();
+            store
+                .activate_secret(&effect)
+                .expect("separate immutable header references may share one value");
+            assert_eq!(
+                store.read_secret_for_test(id).unwrap().unwrap().expose(),
+                secret.expose()
+            );
+        }
+        // Provider key pools still reject duplicate values within the same owner.
+        for (index, id) in ["pool/key-a", "pool/key-b"].into_iter().enumerate() {
+            let reference = CredentialRefV1::new(
+                id,
+                "pool/shared",
+                "hirouted",
+                "provider-auth",
+                ["provider-api".into()],
+                0,
+            )
+            .unwrap();
+            let mutation = SecretMutationV1::upsert(
+                reference,
+                0,
+                "input",
+                Some(store.fingerprint(&secret).unwrap()),
+            )
+            .unwrap();
+            let effect = store
+                .apply_secret(
+                    &operation_id(char::from(b'4' + index as u8)),
+                    &mutation,
+                    Some(&secret),
+                )
+                .unwrap();
+            assert_eq!(store.activate_secret(&effect).is_ok(), index == 0);
+        }
+    }
+
     fn legacy_ciphertext(
         store: &LocalSecretStore,
         credential_id: &str,

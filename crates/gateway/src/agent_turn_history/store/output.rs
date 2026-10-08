@@ -4,6 +4,28 @@ use super::*;
 use crate::agent_turn_history::ToolStatus;
 use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1, WebSearchStatus};
 
+impl ActiveTurn {
+    /// The original decision remains immutable evidence. A continuation also
+    /// inherits any primary relay that actually executed during this turn,
+    /// independently of the stronger exact-candidate context hold.
+    pub(super) fn continuation_decision(&self) -> Option<BranchDecisionV1> {
+        let mut decision = self.decision.clone()?;
+        if decision.execution_group == hiroute_domain::ExecutionGroupV1::Regular
+            && self.executions.iter().any(|execution| {
+                execution.executed_branch_id == decision.branch_id
+                    && execution.branch_execution.as_ref().is_some_and(|position| {
+                        position.group == hiroute_domain::ExecutionGroupV1::Primary
+                            && Some(&position.policy) == decision.policy.as_ref()
+                    })
+            })
+        {
+            decision.execution_group = hiroute_domain::ExecutionGroupV1::Primary;
+            decision.selection_reason = hiroute_domain::ModelGroupReasonV1::AvailabilityRelay;
+        }
+        Some(decision)
+    }
+}
+
 #[derive(Default)]
 pub(super) struct AcceptedOutput {
     step: Option<usize>,

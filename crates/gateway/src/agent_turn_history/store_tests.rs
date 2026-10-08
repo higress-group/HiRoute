@@ -15,6 +15,9 @@ use crate::server::request_plan::IngressProtocol;
 
 static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+#[path = "branch_context_tests.rs"]
+mod branch_context;
+
 #[path = "accepted_output_tests.rs"]
 mod accepted_output;
 
@@ -140,6 +143,7 @@ fn decision(branch: &str) -> BranchDecisionV1 {
 
 fn execution(model: &str, profile: &str, branch: &str, request_id: &str) -> AcceptedExecution {
     AcceptedExecution {
+        branch_execution: None,
         model_configuration_id: model.into(),
         profile_digest: profile.into(),
         executed_branch_id: branch.into(),
@@ -304,6 +308,7 @@ fn appended_users_keep_distinct_history_when_reselection_is_off() {
 fn same_execution_extends_segment_and_mixed_does_not() {
     let single = execution_attribution(
         &[AcceptedExecution {
+            branch_execution: None,
             model_configuration_id: "model-a".into(),
             profile_digest: "profile-a".into(),
             executed_branch_id: "simple".into(),
@@ -315,12 +320,14 @@ fn same_execution_extends_segment_and_mixed_does_not() {
     let mixed = execution_attribution(
         &[
             AcceptedExecution {
+                branch_execution: None,
                 model_configuration_id: "model-a".into(),
                 profile_digest: "profile-a".into(),
                 executed_branch_id: "simple".into(),
                 request_id: "request-a".into(),
             },
             AcceptedExecution {
+                branch_execution: None,
                 model_configuration_id: "model-b".into(),
                 profile_digest: "profile-b".into(),
                 executed_branch_id: "complex".into(),

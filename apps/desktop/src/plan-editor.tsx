@@ -1,3 +1,8 @@
+import type { OpenDecisionConnection } from './features/decision-services/presentation';
+import { BranchRoutingEditor, FollowUpPreference } from './features/decision-services/BranchRoutingEditor';
+import { branchRouting, branchSelections, classifierIssue, judgmentIssue, defaultJudgment, emptyService, routingIssue, type Judgment, type BranchRouting, type Classifier, type DecisionService } from './features/decision-services/types';
+import { DecisionSelector } from './features/decision-services/DecisionSelector';
+import { JudgmentFields, judgmentSummary } from './features/decision-services/JudgmentSettings';
 import { AgentProtocolChoice, type ProtocolAdvice } from './features/AgentProtocolChoice';
 import { contextWindowError, type ContextWindowBounds } from './plan-context-window';
 import { DEFAULT_REQUEST_TIMEOUT_MS, requestTimeoutError } from './plan-request-timeout';
@@ -10,27 +15,20 @@ import { BrandIcon, Disclosure, UiIcon } from './ui';
 import { WorkerDependencies } from './features/WorkerDependencies';
 import { PlanQuality, type PlanQualityModel } from './features/PlanQuality';
 import { PlanRuntimeSettings } from './features/PlanRuntimeSettings';
-import { ClassifierProtocolDialog } from './features/ClassifierProtocolDialog';
 import { confirmSaveDraftOrDiscard, useDiscardGuard } from './ui/discard-guard';
 import { resolvePersistedEditor, type PersistedEditor, type PersistenceIdentity, type PlanOperation } from './plan-editor-persistence';
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 export type Selection = { binding_id: string; reasoning?: { kind: 'profile'; profile: string } | { kind: 'toggle'; enabled: boolean } | { kind: 'budget'; tokens: number } };
-type Mode = 'fixed_model' | 'smart_saving' | 'free_first';
+type Mode = 'fixed_model' | 'smart_saving' | 'free_first' | 'custom_branches';
 type Work = { harness: 'codex_cli' | 'claude_code' | 'qoder_cli' | 'pi' | 'deepseek_harness'; protocol: 'responses' | 'messages' };
-type ClassifierAuthHeader = { name: string; value_secret_ref: string };
-type SmartClassifier = { kind: 'local_rules' } | {
-  kind: 'rest';
-  endpoint: string;
-  timeout_ms: number;
-  auth_header?: ClassifierAuthHeader | null;
-};
+type SmartClassifier = Classifier;
 // Inactive inputs belong to this editing session, never to the persisted plan.
-export type PlanEditorMemory = { restClassifier?: Extract<SmartClassifier, { kind: 'rest' }>; customWindowTokens?: number };
-type Smart = { economy: Selection[]; primary: Selection[]; primary_fallback: boolean; reselect_on_user_message: boolean; classifier: SmartClassifier; complex_keywords: string[] };
+export type PlanEditorMemory = { branchRouting?: BranchRouting; customWindowTokens?: number };
+export type Smart = { economy: Selection[]; primary: Selection[]; judgment: Judgment; reselect_on_user_message: boolean; classifier: SmartClassifier; complex_keywords: string[] };
 type Free = { candidates: Selection[]; primary: Selection[]; primary_fallback: boolean };
-export type Editor = { schema: string; display_name: string; purpose: string; custom_alias?: string; mode: Mode; candidates: Selection[]; smart: Smart; free: Free; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: { context_window_tokens?: number; maximum_attempts: number; request_timeout_ms: number; attempt_timeout_ms: number } };
-export type Plan = { protocol_advice?: ProtocolAdvice; agent_plan_id: string; desired: { display_name: string; purpose: string; mode: Mode; strategy: { mode: string; candidates?: Selection[] } & Partial<Smart & Free>; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: Editor['limits'] }; head: { head_revision: number; status: string }; agent_plan_revision: number; model_alias: string; publication: { revision: number; digest: string }; execution: string };
+export type Editor = { schema: string; display_name: string; purpose: string; custom_alias?: string; mode: Mode; branch_routing?: BranchRouting | null; candidates: Selection[]; smart: Smart; free: Free; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: { context_window_tokens?: number; maximum_attempts: number; request_timeout_ms: number; attempt_timeout_ms: number } };
+export type Plan = { protocol_advice?: ProtocolAdvice; agent_plan_id: string; desired: { display_name: string; purpose: string; mode: Mode; strategy: { mode: string; candidates?: Selection[]; routing?: BranchRouting } & Partial<Smart & Free>; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: Editor['limits'] }; head: { head_revision: number; status: string }; agent_plan_revision: number; model_alias: string; publication: { revision: number; digest: string }; execution: string };
 export type Draft = { draft_id: string; plan_id?: string; base_head_revision?: number; revision: number; editor: Editor };
 type Native = NativeReasoning;
 type Candidate = { binding_id: string; model_configuration_id: string; display_name: string; reasoning: Native; billing_class: string; routable: boolean; ingress_protocols: string[]; native_ingress_protocols?: string[] };
@@ -40,10 +38,7 @@ type CodexCapabilities = { state: 'available'; context_window: number; input_mod
   | { state: 'unavailable'; issues: CodexCapabilityIssue[] };
 export type ClaudeCapabilities = { state: 'available'; context_window: number; plan_window: number } | { state: 'unavailable'; reason: string };
 export type Options = { claude_capabilities?: ClaudeCapabilities | null; context_window: ContextWindowBounds | null; suggested_alias: string | null; candidates: Candidate[]; free_suggestions: { candidates: { selection: Selection }[]; unavailable: Record<string, string> } | null; codex_capabilities: CodexCapabilities | null };
-type ValidationIssue = { message: string; group?: string; bindingId?: string; field?: 'alias' | 'context_window' | 'request_timeout' };
-type ClassifierDecisionTestResult = { outcome: 'passed' | 'failed'; branch_id?: string | null; duration_millis?: number | null; failure_code?: string | null };
-const DEFAULT_CLASSIFIER_TIMEOUT_MS = 3000;
-const MAX_CLASSIFIER_TIMEOUT_MS = 3_600_000;
+type ValidationIssue = { selector?: string; message: string; group?: string; bindingId?: string; field?: 'alias' | 'context_window' | 'request_timeout' };
 export type PlanEditorHandle = {
   saveDraft(): Promise<boolean>;
   publish(): Promise<boolean>;
@@ -52,7 +47,7 @@ export type PlanEditorHandle = {
 
 function workerProtocolAdvice(editor: Editor, options: Options | null): ProtocolAdvice | undefined {
   if (!options) return undefined;
-  const selections = editor.mode === 'fixed_model' ? editor.candidates
+  const selections = editor.branch_routing && editor.mode === 'custom_branches' ? branchSelections(editor.branch_routing) : editor.mode === 'fixed_model' ? editor.candidates
     : editor.mode === 'smart_saving' ? [...editor.smart.economy, ...editor.smart.primary]
       : [...editor.free.candidates, ...(editor.free.primary_fallback ? editor.free.primary : [])];
   const candidates = selections.map(s => options.candidates.find(c => c.binding_id === s.binding_id));
@@ -70,42 +65,19 @@ function defaultReasoning(native: Native | undefined, preferred: 'low' | 'high' 
   const profile = preferred === 'low' ? profiles[0] : profiles.at(-1);
   return profile ? { kind: 'profile', profile } : undefined;
 }
-function defaultRestClassifier(): Extract<SmartClassifier, { kind: 'rest' }> {
-  return { kind: 'rest', endpoint: '', timeout_ms: DEFAULT_CLASSIFIER_TIMEOUT_MS };
-}
-function validClassifierEndpoint(value: string): boolean {
-  try {
-    const endpoint = new URL(value);
-    return value.trim() === value && !endpoint.username && !endpoint.password && !endpoint.hash
-      && (endpoint.protocol === 'http:' || endpoint.protocol === 'https:')
-      && Boolean(endpoint.hostname);
-  } catch {
-    return false;
-  }
-}
-function validClassifierAuthHeader(value: ClassifierAuthHeader | null | undefined): boolean {
-  if (!value) return true;
-  const name = value.name;
-  const forbidden = new Set(['host', 'content-length', 'content-type', 'transfer-encoding', 'connection', 'te', 'trailer', 'upgrade']);
-  return name.length > 0 && name.length <= 128
-    && /^[!#$%&'*+.^_`|~A-Za-z0-9-]+$/.test(name)
-    && !forbidden.has(name.toLocaleLowerCase())
-    && /^[a-zA-Z0-9._\-/:]{1,256}$/.test(value.value_secret_ref);
-}
-function validClassifierTimeout(value: number): boolean {
-  return Number.isSafeInteger(value) && value >= 1 && value <= MAX_CLASSIFIER_TIMEOUT_MS;
-}
-export function emptyEditor(): Editor { return { schema: 'hiroute.plan-editor/v2', display_name: '', purpose: '', mode: 'fixed_model', candidates: [], smart: { economy: [], primary: [], primary_fallback: false, reselect_on_user_message: false, classifier: { kind: 'local_rules' }, complex_keywords: [] }, free: { candidates: [], primary: [], primary_fallback: false }, delegation_enabled: false, requirements: {}, limits: { maximum_attempts: 6, request_timeout_ms: DEFAULT_REQUEST_TIMEOUT_MS, attempt_timeout_ms: 30000 } }; }
+export function emptyEditor(): Editor { return { schema: 'hiroute.plan-editor/v2', display_name: '', purpose: '', mode: 'fixed_model', candidates: [], smart: { economy: [], primary: [], judgment: structuredClone(defaultJudgment), reselect_on_user_message: false, classifier: { kind: 'decision_service', service: emptyService() }, complex_keywords: [] }, free: { candidates: [], primary: [], primary_fallback: false }, delegation_enabled: false, requirements: {}, limits: { maximum_attempts: 6, request_timeout_ms: DEFAULT_REQUEST_TIMEOUT_MS, attempt_timeout_ms: 30000 } }; }
 export function reopen(plan: Plan): Editor {
   const e = { ...emptyEditor(), display_name: plan.desired.display_name, purpose: plan.desired.purpose, custom_alias: plan.model_alias, mode: plan.desired.mode, delegation_enabled: plan.desired.delegation_enabled, work: plan.desired.work, requirements: plan.desired.requirements, limits: plan.desired.limits };
   const s = plan.desired.strategy;
-  if (e.mode === 'fixed_model') e.candidates = s.candidates ?? [];
-  else if (e.mode === 'smart_saving') e.smart = { economy: s.economy ?? [], primary: s.primary ?? [], primary_fallback: s.primary_fallback ?? false, reselect_on_user_message: s.reselect_on_user_message as boolean, classifier: s.classifier as SmartClassifier, complex_keywords: s.complex_keywords ?? [] };
+  if (s.mode === 'branches' && s.routing) e.branch_routing = structuredClone(s.routing);
+  else if (e.mode === 'fixed_model') e.candidates = s.candidates ?? [];
+  else if (e.mode === 'smart_saving') e.smart = { economy: s.economy ?? [], primary: s.primary ?? [], judgment: structuredClone(s.judgment!), reselect_on_user_message: s.reselect_on_user_message as boolean, classifier: s.classifier as SmartClassifier, complex_keywords: s.complex_keywords ?? [] };
   else e.free = { candidates: s.candidates ?? [], primary: s.primary ?? [], primary_fallback: s.primary_fallback ?? false };
   return e;
 }
 function activePlanSelections(plan: Plan): Selection[] {
   const strategy = plan.desired.strategy;
+  if (strategy.routing) return branchSelections(strategy.routing);
   if (plan.desired.mode === 'smart_saving') return [...(strategy.economy ?? []), ...(strategy.primary ?? [])];
   if (plan.desired.mode === 'free_first') return [...(strategy.candidates ?? []), ...(strategy.primary_fallback ? strategy.primary ?? [] : [])];
   return strategy.candidates ?? [];
@@ -113,14 +85,17 @@ function activePlanSelections(plan: Plan): Selection[] {
 function activePlanQualityModels(plan: Plan, candidates: Candidate[]): PlanQualityModel[] {
   const byBinding = new Map(candidates.map(candidate => [candidate.binding_id, candidate]));
   const strategy = plan.desired.strategy;
-  const groups: [string, Selection[]][] = plan.desired.mode === 'smart_saving'
-    ? [['smart_saving_simple', strategy.economy ?? []], ['smart_saving_complex', strategy.primary ?? []]]
-    : plan.desired.mode === 'free_first'
-      ? [['free', strategy.candidates ?? []], ['smart_saving_complex', strategy.primary_fallback ? strategy.primary ?? [] : []]]
-      : [['fixed', strategy.candidates ?? []]];
+  const groups: { id: string; name?: string; floor?: number; group: 'regular' | 'primary'; selections: Selection[] }[] = strategy.routing
+    ? strategy.routing.branches.flatMap(b => [
+      { id: b.id, name: b.name, floor: (b.judgment ?? strategy.routing!.judgment).competence.floor_millis, group: 'regular' as const, selections: b.candidates },
+      { id: b.id, name: b.name, floor: (b.judgment ?? strategy.routing!.judgment).competence.floor_millis, group: 'primary' as const, selections: b.primary_candidates },
+    ]) : plan.desired.mode === 'smart_saving' ? [
+      { id: 'smart_saving', floor: strategy.judgment?.competence.floor_millis, group: 'regular', selections: strategy.economy ?? [] },
+      { id: 'smart_saving', floor: strategy.judgment?.competence.floor_millis, group: 'primary', selections: strategy.primary ?? [] },
+    ] : [];
   const models: PlanQualityModel[] = [];
-  for (const [branch_id, selections] of groups) {
-    for (const selection of selections) {
+  for (const group of groups) {
+    for (const [candidate_index, selection] of group.selections.entries()) {
       const candidate = byBinding.get(selection.binding_id);
       if (!candidate) continue;
       const reasoning = selection.reasoning;
@@ -128,14 +103,12 @@ function activePlanQualityModels(plan: Plan, candidates: Candidate[]): PlanQuali
         : reasoning?.kind === 'toggle' ? reasoning.enabled ? 'enabled' : 'disabled'
         : reasoning?.kind === 'budget' ? 'budget-' + reasoning.tokens
         : candidate.reasoning.kind === 'fixed' ? candidate.reasoning.profile : null;
-      if (!models.some(model => model.branch_id === branch_id && model.model_configuration_id === candidate.model_configuration_id && model.reasoning_profile_id === reasoning_profile_id)) {
-        models.push({ model_configuration_id: candidate.model_configuration_id, display_name: candidate.display_name, branch_id, reasoning_profile_id });
-      }
+      models.push({ plan_revision: plan.agent_plan_revision, branch_name: group.name, floor_millis: group.floor, group: group.group, candidate_index, model_configuration_id: candidate.model_configuration_id, display_name: candidate.display_name, branch_id: group.id, reasoning_profile_id });
     }
   }
   return models;
 }
-export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Draft; creating?: boolean; initialBindingId?: string; editingMemory?: PlanEditorMemory; language: 'zh' | 'en'; active?: boolean; refreshVersion?: number; usedBy?: { id: string; name: string; brand: 'codex' | 'claude-code' | 'qoder' | 'pi' | 'dsh' | 'agent'; isDefault: boolean }[]; onOpenAgent?: (agentId: string) => void; onOpenSession?: (sessionId: string, requestId: string) => void; onDone: () => Promise<void>; onClose: () => void; onDirty?: (dirty: boolean) => void; onEdit?: () => void; onBusyChange?: (busy: boolean) => void; onOperation?: (operation: PlanOperation | null) => void; onPersisted?: (editor: PersistedEditor<Plan, Draft> | null, action: 'save_draft' | 'publish', identity: PersistenceIdentity, operation: PlanOperation | null) => void }>(function PlanEditor({ plan, draft, creating = false, initialBindingId, editingMemory, language, active = true, refreshVersion = 0, usedBy = [], onOpenAgent, onOpenSession, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted }, ref) {
+export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Draft; creating?: boolean; initialBindingId?: string; editingMemory?: PlanEditorMemory; language: 'zh' | 'en'; active?: boolean; refreshVersion?: number; usedBy?: { id: string; name: string; brand: 'codex' | 'claude-code' | 'qoder' | 'pi' | 'dsh' | 'agent'; isDefault: boolean }[]; onOpenAgent?: (agentId: string) => void; onOpenSession?: (sessionId: string, requestId: string) => void; onOpenServices?: OpenDecisionConnection; onDone: () => Promise<void>; onClose: () => void; onDirty?: (dirty: boolean) => void; onEdit?: () => void; onBusyChange?: (busy: boolean) => void; onOperation?: (operation: PlanOperation | null) => void; onPersisted?: (editor: PersistedEditor<Plan, Draft> | null, action: 'save_draft' | 'publish', identity: PersistenceIdentity, operation: PlanOperation | null) => void }>(function PlanEditor({ plan, draft, creating = false, initialBindingId, editingMemory, language, active = true, refreshVersion = 0, usedBy = [], onOpenAgent, onOpenSession, onOpenServices, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted }, ref) {
   const en = language === 'en', text = (zh: string, eng: string) => en ? eng : zh;
   const [editor, setEditor] = useState<Editor>(() => structuredClone(draft?.editor ?? (plan ? reopen(plan) : emptyEditor())));
   const [draftId] = useState(() => draft?.draft_id ?? 'draft/' + crypto.randomUUID());
@@ -144,15 +117,13 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
   const [baseline, setBaseline] = useState(() => JSON.stringify(editor));
   const [notice, setNotice] = useState('');
   const [view, setView] = useState<'configuration' | 'performance'>('configuration');
-  const [keywordInput, setKeywordInput] = useState('');
+  const [services, setServices] = useState<DecisionService[]>([]);
+  useEffect(() => { if (active) void invoke<{ services: DecisionService[] }>('decision_services').then(value => setServices(value.services)).catch(() => {}); }, [active]);
   const [invalidFields, setInvalidFields] = useState(false);
   const [validationIssue, setValidationIssue] = useState<ValidationIssue | null>(null);
   const [diagnostic, setDiagnostic] = useState('');
-  const classifierSecretInput = useRef<HTMLInputElement>(null);
-  const [classifierTest, setClassifierTest] = useState<ClassifierDecisionTestResult | null>(null);
-  const [classifierProtocolOpen, setClassifierProtocolOpen] = useState(false);
   const memory = useRef(editingMemory ?? {}).current;
-  const [moreSettingsOpen, setMoreSettingsOpen] = useState(editor.delegation_enabled || (editor.mode === 'smart_saving' && editor.smart.reselect_on_user_message));
+  const [moreSettingsOpen, setMoreSettingsOpen] = useState(editor.delegation_enabled);
   const [optionsError, setOptionsError] = useState('');
   const [optionsRetry, setOptionsRetry] = useState(0);
   const [effort, setEffort] = useState<{ name: string; native: Native; value: Selection['reasoning']; apply: (value: Selection['reasoning']) => void } | null>(null);
@@ -227,7 +198,7 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
     element?.focus();
   }
   function reportError(cause: unknown) { setError(planErrorMessage(cause, language)); setDiagnostic(planErrorCode(cause)); }
-  function update(patch: Partial<Editor>) { onEdit?.(); setEditor(e => ({ ...e, ...patch })); setError(''); setNotice(''); setDiagnostic(''); setValidationIssue(null); setClassifierTest(null); }
+  function update(patch: Partial<Editor>) { onEdit?.(); setEditor(e => ({ ...e, ...patch })); setError(''); setNotice(''); setDiagnostic(''); setValidationIssue(null); }
   function validateRoute(): ValidationIssue | null {
     if (editor.custom_alias !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test(editor.custom_alias)) {
       return { field: 'alias', message: text('接入模型名只能使用小写字母、数字和连字符。', 'The connection model name may contain lowercase letters, numbers, and hyphens only.') };
@@ -236,16 +207,17 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
     if (!options) return { message: text('模型信息仍在读取，请稍后再试。', 'Model information is still loading. Try again shortly.') };
     const windowError = contextWindowError(editor.limits.context_window_tokens, options.context_window, language);
     if (windowError) return { field: 'context_window', message: windowError };
-    if (editor.mode === 'smart_saving' && editor.smart.classifier.kind === 'rest') {
-      const classifier = editor.smart.classifier;
-      if (!validClassifierEndpoint(classifier.endpoint) || !validClassifierTimeout(classifier.timeout_ms) || !validClassifierAuthHeader(classifier.auth_header)) {
-        return { group: 'classifier', message: text('请填写有效的 HTTP/HTTPS REST 地址和 1–3600000 毫秒分类超时；如启用认证，还需填写可用的请求头名称和 Secret 引用。', 'Enter a valid HTTP/HTTPS REST endpoint and a classifier timeout from 1 to 3600000 ms. If authentication is enabled, provide a valid header name and Secret reference.') };
-      }
+    if (editor.branch_routing && editor.mode === 'custom_branches') { const issue = routingIssue(editor.branch_routing, language); if (issue) return issue; }
+    if (editor.mode === 'smart_saving') {
+      const issue = classifierIssue(editor.smart.classifier, language) ?? (editor.smart.classifier.kind === 'local_rules' ? null : judgmentIssue(editor.smart.judgment, 'smart', true, language));
+      if (issue) return issue;
     }
     if (editor.delegation_enabled && !editor.work) {
       return { group: 'executor', message: text('开启任务委派后，请选择一个执行 Agent。', 'Choose an execution agent when task delegation is enabled.') };
     }
-    const groups: { id: string; values: Selection[]; free?: boolean }[] = editor.mode === 'fixed_model'
+    const groups: { id: string; values: Selection[]; free?: boolean }[] = editor.branch_routing && editor.mode === 'custom_branches'
+      ? editor.branch_routing.branches.flatMap(b => [{ id: b.id, values: b.candidates }, ...(b.primary_candidates.length ? [{ id: b.id + '-primary', values: b.primary_candidates }] : [])])
+      : editor.mode === 'fixed_model'
       ? [{ id: 'fixed', values: editor.candidates }]
       : editor.mode === 'smart_saving'
           ? [{ id: 'economy', values: editor.smart.economy }, { id: 'primary', values: editor.smart.primary }]
@@ -286,20 +258,14 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
         setValidationIssue(issue);
         setError(issue.message);
         requestAnimationFrame(() => {
-          if (issue.field === 'alias') focusField('.plan-alias-field');
+          if (issue.selector) focusField(issue.selector);
+          else if (issue.field === 'alias') focusField('.plan-alias-field');
           else if (issue.field === 'context_window') focusField('.plan-context-window-field');
           else if (issue.field === 'request_timeout') focusField('.plan-request-timeout-field');
           else if (issue.group === 'executor') focusField('.v3-executors button');
-          else if (issue.group === 'classifier') {
-            const classifier = editor.smart.classifier;
-            const selector = classifier.kind !== 'rest' || !validClassifierEndpoint(classifier.endpoint)
-              ? '.classifier-endpoint-field'
-              : !validClassifierTimeout(classifier.timeout_ms) ? '.classifier-timeout-field'
-                : classifier.auth_header && !/^[a-zA-Z0-9._\-/:]{1,256}$/.test(classifier.auth_header.value_secret_ref)
-                  ? '.classifier-secret-ref-field' : '.classifier-header-field';
-            focusField(selector);
+          else if (issue.group === 'classifier') { focusField('[data-route-group=classifier] select');
           } else {
-            focusField(issue.bindingId ? `[data-binding-id="${CSS.escape(issue.bindingId)}"] .effort-select` : `[data-route-group="${issue.group}"] .add-candidate`);
+            focusField(issue.bindingId ? `[data-binding-id="${CSS.escape(issue.bindingId)}"] .effort-select` : `[data-branch-id="${issue.group}"] textarea, [data-route-group="${issue.group}"] .add-candidate`);
           }
         });
         return false;
@@ -373,6 +339,7 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
   }
   function changeMode(mode: Mode) {
     if (mode === editor.mode) return;
+    if (editor.branch_routing && editor.mode === 'custom_branches') memory.branchRouting = structuredClone(editor.branch_routing);
     const ready = options?.candidates.filter(candidate => candidate.routable) ?? [];
     if (mode === 'fixed_model') {
       const current = editor.candidates[0] ?? editor.smart.primary[0] ?? editor.smart.economy[0] ?? editor.free.primary[0] ?? editor.free.candidates[0];
@@ -384,11 +351,18 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
         : [] });
       return;
     }
+    if (mode === 'custom_branches') {
+      update({ mode, branch_routing: structuredClone(editor.branch_routing ?? memory.branchRouting ?? branchRouting(services.find(service => service.connection.kind === 'system_one'))) }); return;
+    }
     if (mode === 'smart_saving') {
-      const economy = editor.smart.economy.length ? editor.smart.economy : ready.filter(candidate => candidate.billing_class === 'free').slice(0, 1).map(candidate => ({ binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.reasoning, 'low') }));
-      const primary = editor.smart.primary.length ? editor.smart.primary : ready.filter(candidate => candidate.billing_class !== 'free').slice(0, 1).map(candidate => ({ binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.reasoning, 'high') }));
-      update({ mode, smart: { ...editor.smart, economy, primary } });
-      return;
+      const smart = { ...editor.smart };
+      if (!smart.economy.length) smart.economy = ready.slice(0, 1).map(c => ({ binding_id: c.binding_id, reasoning: defaultReasoning(c.reasoning, 'low') }));
+      if (!smart.primary.length) smart.primary = ready.slice(-1).map(c => ({ binding_id: c.binding_id, reasoning: defaultReasoning(c.reasoning, 'high') }));
+      if (smart.classifier.kind === 'decision_service' && !smart.classifier.service.name) {
+        const service = services.find(s => s.connection.kind === 'system_one');
+        if (service) smart.classifier = { kind: 'decision_service', service: structuredClone(service) };
+      }
+      update({ mode, smart }); return;
     }
     const candidates = editor.free.candidates.length ? editor.free.candidates : ready.filter(candidate => candidate.billing_class === 'free').map(candidate => ({ binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.reasoning, 'low') }));
     update({ mode, free: { ...editor.free, candidates } });
@@ -417,71 +391,6 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
       </div>;
     })}</div>{validationIssue?.group === groupId && <p className="oc-inline-error route-lane-error">{validationIssue.message}</p>}<button type="button" className="add-candidate" disabled={!options} onClick={() => setPicker({ title, values, replace, free, preferred })}><UiIcon name="plus" />{text('添加模型', 'Add model')}</button></section>;
   }
-  async function saveClassifierSecret(classifier: Extract<SmartClassifier, { kind: 'rest' }>) {
-    const auth = classifier.auth_header;
-    const input = classifierSecretInput.current;
-    if (!auth || !validClassifierAuthHeader(auth) || !input?.value) {
-      setError(text('请填写 Secret 引用和认证值。', 'Enter a Secret reference and authentication value.'));
-      return;
-    }
-    setBusy(true); setError(''); setDiagnostic('');
-    try {
-      const request = invoke<{ state: string }>('save_classifier_header_secret', { input: { secret_id: auth.value_secret_ref, secret: input.value } });
-      input.value = '';
-      const result = await request;
-      if (result.state !== 'succeeded') throw new Error('CLASSIFIER_SECRET_SAVE_FAILED');
-      setNotice(text('认证 Secret 已安全保存。', 'Authentication Secret saved securely.'));
-    } catch (cause) {
-      if (input) input.value = '';
-      reportError(cause);
-    } finally { setBusy(false); }
-  }
-  async function testRestClassifier(classifier: Extract<SmartClassifier, { kind: 'rest' }>) {
-    if (!validClassifierEndpoint(classifier.endpoint) || !validClassifierTimeout(classifier.timeout_ms) || !validClassifierAuthHeader(classifier.auth_header)) {
-      setError(text('请先填写有效的分类服务地址、分类超时和认证配置。', 'Enter a valid classifier endpoint, timeout, and authentication configuration first.'));
-      return;
-    }
-    setBusy(true); setError(''); setDiagnostic(''); setClassifierTest(null);
-    try {
-      const result = await invoke<ClassifierDecisionTestResult>('test_classifier_decision', { input: { classifier } });
-      setClassifierTest(result);
-    } catch (cause) { reportError(cause); } finally { setBusy(false); }
-  }
-  function classifierEditor() {
-    const classifier = editor.smart.classifier;
-    const replace = (next: SmartClassifier) => {
-      if (classifier.kind === 'rest') memory.restClassifier = classifier;
-      if (next.kind === 'rest') memory.restClassifier = next;
-      update({ smart: { ...editor.smart, classifier: next } });
-    };
-    const patchRest = (patch: Partial<Extract<SmartClassifier, { kind: 'rest' }>>) => {
-      if (classifier.kind === 'rest') replace({ ...classifier, ...patch });
-    };
-    return <>
-      <div className="editor-section-heading"><h3>{text('任务判断', 'Task classification')}</h3></div>
-      <div className="option-panel classifier-choices">
-        <button type="button" className="option-row classifier-choice" aria-pressed={classifier.kind === 'local_rules'} onClick={() => { if (classifier.kind !== 'local_rules') replace({ kind: 'local_rules' }); }}><div><strong>{text('内置规则', 'Built-in rules')}</strong><span>{text('根据任务特征判断，不访问外部服务', 'Uses task characteristics; no external service call')}</span></div>{classifier.kind === 'local_rules' && <UiIcon name="check" />}</button>
-        <button type="button" className="option-row classifier-choice" aria-pressed={classifier.kind === 'rest'} onClick={() => { if (classifier.kind !== 'rest') replace(memory.restClassifier ?? defaultRestClassifier()); }}><div><strong>{text('自定义分类服务', 'Custom classifier service')}</strong><span>{text('连接你部署的分类服务', 'Connect a classifier you deploy')}</span></div>{classifier.kind === 'rest' && <UiIcon name="check" />}</button>
-      </div>
-      {classifier.kind === 'rest' && <div className="field plan-classifier-config" data-route-group="classifier">
-        <div className="editor-section-heading"><div><h3>{text('自定义分类服务', 'Custom classifier service')}</h3><p>{text('可基于 Jev、LLM 或其他自定义策略实现；调用失败时回退内置规则。', 'Use Jev, an LLM, or another custom strategy; failed calls fall back to built-in rules.')}</p></div><button className="btn" type="button" onClick={() => setClassifierProtocolOpen(true)}>{text('查看接入协议', 'View protocol')}</button></div>
-        <div className="callout"><UiIcon name="info" /><span>{text('这是你信任的服务。HiRoute 会发送完整 latest_user 和简化的 Agent turn 历史；服务自行决定是否使用或按模型上下文裁剪。', 'This must be a service you trust. HiRoute sends the complete latest_user and simplified Agent-turn history; the service decides what to use and how to trim it.')}</span></div>
-        <label><span className="field-label">{text('分类服务地址', 'Classifier endpoint')}</span><input className="input classifier-endpoint-field" required maxLength={2048} aria-invalid={validationIssue?.group === 'classifier'} value={classifier.endpoint} placeholder="https://classifier.example/v1/decisions" onChange={event => patchRest({ endpoint: event.target.value })} /></label>
-        <label><span className="field-label">{text('分类超时（毫秒）', 'Classifier timeout (ms)')}</span><input className="input classifier-timeout-field" type="number" required min={1} max={MAX_CLASSIFIER_TIMEOUT_MS} step={1} aria-invalid={validationIssue?.group === 'classifier'} value={classifier.timeout_ms} onChange={event => patchRest({ timeout_ms: Number(event.target.value) })} /><span className="field-help">{text('覆盖历史准备、认证、连接和响应读取。外置服务自身的总超时应略小于此值；官方 Jev 默认 2800 ms。', 'Covers history preparation, authentication, connection, and response reading. Set the external service timeout slightly lower; the official Jev decider defaults to 2800 ms.')}</span></label>
-        <Disclosure className="native-details classifier-auth" label={text('认证设置', 'Authentication settings')} language={language} defaultOpen={Boolean(classifier.auth_header)}>
-        <div className="option-panel">
-          <button type="button" className="option-row" aria-pressed={!classifier.auth_header} onClick={() => patchRest({ auth_header: null })}><div><strong>{text('无认证', 'No authentication')}</strong><span>{text('适合本机或可信内网服务', 'For local or trusted-network services')}</span></div></button>
-          <button type="button" className="option-row" aria-pressed={Boolean(classifier.auth_header)} onClick={() => patchRest({ auth_header: classifier.auth_header ?? { name: 'Authorization', value_secret_ref: '' } })}><div><strong>{text('自定义认证头', 'Custom authentication header')}</strong><span>{text('值从 Secret 读取，不保存在计划中', 'The value comes from a Secret and is never stored in the plan')}</span></div></button>
-        </div>
-        {classifier.auth_header && <><div className="oc-field-grid"><label><span className="field-label">{text('请求头名称', 'Header name')}</span><input className="input classifier-header-field" required maxLength={128} value={classifier.auth_header.name} placeholder="Authorization" onChange={event => patchRest({ auth_header: { ...classifier.auth_header!, name: event.target.value } })} /></label><label><span className="field-label">{text('Secret 引用', 'Secret reference')}</span><input className="input classifier-secret-ref-field" required maxLength={256} value={classifier.auth_header.value_secret_ref} placeholder="classifier/main" onChange={event => patchRest({ auth_header: { ...classifier.auth_header!, value_secret_ref: event.target.value } })} /></label></div><div className="oc-field-grid classifier-secret-create"><label><span className="field-label">{text('新建 Secret 的认证值', 'Authentication value for a new Secret')}</span><input ref={classifierSecretInput} className="input" type="password" autoComplete="new-password" maxLength={32768} placeholder="Bearer …" /></label><div className="field-actions"><button className="btn" type="button" onClick={() => void saveClassifierSecret(classifier)}>{text('安全保存 Secret', 'Save Secret securely')}</button><span className="field-help">{text('只创建新引用；替换时请使用新的引用。认证值不会写入计划。', 'Creates a new reference only; use a new reference to replace it. The value is not stored in the plan.')}</span></div></div></>}
-        </Disclosure>
-        <div className="field-help">{text('请求仅包含允许分支、完整当前用户输入、简化历史、历史完整性和可评分范围。认证、上下文裁剪和策略部署由服务管理。', 'The request contains only allowed branches, the complete current user input, simplified history, history completeness, and the assessable range. The service owns authentication, context trimming, and strategy deployment.')}</div>
-        <div className="callout warn"><UiIcon name="warning" /><span>{text('测试会向上述服务发送一个要求选择省钱分支的固定合成问题，并可能产生服务费用；不会读取真实会话，保存和发布也不会自动测试。', 'Testing sends a fixed synthetic prompt that asks for the economy branch and may incur service charges. It does not read a real conversation, and saving or publishing never tests automatically.')}</span></div>
-        <div className="field-actions"><button className="btn" type="button" onClick={() => void testRestClassifier(classifier)}>{text('测试决策', 'Test decision')}</button>{classifierTest && <span className={`badge ${classifierTest.outcome === 'passed' ? 'good' : 'bad'} no-dot`}>{classifierTest.outcome === 'passed' ? text(`已选择 ${classifierTest.branch_id} · ${classifierTest.duration_millis} ms`, `Selected ${classifierTest.branch_id} · ${classifierTest.duration_millis} ms`) : text(`测试失败：${classifierTest.failure_code ?? 'unknown'}`, `Test failed: ${classifierTest.failure_code ?? 'unknown'}`)}</span>}</div>
-        {validationIssue?.group === 'classifier' && <p className="oc-inline-error">{validationIssue.message}</p>}
-      </div>}
-    </>;
-  }
   const editorState = dirty ? text('有未发布更改', 'Unpublished changes') : base.expected_draft_revision !== null ? text('草稿已保存', 'Draft saved') : plan ? text('已启用', 'Active') : text('未发布', 'Unpublished');
   const editorTone = dirty ? 'warn' : plan && base.expected_draft_revision === null ? 'good' : 'info';
   return <section className="plan-editor" aria-label={text('路由编辑器', 'Plan editor')}>{!creating && <header className="editor-header"><div className="editor-title"><div className="title-with-status"><h2>{editor.display_name || text('新建智能路由', 'New smart routing')}</h2><span className={`badge ${editorTone} no-dot`}>{editorState}</span></div></div><div className="editor-actions"><button className="btn" type="button" disabled={busy || (!dirty && Boolean(plan || draft))} onClick={() => void act('save_draft')}>{text('保存草稿', 'Save draft')}</button><button type="button" className="btn btn-primary" disabled={busy || (!dirty && !!plan && base.expected_draft_revision === null)} onClick={() => void act('publish')}><UiIcon name="upload" />{plan ? text('发布更改', 'Publish changes') : text('启用', 'Enable')}</button></div></header>}
@@ -492,23 +401,23 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
     </div>}
     <fieldset disabled={busy}><div hidden={!!plan && view !== 'configuration'}><section className="editor-section"><div className="editor-section-heading"><div><h3>{text('这份智能路由用来做什么', 'What this routing is for')}</h3><p>{text('Agent 根据用途选择适合任务的路由。', 'Your Agent uses this description to choose a route.')}</p></div></div><div className="plan-identity-fields"><label><span className="sr-only">{text('名称', 'Name')}</span><input className="input" autoFocus={creating} required placeholder={text('名称，例如：代码实现', 'Name, e.g. Code implementation')} aria-invalid={invalidFields && !editor.display_name.trim()} aria-describedby={invalidFields && !editor.display_name.trim() ? "route-name-error" : undefined} value={editor.display_name} maxLength={128} onChange={e => update({ display_name: e.target.value })} />{invalidFields && !editor.display_name.trim() && <span id="route-name-error" className="oc-inline-error">{text('请填写路由名称', 'Enter a route name')}</span>}</label><label><span className="sr-only">{text('使用场景', 'Purpose')}</span><input className="input" required placeholder={text('使用场景：适合做什么，期望交付什么', 'Purpose: tasks and expected results')} maxLength={512} aria-invalid={invalidFields && !editor.purpose.trim()} aria-describedby={invalidFields && !editor.purpose.trim() ? "route-purpose-error" : undefined} value={editor.purpose} onChange={e => update({ purpose: e.target.value })} />{invalidFields && !editor.purpose.trim() && <span id="route-purpose-error" className="oc-inline-error">{text('请填写使用场景', 'Enter a purpose')}</span>}</label>
     </div><div className="field plan-alias"><label><span className="field-label">{text('接入模型名', 'Connection model name')}</span><input className="input plan-alias-field" readOnly={!!plan} value={editor.custom_alias ?? options?.suggested_alias ?? ''} placeholder="hiroute-…" maxLength={64} aria-invalid={validationIssue?.field === 'alias'} onChange={e => update({ custom_alias: e.target.value })} /></label><span className="field-help">{text('在 Agent 中使用此名称调用这条智能路由。创建后保持稳定。', 'Use this name in an Agent to call the smart route. It remains stable after creation.')}</span>{validationIssue?.field === 'alias' && <span className="oc-inline-error">{validationIssue.message}</span>}{!plan && editor.custom_alias !== undefined && <button className="btn" type="button" onClick={() => update({ custom_alias: undefined })}>{text('恢复自动名称', 'Use automatic name')}</button>}</div></section>
-    <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('怎样使用模型', 'How to use models')}</h3></div></div>{optionsError && <div className="callout warn route-local-error" role="alert"><UiIcon name="warning" /><span>{optionsError}</span><button className="btn" type="button" onClick={() => setOptionsRetry(value => value + 1)}>{text('重试', 'Retry')}</button></div>}<div className="mode-switcher plan-mode-switcher">{(['fixed_model', 'smart_saving', 'free_first'] as Mode[]).map((m, i) => <button className={`mode-card${editor.mode === m ? ' active' : ''}`} type="button" aria-pressed={editor.mode === m} key={m} onClick={() => changeMode(m)}><strong>{text(['固定模型', '智能省钱', '免费优先'][i], ['Fixed model', 'Smart saving', 'Free first'][i])}</strong><span>{text(['按固定顺序依次尝试候选模型', '简单任务用省钱组合，复杂任务用主力组合', '先用免费模型，可选择主力兜底'][i], ['Try candidate models in a fixed order', 'Economy for simple tasks; primary for complex work', 'Use free models first, with optional primary fallback'][i])}</span></button>)}</div></section>
+    <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('怎样使用模型', 'How to use models')}</h3></div></div>{optionsError && <div className="callout warn route-local-error" role="alert"><UiIcon name="warning" /><span>{optionsError}</span><button className="btn" type="button" onClick={() => setOptionsRetry(value => value + 1)}>{text('重试', 'Retry')}</button></div>}<div className="mode-switcher plan-mode-switcher">{(['fixed_model', 'smart_saving', 'custom_branches', 'free_first'] as Mode[]).map((m, i) => <button className={`mode-card${editor.mode === m ? ' active' : ''}`} type="button" aria-pressed={editor.mode === m} key={m} onClick={() => changeMode(m)}><strong>{text(['固定模型', '智能省钱', '自定义分支', '免费优先'][i], ['Fixed model', 'Smart saving', 'Custom branches', 'Free first'][i])}</strong><span>{text(['按固定顺序依次尝试候选模型', '简单任务用省钱组合，复杂任务用主力组合', '按自己的任务条件选择分支和模型', '先用免费模型，可选择主力兜底'][i], ['Try candidate models in a fixed order', 'Economy for simple tasks; primary for complex work', 'Choose branches and models by your task conditions', 'Use free models first, with optional primary fallback'][i])}</span></button>)}</div></section>
     {editor.mode === 'fixed_model' && <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('固定模型顺序', 'Fixed model order')}</h3><p>{text('HiRoute 按此顺序尝试；不满足能力或暂时不可用的模型会被跳过。', 'HiRoute tries this order, skipping models that cannot satisfy the request or are temporarily unavailable.')}</p></div></div>{group(text('候选模型', 'Candidate models'), text('发布后保持此顺序', 'Keep this order after publication'), editor.candidates, candidates => update({ candidates }), { groupId: 'fixed' })}</section>}
-    {editor.mode === 'smart_saving' && <><section className="editor-section plan-model-groups">
-      <div className="editor-section-heading"><div><h3>{text('简单任务与复杂任务', 'Simple and complex tasks')}</h3><p>{text('简单任务先用省钱组合；复杂任务直接使用主力组合。', 'Simple tasks use the economy group; complex tasks use the primary group.')}</p></div></div>
-      <div className="mini-route">{group(text('简单任务', 'Simple tasks'), text('省钱组合', 'Economy group'), editor.smart.economy, economy => update({ smart: { ...editor.smart, economy } }), { preferred: 'low', groupId: 'economy' })}<span className="lane-connector"><UiIcon name="route" /></span>{group(text('复杂任务', 'Complex tasks'), text('主力组合', 'Primary group'), editor.smart.primary, primary => update({ smart: { ...editor.smart, primary } }), { preferred: 'high', primary: true, groupId: 'primary' })}</div>
-      <div className="option-panel plan-fallback"><button type="button" className="option-row route-toggle-row" aria-pressed={editor.smart.primary_fallback} onClick={() => update({ smart: { ...editor.smart, primary_fallback: !editor.smart.primary_fallback } })}><div><strong>{text('省钱组合不可用时继续主力组合', 'Use primary when economy is unavailable')}</strong><span>{text('复杂任务不会降级到省钱组合', 'Complex tasks never downgrade to economy')}</span></div><span className={`switch${editor.smart.primary_fallback ? ' on' : ''}`} aria-hidden="true" /></button></div>
-    </section><section className="editor-section plan-classification">
-      {classifierEditor()}
-      <Disclosure className="native-details keywords" label={text('关键词规则', 'Keyword rules')} language={language}><div className="editor-section-heading"><div><h3>{text('强制使用主力组合的关键词', 'Keywords that force the primary group')}</h3><p>{text('默认规则会识别多目标、架构、调试、跨文件和较长任务；REST 服务失败时也使用这些规则。', 'Default rules recognize multi-goal, architecture, debugging, cross-file and longer tasks; these rules are also used when the REST service fails.')}</p></div></div><div className="keyword-box">{editor.smart.complex_keywords.filter(Boolean).map(word => <span className="keyword-chip" key={word}>{word}<button type="button" aria-label={`${text('移除关键词', 'Remove keyword')} ${word}`} onClick={() => update({ smart: { ...editor.smart, complex_keywords: editor.smart.complex_keywords.filter(value => value !== word) } })}><UiIcon name="close" /></button></span>)}</div><div className="keyword-add"><input className="input" value={keywordInput} maxLength={64} placeholder={text('输入一个关键词或短语', 'Enter a keyword or phrase')} onChange={event => setKeywordInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); const word = keywordInput.trim(); if (word && !editor.smart.complex_keywords.includes(word)) update({ smart: { ...editor.smart, complex_keywords: [...editor.smart.complex_keywords, word] } }); setKeywordInput(''); } }} /><button className="btn" type="button" onClick={() => { const word = keywordInput.trim(); if (word && !editor.smart.complex_keywords.includes(word)) update({ smart: { ...editor.smart, complex_keywords: [...editor.smart.complex_keywords, word] } }); setKeywordInput(''); }}>{text('添加', 'Add')}</button></div></Disclosure>
-    </section></>}
+    {editor.mode === 'smart_saving' && <>
+      <DecisionSelector classifier={editor.smart.classifier} smart services={services} language={language} onChange={classifier => update({ smart: { ...editor.smart, classifier } })} onOpenServices={onOpenServices} error={validationIssue?.group === 'classifier' ? validationIssue.message : undefined} />
+      <section className="editor-section">{group(text('省钱模型', 'Economy models'), text('处理简单任务，按顺序尝试。', 'For simple tasks, tried in this order.'), editor.smart.economy, economy => update({ smart: { ...editor.smart, economy } }), { groupId: 'economy', preferred: 'low' })}</section>
+      <section className="editor-section">{group(text('主力模型', 'Primary models'), text('任务复杂或上一阶段不胜任时使用，按顺序尝试。', 'For complex tasks or low competence, tried in this order.'), editor.smart.primary, primary => update({ smart: { ...editor.smart, primary } }), { groupId: 'primary', preferred: 'high' })}</section>
+      {editor.smart.classifier.kind !== 'local_rules' && <section className="editor-section"><Disclosure label={text(`判断设置 · ${judgmentSummary(editor.smart.judgment, true, language)}`, `Judgment settings · ${judgmentSummary(editor.smart.judgment, true, language)}`)} language={language}><JudgmentFields value={editor.smart.judgment} onChange={judgment => update({ smart: { ...editor.smart, judgment } })} id="smart" language={language} /></Disclosure></section>}
+      <section className="editor-section"><Disclosure label={text('追问偏好与失败处理', 'Follow-up preference and failure handling')} language={language}>
+        <FollowUpPreference value={editor.smart.reselect_on_user_message} onChange={reselect_on_user_message => update({ smart: { ...editor.smart, reselect_on_user_message } })} language={language} />
+        <p className="field-help">{text('每条新消息重新判断。决策调用失败时使用启发式规则；省钱模型均不可用时尝试主力模型，主力模型耗尽后停止并提示。', 'Each new message is judged again. Failed decision calls use heuristic rules. Exhausted economy candidates continue to primary models; stop when primary candidates are exhausted.')}</p>
+      </Disclosure></section>
+    </>}
+    {editor.branch_routing && editor.mode === 'custom_branches' && <BranchRoutingEditor routing={editor.branch_routing} services={services} language={language} onChange={branch_routing => update({ branch_routing })} onOpenServices={onOpenServices} group={group} errorGroup={validationIssue?.group} error={validationIssue?.message} />}
     {editor.mode === 'free_first' && <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('免费候选', 'Free candidates')}</h3><p>{text('当前候选与顺序在发布后保持固定。', 'Candidates and order stay fixed after publication.')}</p></div><button className="btn" type="button" onClick={() => void useAllFree()}>{text('使用当前全部可用免费模型', 'Use all available free models')}</button></div><div className="free-lane">{group(text('免费模型', 'Free models'), text('固定顺序', 'Fixed order'), editor.free.candidates, candidates => update({ free: { ...editor.free, candidates } }), { free: true, preferred: 'low', groupId: 'free' })}</div><div className="editor-section-heading fallback-heading"><div><h3>{text('免费模型都不可用时', 'When all free models are unavailable')}</h3></div></div><div className="option-panel"><button type="button" className="option-row" aria-pressed={!editor.free.primary_fallback} onClick={() => update({ free: { ...editor.free, primary_fallback: false } })}><div><strong>{text('停止并提示，只使用免费模型', 'Stop and report; free models only')}</strong><span>{text('绝不会进入订阅或付费模型', 'Never use subscription or paid models')}</span></div><span className={`badge ${!editor.free.primary_fallback ? 'info' : ''} no-dot`}>{!editor.free.primary_fallback ? text('已选择', 'Selected') : text('选择', 'Choose')}</span></button><button type="button" className="option-row" aria-pressed={editor.free.primary_fallback} onClick={() => update({ free: { ...editor.free, primary_fallback: true } })}><div><strong>{text('继续使用主力模型', 'Continue with primary models')}</strong><span>{text('只有免费池全部不可用时才进入主力组合', 'Use primary only when the free pool is unavailable')}</span></div><span className={`badge ${editor.free.primary_fallback ? 'info' : ''} no-dot`}>{editor.free.primary_fallback ? text('已选择', 'Selected') : text('选择', 'Choose')}</span></button></div>{editor.free.primary_fallback && <div className="free-lane">{group(text('主力模型', 'Primary models'), text('免费池的兜底', 'Fallback for free pool'), editor.free.primary, primary => update({ free: { ...editor.free, primary } }), { preferred: 'high', primary: true, groupId: 'free-primary' })}</div>}</section>}
     <PlanRuntimeSettings limits={editor.limits} options={options} language={language} editingMemory={memory} onChange={limits => update({ limits })} />
     <section className="editor-section">
       <Disclosure className="native-details plan-more-settings" label={text('更多设置', 'More settings')} language={language} defaultOpen={moreSettingsOpen} onOpenChange={setMoreSettingsOpen}>
-        {editor.mode === 'smart_saving' && <section className="editor-subsection"><h3>{text('追问策略', 'Follow-up strategy')}</h3>
-      <div className="option-panel"><button type="button" className="option-row route-toggle-row" aria-pressed={editor.smart.reselect_on_user_message} onClick={() => update({ smart: { ...editor.smart, reselect_on_user_message: !editor.smart.reselect_on_user_message } })}><div><strong>{text('追问时重新选择模型', 'Reselect model for each follow-up')}</strong><span>{editor.smart.reselect_on_user_message ? text('每次追问可重新选择模型。切换可能影响对话连贯性、缓存命中率，并因模型间推理状态不兼容导致请求失败。', 'Each follow-up may reselect a model. Switching can affect continuity and cache hits, and incompatible reasoning state can cause a request to fail.') : text('连续对话中的追问优先沿用当前模型。上下文重建或模型不可用时仍可能切换。', 'Follow-ups prefer the current model. A rebuilt context or an unavailable model can still cause a switch.')}</span></div><span className={`switch${editor.smart.reselect_on_user_message ? ' on' : ''}`} aria-hidden="true" /></button></div>
-        </section>}
     <section className="editor-subsection" data-route-group="executor"><div className="editor-section-heading"><div><h3>{text('任务委派', 'Task delegation')}</h3><p>{text('关闭时只使用模型路由，不显示或检测本机执行环境。', 'When off, this plan only routes models and does not show or detect a local execution environment.')}</p></div></div><div className="option-panel"><button type="button" className="option-row" aria-pressed={editor.delegation_enabled} onClick={() => update({ delegation_enabled: !editor.delegation_enabled })}><div><strong>{text('允许委派任务给执行 Agent', 'Allow delegation to an execution agent')}</strong><span>{text('开启后需要为这份计划选择一个执行 Agent；安装缺失不会阻止保存。', 'When enabled, choose one execution agent for this plan. Missing installation does not block saving.')}</span></div><span className={`switch${editor.delegation_enabled ? ' on' : ''}`} aria-hidden="true" /></button></div>
     {editor.delegation_enabled && <div className="field"><label className="field-label">{text('执行任务的 Agent', 'Task execution agent')}</label><p className="field-help">{text('每份计划选择一个执行 Agent，不做自动回退。', 'Choose one execution agent per plan; there is no automatic fallback.')}</p><div className="v3-executors">{([
       ['codex_cli', 'Codex CLI', text('使用 Codex CLI 执行委派任务', 'Use Codex CLI for delegated tasks')],
@@ -529,7 +438,6 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
     </div>
     {plan && <section className="editor-section quality-performance-panel" hidden={view !== 'performance'} role="tabpanel"><div className="editor-section-heading"><div><h3>{text('模型表现', 'Model performance')}</h3><p>{text('观察已发布路由中各模型的阶段胜任度，再查看具体执行阶段与证据。', 'Compare stage competence for models in the published route, then inspect execution stages and evidence.')}</p></div><span className="badge no-dot">{text('生效版本 r' + plan.agent_plan_revision, 'Active r' + plan.agent_plan_revision)}</span></div><PlanQuality planId={plan.agent_plan_id} planRevision={plan.agent_plan_revision} currentModels={activePlanQualityModels(plan, options?.candidates ?? [])} language={language} active={active && view === 'performance'} refreshVersion={refreshVersion} onOpenEvidence={onOpenSession} /></section>}
     </fieldset>
-    <ClassifierProtocolDialog open={classifierProtocolOpen} language={language} onClose={() => setClassifierProtocolOpen(false)} />
     {effort && <ReasoningDialog
       name={effort.name}
       native={effort.native}

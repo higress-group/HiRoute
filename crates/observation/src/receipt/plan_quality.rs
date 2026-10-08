@@ -9,6 +9,7 @@ pub(super) fn apply(
 ) -> Result<(), FactProjectionError> {
     let changed = match &envelope.fact {
         ExecutionFactV1::AgentTurnFinished {
+            branch_execution,
             agent_turn_id,
             segment_id,
             ordinal,
@@ -205,6 +206,15 @@ pub(super) fn apply(
                     ],
                 )
                 .map_err(|_| FactProjectionError::Storage)?;
+            if let Some(metadata) = branch_execution {
+                let encoded =
+                    serde_json::to_string(metadata).map_err(|_| FactProjectionError::Invalid)?;
+                let previous: Option<String> = transaction.query_row("SELECT branch_execution_json FROM plan_quality_segments WHERE workspace_id=?1 AND segment_id=?2", params![envelope.correlation.workspace_id.as_str(), segment_id], |row| row.get(0)).map_err(|_| FactProjectionError::Storage)?;
+                if previous.as_ref().is_some_and(|old| old != &encoded) {
+                    return Err(FactProjectionError::ImmutableConflict);
+                }
+                transaction.execute("UPDATE plan_quality_segments SET branch_execution_json=?3 WHERE workspace_id=?1 AND segment_id=?2", params![envelope.correlation.workspace_id.as_str(), segment_id, encoded]).map_err(|_| FactProjectionError::Storage)?;
+            }
             true
         }
         ExecutionFactV1::BranchAssessmentRecorded {
@@ -304,6 +314,33 @@ pub(super) fn apply(
                 )
                 .map_err(|_| FactProjectionError::Storage)?;
             changed > 0
+        }
+        ExecutionFactV1::RouteDecision(fact) => {
+            if let (
+                Some(plan_id),
+                hiroute_domain::ModelRequestRouteV2::Plan { revision, .. },
+                Some(trigger),
+            ) = (
+                &fact.plan_id,
+                &fact.route,
+                fact.complexity
+                    .as_ref()
+                    .and_then(|c| c.competence_trigger.as_ref()),
+            ) {
+                let upgrade = hiroute_domain::PlanQualityUpgrade {
+                    decision: trigger.clone(),
+                    trigger_request_id: envelope.correlation.request_id.to_string(),
+                };
+                let encoded =
+                    serde_json::to_string(&upgrade).map_err(|_| FactProjectionError::Invalid)?;
+                transaction.execute("INSERT INTO plan_quality_segments(workspace_id,segment_id,session_id,plan_id,plan_revision,upgrade_json)
+                    VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(workspace_id,segment_id) DO UPDATE SET upgrade_json=excluded.upgrade_json
+                    WHERE plan_quality_segments.upgrade_json IS NULL AND plan_quality_segments.session_id=excluded.session_id AND plan_quality_segments.plan_id=excluded.plan_id AND plan_quality_segments.plan_revision=excluded.plan_revision",
+                    params![envelope.correlation.workspace_id.as_str(), trigger.segment_id, envelope.correlation.conversation_id.as_str(), plan_id.as_str(), revision, encoded])
+                    .map_err(|_| FactProjectionError::Storage)? > 0
+            } else {
+                false
+            }
         }
         _ => false,
     };

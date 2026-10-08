@@ -9,9 +9,9 @@ import { projectHomeActivity } from '../../../src/product/home-projections';
 import { PresentationRoot } from '../../../src/ui';
 import '../../../src/occami/styles.css';
 
-type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; first_request_at_ms: number; last_request_at_ms: number; unknown_model_request_count: number; correlation_kind: string };
+type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; first_request_at_ms: number; last_request_at_ms: number; unknown_model_request_count: number; correlation_kind: string; content_completeness: string };
 type RoutingContext = { state: 'recorded'; display_name: string; name_state: 'recorded'; plan_id: string; plan_revision: string };
-type RequestRow = { request_id: string; session_id: string; started_at_ms: number; outcome: string | null; attempted_model_count: number; final_native_model: string | null; within_request_fallback: boolean | null; between_turn_model_change: boolean | null; routing_context: RoutingContext | null };
+type RequestRow = { content_completeness: string; request_id: string; session_id: string; started_at_ms: number; outcome: string | null; attempted_model_count: number; final_native_model: string | null; within_request_fallback: boolean | null; between_turn_model_change: boolean | null; routing_context: RoutingContext | null };
 type Hit = { session_id: string; request_id: string; content_id: string; original_text_offset: number };
 type Handler = (payload: Record<string, any>) => unknown;
 
@@ -33,6 +33,7 @@ const control = {
     started_at_ms: at,
     outcome: null,
     attempted_model_count: 1,
+    content_completeness: 'complete',
     final_native_model: null,
     within_request_fallback: null,
     between_turn_model_change: null,
@@ -64,6 +65,7 @@ function sessionSummaries(query: Record<string, any>): Summary[] {
       last_request_at_ms: Math.max(...rows.map(row => row.started_at_ms)),
       unknown_model_request_count: rows.filter(row => row.attempted_model_count === 0).length,
       correlation_kind: 'agent_supplied',
+      content_completeness: rows.some(row => row.content_completeness !== 'complete') ? 'partial' : 'complete',
     }];
   }).sort((left, right) => right.last_request_at_ms - left.last_request_at_ms);
 }

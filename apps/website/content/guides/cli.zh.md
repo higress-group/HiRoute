@@ -50,11 +50,33 @@ hiroute routing apply --help
 
 - `compute scan/list/show` 发现和读取模型来源；`compute connection options/test/preview/apply/authorize` 检查并保存连接。
 - `models show` 查看候选模型能力。
+- `decision services list/apply/test` 管理决策模型或自定义扩展的已保存连接版本。
 - `routing options/list/show/preview/apply` 创建、更新并发布智能路由。
 - `agents scan/list/check` 发现本机 Agent；`agents connect preview/apply/status` 接入，`agents restore preview/apply` 恢复。
 - `operations find/get` 在写响应丢失或状态不确定时，按原幂等域查询已发生的操作。
 
-写操作都先 `preview` 再 `apply`，并保留同一份 change、digest、revision 与 idempotency key。密码或 API key 通过 `protected-input` 传入，不放进普通 JSON、参数或日志。具体字段始终从对应 `schema show`、`options` 和 leaf `--help` 获取。
+配置写入先预览再应用，并保留完整请求、预览摘要、精确 revision 与 idempotency key。模型、路由和 Agent 使用各自的 `preview/apply` 命令；决策连接的预览与保存都通过 `decision services apply` 完成。密码或 API key 通过 `protected-input` 传入，不放进普通 JSON、参数或日志。具体字段始终从对应 `schema show`、`options` 和 leaf `--help` 获取。
+
+## 管理决策连接
+
+CLI 保留 `decision services` 命令名；桌面应用将这些连接放在“模型 → 决策模型”中。内置决策模型和自定义扩展独立于实际执行任务的通用模型：
+
+```sh
+hiroute decision services list --output json
+hiroute schema show --command-id decision.services.apply --output json
+hiroute decision services apply --help
+hiroute decision services apply --request-stdin --output json < decision-preview-request.json
+hiroute decision services apply --request-stdin --output json < decision-apply-request.json
+hiroute decision services test --request-stdin --output json < decision-test-request.json
+```
+
+没有单独的 `decision services preview` 命令。第一次 `apply` 传入 `{schema_version, spec}` 只预览；保存时传入同一 `schema_version`、返回的 `data.normalized_spec`，以及 `data.change_digest` 对应的 `accept_digest`、`data.expected_revisions` 和固定幂等键。`spec.desired_state` 包含连接 ID、`expected_revision`、完整 `service`，以及需要新凭证时的受保护 `input_slot`；`service: null` 删除未被引用的连接。
+
+列表返回各连接的最新版本。路由选择的是完整已保存版本，按 ID、revision 和内容核对；旧版本仍可用于发布。智能省钱在编辑器的 `smart.classifier` 和 `smart.judgment` 中配置；自定义分支使用 `branch_routing.classifier`、计划 `branch_routing.judgment`，以及各分支的常规 `candidates`、主力 `primary_candidates`（未配置主力时为空数组）和可选完整 `judgment` 覆盖。分支省略覆盖时跟随计划，整套复制后独立，清除覆盖后恢复默认。
+
+保存 r2 不会改变已固定 r1 的路由；需要选择新版本并通过 `routing preview/apply` 发布。测试请求使用 `hiroute.classifier-decision-test/v1`，`classifier` 为 `{kind: "decision_service", service: <完整已保存版本>}`。它只发送固定合成输入，检查该准确连接版本，不读取真实会话或生成质量样本。检查 `data.outcome` 与 `data.failure_code`，不能仅凭命令退出成功判断测试通过。
+
+自定义扩展遵守 [自定义扩展 API](/docs/decision-api/)；内置供应商配置和接口映射见 [决策模型接入指南](/docs/decision-extensions/)。可选的 [Jev 自托管参考扩展](/docs/jev-decider/) 提供自行部署的示例。完整桌面配置步骤见 [使用智能模型路由](/docs/model-routing/)。
 
 ## 查询会话与运行表现
 
@@ -64,9 +86,13 @@ hiroute sessions show <SESSION_ID> --output json
 hiroute sessions receipt <RECEIPT_ID> --output json
 hiroute sessions status --output json
 hiroute value show --routing <PLAN_ID> --session <SESSION_ID> --output json
+hiroute observation plan-quality samples --plan-id <PLAN_ID> --output json
+hiroute observation plan-quality samples --session-id <SESSION_ID> --limit 50 --output json
 ```
 
 默认会话查询返回事实和 timeline，不返回对话正文。receipt 展示实际路由、模型和上游已报告的 token；没有可信价格证据时，价值金额保持未知，不会伪造为零。
+
+`observation plan-quality samples` 至少需要计划或会话范围，返回运行表现使用的阶段事实。`branch_execution` 记录实际任务分支、模型组、组内候选和当时判断标准；本轮选择原因与后续阶段评分分别保存。`--competence below-floor|meets-floor` 按阶段冻结的胜任下限筛选，`--unrated` 查看缺失或部分评分；未评分不等于零。返回游标用于继续分页，此查询不会调用模型或返回受保护的对话正文。
 
 ## 发现执行器和计划
 
@@ -132,4 +158,4 @@ hiroute worker cancel --run <RUN_ID> --reason user-requested
 
 公开命令支持 `--output text|json|quiet`。交互使用默认的 `text`；脚本和主 Agent 使用 `json` 并按 schema 处理；只关心成功或失败时使用 `quiet`。可以用 `hiroute schema list` 和 `hiroute schema show` 在运行时发现当前版本的机器合同。
 
-CLI 当前公开 45 个 Released Application 命令；其余 Planned 命令会继续被 CLI 和 daemon 拒绝。自动化应在运行时读取 schema，而不是把命令总数或尚未发布的能力写死。
+CLI 和 daemon 只接受当前已发布的业务命令，继续拒绝 Planned 命令。自动化应在运行时读取 schema，而不是把命令总数或尚未发布的能力写死。

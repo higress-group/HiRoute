@@ -5,6 +5,7 @@ original file and the user's normal Agent configuration are never modified. Outp
 contains only numerical usage and safe resource identities, never credentials.
 """
 
+from publication_process import judgment_fixture
 import argparse
 import hashlib
 import http.client
@@ -109,7 +110,7 @@ def publish_luna_plan(product, binding_id):
         'mode': 'fixed_model',
         'candidates': [{'binding_id': binding_id,
                         'reasoning': {'kind': 'profile', 'profile': 'low'}}],
-        'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+        'smart': {'economy': [], 'primary': [], 'judgment': judgment_fixture(),
                   'reselect_on_user_message': False,
                   'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
         'free': {'candidates': [], 'primary': [], 'primary_fallback': False},

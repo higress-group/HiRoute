@@ -32,6 +32,46 @@ fn write_classifier_openapi(path: &std::path::Path) -> std::io::Result<()> {
     std::fs::write(path, CLASSIFIER_OPENAPI.as_bytes())
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct DecisionServiceSaveInput {
+    change: hiroute_domain::DecisionServiceChangeV1,
+    secret: Option<String>,
+}
+
+#[tauri::command]
+pub(super) async fn decision_services(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> Result<crate::session::DecisionServiceList, DesktopFailure> {
+    main_window(&window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .decision_services()
+        .await
+}
+
+#[tauri::command]
+pub(super) async fn save_decision_service(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: DecisionServiceSaveInput,
+) -> Result<ApplyResultV1, DesktopFailure> {
+    main_window(&window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_mut()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .save_decision_service(input.change, input.secret.map(zeroize::Zeroizing::new))
+        .await
+}
+
 /// Explicitly invokes the production classifier path with the product-owned
 /// synthetic first turn. No real conversation or business model call is made.
 #[tauri::command]

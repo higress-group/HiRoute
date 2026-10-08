@@ -3,6 +3,7 @@
 Requires the same exact-candidate binaries and selected native installations as
 delegation_product.py. No business SQL, private execution port, or replacement ACP.
 """
+from publication_process import judgment_fixture
 import argparse
 import hashlib
 import json
@@ -82,7 +83,7 @@ def prepare_product(product, harness, context_tokens=None):
             'schema': 'hiroute.plan-editor/v2', 'display_name': 'Native Worker context',
             'purpose': 'Read native user and project skills', 'mode': 'fixed_model',
             'candidates': [{'binding_id': saved['binding_id']}],
-            'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+            'smart': {'economy': [], 'primary': [], 'judgment': judgment_fixture(),
                       'reselect_on_user_message': False, 'classifier': {'kind': 'local_rules'},
                       'complex_keywords': []},
             'free': {'candidates': [], 'primary': [], 'primary_fallback': False},

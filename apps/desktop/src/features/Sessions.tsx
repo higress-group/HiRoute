@@ -10,7 +10,7 @@ import { safeDiagnosticCode } from '../error-code';
 import { observationRead as read } from './observation-client';
 import { PlanQuality } from './PlanQuality';
 type Page<T> = { next_cursor: string | null } & T;
-type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; last_request_at_ms: number; correlation_kind: CorrelationKind };
+type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; last_request_at_ms: number; correlation_kind: CorrelationKind; content_completeness: string };
 type RoutingContext = { state: 'recorded' | 'unavailable' | 'conflicted'; display_name: string | null; name_state: 'recorded' | 'unavailable'; plan_id?: string | null; plan_revision?: string | null };
 type Request = { request_id: string; started_at_ms: number; outcome: string | null; native_turn_id: string | null; within_request_fallback: boolean | null; final_native_model: string | null; between_turn_model_change: boolean | null; previous_native_turn_id: string | null; previous_turn_model: string | null; turn_final_native_model: string | null; routing_context?: RoutingContext };
 type Content = { content_id: string; role: string; kind: string; state: string; direction: string; media_type: string; message_occurrence_id: string; message_ordinal?: number; part_ordinal?: number; fork_id?: string; downstream_delivery?: string | null };
@@ -33,7 +33,7 @@ function currentWindow(): ObservationQueryWindow {
   const now = Date.now();
   return { from_ms: now - 7 * 86400000, to_ms: now + 1 };
 }
-export function Sessions({ initialSession = null, initialRequest = null, language = 'zh', refreshVersion = 0, active = true, onOpenAgents }: { initialSession?: string | null; initialRequest?: string | null; language?: 'zh' | 'en'; refreshVersion?: number; active?: boolean; onOpenAgents?: () => void }) {
+export function Sessions({ initialSession = null, initialRequest = null, language = 'zh', refreshVersion = 0, active = true, onOpenAgents, onReturnToQuality }: { initialSession?: string | null; initialRequest?: string | null; language?: 'zh' | 'en'; refreshVersion?: number; active?: boolean; onOpenAgents?: () => void; onReturnToQuality?: () => void }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const [reload, setReload] = useState(0);
   const sessionQuery = useRef(currentWindow());
@@ -46,6 +46,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   const [readingRequests, setReadingRequests] = useState<string[]>([]);
   const [requestCursor, setRequestCursor] = useState<string | null>(null);
   const [request, setRequest] = useState<string | null>(null);
+  const [focusedRequest, setFocusedRequest] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<Hit | null>(null);
   const [keyword, setKeyword] = useState('');
   const [hits, setHits] = useState<Hit[]>([]);
@@ -130,6 +131,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     if (!cursor) {
       timelineQuery.current = { from_ms: 0, to_ms: Date.now() + 1 };
       const initialRequest = hit?.request_id ?? exactRequest ?? null;
+      setFocusedRequest(exactRequest ?? null);
       setSession(id); setRequests([]); setReadingRequests(initialRequest ? [initialRequest] : []); setRequest(initialRequest); setAnchor(hit ?? null);
       setFactsOpen(false); setFacts([]); setFactsError(''); setFactCursor(null); setFactPartial(false);
       setFocusedSummary(sessions.find(item => item.session_id === id) ?? null);
@@ -148,6 +150,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
           : read<Page<{ sessions: Summary[] }>>('sessions', { ...exactQuery, limit: 1, cursor: null }),
       ]);
       if (epoch !== timelineGeneration.current) return;
+      if (exactRequest && !page.requests.some(item => item.request_id === exactRequest)) setTimelineError('OBSERVATION_REQUEST_UNAVAILABLE');
       if (!cursor && summaryPage?.sessions[0]) setFocusedSummary(summaryPage.sessions[0]);
       setRequests(current => cursor ? [...current, ...page.requests] : page.requests); setRequestCursor(page.next_cursor);
       if (!cursor && !hit && !exactRequest) {
@@ -213,7 +216,10 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     }
     finally { setBusy(false); }
   }
-  function refresh() { window.dispatchEvent(new Event('hiroute-content-invalidated')); generation.current++; timelineGeneration.current++; factGeneration.current++; setListError(''); setTimelineError(''); setSession(null); setRequest(null); setReadingRequests([]); setRequests([]); setFactsOpen(false); setFacts([]); setHits([]); setReload(current => current + 1); }
+  function refresh() {
+    if (focusedRequest && session) { initialTarget.current = session; initialRequestTarget.current = focusedRequest; }
+    window.dispatchEvent(new Event('hiroute-content-invalidated')); generation.current++; timelineGeneration.current++; factGeneration.current++; setListError(''); setTimelineError(''); setSession(null); setRequest(null); setReadingRequests([]); setRequests([]); setFactsOpen(false); setFacts([]); setHits([]); setReload(current => current + 1);
+  }
   const selectedSummary = sessions.find(item => item.session_id === session)
     ?? (focusedSummary?.session_id === session ? focusedSummary : undefined);
   const agentName = (id?: string) => !id
@@ -253,7 +259,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   return <ProductPage
     title={text('会话', 'Sessions')}
     subtitle={text('查看 Agent 实际经过 HiRoute 的对话、请求内回退和运行事实', 'View agent conversations, in-request fallbacks and run details captured by HiRoute')}
-    actions={partial ? <span className="badge warn">{text('搜索结果可能不完整', 'Search may be incomplete')}</span> : undefined}
+    actions={<>{onReturnToQuality && <button className="btn btn-quiet" type="button" onClick={onReturnToQuality}><UiIcon name="arrowLeft" />{text('返回模型表现', 'Back to model performance')}</button>}{partial && <span className="badge warn">{text('搜索结果可能不完整', 'Search may be incomplete')}</span>}</>}
     flush={!emptyFirstUse}
     className="sessions-page"
   >
@@ -269,7 +275,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
         </form>
         {listError && <div className="callout bad session-local-feedback" role="alert" data-error-code={listError}><UiIcon name="warning" /><div><strong>{text('列表没有刷新', 'The list was not refreshed')}</strong><p>{text('已加载的会话仍然保留。', 'Previously loaded sessions are still available.')}</p><button className="btn" type="button" onClick={() => void load()}>{text('重试', 'Retry')}</button></div></div>}
         <div className="session-list">
-          {keyword.trim() ? <>{hits.map((hit, index) => { const context = sessions.find(item => item.session_id === hit.session_id); return <button className={`session-item${session === hit.session_id ? ' active' : ''}`} key={`${hit.content_id}-${hit.original_text_offset}-${index}`} aria-current={session === hit.session_id ? 'page' : undefined} onClick={() => void timeline(hit.session_id, null, hit)}><div className="session-item-top"><span className="muted session-item-time">{context ? sessionTimeLabel(context.last_request_at_ms, language) : text('搜索命中', 'Match')}</span></div><div className="session-item-title"><ContentExcerpt hit={hit} language={language} fallback={text('查看命中正文', 'Open matching content')} revision={refreshVersion + reload} /></div><div className="session-item-meta">{context ? <><span>{agentName(context.agent_id)}</span>{sessionRoutes[context.session_id] && <><span>·</span><span>{sessionRoutes[context.session_id]}</span></>}{sessionModels[context.session_id] && <><span>·</span><span>{sessionModels[context.session_id]}</span></>}</> : text('点击读取所在会话', 'Open the matching session')}</div></button>; })}{searchCursor && <button className="btn session-more" disabled={busy} onClick={() => void load(searchCursor)}>{text('加载更多结果', 'Load more results')}</button>}{!busy && !listError && !hits.length && <div className="empty-state session-list-empty"><div><span className="empty-icon"><UiIcon name="search" /></span><h3>{text('没有匹配的会话', 'No matching sessions')}</h3><p>{text('试试其他关键词。', 'Try another keyword.')}</p></div></div>}</> : <>{sessions.map(item => { const contentState = sessionContentStates[item.session_id]; return <button className={`session-item${session === item.session_id ? ' active' : ''}`} key={item.session_id} aria-current={session === item.session_id ? 'page' : undefined} onClick={() => void timeline(item.session_id)}><div className="session-item-top"><span className="muted session-item-time">{sessionTimeLabel(item.last_request_at_ms, language)}</span>{contentState === 'cleared' ? <span className="badge warn no-dot">{text('正文已清理', 'Content cleared')}</span> : contentState === 'partial' ? <span className="badge warn no-dot">{text('记录不完整', 'Incomplete record')}</span> : item.fallback_request_count > 0 && <span className="badge warn no-dot">{text('请求内回退', 'Request fallback')}</span>}</div><div className="session-item-title"><ContentExcerpt session={item.session_id} language={language} fallback={text('会话记录', 'Session')} limit={48} revision={`${refreshVersion + reload}:${item.last_request_at_ms}:${item.request_count}`} onModel={model => setSessionModels(current => current[item.session_id] === model ? current : { ...current, [item.session_id]: model })} onRoute={route => setSessionRoutes(current => current[item.session_id] === route ? current : { ...current, [item.session_id]: route })} onContentState={state => setSessionContentStates(current => current[item.session_id] === state ? current : { ...current, [item.session_id]: state })} /></div><div className="session-item-meta"><span>{agentName(item.agent_id)}</span>{sessionRoutes[item.session_id] && <><span>·</span><span>{sessionRoutes[item.session_id]}</span></>}{sessionModels[item.session_id] && <><span>·</span><span>{sessionModels[item.session_id]}</span></>}{!sessionRoutes[item.session_id] && !sessionModels[item.session_id] && <><span>·</span><span>{item.request_count} {text('个请求', 'requests')}</span></>}</div></button>; })}{sessionCursor && <button className="btn session-more" disabled={busy} onClick={() => void load(sessionCursor)}>{text('加载更多会话', 'Load more sessions')}</button>}{!busy && !listError && listLoaded && !sessions.length && <div className="empty-state session-list-empty"><div><h3>{text('当前筛选没有会话', 'No sessions match this filter')}</h3><p>{text('切换到全部会话。', 'Show all sessions.')}</p></div></div>}</>}
+          {keyword.trim() ? <>{hits.map((hit, index) => { const context = sessions.find(item => item.session_id === hit.session_id); return <button className={`session-item${session === hit.session_id ? ' active' : ''}`} key={`${hit.content_id}-${hit.original_text_offset}-${index}`} aria-current={session === hit.session_id ? 'page' : undefined} onClick={() => void timeline(hit.session_id, null, hit)}><div className="session-item-top"><span className="muted session-item-time">{context ? sessionTimeLabel(context.last_request_at_ms, language) : text('搜索命中', 'Match')}</span></div><div className="session-item-title"><ContentExcerpt hit={hit} language={language} fallback={text('查看命中正文', 'Open matching content')} revision={refreshVersion + reload} /></div><div className="session-item-meta">{context ? <><span>{agentName(context.agent_id)}</span>{sessionRoutes[context.session_id] && <><span>·</span><span>{sessionRoutes[context.session_id]}</span></>}{sessionModels[context.session_id] && <><span>·</span><span>{sessionModels[context.session_id]}</span></>}</> : text('点击读取所在会话', 'Open the matching session')}</div></button>; })}{searchCursor && <button className="btn session-more" disabled={busy} onClick={() => void load(searchCursor)}>{text('加载更多结果', 'Load more results')}</button>}{!busy && !listError && !hits.length && <div className="empty-state session-list-empty"><div><span className="empty-icon"><UiIcon name="search" /></span><h3>{partial || searchCursor ? text('尚未找到匹配', 'No match found yet') : text('没有匹配的会话', 'No matching sessions')}</h3><p>{searchCursor ? text('还有内容待搜索，请继续加载。', 'More content remains to be searched. Continue loading.') : partial ? text('部分内容尚未建立索引，可稍后刷新。', 'Some content is not indexed yet. Refresh later.') : text('试试其他关键词。', 'Try another keyword.')}</p></div></div>}</> : <>{sessions.map(item => { const contentState = sessionContentStates[item.session_id] ?? (['deleted', 'expired'].includes(item.content_completeness) ? 'cleared' : item.content_completeness === 'complete' ? 'recorded' : 'partial'); return <button className={`session-item${session === item.session_id ? ' active' : ''}`} key={item.session_id} aria-current={session === item.session_id ? 'page' : undefined} onClick={() => void timeline(item.session_id)}><div className="session-item-top"><span className="muted session-item-time">{sessionTimeLabel(item.last_request_at_ms, language)}</span>{contentState === 'cleared' ? <span className="badge warn no-dot">{text('正文已清理', 'Content cleared')}</span> : contentState === 'partial' ? <span className="badge warn no-dot">{text('记录不完整', 'Incomplete record')}</span> : item.fallback_request_count > 0 && <span className="badge warn no-dot">{text('请求内回退', 'Request fallback')}</span>}</div><div className="session-item-title"><ContentExcerpt session={item.session_id} language={language} fallback={text('会话记录', 'Session')} limit={48} revision={`${refreshVersion + reload}:${item.last_request_at_ms}:${item.request_count}`} onModel={model => setSessionModels(current => current[item.session_id] === model ? current : { ...current, [item.session_id]: model })} onRoute={route => setSessionRoutes(current => current[item.session_id] === route ? current : { ...current, [item.session_id]: route })} /></div><div className="session-item-meta"><span>{agentName(item.agent_id)}</span>{sessionRoutes[item.session_id] && <><span>·</span><span>{sessionRoutes[item.session_id]}</span></>}{sessionModels[item.session_id] && <><span>·</span><span>{sessionModels[item.session_id]}</span></>}{!sessionRoutes[item.session_id] && !sessionModels[item.session_id] && <><span>·</span><span>{item.request_count} {text('个请求', 'requests')}</span></>}</div></button>; })}{sessionCursor && <button className="btn session-more" disabled={busy} onClick={() => void load(sessionCursor)}>{text('加载更多会话', 'Load more sessions')}</button>}{!busy && !listError && listLoaded && !sessions.length && <div className="empty-state session-list-empty"><div><h3>{text('当前筛选没有会话', 'No sessions match this filter')}</h3><p>{text('切换到全部会话。', 'Show all sessions.')}</p></div></div>}</>}
         </div>
       </aside>
 
@@ -277,7 +283,8 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
         {session ? <article className="session-detail">
           <div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => { timelineGeneration.current++; factGeneration.current++; setSession(null); setRequest(null); setFactsOpen(false); if (!listLoaded) void load(); }}><UiIcon name="arrowLeft" />{text('返回会话列表', 'Back to sessions')}</button></div>
           <header className="transcript-head"><div><h2><ContentExcerpt session={session} language={language} fallback={text('会话正文', 'Conversation')} limit={56} revision={refreshVersion + reload} onModel={model => setSessionModels(current => current[session] === model ? current : { ...current, [session]: model })} onRoute={route => setSessionRoutes(current => current[session] === route ? current : { ...current, [session]: route })} /></h2><p>{[agentName(selectedSummary?.agent_id), sessionRoutes[session], selectedSummary ? sessionTimeLabel(selectedSummary.last_request_at_ms, language) : undefined].filter(Boolean).join(' · ')}</p></div><div className="transcript-actions"><button className="btn" type="button" disabled={!request} onClick={() => factsOpen ? setFactsOpen(false) : openFacts()}><UiIcon name="activity" />{factsOpen ? text('收起运行记录', 'Hide run record') : text('运行记录', 'Run record')}</button>{!factsOpen && <button className="icon-btn" type="button" aria-label={text('清理此会话', 'Clear this session')} disabled={busy} onClick={() => { setCleanupError(''); setCleanupOpen(true); }}><UiIcon name="trash" /></button>}</div></header>
-          {timelineError && <div className="callout bad session-detail-feedback" role="alert" data-error-code={timelineError}><UiIcon name="warning" /><div><strong>{text('会话详情没有刷新', 'The session details were not refreshed')}</strong><p>{requests.length ? text('已加载的请求仍然保留。', 'Previously loaded requests are still available.') : text('暂时无法读取这条会话。', 'This session is temporarily unavailable.')}</p><button className="btn" type="button" onClick={() => void timeline(session)}>{text('重试', 'Retry')}</button></div></div>}
+          {focusedRequest && focusedRequest === request && <div className="callout session-detail-feedback session-request-focus" data-request-id={focusedRequest} role="status"><UiIcon name="activity" /><div><strong>{selectedRequest ? text('已定位所选请求', 'Selected request') : timelineError ? text('所选请求不可用', 'Selected request unavailable') : text('正在定位所选请求…', 'Locating selected request…')}</strong>{selectedRequest && <p>{new Date(selectedRequest.started_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}{selectedRequest.final_native_model && ' · ' + selectedRequest.final_native_model}<br />{text('下方包含本次请求的历史对话和回复。', 'The content below includes this request’s conversation history and response.')}</p>}</div><button className="btn" type="button" onClick={() => void timeline(session)}>{text('查看完整会话', 'View full session')}</button></div>}
+          {timelineError && <div className="callout bad session-detail-feedback" role="alert" data-error-code={timelineError}><UiIcon name="warning" /><div><strong>{text('会话详情没有刷新', 'The session details were not refreshed')}</strong><p>{requests.length ? text('已加载的请求仍然保留。', 'Previously loaded requests are still available.') : text('暂时无法读取这条会话。', 'This session is temporarily unavailable.')}</p><button className="btn" type="button" onClick={() => void timeline(session, null, undefined, focusedRequest)}>{text('重试', 'Retry')}</button></div></div>}
           <Disclosure className="native-details session-model-performance" label={text('模型表现', 'Model performance')} language={language} onOpenChange={setQualityOpen}><PlanQuality key={session} sessionId={session} language={language} compact active={active && qualityOpen} refreshVersion={refreshVersion + reload} onOpenEvidence={(targetSession, targetRequest) => void timeline(targetSession, null, undefined, targetRequest)} /></Disclosure>
           {requests.length > 1 && <Disclosure className="native-details request-timeline" label={text(`请求记录（${requests.length}）`, `Requests (${requests.length})`)} language={language}><nav className="native-list" aria-label={text('请求时间线', 'Request timeline')}>{requests.map((item, index) => <button className={`list-row${request === item.request_id ? ' active' : ''}`} key={item.request_id} aria-current={request === item.request_id ? 'true' : undefined} onClick={() => { setRequest(item.request_id); setReadingRequests([item.request_id]); setAnchor(null); }}><span className="row-main"><span className="row-title">{text('请求', 'Request')} {index + 1}</span><span className="row-meta">{item.routing_context?.state === 'recorded' && item.routing_context.display_name ? item.routing_context.display_name : item.final_native_model ?? text('路由未记录', 'Route not recorded')}{item.within_request_fallback === true ? text(' · 请求内回退', ' · Request fallback') : item.between_turn_model_change === true ? text(' · 跨轮切换', ' · Turn change') : ''}</span></span></button>)}{requestCursor && <button className="btn" disabled={busy} onClick={() => void timeline(session, requestCursor)}>{text('加载更多请求', 'Load more requests')}</button>}</nav></Disclosure>}
           {displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
@@ -313,16 +320,32 @@ function RequestBody({ request, summary, attemptModels, anchor, language, onOpen
     const epoch = ++generation.current; setBusy(true); setError('');
     if (!next) setCatalogLoaded(false);
     try {
-      const page = await read<Page<{ contents: Content[]; transcript_roots: string[]; roots_partial: boolean }>>('catalog', { request_id: request, limit: 20, cursor: next }, controller.current.signal);
+      const readCatalog = (cursor: string | null) => read<Page<{ contents: Content[]; transcript_roots: string[]; roots_partial: boolean }>>('catalog', { request_id: request, limit: 20, cursor }, controller.current.signal);
+      let page = await readCatalog(next);
       if (epoch !== generation.current) return;
+      const contents = [...page.contents];
+      const roots = new Set(page.transcript_roots);
+      let rootsPartial = page.roots_partial;
+      const seenCursors = new Set([next]);
+      // Hidden reasoning can span many catalog pages. One reading action must
+      // reach something displayable without fetching those private bodies.
+      while (page.next_cursor && !page.contents.some(item => displayableContent(item.kind))) {
+        if (seenCursors.has(page.next_cursor)) throw { code: 'CHANGE_PREVIEW_STALE' };
+        seenCursors.add(page.next_cursor);
+        page = await readCatalog(page.next_cursor);
+        if (epoch !== generation.current) return;
+        contents.push(...page.contents);
+        page.transcript_roots.forEach(root => roots.add(root));
+        rootsPartial ||= page.roots_partial;
+      }
       if (!next) setEvents({});
-      setCatalog(current => next ? [...current, ...page.contents] : page.contents);
+      setCatalog(current => next ? [...current, ...contents] : contents);
       setCursor(page.next_cursor);
-      setRootsPartial(page.roots_partial);
+      setRootsPartial(rootsPartial);
       setCatalogLoaded(true);
       if (!next) {
         setAncestryIncomplete(false);
-        void checkAncestry(page.transcript_roots, page.roots_partial, epoch);
+        void checkAncestry([...roots], rootsPartial, epoch);
       }
     } catch (e) { if (epoch === generation.current) setError(errorCode(e)); }
     finally { if (epoch === generation.current) setBusy(false); }
@@ -345,11 +368,12 @@ function RequestBody({ request, summary, attemptModels, anchor, language, onOpen
   useEffect(() => {
     if (catalogLoaded || error) onContentState(request, contentState);
   }, [request, contentState, catalogLoaded, error, onContentState]);
-  const occurrences = groupOccurrences(catalog.filter(item => !isPrivateContentKind(item.kind)));
+  const occurrences = groupOccurrences(catalog.filter(item => displayableContent(item.kind)));
   const displayRuns = contentDisplayRuns(occurrences);
-  const assistantIndexes = occurrences.map((occurrence, index) => occurrence.role === 'assistant' && !occurrence.technical ? index : -1).filter(index => index >= 0);
+  // Input may replay answers from other models; a request's model and fallback
+  // facts only describe its delivered response, never the last visible input.
+  const assistantIndexes = occurrences.map((occurrence, index) => occurrence.role === 'assistant' && !occurrence.technical && occurrence.items.every(item => item.direction === 'response_delivered') ? index : -1).filter(index => index >= 0);
   const firstAssistantOccurrenceIndex = occurrences.findIndex(occurrence => occurrence.role === 'assistant');
-  const firstAssistantIndex = assistantIndexes[0] ?? -1;
   const finalAssistantIndex = assistantIndexes.at(-1) ?? -1;
   const toolEvents = groupToolEvents(Object.values(events));
   const renderOccurrence = (occurrence: (typeof occurrences)[number], index: number) => {
@@ -357,7 +381,7 @@ function RequestBody({ request, summary, attemptModels, anchor, language, onOpen
     if (!items.length) return null;
     return <React.Fragment key={occurrence.key}>
       {index === finalAssistantIndex && summary?.within_request_fallback === true && <button className="switch-marker" type="button" onClick={onOpenFacts}><UiIcon name="refresh" /><strong>{attemptModels.length > 1 ? attemptModels.join(' → ') : text('记录到请求内模型回退', 'Recorded model fallback within a request')}</strong><span>{attemptModels.length > 1 ? text('记录到请求内模型回退', 'Recorded model fallback within a request') : text('查看运行记录', 'View run record')}</span><UiIcon name="chevronRight" /></button>}
-      <MessageOccurrence language={language} request={request} items={items} technical={occurrence.technical} modelLabel={index === finalAssistantIndex ? summary?.final_native_model ?? attemptModels.at(-1) : index === firstAssistantIndex && attemptModels.length > 1 ? attemptModels[0] : null} onEvent={receiveEvent} />
+      <MessageOccurrence language={language} request={request} items={items} technical={occurrence.technical} modelLabel={index === finalAssistantIndex ? summary?.final_native_model ?? attemptModels.at(-1) : null} onEvent={receiveEvent} />
     </React.Fragment>;
   };
   const toolBlocks = toolEvents.map(event => <div className="tool-block" key={event.logicalId}><strong>{event.name || text('工具调用', 'Tool call')}</strong><span>{event.arguments ? summarizeToolArguments(event.arguments) : event.phase === 'ready' ? text('参数已就绪，执行结果尚未取得。', 'Arguments ready; execution result not received.') : text('已请求，执行结果尚未取得。', 'Requested; execution result not received.')}</span></div>);
@@ -377,6 +401,10 @@ function RequestBody({ request, summary, attemptModels, anchor, language, onOpen
     <div className="callout transcript-privacy"><UiIcon name="lock" /><span>{text('这里仅展示 Gateway 可见的本机会话内容，不包含 Agent 未发送的本地执行。', 'This view contains only local, Gateway-visible content and excludes agent activity that was never sent.')}</span></div>
 
   </section>;
+}
+
+function displayableContent(kind: string): boolean {
+  return !isPrivateContentKind(kind) && kind !== 'content_block_started';
 }
 
 function groupOccurrences(contents: Content[]): { key: string; role: string; technical: boolean; items: Content[] }[] {

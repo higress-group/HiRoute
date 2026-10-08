@@ -21,6 +21,11 @@ impl LocalControlAdapter {
             None,
             None,
             || {
+                let selected_service = change
+                    .editor
+                    .effective()
+                    .ok()
+                    .and_then(|configuration| configuration.decision_service().cloned());
                 let before = self.routing_compilation_snapshot(workspace)?;
                 let read_rows = || {
                     let stores = self.stores_lock().map_err(super::map_port)?;
@@ -46,15 +51,31 @@ impl LocalControlAdapter {
                         .control()
                         .plan_heads(workspace)
                         .map_err(|_| ControlReadError::Corrupt)?;
-                    Ok::<_, ControlReadError>((head, draft, heads))
+                    let decision_service = selected_service
+                        .as_ref()
+                        .map(|service| {
+                            stores
+                                .control()
+                                .decision_service(workspace, &service.id, service.revision)
+                                .map_err(super::map_port)
+                        })
+                        .transpose()?
+                        .flatten();
+                    Ok::<_, ControlReadError>((head, draft, heads, decision_service))
                 };
-                let (mut current_head, draft, mut heads) = read_rows()?;
+                let (mut current_head, draft, mut heads, decision_service) = read_rows()?;
                 let after = self.routing_compilation_snapshot(workspace)?;
                 let repeated = read_rows()?;
                 if before.facts != after.facts
                     || before.expected_revisions != after.expected_revisions
                     || before.active_publication != after.active_publication
-                    || repeated != (current_head.clone(), draft.clone(), heads.clone())
+                    || repeated
+                        != (
+                            current_head.clone(),
+                            draft.clone(),
+                            heads.clone(),
+                            decision_service.clone(),
+                        )
                 {
                     return Err(ControlReadError::SnapshotChanged);
                 }
@@ -130,6 +151,7 @@ impl LocalControlAdapter {
                     plan_heads: heads,
                     draft,
                     facts: after.facts,
+                    decision_service,
                     expected_revisions: after.expected_revisions,
                 })
             },
