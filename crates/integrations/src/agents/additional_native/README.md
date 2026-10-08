@@ -75,10 +75,37 @@ facets separately. Unit fixtures do not prove native model calls. Neither native
 protocol differences nor backend capability evidence require an extra user-facing
 verification button or status badge.
 
+## DSH static composition
+
 DSH uses the same per-provider ownership, protected grant, stale-preview and
 restore engine. Its leaf is [dsh_config.rs](../dsh_config.rs): bounded static YAML
 patch sequences, one affected `llm-pi-ai` row, public `baseURL` and
 `agent-default-model` references. Unrelated rows retain their bytes.
 [DSH native admission](../dsh_native.rs) rejects a higher-priority global provider
 row that would shadow the managed standard Web profile. It never evaluates JS,
-includes, plugins or credential helpers. See [the DSH code map](../../../../../docs/code-map/dsh.md).
+includes, plugins or credential helpers. Its independent home and Web defaults are
+checked during planning, staging, activation and retry; Restore retains these
+static guards even when the CLI is removed or incompatible.
+
+The reader accepts static block/flow YAML and JSON. Byte-preserving edits require
+a block sequence; executable tags, includes, merge keys and ambiguous rows fail.
+Edit spans must match semantic rows, including when multiline strings contain
+text that resembles a sequence member. Shared recovery points to the selected
+client's model selector rather than assuming Pi's `/model` command.
+
+[Passive DSH import](../dsh_sources.rs) is a separate read-only capability. A home
+`llm-pi-ai` row replaces the Web module, so providers are not merged. Import requires
+explicit nonempty model declarations and preservable protocol/auth options;
+missing model input remains unknown rather than inheriting unobserved catalog facts.
+Environment API keys precede private version-1 credential references. For the
+credentials module, Web configuration replaces home configuration; a static absolute
+`path` precedes `dshHome/.credentials.yaml`, then the selected root's default.
+Disabled/replaced modules, unsupported composition and relative/tilde paths fail
+without guessing from HiRoute's working directory or HOME. Only the effective
+credential file is validated/read. Prepared evidence binds configuration, active
+credential path/bytes and the selected environment secret; Save rechecks it.
+
+The [shared Agent/Worker map](../../../../../docs/code-map/worker-context.md#deepseek-harness)
+locates collaboration and execution separately. The
+[DSH acceptance entry](../../../../../tools/product-e2e/tests/DSH_INTEGRATION.md)
+retains stale-source, credential override, ordinary saved-route and restore witnesses.

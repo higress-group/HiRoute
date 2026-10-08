@@ -1,6 +1,6 @@
 # DSH product acceptance
 
-[Entry](dsh_delegation.rs) · [Code map](../../../docs/code-map/dsh.md)
+[Entry](dsh_delegation.rs) · [Code map](../../../docs/code-map/worker-context.md#deepseek-harness)
 
 Select an explicitly installed official DSH CLI with `HIROUTE_WORKER_DSH_BINARY`
 and an exact committed `HIROUTE_PRODUCT_CANDIDATE_SHA`. Native npm launch also

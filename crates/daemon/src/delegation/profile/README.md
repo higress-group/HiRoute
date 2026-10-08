@@ -138,6 +138,48 @@ add ecosystem scanning/import, general Agent launch, a new execution backend or 
 plugin framework. ACP model/session verification remains in [ACP](../acp/mod.rs),
 and the OS launcher owns executable material permissions and process cleanup.
 
+## Pi resources and SDK transport
+
+[Pi rendering](pi.rs) binds the selected official npm CLI, its SDK export and the
+selected Node to the [bundled ACP bridge](pi_worker_bridge.mjs). Native user/project
+and installed-package resources are borrowed through scope-preserving in-memory
+settings, with offline discovery and no package installation. The bridge uses an
+empty credential store so unrelated native credential commands cannot run. Only
+the frozen provider/model, run key and effective context/output budget enter its
+model runtime; extensions and MCP are outside this Worker contract.
+
+Task-owned `native-pi.jsonl` has a strict v3 body/context contract, including native
+branch-local context edits. Continue requires validated native open of that exact
+history, without repair or replacement. See the
+[operation capability map](../../../../../docs/code-map/worker-context.md#pi-compatibility-is-a-capability-contract)
+and [bridge process regressions](pi_worker_bridge.test.mjs) for interface and
+creation/cancellation/disconnect boundaries.
+
+## DSH public composition
+
+[DSH rendering](dsh.rs) uses the selected CLI's public `--profile acp --patch` entry.
+The final run-owned patch supplies the frozen model, context/output budget and
+permission policy. Borrowed HOME/DSH_HOME, project resources and custom Skill roots
+remain native-owned. History and attachments live under the task root; HiRoute
+binds the native/ACP session identity without decoding native history. Resume
+requires the advertised `session/resume` capability and the exact saved binding.
+
+Generated JSON is a public YAML subset. The patch disables auxiliary model
+providers, telemetry and background-shell promotion, while preserving required
+Skill/read/bash resources. Local [native checks](../../../../integrations/src/agents/dsh_native.rs)
+use the public composition dump in a private root without activating model plugins; relevant
+resource overrides cannot disable those capabilities or replace `dshHome`.
+The collaboration proof excludes unrelated model-provider edits.
+
+Run secrets remain in the environment through `apiKeyEnv`. On Messages the native
+`x-api-key` carrier is admitted only for a live run-model token on `/v1/messages`;
+[Gateway authority tests](../../../../gateway/src/core_runtime/inbound_auth_tests.rs)
+reject account keys, model grants and control-run tokens on that carrier.
+Saved Web model edits remain owned by the
+[native configuration guide](../../../../integrations/src/agents/additional_native/README.md#dsh-static-composition),
+not this per-run renderer. See [DSH acceptance](../../../../../tools/product-e2e/tests/DSH_INTEGRATION.md)
+for actual CLI, Skill, tool, cancellation and exact-resume evidence.
+
 ## Representative product contracts
 
 [Profile tests](tests.rs) cover token-free startup configuration, literal argument
