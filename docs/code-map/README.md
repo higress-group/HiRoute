@@ -5,6 +5,15 @@ representative scenario. This map locates current code and contracts; requiremen
 belong in specifications, implementation detail beside the code, and validation
 results in the relevant run record.
 
+## Read progressively
+
+1. Find the capability below, or search with
+   `rg -n -i '<user action, symptom or domain term>' docs/code-map/`.
+2. Read the matched heading and nearby entry. Follow its production owner and one
+   representative scenario before opening more guides.
+3. Expand along the relevant caller, consumer or contract only when the question
+   crosses that boundary. A search match is a starting clue, not the whole contract.
+
 ## Find a capability
 
 | User action | Start here | Representative scenario |
@@ -32,3 +41,6 @@ completed feature. Add an ecosystem to the shared comparison and link its native
 leaf. Put detailed protocol rules in their canonical contract and operating steps
 in the existing local guide. When an owner moves, update its entry and incoming
 links instead of appending another implementation note to this index.
+Keep each matched entry a short clue about where to look next and why. Detailed
+rules, parameter lists, exhaustive exceptions and validation history belong in
+the linked specification, local guide or run record.
