@@ -163,10 +163,11 @@ def saved_custom_decision_scenario(repository):
                         'workspace_id': 'personal/default', 'draft_id': draft['draft_id'],
                         'expected_revision': None, 'action': {'kind': 'save', 'draft': draft}}
         draft_preview = product.preview('routing preview', {'change': draft_change})
+        assert draft_preview['after']['editor']['smart']['classifier'] == classifier
         saved, _, _ = product.apply('routing apply', 'ApplyAgentPlanChange', draft_preview,
                                     {'change': draft_change}, 'custom-decision-draft')
         assert saved['data']['state'] == 'succeeded', saved
-        assert product.cli('routing list')[1]['data']['drafts'] == [draft]
+        assert product.cli('routing list')[1]['data']['drafts'] == [draft_preview['after']]
         change = {'schema': 'hiroute.plan-content-change/v2',
                   'target': {'intent': 'update', 'plan_id': product.plan_id,
                              'expected_head_revision': 1},
