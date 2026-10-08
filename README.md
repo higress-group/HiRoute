@@ -36,6 +36,7 @@ previous decision. Choosing again can also keep the same model; cache reuse depe
 
 ## News
 
+- **2026-10-08 · HiRoute 0.2.0** — Stable release with built-in decision models, expanded Agent integrations, and macOS/Linux packages for x86_64 and ARM64. [Release notes](https://github.com/higress-group/HiRoute/releases/tag/v0.2.0) · [Download](https://hiroute.ai/en/download/)
 - **2026-10-04** — [GPT-6 Astra × Qwen-3.8 Flash: same quality at 90% lower cost](news/2026-10-04-astra-qwen.en.md). [Website article](https://hiroute.ai/en/news/astra-qwen-smart-routing/) · [Experiments](experiments/README.md)
 - [All news](news/README.md)
 
@@ -59,12 +60,12 @@ for connecting your own decision service.
 
 Download the current DMG from [hiroute.ai](https://hiroute.ai/download/), drag HiRoute into
 Applications, and follow the [self-signed package instructions](docs/macos-installation.md) if
-macOS asks for manual approval. The download page is the authority for validated operating
-systems and architectures.
+macOS asks for manual approval. HiRoute 0.2.0 supports macOS 15 or later on Apple silicon
+(`arm64`) and Intel (`x86_64`).
 
 ### Linux headless
 
-Install the current-user CLI and daemon without `sudo`:
+Install the current-user CLI and daemon on Linux `x86_64` or ARM64 (`aarch64`) without `sudo`:
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh
@@ -184,9 +185,9 @@ production owners and representative tests.
 
 ## Project status
 
-HiRoute is an MVP. Platform and architecture claims are tied to the evidence for each release;
-source availability does not imply that every environment has been validated. Current Agent
-integrations and planned directions remain separate on the [website](https://hiroute.ai/).
+HiRoute 0.2.0 is a stable release with macOS Desktop and Linux headless packages for both
+x86_64 and ARM64. Download the latest version and read the release notes on the
+[website](https://hiroute.ai/en/download/).
 
 HiRoute is licensed under the [Apache License 2.0](LICENSE). Use
 [GitHub Issues](https://github.com/higress-group/HiRoute/issues) for bugs and feature requests.
