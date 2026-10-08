@@ -9,10 +9,12 @@ results in the relevant run record.
 
 1. Find the capability below, or search with
    `rg -n -i '<user action, symptom or domain term>' docs/code-map/`.
-2. Read the matched heading and nearby entry. Follow its production owner and one
-   representative scenario before opening more guides.
-3. Expand along the relevant caller, consumer or contract only when the question
-   crosses that boundary. A search match is a starting clue, not the whole contract.
+2. Once the relevant topic is located, prefer reading its complete code-map page,
+   including ownership boundaries and cross-references. The search match locates
+   the page; its surrounding context helps interpret the entry.
+3. Follow the production owner and a representative scenario, then expand into
+   linked code, specifications or local guides as needed. Unrelated map pages
+   need not be read by default.
 
 ## Find a capability
 
