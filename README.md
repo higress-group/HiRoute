@@ -36,6 +36,7 @@ previous decision. Choosing again can also keep the same model; cache reuse depe
 
 ## News
 
+- **2026-10-08 · HiRoute 0.2.0** — Stable release with built-in decision models, expanded Agent integrations, and macOS/Linux packages for x86_64 and ARM64. [Release notes](https://github.com/higress-group/HiRoute/releases/tag/v0.2.0) · [Download](https://hiroute.ai/en/download/)
 - **2026-10-04** — [GPT-6 Astra × Qwen-3.8 Flash: same quality at 90% lower cost](news/2026-10-04-astra-qwen.en.md). [Website article](https://hiroute.ai/en/news/astra-qwen-smart-routing/) · [Experiments](experiments/README.md)
 - [All news](news/README.md)
 

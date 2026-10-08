@@ -2,6 +2,67 @@
   "schema": "hiroute.website.releases/v2",
   "releases": [
     {
+      "version": "0.2.0",
+      "channel": "stable",
+      "published_at": "2026-10-08T12:55:25Z",
+      "notes": {
+        "zh": "HiRoute 0.2.0 稳定版本：内置决策模型与自定义任务分支，按执行组比较阶段胜任度，扩展 Qoder、Pi 和 DeepSeek Harness 等 Agent 集成，改进流式输出与任务续接，并提供 macOS 和 Linux 的 x86_64 / ARM64 安装包。",
+        "en": "HiRoute 0.2.0 stable release: built-in decision models and custom task branches, competence comparison by execution group, expanded Agent integrations including Qoder, Pi, and DeepSeek Harness, improved streaming and continuations, and x86_64 / ARM64 installers for macOS and Linux."
+      },
+      "artifacts": [
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "arm64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.2.0-bfb8edb4ab9d-macos-arm64-trial.dmg",
+          "sha256": "cd72bf30bf05d1daf459f60ca8d246b82fa3a5a72950466a74f3ee909049c45a",
+          "size": 80973041
+        },
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "x86_64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.2.0-bfb8edb4ab9d-macos-x86_64-trial.dmg",
+          "sha256": "ca18ef89a193e142d11a0aaf88aa98602227547735f18a9c20cb9ce853b8cd04",
+          "size": 87918623
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "x86_64",
+          "target": "x86_64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.2.0-bfb8edb4ab9d-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "03492a9fc45035589fb7280a4ed164b2f6ad49ac877582b12f68688b725bf57d",
+          "size": 66626440,
+          "manifest_filename": "hiroute-0.2.0-bfb8edb4ab9d-x86_64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "b0b78970e232f49788ad8751326f24f65a222ba7f555f35e148e01eef72dbaa3",
+          "manifest_size": 2121
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "aarch64",
+          "target": "aarch64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.2.0-bfb8edb4ab9d-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "06f9c7aa08db255b82039c85c61f780d902bf0ab631cd0245817539496e53902",
+          "size": 62540657,
+          "manifest_filename": "hiroute-0.2.0-bfb8edb4ab9d-aarch64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "fcf983baca2f9ec448149a18df258a41f979c2c97a4863023a92d01d8d2bb9a9",
+          "manifest_size": 2123
+        }
+      ]
+    },
+    {
       "version": "0.1.0",
       "channel": "stable",
       "published_at": "2026-09-22T07:41:14Z",
