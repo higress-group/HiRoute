@@ -27,6 +27,8 @@ const maps = {
   api: {
     'README.md': '/en/docs/decision-api/', 'README.zh-CN.md': '/docs/decision-api/',
     '../README.md': '/en/docs/decision-extensions/', '../README.zh-CN.md': '/docs/decision-extensions/',
+    '../extensions/jev-decider/README.md': '/en/docs/jev-decider/',
+    '../extensions/jev-decider/README.zh-CN.md': '/docs/jev-decider/',
     'decision.openapi.json': '/api/decision.openapi.json',
     'decision-examples.json': '/api/decision-examples.json',
     'decision-design.md': sourceLink('decision-extensions/api/decision-design.md'),
