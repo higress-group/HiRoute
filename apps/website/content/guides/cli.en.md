@@ -101,7 +101,7 @@ hiroute worker executors
 hiroute worker plans
 ```
 
-The results contain the execution agents available on this device and the published plans allowed for the current agent. Do not infer a plan ID from its display name; use the ID returned by the command.
+`worker executors` lists execution agents and their availability on this device. `worker plans` lists published plans allowed for the current agent. Choose an agent that passes dependency checks and use the returned plan ID, not its display name.
 
 ## Start a task
 
@@ -156,6 +156,6 @@ Cancellation does not undo files or external effects already produced.
 
 ## Machine-readable output
 
-Public commands support `--output text|json|quiet`. Use the default `text` interactively, `json` for scripts and main agents that consume the schema, and `quiet` when only the exit result matters. Use `hiroute schema list` and `hiroute schema show` to discover the current machine contract at runtime.
+Public commands support `--output text|json|quiet`. Use the default `text` interactively, `json` for scripts and main agents that consume the schema, and `quiet` for compact output; the fields retained depend on the command's `--help`. Use `hiroute schema list` and `hiroute schema show` to discover the current machine contract at runtime.
 
 CLI and daemon accept only the currently Released business commands and continue to reject Planned commands. Automation should discover the runtime schema instead of hard-coding the command count or unreleased capabilities.

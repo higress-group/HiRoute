@@ -2,7 +2,7 @@
 
 模型路由决定“这一阶段用哪个模型”，任务路由决定“这项工作交给哪个执行 Agent”。两者可以独立启用，也可以组合使用。
 
-下面先展示桌面应用配置路径。Linux 无界面版可以通过 `routing preview/apply` 发布同一份计划，通过 `agents connect preview/apply` 接入 Agent，再使用同一组 Worker 命令执行；具体字段从当前安装的 schema 获取。
+下面先展示桌面应用配置路径。Linux 无界面版可以通过 `routing preview/apply` 发布计划，通过 `agents connect preview/apply` 接入 Agent，再使用下文的 `worker` 命令执行任务；请求字段可用 `hiroute schema show` 查询。
 
 ## 适合委派什么
 
@@ -14,14 +14,14 @@
 
 1. 打开“智能路由”，新建或编辑一份计划。
 2. 在“任务委派”中打开“允许委派任务给执行 Agent”。
-3. 为这份计划选择一个执行 Agent：Codex CLI 或 Claude Code。每份计划只选一个，不做自动回退。
+3. 为这份计划选择一个执行 Agent。当前支持 Codex CLI、Claude Code、Qoder CLI、Pi 和 DeepSeek Harness；可用性取决于本机安装和依赖检查。每份计划只选一个，执行失败时不会自动改用另一种 Agent。
 4. 按页面提示检查所需执行环境，然后发布计划。
 
 安装缺失不会阻止保存计划，但真正启动任务前必须让所选执行 Agent 通过依赖检查。计划的名称和使用场景应描述适合的任务及预期交付，帮助主 Agent 做出正确选择。
 
 ## 允许主 Agent 委派任务
 
-打开“Agent”，选择作为主 Agent 的 Codex 或 Claude Code，再打开“任务路由”：
+打开“Agent”，选择你日常使用且页面支持任务路由的主 Agent，再打开“任务路由”：
 
 1. 启用任务路由。
 2. 选择委派时机：仅在你明确要求时委派，或默认由 Agent 判断。
@@ -36,7 +36,7 @@
 
 若配置为默认委派，主 Agent 也可以对适合独立执行的工作主动选择计划。任务记录会显示在桌面应用的“任务”页面。
 
-## 从终端执行同一条生产路径
+## 从终端启动任务
 
 安装 [HiRoute CLI](/docs/cli/) 后，可以先发现执行器和计划：
 
@@ -52,13 +52,22 @@ hiroute worker exec \
   --plan <PLAN_ID> \
   --cwd /absolute/path/to/project \
   --title "修复解析器回归" \
+  --submission-key parser-fix-001 \
   -- "定位失败、实现最小修复并运行相关测试"
 ```
 
-保存返回的 submission key、task ID 和 run ID。它们用于恢复不确定提交、查看进度、继续或取消任务。
+`--submission-key` 用来标识这次提交，新的任务应使用新的值。提交前保留它；任务被接受后，再保存返回的 task ID 和 run ID，用于查询进度、继续或取消。
+
+如果连接中断，无法确定任务是否已被接受，先用原来的提交标识查询：
+
+```sh
+hiroute worker status --submission parser-fix-001 --operation start
+```
+
+不要换一个提交标识直接重试，以免启动重复任务。更多进度和结果命令见 [HiRoute CLI](/docs/cli/)。
 
 ## 权限和取消边界
 
-默认 `approve-all` 会让所选 Harness 按其原生能力执行读写、命令和网络操作，不是操作系统沙箱。需要限制时，仅选择页面或 CLI 明确支持的策略；不受支持的限制会在提示发送前失败，而不是静默放宽。
+默认权限策略 `approve-all` 允许所选执行 Agent 按自身能力读写文件、执行命令和访问网络；它不提供操作系统级沙箱。需要限制权限时，选择页面或 CLI 为该 Agent 提供的策略。若 Agent 无法执行所要求的限制，HiRoute 会在发送任务前报错，不会自动放宽权限。
 
-取消只停止目标 run，不会撤销它已经写入的文件或产生的外部副作用。并发任务也不会因为使用同一工作目录而自动串行；是否允许重叠执行由调用者决定。
+取消只停止指定的这次运行（run），不会撤销已经写入的文件或已完成的外部操作。多个任务使用同一工作目录时仍可能同时执行，请自行避免互相覆盖文件。

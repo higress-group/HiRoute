@@ -14,14 +14,14 @@ Do not delegate coordination, plan discovery, status checks, waits, or result su
 
 1. Open Smart routing and create or edit a plan.
 2. Under Task delegation, turn on Allow delegation to an execution agent.
-3. Choose one execution agent for the plan: Codex CLI or Claude Code. A plan has one executor and no automatic executor fallback.
+3. Choose one execution agent for the plan. Current options are Codex CLI, Claude Code, Qoder CLI, Pi and DeepSeek Harness; availability depends on the local installation and dependency checks. A plan has one executor and does not automatically switch to another agent on failure.
 4. Check the required execution environment when prompted, then publish the plan.
 
 A missing installation does not block saving the plan, but the chosen execution agent must pass its dependency check before a task can start. Give the plan a specific name and purpose that describe fitting tasks and expected results, so a main agent can choose it correctly.
 
 ## Allow a main agent to delegate tasks
 
-Open Agents, choose the Codex or Claude Code installation that will act as the main agent, then open Task routing:
+Open Agents, choose your main agent with task-routing support, then open Task routing:
 
 1. Enable task routing.
 2. Choose when to delegate: only when you explicitly ask, or let the Agent decide by default.
@@ -36,7 +36,7 @@ After enabling, explicitly mention HiRoute and delegation in the agent's normal 
 
 If you choose the default-delegation behavior, the main agent may also select a plan for suitable independent work. Desktop lists accepted work on the Tasks page.
 
-## Use the same production path from Terminal
+## Start a task from Terminal
 
 After installing the [HiRoute CLI](/en/docs/cli/), discover executors and plans:
 
@@ -52,10 +52,19 @@ hiroute worker exec \
   --plan <PLAN_ID> \
   --cwd /absolute/path/to/project \
   --title "Fix the parser regression" \
+  --submission-key parser-fix-001 \
   -- "Find the failure, implement the smallest fix, and run the relevant tests"
 ```
 
-Keep the returned submission key, task ID, and run ID. They recover uncertain submissions and identify the task for status, continuation, or cancellation.
+`--submission-key` identifies this submission; use a new value for a new task. Keep it before submitting. After acceptance, also save the returned task ID and run ID for status, continuation or cancellation.
+
+If the connection drops before you know whether the task was accepted, query the original submission key:
+
+```sh
+hiroute worker status --submission parser-fix-001 --operation start
+```
+
+Do not retry with a new key, which could start a duplicate task. See [HiRoute CLI](/en/docs/cli/) for progress and result commands.
 
 ## Permission and cancellation boundaries
 

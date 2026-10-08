@@ -3,7 +3,7 @@ const boundaries = document.documentElement.lang === 'en' ? {
   continuation: {
     kicker: 'Tool continuation within one turn',
     title: 'After a tool returns, continue this turn’s work.',
-    copy: 'Tool results still belong to the current task. HiRoute inherits this turn’s frozen decision and prefers the eligible current model within its group, helping reuse the prefix. Candidate failures may use bounded failover; a tool result itself does not trigger another judgment.',
+    copy: 'Tool results still belong to the current task. HiRoute inherits this turn’s frozen decision and prefers the eligible current model within its group, helping reuse the KV cache. Candidate failures may use bounded failover; a tool result itself does not trigger another judgment.',
     assessment: 'Inherit this turn’s frozen task and model-group decision',
     choice: 'Model A continues with the tool results in this example'
   },
@@ -18,7 +18,7 @@ const boundaries = document.documentElement.lang === 'en' ? {
   continuation: {
     kicker: '同一轮中的工具续接',
     title: '工具返回后，继续本轮工作。',
-    copy: '工具结果仍属于当前任务，HiRoute 沿用本轮冻结的决策，尽量复用同组内合格的当前模型与前缀。候选故障可以按计划接力，工具返回本身不会重新判断任务。',
+    copy: '工具结果仍属于当前任务，HiRoute 沿用本轮冻结的决策，优先使用同组内合格的当前模型，以便复用 KV Cache 缓存。候选故障可以按计划接力，工具返回本身不会重新判断任务。',
     assessment: '沿用本轮已冻结的任务与模型组判断',
     choice: '示例中模型 A 继续处理工具结果'
   },
