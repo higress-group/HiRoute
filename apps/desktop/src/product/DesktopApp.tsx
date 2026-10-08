@@ -1,3 +1,6 @@
+import type { DecisionIntent, OpenDecisionConnection } from '../features/decision-services/presentation';
+import type { DecisionService } from '../features/decision-services/types';
+import { DecisionServicesPage } from '../features/decision-services/DecisionServicesPage';
 import { requestEditorReplacement } from '../ui/discard-guard';
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -70,7 +73,7 @@ type AgentIntent = {
   taskId?: string | null;
 };
 
-type SessionIntent = { key: string; sessionId?: string | null; requestId?: string | null };
+type SessionIntent = { key: string; sessionId?: string | null; requestId?: string | null; returnToQuality?: boolean };
 const OBSERVATION_GRACE_MS = 3_000;
 
 function failureCode(error: unknown): string {
@@ -98,6 +101,10 @@ export function DesktopApp() {
   const { language } = preferences;
   const home = useDesktopHome();
   const [page, setPage] = useState<Page>('home');
+  const [modelTab, setModelTab] = useState<'general' | 'decisions'>('general');
+  const [decisionIntent, setDecisionIntent] = useState<DecisionIntent | null>(null);
+  const decisionReturn = useRef<((service: DecisionService) => void) | null>(null);
+  const [returningToRoute, setReturningToRoute] = useState(false);
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }, [page]);
   const [visited, setVisited] = useState<Set<Page>>(() => new Set(['home']));
   const [refreshing, setRefreshing] = useState(false);
@@ -298,15 +305,20 @@ export function DesktopApp() {
     if (next === 'home' && page !== 'home') void home.refreshActivity();
     setVisited(current => current.has(next) ? current : new Set([...current, next]));
     setPage(next);
+    if (next !== 'models') { decisionReturn.current = null; setReturningToRoute(false); }
   }
 
-  function editorScope(value: Page): 'models' | 'routing' | 'agents' | null {
-    return value === 'models' || value === 'routing' || value === 'agents' ? value : null;
+  function editorScope(value: Page): 'decisions' | 'models' | 'routing' | 'agents' | null {
+    return value === 'models' ? modelTab === 'decisions' ? 'decisions' : 'models' : value === 'routing' || value === 'agents' ? value : null;
   }
 
   async function allowPageChange(next: Page, replaceTarget = false): Promise<boolean> {
     const currentScope = editorScope(page);
     if (currentScope && (page !== next || replaceTarget) && !await requestEditorReplacement(currentScope)) return false;
+    // Adding a connection suspends the route editor. Other navigation must still
+    // resolve that retained draft before replacing or abandoning it.
+    if (decisionReturn.current && next !== 'routing' && (next !== 'models' || replaceTarget)
+      && !await requestEditorReplacement('routing')) return false;
     const targetScope = editorScope(next);
     if (replaceTarget && targetScope && targetScope !== currentScope && !await requestEditorReplacement(targetScope)) return false;
     return true;
@@ -317,6 +329,30 @@ export function DesktopApp() {
     openPage(next);
     return true;
   }
+
+  async function switchModelTab(next: 'general' | 'decisions') {
+    if (next === modelTab || !await requestEditorReplacement(modelTab === 'general' ? 'models' : 'decisions')) return;
+    setModelTab(next);
+  }
+
+  const addDecisionForRoute: OpenDecisionConnection = async (kind, select) => {
+    if (!await requestEditorReplacement('decisions')) return;
+    decisionReturn.current = select;
+    setReturningToRoute(true);
+    setDecisionIntent({ key: crypto.randomUUID(), kind });
+    setModelTab('decisions');
+    openPage('models');
+  };
+
+  function useDecisionInRoute(service: DecisionService) {
+    decisionReturn.current?.(structuredClone(service));
+    openPage('routing');
+  }
+
+  const modelTabs = <nav className="model-category-tabs" aria-label={language === 'zh' ? '模型类型' : 'Model categories'}>
+    <button type="button" aria-pressed={modelTab === 'general'} onClick={() => void switchModelTab('general')}>{language === 'zh' ? '通用模型' : 'General models'}</button>
+    <button type="button" aria-pressed={modelTab === 'decisions'} onClick={() => void switchModelTab('decisions')}>{language === 'zh' ? '决策模型' : 'Decision models'}</button>
+  </nav>;
 
   function acceptOperation(
     reference: OperationReference | DesktopOperation | null,
@@ -363,6 +399,8 @@ export function DesktopApp() {
   async function showModels(intent: Omit<ModelIntent, 'key'> = {}) {
     if (!await allowPageChange('models', true)) return;
     setNotice('');
+    if (modelTab === 'decisions' && !await requestEditorReplacement('models')) return;
+    setModelTab('general');
     setModelIntent({ key: `models/${crypto.randomUUID()}`, ...intent });
     openPage('models');
   }
@@ -608,10 +646,11 @@ export function DesktopApp() {
             hasTasks={taskRead.status === 'ready' && taskRead.tasks.length > 0}
             onAction={handleHomeAction}
           /></div>
-        {visited.has('models') && <div hidden={page !== 'models'}><ModelManagementPage
+        {visited.has('models') && <div hidden={page !== 'models' || modelTab !== 'general'}><ModelManagementPage
             key={modelIntent.key}
             language={language}
-            active={page === 'models'}
+            active={page === 'models' && modelTab === 'general'}
+            tabs={modelTabs}
             trustedAuthority={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)}
             refreshVersion={refreshVersion}
             initialSourceId={modelIntent.sourceId}
@@ -628,6 +667,16 @@ export function DesktopApp() {
             }}
             onCreatePlan={bindingId => void showRouting({ key: `routing/${crypto.randomUUID()}`, initialBindingId: bindingId })}
           /></div>}
+        {visited.has('models') && <div hidden={page !== 'models' || modelTab !== 'decisions'}><DecisionServicesPage
+          language={language} active={page === 'models' && modelTab === 'decisions'}
+          mutable={!!home.desktopSnapshot?.trusted_authority && !!home.desktopSnapshot?.service.mutation_available}
+          tabs={modelTabs} intent={decisionIntent}
+          plans={home.desktopSnapshot?.catalog.plans} drafts={home.desktopSnapshot?.catalog.drafts}
+          onChanged={() => void home.refreshDesktop()}
+          onOpenRoute={(plan, draft) => void showRouting({ key: draft?.draft_id ?? plan!.agent_plan_id, plan, draft })}
+          onReturn={returningToRoute ? () => void openPageSafely('routing') : undefined}
+          onUse={returningToRoute ? useDecisionInRoute : undefined}
+        /></div>}
         {visited.has('routing') && <div hidden={page !== 'routing'}><RoutingPage
             key={routingIntent.key}
             language={language}
@@ -638,11 +687,12 @@ export function DesktopApp() {
             operation={operation}
             loading={home.reads.plans.status === 'loading'}
             busy={refreshing}
+            onOpenServices={addDecisionForRoute}
             initialEditor={routingIntent.editor}
             notice={routingIntent.notice}
             onRefresh={async () => { setObserving(true); await home.refreshDesktop(); setRefreshVersion(v => v + 1); }}
             onOpenAgent={agentId => { void (async () => { if (!await allowPageChange('agents')) return; setAgentIntent({ key: `agents/${crypto.randomUUID()}`, agentId }); openPage('agents'); })(); }}
-            onOpenSession={(sessionId, requestId) => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${crypto.randomUUID()}`, sessionId, requestId }); openPage('sessions'); })(); }}
+            onOpenSession={(sessionId, requestId) => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${crypto.randomUUID()}`, sessionId, requestId, returnToQuality: true }); openPage('sessions'); })(); }}
             onOperation={value => acceptOperation(value, { kind: 'routing' })}
           /></div>}
         {visited.has('agents') && <div hidden={page !== 'agents'}><Agents
@@ -682,6 +732,7 @@ export function DesktopApp() {
             active={page === 'sessions'}
             initialSession={sessionIntent.sessionId ?? null}
             initialRequest={sessionIntent.requestId ?? null}
+            onReturnToQuality={sessionIntent.returnToQuality ? () => void openPageSafely('routing') : undefined}
             refreshVersion={refreshVersion}
             language={language}
             onOpenAgents={() => void openPageSafely('agents')}

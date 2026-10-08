@@ -316,7 +316,20 @@ printf '{}\n' | hiroute routing options --request-stdin --output json > routing-
       "mode": "fixed_model",
       "candidates": [{"binding_id": "BINDING_FROM_ROUTING_OPTIONS"}],
       "smart": {
-        "economy": [], "primary": [], "primary_fallback": false,
+        "economy": [], "primary": [],
+        "judgment": {
+          "degree": {
+            "simple_threshold_millis": 800,
+            "instructions": "判断当前任务所需的推理与不确定性。",
+            "simple": "要求明确、范围有限，可以沿用已有模式的任务。",
+            "complex": "需要调查未知原因或在明显不同的设计间选择的任务。"
+          },
+          "competence": {
+            "floor_millis": 500,
+            "instructions": "评价 assessment target 指向的已完成阶段是否取得有用进展。",
+            "criteria": ["未取得有用进展，或需要大量纠正。", "取得有用但不完整或不稳定的进展。", "可靠推进，且无需重大纠正。"]
+          }
+        },
         "reselect_on_user_message": false,
         "classifier": {"kind": "local_rules"}, "complex_keywords": []
       },
@@ -539,3 +552,136 @@ python3 scripts/install-standalone.py uninstall
 卸载只删除 marker 记录且仍归 HiRoute 所有的稳定入口、当前版本程序、服务定义和两处 Skill；
 任何条目被外部替换都会中止而不是覆盖。业务存储、诊断和会话默认保留。删除保留数据必须另行
 确认确切目录及其内容已不再需要。
+
+## 决策服务与分支路由
+
+Desktop 在“模型 → 决策模型”管理这些连接；已发布 CLI 沿用 `decision services list/apply/test`。
+决策模型和自定义扩展独立于实际执行任务的通用模型来源。先发现当前安装的合同：
+
+```sh
+hiroute decision services list --output json
+hiroute schema show --command-id decision.services.apply --output json
+hiroute decision services apply --help
+hiroute decision services test --help
+```
+
+没有单独的 `decision services preview` 命令。第一次 `apply` 只预览，不保存。
+把下面完整请求保存为 `decision-preview-request.json`。外层请求包含 `schema_version` 和
+`spec`；内层 ChangeSpec 也有自己的 `schema_version`：
+
+```json
+{
+  "schema_version": {"major": 1, "minor": 0},
+  "spec": {
+    "schema_version": {"major": 1, "minor": 0},
+    "command_id": "decision.services.apply",
+    "resource_id": "decision-main",
+    "desired_state": {
+      "id": "decision-main",
+      "expected_revision": 0,
+      "service": {
+        "id": "decision-main",
+        "revision": 1,
+        "name": "百炼决策模型",
+        "connection": {
+          "kind": "system_one",
+          "provider": "bailian-token-plan",
+          "model": "decision-model-preview",
+          "endpoint": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone",
+          "timeout_ms": 10000,
+          "auth_header": {"name": "Authorization", "value_secret_ref": "decision/main/r1"}
+        }
+      },
+      "input_slot": "candidate/decision-main"
+    }
+  }
+}
+```
+
+预览前，通过受保护输入注册 `candidate/decision-main`。本例私有文件应包含完整
+`Bearer ...` 请求头值，而非裸 API Key：
+
+```sh
+chmod 600 /absolute/private/decision-header
+exec 3</absolute/private/decision-header
+hiroute protected-input register \
+  --candidate candidate/decision-main --secret-fd 3 --output json
+exec 3<&-
+
+hiroute decision services apply --request-stdin --output json \
+  < decision-preview-request.json > decision-preview.json
+```
+
+确认预览没有 blocker 后，用返回的完整规范、摘要和精确 revision 构造保存请求，再提交：
+
+```sh
+jq '{schema_version:{major:1,minor:0},spec:.data.normalized_spec,
+     accept_digest:.data.change_digest,expected_revisions:.data.expected_revisions,
+     idempotency_key:"save-decision-main-1"}' \
+  decision-preview.json > decision-apply-request.json
+
+hiroute decision services apply --request-stdin --output json \
+  < decision-apply-request.json > decision-apply.json
+
+hiroute decision services list --output json > decision-saved.json
+hiroute protected-input release --candidate candidate/decision-main --output json
+```
+
+检查 `decision-apply.json` 中的 Operation 状态。提交结果不确定时，按原幂等域使用
+`operations find/get` 查询，并保留完整原请求，不要换 key。编辑期望当前版本并保存下一版本，
+如 `expected_revision: 1`、服务 `revision: 2`；删除使用 `service: null` 和当前期望版本。
+路由、草稿或保留历史版本仍引用的连接不能删除。替换认证使用新的受保护引用，
+已发布旧版本继续持有自己的凭证。Desktop 输入 API Key 时自动处理 Bearer 包装，
+无需用户额外操作 Secret 管理页。
+
+从保存结果中取准确的 r1 测试，不要测试未保存草稿或无条件使用最新版本：
+
+```sh
+jq -e --arg id decision-main --argjson revision 1 \
+  '[.data.services[] | select(.id==$id and .revision==$revision)] |
+   if length == 1 then
+     {schema:"hiroute.classifier-decision-test/v1",
+      classifier:{kind:"decision_service",service:.[0]}}
+   else error("Expected saved connection revision is not in this list") end' \
+  decision-saved.json > decision-test-request.json
+
+hiroute decision services test --request-stdin --output json < decision-test-request.json
+```
+
+测试发送固定合成输入，可能消耗供应商额度。检查 `data.outcome` 和 `data.failure_code`，
+不能仅凭 CLI 退出码判断通过。测试验证已保存连接的传输与必要响应字段，
+不读取真实会话、不运行业务模型、不产生胜任样本；通过不保证任务质量或持续健康。
+保存连接与测试是独立动作，两者都不会发布路由。
+
+计划继续使用 `routing preview/apply`，编辑器 schema 为 `hiroute.plan-editor/v2`：
+
+| 模式 | 编辑字段 |
+| --- | --- |
+| `smart_saving` | `smart.classifier`、`smart.economy`、`smart.primary` 与 `smart.judgment` |
+| `custom_branches` | `branch_routing.classifier`、`branch_routing.branches`、`branch_routing.default_branch_id`、`branch_routing.judgment` 与 `branch_routing.reselect_on_user_message` |
+
+决策模型和自定义扩展都使用 `classifier: {kind: "decision_service", service: <完整已保存连接版本>}`。
+只有智能省钱可改用 `{kind: "local_rules"}`。发布按连接 ID、revision 和完整内容核对
+已保存的不可变版本，不接受 `rest` 直配。
+
+判断设置包含 `degree: {simple_threshold_millis, instructions, simple, complex}` 和
+`competence: {floor_millis, instructions, criteria}`。阈值是 0–1000 的整数，
+800 表示 0.8、500 表示 0.5；`criteria` 恰好包含 0、0.5、1 的三个非空评分标准。
+前面固定路由示例中的简短提示词是可编辑示例，不代表完整内置默认提示词。
+
+自定义分支包含 `id`、`name`、`condition`、常规 `candidates` 和 `primary_candidates`，
+单组分支将后者设为空数组。分支可选 `judgment` 必须是完整覆盖；省略或设为 `null`
+表示跟随计划默认。单独调整时复制整套有效设置再修改；恢复默认时清除整套覆盖。
+任务 `condition` 与程度、胜任提示词分开配置。没有主力时不判断程度，仍可观察胜任度。
+
+发布冻结连接版本、任务条件、判断标准、候选顺序及思考配置。保存 r2 不会改变已固定 r1
+的路由，需要选中后重新发布；即使列表已返回 r2，已保存的历史 r1 仍可用于发布。
+每个新用户轮次重新判断。工具续接和重放只有在同轮可识别、历史连续且决策可复用时才继承
+冻结选择；压缩或历史重建导致消息不连续、决策无法复用时会重新判断。只有本次完整、兼容、同类别的
+有效低分才能触发主力保护；缺失或部分评分不是零分。常规组故障接力只进入同分支主力，
+直接选中主力则只在主力组内接力。
+
+自定义连接使用 `connection.kind: "custom"`，遵守 HiRoute 的
+[通用 Decision API](../decision-extensions/api/README.zh-CN.md)；内置连接使用供应商
+[System One 映射](../decision-extensions/api/system-one-design.md)。选择与失败规则见
+[决策协议](../decision-extensions/api/decision-design.md)。本期没有工具精选的运行入口。

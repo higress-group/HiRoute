@@ -169,14 +169,15 @@ pub(super) fn materialize_aliases(
                 let candidates = ordered_candidates(plan)?
                     .into_iter()
                     .map(|candidate| {
-                        let local_id = candidate_local_id(
-                            plan.agent_plan_id().as_str(),
-                            candidate.binding_id.as_str(),
-                        )?;
+                        let key = candidate_execution_key(plan, candidate)?;
+                        let local_id = candidate_local_id(plan.agent_plan_id().as_str(), &key)?;
                         if !local_ids.insert(local_id) {
                             return Err(PublicationError::CandidateIdCollision);
                         }
-                        snapshot::project_candidate(candidate, local_id, &protocols)
+                        let mut projected =
+                            snapshot::project_candidate(candidate, local_id, &protocols)?;
+                        projected.stable_target_key = key;
+                        Ok(projected)
                     })
                     .collect::<Result<Vec<_>, PublicationError>>()?;
                 let local_id_by_binding = candidates
@@ -195,7 +196,7 @@ pub(super) fn materialize_aliases(
                             .iter()
                             .map(|candidate| {
                                 local_id_by_binding
-                                    .get(candidate.binding_id.as_str())
+                                    .get(candidate_execution_key(plan, candidate)?.as_str())
                                     .copied()
                                     .ok_or(PublicationError::InvalidExecutableProjection)
                             })
@@ -259,6 +260,11 @@ pub(super) fn ordered_candidates(
 ) -> Result<Vec<&AttemptOwnedCandidateV1>, PublicationError> {
     let materialized = &plan.body.materialized;
     let group_ids: Vec<MaterializedGroupId> = match &materialized.request_owned {
+        RequestOwnedRouteV1::Branches { branches, .. } => branches
+            .iter()
+            .flat_map(|b| [Some(b.group), b.primary_group])
+            .flatten()
+            .collect(),
         RequestOwnedRouteV1::Classified {
             simple_groups,
             complex_groups,
@@ -283,7 +289,7 @@ pub(super) fn ordered_candidates(
             .get(&group_id)
             .ok_or(PublicationError::InvalidExecutableProjection)?;
         for candidate in &group.candidates {
-            if seen.insert(candidate.binding_id.as_str()) {
+            if seen.insert(candidate_execution_key(plan, candidate)?) {
                 ordered.push(candidate);
             }
         }
@@ -292,6 +298,22 @@ pub(super) fn ordered_candidates(
         Err(PublicationError::InvalidExecutableProjection)
     } else {
         Ok(ordered)
+    }
+}
+
+pub(super) fn candidate_execution_key(
+    plan: &CompiledAgentPlanV1,
+    candidate: &AttemptOwnedCandidateV1,
+) -> Result<String, PublicationError> {
+    if matches!(
+        plan.body.materialized.request_owned,
+        RequestOwnedRouteV1::Branches { .. }
+    ) {
+        CanonicalDigest::of(&(&candidate.binding_id, &candidate.exact_reasoning))
+            .map(|digest| format!("candidate/{digest}"))
+            .map_err(|_| PublicationError::Encoding)
+    } else {
+        Ok(candidate.binding_id.clone())
     }
 }
 

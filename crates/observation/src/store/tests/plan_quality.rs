@@ -70,6 +70,7 @@ fn finished_for_model_with_status(
     status: AgentTurnStatusV1,
 ) -> ExecutionFactV1 {
     ExecutionFactV1::AgentTurnFinished {
+        branch_execution: None,
         agent_turn_id: turn.into(),
         segment_id: segment.into(),
         ordinal,
@@ -127,6 +128,7 @@ fn assessment_for_model(
 
 fn query(plan_revision: Option<u64>) -> PlanQualitySamplesQuery {
     PlanQualitySamplesQuery {
+        competence: None,
         plan_id: Some(PLAN.into()),
         session_id: None,
         segment_id: None,

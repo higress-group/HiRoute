@@ -15,7 +15,7 @@
   <a href="https://hiroute.ai/">官网</a> ·
   <a href="https://hiroute.ai/download/">下载</a> ·
   <a href="https://hiroute.ai/docs/">使用文档</a> ·
-  <a href="https://hiroute.ai/docs/decision-api/">决策 API</a> ·
+  <a href="https://hiroute.ai/docs/decision-extensions/">决策模型</a> ·
   <a href="CONTRIBUTING.md">参与贡献</a>
 </p>
 
@@ -28,9 +28,9 @@
 HiRoute 是长程 Agent 的本地控制与执行层。它把模型来源、可复用路由计划、Agent 接入、有边界的
 故障接力和执行证据放在同一套系统里，同时提供 Desktop 应用以及无界面 CLI 和后台服务。
 
-HiRoute 不是在每次工具调用时随意换模型的代理。一次执行阶段内会保持已选分支稳定，仅在新的用户
-输入或上下文压缩后的自然重建时机重新选择。这样既能按阶段使用合适的模型，也能让阶段内前缀持续
-复用，对模型供应商的 KV cache 友好。
+使用决策的路由会在每个新用户轮次重新判断，同轮工具续接保持冻结决策，让模型持续复用增长中的
+上下文前缀。上下文重建后，如果 HiRoute 无法识别原来的续接关系或复用此前决策，才需要再次判断。
+重新判断也可以继续原模型；缓存实际能否复用取决于供应商。
 
 ## News · 最新动态
 
@@ -44,10 +44,11 @@ HiRoute 不是在每次工具调用时随意换模型的代理。一次执行阶
 | **按阶段路由长任务** | 不必让一个模型包办整段任务，而是根据后续工作选择合适的模型。 |
 | **在降本时守住质量** | 胜任度用于阻止冒险降本，任务复杂度用于寻找采用经济模型的机会。 |
 | **让接力有明确边界** | 校验能力要求、按顺序尝试候选，候选耗尽时明确停止，不静默改变行为。 |
-| **让执行成为下一次决策的证据** | 保留选择分支、实际模型、工具结果、接受的输出和可选阶段胜任度。 |
+| **让执行成为下一次决策的证据** | 保留任务类别、实际模型组与候选、工具结果、接受的输出和可选阶段胜任度。 |
 
-HiRoute 当前提供固定模型、智能省钱、免费优先和有序故障接力路由；Agent 工作计划与 Worker
-委派；本地会话、用量、成本和胜任度查看；以及用于扩展选择策略的公开决策 API。
+HiRoute 当前提供固定模型、智能省钱、自定义分支和免费优先四种路由模式。有序候选与故障接力是
+各模式共享的执行机制。产品还提供 Agent 工作计划与 Worker 委派，本地会话、用量、成本和胜任度
+查看，以及用于接入自有决策服务的自定义扩展 API。
 
 ## 快速开始
 
@@ -74,9 +75,11 @@ hiroute system status --output json
 ### 配置第一条路由
 
 1. 接入受支持的本机订阅、注册 API 或兼容的自定义 API。
-2. 根据任务与成本目标创建并发布路由计划。
-3. 接入 Agent 客户端，或开放 Worker 计划供主 Agent 委派任务。
-4. 在会话和运行表现中查看选择分支、实际模型和执行结果。
+2. 如需模型判断，在**模型 → 决策模型**中连接百炼、OpenRouter Jev、TypeSafe 或兼容接入点。
+   使用内置连接无需自行部署 Jev 服务。
+3. 根据任务与成本目标创建并发布路由计划，按需使用智能省钱或自定义任务分支。
+4. 接入 Agent 客户端，或开放 Worker 计划供主 Agent 委派任务。
+5. 在会话和模型表现中查看任务类别、实际模型组和执行结果。
 
 继续阅读[智能模型路由](https://hiroute.ai/docs/model-routing/)、
 [智能任务路由](https://hiroute.ai/docs/task-routing/)或
@@ -85,37 +88,40 @@ hiroute system status --output json
 ## 查看真实产品中的运行表现
 
 <p align="center">
-  <img src="decision-extensions/assets/quality-native-zh-CN.png" alt="HiRoute Desktop 会话，展示两个模型阶段的评分与用户反馈" width="100%">
+  <img src="decision-extensions/assets/quality-native-zh-CN.png" alt="HiRoute 桌面端会话：阶段胜任度与模型路由" width="100%">
 </p>
 
 查看模型在具体任务中的阶段评分，结合执行记录与用户反馈，为下一次模型选择和任务委派提供依据。
-截图来自真实 Desktop 界面，使用演示数据，不代表模型能力评测。
+每个分数都对应具体执行阶段，可以继续查看决策依据与执行记录。
 
 ## 路由机制
 
-![Jev 决策机制：一次请求选择下一分支，并可评价此前阶段](decision-extensions/assets/jev-decision-zh-CN.svg)
+![决策机制：判断当前任务、评价上一阶段，由 HiRoute 选择并执行模型组](decision-extensions/assets/jev-decision-zh-CN.svg)
 
-一个路由执行轮次从一次分支选择开始。当前上下文可以持续复用时，普通工具续轮会保持该选择；新的
-用户请求改变工作目标，或长会话发生压缩并重建上下文时，HiRoute 会再次决策。是否能继承已有决策
-由路由引擎判断，客户端无需额外上报压缩事件。供应商或模型失败仍可在本轮内按计划执行有边界的
-故障接力，它与重新分类是两件事。
+内置决策模型按计划判断任务类别，在双模型组的路由中返回简单/复杂概率，并可评价上一执行阶段。
+HiRoute 提供已发布的任务条件与评分标准，应用你设置的阈值，再选择模型组与组内有序候选。
+在**模型 → 决策模型**中配置连接即可，无需部署扩展服务。
 
-在一个决策边界，同一次服务响应可以完成两个相关工作：
+**智能省钱**只有一个任务范围，配置省钱与主力两个模型组。本轮任务简单的概率达到门槛，且没有
+适用的完整评分低于胜任度下限时，使用省钱组；否则使用主力组。缺失或部分评分保留为未评分。
+旧低分不会把后续轮次锁在主力组，新一轮也不会自动回到省钱组，而是重新判断当前工作。
 
-- 从 HiRoute 允许的 branch ID 中选择下一轮执行分支；
-- 可选地评价上一模型在执行阶段中的胜任程度。
+**自定义分支**区分写稿、审稿等任务类别，先选类别，再根据该类别内的简单/复杂程度选择常规组或
+可选主力组。只有常规组的类别无需判断程度。评分始终属于真实执行过的阶段，写稿低分不会推动审稿
+升级；只有本次完整、适用且与类别、发布版本和冻结标准匹配的评分，才能影响本轮模型组选择。
 
-官方 [TypeSafe Jev 扩展](decision-extensions/extensions/jev-decider/README.zh-CN.md)通过一次
-OpenRouter 请求实现这套协议。其 Rules 策略结合任务复杂度与可选胜任度：任务简单的概率达到门槛，
-且本次合法评分未低于胜任度下限时，选择经济分支；否则选择主力分支。缺少评分时，仅依据复杂度判断。
+HiRoute 能将请求识别为同轮工具续接，且本轮冻结决策仍可复用时，保持已有决策。候选故障按计划有边界地
+接力：常规组可以接力到同类别主力组，直接选中主力时只在主力组内接力，候选耗尽则明确失败。
+故障接力不会生成胜任度分数或改变任务类别。
 
 这套机制的原则是：
 
 > **胜任度只负责阻止冒险降本，复杂度负责提供降本机会。**
 
-Jev 是可选扩展。你也可以使用内置规则，或通过 LLM、自有模型和规则实现同一套通用多分支协议。
-可从[决策机制](decision-extensions/README.zh-CN.md)、
-[API 说明](decision-extensions/api/README.zh-CN.md)或规范化
+智能省钱也可以使用启发式规则。自定义扩展是可选方式，适合需要自己负责模型接入、判断、评分与
+上下文裁剪的场景。官方 [Jev 扩展](decision-extensions/extensions/jev-decider/README.zh-CN.md)
+是该接口的一种实现。可从[决策模型与路由机制](decision-extensions/README.zh-CN.md)、
+[自定义扩展 API 说明](decision-extensions/api/README.zh-CN.md)或规范化
 [OpenAPI 文档](decision-extensions/api/decision.openapi.json)开始。
 
 ## 面向技术开发者
@@ -152,7 +158,7 @@ npm run build
 | `crates/application`、`crates/client-core` | 应用工作流和共享客户端行为 |
 | `crates/gateway`、`crates/gateway-core` | Agent 协议入口、路由、执行与故障接力 |
 | `crates/observation`、`crates/local-storage` | 本地执行证据、查询与持久化 |
-| `decision-extensions` | 决策机制、OpenAPI、产品截图和官方 Jev 服务 |
+| `decision-extensions` | 决策模型指南、路由机制、扩展 API、产品截图和可选 Jev 扩展 |
 | `contracts`、`assets` | 当前运行合同、模型元数据和产品资源 |
 | `apps/website` | `hiroute.ai` 双语官网、下载和版本发布 |
 | `e2e`、`tools`、`scripts` | 产品场景、验证工具、打包和自动化 |

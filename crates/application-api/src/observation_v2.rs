@@ -5,8 +5,8 @@ pub use hiroute_domain::{
     ObservationFactsPageV2, ObservationFactsQueryV2, ObservationRequestPage,
     ObservationRequestQuery, ObservationSearchPageV2, ObservationSearchQueryV2,
     ObservationSessionCorrelationKindV1, ObservationSessionPageV2, ObservationSessionSummaryV2,
-    ObservationValueQueryV2, ObservationValueSummaryV2, PlanQualitySamplesPage,
-    PlanQualitySamplesQuery,
+    ObservationValueQueryV2, ObservationValueSummaryV2, PlanCompetenceFilter,
+    PlanQualitySamplesPage, PlanQualitySamplesQuery,
 };
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]

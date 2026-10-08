@@ -22,7 +22,9 @@ mod model_save;
 pub use model_save::*;
 mod subscription;
 pub use subscription::*;
+mod decision_services;
 mod worker_dependencies;
+pub use decision_services::DecisionServiceList;
 
 #[derive(Serialize)]
 struct NativePlanApply {

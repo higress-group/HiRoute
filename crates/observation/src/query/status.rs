@@ -4,7 +4,7 @@ use super::*;
 pub(super) fn read_gaps(
     connection: &rusqlite::Connection,
     workspace_id: &WorkspaceId,
-) -> Result<Vec<ObservationGapV1>, ObservationQueryError> {
+) -> Result<(Vec<ObservationGapV1>, bool), ObservationQueryError> {
     let mut statement = connection
         .prepare(
             "SELECT channel, producer_id, producer_epoch, stream_id, first_sequence,
@@ -12,7 +12,7 @@ pub(super) fn read_gaps(
              WHERE workspace_id=?1 ORDER BY gap_id LIMIT 201",
         )
         .map_err(|_| ObservationQueryError::Unavailable)?;
-    let gaps: Vec<ObservationGapV1> = statement
+    let mut gaps: Vec<ObservationGapV1> = statement
         .query_map([workspace_id.as_str()], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -61,20 +61,22 @@ pub(super) fn read_gaps(
             })
         })
         .collect::<Result<_, _>>()?;
-    if gaps.len() > 200 {
-        return Err(ObservationQueryError::InvalidQuery);
-    }
-    Ok(gaps)
+    let truncated = gaps.len() > 200;
+    gaps.truncate(200);
+    Ok((gaps, truncated))
 }
 
 pub(super) fn aggregate_content_completeness(
     connection: &rusqlite::Connection,
     workspace_id: &WorkspaceId,
-    gaps: &[ObservationGapV1],
 ) -> Result<ContentCompleteness, ObservationQueryError> {
-    if gaps
-        .iter()
-        .any(|gap| gap.channel == ObservationChannel::Content)
+    if connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM observation_gaps WHERE workspace_id=?1 AND channel=?2)",
+            rusqlite::params![workspace_id.as_str(), "content"],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|_| ObservationQueryError::Unavailable)?
     {
         return Ok(ContentCompleteness::Partial);
     }
@@ -100,11 +102,14 @@ pub(super) fn aggregate_content_completeness(
 pub(super) fn aggregate_facts_completeness(
     connection: &rusqlite::Connection,
     workspace_id: &WorkspaceId,
-    gaps: &[ObservationGapV1],
 ) -> Result<FactsCompleteness, ObservationQueryError> {
-    if gaps
-        .iter()
-        .any(|gap| gap.channel == ObservationChannel::Fact)
+    if connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM observation_gaps WHERE workspace_id=?1 AND channel=?2)",
+            rusqlite::params![workspace_id.as_str(), "fact"],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|_| ObservationQueryError::Unavailable)?
     {
         return Ok(FactsCompleteness::Partial);
     }

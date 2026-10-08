@@ -1,5 +1,11 @@
 #![cfg(all(unix, feature = "integration-test-hooks"))]
 
+/// Decision services use released CLI codecs, the real journal and immutable Plan snapshots.
+#[test]
+fn real_process_decision_services_and_branch_publication() {
+    run_script("decision_services_product.py");
+}
+
 /// Client-bundled release assets, actual binaries and production inherited authority FDs.
 #[test]
 fn real_process_publication_crashes_recover_without_reapplying() {

@@ -44,7 +44,8 @@ function flags(result) {
 
 const managedSettingsFixture = `
 import { spawnSync } from 'node:child_process';
-const controlled = Object.keys(process.env).filter(key => !['NO_PROXY', 'no_proxy'].includes(key));
+// macOS adds its own text-encoding variable after spawn; it is not a host-managed boundary.
+const controlled = Object.keys(process.env).filter(key => !['NO_PROXY', 'no_proxy', '__CF_USER_TEXT_ENCODING'].includes(key));
 const before = Object.fromEntries(controlled.map(key => [key, process.env[key]]));
 const missing = [
   'ANTHROPIC_API_KEY', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'CLAUDE_CODE_USE_BEDROCK',

@@ -17,6 +17,7 @@ pub enum PlanEditorMode {
     FixedModel,
     SmartSaving,
     FreeFirst,
+    CustomBranches,
 }
 
 /// Installation availability belongs to 14 and does not alter saved configuration.
@@ -32,7 +33,7 @@ pub struct WorkerPlanV1 {
 pub struct SmartEditorV2 {
     pub economy: Vec<CandidateSelectionV1>,
     pub primary: Vec<CandidateSelectionV1>,
-    pub primary_fallback: bool,
+    pub judgment: super::JudgmentSettingsV1,
     pub reselect_on_user_message: bool,
     pub classifier: ComplexityClassifierModeV1,
     pub complex_keywords: Vec<String>,
@@ -58,6 +59,8 @@ pub struct PlanEditorStateV2 {
     pub candidates: Vec<CandidateSelectionV1>,
     pub smart: SmartEditorV2,
     pub free: FreeEditorV2,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_routing: Option<super::BranchRoutingV1>,
     pub delegation_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub work: Option<WorkerPlanV1>,
@@ -74,7 +77,11 @@ impl PlanEditorStateV2 {
             || self.purpose.chars().count() > 512
             || self.custom_alias.as_ref().is_some_and(|v| v.len() > 64)
             || self.smart.complex_keywords.len() > 64
-            || self.smart.classifier.validate().is_err()
+            || !self.smart.judgment.validate_draft()
+            || self
+                .branch_routing
+                .as_ref()
+                .is_some_and(|routing| !routing.validate(true))
             || self
                 .smart
                 .complex_keywords
@@ -125,13 +132,19 @@ impl PlanEditorStateV2 {
     pub fn effective(&self) -> Result<AgentPlanAuthoringV2, PlanAuthoringError> {
         self.validate_draft()?;
         let strategy = match self.mode {
+            PlanEditorMode::CustomBranches => AgentPlanStrategyV2::Branches {
+                routing: self
+                    .branch_routing
+                    .clone()
+                    .ok_or(PlanAuthoringError::InvalidStrategy)?,
+            },
             PlanEditorMode::FixedModel => AgentPlanStrategyV2::Custom {
                 candidates: self.candidates.clone(),
             },
             PlanEditorMode::SmartSaving => AgentPlanStrategyV2::SmartSaving {
                 economy: self.smart.economy.clone(),
                 primary: self.smart.primary.clone(),
-                primary_fallback: self.smart.primary_fallback,
+                judgment: self.smart.judgment.clone(),
                 reselect_on_user_message: self.smart.reselect_on_user_message,
                 classifier: self.smart.classifier.clone(),
                 complex_keywords: self.smart.complex_keywords.clone(),
@@ -182,10 +195,13 @@ pub struct AgentPlanAuthoringV2 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentPlanStrategyV2 {
+    Branches {
+        routing: super::BranchRoutingV1,
+    },
     SmartSaving {
         economy: Vec<CandidateSelectionV1>,
         primary: Vec<CandidateSelectionV1>,
-        primary_fallback: bool,
+        judgment: super::JudgmentSettingsV1,
         reselect_on_user_message: bool,
         classifier: ComplexityClassifierModeV1,
         complex_keywords: Vec<String>,
@@ -201,6 +217,18 @@ pub enum AgentPlanStrategyV2 {
 }
 
 impl AgentPlanAuthoringV2 {
+    pub fn decision_service(&self) -> Option<&super::DecisionServiceV1> {
+        let classifier = match &self.strategy {
+            AgentPlanStrategyV2::SmartSaving { classifier, .. } => classifier,
+            AgentPlanStrategyV2::Branches { routing } => &routing.classifier,
+            _ => return None,
+        };
+        match classifier {
+            ComplexityClassifierModeV1::DecisionService { service } => Some(service),
+            ComplexityClassifierModeV1::LocalRules => None,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), PlanAuthoringError> {
         if self.schema != PLAN_AUTHORING_SCHEMA_V2 {
             return Err(PlanAuthoringError::UnsupportedSchema);
@@ -225,6 +253,11 @@ impl AgentPlanAuthoringV2 {
                 .map_err(|_| PlanAuthoringError::InvalidStrategy)
         };
         match (&self.mode, &self.strategy) {
+            (PlanEditorMode::CustomBranches, AgentPlanStrategyV2::Branches { routing }) => {
+                if !routing.validate(false) {
+                    return Err(PlanAuthoringError::InvalidStrategy);
+                }
+            }
             (
                 PlanEditorMode::SmartSaving,
                 AgentPlanStrategyV2::SmartSaving {
@@ -232,9 +265,13 @@ impl AgentPlanAuthoringV2 {
                     primary,
                     classifier,
                     complex_keywords,
+                    judgment,
                     ..
                 },
             ) => {
+                if !judgment.validate() {
+                    return Err(PlanAuthoringError::InvalidStrategy);
+                }
                 validate(economy)?;
                 validate(primary)?;
                 classifier

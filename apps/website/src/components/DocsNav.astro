@@ -14,9 +14,9 @@ const prefix = en ? '/en' : '';
   <a class:list={{active:active === 'task-routing'}} href={`${prefix}/docs/task-routing/`}>{en ? 'Smart task routing' : '智能任务路由'}</a>
   <a class:list={{active:active === 'cli'}} href={`${prefix}/docs/cli/`}>HiRoute CLI</a>
 
-  <span>{en ? 'DECISION EXTENSIONS' : '决策扩展'}</span>
-  <a class:list={{active:active === 'mechanism'}} href={`${prefix}/docs/decision-extensions/`}>{en ? 'Mechanism and usage' : '机制与使用'}</a>
-  <a class:list={{active:active === 'api'}} href={`${prefix}/docs/decision-api/`}>{en ? 'Decision API' : '决策 API'}</a>
-  <a class:list={{active:active === 'jev'}} href={`${prefix}/docs/jev-decider/`}>{en ? 'Official Jev decider' : '官方 Jev 决策器'}</a>
+  <span>{en ? 'DECISIONS' : '决策机制'}</span>
+  <a class:list={{active:active === 'mechanism'}} href={`${prefix}/docs/decision-extensions/`}>{en ? 'Decision models and routing' : '决策模型与路由机制'}</a>
+  <a class:list={{active:active === 'api'}} href={`${prefix}/docs/decision-api/`}>{en ? 'Custom extension API' : '自定义扩展 API'}</a>
+  <a class:list={{active:active === 'jev'}} href={`${prefix}/docs/jev-decider/`}>{en ? 'Jev reference extension' : 'Jev 参考扩展'}</a>
   <a href="/api/decision.openapi.json" download>{en ? 'Download OpenAPI' : '下载 OpenAPI'}</a>
 </aside>

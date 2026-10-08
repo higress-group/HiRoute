@@ -25,6 +25,34 @@ struct Fixture {
     stream: ObservationStreamV1,
 }
 
+#[test]
+fn unfinished_capture_cannot_borrow_a_previous_requests_complete_status() {
+    let fixture = Fixture::new();
+    ack(fixture.ingest(&fixture.begin(1)));
+    ack(fixture.ingest(&fixture.finish(2, "11")));
+    let state = || {
+        fixture
+            .store
+            .get_session(
+                &fixture.workspace,
+                &SessionId::parse("conversation-1").unwrap(),
+                hiroute_domain::ContentMode::None,
+            )
+            .unwrap()
+            .summary
+            .content_completeness
+    };
+    assert_eq!(state(), ContentCompleteness::Complete);
+    let mut next_begin = fixture.begin(3);
+    next_begin.correlation.request_id = LogicalRequestId::parse("request-2").unwrap();
+    ack(fixture.ingest(&next_begin));
+    assert_eq!(state(), ContentCompleteness::Unknown);
+    let mut next_finish = fixture.finish(4, "22");
+    next_finish.correlation.request_id = next_begin.correlation.request_id;
+    ack(fixture.ingest(&next_finish));
+    assert_eq!(state(), ContentCompleteness::Complete);
+}
+
 impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().unwrap();

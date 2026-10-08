@@ -1,7 +1,7 @@
 use super::*;
 use hiroute_domain::{
-    CanonicalDigest, ObservationSessionCorrelationKindV1, ObservationSessionPageV2,
-    ObservationSessionSummaryV2,
+    CanonicalDigest, ContentCompleteness, ObservationSessionCorrelationKindV1,
+    ObservationSessionPageV2, ObservationSessionSummaryV2,
 };
 use rusqlite::{Connection, OpenFlags, params};
 use serde::{Deserialize, Serialize};
@@ -87,10 +87,13 @@ impl crate::LocalObservationStore {
             .transpose()
             .map_err(|_| ObservationV2Error::Invalid)?;
         let mut sessions = {
-            let sql = format!("{}{}", super::turns::cte(10, "?4"),
-                ", visible AS (
+            let request_state = crate::content::completeness::REQUEST_STATE;
+            let sql = format!(
+                "{}, visible AS (
                  SELECT r.session_id,s.agent_id,r.started_at_ms,r.session_scope,
                    r.correlation_provenance,l.run_id,l.conflicted,
+                   CASE WHEN s.content_completeness IN ('deleted','expired') THEN s.content_completeness
+                     ELSE {request_state} END AS content_state,
                    (SELECT COUNT(DISTINCT a.model_id) FROM observation_attempt_models_v2 a WHERE a.workspace_id=r.workspace_id AND a.request_id=r.request_id) AS models,
                    EXISTS(SELECT 1 FROM turn_changes t WHERE t.request_id=r.request_id AND t.changed=1) AS turn_change
                  FROM logical_requests r JOIN sessions s ON s.workspace_id=r.workspace_id AND s.session_id=r.session_id
@@ -113,11 +116,16 @@ impl crate::LocalObservationStore {
                        WHEN SUM(CASE WHEN session_scope='conversation' AND correlation_provenance='gateway_generated' THEN 0 ELSE 1 END)=0 THEN 3
                        WHEN SUM(CASE WHEN session_scope='request_scoped' AND correlation_provenance='unproven' THEN 0 ELSE 1 END)=0 THEN 4
                        ELSE 0
-                     END AS correlation_kind
+                     END AS correlation_kind,
+                     CASE WHEN MAX(content_state='deleted')=1 THEN 'deleted'
+                       WHEN MAX(content_state='expired')=1 THEN 'expired'
+                       WHEN MAX(content_state='partial')=1 THEN 'partial'
+                       WHEN MAX(content_state='unknown')=1 THEN 'unknown'
+                       ELSE 'complete' END AS content_state
                    FROM visible WHERE (?11=0 OR models>1 OR turn_change) GROUP BY session_id,agent_id
-                 ) SELECT session_id,agent_id,first_at,last_at,requests,fallbacks,unknown_models,correlation_kind FROM grouped
+                 ) SELECT session_id,agent_id,first_at,last_at,requests,fallbacks,unknown_models,correlation_kind,content_state FROM grouped
                  WHERE last_at<?12 OR (last_at=?12 AND session_id>?13)
-                 ORDER BY last_at DESC,session_id LIMIT ?14");
+                 ORDER BY last_at DESC,session_id LIMIT ?14", super::turns::cte(10, "?4"));
             let mut stmt = tx.prepare(&sql)?;
             stmt.query_map(
                 params![
@@ -150,6 +158,13 @@ impl crate::LocalObservationStore {
                         request_count: r.get(4)?,
                         fallback_request_count: r.get(5)?,
                         unknown_model_request_count: r.get(6)?,
+                        content_completeness: match r.get::<_, String>(8)?.as_str() {
+                            "complete" => ContentCompleteness::Complete,
+                            "partial" => ContentCompleteness::Partial,
+                            "deleted" => ContentCompleteness::Deleted,
+                            "expired" => ContentCompleteness::Expired,
+                            _ => ContentCompleteness::Unknown,
+                        },
                         correlation_kind: match r.get::<_, u8>(7)? {
                             1 => ObservationSessionCorrelationKindV1::AgentSupplied,
                             2 => ObservationSessionCorrelationKindV1::VerifiedWorker,

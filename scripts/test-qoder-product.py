@@ -29,7 +29,7 @@ class QoderFixtureContext:
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.home = self.root / 'borrowed-home'
         self.config = self.home / '.qoder'
         self.config.mkdir(parents=True)
@@ -538,7 +538,7 @@ class PersistedModelFixtureTests(unittest.TestCase):
 
     def test_model_context_requires_its_own_explicit_roots(self):
         with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory)
+            home = Path(directory).resolve()
             config = home / '.qoder'
             config.mkdir()
             product = SimpleNamespace(env={})

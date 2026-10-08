@@ -42,8 +42,9 @@ pub(crate) enum AgentTurnStatus {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct VisibleAgentTurn {
+    #[serde(skip_serializing)]
     pub(crate) branch_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing)]
     pub(crate) executed_branch_id: Option<String>,
     pub(crate) user: Vec<VisibleContentPart>,
     pub(crate) status: AgentTurnStatus,
@@ -78,6 +79,7 @@ impl VisibleAgentTurn {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AgentTurnHistorySnapshot {
+    pub(crate) previous_decision: Option<(PlanSnapshot, BranchDecisionV1)>,
     pub(crate) visible_conversation: Vec<Arc<VisibleAgentTurn>>,
     pub(crate) history_partial: bool,
     pub(crate) assessment_from: Option<usize>,
@@ -89,6 +91,7 @@ pub(crate) struct AgentTurnHistorySnapshot {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssessmentTarget {
+    pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) segment_id: String,
     pub(crate) first_turn_id: String,
     pub(crate) through_turn_id: String,
@@ -160,6 +163,7 @@ pub(crate) enum AgentTurnHistoryError {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AcceptedExecution {
+    pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) model_configuration_id: String,
     pub(crate) profile_digest: String,
     pub(crate) executed_branch_id: String,
@@ -168,6 +172,7 @@ pub(crate) struct AcceptedExecution {
 
 #[derive(Clone, Debug)]
 pub(crate) struct CompletedAgentTurn {
+    pub(crate) branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     pub(crate) agent_turn_id: String,
     pub(crate) segment_id: String,
     pub(crate) ordinal: u64,

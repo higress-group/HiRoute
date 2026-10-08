@@ -14,6 +14,43 @@ pub(super) fn validate_execution(
     let desired: Vec<(G, &[CandidateSelectionV1])> =
         match (&configuration.strategy, &materialized.request_owned) {
             (
+                AgentPlanStrategyV2::Branches { routing },
+                RequestOwnedRouteV1::Branches {
+                    classifier,
+                    branches,
+                    default_branch_id,
+                    reselect_on_user_message,
+                },
+            ) => {
+                if routing.branches.len() != branches.len()
+                    || classifier.mode != routing.classifier
+                    || &routing.default_branch_id != default_branch_id
+                    || &routing.reselect_on_user_message != reselect_on_user_message
+                {
+                    return Err(PlanVersionError::Invalid);
+                }
+                let mut groups = Vec::new();
+                for (i, (selected, frozen)) in routing.branches.iter().zip(branches).enumerate() {
+                    let primary = &selected.primary_candidates;
+                    let expected_primary =
+                        (!primary.is_empty()).then_some(G::BranchPrimary(i as u16));
+                    if frozen.id != selected.id
+                        || frozen.name != selected.name
+                        || frozen.condition != selected.condition
+                        || frozen.group != G::Branch(i as u16)
+                        || frozen.primary_group != expected_primary
+                        || frozen.judgment != *routing.judgment_for(selected)
+                    {
+                        return Err(PlanVersionError::Invalid);
+                    }
+                    groups.push((frozen.group, selected.candidates.as_slice()));
+                    if let Some(id) = expected_primary {
+                        groups.push((id, primary.as_slice()));
+                    }
+                }
+                groups
+            }
+            (
                 AgentPlanStrategyV2::Custom { candidates },
                 RequestOwnedRouteV1::Ordered {
                     cost_policy: MaterializedCostPolicyV1::ApiEquivalent,
@@ -24,24 +61,21 @@ pub(super) fn validate_execution(
                 AgentPlanStrategyV2::SmartSaving {
                     economy,
                     primary,
-                    primary_fallback,
+                    judgment,
                     reselect_on_user_message,
                     classifier: classifier_mode,
                     complex_keywords,
                 },
                 RequestOwnedRouteV1::Classified {
                     classifier,
+                    judgment: materialized_judgment,
                     reselect_on_user_message: materialized_reselect,
                     simple_groups,
                     complex_groups,
                 },
             ) => {
-                let expected = if *primary_fallback {
-                    vec![G::Economy, G::Primary]
-                } else {
-                    vec![G::Economy]
-                };
-                if simple_groups != &expected
+                if simple_groups != &[G::Economy, G::Primary]
+                    || judgment != materialized_judgment
                     || reselect_on_user_message != materialized_reselect
                     || complex_groups != &[G::Primary]
                     || classifier

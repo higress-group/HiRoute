@@ -372,7 +372,8 @@ mod tests {
             "last_request_at_ms":2,
             "request_count":1,
             "fallback_request_count":0,
-            "unknown_model_request_count":0
+            "unknown_model_request_count":0,
+            "content_completeness":"unknown"
         }))
         .unwrap();
         assert_eq!(
@@ -572,6 +573,7 @@ pub struct ObservationSessionSummaryV2 {
     pub request_count: u64,
     pub fallback_request_count: u64,
     pub unknown_model_request_count: u64,
+    pub content_completeness: super::ContentCompleteness,
     #[serde(default)]
     pub correlation_kind: ObservationSessionCorrelationKindV1,
 }

@@ -64,13 +64,22 @@ fn accepted_codex_terminal_event_crosses_transport_frames_and_keeps_eos() {
         ProviderAcceptedEvent::Raw(PrecommitEvent::Body(input)),
     )
     .unwrap();
+    assert!(first.is_none());
+    assert!(
+        take_accepted_prefix(&mut readiness).is_none(),
+        "do not let the client observe response.completed before its EOF certificate can accompany the same final write"
+    );
+    let first = encode_accepted_event(
+        &mut readiness,
+        ProviderAcceptedEvent::Raw(PrecommitEvent::EndStream),
+    )
+    .unwrap();
     let mut accepted =
         BodyPlanExecutor::new(BodyDirection::AcceptedResponse, plan, 1024 * 1024).unwrap();
     let mut reconstructed = Vec::new();
     let mut frames = 0;
     let mut eos = 0;
     let mut next = first;
-    let mut source_end_sent = false;
     loop {
         let frame = match next.take() {
             Some(frame) => frame,
@@ -78,15 +87,6 @@ fn accepted_codex_terminal_event_crosses_transport_frames_and_keeps_eos() {
                 Some(event) => encode_accepted_event(&mut readiness, event)
                     .unwrap()
                     .unwrap(),
-                None if !source_end_sent => {
-                    source_end_sent = true;
-                    encode_accepted_event(
-                        &mut readiness,
-                        ProviderAcceptedEvent::Raw(PrecommitEvent::EndStream),
-                    )
-                    .unwrap()
-                    .unwrap()
-                }
                 None => break,
             },
         };

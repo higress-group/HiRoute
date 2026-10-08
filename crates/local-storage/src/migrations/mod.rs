@@ -27,6 +27,7 @@ mod completed_batches;
 mod compute_v8;
 mod convergence_v15;
 mod convergence_v17;
+mod decision_services_v28;
 mod delegation_native_lifecycle_v21;
 mod delegation_v10;
 #[cfg(test)]
@@ -50,7 +51,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 27;
+pub const LATEST_SCHEMA_VERSION: u32 = 29;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -453,15 +454,17 @@ impl MigrationSetCoordinator {
                 LATEST_SCHEMA_VERSION,
             )?
         };
-        if !matches!(set.target_schema_version(), 24 | 25 | LATEST_SCHEMA_VERSION)
-            || (set.target_schema_version() == 24
-                && [
-                    set.control.manifest(),
-                    set.runtime.manifest(),
-                    set.secrets.manifest(),
-                ]
-                .iter()
-                .any(|source| source.schema_version != 23))
+        if !matches!(
+            set.target_schema_version(),
+            24 | 25 | 26 | LATEST_SCHEMA_VERSION
+        ) || (set.target_schema_version() == 24
+            && [
+                set.control.manifest(),
+                set.runtime.manifest(),
+                set.secrets.manifest(),
+            ]
+            .iter()
+            .any(|source| source.schema_version != 23))
             || set.secrets.manifest().key_id.as_deref() != Some(secret_binding.key_id.as_str())
         {
             return Err(LocalStorageError::InvalidData);
@@ -841,8 +844,14 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Control, 25) => Ok(agent_surface_checks_v25::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 25) => Ok(NOOP_V9),
         (DatabaseKind::Control, 26) => Ok(worker_dependencies_v26::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 26) => Ok(NOOP_V9),
         (DatabaseKind::Control, 27) => Ok(worker_dependencies_v27::CONTROL),
-        (DatabaseKind::Runtime | DatabaseKind::Secrets, 26 | 27) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 28) => Ok(decision_services_v28::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 27 | 28) => Ok(NOOP_V9),
+        (DatabaseKind::Secrets, 29) => Ok("DROP INDEX secret_owner_fingerprint_idx;
+             CREATE UNIQUE INDEX secret_owner_fingerprint_idx
+             ON secret_entries(owner_scope, fingerprint) WHERE purpose != 'http-header';"),
+        (DatabaseKind::Control | DatabaseKind::Runtime, 29) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }

@@ -3,6 +3,7 @@ import { connectionName } from '../../ui/provider-identity';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { Plan } from '../../plan-editor';
+import { branchSelections } from '../decision-services/types';
 import { Dialog, UiIcon } from '../../ui';
 import { confirmDiscard, useDiscardGuard } from '../../ui/discard-guard';
 import type { PriceDisplay } from '../model-reference/types';
@@ -124,8 +125,9 @@ export function Models(props: Props) {
   const usedPlans = useMemo(() => !model ? [] : (props.plans ?? []).filter(plan => {
     if (plan.head.status !== 'enabled') return false;
     const strategy = plan.desired.strategy;
-    return [...(strategy.candidates ?? []), ...(strategy.economy ?? []), ...(strategy.primary ?? [])]
-      .some(selection => selection.binding_id === model.binding_id);
+    const selections = strategy.routing ? branchSelections(strategy.routing)
+      : [...(strategy.candidates ?? []), ...(strategy.economy ?? []), ...(strategy.primary ?? [])];
+    return selections.some(selection => selection.binding_id === model.binding_id);
   }), [model, props.plans]);
 
   const pristineDraft = source ? createDraft(source) : null;

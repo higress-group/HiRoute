@@ -3,20 +3,20 @@
   "info": {
     "title": "HiRoute Decision API",
     "version": "1.0.0",
-    "description": "Choose from the allowed branches and optionally assess the preceding execution stage. This multi-branch decision contract can be implemented with Jev, an LLM, or a custom strategy; it is not restricted to smart-saving or binary classification."
+    "description": "Current v1: categorical task choices, ordinal degree distributions and optional assessment of a preceding actual stage. Tool subset selection is future design only."
   },
   "servers": [
     {
       "url": "https://classifier.example",
-      "description": "Example only. HiRoute posts to the complete endpoint configured in the AgentPlan."
+      "description": "Example only; HiRoute posts to the configured complete endpoint."
     }
   ],
   "paths": {
     "/v1/decisions": {
       "post": {
         "operationId": "decideAgentTurn",
-        "summary": "Choose an allowed branch and optionally assess the preceding execution stage",
-        "description": "HiRoute sends one request when no valid branch decision can be inherited, a real user message is appended to history that ContextHold proved continuous, or ContextHold no longer supplies a preferred candidate. These causes are coalesced into one decision. The service does not detect compaction and must not require latest_user text to change. The configured endpoint may use an optional operator-configured authentication header. It must return one branch from the request. An assessment is valid only when assessment_from is not null.",
+        "summary": "Decide the current task and optionally assess a preceding stage",
+        "description": "Every new user turn decides again. Tool continuations inherit only while same-turn history is continuous and the frozen decision remains reusable. Exact allowed IDs and selected refinement are required. No model IDs or routing thresholds cross this boundary. Invalid selected degree preserves the category and uses its primary group; invalid optional assessment is discarded independently. Return strict JSON, no duplicate or unknown fields, at most 64 KiB.",
         "requestBody": {
           "required": true,
           "content": {
@@ -24,46 +24,214 @@
               "schema": {
                 "$ref": "#/components/schemas/ClassifierRequest"
               },
-              "example": {
-                "branches": {
-                  "smart_saving_simple": "Use the economy model group for a clear, well-scoped task.",
-                  "smart_saving_complex": "Use the primary model group for an ambiguous, cross-module, diagnostic, concurrent, or deep-reasoning task."
-                },
-                "latest_user": [
-                  {
-                    "kind": "text",
-                    "text": "Fix this failing test."
+              "examples": {
+                "smart_saving": {
+                  "value": {
+                    "decision": {
+                      "kind": "ordinal",
+                      "instructions": "判断当前任务需要的处理程度，不评价上一阶段表现。",
+                      "levels": [
+                        {
+                          "id": "simple",
+                          "criterion": "需求明确、边界清楚，可沿用已有模式完成。"
+                        },
+                        {
+                          "id": "complex",
+                          "criterion": "需要深入推理、跨模块诊断或设计新的方案。"
+                        }
+                      ]
+                    },
+                    "latest_user": [
+                      {
+                        "kind": "text",
+                        "text": "把这段说明改成三条清晰的要点。"
+                      }
+                    ],
+                    "visible_conversation": [],
+                    "history_partial": false,
+                    "assessment_target": null
                   }
-                ],
-                "visible_conversation": [],
-                "history_partial": false,
-                "assessment_from": null
+                },
+                "writing_review": {
+                  "value": {
+                    "decision": {
+                      "kind": "categorical",
+                      "instructions": "按当前请求的主要意图选择一个工作类别，不按任务难度或上次失败选择。条件重叠时选择最符合主要意图的一项；均不匹配时选择默认类别 writing。",
+                      "options": [
+                        {
+                          "id": "writing",
+                          "criterion": "撰写、续写或改写文章，包括根据反馈修稿。",
+                          "refinement": {
+                            "kind": "ordinal",
+                            "instructions": "假设当前任务交给写稿分支，判断写稿工作所需程度。",
+                            "levels": [
+                              {
+                                "id": "simple",
+                                "criterion": "事实和提纲充分，仅需常规组织或局部改写。"
+                              },
+                              {
+                                "id": "complex",
+                                "criterion": "需要综合冲突材料、构建论证或重组全文。"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "id": "review",
+                          "criterion": "审阅、核实文章并提出意见，不直接重写全文。",
+                          "refinement": {
+                            "kind": "ordinal",
+                            "instructions": "假设当前任务交给审稿分支，判断审稿工作所需程度。",
+                            "levels": [
+                              {
+                                "id": "simple",
+                                "criterion": "范围明确的格式、措辞与已知事实核查。"
+                              },
+                              {
+                                "id": "complex",
+                                "criterion": "需要逐项核对来源、检查因果推断或全篇论证。"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    "latest_user": [
+                      {
+                        "kind": "text",
+                        "text": "请逐项核对这篇稿件的来源与因果论断，给出审稿意见。"
+                      }
+                    ],
+                    "visible_conversation": [
+                      {
+                        "user": [
+                          {
+                            "kind": "text",
+                            "text": "根据所给材料写一篇文章。"
+                          }
+                        ],
+                        "status": "completed",
+                        "steps": [
+                          [
+                            {
+                              "kind": "text",
+                              "text": "文章已写出，但将两个没有因果证据的现象写成了因果关系。"
+                            }
+                          ]
+                        ]
+                      }
+                    ],
+                    "history_partial": false,
+                    "assessment_target": {
+                      "from": 0,
+                      "instructions": "评价上一写稿阶段的材料忠实性与论证，不评价尚未发生的审稿。",
+                      "criteria": [
+                        {
+                          "score": 0,
+                          "criterion": "关键事实失真、无进展或需要大幅纠正。"
+                        },
+                        {
+                          "score": 0.5,
+                          "criterion": "有用但不完整，仍有明显事实或论证问题。"
+                        },
+                        {
+                          "score": 1,
+                          "criterion": "忠实于材料、归因准确、完成写稿要求。"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "single_group_category": {
+                  "value": {
+                    "decision": {
+                      "kind": "categorical",
+                      "instructions": "按当前请求的主要意图选择一个工作类别，不按任务难度或上次失败选择。条件重叠时选择最符合主要意图的一项；均不匹配时选择默认类别 writing。",
+                      "options": [
+                        {
+                          "id": "writing",
+                          "criterion": "撰写、续写或改写文章，包括根据反馈修稿。",
+                          "refinement": {
+                            "kind": "ordinal",
+                            "instructions": "假设当前任务交给写稿分支，判断写稿工作所需程度。",
+                            "levels": [
+                              {
+                                "id": "simple",
+                                "criterion": "事实和提纲充分，仅需常规组织或局部改写。"
+                              },
+                              {
+                                "id": "complex",
+                                "criterion": "需要综合冲突材料、构建论证或重组全文。"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "id": "review",
+                          "criterion": "审阅、核实文章并提出意见，不直接重写全文。"
+                        }
+                      ]
+                    },
+                    "latest_user": [
+                      {
+                        "kind": "text",
+                        "text": "请逐项核对这篇稿件的来源与因果论断，给出审稿意见。"
+                      }
+                    ],
+                    "visible_conversation": [],
+                    "history_partial": false,
+                    "assessment_target": null
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "A strict branch decision with an optional competence assessment.",
+            "description": "Decision with optional prior-stage assessment.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ClassifierResponse"
                 },
                 "examples": {
-                  "selectionOnly": {
-                    "summary": "Choose a branch without updating an assessment",
+                  "smart_saving": {
                     "value": {
-                      "branch_id": "smart_saving_simple"
+                      "decision": {
+                        "kind": "ordinal",
+                        "probabilities": {
+                          "simple": 0.93,
+                          "complex": 0.07
+                        }
+                      }
                     }
                   },
-                  "selectionAndAssessment": {
-                    "summary": "Choose a branch and assess the requested preceding stage",
+                  "writing_review": {
                     "value": {
-                      "branch_id": "smart_saving_complex",
+                      "decision": {
+                        "kind": "categorical",
+                        "choice": "review",
+                        "refinement": {
+                          "kind": "ordinal",
+                          "probabilities": {
+                            "simple": 0.28,
+                            "complex": 0.72
+                          }
+                        }
+                      },
                       "assessment": {
-                        "score": 0.82,
-                        "partial": false
+                        "score": 0.35,
+                        "partial": false,
+                        "reason": "上一写稿阶段存在没有证据支撑的因果断言。"
+                      }
+                    }
+                  },
+                  "single_group_category": {
+                    "value": {
+                      "decision": {
+                        "kind": "categorical",
+                        "choice": "review"
                       }
                     }
                   }
@@ -77,71 +245,335 @@
   },
   "components": {
     "schemas": {
-      "ClassifierRequest": {
+      "OrdinalDefinition": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "branches",
-          "latest_user",
-          "visible_conversation",
-          "history_partial",
-          "assessment_from"
+          "kind",
+          "instructions",
+          "levels"
         ],
         "properties": {
-          "branches": {
-            "type": "object",
-            "description": "The branch IDs allowed for this request and their HiRoute-defined meanings. The service must return one of these exact IDs.",
-            "minProperties": 1,
-            "additionalProperties": {
-              "type": "string"
-            }
+          "kind": {
+            "const": "ordinal"
           },
-          "latest_user": {
-            "type": "array",
-            "description": "The complete, non-empty user content projection from the current request. It may repeat the preceding routing round or be a client-generated summary or continuation; that shape alone is not feedback.",
-            "minItems": 1,
-            "items": {
-              "$ref": "#/components/schemas/UserContentPart"
-            }
-          },
-          "visible_conversation": {
-            "type": "array",
-            "description": "Sealed routing execution rounds retained by HiRoute, in original order. A round is one branch decision plus inherited model requests, and may have unknown status when sealed at a later decision boundary without a task terminal.",
-            "items": {
-              "$ref": "#/components/schemas/VisibleAgentTurn"
-            }
-          },
-          "history_partial": {
-            "type": "boolean",
-            "description": "True when restart, TTL, LRU eviction, or an observation gap makes the supplied history incomplete."
-          },
-          "assessment_from": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0,
-            "description": "A zero-based index into visible_conversation. When non-null, the suffix beginning here is the preceding execution stage that may be assessed."
-          }
-        }
-      },
-      "ClassifierResponse": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "branch_id"
-        ],
-        "properties": {
-          "branch_id": {
+          "instructions": {
             "type": "string",
-            "description": "One exact key from the request branches object."
+            "minLength": 1
           },
-          "assessment": {
-            "$ref": "#/components/schemas/CompetenceAssessment"
+          "levels": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "criterion"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "criterion": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
           }
         }
       },
-      "CompetenceAssessment": {
+      "CategoricalDefinition": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "instructions",
+          "options"
+        ],
+        "properties": {
+          "kind": {
+            "const": "categorical"
+          },
+          "instructions": {
+            "type": "string",
+            "minLength": 1
+          },
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "criterion"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "criterion": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "refinement": {
+                  "$ref": "#/components/schemas/OrdinalDefinition"
+                }
+              }
+            }
+          }
+        }
+      },
+      "DecisionDefinition": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/OrdinalDefinition"
+          },
+          {
+            "$ref": "#/components/schemas/CategoricalDefinition"
+          }
+        ]
+      },
+      "OrdinalResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "probabilities"
+        ],
+        "properties": {
+          "kind": {
+            "const": "ordinal"
+          },
+          "probabilities": {
+            "type": "object",
+            "minProperties": 2,
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "description": "Exact requested level IDs, finite probabilities, sum within 1e-6 of 1. Duplicate keys are forbidden."
+          }
+        }
+      },
+      "CategoricalResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "choice"
+        ],
+        "properties": {
+          "kind": {
+            "const": "categorical"
+          },
+          "choice": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "refinement": {
+            "$ref": "#/components/schemas/OrdinalResult"
+          }
+        }
+      },
+      "ContentPart": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "text"
+            ],
+            "properties": {
+              "kind": {
+                "const": "text"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "source_kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "unavailable"
+              },
+              "source_kind": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        ]
+      },
+      "StepPart": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ContentPart"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "tool",
+              "status"
+            ],
+            "properties": {
+              "kind": {
+                "const": "tool_activity"
+              },
+              "tool": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "status": {
+                "enum": [
+                  "completed",
+                  "failed",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "VisibleTurn": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "user",
+          "status",
+          "steps"
+        ],
+        "properties": {
+          "user": {
+            "type": "array",
+            "minItems": 0,
+            "items": {
+              "$ref": "#/components/schemas/ContentPart"
+            }
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "failed",
+              "interrupted",
+              "unknown"
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 0,
+            "items": {
+              "type": "array",
+              "minItems": 0,
+              "items": {
+                "$ref": "#/components/schemas/StepPart"
+              }
+            }
+          }
+        }
+      },
+      "AssessmentTarget": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "instructions",
+          "criteria"
+        ],
+        "properties": {
+          "from": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Zero-based index in visible_conversation; the suffix is one actual prior stage."
+          },
+          "instructions": {
+            "type": "string",
+            "minLength": 1
+          },
+          "criteria": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "prefixItems": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "score",
+                  "criterion"
+                ],
+                "properties": {
+                  "score": {
+                    "const": 0
+                  },
+                  "criterion": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "score",
+                  "criterion"
+                ],
+                "properties": {
+                  "score": {
+                    "const": 0.5
+                  },
+                  "criterion": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "score",
+                  "criterion"
+                ],
+                "properties": {
+                  "score": {
+                    "const": 1
+                  },
+                  "criterion": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            ],
+            "items": false
+          }
+        }
+      },
+      "Assessment": {
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -152,146 +584,80 @@
           "score": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1,
-            "description": "Model competence for the assessed stage, not confidence or task-complexity probability."
+            "maximum": 1
           },
           "partial": {
-            "type": "boolean",
-            "description": "Whether the service omitted any evidence from the requested stage while assessing it."
+            "type": "boolean"
           },
           "reason": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 1024,
-            "description": "Optional human-readable evidence summary."
+            "maxLength": 1024
           }
         }
       },
-      "VisibleAgentTurn": {
+      "ClassifierRequest": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "branch_id",
-          "user",
-          "status",
-          "steps"
+          "decision",
+          "latest_user",
+          "visible_conversation",
+          "history_partial",
+          "assessment_target"
         ],
         "properties": {
-          "branch_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The branch selected at the routing execution-round boundary, or null when unavailable."
+          "decision": {
+            "$ref": "#/components/schemas/DecisionDefinition"
           },
-          "executed_branch_id": {
-            "type": "string",
-            "description": "Present only when the accepted output came entirely from a fallback branch different from branch_id."
-          },
-          "user": {
+          "latest_user": {
             "type": "array",
+            "minItems": 1,
             "items": {
-              "$ref": "#/components/schemas/UserContentPart"
+              "$ref": "#/components/schemas/ContentPart"
             }
           },
-          "status": {
-            "type": "string",
-            "enum": [
-              "completed",
-              "failed",
-              "interrupted",
-              "unknown"
-            ]
-          },
-          "steps": {
+          "visible_conversation": {
             "type": "array",
-            "description": "One ordered item per business-model request. Each item contains only accepted text and coarse tool activity.",
+            "minItems": 0,
             "items": {
-              "type": "array",
-              "items": {
-                "$ref": "#/components/schemas/VisibleContentPart"
+              "$ref": "#/components/schemas/VisibleTurn"
+            }
+          },
+          "history_partial": {
+            "type": "boolean"
+          },
+          "assessment_target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AssessmentTarget"
               }
-            }
-          }
-        }
-      },
-      "UserContentPart": {
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/TextPart"
-          },
-          {
-            "$ref": "#/components/schemas/UnavailablePart"
-          }
-        ]
-      },
-      "VisibleContentPart": {
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/TextPart"
-          },
-          {
-            "$ref": "#/components/schemas/ToolActivityPart"
-          },
-          {
-            "$ref": "#/components/schemas/UnavailablePart"
-          }
-        ]
-      },
-      "TextPart": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "kind",
-          "text"
-        ],
-        "properties": {
-          "kind": {
-            "const": "text"
-          },
-          "text": {
-            "type": "string"
-          }
-        }
-      },
-      "ToolActivityPart": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "kind",
-          "tool",
-          "status"
-        ],
-        "properties": {
-          "kind": {
-            "const": "tool_activity"
-          },
-          "tool": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "completed",
-              "failed",
-              "unknown"
             ]
           }
         }
       },
-      "UnavailablePart": {
+      "ClassifierResponse": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "kind",
-          "source_kind"
+          "decision"
         ],
         "properties": {
-          "kind": {
-            "const": "unavailable"
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OrdinalResult"
+              },
+              {
+                "$ref": "#/components/schemas/CategoricalResult"
+              }
+            ]
           },
-          "source_kind": {
-            "type": "string"
+          "assessment": {
+            "$ref": "#/components/schemas/Assessment"
           }
         }
       }

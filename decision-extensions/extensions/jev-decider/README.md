@@ -1,246 +1,135 @@
-# HiRoute Jev decider
+# Official Jev decision extension
 
-[简体中文](README.zh-CN.md) · [Decision mechanism](../../README.md) · [API and OpenAPI](../../api/README.md)
+[简体中文](README.zh-CN.md) · [Custom extension API](../../api/README.md)
 
-This is HiRoute's deployable reference implementation of the five-field REST branch-decision protocol. It accepts a HiRoute decision request, makes exactly one OpenRouter Decisions call with `typesafe/jev-1.13`, and returns `branch_id` plus an optional assessment of the preceding execution segment.
+This optional Python HTTP service implements HiRoute's current **v1** with one
+System One provider call. HiRoute also has built-in connections under
+**Models → Decision models**, so you only need this service when choosing a
+self-hosted custom extension.
 
-It is a separate trusted service, not an LLM path embedded in HiRoute. HiRoute remains responsible for routing execution-round boundaries, allowed branches, execution, assessment attribution, and persistence; this service owns Jev prompts, model-context trimming, and policy.
+The extension follows the request's task categories, degree criteria and frozen
+assessment standard. It returns a category/degree result and optional competence
+for the preceding actual stage. HiRoute owns thresholds, model groups, availability
+relay and observations. There are no deployment-level routing rules, thresholds
+or fixed branch policies.
 
-## Strategy
+## Install
 
-Choose exactly one mode at deployment:
+Use **Python 3.12 or later**. From the HiRoute repository root:
 
-- `auto` asks Jev for the final branch and, when an assessable prior segment exists, its competence Score in the same upstream request. The Choice is instructed to consider both the new task and observed prior performance; only its selected branch is required, because auto does not consume Choice probabilities.
-- `rules` asks for simple/complex probabilities and the optional competence Score in the same upstream request. It supports HiRoute's current two smart-saving branches only.
-
-The rules formula is deliberately small:
-
-```text
-choose smart_saving_simple when
-  P(smart_saving_simple) >= JEV_SIMPLE_THRESHOLD
-  AND (no valid competence score OR score >= JEV_COMPETENCE_FLOOR)
-otherwise choose smart_saving_complex
+```sh
+python3 -m venv "$HOME/hiroute-jev/.venv"
+"$HOME/hiroute-jev/.venv/bin/pip" install ./decision-extensions/extensions/jev-decider
+install -d -m 700 "$HOME/.config/hiroute"
+touch "$HOME/.config/hiroute/jev-api-key"
+chmod 600 "$HOME/.config/hiroute/jev-api-key"
 ```
 
-Defaults are `0.80` and `0.50`. They are starting values, not calibrated guarantees.
+Save the chosen provider's API key as UTF-8 text in
+`$HOME/.config/hiroute/jev-api-key` using an editor. The examples below use that
+private file; the upstream key stays on the extension host. Use an absolute path
+when choosing a different file.
 
-**Competence guards against risky cost-cutting; complexity identifies opportunities to save.** A good score does not make a genuinely complex new task simple; a low score can prevent an otherwise-simple task from being routed back to a branch that is currently performing poorly. A missing assessment is not zero and does not block the economy branch. A partial assessment remains useful evidence but must not be presented as complete.
+## Configure and start
 
-## Run locally
+Choose one provider configuration. The `OPENROUTER_*` variable names are used for
+all compatible providers, including Bailian; there is no separate Bailian key or
+account-edition variable.
 
-Python 3.12+:
+### OpenRouter Jev
+
+```sh
+export OPENROUTER_API_KEY_FILE="$HOME/.config/hiroute/jev-api-key"
+export OPENROUTER_DECISIONS_URL="https://openrouter.ai/api/alpha/decisions"
+export JEV_MODEL="typesafe/jev-1.13"
+export JEV_REQUEST_TIMEOUT_SECONDS=10
+"$HOME/hiroute-jev/.venv/bin/hiroute-jev-decider"
+```
+
+### Bailian Token Plan
+
+Use a Bailian Token Plan key in the private file, then start with:
+
+```sh
+export OPENROUTER_API_KEY_FILE="$HOME/.config/hiroute/jev-api-key"
+export OPENROUTER_DECISIONS_URL="https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone"
+export JEV_MODEL="decision-model-preview"
+export JEV_REQUEST_TIMEOUT_SECONDS=10
+"$HOME/hiroute-jev/.venv/bin/hiroute-jev-decider"
+```
+
+Token Plan uses one endpoint; actual availability depends on the credential's
+permissions and the provider response. For other compatible System One providers,
+set the complete upstream URL and model explicitly.
+
+### Environment variables
+
+| Variable | Default / use |
+| --- | --- |
+| `OPENROUTER_API_KEY_FILE` | Required absolute path to the private UTF-8 provider key file |
+| `OPENROUTER_DECISIONS_URL` | `https://openrouter.ai/api/alpha/decisions` |
+| `JEV_MODEL` | `typesafe/jev-1.13` |
+| `JEV_REQUEST_TIMEOUT_SECONDS` | 2.8 seconds total; includes request preparation, queueing, connection and reading; must be in `(0,3600]` |
+| `JEV_MAX_REQUEST_BYTES` | 262144 bytes for the complete provider request, including questions and state; not a token estimate |
+| `JEV_MAX_CONCURRENCY` | 32 concurrent upstream calls |
+| `HOST`, `PORT` | `127.0.0.1`, `8080` |
+| `DECIDER_AUTH_HEADER_NAME`, `DECIDER_AUTH_HEADER_VALUE` | Optional paired authentication for requests from HiRoute; configure the same header/value in the custom connection |
+
+## Connect HiRoute to the extension
+
+Once the service is running, `GET http://127.0.0.1:8080/health` checks the HTTP
+service. It does not call the provider or verify the key's permissions.
+
+Under **Models → Decision models**, add a **custom extension** with the complete
+endpoint **`http://127.0.0.1:8080/v1/decisions`**. Choose a connection timeout longer
+than the extension's total budget; the examples use a 10-second extension budget.
+Set inbound authentication in both places if configured. If the service runs on a
+different host, use an address reachable from HiRoute instead of loopback.
+Save and test the connection, then select it in a routing plan and publish.
+
+The two HTTP boundaries have different payloads:
+
+| Caller → receiver | Endpoint | Payload |
+| --- | --- | --- |
+| HiRoute → this extension | `/v1/decisions` | The [custom extension request](../../api/README.md): definition, current input, visible history and assessment target |
+| This extension → decision provider | Configured `/alpha/decisions` or `/systemone` URL | System One `model`, `state` and typed Choice/Score questions |
+
+Do not use the provider URL as this extension's endpoint in HiRoute. To call a
+provider directly, add a built-in decision model instead.
+
+## Behavior and limits
+
+The extension submits independent category, degree and optional assessment questions
+in one provider request. Only the selected category's degree is consumed; an invalid
+unselected answer does not invalidate that path. Degree uses the complete probability
+distribution. Competence uses the raw provider score divided by two, not confidence.
+An invalid selected degree leaves the category selected so HiRoute can use its primary
+group; invalid assessment is omitted. The extension does not invent assessment reasons.
+
+Current input and supplied instructions are preserved. Oldest whole history turns
+may be removed to fit the complete-request byte budget. Loss within the assessment
+target marks the score partial; if the whole target is removed, assessment is omitted.
+If current input and questions alone exceed the budget, the service rejects the
+request instead of truncating them. Provider context limits still apply, and the
+business models keep the context settings from the routing plan.
+
+There is one upstream call with no retry. Redirects are disabled, upstream responses
+are bounded to **64 KiB**, and the service budget includes waiting for a concurrency
+slot. Diagnostics record timing, counts, status and reported usage without prompts
+or credentials. Tool subset selection is future documentation only and is not
+implemented by this service.
+
+## Offline verification
+
+From the repository root, after installation:
 
 ```sh
 cd decision-extensions/extensions/jev-decider
-python -m venv .venv
-. .venv/bin/activate
-pip install .
-printf '%s' 'replace-with-key' > /absolute/path/openrouter-key
-chmod 600 /absolute/path/openrouter-key
-OPENROUTER_API_KEY_FILE=/absolute/path/openrouter-key hiroute-jev-decider
+"$HOME/hiroute-jev/.venv/bin/python" -m unittest discover -v
 ```
 
-Container:
-
-```sh
-docker build -t hiroute-jev-decider decision-extensions/extensions/jev-decider
-docker run --rm -p 127.0.0.1:8080:8080 \
-  -v /absolute/path/openrouter-key:/run/secrets/openrouter-key:ro \
-  -e OPENROUTER_API_KEY_FILE=/run/secrets/openrouter-key \
-  -e JEV_MODE=auto \
-  hiroute-jev-decider
-```
-
-Then configure a HiRoute smart-saving plan with:
-
-```json
-{
-  "kind": "rest",
-  "endpoint": "http://127.0.0.1:8080/v1/decisions",
-  "timeout_ms": 3000
-}
-```
-
-`GET /health` never calls OpenRouter. Saving or publishing a HiRoute plan also does not call this service.
-
-The container build command runs from the repository root. Existing deployments must update the plan endpoint to `/v1/decisions`; this version does not retain an old-path alias.
-
-## Configuration
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `OPENROUTER_API_KEY_FILE` | required | Absolute path to a UTF-8 file; its value is sent only as the OpenRouter Bearer credential |
-| `JEV_MODE` | `auto` | Exactly `auto` or `rules` |
-| `JEV_MODEL` | `typesafe/jev-1.13` | OpenRouter Decisions model |
-| `JEV_POLICY_FILE` | Bundled criteria | Optional absolute path to custom criteria JSON; loaded at startup, restart after edits |
-| `OPENROUTER_DECISIONS_URL` | `https://openrouter.ai/api/alpha/decisions` | Override only for a controlled gateway/test upstream |
-| `JEV_REQUEST_TIMEOUT_SECONDS` | `2.8` | Whole request budget, including validation, context preparation, queueing and the upstream call; must be in `(0, 3600]`; set it slightly below the matching HiRoute plan's `timeout_ms` and keep the default for a 3000 ms plan |
-| `JEV_MAX_STATE_TOKENS` | `24000` | Conservative state budget described below |
-| `JEV_MAX_CONCURRENCY` | `32` | Maximum simultaneous upstream decisions; queueing consumes the same request budget |
-| `JEV_SIMPLE_THRESHOLD` | `0.80` | Rules-mode simple probability floor; rejected when explicitly set in auto mode |
-| `JEV_COMPETENCE_FLOOR` | `0.50` | Rules-mode competence guard; rejected when explicitly set in auto mode |
-| `DECIDER_AUTH_HEADER_NAME` / `DECIDER_AUTH_HEADER_VALUE` | unset | Optional inbound shared header; set both or neither |
-| `HOST` / `PORT` | `127.0.0.1` / `8080` | Listener |
-
-Outbound OpenRouter calls honor the deployment's standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables (including their lowercase forms). The service keeps one client connection pool, so later decisions can reuse an established route. Containers must receive any intended proxy variables explicitly; if none are set, the service connects directly. This is standard client routing, not a HiRoute proxy configuration layer.
-
-If inbound authentication is enabled, store the full header value in a HiRoute Secret and configure the matching `auth_header`. For example, the Secret may contain `Bearer ...`; HiRoute does not prepend a scheme.
-
-### Define simple and complex work
-
-Smart-saving decisions use the bundled [policy.default.json](jev_decider/policy.default.json)
-without requiring an environment variable or a copied file. To customize it, copy and
-edit the file, then set `JEV_POLICY_FILE=/absolute/path/policy.json`. The UTF-8 JSON file must be at most
-4096 bytes and contain exactly two nonempty strings, `simple` and `complex`.
-Describe work appropriate for your economy and primary models, optionally with
-a few general examples, not a desired answer for a specific benchmark.
-
-The policy is shared by all plans using this service instance; it is not a Desktop
-plan field. Both auto and rules use the bundled or custom definitions for the two
-smart-saving branches, replacing descriptions in upstream state and Choice criteria.
-An explicit custom policy accepts only those two branches. Without an override, auto
-still uses request descriptions for other branch sets. The allowed branch set is
-never expanded. Invalid files prevent startup instead of reverting to defaults. Changes
-require a restart; there is no hot reload, policy DSL, or new session store.
-Effective descriptions count toward the context budget. Rules thresholds and
-competence scoring are unchanged: broader simple criteria cannot bypass the
-low-competence guard.
-
-Startup logs include the effective smart-saving criteria hash.
-Decision logs include the effective `criteria_source` (default/policy/request) and
-`criteria_sha256`, never the descriptions themselves. Freeze criteria and use
-independent tasks to calibrate thresholds; neither the definitions nor Jev's
-probabilities establish the economy model's actual success rate.
-
-## Context and privacy boundary
-
-HiRoute sends the complete, non-empty `latest_user` plus its in-memory `visible_conversation`. A decision can begin because there is no inheritable branch, ContextHold no longer has a preferred candidate, or a user message was appended while the plan's follow-up re-selection setting was enabled; new plans default to disabled. The service does not detect compaction. `latest_user` can therefore repeat a prior round or be a client-generated summary/continuation. That shape is not itself feedback. Each visible item is a sealed routing execution round, which may have inherited its decision; an item sealed at a decision boundary may have `unknown` status while still containing assessable progress.
-
-This service never asks HiRoute to truncate or retry a request. It keeps the newest whole rounds and removes only complete oldest rounds before calling Jev. The current input, branch definitions, and fixed questions are never truncated. If those fixed parts do not fit, the service returns 413. If trimming removes any part of the assessment target, a returned assessment has `partial: true`; if no target content remains, no Score question or assessment is produced.
-
-Jev's context limit is measured in tokens, not kilobytes. To avoid a tokenizer dependency, this reference service counts each UTF-8 byte as one conservative upper-bound token for state and reserves the rest of the model window for questions and output. `24000` therefore means at most 24,000 UTF-8 bytes of state, not an assertion that 24 KB equals 24K model tokens. Deployments can lower or carefully raise this budget after measuring their prompts and chosen model.
-
-The HiRoute protocol intentionally excludes system/developer messages, reasoning, model/provider/plan identities, tool arguments, and tool results. Tool activity contains only a name, order, and coarse status. OpenRouter receives only the resulting state and fixed Jev questions. This service does not log bodies or credentials.
-
-## Contract and extension point
-
-`POST /v1/decisions` accepts exactly:
-
-```json
-{
-  "branches": {"smart_saving_simple": "...", "smart_saving_complex": "..."},
-  "latest_user": [{"kind": "text", "text": "..."}],
-  "visible_conversation": [],
-  "history_partial": false,
-  "assessment_from": null
-}
-```
-
-It returns:
-
-```json
-{
-  "branch_id": "smart_saving_simple",
-  "assessment": {"score": 0.73, "partial": false}
-}
-```
-
-`assessment` is optional. Its score is competence in `[0,1]`, not model confidence. Jev's three-level `0..2` Score is divided by two. Jev does not provide a textual reason here, so this implementation omits the optional `reason` field.
-
-## Code and responsibility map
-
-The production entry remains `jev_decider.server:main` → `create_app()` →
-`POST /v1/decisions`. Read these modules in request order:
-
-| Module | Responsibility |
-| --- | --- |
-| [settings.py](jev_decider/settings.py) | Deployment environment, bounded key/policy files and configuration validation |
-| [protocol.py](jev_decider/protocol.py) | Strict JSON and the existing five-field HiRoute request contract |
-| [decision.py](jev_decider/decision.py) | `prepare_decision()` applies existing policy precedence, trims whole turns and builds one Jev request; `decision_response()` validates Choice/Score and returns a branch plus optional prior-segment assessment; `reported_usage()` retains reported billing facts |
-| [server.py](jev_decider/server.py) | Authentication, whole-request deadline, queue/concurrency, upstream HTTP, response bounds, error mapping, diagnostics and service lifecycle |
-
-The decision module has no HTTP, environment, file, credential or session dependency.
-Its narrow `DecisionSettings` protocol describes only the non-secret fields this
-Jev implementation consumes; it is not a new provider registry or a general
-inference API. Existing public imports from `jev_decider.server` remain available
-as reexports of the same implementations. There is one implementation per operation.
-
-To change the existing Jev strategy, start at `questions()` and
-`decision_response()` in `decision.py`. Prompts, thresholds, policy precedence and
-context trimming affect decisions and require deliberate behavior review. Keep
-the HTTP contract: use the five fields as state, return one allowed branch and
-an optional assessment, and do not add a second scoring call.
-
-The shared [decision foundation map](../../../docs/code-map/decision-foundation.md)
-records provider references and the future purpose-specific contract owners.
-
-Future integration must keep four owners separate: general inference represents
-a bounded question/answer operation; a purpose policy decides what is being
-selected (currently smart-saving branches); a provider transport owns endpoint,
-authentication and vendor wire format; the calling product owns allowed choices
-and execution authorization. Model selection and tool selection need their own
-purpose and authorization contracts. This extraction adds neither use case nor a
-multi-provider or embedded service implementation.
-
-For natural-language branch selection, the caller owns stable IDs, descriptions
-and the frozen allowed set. This service's existing generic auto path only returns
-an allowed ID; it does not authorize execution or define a new fallback policy.
-The existing binary policy override and rules thresholds remain unchanged. An
-assessment concerns the prior execution suffix, separately from the new choice.
-Routing-round identity, publication pinning, source cancellation and selected vs
-executed branch attribution remain owned by HiRoute's
-[Gateway](../../../crates/gateway/README.md).
-
-## Offline tests
-
-### Decision logs
-
-The CLI emits JSON events to stderr at INFO level. Redirect stderr to a file or use
-container logs. `service_started` records effective mode, model, thresholds and limits.
-Each decision has a generated `decision_id`, returned in `X-Jev-Decision-Id`, linking
-`decision_started` to `decision_completed`, `decision_cancelled` or `decision_failed`.
-This ID is local to the decider; HiRoute does not currently persist it.
-
-Results include upstream choice, rules probabilities, normalized competence and its
-validity, threshold pass/fail flags, final branch and rule reason (`auto_choice`,
-`complexity_threshold`, `competence_guard`, or `economy_eligible`). History size,
-assessment/trimming boundaries, queue and total duration, HTTP status and failure phase
-are also recorded. Missing competence retains the existing non-blocking behavior.
-These explain the rule, not model-generated reasoning. Request text, credentials and
-raw upstream bodies are not logged. Embedded hosts must enable `jev_decider` at INFO.
-
-`decision_completed.upstream_usage` preserves valid upstream-reported `input_tokens`,
-`output_tokens`, and `cost` (USD on OpenRouter), including a response whose decision
-answer is subsequently rejected. Only these numeric fields are logged; arbitrary usage
-fields are excluded. Missing/invalid usage is `null`, and omitted fields remain unknown,
-not zero. A reported zero is preserved. Usage does not alter the decision response,
-branch choice or retry behavior. Include failed-call usage when totaling decision cost;
-timeouts and rejected/malformed responses without usage cannot establish a zero charge.
-
-### Running tests
-
-The suite starts the real HTTP handler and a controlled upstream server. It does not read a real key or access the network:
-
-```sh
-python -m unittest -v
-```
-
-The suite covers auto/rules single-call behavior, the OAS route and rejection of old routes, first-round omission, standard proxy routing, formula boundaries, invalid optional Score, invalid probabilities and branch sets, whole-round trimming/partial marking, fixed-context rejection, strict input, inbound authentication, health isolation, upstream 401/402/429, timeout, oversized output, and concurrency. A real OpenRouter smoke test is intentionally opt-in and must not be placed in normal CI or retried automatically.
-
-Use the [capability test map](tests/README.md) to locate an assertion. Shared,
-independently expected decision cases run through both the HTTP service and the
-pure module. The pure contract can also run with only Python's standard library:
-`python -m unittest tests.test_decision -v`.
-
-## Opt-in HiRoute → Jev smoke
-
-After the offline suite passes, start this service with a real key file as shown above. From the repository root, run exactly the ignored production-path test against that local endpoint:
-
-```sh
-HIROUTE_LIVE_CLASSIFIER_ENDPOINT=http://127.0.0.1:8080/v1/decisions \
-  cargo test -p hiroute-e2e --test p0_gateway_runtime \
-  live_hiroute_to_jev_smoke_selects_and_records_an_assessment \
-  -- --ignored --exact --nocapture
-```
-
-The smoke performs two paid Jev requests with no retry. It drives the real HiRoute listener and REST classifier transport, uses controlled business-model providers, starts a second routing execution round, and requires a normalized competence assessment in emitted Observation facts. A local-rules fallback, the unused controlled classifier, or a missing assessment fails the test. Keep the service bound to loopback unless you intentionally secure it; never put the OpenRouter key in the HiRoute plan or command line.
+The tests cover strict requests, typed reduction, trimming, authentication, deadlines
+and the HTTP handler with local fixtures. They do not establish provider decision
+quality or native Desktop acceptance. HiRoute's explicit connection test validates
+the saved connection and required result fields; task-specific quality still needs
+representative real usage.

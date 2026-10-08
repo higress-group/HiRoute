@@ -4,11 +4,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const COMPLEXITY_CLASSIFIER_REVISION_V1: &str = "hiroute-complexity-v1";
-pub const SMART_SAVING_SIMPLE_BRANCH_ID: &str = "smart_saving_simple";
-pub const SMART_SAVING_COMPLEX_BRANCH_ID: &str = "smart_saving_complex";
-pub const SMART_SAVING_SIMPLE_BRANCH_DESCRIPTION: &str =
-    "Use the economy model group for a clear, well-scoped task.";
-pub const SMART_SAVING_COMPLEX_BRANCH_DESCRIPTION: &str = "Use the primary model group for an ambiguous, cross-module, diagnostic, concurrent, or deep-reasoning task.";
 pub const DEFAULT_REST_CLASSIFIER_TIMEOUT_MS: u64 = 3_000;
 pub const MAX_REST_CLASSIFIER_TIMEOUT_MS: u64 = 3_600_000;
 
@@ -36,11 +31,8 @@ const DEEP_REASONING_PHRASES: &[&str] = &[
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ComplexityClassifierModeV1 {
     LocalRules,
-    Rest {
-        endpoint: String,
-        timeout_ms: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        auth_header: Option<ClassifierAuthHeaderV1>,
+    DecisionService {
+        service: Box<super::DecisionServiceV1>,
     },
 }
 
@@ -55,23 +47,25 @@ impl ComplexityClassifierModeV1 {
     pub fn validate(&self) -> Result<(), ComplexityClassifierError> {
         match self {
             Self::LocalRules => Ok(()),
-            Self::Rest {
-                endpoint,
-                timeout_ms,
-                auth_header,
-            } => {
-                if !valid_bounded_text(endpoint, 2_048)
-                    || !(1..=MAX_REST_CLASSIFIER_TIMEOUT_MS).contains(timeout_ms)
-                    || auth_header
-                        .as_ref()
-                        .is_some_and(|header| !header.validate())
-                {
-                    return Err(ComplexityClassifierError::UnsupportedClassifier);
+            Self::DecisionService { service } => {
+                if service.validate() {
+                    Ok(())
+                } else {
+                    Err(ComplexityClassifierError::UnsupportedClassifier)
                 }
-                Ok(())
             }
         }
     }
+}
+
+pub(super) fn valid_classifier_transport(
+    endpoint: &str,
+    timeout_ms: u64,
+    auth_header: Option<&ClassifierAuthHeaderV1>,
+) -> bool {
+    valid_bounded_text(endpoint, 2_048)
+        && (1..=MAX_REST_CLASSIFIER_TIMEOUT_MS).contains(&timeout_ms)
+        && auth_header.is_none_or(ClassifierAuthHeaderV1::validate)
 }
 
 impl ClassifierAuthHeaderV1 {
@@ -395,11 +389,18 @@ mod routing_classifier_tests {
     }
 
     #[test]
-    fn rest_classifier_timeout_is_required_and_bounded() {
-        let mode = |timeout_ms| ComplexityClassifierModeV1::Rest {
-            endpoint: "https://classifier.example/v1/decisions".into(),
-            timeout_ms,
-            auth_header: None,
+    fn saved_classifier_timeout_is_bounded_and_direct_rest_is_rejected() {
+        let mode = |timeout_ms| ComplexityClassifierModeV1::DecisionService {
+            service: Box::new(crate::DecisionServiceV1 {
+                id: "decision-fixture".into(),
+                revision: 1,
+                name: "Fixture extension".into(),
+                connection: crate::DecisionConnectionV1::Custom {
+                    endpoint: "https://classifier.example/v1/decisions".into(),
+                    timeout_ms,
+                    auth_header: None,
+                },
+            }),
         };
         assert!(mode(1).validate().is_ok());
         assert!(mode(MAX_REST_CLASSIFIER_TIMEOUT_MS).validate().is_ok());
@@ -408,7 +409,8 @@ mod routing_classifier_tests {
         assert!(
             serde_json::from_value::<ComplexityClassifierModeV1>(serde_json::json!({
                 "kind":"rest",
-                "endpoint":"https://classifier.example/v1/decisions"
+                "endpoint":"https://classifier.example/v1/decisions",
+                "timeout_ms":3000
             }))
             .is_err()
         );

@@ -4,7 +4,7 @@ import { safeDiagnosticCode } from '../error-code';
 import { observationRead } from './observation-client';
 import { qualityExecutionModels } from './plan-quality-models';
 import { PlanQualityStage, type PlanQualitySample } from './PlanQualityStage';
-import { qualityBranchLabel, qualityModelRows, qualityNativeModelName, qualityReasoningLabel, type PlanQualityModel, type QualityExecution, type QualityModelRow, type QualitySummary } from './plan-quality-state';
+import { qualityRowSection, qualityRowSectionLabel, qualityGroupLabel, qualityModelRows, qualityNativeModelName, qualityReasoningLabel, type PlanQualityModel, type QualityExecution, type QualityModelRow, type QualitySummary } from './plan-quality-state';
 
 export type { PlanQualityModel } from './plan-quality-state';
 export type { PlanQualitySample } from './PlanQualityStage';
@@ -58,8 +58,7 @@ export function PlanQuality({
         plan_id: planId || null, session_id: sessionId || null, plan_revision: revision,
         execution: selected?.execution ?? null,
         from_ms: window.from, to_ms: window.to,
-        score_gt: score === 'high' ? 0.5 : null,
-        score_lt: score === 'low' ? 0.5 : null,
+        competence: score === 'high' ? 'meets_floor' : score === 'low' ? 'below_floor' : null,
         unrated_only: score === 'unrated', limit: 20, cursor: next,
       });
       if (epoch !== generation.current) return;
@@ -97,7 +96,7 @@ export function PlanQuality({
   }, [planId, sessionId, revision, score, selected?.key, window, active]);
 
   const rows = qualityModelRows(revision === planRevision ? currentModels : [], summary.models);
-  const groups = [...new Set(rows.map(row => row.branch))];
+  const groups = [...new Set(rows.map(qualityRowSection))];
   const selectedRow = rows.find(row => row.key === selected?.key);
   const rowName = (row: QualityModelRow) => row.summary?.execution.attribution === 'mixed' ? text('多个执行模型', 'Multiple execution models')
     : row.summary?.execution.attribution === 'unknown' ? text('执行模型未确认', 'Execution model unknown')
@@ -112,14 +111,14 @@ export function PlanQuality({
   const stageCount = summary.scored_stage_count + summary.unrated_stage_count;
   const filter = <label><span className="sr-only">{text('阶段评分筛选', 'Stage score filter')}</span><select className="select quality-score-filter" value={score} onChange={event => setScore(event.target.value as ScoreFilter)}>
     <option value="all">{text('全部阶段', 'All stages')}</option>
-    <option value="low">{text('胜任度低于 0.5', 'Competence below 0.5')}</option>
-    <option value="high">{text('胜任度高于 0.5', 'Competence above 0.5')}</option>
-    <option value="unrated">{text('待评分', 'Unrated')}</option>
+    <option value="low">{text('低于当时胜任下限', 'Below the execution competence floor')}</option>
+    <option value="high">{text('达到当时胜任下限', 'Meets the execution competence floor')}</option>
+    <option value="unrated">{text('未评分', 'Unrated')}</option>
   </select></label>;
 
   return <div className={'plan-quality' + (compact ? ' compact' : '')}>
     <div className="quality-toolbar">
-      <div className="quality-scope-meta">{text(stageCount + ' 个执行阶段 · ' + summary.scored_stage_count + ' 已评分 · ' + summary.unrated_stage_count + ' 待评分', stageCount + ' stages · ' + summary.scored_stage_count + ' scored · ' + summary.unrated_stage_count + ' unrated')}</div>
+      <div className="quality-scope-meta">{text(stageCount + ' 个执行阶段 · ' + summary.scored_stage_count + ' 已评分 · ' + summary.unrated_stage_count + ' 未评分', stageCount + ' stages · ' + summary.scored_stage_count + ' scored · ' + summary.unrated_stage_count + ' unrated')}</div>
       <div className="quality-filters">
         {!compact && <label><span className="sr-only">{text('时间范围', 'Time range')}</span><select className="select" value={period} onChange={event => { resetDetail(); setPeriod(event.target.value as Period); }}>
           <option value="seven_days">{text('最近 7 天', 'Last 7 days')}</option><option value="all">{text('全部保留期', 'All retained')}</option>
@@ -135,16 +134,16 @@ export function PlanQuality({
     {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{text('模型表现暂时无法读取。', 'Model performance is temporarily unavailable.')}</span><button className="btn" type="button" onClick={() => setReload(value => value + 1)}>{text('重试', 'Retry')}</button></div>}
     {!loaded && busy && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('正在读取模型表现…', 'Reading model performance…')}</p></div>}
     {!compact && <div className="quality-model-scope">{groups.map(branch => <section className="quality-group" key={branch} data-execution-group={branch}>
-      <header className="quality-group-heading"><h4>{qualityBranchLabel(branch, language)}</h4><span>{text(rows.filter(row => row.branch === branch).length + ' 个模型配置', rows.filter(row => row.branch === branch).length + (rows.filter(row => row.branch === branch).length === 1 ? ' model configuration' : ' model configurations'))}</span></header>
+      <header className="quality-group-heading"><h4>{qualityRowSectionLabel(rows.find(row => qualityRowSection(row) === branch)!, language)}</h4><span>{text(rows.filter(row => qualityRowSection(row) === branch).length + ' 个模型配置', rows.filter(row => qualityRowSection(row) === branch).length + (rows.filter(row => qualityRowSection(row) === branch).length === 1 ? ' model configuration' : ' model configurations'))}</span></header>
       <div className="quality-model-columns" aria-hidden="true"><span>{text('模型 / 思考设置', 'Model / Reasoning')}</span><span>{text('平均阶段胜任度', 'Average stage competence')}</span><span>{text('阶段样本', 'Stage samples')}</span><span /></div>
-      {rows.filter(row => row.branch === branch).map(row => <div className={'quality-model-row' + (selected?.key === row.key ? ' selected' : '')} key={row.key} data-model-configuration={row.configured?.model_configuration_id ?? row.summary?.execution.model_configuration_id ?? ''}>
-        <div className="quality-model-name"><strong>{rowName(row)}</strong><span>{qualityReasoningLabel(row.summary ? row.summary.reasoning_profile_id : row.configured?.reasoning_profile_id, language)}{version === 'all' && row.summary && ' · r' + row.summary.execution.plan_revision}</span></div>
-        <div className="quality-model-average">{row.summary?.average_score != null ? <><strong>{row.summary.average_score.toFixed(2)} <small>/ 1</small></strong><div className="quality-score-bar" aria-hidden="true"><span style={{ width: (row.summary.average_score * 100) + '%' }} /></div></> : <span>{row.summary ? text('待评分', 'Unrated') : text('暂无记录', 'No records')}</span>}</div>
-        <div className="quality-model-counts"><span>{text((row.summary?.scored_stage_count ?? 0) + ' 已评分', (row.summary?.scored_stage_count ?? 0) + ' scored')}</span><span>{text((row.summary?.unrated_stage_count ?? 0) + ' 待评分', (row.summary?.unrated_stage_count ?? 0) + ' unrated')}</span></div>
+      {rows.filter(row => qualityRowSection(row) === branch).map(row => <div className={'quality-model-row' + (selected?.key === row.key ? ' selected' : '')} key={row.key} data-model-configuration={row.configured?.model_configuration_id ?? row.summary?.execution.model_configuration_id ?? ''}>
+        <div className="quality-model-name"><strong>{rowName(row)}</strong><span className="badge no-dot">{qualityGroupLabel(row.branch, row.summary?.execution.group ?? row.configured?.group, language)}</span><span>{qualityReasoningLabel(row.summary ? row.summary.reasoning_profile_id : row.configured?.reasoning_profile_id, language)}{version === 'all' && row.summary && ' · r' + row.summary.execution.plan_revision}</span></div>
+        <div className="quality-model-average">{row.summary?.average_score != null ? <><strong>{row.summary.average_score.toFixed(2)} <small>/ 1</small></strong><div className="quality-score-bar" aria-hidden="true"><span style={{ width: (row.summary.average_score * 100) + '%' }} /></div></> : <span>{row.summary ? text('未评分', 'Unrated') : text('暂无记录', 'No records')}</span>}</div>
+        <div className="quality-model-counts"><span>{text((row.summary?.scored_stage_count ?? 0) + ' 已评分', (row.summary?.scored_stage_count ?? 0) + ' scored')}</span><span>{text((row.summary?.unrated_stage_count ?? 0) + ' 未评分', (row.summary?.unrated_stage_count ?? 0) + ' unrated')}</span></div>
         <button type="button" className="btn btn-quiet quality-view-stages" aria-expanded={selected?.key === row.key} onClick={() => { setScore('all'); setSelected(selected?.key === row.key ? null : { key: row.key, execution: row.summary?.execution ?? null }); }}>{selected?.key === row.key ? text('收起阶段', 'Hide stages') : text('查看阶段', 'View stages')}<UiIcon name="chevronRight" /></button>
       </div>)}
     </section>)}</div>}
-    {!compact && loaded && groups.length > 0 && <p className="quality-average-note">{text('平均值使用当前范围内各已评分阶段的最新原始评分，待评分阶段不计入平均。', 'Averages use the latest raw assessment of every scored stage in this scope. Unrated stages are excluded.')}</p>}
+    {!compact && loaded && groups.length > 0 && <p className="quality-average-note">{text('平均值使用当前范围内各已评分阶段的最新原始评分，未评分阶段不计入平均。', 'Averages use the latest raw assessment of every scored stage in this scope. Unrated stages are excluded.')}</p>}
     {!compact && loaded && !error && groups.length === 0 && <p className="oc-meta">{text('当前范围还没有模型阶段记录。', 'No model-stage records are available for this scope yet.')}</p>}
     {(compact || selected) && <section className="quality-stage-section">
       {!compact && <div className="quality-stage-heading"><div><h4>{selectedRow ? rowName(selectedRow) : text('执行阶段', 'Execution stages')}</h4><span>{text('按实际执行模型与推理配置查看', 'Stages for the actual execution and reasoning configuration')}</span></div>{filter}</div>}

@@ -3,6 +3,7 @@
 Only synthetic Agent files and a loopback upstream are used. The daemon, Gateway,
 Observation writer, query, CLI and protected grants are production entry paths.
 """
+from publication_process import judgment_fixture
 import hashlib
 import http.client
 import http.server
@@ -145,7 +146,7 @@ def publish_plan(product, binding_id, protocol):
         'display_name': 'Usage ' + protocol,
         'purpose': 'Exercise native usage through the product Gateway',
         'mode': 'fixed_model', 'candidates': [{'binding_id': binding_id}],
-        'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+        'smart': {'economy': [], 'primary': [], 'judgment': judgment_fixture(),
                   'reselect_on_user_message': False,
                   'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
         'free': {'candidates': [], 'primary': [], 'primary_fallback': False},

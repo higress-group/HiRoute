@@ -224,6 +224,7 @@ pub struct ObservationStatusV1 {
     pub content_completeness: ContentCompleteness,
     pub completeness_scope: ObservationCompletenessScope,
     pub gaps: Vec<ObservationGapV1>,
+    pub gaps_truncated: bool,
     pub activity_bytes: u64,
     pub content_bytes: u64,
     pub production_exporter: String,

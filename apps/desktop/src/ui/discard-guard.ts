@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-type Scope = 'models' | 'routing' | 'agents';
+type Scope = 'decisions' | 'models' | 'routing' | 'agents';
 const eventName = 'hiroute-before-editor-replace';
 let pending: Promise<boolean> | null = null;
 type Decision = () => Promise<boolean>;

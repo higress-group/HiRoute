@@ -12,7 +12,11 @@ mod schema;
 mod search;
 #[cfg(test)]
 mod search_tests;
+#[cfg(test)]
+mod search_window_tests;
 mod sessions;
+#[cfg(test)]
+mod sessions_tests;
 #[cfg(test)]
 mod tests;
 mod totals;

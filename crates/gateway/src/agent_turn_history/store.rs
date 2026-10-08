@@ -111,6 +111,7 @@ struct ActiveTurn {
 }
 
 struct ClosedTurn {
+    decision: BranchDecisionV1,
     wire: Arc<VisibleAgentTurn>,
     completed: CompletedAgentTurn,
 }
@@ -128,6 +129,7 @@ struct SegmentState {
 
 #[derive(Clone, Eq, PartialEq)]
 struct SegmentKey {
+    branch_execution: Option<hiroute_domain::BranchExecutionV1>,
     plan: PlanSnapshot,
     selected_branch_id: String,
     executed_branch_id: String,
@@ -233,8 +235,11 @@ impl AgentTurnHistoryStore {
         }
 
         if !inner.entries.contains_key(&key) {
-            let missing_history =
-                analyzed.turns.len() > 1 || analyzed.message_count > latest.user_index + 1;
+            // A client may bring older messages when HiRoute first joins a session.
+            // That prefix is missing from our history, but does not make the current
+            // stage partial unless output after its user message was already missed.
+            let missing_current_output = analyzed.message_count > latest.user_index + 1;
+            let missing_history = analyzed.turns.len() > 1 || missing_current_output;
             let entry_token = inner.allocate_token()?;
             let request_token = inner.allocate_request_token()?;
             let turn_id = self.allocate_id(&mut inner, "turn")?;
@@ -251,7 +256,7 @@ impl AgentTurnHistoryStore {
                 first_request_id: None,
                 last_request_id: None,
                 last_request_status: AgentTurnStatus::Unknown,
-                capture_partial: missing_history,
+                capture_partial: missing_current_output,
                 finalized: false,
             };
             let checkpoint = TranscriptCheckpoint {
@@ -303,6 +308,7 @@ impl AgentTurnHistoryStore {
             return Ok(AgentTurnBegin::NewTurn {
                 ticket,
                 history: Box::new(AgentTurnHistorySnapshot {
+                    previous_decision: None,
                     visible_conversation: Vec::new(),
                     history_partial: missing_history,
                     assessment_from: None,
@@ -325,6 +331,12 @@ impl AgentTurnHistoryStore {
             || !decision_inputs.message_history_continues
             || (appended_user && decision_inputs.reselect_on_user_message);
         let starts_new_turn = appended_user || needs_decision;
+        let reset_branch_context = !decision_inputs.message_history_continues
+            && entry
+                .active
+                .decision
+                .as_ref()
+                .is_some_and(|decision| decision.policy.is_some());
         let inherited_decision = (!needs_decision)
             .then(|| entry.active.decision.clone())
             .flatten();
@@ -336,7 +348,7 @@ impl AgentTurnHistoryStore {
                     .entries
                     .get_mut(&key)
                     .ok_or(AgentTurnHistoryError::Integrity)?;
-                let Some(decision) = entry.active.decision.clone() else {
+                let Some(decision) = entry.active.continuation_decision() else {
                     return Err(AgentTurnHistoryError::TurnContextUnavailable);
                 };
                 entry.revision = entry
@@ -450,6 +462,11 @@ impl AgentTurnHistoryStore {
                 .ok_or(AgentTurnHistoryError::Resource)?;
             entry.last_access = now;
             entry.pending_request = Some(request_token);
+            if reset_branch_context {
+                // Keep visible history, but a new context cannot extend the old
+                // task's competence segment, even when it starts on the same model.
+                entry.current_segment = None;
+            }
             entry.active = ActiveTurn {
                 agent_turn_id: turn_id.clone(),
                 ordinal,
@@ -515,6 +532,7 @@ impl AgentTurnHistoryStore {
             return Ok(AgentTurnBegin::NewTurn {
                 ticket,
                 history: Box::new(AgentTurnHistorySnapshot {
+                    previous_decision: None,
                     visible_conversation: Vec::new(),
                     history_partial: true,
                     assessment_from: None,
@@ -545,7 +563,28 @@ impl AgentTurnHistoryStore {
                 .entries
                 .get(&key)
                 .ok_or(AgentTurnHistoryError::Resource)?;
-            snapshot(entry, pin)
+            let mut history = snapshot(entry, pin);
+            let new_branch_task = !decision_inputs.message_history_continues
+                && history
+                    .previous_decision
+                    .as_ref()
+                    .is_some_and(|(_, decision)| decision.policy.is_some());
+            let new_version = history
+                .previous_decision
+                .as_ref()
+                .is_some_and(|(_, decision)| decision.policy.is_some())
+                && history
+                    .assessment_target
+                    .as_ref()
+                    .is_some_and(|target| target.plan != entry.active.plan);
+            if new_branch_task || new_version {
+                history.assessment_from = None;
+                history.assessment_target = None;
+            }
+            if new_branch_task {
+                history.previous_decision = None;
+            }
+            history
         };
         Ok(AgentTurnBegin::NewTurn {
             ticket,
@@ -746,6 +785,11 @@ fn close_active(
             ..
         } => {
             let segment_key = SegmentKey {
+                branch_execution: entry
+                    .active
+                    .executions
+                    .first()
+                    .and_then(|e| e.branch_execution.clone()),
                 plan: entry.active.plan.clone(),
                 selected_branch_id: selected_branch_id.clone(),
                 executed_branch_id: executed_branch_id.clone(),
@@ -796,6 +840,15 @@ fn close_active(
         steps: std::mem::take(&mut entry.active.steps),
     });
     let completed = CompletedAgentTurn {
+        branch_execution: if matches!(attribution, ExecutionAttribution::Single { .. }) {
+            entry
+                .active
+                .executions
+                .first()
+                .and_then(|e| e.branch_execution.clone())
+        } else {
+            None
+        },
         agent_turn_id: entry.active.agent_turn_id.clone(),
         segment_id,
         ordinal: entry.active.ordinal,
@@ -810,6 +863,7 @@ fn close_active(
         last_request_id: entry.active.last_request_id.clone(),
     };
     entry.closed.push_back(ClosedTurn {
+        decision: decision.clone(),
         wire,
         completed: completed.clone(),
     });
@@ -829,6 +883,7 @@ fn execution_attribution(
         execution.model_configuration_id != first.model_configuration_id
             || execution.profile_digest != first.profile_digest
             || execution.executed_branch_id != first.executed_branch_id
+            || execution.branch_execution != first.branch_execution
     }) {
         return ExecutionAttribution::Mixed;
     }
@@ -861,6 +916,7 @@ fn snapshot(entry: &SessionEntry, pin: Arc<SnapshotPin>) -> AgentTurnHistorySnap
             .find(|turn| turn.completed.segment_id == segment.segment_id)?;
         match &last.completed.attribution {
             ExecutionAttribution::Single { .. } => Some(AssessmentTarget {
+                branch_execution: last.completed.branch_execution.clone(),
                 segment_id: segment.segment_id.clone(),
                 first_turn_id: segment.first_turn_id.clone(),
                 through_turn_id: segment.through_turn_id.clone(),
@@ -874,6 +930,10 @@ fn snapshot(entry: &SessionEntry, pin: Arc<SnapshotPin>) -> AgentTurnHistorySnap
         }
     });
     AgentTurnHistorySnapshot {
+        previous_decision: entry
+            .closed
+            .back()
+            .map(|turn| (turn.completed.plan.clone(), turn.decision.clone())),
         visible_conversation,
         history_partial: entry.history_partial,
         assessment_from,
@@ -952,6 +1012,7 @@ impl StoreInner {
 fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> usize {
     size_of::<SessionEntry>()
         + size_of_val(key)
+        + entry.active.decision.as_ref().map_or(0, decision_bytes)
         + entry.active.agent_turn_id.capacity()
         + entry
             .active
@@ -991,6 +1052,10 @@ fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> usize {
             .iter()
             .map(|execution| {
                 size_of::<AcceptedExecution>()
+                    + execution
+                        .branch_execution
+                        .as_ref()
+                        .map_or(0, |e| e.policy.name.capacity() + 80)
                     + execution.model_configuration_id.capacity()
                     + execution.profile_digest.capacity()
                     + execution.executed_branch_id.capacity()
@@ -1000,13 +1065,45 @@ fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> usize {
         + entry
             .closed
             .iter()
-            .map(|turn| turn.wire.retained_bytes() + completed_bytes(&turn.completed))
+            .map(|turn| {
+                turn.wire.retained_bytes()
+                    + completed_bytes(&turn.completed)
+                    + decision_bytes(&turn.decision)
+            })
             .sum::<usize>()
         + entry.current_segment.as_ref().map_or(0, segment_bytes)
 }
 
+fn decision_bytes(value: &BranchDecisionV1) -> usize {
+    size_of::<BranchDecisionV1>()
+        + value.strategy_id.capacity()
+        + value.schema_version.capacity()
+        + value.payload_digest.capacity()
+        + value.branch_id.capacity()
+        + value.reason_codes.capacity()
+            * size_of::<crate::server::core_runtime::profiles::ComplexityReasonCodeV1>()
+        + value.matched_user_phrase_ids.capacity() * size_of::<String>()
+        + value
+            .matched_user_phrase_ids
+            .iter()
+            .map(String::capacity)
+            .sum::<usize>()
+        + value
+            .policy
+            .as_ref()
+            .map_or(0, |policy| policy.name.capacity() + 80)
+        + value
+            .competence_trigger
+            .as_ref()
+            .map_or(0, |trigger| trigger.segment_id.capacity())
+}
+
 fn completed_bytes(value: &CompletedAgentTurn) -> usize {
     size_of::<CompletedAgentTurn>()
+        + value
+            .branch_execution
+            .as_ref()
+            .map_or(0, |e| e.policy.name.capacity() + 80)
         + value.agent_turn_id.capacity()
         + value.segment_id.capacity()
         + value.plan.plan_id.capacity()
@@ -1035,6 +1132,11 @@ fn attribution_bytes(value: &ExecutionAttribution) -> usize {
 
 fn segment_bytes(value: &SegmentState) -> usize {
     size_of::<SegmentState>()
+        + value
+            .key
+            .branch_execution
+            .as_ref()
+            .map_or(0, |e| e.policy.name.capacity() + 80)
         + value.segment_id.capacity()
         + value.first_turn_id.capacity()
         + value.through_turn_id.capacity()

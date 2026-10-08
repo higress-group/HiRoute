@@ -64,6 +64,7 @@ struct ComplexityGolden {
 struct GoldenCase {
     id: String,
     branch: String,
+    execution_group: String,
     score: u8,
     source: String,
     reasons: Vec<String>,
@@ -233,6 +234,12 @@ fn planner_frozen_complexity_corpus_is_exact_across_protocols() {
         .unwrap();
         let golden = &expected[case.id.as_str()];
         assert_eq!(enum_name(&decision.branch_id), golden.branch, "{}", case.id);
+        assert_eq!(
+            enum_name(&decision.execution_group),
+            golden.execution_group,
+            "{}",
+            case.id
+        );
         assert_eq!(decision.complexity_score, Some(golden.score), "{}", case.id);
         assert_eq!(
             enum_name(&decision.decision_source),

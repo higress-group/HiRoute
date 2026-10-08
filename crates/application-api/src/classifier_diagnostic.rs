@@ -29,7 +29,7 @@ pub struct ClassifierDecisionTestRequestV1 {
 impl ClassifierDecisionTestRequestV1 {
     pub fn validate(&self) -> bool {
         self.schema == CLASSIFIER_DECISION_TEST_SCHEMA_V1
-            && matches!(&self.classifier, ComplexityClassifierModeV1::Rest { .. })
+            && !matches!(&self.classifier, ComplexityClassifierModeV1::LocalRules)
             && self.classifier.validate().is_ok()
     }
 }

@@ -22,7 +22,13 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_version == "hiroute.observation.execution-fact-envelope/v1"
             && self.schema_digest.as_str()
                 == "sha256:5aad4c450a2a296ec557b7a934bfbf70ad69a8e8fe9bc7539db46830a2940069";
-        if !(current || persisted_v1) || self.channel != ExecutionFactChannelV1::ExecutionFact {
+        let persisted_pre_branch = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:de91d4f2333db66f0ec3f8b63ce192267dee0a56b65f34180b06996b232fb2c6";
+        if !(current || persisted_v1 || persisted_pre_branch)
+            || self.channel != ExecutionFactChannelV1::ExecutionFact
+        {
             return Err(ExecutionFactError::UnsupportedSchema);
         }
         if self.sequence == 0
@@ -239,6 +245,7 @@ impl ExecutionFactV1 {
                 }
             }
             Self::AgentTurnFinished {
+                branch_execution,
                 agent_turn_id,
                 segment_id,
                 ordinal,
@@ -256,6 +263,11 @@ impl ExecutionFactV1 {
             } => {
                 nonempty([agent_turn_id, segment_id, selected_branch_id])?;
                 if *ordinal == 0
+                    || branch_execution.as_ref().is_some_and(|execution| {
+                        !execution.policy.validate()
+                            || execution.candidate_index >= 128
+                            || *attribution != AgentTurnAttributionV1::Single
+                    })
                     || *plan_revision == 0
                     || *started_at_ms == 0
                     || finished_at_ms < started_at_ms

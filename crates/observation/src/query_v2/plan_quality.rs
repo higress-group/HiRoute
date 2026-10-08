@@ -13,6 +13,11 @@ use crate::LocalObservationStore;
 /// enter this CTE, so pagination and drill-down cannot change the full-scope mean.
 const SCOPE: &str = "
     SELECT q.*,
+      json_extract(q.branch_execution_json,'$.group') AS execution_group,
+      json_extract(q.branch_execution_json,'$.candidate_index') AS candidate_index,
+      json_extract(q.branch_execution_json,'$.policy') AS branch_policy,
+      json_extract(q.branch_execution_json,'$.policy.floor_millis') AS floor_millis,
+      CASE WHEN q.assessment_partial=0 THEN q.score END AS reliable_score,
       COALESCE(
         (SELECT a.model_id FROM observation_attempt_models_v2 a
          JOIN valuation_requests_v2 v ON v.workspace_id=a.workspace_id
@@ -158,7 +163,13 @@ impl LocalObservationStore {
                           WHERE trigger_req.workspace_id=q.workspace_id
                             AND trigger_req.session_id=q.session_id
                             AND trigger_req.request_id=q.assessment_trigger_request_id),
-                        q.native_model,q.reasoning_profile_id
+                        q.native_model,q.reasoning_profile_id,q.branch_execution_json,q.upgrade_json,
+                        (SELECT json_extract(pick.body_json,'$.fact.complexity')
+                         FROM execution_fact_events chosen
+                         JOIN observation_sensitive_payloads_v2 pick ON pick.id='fact:'||chosen.envelope_digest
+                         WHERE chosen.workspace_id=q.workspace_id AND chosen.request_id=q.first_request_id
+                           AND json_extract(pick.body_json,'$.fact.kind')='route_decision'
+                         ORDER BY chosen.sequence DESC LIMIT 1)
                  FROM quality q
                  LEFT JOIN observation_run_links l ON l.workspace_id=q.workspace_id
                     AND l.request_id=q.first_request_id
@@ -168,11 +179,16 @@ impl LocalObservationStore {
                     ON p.id='fact:'||e.envelope_digest
                  WHERE (:segment IS NULL OR q.segment_id=:segment)
                    AND (:model IS NULL OR q.model_configuration_id=:model)
-                   AND (:unrated=0 OR q.assessment_event_id IS NULL)
-                   AND (:gt IS NULL OR q.score>:gt)
-                   AND (:lt IS NULL OR q.score<:lt)
+                   AND (:unrated=0 OR q.reliable_score IS NULL)
+                   AND (:gt IS NULL OR q.reliable_score>:gt)
+                   AND (:lt IS NULL OR q.reliable_score<:lt)
+                   AND (:competence IS NULL OR
+                        (:competence='below_floor' AND q.reliable_score<q.floor_millis/1000.0) OR
+                        (:competence='meets_floor' AND q.reliable_score>=q.floor_millis/1000.0))
                    AND (:execution IS NULL OR (
                      q.plan_revision=json_extract(:execution,'$.plan_revision')
+                     AND q.execution_group IS json_extract(:execution,'$.group')
+                     AND q.candidate_index IS json_extract(:execution,'$.candidate_index')
                      AND q.executed_branch_id IS json_extract(:execution,'$.executed_branch_id')
                      AND (q.executed_branch_id IS NOT NULL OR
                        q.selected_branch_id=json_extract(:execution,'$.selected_branch_id'))
@@ -194,6 +210,7 @@ impl LocalObservationStore {
                         ":runs": runs, ":segment": query.segment_id,
                         ":model": query.model_configuration_id, ":unrated": query.unrated_only,
                         ":gt": query.score_gt, ":lt": query.score_lt,
+                        ":competence": query.competence.map(|v| match v { hiroute_domain::PlanCompetenceFilter::BelowFloor => "below_floor", hiroute_domain::PlanCompetenceFilter::MeetsFloor => "meets_floor" }),
                         ":execution": execution, ":last_at": cursor.last_at_ms,
                         ":last_segment": cursor.last_segment_id,
                         ":limit": u64::from(query.limit) + 1,
@@ -248,10 +265,10 @@ fn summarize(
            executed_branch_id,model_configuration_id,profile_digest,attribution,
            CASE WHEN COUNT(DISTINCT native_model)=1 THEN MAX(native_model) END,
            CASE WHEN COUNT(DISTINCT reasoning_profile_id)=1 THEN MAX(reasoning_profile_id) END,
-           COUNT(score),COUNT(*)-COUNT(score),AVG(score)
+           COUNT(reliable_score),COUNT(*)-COUNT(reliable_score),AVG(reliable_score), execution_group, candidate_index, MAX(branch_policy)
          FROM quality GROUP BY plan_revision,
            CASE WHEN executed_branch_id IS NULL THEN selected_branch_id END,
-           executed_branch_id,model_configuration_id,profile_digest,attribution
+           executed_branch_id,model_configuration_id,profile_digest,attribution,execution_group,candidate_index
          ORDER BY plan_revision DESC,executed_branch_id,model_configuration_id,profile_digest,attribution
          LIMIT 1001"
     );
@@ -264,7 +281,17 @@ fn summarize(
         .prepare(&sql)?
         .query_map(scope_params, |row| {
             Ok(PlanQualityModelSummary {
+                branch_policy: read_json(row.get(13)?)?,
                 execution: PlanQualityExecutionIdentity {
+                    group: row
+                        .get::<_, Option<String>>(11)?
+                        .map(|g| match g.as_str() {
+                            "regular" => Ok(hiroute_domain::ExecutionGroupV1::Regular),
+                            "primary" => Ok(hiroute_domain::ExecutionGroupV1::Primary),
+                            _ => Err(rusqlite::Error::InvalidQuery),
+                        })
+                        .transpose()?,
+                    candidate_index: row.get(12)?,
                     plan_revision: sql_u64(row.get(0)?)?,
                     selected_branch_id: row.get(1)?,
                     executed_branch_id: row.get(2)?,
@@ -324,6 +351,9 @@ fn sample(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanQualitySample> {
         })
         .transpose()?;
     Ok(PlanQualitySample {
+        selection: read_json(row.get(36)?)?,
+        branch_execution: read_json(row.get(34)?)?,
+        upgrade: read_json(row.get(35)?)?,
         segment_id: row.get(0)?,
         session_id: row.get(1)?,
         plan_id: row.get(2)?,
@@ -374,7 +404,8 @@ fn validate(query: &PlanQualitySamplesQuery) -> Result<(), ObservationV2Error> {
         || query.limit > 200
         || query.plan_revision == Some(0)
         || execution_invalid
-        || query.unrated_only && (query.score_gt.is_some() || query.score_lt.is_some())
+        || query.unrated_only
+            && (query.score_gt.is_some() || query.score_lt.is_some() || query.competence.is_some())
         || query.from_ms.is_some_and(|value| value < 0)
         || query.to_ms.is_some_and(|value| value < 0)
         || query
@@ -425,4 +456,10 @@ fn sql_u64(value: i64) -> rusqlite::Result<u64> {
             Box::new(error),
         )
     })
+}
+
+fn read_json<T: serde::de::DeserializeOwned>(value: Option<String>) -> rusqlite::Result<Option<T>> {
+    value
+        .map(|value| serde_json::from_str(&value).map_err(|_| rusqlite::Error::InvalidQuery))
+        .transpose()
 }

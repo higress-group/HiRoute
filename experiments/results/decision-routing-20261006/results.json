@@ -1,0 +1,3220 @@
+{
+  "schema": "hiroute-decision-experiment-results-v1",
+  "report_date": "2026-10-07",
+  "publication_state": "Local experiment report; raw histories remain private; no publication or fresh paid replay.",
+  "score_scope": "One parent evaluator; all article scores frozen before reviewer output, model mapping and human-reference comparison; closed source packet fidelity, not independent theorem validation.",
+  "dimensions": [
+    "factual",
+    "explanation",
+    "structure",
+    "evidence",
+    "fairness",
+    "prose"
+  ],
+  "weights": [
+    30,
+    20,
+    15,
+    15,
+    10,
+    10
+  ],
+  "acceptance_rule": "weighted total >= 75, factual >= 3, no critical factual violation",
+  "frozen_hashes": {
+    "blind_article_scores": "0912a7b916eb513ec707a49aa3d68045ca196e7d7c5213dd445dd32b3fa3c774",
+    "blind_review_diagnosis": "2418fcf6ce1d32e410808a1ab5a6d09dfa32aae60fdece26f75ba6124d899daa",
+    "mapping": "4b8e90ea30f432eeaa4cb8365e4674b44bc9566e93bd359dd244b3943f74db6e",
+    "articles_archive": "38ebff61f6a70b01e6c3e479309b42673c6fb7581d16d98ca5e5a404faaf382c",
+    "reviews_archive": "b2b84f6077d8e04baee824b7c3742096fcee15629b139178cf51b986914ce918",
+    "writer_final_handoff": "790e039b472d49ac6f16d27d8a9a75081cd638a0134c624c024daffadd1a9535",
+    "audit_report": "4a9c31d6b2ade7c3972397bc5dac0021c94f007e46969bce520173fd179c51a6"
+  },
+  "current_resource_policy": {
+    "token_stop": null,
+    "native_turn_seconds": null,
+    "replicate_seconds": null,
+    "overall_deadline": null,
+    "context_tokens": 272000,
+    "first_unlimited_native_turn": "QM-2 stage-3",
+    "historical_interrupted_turns_replayed": false,
+    "decision_service_timeout_seconds": 10,
+    "published_request_timeout_seconds": 3600,
+    "note": "Existing provider/request timeouts are separate from the removed experiment turn deadline; none were added as a replacement."
+  },
+  "writing": {
+    "registered_replicates": 12,
+    "registered_turns": 48,
+    "normal_native_turns": 42,
+    "partial_native_turns": 6,
+    "remaining_turns": 0,
+    "articles_present": 24,
+    "reviews_present": 23,
+    "missing_review": "QM-1 final review",
+    "arms": {
+      "QM": {
+        "replicates": [
+          "QM-1",
+          "QM-2"
+        ],
+        "draft_mean": 65.0,
+        "final_mean": 66.25,
+        "final_gate_passes": 0,
+        "four_normal_native_turn_replicates": 0
+      },
+      "QH": {
+        "replicates": [
+          "QH-1",
+          "QH-2"
+        ],
+        "draft_mean": 67.5,
+        "final_mean": 68.75,
+        "final_gate_passes": 0,
+        "four_normal_native_turn_replicates": 0
+      },
+      "GM": {
+        "replicates": [
+          "GM-1",
+          "GM-2"
+        ],
+        "draft_mean": 71.25,
+        "final_mean": 82.5,
+        "final_gate_passes": 2,
+        "four_normal_native_turn_replicates": 2
+      },
+      "GH": {
+        "replicates": [
+          "GH-1",
+          "GH-2"
+        ],
+        "draft_mean": 80.0,
+        "final_mean": 80.0,
+        "final_gate_passes": 2,
+        "four_normal_native_turn_replicates": 2
+      },
+      "XM": {
+        "replicates": [
+          "XM-1",
+          "XM-2"
+        ],
+        "draft_mean": 66.25,
+        "final_mean": 66.25,
+        "final_gate_passes": 0,
+        "four_normal_native_turn_replicates": 2
+      },
+      "XH": {
+        "replicates": [
+          "XH-1",
+          "XH-2"
+        ],
+        "draft_mean": 65.0,
+        "final_mean": 68.75,
+        "final_gate_passes": 0,
+        "four_normal_native_turn_replicates": 1
+      }
+    },
+    "replicates": [
+      {
+        "replicate": "GH-1",
+        "arm": "GH",
+        "blind_id": "4225",
+        "normal_native_turns": 4,
+        "partial_native_turns": 0,
+        "observed_input_plus_output_tokens": 485837,
+        "usage_unknown": false,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              4,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 82.5,
+            "editorially_acceptable": true,
+            "critical_violations": [],
+            "body_whitespace_words": 1586,
+            "article_sha256": "6e0fe7f1f9764be69a881355a90c8056c180712c55e3a89bfe9fb8b379d43369",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              4,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 82.5,
+            "editorially_acceptable": true,
+            "critical_violations": [],
+            "body_whitespace_words": 1583,
+            "article_sha256": "20bfaacbd3543f0bcb90f11e287870ad7c0aa3619a15a9e0e55bdf0f29a4839e",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 107.21,
+            "request_count": 8,
+            "actual_branch_counts": {
+              "Writing": 8
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 8
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 8
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 51.19,
+            "request_count": 6,
+            "actual_branch_counts": {
+              "Review": 6
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 6
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 6
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 75.641,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Writing": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 46.325,
+            "request_count": 3,
+            "actual_branch_counts": {
+              "Review": 3
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 3
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 3
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "stylistic": 3,
+            "unsupported": 1,
+            "valid": 2
+          },
+          "final": {
+            "valid": 1,
+            "stylistic": 2,
+            "unsupported": 1
+          },
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "GH-2",
+        "arm": "GH",
+        "blind_id": "4717",
+        "normal_native_turns": 4,
+        "partial_native_turns": 0,
+        "observed_input_plus_output_tokens": 803327,
+        "usage_unknown": false,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              3,
+              3,
+              3,
+              3,
+              4,
+              3
+            ],
+            "total": 77.5,
+            "editorially_acceptable": true,
+            "critical_violations": [],
+            "body_whitespace_words": 1600,
+            "article_sha256": "baeb9fb607995cd16ca4c6f673b80e5e52335ef2f7bfcafe02eed1cd2207a2f0",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              3,
+              3,
+              3,
+              3,
+              4,
+              3
+            ],
+            "total": 77.5,
+            "editorially_acceptable": true,
+            "critical_violations": [],
+            "body_whitespace_words": 1600,
+            "article_sha256": "2c0f0476fa0d7a85839f9e3abad3ef81565308d02434130d4388b0efcf08ac09",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 199.246,
+            "request_count": 14,
+            "actual_branch_counts": {
+              "Writing": 14
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 14
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 14
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 58.403,
+            "request_count": 5,
+            "actual_branch_counts": {
+              "Review": 5
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 5
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 5
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 58.027,
+            "request_count": 5,
+            "actual_branch_counts": {
+              "Writing": 5
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 5
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 5
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 60.527,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "stylistic": 1,
+            "valid": 4
+          },
+          "final": {
+            "stylistic": 2
+          },
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "GM-1",
+        "arm": "GM",
+        "blind_id": "5725",
+        "normal_native_turns": 4,
+        "partial_native_turns": 0,
+        "observed_input_plus_output_tokens": 724815,
+        "usage_unknown": false,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 67.5,
+            "editorially_acceptable": false,
+            "critical_violations": [
+              {
+                "kind": "unsupported_firsthand_scene",
+                "phrase": "The most striking mathematical object I saw this autumn ... a room full of mathematicians",
+                "reason": "首句以 I saw 声称看到现场，材料仅提供记者转述，下一段虽归属记者，也未撤回第一人称观看的暗示；按预先登记的不得捏造亲历规则判不通过。该问题局部，故保留其他事实维度的实得分。"
+              }
+            ],
+            "body_whitespace_words": 1595,
+            "article_sha256": "7d7a44e65a088ef2ba00c0ef3304487d732403d62de3790f285289c19a8f201b",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              4,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 82.5,
+            "editorially_acceptable": true,
+            "critical_violations": [],
+            "body_whitespace_words": 1591,
+            "article_sha256": "944363640b3b7ec7f3580628532ed40bb10957657ccd7e7c1da74544561301ee",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 147.831,
+            "request_count": 19,
+            "actual_branch_counts": {
+              "Writing": 19
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 19
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 19
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 57.068,
+            "request_count": 6,
+            "actual_branch_counts": {
+              "Review": 6
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 6
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 6
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 59.004,
+            "request_count": 3,
+            "actual_branch_counts": {
+              "Writing": 3
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 3
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 3
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 52.713,
+            "request_count": 3,
+            "actual_branch_counts": {
+              "Review": 3
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 3
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 3
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 4,
+            "unsupported": 1
+          },
+          "final": {},
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "GM-2",
+        "arm": "GM",
+        "blind_id": "2487",
+        "normal_native_turns": 4,
+        "partial_native_turns": 0,
+        "observed_input_plus_output_tokens": 870273,
+        "usage_unknown": false,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 75.0,
+            "editorially_acceptable": true,
+            "critical_violations": [],
+            "body_whitespace_words": 1598,
+            "article_sha256": "5737e1cb7c17720298f531658dac6f085d53919a3417e6e6d37d59438dea9ad1",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              4,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 82.5,
+            "editorially_acceptable": true,
+            "critical_violations": [],
+            "body_whitespace_words": 1599,
+            "article_sha256": "dbc038ec57cb5eede0dd7ae77a5889f9f0d10ec98fc7e44e0119ca8f23c6a283",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 194.764,
+            "request_count": 14,
+            "actual_branch_counts": {
+              "Writing": 14
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 14
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 14
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "f507db30b75648e1277b60ac1744940de2a2e900",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 60.905,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "f507db30b75648e1277b60ac1744940de2a2e900",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 83.522,
+            "request_count": 7,
+            "actual_branch_counts": {
+              "Writing": 7
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 7
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 7
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "f507db30b75648e1277b60ac1744940de2a2e900",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 43.608,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "f507db30b75648e1277b60ac1744940de2a2e900",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 4,
+            "stylistic": 1
+          },
+          "final": {},
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "QH-1",
+        "arm": "QH",
+        "blind_id": "6760",
+        "normal_native_turns": 2,
+        "partial_native_turns": 2,
+        "observed_input_plus_output_tokens": 1442514,
+        "usage_unknown": true,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              4,
+              3
+            ],
+            "total": 70.0,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1747,
+            "article_sha256": "826aa3b03353f2e6d8efde09c7f3a4a1ddbf4f091e7b923c34eb7a808e9e9706",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              4,
+              3
+            ],
+            "total": 70.0,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1649,
+            "article_sha256": "e6615118e72d290e0e5574ddc3aa04ddeb6dfed0d6c3b5a8ecc19dafdc054962",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": false,
+            "timeout": true,
+            "duration_seconds": 720.015,
+            "request_count": 17,
+            "actual_branch_counts": {
+              "Writing": 17
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 17
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 16,
+              "cancelled": 1
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": true,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 415.201,
+            "request_count": 5,
+            "actual_branch_counts": {
+              "Review": 5
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 5
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 5
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": false,
+            "timeout": true,
+            "duration_seconds": 720.019,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Writing": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 3,
+              "cancelled": 1
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": true,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 355.09,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "unsupported": 1,
+            "valid": 12,
+            "stylistic": 1
+          },
+          "final": {
+            "unsupported": 1,
+            "stylistic": 3,
+            "valid": 2
+          },
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "QH-2",
+        "arm": "QH",
+        "blind_id": "2985",
+        "normal_native_turns": 3,
+        "partial_native_turns": 1,
+        "observed_input_plus_output_tokens": 1421004,
+        "usage_unknown": true,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              3,
+              2
+            ],
+            "total": 65.0,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1590,
+            "article_sha256": "0e3c3bc6013a0b4ca72edaa262f507d2ef889ed829ed48cd3595b563d170143f",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 67.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1623,
+            "article_sha256": "8b2a9906d06eb5b0706b0418ea7f45008194545d3b854b72c5f23ad9efad7800",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 432.739,
+            "request_count": 15,
+            "actual_branch_counts": {
+              "Writing": 15
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 15
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 15
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 456.176,
+            "request_count": 5,
+            "actual_branch_counts": {
+              "Review": 5
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 5
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 5
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": false,
+            "timeout": true,
+            "duration_seconds": 720.015,
+            "request_count": 3,
+            "actual_branch_counts": {
+              "Writing": 3
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 3
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 2,
+              "cancelled": 1
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": true,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 395.931,
+            "request_count": 6,
+            "actual_branch_counts": {
+              "Review": 6
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 6
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 6
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "f507db30b75648e1277b60ac1744940de2a2e900",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 9,
+            "stylistic": 4,
+            "unsupported": 2
+          },
+          "final": {
+            "stylistic": 2,
+            "unsupported": 3,
+            "valid": 3
+          },
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "QM-1",
+        "arm": "QM",
+        "blind_id": "4789",
+        "normal_native_turns": 3,
+        "partial_native_turns": 1,
+        "observed_input_plus_output_tokens": 1547187,
+        "usage_unknown": true,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 67.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1567,
+            "article_sha256": "d494d633102ac4caa675be39d275afb26ed24bd35b2144e7fcef20dc9e47c02e",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 67.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1586,
+            "article_sha256": "15e3adcfa9ec544ffacebf5613cbe157547ae835a1174f5500cd81735c1a7371",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 673.136,
+            "request_count": 13,
+            "actual_branch_counts": {
+              "Writing": 13
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 13
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 13
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 582.519,
+            "request_count": 7,
+            "actual_branch_counts": {
+              "Review": 7
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 7
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 7
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 614.086,
+            "request_count": 7,
+            "actual_branch_counts": {
+              "Writing": 7
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 7
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 7
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": false,
+            "timeout": true,
+            "duration_seconds": 54.193,
+            "request_count": 1,
+            "actual_branch_counts": {
+              "Review": 1
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 1
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "cancelled": 1
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": true,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 8,
+            "stylistic": 5,
+            "unsupported": 2
+          },
+          "final": {},
+          "review_induced_errors": [
+            "第7条把笔记的解释/验证区分归属公司，终稿明确 OpenAI itself distinguishes。",
+            "第11条删除验证范围，终稿变为 a claim not independently verified。"
+          ]
+        }
+      },
+      {
+        "replicate": "QM-2",
+        "arm": "QM",
+        "blind_id": "6377",
+        "normal_native_turns": 3,
+        "partial_native_turns": 1,
+        "observed_input_plus_output_tokens": 3118620,
+        "usage_unknown": true,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              2,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 62.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1600,
+            "article_sha256": "4593fc1a6f1ab18861ff39ac17c006e301f1e8f2af55c6d7202e59869e667031",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              2,
+              2,
+              3,
+              3,
+              4,
+              3
+            ],
+            "total": 65.0,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1595,
+            "article_sha256": "f7c3839af1b8190e62c530758cbeef3de3997400968d3893a0f461f25338854c",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": false,
+            "timeout": true,
+            "duration_seconds": 720.016,
+            "request_count": 20,
+            "actual_branch_counts": {
+              "Writing": 20
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 20
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 19,
+              "cancelled": 1
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": true,
+            "product_source_sha": "d704c03ffb72f84a221746c4e6c10cfb1f7e4abb",
+            "body_audit": {
+              "all_request_directions_captured_complete": false,
+              "request_scoped_content_gap_count": 0,
+              "abort_event_count": 1
+            }
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 343.118,
+            "request_count": 6,
+            "actual_branch_counts": {
+              "Review": 6
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 6
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 6
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "d704c03ffb72f84a221746c4e6c10cfb1f7e4abb",
+            "body_audit": {
+              "all_request_directions_captured_complete": true,
+              "request_scoped_content_gap_count": 0,
+              "abort_event_count": 0
+            }
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 1090.896,
+            "request_count": 17,
+            "actual_branch_counts": {
+              "Writing": 17
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 17
+              }
+            ],
+            "fallback_reason_counts": {
+              "timeout": 17
+            },
+            "wire_attempt_end_counts": {
+              "completed": 17
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "d704c03ffb72f84a221746c4e6c10cfb1f7e4abb",
+            "body_audit": {
+              "all_request_directions_captured_complete": true,
+              "request_scoped_content_gap_count": 0,
+              "abort_event_count": 0
+            }
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 352.891,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "d704c03ffb72f84a221746c4e6c10cfb1f7e4abb",
+            "body_audit": {
+              "all_request_directions_captured_complete": true,
+              "request_scoped_content_gap_count": 0,
+              "abort_event_count": 0
+            }
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 10,
+            "unsupported": 2,
+            "stylistic": 3
+          },
+          "final": {
+            "valid": 4,
+            "stylistic": 6,
+            "unsupported": 2
+          },
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "XH-1",
+        "arm": "XH",
+        "blind_id": "8851",
+        "normal_native_turns": 4,
+        "partial_native_turns": 0,
+        "observed_input_plus_output_tokens": 2050109,
+        "usage_unknown": false,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 67.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1574,
+            "article_sha256": "d9271f791d9ff4384058fce8824c588fa95a9acce5825a169ed317866259155f",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              3,
+              3,
+              3,
+              3,
+              2,
+              3
+            ],
+            "total": 72.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1588,
+            "article_sha256": "59e5497a3ddee74532757e3c3fb2589475768b1d46acade7dcd4a0e8c0ad65dd",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 719.045,
+            "request_count": 15,
+            "actual_branch_counts": {
+              "Writing": 15
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 15
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 15
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 559.468,
+            "request_count": 6,
+            "actual_branch_counts": {
+              "Writing": 6
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 6
+              }
+            ],
+            "fallback_reason_counts": {
+              "timeout": 6
+            },
+            "wire_attempt_end_counts": {
+              "completed": 6
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 657.189,
+            "request_count": 5,
+            "actual_branch_counts": {
+              "Writing": 5
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 5
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 5
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 150.046,
+            "request_count": 6,
+            "actual_branch_counts": {
+              "Review": 6
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 6
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 6
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 4,
+            "unsupported": 2,
+            "stylistic": 3
+          },
+          "final": {
+            "stylistic": 1
+          },
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "XH-2",
+        "arm": "XH",
+        "blind_id": "3989",
+        "normal_native_turns": 3,
+        "partial_native_turns": 1,
+        "observed_input_plus_output_tokens": 1931779,
+        "usage_unknown": true,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              2,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 62.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1572,
+            "article_sha256": "97668d4669eacc56210e0853ab858b3db2794aefaae6aa06c4fe1918fddc9458",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              2,
+              2,
+              3,
+              3,
+              4,
+              3
+            ],
+            "total": 65.0,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1590,
+            "article_sha256": "39f18b5d85e5a527da3c61945b101690c0122958543ca0d2fd191b1d953fc495",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 663.987,
+            "request_count": 14,
+            "actual_branch_counts": {
+              "Writing": 14
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 14
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 14
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "f507db30b75648e1277b60ac1744940de2a2e900",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 564.025,
+            "request_count": 9,
+            "actual_branch_counts": {
+              "Writing": 9
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 9
+              }
+            ],
+            "fallback_reason_counts": {
+              "timeout": 9
+            },
+            "wire_attempt_end_counts": {
+              "completed": 9
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "f507db30b75648e1277b60ac1744940de2a2e900",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "xhigh"
+            },
+            "native_completed": false,
+            "timeout": true,
+            "duration_seconds": 720.019,
+            "request_count": 6,
+            "actual_branch_counts": {
+              "Writing": 6
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "xhigh",
+                "count": 6
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 5,
+              "cancelled": 1
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": true,
+            "product_source_sha": "f507db30b75648e1277b60ac1744940de2a2e900",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "max"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 136.731,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "max",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "d704c03ffb72f84a221746c4e6c10cfb1f7e4abb",
+            "body_audit": {
+              "all_request_directions_captured_complete": true,
+              "request_scoped_content_gap_count": 0,
+              "abort_event_count": 0
+            }
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 11,
+            "stylistic": 3,
+            "unsupported": 3
+          },
+          "final": {
+            "valid": 1,
+            "stylistic": 2
+          },
+          "review_induced_errors": [
+            "初审第3条把 no evidence in packet 改成 no reform/none exists/not verified，终稿照做；这是可直接追踪的审稿诱发失准。"
+          ]
+        }
+      },
+      {
+        "replicate": "XM-1",
+        "arm": "XM",
+        "blind_id": "1843",
+        "normal_native_turns": 4,
+        "partial_native_turns": 0,
+        "observed_input_plus_output_tokens": 661460,
+        "usage_unknown": false,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              2,
+              3
+            ],
+            "total": 65.0,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1597,
+            "article_sha256": "93cfbca99d19341f7b0fc9549220b95e5b8fb7518566e9ceba21a155a7978a38",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              2,
+              3
+            ],
+            "total": 65.0,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1600,
+            "article_sha256": "89af7684c8bd6b85081b71e0be93f190d4dcdc82e7f30881ee3961aa96282328",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 261.725,
+            "request_count": 14,
+            "actual_branch_counts": {
+              "Writing": 14
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 14
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 14
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 66.672,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 127.608,
+            "request_count": 3,
+            "actual_branch_counts": {
+              "Writing": 3
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 3
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 3
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 25.641,
+            "request_count": 3,
+            "actual_branch_counts": {
+              "Review": 3
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 3
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 3
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "63af75ce5c3212787f1c9b9c867aabe7391e6902",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 4,
+            "unsupported": 1
+          },
+          "final": {},
+          "review_induced_errors": []
+        }
+      },
+      {
+        "replicate": "XM-2",
+        "arm": "XM",
+        "blind_id": "3042",
+        "normal_native_turns": 4,
+        "partial_native_turns": 0,
+        "observed_input_plus_output_tokens": 1240162,
+        "usage_unknown": false,
+        "article_assessment": {
+          "draft": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 67.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1572,
+            "article_sha256": "c12e4d1e756522b163914790f7d5c566fe6a2062c261e00ebcf94bb3d33a3077",
+            "delivery_defects": []
+          },
+          "final": {
+            "scores": [
+              2,
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "total": 67.5,
+            "editorially_acceptable": false,
+            "critical_violations": [],
+            "body_whitespace_words": 1583,
+            "article_sha256": "5eda654bf30b771d64af7569fa67a0e5bcacc0a6e68b42d8baec51ad9a27d340",
+            "delivery_defects": []
+          }
+        },
+        "stages": [
+          {
+            "stage": "stage-1",
+            "planned_role": {
+              "stage_role": "draft",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 451.66,
+            "request_count": 16,
+            "actual_branch_counts": {
+              "Writing": 16
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 16
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 16
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-2",
+            "planned_role": {
+              "stage_role": "review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 118.089,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-3",
+            "planned_role": {
+              "stage_role": "revision",
+              "planned_branch": "Writing",
+              "planned_model": "qwen3.8-max",
+              "planned_effort": "medium"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 260.438,
+            "request_count": 5,
+            "actual_branch_counts": {
+              "Writing": 5
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "qwen3.8-max",
+                "profile": "medium",
+                "count": 5
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 5
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          },
+          {
+            "stage": "stage-4",
+            "planned_role": {
+              "stage_role": "final_review",
+              "planned_branch": "Review",
+              "planned_model": "glm-5.3",
+              "planned_effort": "high"
+            },
+            "native_completed": true,
+            "timeout": false,
+            "duration_seconds": 99.152,
+            "request_count": 4,
+            "actual_branch_counts": {
+              "Review": 4
+            },
+            "actual_model_profile_counts": [
+              {
+                "model": "glm-5.3",
+                "profile": "high",
+                "count": 4
+              }
+            ],
+            "fallback_reason_counts": {},
+            "wire_attempt_end_counts": {
+              "completed": 4
+            },
+            "effort_violations": [],
+            "usage_is_lower_bound": false,
+            "product_source_sha": "9daf621a76314a9b294e12c2406c4bed7faa12f9",
+            "body_audit": null
+          }
+        ],
+        "review_diagnosis_summary": {
+          "initial": {
+            "valid": 5,
+            "stylistic": 1
+          },
+          "final": {},
+          "review_induced_errors": []
+        }
+      }
+    ],
+    "review_finding_counts": {
+      "initial": {
+        "stylistic": 25,
+        "unsupported": 15,
+        "valid": 77
+      },
+      "final": {
+        "valid": 11,
+        "stylistic": 18,
+        "unsupported": 7
+      }
+    },
+    "initial_review_adoption": {
+      "accepted": 94,
+      "partly_accepted": 19,
+      "not_accepted": 3,
+      "not_applicable": 1
+    },
+    "routing_deviations": [
+      {
+        "replicate": "XH-1",
+        "stage": "stage-2",
+        "planned_role": {
+          "stage_role": "review",
+          "planned_branch": "Review",
+          "planned_model": "glm-5.3",
+          "planned_effort": "max"
+        },
+        "actual_branch_counts": {
+          "Writing": 6
+        },
+        "actual_model_counts": {
+          "qwen3.8-max": 6
+        },
+        "request_count": 6,
+        "fallback_reason_counts": {
+          "timeout": 6
+        },
+        "interpretation": "The initial Jev timeout selected the default Writing branch; subsequent tool requests inherited it. These are not separate independent timeouts and this initial review was not performed by GLM."
+      },
+      {
+        "replicate": "XH-2",
+        "stage": "stage-2",
+        "planned_role": {
+          "stage_role": "review",
+          "planned_branch": "Review",
+          "planned_model": "glm-5.3",
+          "planned_effort": "max"
+        },
+        "actual_branch_counts": {
+          "Writing": 9
+        },
+        "actual_model_counts": {
+          "qwen3.8-max": 9
+        },
+        "request_count": 9,
+        "fallback_reason_counts": {
+          "timeout": 9
+        },
+        "interpretation": "The initial Jev timeout selected the default Writing branch; subsequent tool requests inherited it. These are not separate independent timeouts and this initial review was not performed by GLM."
+      }
+    ],
+    "formal_product_source_stage_counts": {
+      "63af75ce5c3212787f1c9b9c867aabe7391e6902": 22,
+      "9daf621a76314a9b294e12c2406c4bed7faa12f9": 13,
+      "f507db30b75648e1277b60ac1744940de2a2e900": 8,
+      "d704c03ffb72f84a221746c4e6c10cfb1f7e4abb": 5
+    }
+  },
+  "coding": {
+    "registered_stages": 36,
+    "matrix_invocations": 32,
+    "harness_diagnostic_stages": 1,
+    "not_executed_stages": 3,
+    "replicates": [
+      {
+        "replicate": "F-1",
+        "normal_native_turns": 1,
+        "observed_input_plus_output_tokens": 1432065,
+        "usage_unknown": true,
+        "primary_comparison_valid": false,
+        "invalid_reason": "Old harness started stage3 past the then-active500k boundary; stopped and retained, no model replay. This is not evidence that Flash failed the full task.",
+        "whole_delivery_accepted": false,
+        "final_artifact_contract_accepted": false,
+        "final_21_tests_green": false,
+        "readme_accepted": null,
+        "stages": [
+          {
+            "stage": 1,
+            "execution": "executed",
+            "grade_diagnostic_only": false,
+            "grades": [
+              {
+                "stage": 1,
+                "selected": 3,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 3
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 2,
+            "execution": "executed",
+            "grade_diagnostic_only": false,
+            "grades": [
+              {
+                "stage": 2,
+                "selected": 6,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 6
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 3,
+            "execution": "harness_protocol_violation",
+            "grade_diagnostic_only": true,
+            "grades": [
+              {
+                "stage": 3,
+                "selected": 9,
+                "failed_cases": [
+                  "audit_grader.AuditContract.test_revisions_and_identical_replay",
+                  "audit_grader.AuditContract.test_winning_conflict_rejected_obsolete_conflict_ignored"
+                ],
+                "assertion_failures": 2,
+                "assertion_errors": 0,
+                "passed": 7
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 4,
+            "execution": "not_executed",
+            "grade_diagnostic_only": null,
+            "grades": [],
+            "normal_native_completion": []
+          },
+          {
+            "stage": 5,
+            "execution": "not_executed",
+            "grade_diagnostic_only": null,
+            "grades": [],
+            "normal_native_completion": []
+          },
+          {
+            "stage": 6,
+            "execution": "not_executed",
+            "grade_diagnostic_only": null,
+            "grades": [],
+            "normal_native_completion": []
+          }
+        ]
+      },
+      {
+        "replicate": "S-1",
+        "normal_native_turns": 6,
+        "observed_input_plus_output_tokens": 14041567,
+        "usage_unknown": false,
+        "primary_comparison_valid": true,
+        "invalid_reason": null,
+        "whole_delivery_accepted": true,
+        "final_artifact_contract_accepted": true,
+        "final_21_tests_green": true,
+        "readme_accepted": true,
+        "stages": [
+          {
+            "stage": 1,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 1,
+                "selected": 3,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 3
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 2,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 2,
+                "selected": 6,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 6
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 3,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 3,
+                "selected": 9,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 9
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 4,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 4,
+                "selected": 12,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 12
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 5,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 5,
+                "selected": 16,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 16
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 6,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 6,
+                "selected": 21,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 21
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "replicate": "M-1",
+        "normal_native_turns": 4,
+        "observed_input_plus_output_tokens": 5122645,
+        "usage_unknown": true,
+        "primary_comparison_valid": true,
+        "invalid_reason": null,
+        "whole_delivery_accepted": false,
+        "final_artifact_contract_accepted": true,
+        "final_21_tests_green": true,
+        "readme_accepted": true,
+        "stages": [
+          {
+            "stage": 1,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 1,
+                "selected": 3,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 3
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 2,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 2,
+                "selected": 6,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 6
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 3,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 3,
+                "selected": 9,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 9
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 4,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 4,
+                "selected": 12,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 12
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 5,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 5,
+                "selected": 16,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 16
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 6,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 6,
+                "selected": 21,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 21
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "replicate": "M-2",
+        "normal_native_turns": 3,
+        "observed_input_plus_output_tokens": 7732098,
+        "usage_unknown": true,
+        "primary_comparison_valid": true,
+        "invalid_reason": null,
+        "whole_delivery_accepted": false,
+        "final_artifact_contract_accepted": true,
+        "final_21_tests_green": true,
+        "readme_accepted": true,
+        "stages": [
+          {
+            "stage": 1,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 1,
+                "selected": 3,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 3
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 2,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 2,
+                "selected": 6,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 6
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 3,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 3,
+                "selected": 9,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 9
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 4,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 4,
+                "selected": 12,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 12
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 5,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 5,
+                "selected": 16,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 16
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 6,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 6,
+                "selected": 21,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 21
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "replicate": "S-2",
+        "normal_native_turns": 0,
+        "observed_input_plus_output_tokens": 45327,
+        "usage_unknown": true,
+        "primary_comparison_valid": false,
+        "invalid_reason": "Native tool history was rejected as canonical_request PROTOCOL_INVALID_PAYLOAD; this is not an isolated task-quality measurement.",
+        "whole_delivery_accepted": false,
+        "final_artifact_contract_accepted": false,
+        "final_21_tests_green": false,
+        "readme_accepted": false,
+        "stages": [
+          {
+            "stage": 1,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 1,
+                "selected": 3,
+                "failed_cases": [
+                  "audit_grader.AuditContract.test_empty_and_generator",
+                  "audit_grader.AuditContract.test_no_input_mutation_and_large_integers",
+                  "audit_grader.AuditContract.test_unknown_is_not_zero"
+                ],
+                "assertion_failures": 0,
+                "assertion_errors": 3,
+                "passed": 0
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 2,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 2,
+                "selected": 6,
+                "failed_cases": [
+                  "audit_grader.AuditContract.test_bad_shape_and_values",
+                  "audit_grader.AuditContract.test_cli_errors_do_not_emit_partial_json",
+                  "audit_grader.AuditContract.test_cli_stdin_and_file",
+                  "audit_grader.AuditContract.test_empty_and_generator",
+                  "audit_grader.AuditContract.test_no_input_mutation_and_large_integers",
+                  "audit_grader.AuditContract.test_unknown_is_not_zero"
+                ],
+                "assertion_failures": 1,
+                "assertion_errors": 65,
+                "passed": 0
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 3,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 3,
+                "selected": 9,
+                "failed_cases": [
+                  "audit_grader.AuditContract.test_bad_shape_and_values",
+                  "audit_grader.AuditContract.test_cli_errors_do_not_emit_partial_json",
+                  "audit_grader.AuditContract.test_cli_stdin_and_file",
+                  "audit_grader.AuditContract.test_empty_and_generator",
+                  "audit_grader.AuditContract.test_invalid_obsolete_event_still_fails",
+                  "audit_grader.AuditContract.test_no_input_mutation_and_large_integers",
+                  "audit_grader.AuditContract.test_revisions_and_identical_replay",
+                  "audit_grader.AuditContract.test_unknown_is_not_zero",
+                  "audit_grader.AuditContract.test_winning_conflict_rejected_obsolete_conflict_ignored"
+                ],
+                "assertion_failures": 1,
+                "assertion_errors": 68,
+                "passed": 0
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 4,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 4,
+                "selected": 12,
+                "failed_cases": [
+                  "audit_grader.AuditContract.test_bad_shape_and_values",
+                  "audit_grader.AuditContract.test_cli_errors_do_not_emit_partial_json",
+                  "audit_grader.AuditContract.test_cli_stdin_and_file",
+                  "audit_grader.AuditContract.test_empty_and_generator",
+                  "audit_grader.AuditContract.test_exact_labels_and_cli_team",
+                  "audit_grader.AuditContract.test_filter_cannot_hide_conflict_or_malformed_row",
+                  "audit_grader.AuditContract.test_grouping_filter_and_order",
+                  "audit_grader.AuditContract.test_invalid_obsolete_event_still_fails",
+                  "audit_grader.AuditContract.test_no_input_mutation_and_large_integers",
+                  "audit_grader.AuditContract.test_revisions_and_identical_replay",
+                  "audit_grader.AuditContract.test_unknown_is_not_zero",
+                  "audit_grader.AuditContract.test_winning_conflict_rejected_obsolete_conflict_ignored"
+                ],
+                "assertion_failures": 1,
+                "assertion_errors": 71,
+                "passed": 0
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 5,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 5,
+                "selected": 16,
+                "failed_cases": [
+                  "audit_grader.AuditContract.test_any_success_survives_later_failed_attempt",
+                  "audit_grader.AuditContract.test_bad_shape_and_values",
+                  "audit_grader.AuditContract.test_cli_errors_do_not_emit_partial_json",
+                  "audit_grader.AuditContract.test_cli_stdin_and_file",
+                  "audit_grader.AuditContract.test_empty_and_generator",
+                  "audit_grader.AuditContract.test_exact_labels_and_cli_team",
+                  "audit_grader.AuditContract.test_filter_cannot_hide_conflict_or_malformed_row",
+                  "audit_grader.AuditContract.test_grouping_filter_and_order",
+                  "audit_grader.AuditContract.test_invalid_obsolete_event_still_fails",
+                  "audit_grader.AuditContract.test_latest_status_and_request_team",
+                  "audit_grader.AuditContract.test_no_input_mutation_and_large_integers",
+                  "audit_grader.AuditContract.test_retry_request_outcome_and_failed_usage",
+                  "audit_grader.AuditContract.test_revisions_and_identical_replay",
+                  "audit_grader.AuditContract.test_uncached_unknown_combinations",
+                  "audit_grader.AuditContract.test_unknown_is_not_zero",
+                  "audit_grader.AuditContract.test_winning_conflict_rejected_obsolete_conflict_ignored"
+                ],
+                "assertion_failures": 1,
+                "assertion_errors": 75,
+                "passed": 0
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          },
+          {
+            "stage": 6,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 6,
+                "selected": 21,
+                "failed_cases": [
+                  "audit_grader.AuditContract.test_any_success_survives_later_failed_attempt",
+                  "audit_grader.AuditContract.test_bad_shape_and_values",
+                  "audit_grader.AuditContract.test_cli_errors_do_not_emit_partial_json",
+                  "audit_grader.AuditContract.test_cli_stdin_and_file",
+                  "audit_grader.AuditContract.test_delivery_document_exists",
+                  "audit_grader.AuditContract.test_empty_and_generator",
+                  "audit_grader.AuditContract.test_exact_labels_and_cli_team",
+                  "audit_grader.AuditContract.test_filter_cannot_hide_conflict_or_malformed_row",
+                  "audit_grader.AuditContract.test_grouping_filter_and_order",
+                  "audit_grader.AuditContract.test_invalid_obsolete_event_still_fails",
+                  "audit_grader.AuditContract.test_latest_status_and_request_team",
+                  "audit_grader.AuditContract.test_ledger_caller_and_snapshot_mutation",
+                  "audit_grader.AuditContract.test_ledger_chunking_replay_and_revisions",
+                  "audit_grader.AuditContract.test_ledger_obsolete_conflict_and_higher_resolution",
+                  "audit_grader.AuditContract.test_ledger_transactional_invalid_batch",
+                  "audit_grader.AuditContract.test_no_input_mutation_and_large_integers",
+                  "audit_grader.AuditContract.test_retry_request_outcome_and_failed_usage",
+                  "audit_grader.AuditContract.test_revisions_and_identical_replay",
+                  "audit_grader.AuditContract.test_uncached_unknown_combinations",
+                  "audit_grader.AuditContract.test_unknown_is_not_zero",
+                  "audit_grader.AuditContract.test_winning_conflict_rejected_obsolete_conflict_ignored"
+                ],
+                "assertion_failures": 2,
+                "assertion_errors": 79,
+                "passed": 0
+              }
+            ],
+            "normal_native_completion": [
+              false
+            ]
+          }
+        ]
+      },
+      {
+        "replicate": "F-2",
+        "normal_native_turns": 6,
+        "observed_input_plus_output_tokens": 20008211,
+        "usage_unknown": false,
+        "primary_comparison_valid": true,
+        "invalid_reason": null,
+        "whole_delivery_accepted": true,
+        "final_artifact_contract_accepted": true,
+        "final_21_tests_green": true,
+        "readme_accepted": true,
+        "stages": [
+          {
+            "stage": 1,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 1,
+                "selected": 3,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 3
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 2,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 2,
+                "selected": 6,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 6
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 3,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 3,
+                "selected": 9,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 9
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 4,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 4,
+                "selected": 12,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 12
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 5,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 5,
+                "selected": 16,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 16
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          },
+          {
+            "stage": 6,
+            "execution": "executed",
+            "grade_diagnostic_only": null,
+            "grades": [
+              {
+                "stage": 6,
+                "selected": 21,
+                "failed_cases": [],
+                "assertion_failures": 0,
+                "assertion_errors": 0,
+                "passed": 21
+              }
+            ],
+            "normal_native_completion": [
+              true
+            ]
+          }
+        ]
+      }
+    ],
+    "smart_saving_scores": [
+      {
+        "trigger_stage": 2,
+        "score": 0.835,
+        "partial": true,
+        "from_ordinal": 1,
+        "through_ordinal": 1
+      },
+      {
+        "trigger_stage": 3,
+        "score": 0.87,
+        "partial": true,
+        "from_ordinal": 1,
+        "through_ordinal": 2
+      },
+      {
+        "trigger_stage": 4,
+        "score": 0.885,
+        "partial": true,
+        "from_ordinal": 1,
+        "through_ordinal": 3
+      },
+      {
+        "trigger_stage": 5,
+        "score": 0.835,
+        "partial": true,
+        "from_ordinal": 1,
+        "through_ordinal": 4
+      },
+      {
+        "trigger_stage": 6,
+        "score": 0.765,
+        "partial": true,
+        "from_ordinal": 1,
+        "through_ordinal": 5
+      }
+    ],
+    "natural_upgrades": 0
+  },
+  "usage": {
+    "formal_writing_tokens_lower_bound": 16297087,
+    "formal_coding_tokens_lower_bound": 48381913,
+    "all_formal_tokens_lower_bound": 64679000,
+    "preflight_turns": 16,
+    "writing_preflight_turns": 12,
+    "coding_preflight_turns": 3,
+    "parent_capture_preflight_turns": 1,
+    "writing_preflight_tokens": 835566,
+    "coding_preflight_tokens": 156743,
+    "parent_capture_preflight_tokens": 139917,
+    "all_preflight_tokens": 1132226,
+    "formal_plus_preflight_tokens_lower_bound": 65811226,
+    "cash_cost": null,
+    "jev_tokens": null,
+    "counting_rule": "Input plus output once from native usage; cache input and reasoning output are subsets. Missing interrupted tails, provider billing and decision usage remain unknown."
+  }
+}

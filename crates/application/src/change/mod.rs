@@ -250,7 +250,9 @@ where
         .ok_or(ChangePreparationError::UnsupportedCommand)?;
 
     // This must precede planning, Secret reads, network probes, and every durable write.
-    validate_feature_gate(&request.spec.desired_state)?;
+    if request.spec.command_id != "decision.services.apply" {
+        validate_feature_gate(&request.spec.desired_state)?;
+    }
     let mut desired = registered_plan(
         connection_options,
         &request.spec.command_id,
@@ -427,6 +429,36 @@ fn registered_plan<O: ConnectionOptionAuthorizationPort>(
         }
         "routing.classifier.secret.apply" => {
             plan_classifier_header_secret(serde_json::from_value(desired_state)?)
+        }
+        "decision.services.apply" => {
+            let change: hiroute_domain::DecisionServiceChangeV1 =
+                serde_json::from_value(desired_state)?;
+            change.validate()?;
+            let secrets = if let Some(slot) = &change.input_slot {
+                let header = change
+                    .service
+                    .as_ref()
+                    .and_then(|s| s.connection.transport().2)
+                    .ok_or(ChangePreparationError::TypedPlannerUnavailable)?;
+                plan_classifier_header_secret(ClassifierHeaderSecretInputV1 {
+                    secret_id: header.value_secret_ref.clone(),
+                    input_slot: slot.clone(),
+                    expected_generation: 0,
+                })?
+                .secrets
+            } else {
+                Vec::new()
+            };
+            Ok(RegisteredEffectPlan {
+                control: json!({"decision_service_change":change}),
+                pending_compute_source: None,
+                credential_pool: None,
+                pending_pool: None,
+                secret_sources: Default::default(),
+                secrets,
+                runtime: Vec::new(),
+                external: Vec::new(),
+            })
         }
         // Formal command-specific DTO/handler adapters are owned by later PROCESSes. Unknown
         // commands fail closed instead of falling through a generic Value effects DSL.

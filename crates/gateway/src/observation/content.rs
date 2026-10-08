@@ -27,6 +27,8 @@ mod request;
 pub(super) struct CanonicalFrameDelivery {
     pub(super) events: Vec<ModelStreamEventV1>,
     pub(super) usage: Option<ModelUsage>,
+    // Keep correlation storage charged until its accepted content is published.
+    pub(super) reservations: Vec<hiroute_gateway_core::runtime::body::Reservation>,
 }
 
 impl CanonicalFrameDelivery {
@@ -38,6 +40,7 @@ impl CanonicalFrameDelivery {
 
     pub(super) fn merge(&mut self, mut other: Self) {
         self.events.append(&mut other.events);
+        self.reservations.append(&mut other.reservations);
         if let Some(usage) = other.usage {
             self.merge_usage(&usage);
         }

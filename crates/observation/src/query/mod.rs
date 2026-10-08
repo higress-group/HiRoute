@@ -445,10 +445,9 @@ impl ObservationQueryPort for LocalObservationStore {
         .map_err(|_| ObservationQueryError::Unavailable)?;
         let _deadline = crate::query_v2::QueryDeadline::start(&connection)
             .map_err(crate::query_v2::ObservationV2Error::into_domain)?;
-        let gaps = read_gaps(&connection, workspace_id)?;
-        let facts_completeness = aggregate_facts_completeness(&connection, workspace_id, &gaps)?;
-        let content_completeness =
-            aggregate_content_completeness(&connection, workspace_id, &gaps)?;
+        let (gaps, gaps_truncated) = read_gaps(&connection, workspace_id)?;
+        let facts_completeness = aggregate_facts_completeness(&connection, workspace_id)?;
+        let content_completeness = aggregate_content_completeness(&connection, workspace_id)?;
         let content_bytes: i64 = connection
             .query_row(
                 "SELECT COALESCE(SUM(byte_count), 0) FROM content_blobs_v2 WHERE workspace_id=?1",
@@ -469,6 +468,7 @@ impl ObservationQueryPort for LocalObservationStore {
             content_completeness,
             completeness_scope: ObservationCompletenessScope::GatewayVisible,
             gaps,
+            gaps_truncated,
             activity_bytes,
             content_bytes: content_bytes
                 .try_into()
@@ -507,6 +507,16 @@ fn session_summary(
             |row| row.get(0),
         )
         .map_err(|_| ObservationQueryError::Unavailable)?;
+    let content = if matches!(content, "deleted" | "expired") {
+        content.to_owned()
+    } else {
+        crate::content::completeness::session_state(
+            connection,
+            workspace_id.as_str(),
+            session_id.as_str(),
+        )
+        .map_err(|_| ObservationQueryError::Unavailable)?
+    };
     Ok(SessionSummaryV1 {
         session_id,
         agent_id,
@@ -524,7 +534,7 @@ fn session_summary(
             .map_err(|_| ObservationQueryError::Corrupt)?,
         model_switch,
         facts_completeness: parse_facts(facts)?,
-        content_completeness: parse_content(content)?,
+        content_completeness: parse_content(&content)?,
         completeness_scope: ObservationCompletenessScope::GatewayVisible,
         tombstone_reason: tombstone.map(parse_tombstone).transpose()?,
     })

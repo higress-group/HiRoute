@@ -17,7 +17,7 @@ const required = [
   'docs/decision-extensions/index.html', 'en/docs/decision-extensions/index.html',
   'docs/decision-api/index.html', 'en/docs/decision-api/index.html',
   'docs/jev-decider/index.html', 'en/docs/jev-decider/index.html',
-  'api/decision.openapi.json', 'api/jev-policy.default.json',
+  'api/decision.openapi.json', 'api/decision-examples.json',
   'install.sh', 'install/standalone.py', 'releases.json', '404.html', 'sitemap-index.xml',
 ];
 for (const relative of required) {
@@ -27,10 +27,10 @@ for (const [page, language] of [['index.html', 'zh-CN'], ['en/index.html', 'en']
   const html = fs.readFileSync(path.join(dist, page), 'utf8');
   const performance = html.match(/<section\b[^>]*id="performance"[^>]*>[\s\S]*?<\/section>/)?.[0];
   if (!performance?.includes(`src="/decision-assets/quality-native-${language}.png"`)) {
-    throw new Error(`missing localized native Desktop screenshot: ${page}`);
+    throw new Error(`missing localized native session capture: ${page}`);
   }
-  const disclaimer = language === 'en' ? 'not a model benchmark' : '非模型评测';
-  if (!performance.includes(disclaimer)) throw new Error(`missing screenshot disclaimer: ${page}`);
+  const caption = language === 'en' ? 'Each score is linked to an execution stage' : '每个分数都对应具体执行阶段';
+  if (!performance.includes(caption)) throw new Error(`missing stage context: ${page}`);
 }
 const htmlFiles = [];
 for (const entry of fs.readdirSync(dist, { recursive: true, withFileTypes: true })) {
@@ -48,7 +48,12 @@ for (const file of htmlFiles) {
 }
 
 for (const file of htmlFiles.filter(file => path.relative(dist, file).startsWith(`en${path.sep}`))) {
-  const html = fs.readFileSync(file, 'utf8').replaceAll('简体中文', '').replaceAll('中文', '');
+  // Canonical protocol payloads are intentionally identical in both languages.
+  // Validate the surrounding prose, not localized user input inside JSON samples.
+  const source = fs.readFileSync(file, 'utf8');
+  const prose = path.relative(dist, file) === path.join('en', 'docs', 'decision-api', 'index.html')
+    ? source.replace(/<pre><code class="language-json">[\s\S]*?<\/code><\/pre>/gi, '') : source;
+  const html = prose.replaceAll('简体中文', '').replaceAll('中文', '');
   if (/[\u3400-\u9fff]/u.test(html)) throw new Error(`Chinese copy leaked into English page: ${file}`);
 }
 

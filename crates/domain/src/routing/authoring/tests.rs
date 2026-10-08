@@ -4,7 +4,7 @@ fn editor() -> PlanEditorStateV2 {
     serde_json::from_value(serde_json::json!({
         "schema": PLAN_EDITOR_SCHEMA_V2, "display_name": "代码整理", "purpose": "整理代码",
         "mode": "fixed_model", "candidates": [{"binding_id":"binding/a"}],
-        "smart": {"economy":[],"primary":[],"primary_fallback":false,"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
+        "smart": {"economy":[],"primary":[],"judgment":crate::JudgmentSettingsV1::default(),"reselect_on_user_message":false,"classifier":{"kind":"local_rules"},"complex_keywords":[]},
         "free": {"candidates":[],"primary":[],"primary_fallback":false},
         "delegation_enabled": false,
         "requirements":{}, "limits":{"maximum_attempts":6,"request_timeout_ms":60000,"attempt_timeout_ms":30000}
@@ -25,6 +25,29 @@ fn incomplete_parked_modes_survive_and_only_selected_mode_is_published() {
     draft.mode = PlanEditorMode::FixedModel;
     assert_eq!(draft.smart.economy[0].binding_id, "");
     assert!(draft.effective().is_ok());
+}
+
+#[test]
+fn unfinished_judgment_can_be_saved_but_cannot_be_published() {
+    let mut draft = editor();
+    draft.mode = PlanEditorMode::SmartSaving;
+    draft.smart.economy = draft.candidates.clone();
+    draft.smart.primary = draft.candidates.clone();
+    draft.smart.judgment.degree.simple.clear();
+    draft.smart.judgment.competence.criteria[1].clear();
+    draft.validate_draft().unwrap();
+    assert!(draft.effective().is_err());
+    draft.smart.judgment = Default::default();
+    assert!(draft.effective().is_ok());
+    draft.smart.judgment.degree.simple = "界".repeat(20_000);
+    draft.validate_draft().unwrap();
+    let authored = draft.effective().unwrap();
+    let AgentPlanStrategyV2::SmartSaving { judgment, .. } = authored.strategy else {
+        panic!("smart saving");
+    };
+    assert_eq!(judgment.degree.simple, draft.smart.judgment.degree.simple);
+    draft.smart.judgment.degree.simple = "bad\u{0000}prompt".into();
+    assert!(draft.validate_draft().is_err());
 }
 
 #[test]
@@ -68,18 +91,25 @@ fn smart_and_free_fallback_are_explicit_and_disabled_groups_are_parked() {
 }
 
 #[test]
-fn smart_rest_classifier_survives_editor_to_authoring_projection() {
+fn saved_classifier_survives_editor_to_authoring_projection() {
     let mut draft = editor();
     draft.mode = PlanEditorMode::SmartSaving;
     draft.smart.reselect_on_user_message = true;
     draft.smart.economy = draft.candidates.clone();
     draft.smart.primary = draft.candidates.clone();
-    draft.smart.classifier = ComplexityClassifierModeV1::Rest {
-        endpoint: "https://classifier.example/v1/branch".into(),
-        timeout_ms: crate::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS,
-        auth_header: Some(crate::ClassifierAuthHeaderV1 {
-            name: "Authorization".into(),
-            value_secret_ref: "classifier/main".into(),
+    draft.smart.classifier = ComplexityClassifierModeV1::DecisionService {
+        service: Box::new(crate::DecisionServiceV1 {
+            id: "decision-fixture".into(),
+            revision: 1,
+            name: "Fixture extension".into(),
+            connection: crate::DecisionConnectionV1::Custom {
+                endpoint: "https://classifier.example/v1/branch".into(),
+                timeout_ms: crate::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS,
+                auth_header: Some(crate::ClassifierAuthHeaderV1 {
+                    name: "Authorization".into(),
+                    value_secret_ref: "classifier/main".into(),
+                }),
+            },
         }),
     };
     let effective = draft.effective().unwrap();
@@ -93,10 +123,10 @@ fn smart_rest_classifier_survives_editor_to_authoring_projection() {
     assert!(matches!(
         effective.strategy,
         AgentPlanStrategyV2::SmartSaving {
-            classifier: ComplexityClassifierModeV1::Rest { endpoint, .. },
+            classifier: ComplexityClassifierModeV1::DecisionService { service },
             reselect_on_user_message: true,
             ..
-        } if endpoint == "https://classifier.example/v1/branch"
+        } if service.connection.transport().0 == "https://classifier.example/v1/branch"
     ));
 }
 

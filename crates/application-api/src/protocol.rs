@@ -837,6 +837,8 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         "routing.list" => "hiroute.agent-plan-catalog-query/v2",
         "routing.preview" => "hiroute.agent-plan-preview-request/union",
         "routing.apply" => "hiroute.agent-plan-apply-request/union",
+        "decision.services.apply" => "hiroute.change-preview-or-apply-request/v1",
+        "decision.services.test" => "hiroute.classifier-decision-test/v1",
         "work-plans.list" => "hiroute.work-plan-list-request/v1",
         "routing.show" => "hiroute.agent-plan-lookup/v1",
         "operations.find" => "hiroute.operation-idempotency-lookup/v1",
@@ -892,6 +894,9 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "routing.show" => "hiroute.agent-plan-status/v2",
         "routing.preview" => "hiroute.agent-plan-preview/union",
         "routing.apply" => "hiroute.operation-view/v1",
+        "decision.services.list" => "hiroute.decision-services/v1",
+        "decision.services.apply" => "hiroute.change-preview-or-operation/v1",
+        "decision.services.test" => "hiroute.classifier-decision-test-result/v1",
         "operations.find" => "hiroute.operation-idempotency-result/v1",
         "agent.launch" => "hiroute.managed-claude-launch-descriptor/v2",
         "system.status" => "hiroute.system-status/v1",
@@ -935,7 +940,10 @@ pub(crate) fn command_model_call(command_id: &str) -> &'static str {
         "caller_controlled_via_managed_loopback_gateway"
     } else if command_id == "agents.check" {
         "explicit_live_scope_only"
-    } else if command_id == "compute.connection.test" {
+    } else if matches!(
+        command_id,
+        "compute.connection.test" | "decision.services.test"
+    ) {
         "explicit_probe_may_call_model"
     } else {
         "never"
@@ -956,9 +964,11 @@ pub(crate) fn command_stdin_channels(command_id: &str) -> &'static [&'static str
         | "compute.connection.apply"
         | "compute.connection.authorize"
         | "compute.connection.test"
+        | "decision.services.test"
         | "routing.options"
         | "routing.preview"
         | "routing.apply"
+        | "decision.services.apply"
         | "agents.connect.preview"
         | "agents.connect.apply"
         | "agents.restore.preview"
@@ -993,6 +1003,7 @@ pub(crate) fn command_idempotency(command_id: &str) -> &'static str {
         | "operations.cancel"
         | "compute.connection.apply"
         | "routing.apply"
+        | "decision.services.apply"
         | "agents.connect.apply"
         | "agents.restore.apply"
         | "tasks.start"
@@ -1049,10 +1060,11 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
         "compute.connection.preview" | "compute.connection.apply" | "compute.connection.authorize" | "compute.connection.test" => {
             format!("hiroute {joined_path} --request-stdin --output json")
         }
-        "routing.options" | "routing.preview" | "routing.apply" => {
+        "routing.options" | "routing.preview" | "routing.apply" | "decision.services.apply" | "decision.services.test" => {
             format!("hiroute {joined_path} --request-stdin --output json")
         }
         "routing.list" => "hiroute routing list [--request-stdin] --output json".to_owned(),
+        "decision.services.list" => "hiroute decision services list --output json".to_owned(),
         "routing.show" => "hiroute routing show <PLAN_ID> --output json".to_owned(),
         "agents.connect.preview" | "agents.connect.apply" | "agents.restore.preview" | "agents.restore.apply" => {
             format!("hiroute {joined_path} --request-stdin --output json")
@@ -1108,10 +1120,13 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "compute.connection.apply" => "--request-stdin accepts only the exact preview spec, digest, revisions, and a non-empty idempotency key. Same-UID Local Control reproduces the plan; replay uses the original key and changed payloads are rejected.".to_owned(),
         "compute.connection.test" => "--request-stdin selects native, registered, discovered, or saved with its strict nested request. Credentials are referenced only through a protected-input candidate; plaintext credential fields are rejected. The explicit probe may contact the configured provider and may consume quota when an inference model is selected.".to_owned(),
         "compute.connection.authorize" => "--request-stdin reads one exact subscription result operation or releases one exact validation. Starting authorization still uses connection Preview/Apply, including revision, digest, and idempotency checks.".to_owned(),
+        "decision.services.list" => "No request body or secret material. Returns the latest saved version of each service; published plans retain their exact immutable version.".to_owned(),
+        "decision.services.apply" => "--request-stdin accepts a ChangeSpec preview request first, then the exact ApplyRequest with accept_digest, expected_revisions and idempotency_key. spec.desired_state contains id, expected_revision, service (null to delete), and optional protected input_slot. Replacing a credential requires a new reference. A referenced service cannot be deleted.".to_owned(),
+        "decision.services.test" => "--request-stdin accepts schema hiroute.classifier-decision-test/v1 and classifier {kind: decision_service, service: <saved version>}. Sends one fixed synthetic decision; no session history is read. Failure is reported in data.outcome and failure_code, even when the command query succeeds.".to_owned(),
         "routing.preview" | "routing.apply" => "--request-stdin accepts only the existing strict draft, content, or lifecycle schema. Apply must reproduce Preview and carry its exact revisions, digest, and idempotency key; publication remains one recoverable Operation.".to_owned(),
         "agents.connect.preview" | "agents.connect.apply" | "agents.restore.preview" | "agents.restore.apply" => "--request-stdin accepts only the strict v1 connection or v2 managed-settings request. Apply is same-UID, revision-checked, idempotent, and writes only owned Agent fields; restore refuses concurrent ownership drift.".to_owned(),
         "sessions.list" => "Human options retain the v1 query. Fact-only listing is available to the same-UID Local Control peer; --query searches retained text and therefore still requires a separately delivered protected capability. --request-stdin accepts only a strict v2 sessions intent.".to_owned(),
-        "observation.plan-quality.samples" => "Provide at least --plan-id or --session-id. Score bounds are strict open bounds over the latest optional competence score; unscored segments remain visible only when no score bound is supplied. Facts are same-UID reads; protected evidence content is never returned.".to_owned(),
+        "observation.plan-quality.samples" => "Provide at least --plan-id or --session-id. Use --competence below-floor|meets-floor to compare the latest reliable score with the floor saved for that stage, or --unrated for missing/partial scores. Score bounds remain strict open bounds. Detail filters do not alter full-scope summaries. Facts are same-UID reads; protected evidence content is never returned.".to_owned(),
         "value.show" => "Human options retain the v1 value query. Alternatively, --request-stdin accepts only a strict v2 value or home_value intent. Same-UID reads return recorded known and unknown amounts without computing or filling missing values.".to_owned(),
         "sessions.show" => "Human options retain the v1 lookup and content defaults to none. Same-UID facts/timeline reads need no extra token; messages, tool content, catalog, ancestry, content pages, and search still require an exact protected capability.".to_owned(),
         "sessions.receipt" | "setup.status" | "operations.get" | "operations.watch" | "operations.cancel" => "An exact typed resource ID is required; arbitrary storage keys and SQL are forbidden.".to_owned(),

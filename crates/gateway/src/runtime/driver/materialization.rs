@@ -513,7 +513,9 @@ pub(super) async fn materialize_attempt(
         )
         .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
     );
+    let body = PreparedAttemptBody::from_reader(body, lease).map_err(safe_error)?;
     if let Some(observation) = crate::server::core_runtime::observation::active_request() {
+        observation.prepared_request_diagnostic(&headers, &prepared.bytes);
         use hiroute_diagnostics::event::ReasoningCleanupReason;
         let reason = if cleanup_prefix.is_none() {
             ReasoningCleanupReason::RequestProtocolProjection
@@ -543,7 +545,7 @@ pub(super) async fn materialize_attempt(
                 path_and_query: prepared.path.into(),
                 headers,
             },
-            body: PreparedAttemptBody::from_reader(body, lease).map_err(safe_error)?,
+            body,
         },
         ProductionAttemptState {
             response_status: None,

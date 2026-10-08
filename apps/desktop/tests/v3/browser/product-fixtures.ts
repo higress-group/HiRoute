@@ -1,3 +1,4 @@
+import { defaultJudgment } from '../../../src/features/decision-services/types';
 import type { AgentSnapshot } from '../../../src/agents';
 import type { HomeReads } from '../../../src/features/home';
 import type { AgentTaskRead } from '../../../src/features/AgentTasks';
@@ -184,7 +185,7 @@ export const dailyPlan: Plan = {
       mode: 'smart_saving',
       economy: [{ binding_id: 'binding/bailian/qwen-coder' }],
       primary: [{ binding_id: 'binding/codex/gpt-5.6-sol', reasoning: { kind: 'profile', profile: 'high' } }],
-      primary_fallback: true,
+      judgment: structuredClone(defaultJudgment),
       reselect_on_user_message: false,
       classifier: { kind: 'local_rules' },
       complex_keywords: ['架构', '重构', '并发'],
@@ -277,7 +278,7 @@ export const savedDraft: Draft = {
     purpose: dailyPlan.desired.purpose,
     mode: 'smart_saving',
     candidates: [],
-    smart: { economy: [{ binding_id: 'binding/bailian/qwen-coder' }], primary: [{ binding_id: 'binding/codex/gpt-5.6-sol', reasoning: { kind: 'profile', profile: 'high' } }], primary_fallback: true, reselect_on_user_message: false, classifier: { kind: 'local_rules' }, complex_keywords: ['架构', '重构', '并发'] },
+    smart: { economy: [{ binding_id: 'binding/bailian/qwen-coder' }], primary: [{ binding_id: 'binding/codex/gpt-5.6-sol', reasoning: { kind: 'profile', profile: 'high' } }], judgment: structuredClone(defaultJudgment), reselect_on_user_message: false, classifier: { kind: 'local_rules' }, complex_keywords: ['架构', '重构', '并发'] },
     free: { candidates: [], primary: [], primary_fallback: false },
     delegation_enabled: false,
     requirements: {},
@@ -651,7 +652,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
       const rows = query.only_model_switch
         ? sessionRows.filter(row => row.fallback_request_count > 0)
         : sessionRows;
-      return { sessions: fresh || scenario === 'configured_no_sessions' ? [] : rows, next_cursor: null };
+      return { sessions: fresh || scenario === 'configured_no_sessions' ? [] : rows.map(row => ({ ...row, content_completeness: row.session_id === 'session/stream-gap' ? 'partial' : 'complete' })), next_cursor: null };
     }
     if (view === 'search') {
       const needle = String(query.keyword ?? '').trim().toLocaleLowerCase();

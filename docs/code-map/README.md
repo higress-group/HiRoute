@@ -1,60 +1,48 @@
 # Code map
 
-Start with a user capability and one representative test, then follow the
-production owner. This map describes the current implementation and its executable
-contracts; it is navigation, not a second requirements system. Update it when
-ownership or entry points change.
+Start with the user action below, follow its production owner, then read one
+representative scenario. This map locates current code and contracts; requirements
+belong in specifications, implementation detail beside the code, and validation
+results in the relevant run record.
 
-| User capability | Contract area | Production owners | Representative tests / local guide |
-| --- | --- | --- | --- |
-| Add model sources and inspect usable models | Model connections | [Application](../../crates/application/src/compute_management), [native integrations](../../crates/integrations/src/model_connections), [daemon assembly](../../crates/daemon/src/control/runtime/model_connections.rs) | [Typed/fixture contracts](../../tools/product-e2e/tests/compute_pool.rs); [installed CLI journey](../../crates/daemon/tests/publication_process.rs) |
-| Create and publish a routing plan | Routing plans | [Authoring and lifecycle](../../crates/application/src/routing), [compiler](../../crates/application/src/compiler), [domain types](../../crates/domain/src/routing) | [Compiler/fixture contracts](../../tools/product-e2e/tests/routing_plans.rs); [installed CLI journey](../../crates/daemon/tests/publication_process.rs) |
-| Connect, edit and safely disable an Agent | Agent connections | [Application transaction](../../crates/application/src/agent_connection), [filesystem adapters](../../crates/integrations/src/agents), [Desktop feature](../../apps/desktop/src/features/agents/README.md) | [Settings ordering](../../crates/application/src/operations/tests/settings_tail.rs), [daemon product entry](../../crates/daemon/src/control/runtime/settings_profile_tests.rs) |
-| Select saved additional Qoder/Pi/DSH model routes while keeping task collaboration independent | Agent connections | [Shared settings transaction](../../crates/application/src/agent_connection/settings), [native provider ownership](../../crates/integrations/src/agents/additional_native/README.md), [Desktop model editor](../../apps/desktop/src/features/agents/AdditionalModelEditor.tsx) | [Shared native journeys](../../crates/daemon/tests/support/additional_model_product.py), [Qoder](../../tools/product-e2e/tests/QODER_DELEGATION.md) and [Pi](../../tools/product-e2e/tests/PI_INTEGRATION.md) entry and limits |
-| Route a model request and apply bounded fallback | Request routing | [Gateway map](../../crates/gateway/README.md), [execution core](../../crates/gateway-core/src) | [Real listener scenarios](../../tools/e2e-harness/tests/p0_gateway_runtime.rs) |
-| Ask an external service to select a branch | [Decision API](../../decision-extensions/api/README.md) | [Gateway classification](../../crates/gateway/src/core_runtime/classification.rs), [Jev reference service](../../decision-extensions/extensions/jev-decider/README.md) | [Jev tests](../../decision-extensions/extensions/jev-decider), real listener classifier scenarios above |
-| Delegate, read and continue Worker tasks | Agent delegation | [Application authorization](../../crates/application/src/delegation), [daemon execution](../../crates/daemon/src/delegation), [OS launcher](../../crates/daemon/src/delegation/local_worker/README.md) | [Worker lifecycle](../../tools/product-e2e/tests/worker_delegation.rs), [read/continue](../../tools/product-e2e/tests/worker_read.rs) |
-| Inspect sessions, content, cost and quality | Session history, usage | [Authorized queries](../../crates/application/src/observation_query), [observation](../../crates/observation/src), [managed content](../../crates/observation/src/managed_text/README.md) | [Fixture contracts](../../tools/product-e2e/tests/local_observation.rs); [installed CLI journey](../../crates/daemon/tests/publication_process.rs) |
-| Manage the local service through CLI or Desktop | Shared access | [client-core](../../crates/client-core/src), [CLI](../../crates/cli/src), [Desktop host](../../apps/desktop/src-tauri/src), [control socket](../../crates/daemon/src/control) | [Real process journey](../../tools/product-e2e/tests/control_shell.rs), [Desktop test map](../../apps/desktop/tests/README.md) |
+## Read progressively
 
-Read [architecture and ownership](architecture.md) for cross-module changes,
-[tests as product documentation](testing.md) before changing coverage, and
-[remaining cleanup work](maintenance.md) before starting another refactor.
-For later decision features, read the [provider and consumer boundaries](decision-foundation.md).
-For DeepSeek Harness, start with [the DSH boundary map](dsh.md).
-Before extending Worker ecosystems, read the [native context, route and history owners](worker-context.md).
+1. Find the capability below, or search with
+   `rg -n -i '<user action, symptom or domain term>' docs/code-map/`.
+2. Once the relevant topic is located, prefer reading its complete code-map page,
+   including ownership boundaries and cross-references. The search match locates
+   the page; its surrounding context helps interpret the entry.
+3. Follow the production owner and a representative scenario, then expand into
+   linked code, specifications or local guides as needed. Unrelated map pages
+   need not be read by default.
 
-Pi static API discovery is owned by [the bounded native reader](../../crates/integrations/src/agents/pi_sources.rs)
-and [closed candidate prepare](../../crates/daemon/src/control/runtime/model_connections/pi_discovered.rs).
-The [Desktop scan projection](../../apps/desktop/src-tauri/src/bridge/model_connection_web.rs)
-keeps provider/model identifiers visible while omitting privileged discovery material.
-Adding a safe scan field also requires this projection and its existing privacy/visibility
-test: a successful machine scan or native compile does not prove that its row reaches the UI.
-Provider/model pairs remain distinct; auth commands and OAuth are reported without execution/import.
-After save, follow [capability qualification](../../crates/application/src/compute_management/compilation.rs)
-and [candidate materialization](../../crates/daemon/src/control/runtime/candidate_execution.rs)
-into the compiler's source-local authority and the published Plan. Native-observed
-facts retain their provenance and observed budgets; they are not a catalog match
-or a runtime fallback. The required saved-source route case in
-[Pi acceptance](../../tools/product-e2e/tests/PI_INTEGRATION.md) covers this path with
-an ordinary native request, including the case where the UI can display a source
-that was not yet usable by Plan consumers.
+## Find a capability
 
-Native reasoning fields have one current wire owner in
-[Domain](../../crates/domain/src/routing/gateway_execution.rs).
-[Daemon profile rendering](../../crates/daemon/src/control/runtime/candidate_protocol_profiles.rs)
-and [Gateway ingestion](../../crates/gateway/src/profiles/reasoning.rs) reuse its
-paths and toggle semantics. The existing producer/consumer test in
-[candidate materialization tests](../../crates/daemon/src/control/runtime/candidate_execution_tests.rs)
-follows materialization → compilation → Gateway validation across supported
-protocols and parameter aliases. Keep that assertion at the boundary when adding
-a protocol; duplicating local DTOs or testing only the renderer misses drift.
+| User action | Start here | Representative scenario |
+| --- | --- | --- |
+| Add model sources and inspect usable models | [Source admission and native configuration](architecture.md#model-sources-and-native-configuration), [Application owners](../../crates/application/src/compute_management) | [Installed CLI management loop](../../crates/daemon/tests/publication_process.rs) |
+| Create, edit and publish a routing plan | [Authoring/lifecycle](../../crates/application/src/routing), [compiler](../../crates/application/src/compiler), [domain](../../crates/domain/src/routing) | [Publication and restart](../../crates/daemon/tests/publication_process.rs) |
+| Connect a decision model or custom extension; configure smart saving or custom branches | [Decision and routing map](decision-foundation.md) | [Real CLI connection lifecycle](../../crates/daemon/tests/support/decision_services_product.py), [listener multi-turn routing](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches.rs) |
+| Configure, adjust or disable an Agent's models and task collaboration | [Agent/Worker map](worker-context.md), [Desktop feature guide](../../apps/desktop/src/features/agents/README.md) | [Settings ordering](../../crates/application/src/operations/tests/settings_tail.rs), [saved native model journey](../../crates/daemon/tests/support/additional_model_product.py) |
+| Route an authenticated model request and apply bounded fallback | [Gateway map](../../crates/gateway/README.md), [execution core](../../crates/gateway-core/src) | [Real listener scenarios](../../tools/e2e-harness/tests/p0_gateway_runtime.rs) |
+| Delegate, read, cancel or continue a Worker task | [Worker lifecycle and native differences](worker-context.md#follow-a-task-through-its-owners) | [Delegation](../../tools/product-e2e/tests/worker_delegation.rs), [read/Continue](../../tools/product-e2e/tests/worker_read.rs) |
+| Inspect sessions, content, cost and competence | [Observation owners](architecture.md#observation-and-conversation-boundaries), [decision attribution](decision-foundation.md#observation-and-public-consumers) | [Session queries](../../crates/observation/src/query_v2/sessions_tests.rs), [stage summaries](../../crates/observation/src/store/tests/plan_quality/summary.rs) |
+| Manage the service through CLI or Desktop | [client-core](../../crates/client-core/src), [CLI](../../crates/cli/src), [Desktop host](../../apps/desktop/src-tauri/src), [daemon control](../../crates/daemon/src/control) | [Real control process](../../tools/product-e2e/tests/control_shell.rs), [Desktop test map](../../apps/desktop/tests/README.md) |
 
-Shared settings facts have common transaction inputs plus typed Codex, Claude and additional-provider
-facts; native model/catalog policies belong to those typed leaves.
+## Read across boundaries
 
-For an Agent implementation task, first identify the capability, its state owner,
-and the failing or representative scenario. Give parallel contributors disjoint
-file ownership; reserve shared contracts, manifests and generated registries for
-one convergence owner. Prefer extracting a cohesive responsibility beside its
-consumers over moving unrelated code into a global utility directory.
+| Map | Scope |
+| --- | --- |
+| [Architecture and ownership](architecture.md) | Shared layers, source admission, durable state, observation and change boundaries |
+| [Agent integrations and Workers](worker-context.md) | Shared configuration/lifecycle owners, with Codex, Claude, Qoder, Pi and DSH differences together |
+| [Decision models and routing](decision-foundation.md) | Saved connections, provider adapters, per-turn policy and competence attribution |
+| [Tests as product documentation](testing.md) | Proof levels, reusable fixtures, representative fault cases and validation selection |
+
+Keep new navigation organized by stable responsibility, not by a provider or a
+completed feature. Add an ecosystem to the shared comparison and link its native
+leaf. Put detailed protocol rules in their canonical contract and operating steps
+in the existing local guide. When an owner moves, update its entry and incoming
+links instead of appending another implementation note to this index.
+Keep each matched entry a short clue about where to look next and why. Detailed
+rules, parameter lists, exhaustive exceptions and validation history belong in
+the linked specification, local guide or run record.

@@ -99,12 +99,6 @@ pub(crate) enum ClassifierAuthenticationAuthorityV1 {
     },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ClassifierBranchAuthorityV1 {
-    pub(crate) id: Arc<str>,
-    pub(crate) description: Arc<str>,
-}
-
 /// Exact, publication-pinned authority for one external classification call.
 /// It contains no secret material and cannot authorize an ordinary model route.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -115,7 +109,10 @@ pub(crate) struct RestBranchClassifierAuthorityV1 {
     pub(crate) timeout: Duration,
     pub(crate) transport_target: TransportTarget,
     pub(crate) authentication: ClassifierAuthenticationAuthorityV1,
-    pub(crate) branches: Arc<[ClassifierBranchAuthorityV1]>,
+    pub(crate) decision: hiroute_domain::DecisionDefinitionV1,
+    pub(crate) smart_judgment: Option<hiroute_domain::JudgmentSettingsV1>,
+    pub(crate) system_one_model: Option<String>,
+    pub(crate) branch_policies: Vec<hiroute_domain::MaterializedBranchV1>,
 }
 
 /// Gateway-internal, non-secret provenance copied only from an authenticated

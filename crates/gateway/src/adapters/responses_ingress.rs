@@ -67,7 +67,7 @@ pub(super) fn decode_responses_input(
                     logical_id: required_string(object, "call_id")?,
                     tool_kind: ToolKindV1::Function,
                     namespace: optional_string(object, "namespace")?,
-                    name: required_string(object, "name")?,
+                    name: historical_tool_name(context, object)?,
                     arguments,
                     raw_arguments,
                 }],
@@ -132,7 +132,7 @@ pub(super) fn decode_responses_input(
                     logical_id: required_string(object, "call_id")?,
                     tool_kind: ToolKindV1::Custom,
                     namespace: optional_string(object, "namespace")?,
-                    name: required_string(object, "name")?,
+                    name: historical_tool_name(context, object)?,
                     arguments: Value::String(content_string(object, "input")?),
                     raw_arguments: None,
                 }],
@@ -198,6 +198,19 @@ pub(super) fn decode_responses_input(
         }
     }
     Ok(())
+}
+
+fn historical_tool_name(
+    context: &DecodeContext,
+    object: &Map<String, Value>,
+) -> Result<String, ModelIrError> {
+    let name = content_string(object, "name")?;
+    if name.is_empty() {
+        // Native clients retain failed model-generated calls in history. Keep
+        // that payload for the provider without treating it as portable Tool IR.
+        context.native_only.set(true);
+    }
+    Ok(name)
 }
 
 fn decode_responses_content(

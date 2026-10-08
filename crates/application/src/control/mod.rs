@@ -518,6 +518,12 @@ pub trait ComputeManagementControlPort: Send + Sync {
 }
 
 pub trait RoutingFactsPort: Send + Sync {
+    fn decision_services(
+        &self,
+        _workspace: &WorkspaceId,
+    ) -> Result<Vec<hiroute_domain::DecisionServiceV1>, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn claude_client_capability_preview(
         &self,
         _plan: &hiroute_domain::CompiledAgentPlanV1,

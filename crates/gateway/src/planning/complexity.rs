@@ -125,6 +125,10 @@ const PURE_CONTINUATIONS: &[&str] = &["继续", "按上面做", "continue", "go 
 
 #[derive(Serialize)]
 struct StrategyDigestPayload<'a> {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    branch_ids: &'a Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_branch_id: &'a Option<String>,
     strategy_id: &'static str,
     schema_version: &'static str,
     strategy_version: u32,
@@ -182,6 +186,8 @@ impl ComplexityV1 {
             });
         }
         let mut strategy = CompiledComplexityStrategyV1 {
+            branch_ids: Vec::new(),
+            default_branch_id: None,
             strategy_id: COMPLEXITY_STRATEGY_ID.into(),
             schema_version: COMPLEXITY_SCHEMA.into(),
             strategy_version: STRATEGY_VERSION,
@@ -197,6 +203,17 @@ impl ComplexityV1 {
     }
 
     pub fn validate(strategy: &CompiledComplexityStrategyV1) -> Result<(), PlannerError> {
+        if strategy.branch_ids.len() > 16
+            || strategy.branch_ids.iter().collect::<BTreeSet<_>>().len()
+                != strategy.branch_ids.len()
+            || (strategy.branch_ids.is_empty() != strategy.default_branch_id.is_none())
+            || strategy
+                .default_branch_id
+                .as_ref()
+                .is_some_and(|id| !strategy.branch_ids.contains(id))
+        {
+            return Err(PlannerError::InvalidPolicy("invalid branch identities"));
+        }
         if strategy.strategy_id != COMPLEXITY_STRATEGY_ID
             || strategy.schema_version != COMPLEXITY_SCHEMA
             || strategy.strategy_version != STRATEGY_VERSION
@@ -228,6 +245,23 @@ impl ComplexityV1 {
             return Err(PlannerError::ComplexityDigestMismatch);
         }
         Ok(())
+    }
+
+    pub fn with_branches(
+        mut strategy: CompiledComplexityStrategyV1,
+        branch_ids: Vec<String>,
+        default_branch_id: String,
+    ) -> Result<CompiledComplexityStrategyV1, PlannerError> {
+        if !(2..=16).contains(&branch_ids.len())
+            || !branch_ids.contains(&default_branch_id)
+            || branch_ids.iter().collect::<BTreeSet<_>>().len() != branch_ids.len()
+        {
+            return Err(PlannerError::InvalidPolicy("invalid branch set"));
+        }
+        strategy.branch_ids = branch_ids;
+        strategy.default_branch_id = Some(default_branch_id);
+        strategy.payload_digest = strategy_digest(&strategy)?;
+        Ok(strategy)
     }
 
     pub fn decide(
@@ -270,6 +304,9 @@ impl ComplexityV1 {
             ));
         }
 
+        if !strategy.branch_ids.is_empty() {
+            return Ok((unresolved_decision(strategy), projection.facts));
+        }
         let Some(_) = latest_user else {
             return Ok((unresolved_decision(strategy), projection.facts));
         };
@@ -283,10 +320,16 @@ impl ComplexityV1 {
         if !matched_user_phrase_ids.is_empty() {
             return Ok((
                 BranchDecisionV1 {
+                    policy: None,
+                    competence_trigger: None,
+                    execution_group: hiroute_domain::ExecutionGroupV1::Primary,
+                    simple_probability: None,
+                    simple_threshold_millis: None,
+                    selection_reason: hiroute_domain::ModelGroupReasonV1::Heuristic,
                     strategy_id: strategy.strategy_id.clone(),
                     schema_version: strategy.schema_version.clone(),
                     payload_digest: strategy.payload_digest.clone(),
-                    branch_id: hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID.to_owned(),
+                    branch_id: hiroute_domain::SMART_SAVING_SCOPE_ID.to_owned(),
                     complexity_score: Some(strategy.threshold),
                     threshold: Some(strategy.threshold),
                     decision_source: ComplexityDecisionSourceV1::UserPhrase,
@@ -337,15 +380,20 @@ impl ComplexityV1 {
         }
         Ok((
             BranchDecisionV1 {
+                policy: None,
+                competence_trigger: None,
+                execution_group: if score >= strategy.threshold {
+                    hiroute_domain::ExecutionGroupV1::Primary
+                } else {
+                    hiroute_domain::ExecutionGroupV1::Regular
+                },
+                simple_probability: None,
+                simple_threshold_millis: None,
+                selection_reason: hiroute_domain::ModelGroupReasonV1::Heuristic,
                 strategy_id: strategy.strategy_id.clone(),
                 schema_version: strategy.schema_version.clone(),
                 payload_digest: strategy.payload_digest.clone(),
-                branch_id: if score >= strategy.threshold {
-                    hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID
-                } else {
-                    hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID
-                }
-                .to_owned(),
+                branch_id: hiroute_domain::SMART_SAVING_SCOPE_ID.to_owned(),
                 complexity_score: Some(score),
                 threshold: Some(strategy.threshold),
                 decision_source: ComplexityDecisionSourceV1::BuiltinRules,
@@ -362,6 +410,8 @@ impl ComplexityV1 {
 
 fn strategy_digest(strategy: &CompiledComplexityStrategyV1) -> Result<String, PlannerError> {
     canonical_digest(&StrategyDigestPayload {
+        branch_ids: &strategy.branch_ids,
+        default_branch_id: &strategy.default_branch_id,
         strategy_id: COMPLEXITY_STRATEGY_ID,
         schema_version: COMPLEXITY_SCHEMA,
         strategy_version: STRATEGY_VERSION,
@@ -382,10 +432,19 @@ fn strategy_digest(strategy: &CompiledComplexityStrategyV1) -> Result<String, Pl
 
 fn unresolved_decision(strategy: &CompiledComplexityStrategyV1) -> BranchDecisionV1 {
     BranchDecisionV1 {
+        policy: None,
+        competence_trigger: None,
+        execution_group: hiroute_domain::ExecutionGroupV1::Primary,
+        simple_probability: None,
+        simple_threshold_millis: None,
+        selection_reason: hiroute_domain::ModelGroupReasonV1::Heuristic,
         strategy_id: strategy.strategy_id.clone(),
         schema_version: strategy.schema_version.clone(),
         payload_digest: strategy.payload_digest.clone(),
-        branch_id: hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID.to_owned(),
+        branch_id: strategy
+            .default_branch_id
+            .clone()
+            .unwrap_or_else(|| hiroute_domain::SMART_SAVING_SCOPE_ID.to_owned()),
         complexity_score: Some(strategy.threshold),
         threshold: Some(strategy.threshold),
         decision_source: ComplexityDecisionSourceV1::Unresolved,
@@ -425,6 +484,12 @@ fn inherited_decision(
         )
     }));
     Ok(BranchDecisionV1 {
+        policy: previous.policy.clone(),
+        competence_trigger: previous.competence_trigger.clone(),
+        execution_group: previous.execution_group,
+        simple_probability: previous.simple_probability.clone(),
+        simple_threshold_millis: previous.simple_threshold_millis,
+        selection_reason: previous.selection_reason,
         strategy_id: previous.strategy_id.clone(),
         schema_version: previous.schema_version.clone(),
         payload_digest: previous.payload_digest.clone(),

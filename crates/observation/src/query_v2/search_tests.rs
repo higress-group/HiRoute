@@ -3,7 +3,7 @@ use crate::{DigestAuthority, LocalObservationStore, text_index::TextIndexBuilder
 use hiroute_domain::*;
 use rusqlite::params;
 
-fn source(store: &LocalObservationStore, text: &[u8]) -> String {
+pub(super) fn source(store: &LocalObservationStore, text: &[u8]) -> String {
     let digest = store
         .authority
         .content_blob_digest("text/plain", text)
@@ -18,7 +18,7 @@ fn source(store: &LocalObservationStore, text: &[u8]) -> String {
         VALUES(?1,'content','occurrence','request','request','fork',0,'text','text/plain',?2,0,?3,'complete',100000000)",params![WorkspaceId::DEFAULT,digest,text.len()]).unwrap();
     digest
 }
-fn reader(content: bool) -> ObservationReaderContext {
+pub(super) fn reader(content: bool) -> ObservationReaderContext {
     ObservationReaderContext::local_user(
         WorkspaceId::default(),
         "user".into(),
@@ -29,7 +29,7 @@ fn reader(content: bool) -> ObservationReaderContext {
     )
     .unwrap()
 }
-fn query(keyword: &str, limit: u16) -> ObservationSearchQueryV2 {
+pub(super) fn query(keyword: &str, limit: u16) -> ObservationSearchQueryV2 {
     ObservationSearchQueryV2 {
         agent_id: None,
         plan_id: None,
@@ -44,7 +44,7 @@ fn query(keyword: &str, limit: u16) -> ObservationSearchQueryV2 {
         cursor: None,
     }
 }
-fn index(store: &LocalObservationStore) {
+pub(super) fn index(store: &LocalObservationStore) {
     let mut builder = TextIndexBuilder::new(store).unwrap();
     for _ in 0..20 {
         builder.cycle(store).unwrap();
@@ -209,6 +209,139 @@ fn indexed_body_pages_are_bounded_and_never_duplicate_overlap_bytes() {
     assert_eq!(
         store.observed_content_page(&reader(false), &query, 500),
         Err(ObservationV2Error::Unauthorized)
+    );
+}
+
+#[test]
+fn catalog_marks_aborted_capture_even_when_all_available_chunks_are_complete() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    source(&store, b"accepted partial response");
+    {
+        let db = store.connection.lock();
+        db.execute("INSERT INTO content_message_instances_v2(workspace_id,message_instance_id,conversation_id,request_id,direction,fork_id,message_ordinal,message_role,occurred_at_unix_nanos) VALUES(?1,'occurrence','session','request','response_delivered','fork',0,'assistant',100000000)",[WorkspaceId::DEFAULT]).unwrap();
+        db.execute("INSERT INTO transcript_roots_v2 VALUES(?1,'aborted-root','session','request','response_delivered','fork',NULL,'abort',100000000)",[WorkspaceId::DEFAULT]).unwrap();
+    }
+    let query = ObservationCatalogQueryV2 {
+        request_id: LogicalRequestId::parse("request").unwrap(),
+        limit: 1,
+        cursor: None,
+    };
+    let page = store.observed_catalog(&reader(true), &query, 500).unwrap();
+    assert_eq!(page.contents.len(), 1);
+    assert_eq!(page.contents[0].state, "complete");
+    assert!(
+        page.roots_partial,
+        "complete stored chunks do not prove complete capture"
+    );
+    store
+        .connection
+        .lock()
+        .execute(
+            "UPDATE transcript_roots_v2 SET state='finish' WHERE transcript_root='aborted-root'",
+            [],
+        )
+        .unwrap();
+    store.connection.lock().execute(
+        "INSERT INTO transcript_roots_v2 VALUES(?1,'input-root','session','request','request_input','input-fork',NULL,'finish',100000000)",
+        [WorkspaceId::DEFAULT],
+    ).unwrap();
+    assert!(
+        !store
+            .observed_catalog(&reader(true), &query, 500)
+            .unwrap()
+            .roots_partial
+    );
+}
+
+#[test]
+fn catalog_and_session_require_each_completed_requests_input_and_delivered_response() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    source(&store, b"saved prefix");
+    {
+        let db = store.connection.lock();
+        db.execute(
+            "UPDATE logical_requests SET outcome='accepted',finished_at_ms=200",
+            [],
+        )
+        .unwrap();
+        // Reproduce an old persisted 'complete' session with only its input root.
+        db.execute("UPDATE sessions SET content_completeness='complete'", [])
+            .unwrap();
+        db.execute("INSERT INTO transcript_roots_v2 VALUES(?1,'input-root','session','request','request_input','input-fork',NULL,'finish',100000000)",[WorkspaceId::DEFAULT]).unwrap();
+    }
+    let query = ObservationCatalogQueryV2 {
+        request_id: LogicalRequestId::parse("request").unwrap(),
+        limit: 1,
+        cursor: None,
+    };
+    assert!(
+        store
+            .observed_catalog(&reader(true), &query, 500)
+            .unwrap()
+            .roots_partial
+    );
+    let state = || {
+        store
+            .get_session(
+                &WorkspaceId::default(),
+                &SessionId::parse("session").unwrap(),
+                ContentMode::None,
+            )
+            .unwrap()
+            .summary
+            .content_completeness
+    };
+    assert_eq!(state(), ContentCompleteness::Partial);
+    store.connection.lock().execute("INSERT INTO transcript_roots_v2 VALUES(?1,'response-root','session','request','response_delivered','response-fork','input-root','finish',200000000)",[WorkspaceId::DEFAULT]).unwrap();
+    assert!(
+        !store
+            .observed_catalog(&reader(true), &query, 500)
+            .unwrap()
+            .roots_partial
+    );
+    assert_eq!(state(), ContentCompleteness::Complete);
+    // A second request whose entire content stream disappeared cannot borrow
+    // the first request's finished roots. This also covers an empty catalog.
+    store.connection.lock().execute("INSERT INTO logical_requests(workspace_id,request_id,session_id,turn_id,started_at_ms,finished_at_ms,outcome) VALUES(?1,'missing','session','internal',201,300,'accepted')",[WorkspaceId::DEFAULT]).unwrap();
+    let missing = ObservationCatalogQueryV2 {
+        request_id: LogicalRequestId::parse("missing").unwrap(),
+        ..query
+    };
+    let page = store
+        .observed_catalog(&reader(true), &missing, 500)
+        .unwrap();
+    assert!(page.contents.is_empty());
+    assert!(page.roots_partial);
+    assert_eq!(state(), ContentCompleteness::Partial);
+}
+
+#[test]
+fn index_scan_revisits_a_blob_that_becomes_live_after_the_cursor_passed_it() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    source(&store, b"late needle");
+    store
+        .connection
+        .lock()
+        .execute("UPDATE content_instances_v2 SET state='installing'", [])
+        .unwrap();
+    let mut builder = TextIndexBuilder::new(&store).unwrap();
+    assert_eq!(builder.cycle(&store).unwrap(), 0);
+    store
+        .connection
+        .lock()
+        .execute("UPDATE content_instances_v2 SET state='complete'", [])
+        .unwrap();
+    assert_eq!(builder.cycle(&store).unwrap(), 1);
+    assert_eq!(
+        store
+            .search_observed_text(&reader(true), &query("needle", 10), 500)
+            .unwrap()
+            .hits
+            .len(),
+        1
     );
 }
 

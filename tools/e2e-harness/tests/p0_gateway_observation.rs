@@ -395,6 +395,95 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
 }
 
 #[test]
+fn real_native_client_completion_before_http_close_keeps_response_and_observation() {
+    use std::io::Read;
+
+    // A reasoning-enabled provider uses a nullable optional content field.
+    // The following answer must survive both capture and native early close.
+    let reasoning = serde_json::json!({"type":"reasoning","id":"thought","status":null,
+        "summary":[{"type":"summary_text","text":"fixture thought"}],"content":null});
+    let reasoning_stream = [
+        serde_json::json!({"type":"response.reasoning_text.delta","output_index":0,"item_id":"thought","content_index":0,"delta":"fixture thought"}),
+        serde_json::json!({"type":"response.output_item.done","output_index":0,"item":reasoning}),
+    ].into_iter().flat_map(|event| format!("data:{event}\n\n").into_bytes()).collect::<Vec<_>>();
+    let text = String::from_utf8(ACCEPTED_STREAM_TEXT.to_vec())
+        .unwrap()
+        .replace("\"output_index\":0", "\"output_index\":1")
+        .into_bytes();
+    let mut terminal: Value = serde_json::from_str(
+        std::str::from_utf8(ACCEPTED_STREAM_COMPLETED)
+            .unwrap()
+            .split_once("data: ")
+            .unwrap()
+            .1
+            .trim(),
+    )
+    .unwrap();
+    terminal["response"]["output"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, reasoning);
+    let completed = format!("event: response.completed\ndata: {terminal}\n\n").into_bytes();
+    let provider = NativeProvider::start(vec![ProviderReply::StreamDrip {
+        status: 200,
+        chunks: vec![
+            [ACCEPTED_STREAM_CREATED, &reasoning_stream, &text].concat(),
+            completed,
+            b"data: [DONE]\n\n".to_vec(),
+        ],
+        interval: Duration::from_millis(100),
+    }]);
+    let fixture =
+        RuntimeFixture::launch_with_observation(&[&provider], 1, ObservationFaults::healthy());
+    let mut client = runtime_support::open_request(
+        fixture.address,
+        "POST",
+        "/v1/responses",
+        &[
+            ("X-HiRoute-Token", "runtime-token"),
+            ("session-id", "native-terminal-close"),
+        ],
+        br#"{"model":"runtime-model","input":"say DONE","stream":true}"#,
+    );
+    client
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut wire = Vec::new();
+    let terminal = b"event: response.completed\n";
+    loop {
+        let mut byte = [0];
+        assert_eq!(
+            client.read(&mut byte).unwrap(),
+            1,
+            "native completion was not delivered"
+        );
+        wire.push(byte[0]);
+        if let Some(start) = wire
+            .windows(terminal.len())
+            .position(|part| part == terminal)
+            && wire[start..].windows(2).any(|part| part == b"\n\n")
+        {
+            // Codex stops reading at response.completed, before HTTP EOF or
+            // the optional [DONE] trailer. This is normal successful use.
+            break;
+        }
+    }
+    drop(client);
+    assert!(wire.windows(text.len()).any(|part| part == text));
+    let root = fixture.observation_root.as_deref().unwrap();
+    let facts = wait_complete_accepted_request(root);
+    assert_complete_accepted_request(&facts, "runtime-native-model-1", 13, 5);
+    assert!(!facts.iter().any(
+        |record| record.pointer("/fact/outcome").and_then(Value::as_str)
+            == Some("postcommit_cancelled")
+    ));
+    let content = wait_content_complete_for_requests(root, &[request_id(&facts).to_owned()]);
+    assert!(decoded_content(&content, "response_delivered").contains("accepted-stream-22008"));
+    assert!(decoded_content(&content, "response_delivered").contains("fixture thought"));
+    assert_eq!(provider.calls(), 1);
+}
+
+#[test]
 fn real_streaming_hirouted_captures_canonical_content_and_nested_responses_usage() {
     let reply = ProviderReply::StreamDrip {
         status: 200,
@@ -503,6 +592,97 @@ fn real_streaming_hirouted_captures_canonical_content_and_nested_responses_usage
             event.get("content_kind").and_then(Value::as_str) != Some("downstream_protocol_frame")
         }));
     }
+}
+
+#[test]
+fn long_stream_capture_releases_processed_wire_without_losing_accepted_text() {
+    // Thousands of tiny deltas are a normal reasoning stream. Its cumulative
+    // wire charge exceeds 4 MiB, while the retained semantic text is only 32 KiB.
+    let delta = "abcdefgh";
+    let text = delta.repeat(4_000);
+    let mut chunks = vec![ACCEPTED_STREAM_CREATED.to_vec()];
+    for _ in 0..4_000 {
+        chunks.push(
+            format!(
+                "data: {}\n\n",
+                serde_json::json!({
+                    "type":"response.output_text.delta", "item_id":"observation-message",
+                    "output_index":0, "content_index":0, "delta":delta
+                })
+            )
+            .into_bytes(),
+        );
+    }
+    chunks.push(
+        format!(
+            "data: {}\n\n",
+            serde_json::json!({
+                "type":"response.completed", "response":{
+                    "id":"observation-stream", "model":"native-observed", "status":"completed",
+                    "output":[{"type":"message", "id":"observation-message", "role":"assistant",
+                        "status":"completed", "content":[{"type":"output_text", "text":text,
+                        "annotations":[]}]}], "usage":{"input_tokens":13,"output_tokens":8_000}
+                }
+            })
+        )
+        .into_bytes(),
+    );
+    let provider = NativeProvider::start(vec![ProviderReply::StreamDrip {
+        status: 200,
+        chunks,
+        interval: Duration::from_millis(1),
+    }]);
+    let fixture = RuntimeFixture::launch_with_observation(
+        &[&provider],
+        1,
+        ObservationFaults {
+            queue_bytes: 4 * 1024 * 1024,
+            ..ObservationFaults::healthy()
+        },
+    );
+    let response = fixture.request_body(
+        br#"{"model":"runtime-model","input":"long capture regression","stream":true}"#,
+    );
+    assert_eq!(response.status, 200);
+    assert!(String::from_utf8_lossy(&response.body).contains(&text));
+    let root = fixture.observation_root.as_deref().unwrap();
+    let facts = wait_complete_accepted_request(root);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let content = loop {
+        let records = read_records(&root.join("conversation-content.jsonl"));
+        let abort = records.iter().find(|event| event["phase"] == "abort");
+        assert!(
+            abort.is_none(),
+            "capture aborted: {:?}",
+            abort.map(|event| &event["abort_reason"])
+        );
+        if content_complete_for_requests(&records, &[request_id(&facts).into()]) {
+            break records;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "long stream capture did not finish; {} records",
+            records.len()
+        );
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert!(
+        !content.iter().any(|event| event["phase"] == "abort"),
+        "capture aborted"
+    );
+    let deltas = content
+        .iter()
+        .filter_map(|event| {
+            let bytes = event["canonical_bytes_base64"].as_str()?;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(bytes)
+                .ok()?;
+            let event: Value = serde_json::from_slice(&bytes).ok()?;
+            (event.pointer("/event/kind")?.as_str()? == "text_delta")
+                .then(|| event["event"]["text"].as_str().unwrap().to_owned())
+        })
+        .collect::<String>();
+    assert_eq!(deltas, text, "all accepted deltas must remain in order");
 }
 
 #[test]

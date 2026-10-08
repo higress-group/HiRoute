@@ -156,62 +156,6 @@ pub(super) fn snapshot(revision: u64, renderer: &str) -> GatewayPublicationSnaps
     .unwrap()
 }
 
-fn rest_classifier_snapshot() -> GatewayPublicationSnapshotV3 {
-    GatewayPublicationSnapshotV3::seal(
-        "personal/default",
-        "authority",
-        1,
-        1,
-        "renderer",
-        vec![AliasPlanV1 {
-            served_model_id: "smart".into(),
-            purpose: "smart".into(),
-            agent_plan_revision: 10,
-            protocols: vec![IngressProtocol::Responses],
-            overall_timeout_ms: 5_000,
-            max_attempts: 2,
-            routing: Some(AliasRoutingV1 {
-                agent_plan_id: "legacy/smart".into(),
-                plan_display_name: Some("Smart".into()),
-                request_owned: AliasRequestOwnedRouteV1::Classified {
-                    reselect_on_user_message: false,
-                    classifier: AliasComplexityClassifierV1 {
-                        revision: "classifier/v1".into(),
-                        mode: hiroute_domain::ComplexityClassifierModeV1::Rest {
-                            endpoint: "http://127.0.0.1:4317/v1/decisions".into(),
-                            timeout_ms: hiroute_domain::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS,
-                            auth_header: None,
-                        },
-                        user_keywords: vec!["complex".into()],
-                    },
-                    simple_groups: vec![AliasGroupIdV1::Economy],
-                    complex_groups: vec![AliasGroupIdV1::Primary],
-                },
-                groups: vec![
-                    AliasModelGroupV1 {
-                        group_id: AliasGroupIdV1::Economy,
-                        candidate_local_ids: vec![1],
-                    },
-                    AliasModelGroupV1 {
-                        group_id: AliasGroupIdV1::Primary,
-                        candidate_local_ids: vec![2],
-                    },
-                ],
-            }),
-            candidates: vec![candidate(1), candidate(2)],
-        }],
-        vec![GrantV1 {
-            route_protocols: Default::default(),
-            grant_id: "grant".into(),
-            generation: 1,
-            bearer_token_sha256: token_sha256("token"),
-            protocol: IngressProtocol::Responses,
-            routes: [test_plan_route("smart", 10)].into(),
-        }],
-    )
-    .unwrap()
-}
-
 pub(super) fn publish(
     installer: &GatewayPublicationInstaller,
     snapshot: GatewayPublicationSnapshotV3,
@@ -226,96 +170,6 @@ fn reseal(mut snapshot: GatewayPublicationSnapshotV3) -> GatewayPublicationSnaps
     snapshot.payload_digest.clear();
     snapshot.payload_digest = snapshot.canonical_digest().unwrap();
     snapshot
-}
-
-#[test]
-fn rest_classifier_accepts_trusted_http_https_and_optional_custom_header() {
-    let directory = TestDirectory::new();
-    let installer =
-        GatewayPublicationInstaller::open(directory.path().join("publication.json")).unwrap();
-    assert!(installer.prepare(rest_classifier_snapshot()).is_ok());
-
-    let mut remote_http = rest_classifier_snapshot();
-    let AliasRequestOwnedRouteV1::Classified { classifier, .. } = &mut remote_http.aliases[0]
-        .routing
-        .as_mut()
-        .unwrap()
-        .request_owned
-    else {
-        panic!("expected classified source")
-    };
-    let hiroute_domain::ComplexityClassifierModeV1::Rest { endpoint, .. } = &mut classifier.mode
-    else {
-        panic!("expected REST classifier")
-    };
-    *endpoint = "http://classifier.example/v1/decisions".into();
-    assert!(installer.prepare(reseal(remote_http)).is_ok());
-
-    let mut remote_without_auth = rest_classifier_snapshot();
-    let AliasRequestOwnedRouteV1::Classified { classifier, .. } = &mut remote_without_auth.aliases
-        [0]
-    .routing
-    .as_mut()
-    .unwrap()
-    .request_owned
-    else {
-        panic!("expected classified source")
-    };
-    let hiroute_domain::ComplexityClassifierModeV1::Rest { endpoint, .. } = &mut classifier.mode
-    else {
-        panic!("expected REST classifier")
-    };
-    *endpoint = "https://classifier.example/v1/decisions".into();
-    assert!(installer.prepare(reseal(remote_without_auth)).is_ok());
-
-    let mut remote_bearer = rest_classifier_snapshot();
-    let AliasRequestOwnedRouteV1::Classified { classifier, .. } = &mut remote_bearer.aliases[0]
-        .routing
-        .as_mut()
-        .unwrap()
-        .request_owned
-    else {
-        panic!("expected classified source")
-    };
-    let hiroute_domain::ComplexityClassifierModeV1::Rest {
-        endpoint,
-        auth_header,
-        ..
-    } = &mut classifier.mode
-    else {
-        panic!("expected REST classifier")
-    };
-    *endpoint = "https://classifier.example/v1/decisions".into();
-    *auth_header = Some(hiroute_domain::ClassifierAuthHeaderV1 {
-        name: "X-API-Key".into(),
-        value_secret_ref: "classifier/main".into(),
-    });
-    assert!(installer.prepare(reseal(remote_bearer)).is_ok());
-
-    for timeout_ms in [0, hiroute_domain::MAX_REST_CLASSIFIER_TIMEOUT_MS + 1] {
-        let mut invalid_timeout = rest_classifier_snapshot();
-        let AliasRequestOwnedRouteV1::Classified { classifier, .. } = &mut invalid_timeout.aliases
-            [0]
-        .routing
-        .as_mut()
-        .unwrap()
-        .request_owned
-        else {
-            panic!("expected classified source")
-        };
-        let hiroute_domain::ComplexityClassifierModeV1::Rest {
-            timeout_ms: value, ..
-        } = &mut classifier.mode
-        else {
-            panic!("expected REST classifier")
-        };
-        *value = timeout_ms;
-        assert!(matches!(
-            compile_classifier_mode_authority(&classifier.mode, 1),
-            Err(PublicationInstallError::InvalidPlannerPolicy)
-        ));
-        assert!(installer.prepare(reseal(invalid_timeout)).is_err());
-    }
 }
 
 #[test]
@@ -751,6 +605,9 @@ fn profile_digest_and_unknown_critical_fact_fail_before_install() {
         serde_json::json!(true);
     assert!(serde_json::from_value::<GatewayPublicationSnapshotV3>(unknown_field).is_err());
 }
+
+#[path = "tests/decision_contracts.rs"]
+mod decision_contracts;
 
 #[path = "tests/grant_projection.rs"]
 mod grant_projection;

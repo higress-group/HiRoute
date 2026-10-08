@@ -1,7 +1,52 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="660" viewBox="0 0 1120 660" role="img" aria-labelledby="title desc">
-<title id="title">同一份证据，两种判断</title><desc id="desc">一次 Jev 上游请求 · 选择与评分同时返回. 评分回看此前阶段，分支选择面向下一阶段。</desc>
-<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L7 4L0 8" fill="none" stroke="#9ba9ee" stroke-width="1.5"/></marker><linearGradient id="hub" x2="1" y2="1"><stop stop-color="#303764"/><stop offset="1" stop-color="#222943"/></linearGradient></defs>
-<rect width="1120" height="660" rx="24" fill="#101727"/>
-<g font-family="Inter,Arial,'PingFang SC','Microsoft YaHei',sans-serif">
-<text x="40" y="55" font-size="28" fill="#fff" font-weight="600">同一份证据，两种判断</text><text x="40" y="88" font-size="17" fill="#b4bfd6" font-weight="400">一次 Jev 上游请求 · 选择与评分同时返回</text>
-<text x="40" y="146" font-size="18" fill="#a8b8ed" font-weight="400">HiRoute 提供</text><text x="792" y="146" font-size="18" fill="#a8b8ed" font-weight="400">HiRoute 执行与记录</text><rect x="40" y="170" width="310" height="94" rx="15" fill="#182135" stroke="#33415d"/><text x="60" y="204" font-size="21" fill="#fff" font-weight="600">当前输入</text><text x="60" y="237" font-size="16" fill="#b4bfd6" font-weight="400">问题、反馈或继续任务</text><rect x="40" y="282" width="310" height="94" rx="15" fill="#182135" stroke="#33415d"/><text x="60" y="316" font-size="21" fill="#fff" font-weight="600">执行历史</text><text x="60" y="349" font-size="16" fill="#b4bfd6" font-weight="400">回答 · 工具行为 · 分支</text><rect x="40" y="394" width="310" height="94" rx="15" fill="#182135" stroke="#33415d"/><text x="60" y="428" font-size="21" fill="#fff" font-weight="600">允许分支</text><text x="60" y="461" font-size="16" fill="#b4bfd6" font-weight="400">由当前路由计划限定</text><path d="M350 217H380V329M350 441H380V329" fill="none" stroke="#8394cc" stroke-width="2"/><path d="M350 329H415" fill="none" stroke="#9ba9ee" stroke-width="2" marker-end="url(#arrow)"/><rect x="423" y="204" width="290" height="250" rx="15" fill="url(#hub)" stroke="#7582cb"/><text x="449" y="243" font-size="37" fill="#c0c9ff" font-weight="600">Jev</text><text x="449" y="275" font-size="18" fill="#b4bfd6" font-weight="400">官方 Jev 扩展</text><text x="449" y="324" font-size="19" fill="#e9ecfb" font-weight="400">理解当前任务</text><text x="449" y="355" font-size="19" fill="#e9ecfb" font-weight="400">结合此前执行表现</text><text x="449" y="416" font-size="18" fill="#c0c9ff" font-weight="400">Choice + 可选 Score</text><path d="M713 329H753V238H786" fill="none" stroke="#9ba9ee" stroke-width="2" marker-end="url(#arrow)"/><path d="M753 329V404H786" fill="none" stroke="#9ba9ee" stroke-width="2" marker-end="url(#arrow)"/><rect x="792" y="183" width="288" height="113" rx="15" fill="#222d4d" stroke="#7487d5"/><text x="812" y="222" font-size="23" fill="#d0d9ff" font-weight="600">下一分支</text><text x="812" y="260" font-size="17" fill="#b4bfd6" font-weight="400">用于后续执行</text><rect x="792" y="347" width="288" height="113" rx="15" fill="#2b2544" stroke="#8c78b6"/><text x="812" y="386" font-size="19" fill="#e0cef8" font-weight="600">阶段胜任度 · 可选</text><text x="812" y="424" font-size="16" fill="#c4b5d9" font-weight="400">记录到此前模型阶段</text><path d="M1080 238H1096V524H24V329H34" fill="none" stroke="#697aab" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow)"/><text x="265" y="557" font-size="18" fill="#b4bfd6" font-weight="400">执行产生新证据，用于后续决策</text><text x="40" y="617" font-size="17" fill="#9aa8c6" font-weight="400">评分回看此前阶段，分支选择面向下一阶段。</text></g></svg>
+  <title id="title">一次判断，职责清晰</title>
+  <desc id="desc">HiRoute 提供当前输入、保留的执行历史与冻结条件。决策模型返回任务类别选择、程度概率和可选上一阶段胜任度。HiRoute 应用阈值，选择并执行模型组，将胜任度记录到真实执行过的上一阶段。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L7 4L0 8" fill="none" stroke="#9ba9ee" stroke-width="1.5"/></marker>
+    <linearGradient id="hub" x2="1" y2="1"><stop stop-color="#303764"/><stop offset="1" stop-color="#222943"/></linearGradient>
+  </defs>
+  <rect width="1120" height="660" rx="24" fill="#101727"/>
+  <g font-family="Inter,Arial,'PingFang SC','Microsoft YaHei',sans-serif">
+    <text x="40" y="55" font-size="28" fill="#fff" font-weight="600">一次判断，职责清晰</text>
+    <text x="40" y="88" font-size="17" fill="#b4bfd6">判断当前任务，评价上一阶段；HiRoute 负责选组与执行。</text>
+    <text x="40" y="146" font-size="18" fill="#a8b8ed">HiRoute 提供</text>
+    <text x="758" y="146" font-size="18" fill="#a8b8ed">HiRoute 应用与记录</text>
+
+    <rect x="40" y="170" width="310" height="94" rx="15" fill="#182135" stroke="#33415d"/>
+    <text x="60" y="204" font-size="21" fill="#fff" font-weight="600">当前用户轮次</text>
+    <text x="60" y="237" font-size="16" fill="#b4bfd6">新的问题或反馈</text>
+    <rect x="40" y="282" width="310" height="94" rx="15" fill="#182135" stroke="#33415d"/>
+    <text x="60" y="316" font-size="21" fill="#fff" font-weight="600">保留的执行历史</text>
+    <text x="60" y="349" font-size="16" fill="#b4bfd6">接受的回答 · 工具行为</text>
+    <rect x="40" y="394" width="310" height="94" rx="15" fill="#182135" stroke="#33415d"/>
+    <text x="60" y="428" font-size="21" fill="#fff" font-weight="600">冻结的计划条件</text>
+    <text x="60" y="461" font-size="16" fill="#b4bfd6">任务类别 · 程度条件 · 评分标准</text>
+    <path d="M350 217H375V329M350 441H375V329M350 329H394" fill="none" stroke="#9ba9ee" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="400" y="204" width="310" height="250" rx="15" fill="url(#hub)" stroke="#7582cb"/>
+    <text x="422" y="244" font-size="28" fill="#c0c9ff" font-weight="600">决策模型</text>
+    <text x="422" y="273" font-size="16" fill="#b4bfd6">内置决策连接</text>
+    <text x="422" y="296" font-size="16" fill="#b4bfd6">或可选的自定义扩展</text>
+    <text x="422" y="332" font-size="16" fill="#e9ecfb">任务类别选择 · 按配置启用</text>
+    <text x="422" y="362" font-size="16" fill="#e9ecfb">处理程度概率 · 双组类别</text>
+    <text x="422" y="392" font-size="16" fill="#e9ecfb">上一阶段胜任度 · 可选</text>
+    <text x="422" y="429" font-size="17" fill="#c0c9ff">一次决策请求</text>
+    <path d="M710 329H736V250H752M736 329V425H752" fill="none" stroke="#9ba9ee" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="758" y="170" width="322" height="166" rx="15" fill="#222d4d" stroke="#7487d5"/>
+    <text x="778" y="207" font-size="20" fill="#d0d9ff" font-weight="600">选择并执行模型组</text>
+    <text x="778" y="239" font-size="16" fill="#b4bfd6">智能省钱：省钱组 / 主力组</text>
+    <text x="778" y="265" font-size="16" fill="#b4bfd6">自定义：类别 → 常规组 / 主力组</text>
+    <text x="778" y="292" font-size="15" fill="#b4bfd6">应用阈值与本次适用的完整评分</text>
+    <text x="778" y="316" font-size="15" fill="#b4bfd6">有序候选 · 有边界的故障接力</text>
+    <rect x="758" y="364" width="322" height="124" rx="15" fill="#2b2544" stroke="#8c78b6"/>
+    <text x="778" y="399" font-size="19" fill="#e0cef8" font-weight="600">记录上一阶段胜任度</text>
+    <text x="778" y="429" font-size="16" fill="#c4b5d9">绑定真实执行过的阶段</text>
+    <text x="778" y="453" font-size="15" fill="#c4b5d9">类别 · 模型组 · 实际模型 · 评分标准</text>
+    <text x="778" y="477" font-size="14" fill="#c4b5d9">缺失或部分证据保留为未评分</text>
+
+    <path d="M1080 253H1096V524H24V329H34" fill="none" stroke="#697aab" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow)"/>
+    <text x="265" y="557" font-size="18" fill="#b4bfd6">执行产生新证据，用于后续决策</text>
+    <text x="40" y="617" font-size="17" fill="#9aa8c6">新用户轮次重新判断；同轮工具续接继承冻结决策。</text>
+  </g>
+</svg>

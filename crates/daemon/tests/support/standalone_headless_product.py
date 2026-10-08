@@ -4,6 +4,7 @@
 Only external processes are deterministic fixtures. Every HiRoute query and mutation crosses the
 installed public CLI; this file never opens Local Control directly and never writes product data.
 """
+from publication_process import judgment_fixture
 import hashlib
 import json
 import os
@@ -643,7 +644,7 @@ def run(repository):
             'purpose': 'Installed CLI and Agent traffic',
             'mode': 'fixed_model',
             'candidates': [{'binding_id': binding_id}],
-            'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+            'smart': {'economy': [], 'primary': [], 'judgment': judgment_fixture(),
                       'reselect_on_user_message': False,
                       'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
             'free': {'candidates': [], 'primary': [], 'primary_fallback': False},

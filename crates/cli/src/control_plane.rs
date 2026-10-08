@@ -64,6 +64,13 @@ pub(crate) fn command_payload(
     options: &[String],
 ) -> Option<Result<Value, ErrorCode>> {
     match command_id {
+        "decision.services.list" => Some(empty::<hiroute_application_api::ClientEmptyRequestV1>(
+            options,
+        )),
+        "decision.services.apply" => Some(preview_or_apply(options)),
+        "decision.services.test" => Some(stdin::<
+            hiroute_application_api::ClassifierDecisionTestRequestV1,
+        >(options)),
         "models.show" => Some(stdin::<hiroute_application_api::ModelCatalogQueryV1>(
             options,
         )),

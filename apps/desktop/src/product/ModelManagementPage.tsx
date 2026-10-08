@@ -150,6 +150,7 @@ export function ModelManagementPage({
   agents = [],
   onOpenPlan,
   onCreatePlan,
+  tabs,
 }: {
   language: 'zh' | 'en';
   active: boolean;
@@ -165,6 +166,7 @@ export function ModelManagementPage({
   agents?: Agent[];
   onOpenPlan?(planId: string): void;
   onCreatePlan?(bindingId: string): void;
+  tabs?: import('react').ReactNode;
 }) {
   const [management, setManagement] = useState<ManagementSnapshot | null>(null);
   const [focusedSource, setFocusedSource] = useState<string | null>(initialSourceId);
@@ -643,7 +645,7 @@ export function ModelManagementPage({
     if (previous && !active) {
       closeSubscriptionView();
     } else if (!previous && active) {
-      void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]);
+      void Promise.all([refreshManagement(), refreshSubscriptions(), recoverSubscriptionCheck()]);
     }
   }, [active]);
 
@@ -988,6 +990,7 @@ export function ModelManagementPage({
 
   return <ProductPage
     title={text.title}
+    tabs={tabs}
     subtitle={text.detail}
     flush
     className="hr-models-page"

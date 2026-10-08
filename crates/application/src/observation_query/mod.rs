@@ -352,6 +352,7 @@ mod tests {
                 content_completeness: ContentCompleteness::Unknown,
                 completeness_scope: ObservationCompletenessScope::GatewayVisible,
                 gaps: vec![],
+                gaps_truncated: false,
                 activity_bytes: 0,
                 content_bytes: 0,
                 production_exporter: "not_installed".to_owned(),

@@ -9,6 +9,13 @@ use std::{
 
 const BLOCK: usize = 64 * 1024;
 const OVERLAP: usize = 1024;
+const SCAN_ROWS: usize = 256;
+const NEXT_SOURCE_SQL: &str = "SELECT b.rowid,b.workspace_id,b.blob_digest,b.object_path,b.byte_count,b.media_type FROM content_blobs_v2 b
+             WHERE b.rowid>?1 AND b.rowid<=?2 AND b.state='complete' AND (b.media_type LIKE 'text/%' OR b.media_type='application/json' OR b.media_type LIKE 'application/vnd.hiroute.%')
+               AND NOT EXISTS(SELECT 1 FROM observation_text_index_v2 i WHERE i.workspace=b.workspace_id AND i.digest=b.blob_digest)
+               AND EXISTS(SELECT 1 FROM content_instances_v2 c WHERE c.workspace_id=b.workspace_id AND c.content_blob_digest=b.blob_digest AND c.state='complete')
+             ORDER BY b.rowid LIMIT 1";
+
 struct Building {
     workspace: String,
     digest: String,
@@ -24,6 +31,7 @@ struct Building {
 pub struct TextIndexBuilder {
     _owner: crate::maintenance::LocalWorkerGuard,
     building: Option<Building>,
+    scan_after: i64,
 }
 impl TextIndexBuilder {
     pub fn new(store: &LocalObservationStore) -> Result<Self, Error> {
@@ -42,6 +50,7 @@ impl TextIndexBuilder {
         transaction.commit().map_err(|_| Error::Unavailable)?;
         Ok(Self {
             building: None,
+            scan_after: 0,
             _owner: owner,
         })
     }
@@ -54,9 +63,13 @@ impl TextIndexBuilder {
         let mut completed = 0;
         while bytes < 8 * 1024 * 1024 && started.elapsed() < Duration::from_millis(500) {
             if self.building.is_none() {
-                self.building = next(store)?;
+                let (building, exhausted) = next(store, &mut self.scan_after)?;
+                self.building = building;
                 if self.building.is_none() {
-                    break;
+                    if exhausted {
+                        break;
+                    }
+                    continue;
                 }
             }
             let job = self.building.as_mut().ok_or(Error::Unavailable)?;
@@ -117,20 +130,38 @@ impl TextIndexBuilder {
     }
 }
 
-fn next(store: &LocalObservationStore) -> Result<Option<Building>, Error> {
-    let source: Option<(String, String, String, u64, String)> = {
+fn next(store: &LocalObservationStore, after: &mut i64) -> Result<(Option<Building>, bool), Error> {
+    let source = {
         let connection = store.connection.lock();
-        connection.query_row(
-            "SELECT b.workspace_id,b.blob_digest,b.object_path,b.byte_count,b.media_type FROM content_blobs_v2 b
-             WHERE b.state='complete' AND (b.media_type LIKE 'text/%' OR b.media_type='application/json' OR b.media_type LIKE 'application/vnd.hiroute.%')
-               AND NOT EXISTS(SELECT 1 FROM observation_text_index_v2 i WHERE i.workspace=b.workspace_id AND i.digest=b.blob_digest)
-               AND EXISTS(SELECT 1 FROM content_instances_v2 c WHERE c.workspace_id=b.workspace_id AND c.content_blob_digest=b.blob_digest AND c.state='complete')
-             ORDER BY b.rowid LIMIT 1",[],
-            |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
-        ).optional().map_err(|_| Error::Unavailable)?
+        // Bound the rows visited while holding the ingestion lock, including
+        // already indexed and temporarily unreferenced blobs. Wrap on exhaustion
+        // so deletion/reappearance and late completion cannot be skipped forever.
+        let through: Option<i64> = connection.query_row(
+            "SELECT MAX(rowid) FROM (SELECT rowid FROM content_blobs_v2 WHERE rowid>?1 ORDER BY rowid LIMIT ?2)",
+            params![*after, SCAN_ROWS], |row| row.get(0),
+        ).map_err(|_| Error::Unavailable)?;
+        let Some(through) = through else {
+            *after = 0;
+            return Ok((None, true));
+        };
+        let source: Option<(i64, String, String, String, u64, String)> = connection
+            .query_row(NEXT_SOURCE_SQL, params![*after, through], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })
+            .optional()
+            .map_err(|_| Error::Unavailable)?;
+        *after = source.as_ref().map_or(through, |row| row.0);
+        source
     };
-    let Some((workspace, digest, path, expected_bytes, media)) = source else {
-        return Ok(None);
+    let Some((_, workspace, digest, path, expected_bytes, media)) = source else {
+        return Ok((None, false));
     };
     let file = File::open(path);
     store.connection.lock().execute(
@@ -138,17 +169,20 @@ fn next(store: &LocalObservationStore) -> Result<Option<Building>, Error> {
         params![workspace,digest,if file.is_ok() {"building"} else {"failed"}],
     ).map_err(|_| Error::Unavailable)?;
     let file = file.map_err(|_| Error::Unavailable)?;
-    Ok(Some(Building {
-        workspace,
-        digest,
-        expected_bytes,
-        file,
-        accumulator: store.authority.content_accumulator(&media),
-        consumed: 0,
-        ordinal: 0,
-        utf8_tail: Vec::new(),
-        overlap: String::new(),
-    }))
+    Ok((
+        Some(Building {
+            workspace,
+            digest,
+            expected_bytes,
+            file,
+            accumulator: store.authority.content_accumulator(&media),
+            consumed: 0,
+            ordinal: 0,
+            utf8_tail: Vec::new(),
+            overlap: String::new(),
+        }),
+        false,
+    ))
 }
 
 fn finish(store: &LocalObservationStore, job: Building, readable: bool) -> Result<(), Error> {
@@ -182,3 +216,7 @@ fn finish(store: &LocalObservationStore, job: Building, readable: bool) -> Resul
         .map_err(|_| Error::Unavailable)?;
     transaction.commit().map_err(|_| Error::Unavailable)
 }
+
+#[cfg(test)]
+#[path = "worker_tests.rs"]
+mod tests;

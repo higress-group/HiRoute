@@ -340,7 +340,20 @@ model is a valid minimal plan:
       "mode": "fixed_model",
       "candidates": [{"binding_id": "BINDING_FROM_ROUTING_OPTIONS"}],
       "smart": {
-        "economy": [], "primary": [], "primary_fallback": false,
+        "economy": [], "primary": [],
+        "judgment": {
+          "degree": {
+            "simple_threshold_millis": 800,
+            "instructions": "Judge the reasoning and uncertainty required by the current task.",
+            "simple": "Explicit, bounded work that follows established patterns.",
+            "complex": "Work requiring investigation or materially different design choices."
+          },
+          "competence": {
+            "floor_millis": 500,
+            "instructions": "Assess useful progress in the completed stage identified by the assessment target.",
+            "criteria": ["No useful progress or substantial correction needed.", "Useful but incomplete or uneven progress.", "Reliable progress with no material correction."]
+          }
+        },
         "reselect_on_user_message": false,
         "classifier": {"kind": "local_rules"}, "complex_keywords": []
       },
@@ -458,6 +471,8 @@ hiroute sessions show SESSION_ID --output json
 hiroute sessions receipt RECEIPT_ID --output json
 hiroute sessions status --output json
 hiroute value show --routing PLAN_ID --session SESSION_ID --output json
+hiroute observation plan-quality samples --plan-id PLAN_ID --output json
+hiroute observation plan-quality samples --session-id SESSION_ID --limit 50 --output json
 ```
 
 `sessions show` returns facts and timeline by default, not conversation bodies. Ordered
@@ -467,6 +482,13 @@ returns only existing ledger value. Without trustworthy price evidence, an amoun
 `null`; unknown amounts or tokens without value-ledger rows are never fabricated as zero
 cost. Bodies, search, catalog, and ancestry each require their own precise protected
 capability.
+
+`observation plan-quality samples` returns the same stage facts used by the plan's
+competence view. Each sample's `branch_execution` identifies its actual model group,
+candidate position and frozen judgment policy. Missing or partial scores remain distinct
+from zero; a stage score does not rewrite its opening selection reason. Use the returned
+cursor to read further pages. This facts-only query does not call a model or grant access
+to conversation bodies; discover its filters through the command's `--help` or `schema show`.
 
 ## Configure a Worker and delegate a task
 
@@ -583,3 +605,148 @@ service definition, and the two Skills while they are still HiRoute-owned. Any e
 replaced entry aborts instead of being overwritten. Business storage, diagnostics, and
 sessions are retained by default. Deleting retained data requires a separate confirmation of
 the exact directory and that its contents are no longer needed.
+
+## Decision services and branch routing
+
+Desktop manages these connections under **Models → Decision models**; the Released CLI keeps
+`decision services list/apply/test`. Decision models and custom extensions are independent of
+general model sources that execute tasks. Discover the installed contract first:
+
+```sh
+hiroute decision services list --output json
+hiroute schema show --command-id decision.services.apply --output json
+hiroute decision services apply --help
+hiroute decision services test --help
+```
+
+There is no separate `decision services preview` command. The first `apply` previews without
+saving. Put the complete request below in `decision-preview-request.json`. The outer request
+contains `schema_version` and `spec`; the inner ChangeSpec has its own `schema_version`:
+
+```json
+{
+  "schema_version": {"major": 1, "minor": 0},
+  "spec": {
+    "schema_version": {"major": 1, "minor": 0},
+    "command_id": "decision.services.apply",
+    "resource_id": "decision-main",
+    "desired_state": {
+      "id": "decision-main",
+      "expected_revision": 0,
+      "service": {
+        "id": "decision-main",
+        "revision": 1,
+        "name": "Bailian decision",
+        "connection": {
+          "kind": "system_one",
+          "provider": "bailian-token-plan",
+          "model": "decision-model-preview",
+          "endpoint": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone",
+          "timeout_ms": 10000,
+          "auth_header": {"name": "Authorization", "value_secret_ref": "decision/main/r1"}
+        }
+      },
+      "input_slot": "candidate/decision-main"
+    }
+  }
+}
+```
+
+Before preview, register `candidate/decision-main` using protected input. The private file
+must contain the complete `Bearer ...` header value for this example, not a bare API key:
+
+```sh
+chmod 600 /absolute/private/decision-header
+exec 3</absolute/private/decision-header
+hiroute protected-input register \
+  --candidate candidate/decision-main --secret-fd 3 --output json
+exec 3<&-
+
+hiroute decision services apply --request-stdin --output json \
+  < decision-preview-request.json > decision-preview.json
+```
+
+Proceed only when the preview has no blockers. Save the exact normalized spec, digest and
+expected revisions returned by the preview in an apply request, then submit it:
+
+```sh
+jq '{schema_version:{major:1,minor:0},spec:.data.normalized_spec,
+     accept_digest:.data.change_digest,expected_revisions:.data.expected_revisions,
+     idempotency_key:"save-decision-main-1"}' \
+  decision-preview.json > decision-apply-request.json
+
+hiroute decision services apply --request-stdin --output json \
+  < decision-apply-request.json > decision-apply.json
+
+hiroute decision services list --output json > decision-saved.json
+hiroute protected-input release --candidate candidate/decision-main --output json
+```
+
+Check the returned Operation state in `decision-apply.json`. If delivery is uncertain, use
+`operations find/get` in the original idempotency domain and retain the exact apply request;
+do not replace its key. An edit expects the current revision and saves the next revision
+(for example, `expected_revision: 1`, service `revision: 2`). Deletion uses `service: null`
+and the current expected revision. Connections referenced by routes, drafts or retained
+historical versions cannot be deleted. Credential rotation uses a new protected reference
+so previously published versions retain their own credential.
+
+Test the exact saved r1, rather than an unsaved draft or whichever version happens to be latest:
+
+```sh
+jq -e --arg id decision-main --argjson revision 1 \
+  '[.data.services[] | select(.id==$id and .revision==$revision)] |
+   if length == 1 then
+     {schema:"hiroute.classifier-decision-test/v1",
+      classifier:{kind:"decision_service",service:.[0]}}
+   else error("Expected saved connection revision is not in this list") end' \
+  decision-saved.json > decision-test-request.json
+
+hiroute decision services test --request-stdin --output json < decision-test-request.json
+```
+
+The fixed synthetic test may consume quota. Check `data.outcome` and `data.failure_code`,
+not only the CLI exit code. It tests that saved connection's transport and required response
+fields, reads no real conversation, runs no execution model and produces no competence sample.
+A pass is not a task-quality or continuing-health guarantee. Saving a connection and testing
+it are separate actions; neither publishes a route.
+
+Plans use the existing `routing preview/apply` transaction with `hiroute.plan-editor/v2`:
+
+| Mode | Editor fields |
+| --- | --- |
+| `smart_saving` | `smart.classifier`, `smart.economy`, `smart.primary` and `smart.judgment` |
+| `custom_branches` | `branch_routing.classifier`, `branch_routing.branches`, `branch_routing.default_branch_id`, `branch_routing.judgment` and `branch_routing.reselect_on_user_message` |
+
+`classifier` is `{kind: "decision_service", service: <complete saved connection revision>}`
+for a decision model or custom extension. Only Smart saving may instead use
+`{kind: "local_rules"}`. Publication verifies the connection ID, revision and full content
+against its saved immutable version; there is no inline `rest` connection.
+
+A judgment has `degree: {simple_threshold_millis, instructions, simple, complex}` and
+`competence: {floor_millis, instructions, criteria}`. Thresholds use integers from 0 to 1000:
+800 means 0.8 and 500 means 0.5. `criteria` contains exactly three nonempty descriptions for
+0, 0.5 and 1. The short prompts in the fixed-route example above are illustrative editable
+criteria, not a claim to reproduce the complete built-in defaults.
+
+Each custom branch has `id`, `name`, `condition`, regular `candidates` and `primary_candidates`
+(an empty array for a single-group branch). Optional branch `judgment` is a complete override;
+omit it or set it to `null` to follow plan defaults. Customize by copying the whole effective
+judgment, then editing it; restore by removing that whole override. Task `condition` remains
+separate from degree and competence prompts. A branch without primary skips degree judgment
+while competence can still be observed.
+
+Publish pins the connection revision, task conditions, judgment policies, ordered candidates
+and reasoning configuration. Saving r2 leaves a published r1 route unchanged until it is
+selected and republished; saved historical r1 remains publishable even if `list` now returns r2.
+Every new user turn chooses again. Tool continuations and replay inherit the frozen choice
+only when the same turn is identifiable, history continues, and the decision remains reusable.
+Compaction or history reconstruction that breaks continuity or prevents reuse causes a fresh decision.
+Only this call's complete compatible same-category low score can trigger primary protection;
+missing/partial scores are not zero. Regular candidates relay to primary within the same branch,
+while a direct primary selection stays in primary.
+
+Custom connections use `connection.kind: "custom"` and implement HiRoute's
+[general Decision API](../decision-extensions/api/README.md). Built-in connections use the
+vendor [System One mapping](../decision-extensions/api/system-one-design.md). See the
+[decision protocol](../decision-extensions/api/decision-design.md) for selection and
+failure rules. Tool selection has no runtime entry in this release.

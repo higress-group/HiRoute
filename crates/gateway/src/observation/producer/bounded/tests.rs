@@ -101,6 +101,48 @@ struct SlowOnceSink {
     deliveries: Mutex<Vec<(u64, bool)>>,
 }
 
+#[test]
+fn two_long_histories_fit_local_byte_capacity_and_overflow_stays_explicit() {
+    // 1,000 canonical parts per history, including roughly 4.5 KiB of text,
+    // base64 and envelope metadata per part. The sink is deliberately stopped
+    // for the entire two-request burst; generation must never wait for it.
+    const RECORDS: usize = 2_000;
+    for capacity in [4 * 1024 * 1024, 16 * 1024 * 1024] {
+        let gate = Arc::new((Mutex::new(false), Condvar::new()));
+        let sink = Arc::new(SlowOnceSink {
+            gate: gate.clone(),
+            slow: AtomicBool::new(true),
+            records: Mutex::new(Vec::new()),
+            gaps: Mutex::new(Vec::new()),
+            deliveries: Mutex::new(Vec::new()),
+        });
+        let producer = ByteBoundedObservationProducer::new(
+            identity("history-burst"),
+            capacity,
+            capacity / RECORD_ACCOUNTING_BYTES,
+            sink.clone(),
+        )
+        .unwrap();
+        for _ in 0..RECORDS {
+            producer.try_publish(|_| vec![b'x'; 4_608]);
+        }
+        *gate.0.lock().unwrap() = true;
+        gate.1.notify_all();
+        producer.flush(Duration::from_secs(5)).unwrap();
+        let stats = producer.stats();
+        assert!(stats.queue_high_water_bytes <= capacity);
+        assert_eq!(stats.queued_bytes, 0);
+        if capacity == 4 * 1024 * 1024 {
+            assert!(stats.dropped > 0);
+            assert!(!sink.gaps.lock().unwrap().is_empty());
+        } else {
+            assert_eq!(stats.dropped, 0);
+            assert_eq!(sink.records.lock().unwrap().len(), RECORDS);
+            assert!(sink.gaps.lock().unwrap().is_empty());
+        }
+    }
+}
+
 impl ObservationRecordSink for SlowOnceSink {
     fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack> {
         if self.slow.swap(false, Ordering::AcqRel) {

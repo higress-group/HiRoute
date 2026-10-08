@@ -50,11 +50,33 @@ The Released CLI now supports the complete headless loop:
 
 - Discover and inspect model sources with `compute scan/list/show`; check and save connections with `compute connection options/test/preview/apply/authorize`.
 - Inspect candidate model capabilities with `models show`.
+- Manage saved decision model or custom extension revisions with `decision services list/apply/test`.
 - Create, update, and publish smart routes with `routing options/list/show/preview/apply`.
 - Discover local Agents with `agents scan/list/check`; connect with `agents connect preview/apply/status` and recover with `agents restore preview/apply`.
 - If a write response is lost or uncertain, query the operation in its original idempotency domain with `operations find/get`.
 
-Every write moves from `preview` to `apply` with the same change, digest, revisions, and idempotency key. Pass passwords and API keys through `protected-input`, never through ordinary JSON, arguments, or logs. Obtain exact fields from the matching `schema show`, `options`, and leaf `--help`.
+Configuration writes preview first, then apply with the complete request, preview digest, exact revisions, and idempotency key. Models, routes, and Agents use their own `preview/apply` commands. Decision connections use `decision services apply` for both preview and save. Pass passwords and API keys through `protected-input`, never through ordinary JSON, arguments, or logs. Obtain exact fields from the matching `schema show`, `options`, and leaf `--help`.
+
+## Manage decision connections
+
+The CLI keeps the `decision services` command name; Desktop places these connections under Models → Decision models. Built-in decision models and custom extensions are independent of general models that execute tasks:
+
+```sh
+hiroute decision services list --output json
+hiroute schema show --command-id decision.services.apply --output json
+hiroute decision services apply --help
+hiroute decision services apply --request-stdin --output json < decision-preview-request.json
+hiroute decision services apply --request-stdin --output json < decision-apply-request.json
+hiroute decision services test --request-stdin --output json < decision-test-request.json
+```
+
+There is no separate `decision services preview` command. The first `apply` accepts `{schema_version, spec}` and only previews. To save, send the same `schema_version`, returned `data.normalized_spec`, `accept_digest` from `data.change_digest`, exact `data.expected_revisions`, and a stable idempotency key. `spec.desired_state` contains the connection ID, `expected_revision`, complete `service`, and a protected `input_slot` when supplying a new credential. `service: null` deletes an unreferenced connection.
+
+The list returns each connection's latest revision. A route selects a complete saved revision, checked by ID, revision, and content; historical revisions remain publishable. Smart saving uses editor `smart.classifier` and `smart.judgment`. Custom branches uses `branch_routing.classifier`, plan `branch_routing.judgment`, and each branch's regular `candidates`, `primary_candidates` (an empty array when no primary group is configured), and optional complete `judgment` override. An omitted override follows the plan; copying the whole set makes it independent, and clearing it restores defaults.
+
+Saving r2 does not change a route pinned to r1. Select the new revision and publish through `routing preview/apply`. A test request uses `hiroute.classifier-decision-test/v1` with `classifier: {kind: "decision_service", service: <complete saved revision>}`. It sends fixed synthetic input to that exact connection revision, reads no real conversation, and produces no quality sample. Check `data.outcome` and `data.failure_code`; command success alone does not mean the test passed.
+
+Custom extensions implement the [Custom extension API](/en/docs/decision-api/). See [Connect decision models](/en/docs/decision-extensions/) for built-in provider configuration and interface mapping. The optional [self-hosted Jev reference extension](/en/docs/jev-decider/) provides deployment examples. See [Use smart model routing](/en/docs/model-routing/) for the Desktop configuration steps.
 
 ## Inspect sessions and runtime performance
 
@@ -64,9 +86,13 @@ hiroute sessions show <SESSION_ID> --output json
 hiroute sessions receipt <RECEIPT_ID> --output json
 hiroute sessions status --output json
 hiroute value show --routing <PLAN_ID> --session <SESSION_ID> --output json
+hiroute observation plan-quality samples --plan-id <PLAN_ID> --output json
+hiroute observation plan-quality samples --session-id <SESSION_ID> --limit 50 --output json
 ```
 
 Session queries return facts and a timeline by default, not conversation bodies. A receipt reports the actual route, model, and upstream-reported tokens. When no trustworthy price evidence exists, monetary value remains unknown instead of being fabricated as zero.
+
+`observation plan-quality samples` requires at least a plan or session scope and returns the stage facts used by runtime performance. `branch_execution` records the actual task branch, model group, candidate position, and judgment policy at execution. The turn's selection reason and later stage assessment are stored separately. Use `--competence below-floor|meets-floor` to compare with the saved competence floor, or `--unrated` for missing or partial scores; unrated is not zero. Use the returned cursor for more pages. This query calls no model and returns no protected conversation bodies.
 
 ## Discover executors and plans
 
@@ -132,4 +158,4 @@ Cancellation does not undo files or external effects already produced.
 
 Public commands support `--output text|json|quiet`. Use the default `text` interactively, `json` for scripts and main agents that consume the schema, and `quiet` when only the exit result matters. Use `hiroute schema list` and `hiroute schema show` to discover the current machine contract at runtime.
 
-The CLI currently publishes 45 Released Application commands. CLI and daemon continue to reject all remaining Planned commands. Automation should discover the runtime schema instead of hard-coding the command count or unreleased capabilities.
+CLI and daemon accept only the currently Released business commands and continue to reject Planned commands. Automation should discover the runtime schema instead of hard-coding the command count or unreleased capabilities.

@@ -1,96 +1,96 @@
-# Foundation for decision providers and consumers
+# Decision models, routing and competence
 
-[Architecture](architecture.md) · [Gateway map](../../crates/gateway/README.md)
+[Code map](README.md) · [Architecture](architecture.md) ·
+[Gateway map](../../crates/gateway/README.md) · [Decision API v1](../../decision-extensions/api/README.md)
 
-This is an engineering boundary note, researched on 2026-10-03. Built-in Jev,
-configurable System One providers, natural-language routing branches and tool-set
-selection are future features, not capabilities introduced by this cleanup.
+Built-in decision models and custom extensions supply judgments. HiRoute owns
+routing policy and execution. Smart saving uses one task scope and economy/primary
+groups; custom routing first selects a task category, then its regular/optional
+primary group. Tool selection is [protocol documentation only](../../decision-extensions/api/decision-design.md),
+with no current runtime or product entry.
 
-## Verified provider differences
+## Start with a user path
 
-System One describes a class of structured decision models; Jev is TypeSafe's
-model. Keep the model, serving provider and decision purpose distinct. The common
-shape is a state and typed questions, rather than a chat completion. See
-[TypeSafe's concepts](https://docs.typesafe.ai/concepts/system-one).
-
-| Service | Documented evaluation endpoint and model example | Integration implication |
+| Capability | Production owner | Representative evidence |
 | --- | --- | --- |
-| TypeSafe | `https://api.typesafe.ai/v1/systemone`, `jev-latest` | Bearer authentication; `model`, `state`, `questions`; typed answers and input/output usage. [API reference](https://docs.typesafe.ai/api) |
-| OpenRouter | `https://openrouter.ai/api/alpha/decisions`, `typesafe/jev-1.13` | Dedicated Decisions API; model IDs and cost-bearing usage belong to this provider. [Official tutorial](https://openrouter.ai/blog/tutorials/how-to-use-jev/) |
-| Alibaba Cloud Model Studio | `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone`, `decision-model-preview`; Singapore has a different regional host | Workspace and region participate in endpoint identity; the documented response includes `request_id`, `usage.input_tokens` and `latency_ms`. [API reference](https://help.aliyun.com/zh/model-studio/decision-model-api) |
-| System One hosted service | `https://system-one.dev/v1/systemone`, `jev-latest` | Its advertised request limits and credit accounting differ from token billing; hosted availability is distinct from SDK adapters. [API](https://system-one.dev/en/api), [service scope](https://system-one.dev/en/about) |
+| Connect, edit, test or delete a decision model/custom extension | [Connection UI](../../apps/desktop/src/features/decision-services/DecisionServicesPage.tsx), [native transaction](../../apps/desktop/src-tauri/src/session/decision_services.rs), [store](../../crates/local-storage/src/control/decision_services.rs) | [Desktop shell scenarios](../../apps/desktop/tests/v3/browser/product-shell-scenarios.mjs), [real CLI lifecycle](../../crates/daemon/tests/support/decision_services_product.py) |
+| Create a connection while editing a route | [DesktopApp](../../apps/desktop/src/product/DesktopApp.tsx), [selector](../../apps/desktop/src/features/decision-services/DecisionSelector.tsx) | Preserve route edits and select the exact saved revision without implicit publication |
+| Configure categories, degree and competence | [Plan editor](../../apps/desktop/src/plan-editor.tsx), [branch editor](../../apps/desktop/src/features/decision-services/BranchRoutingEditor.tsx), [judgment controls](../../apps/desktop/src/features/decision-services/JudgmentSettings.tsx), [domain](../../crates/domain/src/routing/decision.rs) | Existing model picker, collapsed advanced settings, complete overrides and publish validation |
+| Freeze connection, definition and rubric | [Authoring snapshot](../../crates/daemon/src/control/runtime/plan_content_snapshot.rs), [Application compiler](../../crates/application/src/compiler), [Gateway compiler](../../crates/gateway/src/publication/compiler.rs) | [Decision publication contracts](../../crates/gateway/src/publication/tests/decision_contracts.rs), [real publication/restart](../../crates/daemon/tests/publication_process.rs) |
+| Judge the current task and preceding actual stage | [Call lifetime](../../crates/gateway/src/core_runtime/classification.rs), [System One adapter](../../crates/gateway/src/core_runtime/classification/system_one.rs), [custom codec](../../crates/gateway/src/core_runtime/classification/protocol.rs) | [Provider mapping](../../crates/gateway/src/core_runtime/classification/system_one_tests.rs), [protocol/replay tests](../../crates/gateway/src/core_runtime/classification/protocol_tests.rs) |
+| Select a group and execute candidates | [Group policy](../../crates/gateway/src/core_runtime/classification/group_policy.rs), [planner](../../crates/gateway/src/planner.rs), [history](../../crates/gateway/src/agent_turn_history/store.rs) | [Threshold/score isolation](../../crates/gateway/src/core_runtime/classification/group_policy_tests.rs), [group boundaries](../../crates/gateway/src/planning/branch_tests.rs), [multi-turn listener journey](../../tools/e2e-harness/tests/p0_gateway_runtime/decision_branches.rs) |
+| Inspect actual execution and competence | [Quality query](../../crates/observation/src/query_v2/plan_quality.rs), [PlanQuality](../../apps/desktop/src/features/PlanQuality.tsx), [stage detail](../../apps/desktop/src/features/PlanQualityStage.tsx) | [Stage summaries](../../crates/observation/src/store/tests/plan_quality/summary.rs), [UI identities](../../apps/desktop/tests/plan-quality-state.test.mjs) |
 
-The references describe Choice, Score and Noul primitives. They do not establish
-identical predictions, calibration, limits or failure semantics. The Model Studio
-API page currently gives conflicting Score limits (2–10 in parameter details,
-2–255 in its limits section); resolve that before claiming broad compatibility.
-No authenticated provider call was made for this research. Treat documentation
-examples as contract leads, not frozen live responses or latency evidence.
+## Frozen configuration
 
-## Responsibilities to keep separate
+[Decision domain types](../../crates/domain/src/routing/decision.rs) own immutable
+saved connection revisions and judgment settings; [definition types](../../crates/domain/src/routing/decision_definition.rs)
+own categorical/ordinal questions. Plans freeze the selected connection, prompts,
+thresholds and rubric. Editing a connection or draft does not reinterpret a
+published plan or historical stage. Branch overrides are complete copies; a
+category without primary candidates needs no degree question.
 
-| Responsibility | Current owner / next extension seam | Must not absorb |
-| --- | --- | --- |
-| Configuration and credentials | Existing Application/control and secret-management paths; future provider kind, endpoint and model selection | Credentials in WebView DTOs, prompts or fixture snapshots |
-| Provider transport | Current Jev service shell; future adapter owns path construction, auth, wire encoding, limits, errors and usage normalization | Smart-saving thresholds, tool retention policy, execution permission |
-| Typed evaluation | Pure input preparation and Choice/Score validation in the Jev reference implementation; future reusable evaluation contract | A mandatory model-route or HTTP-server lifecycle dependency for every consumer |
-| Model routing policy | Gateway classification plus the current smart-saving preset | Tool-set fallback or tool execution |
-| Tool-set policy | Future consumer of evaluation at existing ContextHold boundaries | A second session state machine or a new permission system |
-| Effect admission and execution | Gateway planning/runtime and existing client permissions | Authority granted merely because a model returned a name or probability |
+Desktop calls connections decision models or custom extensions; CLI retains
+`decision services list/apply/test`. Writes reuse Operations, protected input and
+existing Secret storage. Custom HTTP belongs to a saved connection, not inline
+`rest` authoring. Current development v1 replaces the earlier decision shape;
+there is no additional protocol version or old decision-format recovery reader.
 
-Future provider configuration should explicitly identify protocol/adapter,
-endpoint, credential reference and model. Do not overload the business model pool
-or copy a provider switch into each decision consumer. Preserve missing usage as
-unknown rather than zero; preserve provider identity and resolved model in
-evidence. Capabilities and limits should come from the verified provider contract.
-These are design inputs, not new DTOs or a plugin framework in this batch.
+## Provider and routing policy
 
-Existing Jev smart-saving questions and threshold behavior remain a named policy.
-Extracting pure logic does not make that policy appropriate for every use case.
-A model-route answer selects one allowed branch; tool filtering may retain several
-capability groups. Do not force a tool set into a single route's result type.
+Bailian, OpenRouter Jev, TypeSafe and compatible connections share the typed
+`model/state/questions` adapter. Endpoint/model/limits are connection settings.
+See [System One mapping](../../decision-extensions/api/system-one-design.md) for
+provider-specific configuration and [custom v1](../../decision-extensions/api/README.md)
+for the extension boundary. Add a separate adapter only for an actual incompatible
+wire protocol; a provider name alone does not justify one.
 
-The current five-field HiRoute `/v1/decisions` contract is specifically a branch
-decision envelope. It is distinct from the provider's `state/questions` protocol.
-Keep that public envelope stable during cleanup; future tool selection needs its
-own purpose-specific input and result validation over a shared evaluation seam.
-Do not smuggle tool catalogs into branch descriptions or expose raw system prompts,
-credentials and tool arguments by treating every internal context as model state.
+The adapter binds each question to a category, degree or historical assessment,
+then reduces only the selected path. The extension owns provider integration and
+context trimming; HiRoute owns probability thresholds, competence protection and
+candidate selection. Trimming inside the assessment target marks that assessment
+partial; loss of an earlier prefix does not by itself invalidate the scored stage.
 
-## Tool selection context
+`group_policy.rs` uses the current simple probability and applicable complete
+assessment for the same category, plan revision and rubric. Each new user turn
+runs a fresh decision: it neither preserves an old upgrade cursor nor blindly
+returns to regular. Missing/partial scores remain unrated. Recognized tool
+continuations reuse the frozen decision only while history and authority permit.
+[ContextHold](../../crates/gateway/src/context_hold/store.rs) binds exact route,
+version, protocol, authorization and session; unrelated plan publication does not
+invalidate that route, and each request still reauthorizes.
 
-Future tool selection needs the following engineering constraints established
-before implementation:
+The planner reuses eligibility, protocol projection and bounded relay. Regular
+candidates may relay to the same category's primary group; primary exhaustion
+fails. Duplicate candidate identities are tried once. Same-turn continuations can
+retain an actual primary availability relay, but that fact neither rewrites the
+original decision nor survives a new user turn.
 
-- Reuse allowed ContextHold decision boundaries; keep the selected tool set stable
-  during the execution segment. Inspect [ContextHold](../../crates/gateway/src/context_hold)
-  and [classification](../../crates/gateway/src/core_runtime/classification.rs).
-- Select only from tools currently declared by the client, preferably using
-  namespace/capability summaries. Filter definitions without deleting historical
-  calls/results or rewriting their IDs. Existing protocol adapters remain owners
-  of valid wire projection.
-- Uncertain, failed or invalid selection retains the original tool set. This is
-  a tool-selection policy, not the model-routing fallback policy.
-- Resolve explicit `tool_choice`, delayed discovery, changing catalogs, retries,
-  model switches and restart reuse before implementation. A hidden capability
-  cannot be assumed discoverable by the model later.
-- Selection does not expand authorization or execute tools. Do not introduce a
-  new persistence or plugin system merely to cache a selection.
+## Observation and public consumers
 
-A token reduction alone does not demonstrate task success. Keep stochastic
-quality evidence separate from deterministic protocol and ownership regressions.
+[Execution receipts](../../crates/observation/src/receipt/plan_quality.rs) and
+[quality queries](../../crates/observation/src/query_v2/plan_quality.rs) own evidence
+identity: actual category/group/candidate position, model/reasoning, plan revision
+and frozen rubric. Opening selection probability/reason is distinct from a later
+competence score. Summary and drill-down use the same identity; missing or partial
+assessments do not enter averages.
 
-## Durable tests for the future feature tasks
+The [model row projection](../../apps/desktop/src/features/plan-quality-state.ts)
+associates configured candidates with retained execution by declared position and
+reasoning, not display name or a freshly materialized model ID. The shared stage
+view reads recorded execution facts even if the current plan has changed.
+The `observation plan-quality samples` CLI exposes the same query; its
+[command registry](../../crates/application-api/src/commands.rs), generated manifests
+and [CLI entry tests](../../crates/cli/src/lib.rs) must remain aligned.
 
-| Suite | Stable product assertion |
+| Published surface | Canonical owner / check |
 | --- | --- |
-| Provider contract fixtures | Same question intent can be encoded for each supported provider; normalize answers, errors and usage without fabricating missing fields; reject malformed and foreign options |
-| Routing policy | Allowed branch selection, thresholds, fallback, deadline/cancel behavior and previous-stage assessment attribution remain intact |
-| Tool selection policy | Retained set is a subset of the current catalog; mandatory/explicitly selected tools and protocol constraints are honored; invalid/failed decisions preserve the original set |
-| Continuation and projection | Selection remains stable inside ContextHold; allowed boundaries re-evaluate; history, tool IDs and results remain unchanged through the real listener |
-| Live quality evaluation | Paired repeated tasks with fixed model/Agent/tool versions; compare completion, missed tools, total latency/cost and cache effects, including decision overhead |
+| Custom extension protocol and samples | [API guide](../../decision-extensions/api/README.md), [examples](../../decision-extensions/api/decision-examples.json), [generator](../../scripts/decision-contracts.py), [OpenAPI](../../decision-extensions/api/decision.openapi.json) |
+| Official optional Jev service | [Extension](../../decision-extensions/extensions/jev-decider), with the same v1 contract |
+| Website decision pages and downloads | [Renderer](../../apps/website/src/lib/decision-docs.mjs), [content preparation](../../apps/website/scripts/prepare-content.mjs), [website checks](../../apps/website/tests/decision-docs.test.mjs) |
+| UI/CLI instructions | [Website guides](../../apps/website/content/guides), [standalone CLI](../standalone-cli.md) |
+| Illustrations and native screenshots | [Component capture](../../apps/desktop/decision-docs.tsx), [fixture checks](../../apps/desktop/tests/decision-docs-data.test.mjs), [asset provenance](../../decision-extensions/assets/README.md) |
 
-Keep deterministic contract tests separate from stochastic model evaluation. First
-validate tool selection independently of model routing, then measure their
-combination. Future tasks should define outcomes and independent expected values
-before adding new provider adapters or decision consumers.
+Documentation fixtures and native windows with constructed observation records
+illustrate the product. Neither capture method proves live-provider behavior or
+answer quality; acceptance records must identify the actual revision and scenario.

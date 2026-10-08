@@ -226,6 +226,8 @@ pub enum ExecutionFactV1 {
         facts_completeness: String,
     },
     AgentTurnFinished {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch_execution: Option<hiroute_domain::BranchExecutionV1>,
         agent_turn_id: String,
         segment_id: String,
         ordinal: u64,

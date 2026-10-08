@@ -18,7 +18,8 @@ pub(crate) fn migrate(
             original_start INTEGER NOT NULL,primary_start INTEGER NOT NULL,
             folded TEXT NOT NULL,offsets BLOB NOT NULL,original TEXT NOT NULL,
             UNIQUE(workspace,digest,ordinal));
-         CREATE INDEX IF NOT EXISTS observation_text_blocks_source ON observation_text_blocks_v2(workspace,digest,ordinal);"
+         CREATE INDEX IF NOT EXISTS observation_text_blocks_source ON observation_text_blocks_v2(workspace,digest,ordinal);
+         CREATE INDEX IF NOT EXISTS observation_text_index_published ON observation_text_index_v2(published);"
     ).map_err(|_| crate::writer::ObservationStoreError::ActivityUnavailable)?;
     let has_original: bool = {
         let mut statement = transaction

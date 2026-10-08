@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod publication;
+mod publication_update;
 mod wire;
 
 use std::collections::{BTreeMap, VecDeque};
@@ -481,6 +482,7 @@ struct RuntimeLaunchOptions {
     test_control: bool,
     classified_route: bool,
     rest_classifier: bool,
+    decision_branch_preset: Option<bool>,
     fixed_route: bool,
     reasoning_choices: bool,
     isolated_fixed_grants: bool,
@@ -528,6 +530,7 @@ impl Default for RuntimeLaunchOptions {
             test_control: false,
             classified_route: false,
             rest_classifier: false,
+            decision_branch_preset: None,
             fixed_route: false,
             reasoning_choices: false,
             isolated_fixed_grants: false,
@@ -544,6 +547,24 @@ pub struct PublicationCandidate {
 }
 
 impl RuntimeFixture {
+    pub fn launch_builtin_branches(providers: &[&NativeProvider], smart: bool) -> Self {
+        Self::launch_configured(
+            providers,
+            2,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                classified_route: true,
+                rest_classifier: true,
+                decision_branch_preset: Some(smart),
+                observation: Some(ObservationFaults::healthy()),
+                test_control: true,
+                ..Default::default()
+            },
+        )
+    }
+
     pub fn launch(providers: &[&NativeProvider], max_attempts: u32) -> Self {
         Self::launch_with_publication_candidates(providers, max_attempts, None)
     }
@@ -1068,6 +1089,9 @@ impl RuntimeFixture {
             options.overall_timeout_ms,
             route_mode,
         );
+        if let Some(smart) = options.decision_branch_preset {
+            publication::use_builtin_branch_decision(&mut publication, smart);
+        }
         if options.reasoning_choices {
             publication::add_reasoning_choices(&mut publication);
         }

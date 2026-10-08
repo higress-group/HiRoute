@@ -15,6 +15,16 @@ use hiroute_domain::{
 use super::LocalControlAdapter;
 
 impl RoutingFactsPort for LocalControlAdapter {
+    fn decision_services(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> Result<Vec<hiroute_domain::DecisionServiceV1>, ControlReadError> {
+        self.stores_lock()
+            .map_err(super::map_port)?
+            .control()
+            .decision_services(workspace)
+            .map_err(super::map_port)
+    }
     fn claude_client_capability_preview(
         &self,
         plan: &hiroute_domain::CompiledAgentPlanV1,

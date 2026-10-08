@@ -27,3 +27,31 @@ pub use types::{
 mod current_inputs;
 
 mod legacy_inputs;
+
+#[cfg(test)]
+mod tests {
+    use super::types::{CURRENT_AGGREGATE_PORT_DIGEST, CURRENT_EXECUTION_SCHEMA_DIGEST};
+    use hiroute_gateway::server::core_runtime::observation::{
+        EXECUTION_FACT_PORT_DIGEST, GATEWAY_PORT_SET_DIGEST,
+    };
+    use serde_json::Value;
+
+    #[test]
+    fn current_oracle_pins_match_producer_and_json_schemas() {
+        assert_eq!(CURRENT_EXECUTION_SCHEMA_DIGEST, EXECUTION_FACT_PORT_DIGEST);
+        assert_eq!(CURRENT_AGGREGATE_PORT_DIGEST, GATEWAY_PORT_SET_DIGEST);
+        let schema_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../e2e/schema");
+        let read = |name| -> Value {
+            serde_json::from_slice(&std::fs::read(schema_root.join(name)).unwrap()).unwrap()
+        };
+        assert_eq!(
+            read("current-production-collector.schema.json")["properties"]["execution_fact"]["properties"]
+                ["records"]["items"]["properties"]["schema_digest"]["const"],
+            CURRENT_EXECUTION_SCHEMA_DIGEST
+        );
+        assert_eq!(
+            read("current-gateway-result.schema.json")["properties"]["aggregate_port_digest"]["const"],
+            CURRENT_AGGREGATE_PORT_DIGEST
+        );
+    }
+}

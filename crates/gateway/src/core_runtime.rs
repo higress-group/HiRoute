@@ -651,6 +651,7 @@ impl ProductionGatewayRuntime {
             request_observation.capture_request(&canonical_request, &replay);
             let mut agent_turn_guard = None;
             let mut correlated_branch = None;
+            let mut classification_context = None;
             let classification_outcome = if let Some(strategy) = authorized
                 .planner_policy()
                 .complexity_strategy
@@ -692,13 +693,8 @@ impl ProductionGatewayRuntime {
                     message_history_continues: hold_ticket
                         .as_ref()
                         .is_some_and(|ticket| ticket.message_history_continues),
-                    reselect_on_user_message: match &authorized.planner_policy().route {
-                        profiles::MaterializedRouteV1::SmartSaving {
-                            reselect_on_user_message,
-                            ..
-                        } => *reselect_on_user_message,
-                        _ => false,
-                    },
+                    // Every new user turn decides again. Candidate continuity stays in Planner.
+                    reselect_on_user_message: true,
                 };
                 let turn_begin = self.agent_turn_history.begin_with_context(
                     turn_key,
@@ -744,6 +740,7 @@ impl ProductionGatewayRuntime {
                         (
                             ticket,
                             Box::new(crate::agent_turn_history::AgentTurnHistorySnapshot {
+                                previous_decision: None,
                                 visible_conversation: Vec::new(),
                                 history_partial: true,
                                 assessment_from: None,
@@ -824,26 +821,14 @@ impl ProductionGatewayRuntime {
                     result = &mut classification => result,
                     _ = session.wait_for_disconnect() => {
                         classification_cancellation.cancel();
-                        let _ = classification.await;
+                        let _ = (&mut classification).await;
                         Err(classification::ClassificationError::Cancelled)
                     }
                 };
+                drop(classification);
                 match classification_result {
                     Ok(result) => {
-                        if turn_ticket.new_turn
-                            && self
-                                .agent_turn_history
-                                .commit_decision(&turn_ticket, result.decision.clone())
-                                .is_err()
-                        {
-                            return write_typed_error_phase(
-                                session,
-                                StatusCode::CONFLICT,
-                                "TURN_CONTEXT_UNAVAILABLE",
-                                "agent_turn",
-                            )
-                            .await;
-                        }
+                        classification_context = Some((turn_ticket, turn_history));
                         Some(result)
                     }
                     Err(classification::ClassificationError::Deadline) => {
@@ -925,7 +910,24 @@ impl ProductionGatewayRuntime {
             }
             planner_input.correlated_branch = correlated_branch.map(|decision| *decision);
             let mut assessment = None;
-            if let Some(outcome) = classification_outcome {
+            if let Some(mut outcome) = classification_outcome {
+                if let Some((ticket, history)) = classification_context {
+                    classification::apply_group_policy(&planner_input, &history, &mut outcome);
+                    if ticket.new_turn
+                        && self
+                            .agent_turn_history
+                            .commit_decision(&ticket, outcome.decision.clone())
+                            .is_err()
+                    {
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::CONFLICT,
+                            "TURN_CONTEXT_UNAVAILABLE",
+                            "agent_turn",
+                        )
+                        .await;
+                    }
+                }
                 planner_input.classification_decision = Some(outcome.decision);
                 planner_input.classification_facts = Some(outcome.facts);
                 assessment = outcome.assessment;
@@ -1101,14 +1103,8 @@ impl ProductionGatewayRuntime {
                         origin_group_id: frozen.group_id.clone(),
                     },
                 ));
-                let executed_branch_id = match frozen.group_id.as_str() {
-                    "economy" => hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID,
-                    "primary" => hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID,
-                    _ => planner_output
-                        .complexity
-                        .as_ref()
-                        .map_or("unknown", |decision| decision.branch_id.as_str()),
-                };
+                let (executed_branch_id, branch_execution) =
+                    classification::execution_position(&planner_input, frozen);
                 agent_turn_candidates.insert(
                     frozen.candidate_id.clone(),
                     (
@@ -1119,6 +1115,7 @@ impl ProductionGatewayRuntime {
                             .clone(),
                         facts.profile_digest.clone(),
                         executed_branch_id.to_owned(),
+                        branch_execution,
                     ),
                 );
             }
@@ -1262,8 +1259,14 @@ impl ProductionGatewayRuntime {
                     .accepted_attempt_identity()
                     .and_then(|(candidate_id, _, _)| {
                         agent_turn_candidates.get(&candidate_id).map(
-                            |(model_configuration_id, profile_digest, executed_branch_id)| {
+                            |(
+                                model_configuration_id,
+                                profile_digest,
+                                executed_branch_id,
+                                branch_execution,
+                            )| {
                                 vec![AcceptedExecution {
+                                    branch_execution: branch_execution.clone(),
                                     model_configuration_id: model_configuration_id.clone(),
                                     profile_digest: profile_digest.clone(),
                                     executed_branch_id: executed_branch_id.clone(),

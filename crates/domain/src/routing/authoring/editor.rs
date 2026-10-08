@@ -12,11 +12,12 @@ impl AgentPlanAuthoringV2 {
             purpose: self.purpose.as_str().into(),
             custom_alias: published_alias,
             mode: self.mode,
+            branch_routing: None,
             candidates: vec![],
             smart: SmartEditorV2 {
                 economy: vec![],
                 primary: vec![],
-                primary_fallback: false,
+                judgment: Default::default(),
                 reselect_on_user_message: false,
                 classifier: ComplexityClassifierModeV1::LocalRules,
                 complex_keywords: vec![],
@@ -32,13 +33,16 @@ impl AgentPlanAuthoringV2 {
             limits: self.limits.clone(),
         };
         match &self.strategy {
+            AgentPlanStrategyV2::Branches { routing } => {
+                editor.branch_routing = Some(routing.clone())
+            }
             AgentPlanStrategyV2::Custom { candidates } => {
                 editor.candidates = candidates.clone();
             }
             AgentPlanStrategyV2::SmartSaving {
                 economy,
                 primary,
-                primary_fallback,
+                judgment,
                 reselect_on_user_message,
                 classifier,
                 complex_keywords,
@@ -46,7 +50,7 @@ impl AgentPlanAuthoringV2 {
                 editor.smart = SmartEditorV2 {
                     economy: economy.clone(),
                     primary: primary.clone(),
-                    primary_fallback: *primary_fallback,
+                    judgment: judgment.clone(),
                     reselect_on_user_message: *reselect_on_user_message,
                     classifier: classifier.clone(),
                     complex_keywords: complex_keywords.clone(),

@@ -21,7 +21,7 @@ await fs.mkdir(installDirectory, { recursive: true });
 // Reuse the Desktop logo for raster-only link preview services.
 await fs.copyFile(path.join(repository, 'apps/desktop/src-tauri/icons/icon.png'), path.join(publicDirectory, 'brand/app-icon.png'));
 await fs.copyFile(path.join(source, 'api/decision.openapi.json'), path.join(apiDirectory, 'decision.openapi.json'));
-await fs.copyFile(path.join(source, 'extensions/jev-decider/jev_decider/policy.default.json'), path.join(apiDirectory, 'jev-policy.default.json'));
+await fs.copyFile(path.join(source, 'api/decision-examples.json'), path.join(apiDirectory, 'decision-examples.json'));
 for (const entry of await fs.readdir(path.join(source, 'assets'), { withFileTypes: true })) {
   if (entry.isFile() && /\.(png|svg)$/.test(entry.name)) {
     await fs.copyFile(path.join(source, 'assets', entry.name), path.join(assetsDirectory, entry.name));

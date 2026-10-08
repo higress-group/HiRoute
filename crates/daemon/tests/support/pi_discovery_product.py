@@ -3,6 +3,7 @@
 Only native configuration and the deterministic upstream are fixtures. Protected
 input, candidate state, save conflict and restart all use public product entries.
 """
+from publication_process import judgment_fixture
 import hashlib
 import json
 import os
@@ -33,7 +34,7 @@ def use_imported_route(product, binary, source, saved):
         'purpose':'Use the imported static API', 'mode':'fixed_model',
         'candidates':[{'binding_id':saved['binding_id'], 'reasoning':{'kind':'toggle','enabled':False}}],
         'delegation_enabled':False,
-        'smart':{'economy':[],'primary':[],'primary_fallback':False,'reselect_on_user_message':False,
+        'smart':{'economy':[],'primary':[],'judgment': judgment_fixture(),'reselect_on_user_message':False,
                  'classifier':{'kind':'local_rules'},'complex_keywords':[]},
         'free':{'candidates':[],'primary':[],'primary_fallback':False},
         'requirements':{}, 'limits':{'maximum_attempts':1,'request_timeout_ms':30000,'attempt_timeout_ms':30000}}

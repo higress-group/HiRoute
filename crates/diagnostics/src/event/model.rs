@@ -232,7 +232,8 @@ pub enum ExclusionReason {
     Other,
 }
 
-/// Wire-shape facts only: never header values, URLs, model names or response bodies.
+/// Wire-shape facts and closed request controls only: never header values,
+/// URLs, model names or response bodies.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpstreamWire {
@@ -244,6 +245,29 @@ pub struct UpstreamWire {
     pub body_bytes: Option<u64>,
     pub http_status: Option<u16>,
     pub content_type: WireContentType,
+    pub request_reasoning: Option<WireRequestReasoning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireRequestReasoning {
+    pub responses_effort: Option<WireReasoningEffort>,
+    pub chat_effort: Option<WireReasoningEffort>,
+    pub messages_effort: Option<WireReasoningEffort>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireReasoningEffort {
+    None,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+    Ultra,
+    Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

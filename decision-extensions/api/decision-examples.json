@@ -1,0 +1,440 @@
+{
+  "status": "model-routing-implemented-validation-pending",
+  "runtime_support_added": true,
+  "cases": [
+    {
+      "name": "smart_saving",
+      "scope": "phase-one-design",
+      "request": {
+        "decision": {
+          "kind": "ordinal",
+          "instructions": "判断当前任务需要的处理程度，不评价上一阶段表现。",
+          "levels": [
+            {
+              "id": "simple",
+              "criterion": "需求明确、边界清楚，可沿用已有模式完成。"
+            },
+            {
+              "id": "complex",
+              "criterion": "需要深入推理、跨模块诊断或设计新的方案。"
+            }
+          ]
+        },
+        "latest_user": [
+          {
+            "kind": "text",
+            "text": "把这段说明改成三条清晰的要点。"
+          }
+        ],
+        "visible_conversation": [],
+        "history_partial": false,
+        "assessment_target": null
+      },
+      "response": {
+        "decision": {
+          "kind": "ordinal",
+          "probabilities": {
+            "simple": 0.93,
+            "complex": 0.07
+          }
+        }
+      },
+      "system_one_request": {
+        "model": "decision-model-preview",
+        "state": {
+          "latest_user": [
+            {
+              "kind": "text",
+              "text": "把这段说明改成三条清晰的要点。"
+            }
+          ],
+          "visible_conversation": [],
+          "history_partial": false,
+          "assessment_from": null
+        },
+        "questions": {
+          "q0": {
+            "type": "score",
+            "instructions": "只判断 state.latest_user 所要求的当前任务需要的处理程度，不评价上一阶段表现。",
+            "criteria": [
+              "需求明确、边界清楚，可沿用已有模式完成。",
+              "需要深入推理、跨模块诊断或设计新的方案。"
+            ]
+          }
+        }
+      },
+      "system_one_response": {
+        "answers": {
+          "q0": {
+            "type": "score",
+            "score": 0.07,
+            "probabilities": {
+              "0": 0.93,
+              "1": 0.07
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "writing_review",
+      "scope": "phase-one-design",
+      "request": {
+        "decision": {
+          "kind": "categorical",
+          "instructions": "按当前请求的主要意图选择一个工作类别，不按任务难度或上次失败选择。条件重叠时选择最符合主要意图的一项；均不匹配时选择默认类别 writing。",
+          "options": [
+            {
+              "id": "writing",
+              "criterion": "撰写、续写或改写文章，包括根据反馈修稿。",
+              "refinement": {
+                "kind": "ordinal",
+                "instructions": "假设当前任务交给写稿分支，判断写稿工作所需程度。",
+                "levels": [
+                  {
+                    "id": "simple",
+                    "criterion": "事实和提纲充分，仅需常规组织或局部改写。"
+                  },
+                  {
+                    "id": "complex",
+                    "criterion": "需要综合冲突材料、构建论证或重组全文。"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "review",
+              "criterion": "审阅、核实文章并提出意见，不直接重写全文。",
+              "refinement": {
+                "kind": "ordinal",
+                "instructions": "假设当前任务交给审稿分支，判断审稿工作所需程度。",
+                "levels": [
+                  {
+                    "id": "simple",
+                    "criterion": "范围明确的格式、措辞与已知事实核查。"
+                  },
+                  {
+                    "id": "complex",
+                    "criterion": "需要逐项核对来源、检查因果推断或全篇论证。"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "latest_user": [
+          {
+            "kind": "text",
+            "text": "请逐项核对这篇稿件的来源与因果论断，给出审稿意见。"
+          }
+        ],
+        "visible_conversation": [
+          {
+            "user": [
+              {
+                "kind": "text",
+                "text": "根据所给材料写一篇文章。"
+              }
+            ],
+            "status": "completed",
+            "steps": [
+              [
+                {
+                  "kind": "text",
+                  "text": "文章已写出，但将两个没有因果证据的现象写成了因果关系。"
+                }
+              ]
+            ]
+          }
+        ],
+        "history_partial": false,
+        "assessment_target": {
+          "from": 0,
+          "instructions": "评价上一写稿阶段的材料忠实性与论证，不评价尚未发生的审稿。",
+          "criteria": [
+            {
+              "score": 0,
+              "criterion": "关键事实失真、无进展或需要大幅纠正。"
+            },
+            {
+              "score": 0.5,
+              "criterion": "有用但不完整，仍有明显事实或论证问题。"
+            },
+            {
+              "score": 1,
+              "criterion": "忠实于材料、归因准确、完成写稿要求。"
+            }
+          ]
+        }
+      },
+      "response": {
+        "decision": {
+          "kind": "categorical",
+          "choice": "review",
+          "refinement": {
+            "kind": "ordinal",
+            "probabilities": {
+              "simple": 0.28,
+              "complex": 0.72
+            }
+          }
+        },
+        "assessment": {
+          "score": 0.35,
+          "partial": false,
+          "reason": "上一写稿阶段存在没有证据支撑的因果断言。"
+        }
+      },
+      "system_one_request": {
+        "model": "decision-model-preview",
+        "state": {
+          "latest_user": [
+            {
+              "kind": "text",
+              "text": "请逐项核对这篇稿件的来源与因果论断，给出审稿意见。"
+            }
+          ],
+          "visible_conversation": [
+            {
+              "user": [
+                {
+                  "kind": "text",
+                  "text": "根据所给材料写一篇文章。"
+                }
+              ],
+              "status": "completed",
+              "steps": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "文章已写出，但将两个没有因果证据的现象写成了因果关系。"
+                  }
+                ]
+              ]
+            }
+          ],
+          "history_partial": false,
+          "assessment_from": 0
+        },
+        "questions": {
+          "q0": {
+            "type": "choice",
+            "instructions": "按 state.latest_user 的主要意图选择一个工作类别，不按任务难度或上次失败选择。条件重叠时选择最符合主要意图的一项；均不匹配时选择默认类别 writing。",
+            "criteria": {
+              "writing": "撰写、续写或改写文章，包括根据反馈修稿。",
+              "review": "审阅、核实文章并提出意见，不直接重写全文。"
+            }
+          },
+          "q1": {
+            "type": "score",
+            "instructions": "假设 state.latest_user 交给写稿分支，判断写稿工作所需程度。不要读取其他问题的答案。",
+            "criteria": [
+              "事实和提纲充分，仅需常规组织或局部改写。",
+              "需要综合冲突材料、构建论证或重组全文。"
+            ]
+          },
+          "q2": {
+            "type": "score",
+            "instructions": "假设 state.latest_user 交给审稿分支，判断审稿工作所需程度。不要读取其他问题的答案。",
+            "criteria": [
+              "范围明确的格式、措辞与已知事实核查。",
+              "需要逐项核对来源、检查因果推断或全篇论证。"
+            ]
+          },
+          "q3": {
+            "type": "score",
+            "instructions": "从 state.visible_conversation 的 state.assessment_from 下标起评估已执行的写稿阶段。评价材料忠实性与论证，state.latest_user 仅可作为明确反馈证据；不要评价本轮尚未发生的审稿。重复或继续消息本身不是失败。",
+            "criteria": [
+              "关键事实失真、无进展或需要大幅纠正。",
+              "有用但不完整，仍有明显事实或论证问题。",
+              "忠实于材料、归因准确、完成写稿要求。"
+            ]
+          }
+        }
+      },
+      "system_one_response": {
+        "answers": {
+          "q0": {
+            "type": "choice",
+            "choice": "review",
+            "probabilities": {
+              "writing": 0.02,
+              "review": 0.98
+            }
+          },
+          "q1": {
+            "type": "score",
+            "score": 0.15,
+            "probabilities": {
+              "0": 0.85,
+              "1": 0.15
+            }
+          },
+          "q2": {
+            "type": "score",
+            "score": 0.72,
+            "probabilities": {
+              "0": 0.28,
+              "1": 0.72
+            }
+          },
+          "q3": {
+            "type": "score",
+            "score": 0.7,
+            "probabilities": {
+              "0": 0.4,
+              "1": 0.5,
+              "2": 0.1
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "single_group_category",
+      "scope": "phase-one-design",
+      "request": {
+        "decision": {
+          "kind": "categorical",
+          "instructions": "按当前请求的主要意图选择一个工作类别，不按任务难度或上次失败选择。条件重叠时选择最符合主要意图的一项；均不匹配时选择默认类别 writing。",
+          "options": [
+            {
+              "id": "writing",
+              "criterion": "撰写、续写或改写文章，包括根据反馈修稿。",
+              "refinement": {
+                "kind": "ordinal",
+                "instructions": "假设当前任务交给写稿分支，判断写稿工作所需程度。",
+                "levels": [
+                  {
+                    "id": "simple",
+                    "criterion": "事实和提纲充分，仅需常规组织或局部改写。"
+                  },
+                  {
+                    "id": "complex",
+                    "criterion": "需要综合冲突材料、构建论证或重组全文。"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "review",
+              "criterion": "审阅、核实文章并提出意见，不直接重写全文。"
+            }
+          ]
+        },
+        "latest_user": [
+          {
+            "kind": "text",
+            "text": "请逐项核对这篇稿件的来源与因果论断，给出审稿意见。"
+          }
+        ],
+        "visible_conversation": [],
+        "history_partial": false,
+        "assessment_target": null
+      },
+      "response": {
+        "decision": {
+          "kind": "categorical",
+          "choice": "review"
+        }
+      }
+    },
+    {
+      "name": "tools_future",
+      "scope": "future-docs-only",
+      "request": {
+        "decision": {
+          "kind": "subset",
+          "instructions": "选择为当前任务提供足够能力所需的工具；不要执行工具。",
+          "items": [
+            {
+              "id": "search_repository",
+              "description": "搜索仓库中的代码和文档。"
+            },
+            {
+              "id": "read_file",
+              "description": "读取指定仓库文件。"
+            },
+            {
+              "id": "send_email",
+              "description": "向他人发送电子邮件。"
+            }
+          ]
+        },
+        "latest_user": [
+          {
+            "kind": "text",
+            "text": "查一下路由阈值在哪里实现，并解释代码。"
+          }
+        ],
+        "visible_conversation": [],
+        "history_partial": false,
+        "assessment_target": null
+      },
+      "response": {
+        "decision": {
+          "kind": "subset",
+          "selected": [
+            "search_repository",
+            "read_file"
+          ]
+        }
+      },
+      "system_one_request": {
+        "model": "decision-model-preview",
+        "state": {
+          "latest_user": [
+            {
+              "kind": "text",
+              "text": "查一下路由阈值在哪里实现，并解释代码。"
+            }
+          ],
+          "allowed_tools": [
+            {
+              "id": "search_repository",
+              "description": "搜索仓库中的代码和文档。"
+            },
+            {
+              "id": "read_file",
+              "description": "读取指定仓库文件。"
+            },
+            {
+              "id": "send_email",
+              "description": "向他人发送电子邮件。"
+            }
+          ]
+        },
+        "questions": {
+          "q0": {
+            "type": "noul",
+            "instructions": "为完成 state.latest_user，是否需要保留 state.allowed_tools[0] 的 search_repository 搜索能力？只判断必要性，不执行。"
+          },
+          "q1": {
+            "type": "noul",
+            "instructions": "为完成 state.latest_user，是否需要保留 state.allowed_tools[1] 的 read_file 文件读取能力？只判断必要性，不执行。"
+          },
+          "q2": {
+            "type": "noul",
+            "instructions": "为完成 state.latest_user，是否需要保留 state.allowed_tools[2] 的 send_email 发信能力？只判断必要性，不执行。"
+          }
+        }
+      },
+      "system_one_response": {
+        "answers": {
+          "q0": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "q1": {
+            "type": "noul",
+            "noul": 0.91
+          },
+          "q2": {
+            "type": "noul",
+            "noul": 0.02
+          }
+        }
+      }
+    }
+  ]
+}

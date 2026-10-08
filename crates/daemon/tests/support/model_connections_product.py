@@ -1,4 +1,5 @@
 """Native API save, publication, Gateway request, and session record through real hirouted."""
+from publication_process import judgment_fixture
 import hashlib
 import http.client
 import http.server
@@ -413,7 +414,7 @@ def publish_plan_and_agent(product, binding_id):
         'purpose': 'Exercise a saved user configured Native API',
         'mode': 'fixed_model',
         'candidates': [{'binding_id': binding_id}],
-        'smart': {'economy': [], 'primary': [], 'primary_fallback': False,
+        'smart': {'economy': [], 'primary': [], 'judgment': judgment_fixture(),
                   'reselect_on_user_message': False,
                   'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
         'free': {'candidates': [], 'primary': [], 'primary_fallback': False},

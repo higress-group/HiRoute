@@ -52,16 +52,9 @@ impl ContextHoldKey {
             b"route_provenance",
             &serde_json::to_vec(&receipt.route).ok()?,
         );
-        frame_u64(
-            &mut mac,
-            b"publication_revision",
-            receipt.publication_revision,
-        );
-        frame(
-            &mut mac,
-            b"publication_digest",
-            receipt.publication_digest.as_bytes(),
-        );
+        // The aggregate revision also changes for unrelated plans. Continuity
+        // belongs to this authorized route/version; current authorization and
+        // the exact held candidate/profile are still checked on every request.
         frame(
             &mut mac,
             b"ingress_protocol",

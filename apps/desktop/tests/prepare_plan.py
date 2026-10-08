@@ -7,6 +7,8 @@ This is preparation evidence; it is not Desktop GUI acceptance.
 """
 import hashlib, json, os, pathlib, secrets, select, socket, stat, statistics, subprocess, sys, time
 REPO = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO / 'crates/daemon/tests/support'))
+from publication_process import judgment_fixture
 RELEASE_VERSION = json.loads((REPO / 'contracts/cli/local-control-hello.v2.schema.json').read_text())['properties']['client_version']['const']
 BENCH_RUNS = int(os.environ.get('HIROUTE_PLAN_BENCHMARK_RUNS', '1'))
 if BENCH_RUNS < 1 or BENCH_RUNS > 10: raise SystemExit('Benchmark runs must be 1..10')
@@ -151,7 +153,7 @@ try:
  before_plan_decodes=diagnostic_decode_count(ROOT) if BENCHMARK else 0
  editor={'schema':'hiroute.plan-editor/v2','display_name':'Desktop acceptance A','purpose':'Desktop isolated reversible rename','mode':'fixed_model',
          'candidates':[{'binding_id':binding['binding_id']}], 'delegation_enabled':False,
-         'smart':{'economy':[],'primary':[],'primary_fallback':False,'reselect_on_user_message':False,'classifier':{'kind':'local_rules'},'complex_keywords':[]},
+         'smart':{'economy':[],'primary':[],'judgment':judgment_fixture(),'reselect_on_user_message':False,'classifier':{'kind':'local_rules'},'complex_keywords':[]},
          'free':{'candidates':[],'primary':[],'primary_fallback':False},'requirements':{},
          'limits':{'maximum_attempts':1,'request_timeout_ms':30000,'attempt_timeout_ms':30000}}
  durations_ms=[]

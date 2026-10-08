@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:977c6c3de2ed68f4437db403b16db9b0684616acd41124abfe2ff06caf364022",
+  "descriptor_digest": "sha256:abc35e142a0e31f2529450a545a6b9c6d57575d0212e844609cff5216623337b",
   "expected_red_reasons": [],
   "planned_commands": [
     "schema.list",
@@ -65,7 +65,9 @@
     "routing.show",
     "routing.preview",
     "routing.apply",
-    "routing.classifier.test",
+    "decision.services.list",
+    "decision.services.apply",
+    "decision.services.test",
     "routing.classifier.secret.apply",
     "models.list",
     "models.show",
@@ -135,13 +137,17 @@
     "routing.show",
     "routing.preview",
     "routing.apply",
+    "decision.services.list",
+    "decision.services.apply",
+    "decision.services.test",
     "models.show",
     "operations.get",
     "sessions.list",
     "sessions.show",
     "sessions.receipt",
     "sessions.status",
-    "value.show"
+    "value.show",
+    "observation.plan-quality.samples"
   ],
   "release_state": "released",
   "required_adversaries": [
@@ -171,10 +177,8 @@
     "tasks.cancel",
     "tasks.continue",
     "work-plans.list",
-    "routing.classifier.test",
     "routing.classifier.secret.apply",
     "operations.watch",
-    "operations.cancel",
-    "observation.plan-quality.samples"
+    "operations.cancel"
   ]
 }

@@ -1,8 +1,7 @@
 """HTTP lifecycle for the official Jev decision service.
 
 Pure decisions live in decision.py; strict wire values in protocol.py; deployment
-configuration in settings.py. Imported public names remain available here for
-existing hosts that import jev_decider.server.
+configuration in settings.py. The service has no persistent routing or upgrade state.
 """
 from __future__ import annotations
 
@@ -17,15 +16,9 @@ from typing import Any
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, web
 
-from .decision import (
-    COMPLEX_BRANCH, COMPETENCE_CRITERIA, SIMPLE_BRANCH, criteria_hash,
-    decision_response, prepare_decision, prepare_state, questions, reported_usage,
-)
-from .protocol import DuplicateField, ProtocolError, strict_json, validate_hiroute_request
-from .settings import (
-    DEFAULT_MODEL, DEFAULT_UPSTREAM, FORBIDDEN_INBOUND_HEADERS,
-    MAX_REQUEST_TIMEOUT_SECONDS, Settings, load_policy,
-)
+from .decision import decision_response, prepare_decision, reported_usage
+from .protocol import ProtocolError, strict_json, validate_hiroute_request
+from .settings import Settings
 
 
 MAX_UPSTREAM_RESPONSE_BYTES = 64 * 1024
@@ -61,7 +54,7 @@ async def decide(request: web.Request) -> web.Response:
     trace: dict[str, Any] = {"decision_id": decision_id, "phase": "authentication",
                              "upstream_usage": None}
     settings: Settings = request.app[SETTINGS]
-    log_event("decision_started", decision_id=decision_id, mode=settings.mode, model=settings.model)
+    log_event("decision_started", decision_id=decision_id, model=settings.model)
 
     def finish(body: dict[str, Any], status: int = 200) -> web.Response:
         log_event("decision_completed", **trace, status=status,
@@ -103,9 +96,7 @@ async def decide(request: web.Request) -> web.Response:
                     upstream = strict_json(await _bounded_response(upstream_response))
                     trace["upstream_usage"] = reported_usage(upstream)
             trace["phase"] = "decision"
-            result = decision_response(
-                settings, prepared.body["state"], upstream, prepared.target_trimmed, trace
-            )
+            result = decision_response(prepared, upstream, trace)
             return finish(result)
     except ProtocolError as error:
         trace["validation_error"] = str(error)
@@ -131,13 +122,9 @@ async def decide(request: web.Request) -> web.Response:
 
 async def _client(app: web.Application) -> None:
     settings: Settings = app[SETTINGS]
-    log_event("service_started", mode=settings.mode, model=settings.model,
+    log_event("service_started", model=settings.model,
               request_timeout_seconds=settings.request_timeout_seconds,
-              max_state_tokens=settings.max_state_tokens, max_concurrency=settings.max_concurrency,
-              simple_threshold=settings.simple_threshold if settings.mode == "rules" else None,
-              competence_floor=settings.competence_floor if settings.mode == "rules" else None,
-              criteria_source="policy" if settings.policy_configured else "default",
-              criteria_sha256=criteria_hash(settings.branch_criteria))
+              max_request_bytes=settings.max_request_bytes, max_concurrency=settings.max_concurrency)
     app[CLIENT] = ClientSession(
         timeout=ClientTimeout(total=settings.request_timeout_seconds),
         trust_env=True,

@@ -18,6 +18,7 @@ struct SearchCursor {
     content_row: i64,
     ordinal: u64,
     position: usize,
+    index_partial: bool,
 }
 
 impl crate::LocalObservationStore {
@@ -74,7 +75,7 @@ impl crate::LocalObservationStore {
         let mut cursor: SearchCursor = match &query.cursor {
             Some(encoded) => {
                 let cursor: SearchCursor = self.decode_observation_cursor(encoded)?;
-                if cursor.schema != 2
+                if cursor.schema != 3
                     || cursor.binding != binding
                     || cursor.visibility != visibility
                 {
@@ -83,7 +84,7 @@ impl crate::LocalObservationStore {
                 cursor
             }
             None => SearchCursor {
-                schema: 2,
+                schema: 3,
                 binding,
                 visibility,
                 request_watermark: transaction.query_row(
@@ -104,6 +105,7 @@ impl crate::LocalObservationStore {
                 content_row: 0,
                 ordinal: 0,
                 position: 0,
+                index_partial: false,
             },
         };
         let runs = reader
@@ -116,38 +118,11 @@ impl crate::LocalObservationStore {
                 .saturating_sub(crate::managed_text::RETENTION_MS)
                 .saturating_add(1),
         );
-        let partial_sql = format!("{}{}", super::turns::cte(5, "?15"),
-            "SELECT EXISTS(SELECT 1 FROM content_instances_v2 c JOIN logical_requests r ON r.workspace_id=c.workspace_id AND r.request_id=c.request_id
-             LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
-             LEFT JOIN observation_text_index_v2 i ON i.workspace=c.workspace_id AND i.digest=c.content_blob_digest
-             WHERE c.workspace_id=?1 AND c.state='complete' AND c.content_kind NOT IN ('provider_state','reasoning_delta','reasoning_finished') AND r.started_at_ms>=?2 AND r.started_at_ms<?3 AND (?4 IS NULL OR r.session_id=?4)
-               AND (?5 IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(?5))))
- AND (?10 IS NULL OR EXISTS(SELECT 1 FROM sessions s WHERE s.workspace_id=r.workspace_id AND s.session_id=r.session_id AND s.agent_id=?10))
- AND (?11 IS NULL OR EXISTS(SELECT 1 FROM valuation_requests_v2 v WHERE v.workspace_id=r.workspace_id AND v.request_id=r.request_id AND v.plan_id=?11))
- AND (?12 IS NULL OR EXISTS(SELECT 1 FROM observation_attempt_models_v2 a WHERE a.workspace_id=r.workspace_id AND a.request_id=r.request_id AND a.model_id=?12))
- AND (?13 IS NULL OR r.outcome=?13)
- AND (?14=0 OR (SELECT COUNT(DISTINCT model_id) FROM observation_attempt_models_v2 a WHERE a.workspace_id=r.workspace_id AND a.request_id=r.request_id)>1 OR EXISTS(SELECT 1 FROM turn_changes t WHERE t.request_id=r.request_id AND t.changed=1))
-               AND (c.canonical_media_type LIKE 'text/%' OR c.canonical_media_type='application/json' OR c.canonical_media_type LIKE 'application/vnd.hiroute.%')
-               AND (i.state IS NULL OR i.state!='ready' OR i.published>?6))");
-        let index_partial: bool = transaction.query_row(
-            &partial_sql,
-            params![
-                reader.workspace().as_str(),
-                from,
-                query.to_ms,
-                query.session_id,
-                runs,
-                cursor.publication_watermark,
-                None::<i64>,
-                None::<i64>,
-                None::<i64>,
-                query.agent_id,
-                query.plan_id,
-                query.native_model,
-                query.outcome,
-                query.only_model_switch,
-                cursor.request_watermark
-            ],
+        // Bound directory work as well as text bytes. Filtering or checking
+        // index readiness must not scan the entire history before LIMIT applies.
+        let window_end: i64 = transaction.query_row(
+            SCAN_WINDOW_SQL,
+            params![cursor.content_row, cursor.content_watermark],
             |row| row.get(0),
         )?;
         let mut hits = Vec::new();
@@ -156,22 +131,7 @@ impl crate::LocalObservationStore {
         let mut budget_exhausted = false;
         let mut more = false;
         {
-            let sql = format!("{}{}", super::turns::cte(5, "?15"),
-                "SELECT c.rowid,b.ordinal,b.original_start,b.primary_start,b.folded,b.offsets,r.session_id,r.request_id,c.message_instance_id,c.content_id,CASE WHEN l.conflicted=0 THEN l.body_json ELSE NULL END
-                 FROM content_instances_v2 c JOIN observation_text_index_v2 i ON i.workspace=c.workspace_id AND i.digest=c.content_blob_digest
-                 JOIN observation_text_blocks_v2 b ON b.workspace=i.workspace AND b.digest=i.digest
-                 JOIN logical_requests r ON r.workspace_id=c.workspace_id AND r.request_id=c.request_id
-                 LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
-                 WHERE c.workspace_id=?1 AND c.state='complete' AND c.content_kind NOT IN ('provider_state','reasoning_delta','reasoning_finished') AND i.state='ready' AND r.started_at_ms>=?2 AND r.started_at_ms<?3
-                   AND (?4 IS NULL OR r.session_id=?4) AND (?5 IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(?5))))
-                   AND c.rowid<=?6 AND i.published<=?7 AND (c.rowid>?8 OR (c.rowid=?8 AND b.ordinal>=?9))
- AND (?10 IS NULL OR EXISTS(SELECT 1 FROM sessions s WHERE s.workspace_id=r.workspace_id AND s.session_id=r.session_id AND s.agent_id=?10))
- AND (?11 IS NULL OR EXISTS(SELECT 1 FROM valuation_requests_v2 v WHERE v.workspace_id=r.workspace_id AND v.request_id=r.request_id AND v.plan_id=?11))
- AND (?12 IS NULL OR EXISTS(SELECT 1 FROM observation_attempt_models_v2 a WHERE a.workspace_id=r.workspace_id AND a.request_id=r.request_id AND a.model_id=?12))
- AND (?13 IS NULL OR r.outcome=?13)
- AND (?14=0 OR (SELECT COUNT(DISTINCT model_id) FROM observation_attempt_models_v2 a WHERE a.workspace_id=r.workspace_id AND a.request_id=r.request_id)>1 OR EXISTS(SELECT 1 FROM turn_changes t WHERE t.request_id=r.request_id AND t.changed=1))
-                 ORDER BY c.rowid,b.ordinal LIMIT 201"
-            );
+            let sql = candidate_sql();
             let mut statement = transaction.prepare(&sql)?;
             let mut rows = statement.query(params![
                 reader.workspace().as_str(),
@@ -188,7 +148,8 @@ impl crate::LocalObservationStore {
                 query.native_model,
                 query.outcome,
                 query.only_model_switch,
-                cursor.request_watermark
+                cursor.request_watermark,
+                window_end
             ])?;
             'candidates: while let Some(row) = rows.next()? {
                 if candidates == 200
@@ -203,7 +164,16 @@ impl crate::LocalObservationStore {
                     break;
                 }
                 let id: i64 = row.get(0)?;
-                let ordinal: u64 = row.get(1)?;
+                candidates += 1;
+                let Some(ordinal) = row.get::<_, Option<u64>>(1)? else {
+                    // Missing/unfinished indexes count only after authorization
+                    // and query filters. Ready empty text has no search blocks.
+                    cursor.index_partial |= row.get::<_, Option<String>>(11)?.is_none();
+                    cursor.content_row = id + 1;
+                    cursor.ordinal = 0;
+                    cursor.position = 0;
+                    continue;
+                };
                 let original_start: u64 = row.get(2)?;
                 let primary_start: u64 = row.get(3)?;
                 let needed = row
@@ -223,7 +193,6 @@ impl crate::LocalObservationStore {
                 }
                 let text: String = row.get(4)?;
                 let offsets: Vec<u8> = row.get(5)?;
-                candidates += 1;
                 bytes += text.len() + offsets.len();
                 let mut position = if cursor.content_row == id && cursor.ordinal == ordinal {
                     cursor.position
@@ -277,6 +246,13 @@ impl crate::LocalObservationStore {
                 cursor.position = 0;
             }
         }
+        if !more {
+            cursor.content_row = window_end + 1;
+            cursor.ordinal = 0;
+            cursor.position = 0;
+            more = window_end < cursor.content_watermark;
+            budget_exhausted |= more;
+        }
         transaction.commit()?;
         // A fresh read after the short snapshot is the visibility linearization
         // point. A deletion committed before it makes every candidate stale.
@@ -286,7 +262,7 @@ impl crate::LocalObservationStore {
         }
         Ok(ObservationSearchPageV2 {
             hits,
-            index_partial,
+            index_partial: cursor.index_partial,
             budget_exhausted,
             next_cursor: if more {
                 Some(self.encode_observation_cursor(&cursor)?)
@@ -295,4 +271,32 @@ impl crate::LocalObservationStore {
             },
         })
     }
+}
+
+pub(super) const SCAN_WINDOW_SQL: &str = "SELECT COALESCE(MAX(rowid),?2) FROM (
+    SELECT rowid FROM content_instances_v2 WHERE rowid>=?1 AND rowid<=?2
+    ORDER BY rowid LIMIT 256)";
+
+// CROSS JOIN keeps the bounded rowid window ahead of request/index joins. An
+// ordinary join lets SQLite sort every eligible historical block before LIMIT.
+pub(super) fn candidate_sql() -> String {
+    format!("{}{}", super::turns::cte(5, "?15"),
+                "SELECT c.rowid,b.ordinal,b.original_start,b.primary_start,b.folded,b.offsets,r.session_id,r.request_id,c.message_instance_id,c.content_id,CASE WHEN l.conflicted=0 THEN l.body_json ELSE NULL END,i.state
+                 FROM content_instances_v2 c NOT INDEXED
+                 CROSS JOIN logical_requests r ON r.workspace_id=c.workspace_id AND r.request_id=c.request_id
+                 LEFT JOIN observation_run_links l ON l.workspace_id=r.workspace_id AND l.request_id=r.request_id
+                 LEFT JOIN observation_text_index_v2 i ON i.workspace=c.workspace_id AND i.digest=c.content_blob_digest AND i.state='ready' AND i.published<=?7
+                 LEFT JOIN observation_text_blocks_v2 b ON b.workspace=i.workspace AND b.digest=i.digest
+                 WHERE c.workspace_id=?1 AND c.state='complete' AND c.content_kind NOT IN ('provider_state','reasoning_delta','reasoning_finished') AND r.started_at_ms>=?2 AND r.started_at_ms<?3
+                   AND (?4 IS NULL OR r.session_id=?4) AND (?5 IS NULL OR (l.conflicted=0 AND l.run_id IN(SELECT value FROM json_each(?5))))
+                   AND c.rowid>=?8 AND c.rowid<=?6 AND c.rowid<=?16 AND r.rowid<=?15
+                   AND (c.rowid>?8 OR (c.rowid=?8 AND (b.ordinal IS NULL OR b.ordinal>=?9)))
+                   AND (c.canonical_media_type LIKE 'text/%' OR c.canonical_media_type='application/json' OR c.canonical_media_type LIKE 'application/vnd.hiroute.%')
+ AND (?10 IS NULL OR EXISTS(SELECT 1 FROM sessions s WHERE s.workspace_id=r.workspace_id AND s.session_id=r.session_id AND s.agent_id=?10))
+ AND (?11 IS NULL OR EXISTS(SELECT 1 FROM valuation_requests_v2 v WHERE v.workspace_id=r.workspace_id AND v.request_id=r.request_id AND v.plan_id=?11))
+ AND (?12 IS NULL OR EXISTS(SELECT 1 FROM observation_attempt_models_v2 a WHERE a.workspace_id=r.workspace_id AND a.request_id=r.request_id AND a.model_id=?12))
+ AND (?13 IS NULL OR r.outcome=?13)
+ AND (?14=0 OR (SELECT COUNT(DISTINCT model_id) FROM observation_attempt_models_v2 a WHERE a.workspace_id=r.workspace_id AND a.request_id=r.request_id)>1 OR EXISTS(SELECT 1 FROM turn_changes t WHERE t.request_id=r.request_id AND t.changed=1))
+                 ORDER BY c.rowid,b.ordinal LIMIT 201"
+            )
 }

@@ -16,6 +16,7 @@ pub(super) fn plan_quality_samples(options: &[String]) -> Result<Value, ErrorCod
         return observation_read_payload(ObservationCommand::PlanQuality, std::io::stdin());
     }
     let mut query = hiroute_application_api::PlanQualitySamplesQuery {
+        competence: None,
         plan_id: None,
         session_id: None,
         segment_id: None,
@@ -40,6 +41,14 @@ pub(super) fn plan_quality_samples(options: &[String]) -> Result<Value, ErrorCod
             "--model" => query.model_configuration_id = Some(next(options, &mut index)?),
             "--from-ms" => query.from_ms = Some(parse_i64(options, &mut index)?),
             "--to-ms" => query.to_ms = Some(parse_i64(options, &mut index)?),
+            "--unrated" => query.unrated_only = true,
+            "--competence" => {
+                query.competence = Some(match next(options, &mut index)?.as_str() {
+                    "below-floor" => hiroute_application_api::PlanCompetenceFilter::BelowFloor,
+                    "meets-floor" => hiroute_application_api::PlanCompetenceFilter::MeetsFloor,
+                    _ => return Err(ErrorCode::InvalidArguments),
+                })
+            }
             "--score-gt" => query.score_gt = Some(parse_score(options, &mut index)?),
             "--score-lt" => query.score_lt = Some(parse_score(options, &mut index)?),
             "--limit" => {

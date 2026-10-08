@@ -133,10 +133,16 @@ fn fixed_execution_has_recorded_context_without_plan_identity() {
 fn external_and_rule_fallback_classification_facts_are_explicit() {
     let mut external = route();
     external.complexity = Some(BranchDecisionV1 {
+        policy: None,
+        competence_trigger: None,
+        execution_group: crate::ExecutionGroupV1::Regular,
+        simple_probability: None,
+        simple_threshold_millis: None,
+        selection_reason: crate::ModelGroupReasonV1::Heuristic,
         strategy_id: "hiroute-complexity-v1".into(),
         schema_version: "hiroute-route-strategy-v1".into(),
         payload_digest: digest("complexity-model"),
-        branch_id: crate::SMART_SAVING_COMPLEX_BRANCH_ID.into(),
+        branch_id: crate::SMART_SAVING_SCOPE_ID.into(),
         complexity_score: None,
         threshold: None,
         decision_source: ComplexityDecisionSourceV1::ExternalClassifier,
@@ -152,10 +158,16 @@ fn external_and_rule_fallback_classification_facts_are_explicit() {
 
     let mut fallback = route();
     fallback.complexity = Some(BranchDecisionV1 {
+        policy: None,
+        competence_trigger: None,
+        execution_group: crate::ExecutionGroupV1::Regular,
+        simple_probability: None,
+        simple_threshold_millis: None,
+        selection_reason: crate::ModelGroupReasonV1::Heuristic,
         strategy_id: "hiroute-complexity-v1".into(),
         schema_version: "hiroute-route-strategy-v1".into(),
         payload_digest: digest("complexity-fallback"),
-        branch_id: crate::SMART_SAVING_SIMPLE_BRANCH_ID.into(),
+        branch_id: crate::SMART_SAVING_SCOPE_ID.into(),
         complexity_score: Some(0),
         threshold: Some(3),
         decision_source: ComplexityDecisionSourceV1::BuiltinRules,
@@ -470,10 +482,16 @@ fn route() -> RouteDecisionFactV1 {
         output_digest: digest("output"),
         branch: PlannedBranchV1::CustomExactOrder,
         complexity: Some(BranchDecisionV1 {
+            policy: None,
+            competence_trigger: None,
+            execution_group: crate::ExecutionGroupV1::Regular,
+            simple_probability: None,
+            simple_threshold_millis: None,
+            selection_reason: crate::ModelGroupReasonV1::Heuristic,
             strategy_id: "hiroute-complexity-v1".to_owned(),
             schema_version: "hiroute-route-strategy-v1".to_owned(),
             payload_digest: digest("complexity"),
-            branch_id: crate::SMART_SAVING_COMPLEX_BRANCH_ID.into(),
+            branch_id: crate::SMART_SAVING_SCOPE_ID.into(),
             complexity_score: Some(4),
             threshold: Some(3),
             decision_source: ComplexityDecisionSourceV1::BuiltinRules,

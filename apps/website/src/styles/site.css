@@ -100,8 +100,8 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .stage>span{font:12px ui-monospace,monospace;color:#8b98bc;padding-top:5px}
 .stage h3{font-size:16px;margin-bottom:6px}
 .stage p{color:#a8b0c4;font-size:13px}
-.product-shot{margin-top:38px;border:1px solid var(--line);padding:13px;background:#eef0f6;border-radius:10px}
-.product-shot img{width:100%;border-radius:6px}
+.product-shot{margin:38px 0 0;border:1px solid var(--line);padding:13px;background:#eef0f6;border-radius:10px}
+.product-shot img{display:block;width:100%;height:auto;border-radius:6px}
 .caption{font-size:11px;color:var(--muted);margin-top:13px;line-height:1.7}
 .proof-bottom{display:grid;grid-template-columns:1fr 1fr;gap:60px;padding-top:26px}
 .proof-bottom h3{font-size:17px;margin-bottom:9px}

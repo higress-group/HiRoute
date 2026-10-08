@@ -14,14 +14,20 @@ npm test
 npm run dev
 ```
 
-`npm run build` copies the repository's canonical Decision API OAS and current
+`npm run build` copies the repository's canonical custom extension API OAS and current
 documentation illustrations into generated public directories, builds the site,
 and checks required routes and local links. Product guides are authored once in
-`content/guides`. The Decision API and Jev articles render directly from
+`content/guides`. Decision models, the custom extension API and Jev reference deployment render directly from
 `decision-extensions`; do not copy their Markdown into this app. Generated
 `public/api`, `public/decision-assets`, `public/install`, and `public/install.sh`
 content is ignored by Git. The last two are generated from the canonical
 standalone installer and the current stable release record; do not hand-edit them.
+
+Homepage competence images are complete native Desktop session captures. Configuration
+illustrations use actual product components. Both use constructed documentation data;
+see [capture provenance](../../decision-extensions/assets/README.md) for their distinct sources.
+They are illustrations, not provider acceptance or model benchmarks. Historical news and experiment
+reports retain their original version and evidence; current setup instructions belong in the guides.
 
 Chinese lives at `/`; English lives at `/en/`. Language is an explicit link, not
 an IP-based redirect. All pages are static directory indexes; `/releases/*` is

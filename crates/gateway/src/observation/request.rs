@@ -243,6 +243,22 @@ impl RequestObservation {
             .token(CorrelationDomain::Attempt, attempt_id)
     }
 
+    pub(crate) fn prepared_request_diagnostic(
+        &self,
+        headers: &http::HeaderMap,
+        serialized_template: &[u8],
+    ) {
+        if self.is_enabled()
+            && self.inner.context.handle().level()
+                == Some(hiroute_diagnostics::DiagnosticLevel::Debug)
+        {
+            self.wire_diagnostic(super::provider::wire_diagnostic::request(
+                headers,
+                serialized_template,
+            ));
+        }
+    }
+
     pub(crate) fn response_failure(
         &self,
         stage: hiroute_diagnostics::event::ResponseFailureStage,
@@ -876,6 +892,7 @@ impl RequestObservation {
             };
         self.emit_execution(
             ExecutionFactV1::AgentTurnFinished {
+                branch_execution: turn.branch_execution.clone(),
                 agent_turn_id: turn.agent_turn_id.clone(),
                 segment_id: turn.segment_id.clone(),
                 ordinal: turn.ordinal,

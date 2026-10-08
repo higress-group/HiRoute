@@ -6,6 +6,8 @@ use super::AgentTurnAttributionV1;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanQualitySamplesQuery {
+    #[serde(default)]
+    pub competence: Option<PlanCompetenceFilter>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -53,6 +55,10 @@ pub struct PlanQualityAssessment {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanQualitySample {
+    /// The stage-opening selection; actual execution and later assessment stay separate.
+    pub selection: Option<super::BranchDecisionV1>,
+    pub branch_execution: Option<crate::BranchExecutionV1>,
+    pub upgrade: Option<PlanQualityUpgrade>,
     pub segment_id: String,
     pub session_id: String,
     pub plan_id: String,
@@ -112,6 +118,7 @@ pub struct PlanQualitySummary {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanQualityModelSummary {
+    pub branch_policy: Option<crate::BranchExecutionPolicyV1>,
     pub execution: PlanQualityExecutionIdentity,
     pub native_model: Option<String>,
     pub reasoning_profile_id: Option<String>,
@@ -124,6 +131,8 @@ pub struct PlanQualityModelSummary {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanQualityExecutionIdentity {
+    pub group: Option<crate::ExecutionGroupV1>,
+    pub candidate_index: Option<u16>,
     pub plan_revision: u64,
     /// Present only when no executed branch was recorded; never replaces it.
     pub selected_branch_id: Option<String>,
@@ -131,4 +140,18 @@ pub struct PlanQualityExecutionIdentity {
     pub model_configuration_id: Option<String>,
     pub profile_digest: Option<String>,
     pub attribution: AgentTurnAttributionV1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanCompetenceFilter {
+    BelowFloor,
+    MeetsFloor,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanQualityUpgrade {
+    pub decision: crate::CompetenceProtectionV1,
+    pub trigger_request_id: String,
 }

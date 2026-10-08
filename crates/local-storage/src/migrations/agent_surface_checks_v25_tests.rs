@@ -18,7 +18,7 @@ fn schema24_surface_upgrade_preserves_raw_results_and_existing_key() {
         let connection = Connection::open(&path).unwrap();
         if path.file_name().unwrap() == "control.db" {
             connection
-                .execute_batch("DROP TABLE agent_surface_checks")
+                .execute_batch("DROP TABLE decision_service_operations; DROP TABLE decision_services; DROP TABLE agent_surface_checks")
                 .unwrap();
             connection
                 .execute_batch(agent_surface_checks_v22::CONTROL)

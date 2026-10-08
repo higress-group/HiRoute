@@ -83,6 +83,7 @@ impl NativeResponseDecoder {
     /// Builds an observation-only decoder with an explicit request-bound Tool
     /// identity projector. The projector has no continuation-authority side
     /// effects and replaces task-local lookup for this decoder.
+    #[cfg(test)]
     pub(crate) fn new_for_observation(
         profile: &CandidateProtocolProfile,
         status: u16,
@@ -90,13 +91,31 @@ impl NativeResponseDecoder {
         tool_id_projection: super::super::continuation::ToolIdProjection,
         chat_tool_projection: Option<ChatToolProjection>,
     ) -> Result<Self, ProtocolAdapterError> {
+        Self::new_for_observation_with_budget(
+            profile,
+            status,
+            streaming,
+            tool_id_projection,
+            chat_tool_projection,
+            super::body_buffer::standalone_budget(),
+        )
+    }
+
+    pub(crate) fn new_for_observation_with_budget(
+        profile: &CandidateProtocolProfile,
+        status: u16,
+        streaming: bool,
+        tool_id_projection: super::super::continuation::ToolIdProjection,
+        chat_tool_projection: Option<ChatToolProjection>,
+        budget: StreamBudget,
+    ) -> Result<Self, ProtocolAdapterError> {
         Self::new_with_projections(
             profile,
             status,
             streaming,
             Some(tool_id_projection),
             chat_tool_projection,
-            None,
+            Some(budget),
         )
     }
 

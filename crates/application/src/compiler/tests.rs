@@ -55,6 +55,7 @@ fn compiler_smart_saving_materializes_two_deterministic_branches() {
         reselect_on_user_message,
         simple_groups,
         complex_groups,
+        ..
     } = &result.materialized.request_owned
     else {
         panic!("smart-saving request phase");

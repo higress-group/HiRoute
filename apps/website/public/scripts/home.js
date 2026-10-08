@@ -1,33 +1,33 @@
 // Shared static-site interactions; the content itself is rendered in each language.
 const boundaries = document.documentElement.lang === 'en' ? {
-  compaction: {
-    kicker: 'A decision point during autonomous work',
-    title: 'After context compaction, choose again.',
-    copy: 'Compaction rebuilds a long session around a new prefix. HiRoute uses that moment to assess the prior stage and the work ahead; the client does not need to detect or report compaction separately.',
-    assessment: 'Assess the work already performed by model A',
-    choice: 'Choose the primary branch; model B takes over'
+  continuation: {
+    kicker: 'Tool continuation within one turn',
+    title: 'After a tool returns, continue this turn’s work.',
+    copy: 'Tool results still belong to the current task. HiRoute inherits this turn’s frozen decision and prefers the eligible current model within its group, helping reuse the prefix. Candidate failures may use bounded failover; a tool result itself does not trigger another judgment.',
+    assessment: 'Inherit this turn’s frozen task and model-group decision',
+    choice: 'Model A continues with the tool results in this example'
   },
   human: {
     kicker: 'A decision point with human input',
-    title: 'A new question can also reveal how the last stage went.',
-    copy: 'A follow-up question or feedback prompts a new choice and an optional assessment of prior work. New input need not invalidate the cache. If the model remains a good fit, it can continue with the existing prefix.',
-    assessment: 'Use the new feedback to assess model B’s stage',
-    choice: 'Keep the primary branch; model B continues'
+    title: 'A new user turn gets a fresh decision.',
+    copy: 'A new question or feedback prompts a fresh task and model-group choice, with an optional assessment of the prior stage. Old low scores do not lock the group, and a new turn does not automatically return to economy. The same model can continue if it fits the newly selected group.',
+    assessment: 'Judge the new task and, when possible, assess model A’s completed stage',
+    choice: 'Select primary for the deeper work; model B takes over in this example'
   }
 } : {
-  compaction: {
-    kicker: '自主执行中的决策机会',
-    title: '上下文压缩后，可以重新选择。',
-    copy: '长会话压缩并重建上下文时，可复用前缀本来就会变化。HiRoute 利用这个时机评估上一阶段和后续工作；客户端无需额外识别或上报压缩事件。',
-    assessment: '回看模型 A 已经完成的执行片段',
-    choice: '选择主力分支，让模型 B 接续'
+  continuation: {
+    kicker: '同一轮中的工具续接',
+    title: '工具返回后，继续本轮工作。',
+    copy: '工具结果仍属于当前任务，HiRoute 沿用本轮冻结的决策，尽量复用同组内合格的当前模型与前缀。候选故障可以按计划接力，工具返回本身不会重新判断任务。',
+    assessment: '沿用本轮已冻结的任务与模型组判断',
+    choice: '示例中模型 A 继续处理工具结果'
   },
   human: {
     kicker: '用户参与后的决策机会',
-    title: '新问题，也是对上一阶段的新线索。',
-    copy: '用户补充问题或反馈时，重新判断下一段工作，并可评价此前的表现。新输入不一定破坏已有缓存；如果模型仍胜任，可以保持原模型继续追加上下文。',
-    assessment: '结合新反馈，评价模型 B 的阶段表现',
-    choice: '示例中仍选主力分支，模型 B 继续'
+    title: '新用户轮次，重新判断当前工作。',
+    copy: '新的问题或反馈触发本轮任务与模型组判断，并可评价上一阶段。旧低分不会跨轮锁定，新一轮也不会自动回到省钱组。原模型符合本轮新选中的模型组时，可以继续使用。',
+    assessment: '判断新任务，并在证据可用时评价模型 A 已完成的阶段',
+    choice: '示例中深入工作使用主力组，由模型 B 接续'
   }
 };
 

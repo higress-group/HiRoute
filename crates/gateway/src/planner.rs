@@ -170,14 +170,6 @@ impl Planner {
             &mut frozen,
             &mut reason_ledger,
         )?;
-        apply_previous_success_fallback(
-            input,
-            &candidate_by_id,
-            &mut groups,
-            &mut evaluations,
-            &mut frozen,
-            &mut reason_ledger,
-        )?;
 
         for (ordinal, entry) in reason_ledger.iter_mut().enumerate() {
             entry.ordinal = u32::try_from(ordinal).map_err(|_| PlannerError::ArithmeticOverflow)?;
@@ -272,6 +264,23 @@ fn apply_context_hold(
     let Some(hold) = &input.context_hold else {
         return Ok(());
     };
+    if matches!(
+        input.policy.route,
+        MaterializedRouteV1::Branches {
+            reselect_on_user_message: true,
+            ..
+        } | MaterializedRouteV1::SmartSaving {
+            reselect_on_user_message: true,
+            ..
+        }
+    ) && input
+        .classification_decision
+        .as_ref()
+        .is_some_and(|d| d.decision_source != ComplexityDecisionSourceV1::Inherited)
+    {
+        return Ok(());
+    }
+
     let Some(candidate) = candidate_by_id.get(hold.candidate_id.as_str()).copied() else {
         reason_ledger.push(reason(LedgerReasonCodeV1::ContextHoldInvalidated, None));
         return Ok(());
@@ -280,10 +289,7 @@ fn apply_context_hold(
         reason_ledger.push(reason(LedgerReasonCodeV1::ContextHoldInvalidated, None));
         return Ok(());
     };
-    if !selected_group_ids
-        .iter()
-        .any(|group_id| group_id == &hold.origin_group_id)
-    {
+    if selected_group_ids.first() != Some(&hold.origin_group_id) {
         reason_ledger.push(reason(
             LedgerReasonCodeV1::ContextHoldInvalidated,
             Some(group.group_id.clone()),
@@ -375,143 +381,6 @@ fn apply_context_hold(
     Ok(())
 }
 
-fn apply_previous_success_fallback(
-    input: &PlannerInputV1,
-    candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
-    groups: &mut Vec<GroupPlanV1>,
-    evaluations: &mut Vec<CandidateEvaluationV1>,
-    frozen: &mut Vec<FrozenCandidateV1>,
-    reason_ledger: &mut Vec<ReasonLedgerEntryV1>,
-) -> Result<(), PlannerError> {
-    if !matches!(input.policy.route, MaterializedRouteV1::SmartSaving { .. }) {
-        return Ok(());
-    }
-    let Some(previous_id) = input.previous_success_candidate_id.as_deref() else {
-        return Ok(());
-    };
-    if frozen
-        .first()
-        .is_some_and(|candidate| candidate.candidate_id == previous_id)
-    {
-        return Ok(());
-    }
-    if let Some(index) = frozen
-        .iter()
-        .position(|candidate| candidate.candidate_id == previous_id)
-    {
-        let mut candidate = frozen.remove(index);
-        candidate
-            .ranking_reasons
-            .push(RankingReasonCodeV1::PreviousSuccessFallback);
-        let group_id = candidate.group_id.clone();
-        frozen.insert(usize::from(!frozen.is_empty()), candidate);
-        reason_ledger.push(reason(
-            LedgerReasonCodeV1::PreviousSuccessFallback,
-            Some(group_id),
-        ));
-    } else {
-        // A candidate excluded from the selected groups cannot be revived by
-        // a prior success. Only an exact, currently eligible plan member may
-        // extend the frozen chain for this request.
-        if evaluations
-            .iter()
-            .any(|entry| entry.candidate_id == previous_id)
-        {
-            return Ok(());
-        }
-        let Some(candidate) = candidate_by_id.get(previous_id).copied() else {
-            return Ok(());
-        };
-        let mut matches = input
-            .policy
-            .groups
-            .iter()
-            .filter(|group| group.candidate_ids.iter().any(|id| id == previous_id));
-        let Some(group) = matches.next() else {
-            return Ok(());
-        };
-        if matches.next().is_some() {
-            return Ok(());
-        }
-        let declared_order = u32::try_from(
-            group
-                .candidate_ids
-                .iter()
-                .position(|id| id == previous_id)
-                .ok_or(PlannerError::InvalidPolicy(
-                    "previous candidate is not in its group",
-                ))?,
-        )
-        .map_err(|_| PlannerError::ArithmeticOverflow)?;
-        let Ok(projection) = evaluate_candidate(
-            &input.request,
-            candidate,
-            input.policy.cost_policy,
-            &input.policy.limits,
-        ) else {
-            return Ok(());
-        };
-        if rank_group(
-            group,
-            vec![EligibleForRanking {
-                candidate,
-                projection: projection.clone(),
-                declared_order,
-            }],
-            guard_anchor_score(group, candidate_by_id),
-        )
-        .ordered
-        .is_empty()
-        {
-            return Ok(());
-        }
-        evaluations.push(CandidateEvaluationV1 {
-            candidate_id: candidate.candidate_id.clone(),
-            stable_binding_id: candidate.stable_binding_id.clone(),
-            group_id: group.group_id.clone(),
-            declared_order,
-            profile_digest: candidate.profile_digest.clone(),
-            eligible: true,
-            first_exclusion: None,
-            reasoning_profile_id: Some(projection.reasoning_profile_id.clone()),
-            context: projection.context.clone(),
-            overall_score_tenths: candidate.overall_score_tenths,
-            effective_cost_micros: projection.effective_cost_micros,
-            cost_class: candidate.cost_class,
-        });
-        frozen.insert(
-            usize::from(!frozen.is_empty()),
-            FrozenCandidateV1 {
-                ordinal: 0,
-                candidate_id: candidate.candidate_id.clone(),
-                stable_binding_id: candidate.stable_binding_id.clone(),
-                group_id: group.group_id.clone(),
-                profile_digest: candidate.profile_digest.clone(),
-                upstream_protocol: candidate.protocol_profile.capability.upstream_protocol,
-                reasoning_profile_id: projection.reasoning_profile_id,
-                context: projection.context,
-                overall_score_tenths: candidate.overall_score_tenths,
-                effective_cost_micros: projection.effective_cost_micros,
-                cost_class: candidate.cost_class,
-                ranking_reasons: vec![RankingReasonCodeV1::PreviousSuccessFallback],
-            },
-        );
-        groups.push(GroupPlanV1 {
-            ordinal: u32::try_from(groups.len()).map_err(|_| PlannerError::ArithmeticOverflow)?,
-            group_id: group.group_id.clone(),
-            ranked_candidate_ids: vec![candidate.candidate_id.clone()],
-        });
-        reason_ledger.push(reason(
-            LedgerReasonCodeV1::PreviousSuccessFallback,
-            Some(group.group_id.clone()),
-        ));
-    }
-    for (ordinal, candidate) in frozen.iter_mut().enumerate() {
-        candidate.ordinal = u32::try_from(ordinal).map_err(|_| PlannerError::ArithmeticOverflow)?;
-    }
-    Ok(())
-}
-
 fn validate_input(input: &PlannerInputV1) -> Result<(), PlannerError> {
     if input.schema_version != PLANNER_INPUT_SCHEMA
         || input.request.schema_version
@@ -579,6 +448,36 @@ fn validate_input(input: &PlannerInputV1) -> Result<(), PlannerError> {
         .map(|group| (group.group_id.as_str(), group))
         .collect::<BTreeMap<_, _>>();
     match &policy.route {
+        MaterializedRouteV1::Branches {
+            branches,
+            default_branch_id,
+            ..
+        } => {
+            let strategy = policy
+                .complexity_strategy
+                .as_ref()
+                .ok_or(PlannerError::InvalidPolicy("missing branch strategy"))?;
+            ComplexityV1::validate(strategy)?;
+            if branches.iter().map(|b| b.id.clone()).collect::<Vec<_>>() != strategy.branch_ids
+                || strategy.default_branch_id.as_ref() != Some(default_branch_id)
+            {
+                return Err(PlannerError::InvalidPolicy("branch strategy mismatch"));
+            }
+            let mut referenced = BTreeSet::new();
+            for branch in branches {
+                for id in [Some(branch.group), branch.primary_group]
+                    .into_iter()
+                    .flatten()
+                {
+                    let name = id.as_name();
+                    require_group(&group_by_id, &name)?;
+                    referenced.insert(name);
+                }
+            }
+            if referenced.len() != group_by_id.len() {
+                return Err(PlannerError::InvalidPolicy("unreferenced branch group"));
+            }
+        }
         MaterializedRouteV1::SmartSaving {
             simple_group_id,
             simple_fallback_group_ids,
@@ -802,11 +701,11 @@ fn validate_classification_decision(
     let identity_matches = decision.strategy_id == strategy.strategy_id
         && decision.schema_version == strategy.schema_version
         && decision.payload_digest == strategy.payload_digest;
-    let branch_matches = matches!(
-        decision.branch_id.as_str(),
-        hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID
-            | hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID
-    );
+    let branch_matches = if strategy.branch_ids.is_empty() {
+        decision.branch_id == hiroute_domain::SMART_SAVING_SCOPE_ID
+    } else {
+        strategy.branch_ids.contains(&decision.branch_id)
+    };
     let facts_match = match (strategy.classifier_kind, decision.decision_source) {
         (CompiledClassifierKindV1::Rest, ComplexityDecisionSourceV1::ExternalClassifier) => {
             decision.complexity_score.is_none()
@@ -850,6 +749,43 @@ fn validate_classification_decision(
 
 fn select_groups(input: &PlannerInputV1) -> Result<GroupSelection, PlannerError> {
     match &input.policy.route {
+        MaterializedRouteV1::Branches { branches, .. } => {
+            let strategy = input
+                .policy
+                .complexity_strategy
+                .as_ref()
+                .ok_or(PlannerError::InvalidPolicy("missing branch strategy"))?;
+            let decision = input
+                .classification_decision
+                .clone()
+                .ok_or(PlannerError::InvalidPolicy("missing branch decision"))?;
+            validate_classification_decision(&decision, strategy)?;
+            let branch = branches
+                .iter()
+                .find(|b| b.id == decision.branch_id)
+                .ok_or(PlannerError::CorrelatedDecisionMismatch)?;
+            let groups = if decision.execution_group == hiroute_domain::ExecutionGroupV1::Primary {
+                vec![
+                    branch
+                        .primary_group
+                        .ok_or(PlannerError::CorrelatedDecisionMismatch)?
+                        .as_name(),
+                ]
+            } else {
+                [Some(branch.group), branch.primary_group]
+                    .into_iter()
+                    .flatten()
+                    .map(|g| g.as_name())
+                    .collect()
+            };
+            Ok((
+                PlannedBranchV1::CustomExactOrder,
+                Some(decision),
+                input.classification_facts.clone(),
+                groups,
+                vec![reason(LedgerReasonCodeV1::CustomExactOrder, None)],
+            ))
+        }
         MaterializedRouteV1::SmartSaving {
             simple_group_id,
             simple_fallback_group_ids,
@@ -875,8 +811,8 @@ fn select_groups(input: &PlannerInputV1) -> Result<GroupSelection, PlannerError>
                     "classification facts are missing",
                 ))?;
             validate_classification_decision(&decision, strategy)?;
-            match decision.branch_id.as_str() {
-                hiroute_domain::SMART_SAVING_SIMPLE_BRANCH_ID => {
+            match decision.execution_group {
+                hiroute_domain::ExecutionGroupV1::Regular => {
                     let mut groups = vec![simple_group_id.clone()];
                     groups.extend(simple_fallback_group_ids.iter().cloned());
                     let mut reasons = vec![reason(LedgerReasonCodeV1::SmartSavingSimple, None)];
@@ -894,7 +830,7 @@ fn select_groups(input: &PlannerInputV1) -> Result<GroupSelection, PlannerError>
                         reasons,
                     ))
                 }
-                hiroute_domain::SMART_SAVING_COMPLEX_BRANCH_ID => Ok((
+                hiroute_domain::ExecutionGroupV1::Primary => Ok((
                     PlannedBranchV1::SmartSavingComplex,
                     Some(decision),
                     Some(facts),
@@ -904,7 +840,6 @@ fn select_groups(input: &PlannerInputV1) -> Result<GroupSelection, PlannerError>
                         reason(LedgerReasonCodeV1::ComplexNoDowngrade, None),
                     ],
                 )),
-                _ => Err(PlannerError::CorrelatedDecisionMismatch),
             }
         }
         MaterializedRouteV1::FreeFirst {
@@ -981,4 +916,4 @@ fn excluded_evaluation(
 
 #[cfg(test)]
 #[path = "planning/tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -15,8 +15,13 @@ use http::header::{CONTENT_LENGTH, CONTENT_TYPE, HOST};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use tokio_util::sync::CancellationToken;
 
+#[path = "classification/group_policy.rs"]
+mod group_policy;
 #[path = "classification/protocol.rs"]
 mod protocol;
+#[path = "classification/system_one.rs"]
+mod system_one;
+pub(super) use group_policy::{apply as apply_group_policy, execution_position};
 
 use super::ProductionGatewayRuntime;
 use super::adapters::{PreparedReplayTemplate, sequential_replay_body};
@@ -101,6 +106,13 @@ pub(super) struct ClassificationRequest<'a> {
     pub(super) started_at: Instant,
 }
 
+struct PreparedDecisionRequest {
+    template: PreparedReplayTemplate,
+    has_target: bool,
+    target_partial: bool,
+    bindings: Option<system_one::Bindings>,
+}
+
 pub(super) struct ClassificationOutcome {
     pub(super) decision: BranchDecisionV1,
     pub(super) facts: SanitizedStructuralFactsV1,
@@ -135,16 +147,31 @@ impl ProductionGatewayRuntime {
         &self,
         mode: &hiroute_domain::ComplexityClassifierModeV1,
     ) -> Result<ClassifierDiagnosticOutcome, ClassifierDiagnosticError> {
-        if !matches!(
-            mode,
-            hiroute_domain::ComplexityClassifierModeV1::Rest { .. }
-        ) {
+        if matches!(mode, hiroute_domain::ComplexityClassifierModeV1::LocalRules) {
             return Err(ClassifierDiagnosticError::InvalidConfig);
         }
         mode.validate()
             .map_err(|_| ClassifierDiagnosticError::InvalidConfig)?;
-        let classifier = crate::server::publication::compile_classifier_mode_authority(mode, 1)
+        let mut classifier = crate::server::publication::compile_classifier_mode_authority(mode, 1)
             .map_err(|_| ClassifierDiagnosticError::InvalidConfig)?;
+        // Exercise category and degree in one synthetic first turn, without business tokens.
+        Arc::make_mut(&mut classifier).decision =
+            hiroute_domain::DecisionDefinitionV1::Categorical {
+                instructions:
+                    "Choose the task category by its main intent; use general if nothing matches."
+                        .into(),
+                options: [
+                    ("local", "A clear local coding or editing task"),
+                    ("general", "All other tasks"),
+                ]
+                .into_iter()
+                .map(|(id, criterion)| hiroute_domain::CategoryOptionV1 {
+                    id: id.into(),
+                    criterion: criterion.into(),
+                    refinement: Some(hiroute_domain::DegreePolicyV1::default().definition()),
+                })
+                .collect(),
+            };
         let config_digest = hiroute_domain::CanonicalDigest::of(mode)
             .map_err(|_| ClassifierDiagnosticError::InvalidConfig)?;
         let strategy = ComplexityV1::compile_with_classifier(
@@ -152,6 +179,13 @@ impl ProductionGatewayRuntime {
             CompiledClassifierKindV1::Rest,
             Some(config_digest.as_str().to_owned()),
         )
+        .and_then(|strategy| {
+            ComplexityV1::with_branches(
+                strategy,
+                vec!["local".into(), "general".into()],
+                "general".into(),
+            )
+        })
         .map_err(|_| ClassifierDiagnosticError::InvalidConfig)?;
         let budget = self
             .execution
@@ -168,6 +202,7 @@ impl ProductionGatewayRuntime {
             .map_err(|_| ClassifierDiagnosticError::Integrity)?;
         let request = diagnostic_request();
         let history = AgentTurnHistorySnapshot {
+            previous_decision: None,
             visible_conversation: Vec::new(),
             history_partial: false,
             assessment_from: None,
@@ -217,6 +252,9 @@ impl ProductionGatewayRuntime {
         if result.decision.decision_source != ComplexityDecisionSourceV1::ExternalClassifier {
             return Err(ClassifierDiagnosticError::Integrity);
         }
+        if result.decision.simple_probability.is_none() {
+            return Err(ClassifierDiagnosticError::InvalidOutput);
+        }
         Ok(ClassifierDiagnosticOutcome {
             branch_id: result.decision.branch_id,
             duration_millis: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -258,35 +296,47 @@ impl ProductionGatewayRuntime {
 
         let result = match request.classifier {
             Some(classifier) => {
-                let template = classifier_request_template(
-                    request.request,
-                    request.history,
-                    &classifier.branches,
-                )
-                .map_err(|_| ClassificationError::Integrity)?;
-                match ensure_call_active(
-                    call_deadline,
-                    request.overall_deadline,
-                    &request.cancellation,
-                ) {
-                    Ok(()) => {
-                        self.call_classifier(
-                            classifier,
-                            template,
-                            request.replay,
-                            request.publication_revision,
+                let prepared = if classifier.system_one_model.is_some() {
+                    system_one::request_template(classifier, request.request, request.history)
+                } else {
+                    classifier_request_template(request.request, request.history, classifier)
+                        .map_err(|_| CallFailure::RejectedInput)
+                };
+                match prepared {
+                    Err(error) => Err(error),
+                    Ok(prepared) => {
+                        let target_trimmed = prepared.target_partial;
+                        match ensure_call_active(
                             call_deadline,
                             request.overall_deadline,
-                            fixed_timeout_wins,
-                            request.cancellation.clone(),
-                            request.history.assessment_target.is_some(),
-                        )
-                        .await?
+                            &request.cancellation,
+                        ) {
+                            Ok(()) => {
+                                let result = self
+                                    .call_classifier(
+                                        classifier,
+                                        prepared,
+                                        request.replay,
+                                        request.publication_revision,
+                                        call_deadline,
+                                        request.overall_deadline,
+                                        fixed_timeout_wins,
+                                        request.cancellation.clone(),
+                                    )
+                                    .await?;
+                                result.map(|mut response| {
+                                    if let Some(assessment) = response.assessment.as_mut() {
+                                        assessment.partial |= target_trimmed;
+                                    }
+                                    response
+                                })
+                            }
+                            Err(ClassificationError::Deadline) if fixed_timeout_wins => {
+                                Err(CallFailure::Timeout)
+                            }
+                            Err(error) => return Err(error),
+                        }
                     }
-                    Err(ClassificationError::Deadline) if fixed_timeout_wins => {
-                        Err(CallFailure::Timeout)
-                    }
-                    Err(error) => return Err(error),
                 }
             }
             None => Err(CallFailure::Unavailable),
@@ -310,6 +360,20 @@ impl ProductionGatewayRuntime {
                 });
                 Ok(ClassificationOutcome {
                     decision: BranchDecisionV1 {
+                        policy: None,
+                        competence_trigger: None,
+                        execution_group: hiroute_domain::ExecutionGroupV1::Regular,
+                        simple_probability: response
+                            .probabilities
+                            .as_ref()
+                            .and_then(|p| p.get("simple"))
+                            .and_then(|p| serde_json::Number::from_f64(*p)),
+                        simple_threshold_millis: None,
+                        selection_reason: if response.degree_failed {
+                            hiroute_domain::ModelGroupReasonV1::DegreeUnavailable
+                        } else {
+                            hiroute_domain::ModelGroupReasonV1::SimpleTask
+                        },
                         strategy_id: strategy.strategy_id.clone(),
                         schema_version: strategy.schema_version.clone(),
                         payload_digest: strategy.payload_digest.clone(),
@@ -350,15 +414,15 @@ impl ProductionGatewayRuntime {
     async fn call_classifier(
         &self,
         classifier: &RestBranchClassifierAuthorityV1,
-        template: PreparedReplayTemplate,
+        prepared: PreparedDecisionRequest,
         replay: &ReplayStore,
         publication_revision: u64,
         call_deadline: Instant,
         overall_deadline: Instant,
         fixed_timeout_wins: bool,
         cancellation: CancellationToken,
-        has_assessment_target: bool,
     ) -> Result<Result<ClassifierResponse, CallFailure>, ClassificationError> {
+        let template = &prepared.template;
         let scope = ExecutionScope::new(call_deadline, cancellation.clone());
         ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
 
@@ -561,16 +625,10 @@ impl ProductionGatewayRuntime {
         }
 
         if status == StatusCode::OK {
-            let allowed = classifier
-                .branches
-                .iter()
-                .map(|branch| branch.id.as_ref())
-                .collect::<Vec<_>>();
-            return Ok(parse_classifier_response(
-                &body,
-                &allowed,
-                has_assessment_target,
-            ));
+            return Ok(match &prepared.bindings {
+                Some(bindings) => system_one::parse_response(&body, bindings),
+                None => parse_classifier_response(&body, &classifier.decision, prepared.has_target),
+            });
         }
         Ok(Err(classifier_status_failure(status)))
     }
@@ -831,21 +889,22 @@ fn resolve_latest_user(
 }
 
 fn latest_user_parts(request: &ModelRequestIRV1) -> Option<Vec<&str>> {
-    request.messages.iter().rev().find_map(|message| {
-        if message.role != MessageRole::User {
-            return None;
-        }
-        let parts = message
-            .content
-            .iter()
-            .filter_map(|part| match part {
-                ContentPart::Text { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        (!parts.is_empty() && joined_text_len(&parts).ok().is_some_and(|len| len != 0))
-            .then_some(parts)
-    })
+    let message = request.messages.iter().rev().find(|message| {
+        message.role == MessageRole::User
+            && message
+                .content
+                .iter()
+                .any(|part| matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. }))
+    })?;
+    let parts = message
+        .content
+        .iter()
+        .filter_map(|part| match part {
+            ContentPart::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    (!parts.is_empty() && joined_text_len(&parts).ok().is_some_and(|len| len != 0)).then_some(parts)
 }
 
 fn joined_text_len(parts: &[&str]) -> Result<usize, ReplayError> {
@@ -954,8 +1013,8 @@ mod tests {
                     .map(String::as_str)
                     .collect::<std::collections::BTreeSet<_>>(),
                 [
-                    "assessment_from",
-                    "branches",
+                    "assessment_target",
+                    "decision",
                     "history_partial",
                     "latest_user",
                     "visible_conversation",
@@ -963,7 +1022,7 @@ mod tests {
                 .into_iter()
                 .collect()
             );
-            let response = br#"{"branch_id":"smart_saving_simple"}"#;
+            let response = br#"{"decision":{"kind":"categorical","choice":"local","refinement":{"kind":"ordinal","probabilities":{"simple":0.95,"complex":0.05}}}}"#;
             write!(
                 stream,
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -982,14 +1041,21 @@ mod tests {
         let publications =
             Arc::new(GatewayPublicationInstaller::open(root.join("publication.json")).unwrap());
         let runtime = ProductionGatewayRuntime::compose(ProductionPorts::fail_closed(publications));
-        let mode = hiroute_domain::ComplexityClassifierModeV1::Rest {
-            endpoint: format!("http://{address}/v1/decisions"),
-            timeout_ms: hiroute_domain::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS,
-            auth_header: None,
+        let mode = hiroute_domain::ComplexityClassifierModeV1::DecisionService {
+            service: Box::new(hiroute_domain::DecisionServiceV1 {
+                id: "decision-fixture".into(),
+                revision: 1,
+                name: "Fixture extension".into(),
+                connection: hiroute_domain::DecisionConnectionV1::Custom {
+                    endpoint: format!("http://{address}/v1/decisions"),
+                    timeout_ms: hiroute_domain::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS,
+                    auth_header: None,
+                },
+            }),
         };
 
         let outcome = runtime.test_classifier_decision(&mode).await.unwrap();
-        assert_eq!(outcome.branch_id, "smart_saving_simple");
+        assert_eq!(outcome.branch_id, "local");
         server.join().unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }

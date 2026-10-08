@@ -128,6 +128,31 @@ impl ApplicationService {
             "CancelOperation" => self.cancel_operation(request),
             "CheckAgentConnection" => self.check_agent(request),
             "TestClassifierDecision" => self.test_classifier_decision(request),
+            "ListDecisionServices" => {
+                if serde_json::from_value::<hiroute_application_api::ClientEmptyRequestV1>(
+                    request.payload.clone(),
+                )
+                .is_err()
+                {
+                    return failed(ErrorCode::InvalidArguments, request.request_id);
+                }
+                if request.protected_grant.is_some() {
+                    return failed(ErrorCode::CapabilityDenied, request.request_id);
+                }
+                let Some(port) = self.ports.as_ref().and_then(|p| p.routing.as_deref()) else {
+                    return failed(ErrorCode::DaemonUnavailable, request.request_id);
+                };
+                match port.decision_services(&WorkspaceId::default()) {
+                    Ok(services) => {
+                        succeeded(serde_json::json!({"services":services}), request.request_id)
+                    }
+                    Err(error) => failed(map_control_error(error), request.request_id),
+                }
+            }
+            "ApplyDecisionService" if request.payload.get("accept_digest").is_some() => {
+                self.apply_change(request, "decision.services.apply")
+            }
+            "ApplyDecisionService" => self.preview_change(request, "decision.services.apply"),
             "ScanAgents" | "ListAgents" => self.list_agents(request),
             "PreviewAgentConnectionChange" => {
                 control_plane::dispatch_preview_agent_connection(self, request)
@@ -561,10 +586,17 @@ impl ApplicationService {
     }
 
     fn test_classifier_decision(&self, request: LocalControlRequestV2) -> MachineEnvelopeV2<Value> {
-        let Some(grant) = request.protected_grant.as_ref() else {
-            return failed(ErrorCode::CapabilityDenied, request.request_id);
-        };
-        if grant.principal_kind.is_collaboration() {
+        if request
+            .protected_grant
+            .as_ref()
+            .is_some_and(|grant| grant.principal_kind.is_collaboration())
+            || (request.protected_grant.is_none()
+                && !request
+                    .principal
+                    .capabilities
+                    .iter()
+                    .any(|c| c == "same-os-user:query-preview"))
+        {
             return failed(ErrorCode::CapabilityDenied, request.request_id);
         }
         let Some(ports) = self.ports.as_ref() else {
@@ -586,14 +618,16 @@ impl ApplicationService {
             Ok(snapshot) => snapshot.revisions,
             Err(error) => return failed(map_control_error(error), request.request_id),
         };
-        if let Err(error) = ports.control.validate_protected_capability(
-            &grant.capability,
-            &WorkspaceId::default(),
-            grant.principal_kind,
-            "TestClassifierDecision",
-            &digest,
-            &revisions,
-        ) {
+        if let Some(grant) = request.protected_grant.as_ref()
+            && let Err(error) = ports.control.validate_protected_capability(
+                &grant.capability,
+                &WorkspaceId::default(),
+                grant.principal_kind,
+                "TestClassifierDecision",
+                &digest,
+                &revisions,
+            )
+        {
             return failed(map_control_error(error), request.request_id);
         }
         let Some(diagnostic) = ports.classifier_diagnostic.as_deref() else {

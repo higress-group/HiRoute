@@ -883,17 +883,45 @@
       }
     },
     {
-      "command_id": "routing.classifier.test",
-      "lifecycle": "planned",
+      "command_id": "decision.services.list",
+      "lifecycle": "released",
       "negative": {
         "polarity": "negative",
-        "scenario_id": "p0.routing.classifier.test.negative",
-        "state": "planned"
+        "scenario_id": "p0.decision.services.list.negative",
+        "state": "executable"
       },
       "positive": {
         "polarity": "positive",
-        "scenario_id": "p0.routing.classifier.test.positive",
-        "state": "planned"
+        "scenario_id": "p0.decision.services.list.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.services.apply",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.decision.services.apply.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.decision.services.apply.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.services.test",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.decision.services.test.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.decision.services.test.positive",
+        "state": "executable"
       }
     },
     {
@@ -1150,20 +1178,20 @@
     },
     {
       "command_id": "observation.plan-quality.samples",
-      "lifecycle": "planned",
+      "lifecycle": "released",
       "negative": {
         "polarity": "negative",
         "scenario_id": "p0.observation.plan-quality.samples.negative",
-        "state": "planned"
+        "state": "executable"
       },
       "positive": {
         "polarity": "positive",
         "scenario_id": "p0.observation.plan-quality.samples.positive",
-        "state": "planned"
+        "state": "executable"
       }
     }
   ],
-  "descriptor_digest": "sha256:977c6c3de2ed68f4437db403b16db9b0684616acd41124abfe2ff06caf364022",
+  "descriptor_digest": "sha256:abc35e142a0e31f2529450a545a6b9c6d57575d0212e844609cff5216623337b",
   "schema_version": {
     "major": 1,
     "minor": 0

@@ -31,34 +31,70 @@ fn definitions() -> Value {
         "context_window_tokens":{"type":"integer","minimum":1,"maximum":9223372036854775807u64},
         "maximum_attempts":{"type":"integer","minimum":1,"maximum":64},"request_timeout_ms":{"type":"integer","minimum":1000,"maximum":3600000},"attempt_timeout_ms":{"type":"integer","minimum":1000,"maximum":3600000}}),
     );
+    let auth = object(
+        &["name", "value_secret_ref"],
+        json!({"name":{"type":"string","minLength":1,"maxLength":128},"value_secret_ref":{"type":"string","minLength":1,"maxLength":256}}),
+    );
+    let endpoint = json!({"type":"string","maxLength":2048});
+    let timeout = json!({"type":"integer","minimum":1,"maximum":3600000});
+    let service = object(
+        &["id", "revision", "name", "connection"],
+        json!({
+            "id":{"type":"string","maxLength":128},"revision":{"type":"integer","minimum":1},"name":{"type":"string","maxLength":128},
+            "connection":{"oneOf":[
+                object(&["kind","provider","model","endpoint","timeout_ms","auth_header"],json!({"kind":{"const":"system_one"},"provider":{"type":"string","maxLength":128},"model":{"type":"string","maxLength":256},"endpoint":endpoint,"timeout_ms":timeout,"auth_header":auth})),
+                object(&["kind","endpoint","timeout_ms"],json!({"kind":{"const":"custom"},"endpoint":endpoint,"timeout_ms":timeout,"auth_header":{"oneOf":[{"type":"null"},auth]}}))
+            ]}
+        }),
+    );
     let classifier = json!({"oneOf":[
         object(&["kind"], json!({"kind":{"const":"local_rules"}})),
-        object(
-            &["kind","endpoint","timeout_ms"],
-            json!({
-                "kind":{"const":"rest"},
-                "endpoint":{"type":"string","minLength":1,"maxLength":2048},
-                "timeout_ms":{"type":"integer","minimum":1,"maximum":3600000},
-                "auth_header":object(
-                    &["name","value_secret_ref"],
-                    json!({
-                        "name":{"type":"string","minLength":1,"maxLength":128},
-                        "value_secret_ref":{"type":"string","minLength":1,"maxLength":256}
-                    })
-                )
-            })
-        )
+        object(&["kind","service"],json!({"kind":{"const":"decision_service"},"service":service}))
     ]});
+    let prompt = json!({"type":"string"});
+    let threshold = json!({"type":"integer","minimum":0,"maximum":1000});
+    let judgment = object(
+        &["degree", "competence"],
+        json!({
+            "degree":object(&["simple_threshold_millis","instructions","simple","complex"],json!({"simple_threshold_millis":threshold,"instructions":prompt,"simple":prompt,"complex":prompt})),
+            "competence":object(&["floor_millis","instructions","criteria"],json!({"floor_millis":threshold,"instructions":prompt,"criteria":{"type":"array","minItems":3,"maxItems":3,"items":prompt}}))
+        }),
+    );
+    let branch = object(
+        &[
+            "id",
+            "name",
+            "condition",
+            "candidates",
+            "primary_candidates",
+        ],
+        json!({
+            "id":{"type":"string","minLength":1,"maxLength":128,"not":{"const":"smart_saving"}},"name":{"type":"string","maxLength":128},"condition":prompt,
+            "candidates":reference("candidates"),"primary_candidates":reference("candidates"),"judgment":{"oneOf":[{"type":"null"},reference("judgment")]}
+        }),
+    );
+    let routing = object(
+        &[
+            "classifier",
+            "branches",
+            "default_branch_id",
+            "judgment",
+            "reselect_on_user_message",
+        ],
+        json!({
+            "classifier":classifier,"branches":{"type":"array","maxItems":16,"items":branch},"default_branch_id":{"type":"string","maxLength":128},"judgment":reference("judgment"),"reselect_on_user_message":{"type":"boolean"}
+        }),
+    );
     let smart = object(
         &[
             "economy",
             "primary",
-            "primary_fallback",
+            "judgment",
             "reselect_on_user_message",
             "classifier",
             "complex_keywords",
         ],
-        json!({"economy":reference("candidates"),"primary":reference("candidates"),"primary_fallback":{"type":"boolean"},"reselect_on_user_message":{"type":"boolean"},"classifier":classifier,"complex_keywords":{"type":"array","maxItems":64,"items":{"type":"string","maxLength":64}}}),
+        json!({"economy":reference("candidates"),"primary":reference("candidates"),"judgment":reference("judgment"),"reselect_on_user_message":{"type":"boolean"},"classifier":classifier,"complex_keywords":{"type":"array","maxItems":64,"items":{"type":"string","maxLength":64}}}),
     );
     let free = object(
         &["candidates", "primary", "primary_fallback"],
@@ -79,7 +115,7 @@ fn definitions() -> Value {
         ],
         json!({
             "schema":{"const":"hiroute.plan-editor/v2"},"display_name":{"type":"string","maxLength":128},"purpose":{"type":"string","maxLength":512},
-            "custom_alias":{"type":"string","maxLength":64},"mode":{"enum":["fixed_model","smart_saving","free_first"]},
+            "custom_alias":{"type":"string","maxLength":64},"mode":{"enum":["fixed_model","smart_saving","custom_branches","free_first"]},"branch_routing":{"oneOf":[{"type":"null"},routing]},
             "candidates":reference("candidates"),"smart":smart,"free":free,"delegation_enabled":{"type":"boolean"},"requirements":requirements,"limits":limits,
             "work":object(&["harness","protocol"],json!({"harness":{"enum":["codex_cli","claude_code","qoder_cli","pi","deepseek_harness"]},"protocol":{"enum":["responses","messages"]}}))
         }),
@@ -109,7 +145,7 @@ fn definitions() -> Value {
         json!({"limit":{"type":"integer","minimum":1,"maximum":128,"default":32},
         "cursor":{"oneOf":[{"type":"null"},object(&["snapshot_digest","offset"],json!({"snapshot_digest":{"type":"string","minLength":1},"offset":{"type":"integer","minimum":1}}))]}}),
     );
-    json!({"catalog_query":catalog_query,"selection":selection,"candidates":candidates,"editor":editor,"draft":draft,"content_change":content,"lifecycle_change":lifecycle,"draft_change":draft_change})
+    json!({"judgment":judgment,"catalog_query":catalog_query,"selection":selection,"candidates":candidates,"editor":editor,"draft":draft,"content_change":content,"lifecycle_change":lifecycle,"draft_change":draft_change})
 }
 pub(super) fn files() -> Vec<(&'static str, String)> {
     [

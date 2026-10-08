@@ -1,4 +1,6 @@
 export type QualityExecution = {
+  group: 'regular' | 'primary' | null;
+  candidate_index: number | null;
   plan_revision: number;
   selected_branch_id: string | null;
   executed_branch_id: string | null;
@@ -7,7 +9,10 @@ export type QualityExecution = {
   attribution: 'single' | 'mixed' | 'unknown';
 };
 
+export type BranchPolicy = { name: string; floor_millis: number; criteria_digest?: string | null };
+
 export type QualityModelSummary = {
+  branch_policy?: BranchPolicy | null;
   execution: QualityExecution;
   native_model: string | null;
   reasoning_profile_id: string | null;
@@ -25,6 +30,11 @@ export type QualitySummary = {
 };
 
 export type PlanQualityModel = {
+  plan_revision: number;
+  branch_name?: string;
+  group: 'regular' | 'primary';
+  candidate_index: number;
+  floor_millis?: number;
   model_configuration_id: string;
   display_name: string;
   branch_id: string;
@@ -41,12 +51,14 @@ export type QualityModelRow = {
 export function qualityExecutionKey(execution: QualityExecution): string {
   return JSON.stringify([
     execution.plan_revision, execution.selected_branch_id, execution.executed_branch_id,
-    execution.model_configuration_id, execution.profile_digest, execution.attribution,
+    execution.model_configuration_id, execution.profile_digest, execution.attribution, execution.group, execution.candidate_index,
   ]);
 }
 
 /** Preserve published candidate order; never merge distinct execution profiles
  * or sort models by score. Historical/unattributable rows retain their own key.
+ * A source revision changes its materialized model ID. Join the published slot,
+ * not today's editor-option ID; keep the observed identity for statistics/drill-down.
  */
 export function qualityModelRows(configured: readonly PlanQualityModel[], summaries: readonly QualityModelSummary[]): QualityModelRow[] {
   const remaining = new Set(summaries);
@@ -57,13 +69,14 @@ export function qualityModelRows(configured: readonly PlanQualityModel[], summar
   for (const model of configured) {
     const matches = summaries.filter(s => remaining.has(s)
       && s.execution.attribution === 'single'
+      && s.execution.plan_revision === model.plan_revision
       && s.execution.executed_branch_id === model.branch_id
-      && s.execution.model_configuration_id === model.model_configuration_id
+      && s.execution.group === model.group && s.execution.candidate_index === model.candidate_index
       && (s.reasoning_profile_id === model.reasoning_profile_id
-        || (!s.reasoning_profile_id && configured.filter(c => c.branch_id === model.branch_id
-          && c.model_configuration_id === model.model_configuration_id).length === 1)));
+        || (!s.reasoning_profile_id && configured.filter(c => c.plan_revision === model.plan_revision && c.branch_id === model.branch_id
+          && c.group === model.group && c.candidate_index === model.candidate_index).length === 1)));
     if (!matches.length) rows.push({
-      key: JSON.stringify(['configured', model.branch_id, model.model_configuration_id, model.reasoning_profile_id]),
+      key: JSON.stringify(['configured', model.plan_revision, model.branch_id, model.model_configuration_id, model.reasoning_profile_id, model.group, model.candidate_index]),
       branch: model.branch_id, configured: model,
     });
     for (const summary of matches) {
@@ -79,8 +92,7 @@ export function qualityModelRows(configured: readonly PlanQualityModel[], summar
 
 export function qualityBranchLabel(branch: string, language: 'zh' | 'en'): string {
   const labels: Record<string, [string, string]> = {
-    smart_saving_simple: ['日常执行 · 省钱分组', 'Routine work · Economy group'],
-    smart_saving_complex: ['复杂推理 · 主力分组', 'Complex work · Primary group'],
+    smart_saving: ['智能省钱', 'Smart saving'],
     fixed: ['固定候选', 'Fixed candidates'],
     fixed_model: ['固定候选', 'Fixed candidates'],
     free: ['免费候选', 'Free candidates'],
@@ -106,4 +118,19 @@ export function qualityNativeModelName(nativeModel: string): string {
   const prefix = 'hiroute-codex-current/';
   return nativeModel.startsWith(prefix) && nativeModel.length > prefix.length
     ? nativeModel.slice(prefix.length) : nativeModel;
+}
+
+export function qualityGroupLabel(branch: string, group: 'regular' | 'primary' | null | undefined, language: 'zh' | 'en'): string {
+  if (!group) return language === 'zh' ? '模型组未记录' : 'Model group unrecorded';
+  return group === 'primary' ? (language === 'zh' ? '主力' : 'Primary')
+    : branch === 'smart_saving' ? (language === 'zh' ? '省钱' : 'Economy') : (language === 'zh' ? '常规' : 'Regular');
+}
+export function qualityRowSection(row: QualityModelRow): string {
+  return JSON.stringify([row.branch, row.summary?.execution.group ?? row.configured?.group ?? null]);
+}
+export function qualityRowSectionLabel(row: QualityModelRow, language: 'zh' | 'en'): string {
+  const group = qualityGroupLabel(row.branch, row.summary?.execution.group ?? row.configured?.group, language);
+  if (row.branch === 'smart_saving') return group;
+  const name = row.configured?.branch_name ?? row.summary?.branch_policy?.name ?? qualityBranchLabel(row.branch, language);
+  return `${name} → ${group}`;
 }
