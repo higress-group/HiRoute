@@ -13,6 +13,7 @@ REPO = Path(__file__).resolve().parent.parent
 PIN = REPO / "vendor/cpa/source.json"
 TARGETS = {
     "x86_64-unknown-linux-gnu": ("linux", "amd64"),
+    "aarch64-unknown-linux-gnu": ("linux", "arm64"),
     "aarch64-apple-darwin": ("darwin", "arm64"),
     "x86_64-apple-darwin": ("darwin", "amd64"),
 }

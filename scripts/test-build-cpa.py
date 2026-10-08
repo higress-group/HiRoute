@@ -2,6 +2,7 @@
 """Deterministic CPA build-output regressions."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import stat
@@ -21,6 +22,39 @@ spec.loader.exec_module(builder)
 
 
 class BuildOutputTests(unittest.TestCase):
+    def test_every_release_target_builds_the_pinned_go_architecture(self):
+        targets = {
+            "aarch64-unknown-linux-gnu": ("linux", "arm64"),
+            "x86_64-unknown-linux-gnu": ("linux", "amd64"),
+            "aarch64-apple-darwin": ("darwin", "arm64"),
+            "x86_64-apple-darwin": ("darwin", "amd64"),
+        }
+        pin, _ = builder.pinned_source()
+        for target, expected in targets.items():
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                output = root / "out/cliproxyapi"
+                calls = []
+
+                def invoke(command, cwd=None, env=None, **kwargs):
+                    calls.append(command)
+                    if command[0] == "tar":
+                        (Path(command[-1]) / "LICENSE").write_text("fixture license")
+                    elif command[0] == "go":
+                        self.assertEqual((env["GOOS"], env["GOARCH"]), expected)
+                        self.assertEqual(env["CGO_ENABLED"], "0")
+                        self.assertIn(pin["commit"], command[command.index("-ldflags") + 1])
+                        Path(command[command.index("-o") + 1]).write_bytes(target.encode())
+                    return subprocess.CompletedProcess(command, 0)
+
+                with patch.object(builder.subprocess, "run", side_effect=invoke), \
+                        patch.object(builder.subprocess, "check_output", side_effect=[b"archive", "binary: go1.fixture"]):
+                    result = builder.build(root / "source", target, output)
+                self.assertEqual(result["target"], target)
+                self.assertEqual(result["commit"], pin["commit"])
+                self.assertEqual(json.loads(output.with_suffix(".provenance.json").read_text()), result)
+                self.assertEqual([command[0] for command in calls], ["tar", "git", "go"])
+
     def test_generated_files_have_distribution_safe_modes_under_shared_umask(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

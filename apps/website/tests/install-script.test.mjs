@@ -27,13 +27,15 @@ const manifest = { schema: 'hiroute.website.releases/v2', releases: [{
   notes: { zh: '版本。', en: 'Release.' }, artifacts: [standalone, armStandalone],
 }] };
 
-test('generated installer selects the immutable stable manifest and does not start services', () => {
+for (const [machine, expected] of [['x86_64', standalone], ['aarch64', armStandalone], ['arm64', armStandalone]]) {
+test(`generated installer selects the ${machine} stable manifest without starting services`, t => {
   const script = generateLinuxInstallScript(manifest);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hiroute-install-script-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bin = path.join(root, 'bin');
   fs.mkdirSync(bin);
   const log = path.join(root, 'calls.log');
-  fs.writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\n[ "${1:-}" = "-s" ] && echo Linux || echo x86_64\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'uname'), `#!/bin/sh\n[ "\${1:-}" = "-s" ] && echo Linux || echo ${machine}\n`, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'curl'), '#!/bin/sh\nprintf "curl %s\\n" "$*" >> "$INSTALL_TEST_LOG"\nwhile [ "$#" -gt 0 ]; do [ "$1" = "-o" ] && { shift; printf "# fixture\\n" > "$1"; exit 0; }; shift; done\nexit 1\n', { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'python3'), '#!/bin/sh\nprintf "python3 %s\\n" "$*" >> "$INSTALL_TEST_LOG"\n', { mode: 0o755 });
   const result = spawnSync('/bin/sh', [], {
@@ -44,11 +46,12 @@ test('generated installer selects the immutable stable manifest and does not sta
   assert.equal(result.status, 0, result.stderr);
   const calls = fs.readFileSync(log, 'utf8');
   assert.match(calls, /curl .*https:\/\/hiroute\.ai\/install\/standalone\.py/);
-  assert.ok(calls.includes(`install --manifest-url https://hiroute.ai/releases/1.2.3/${standalone.manifest_filename}`));
+  assert.ok(calls.includes(`install --manifest-url https://hiroute.ai/releases/1.2.3/${expected.manifest_filename}`));
   assert.ok(script.includes(`https://hiroute.ai/releases/1.2.3/${armStandalone.manifest_filename}`));
   assert.doesNotMatch(calls, /service start/);
   assert.match(result.stdout, /No service was started automatically/);
 });
+}
 
 test('generated installer fails closed when no stable package exists for the host', () => {
   const script = generateLinuxInstallScript({ schema: manifest.schema, releases: [] });

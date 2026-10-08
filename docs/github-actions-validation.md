@@ -10,6 +10,7 @@ GitHub Actions runs on the checked-out commit through `scripts/ci-run.py`.
 | `p0-gateway-gates.yml` | Manual, reusable | Linux listener build, neutral loopback, H1/H2 lifecycle, replay/privacy tests, contract checks, benchmark harness smoke |
 | `gateway-core-dedicated.yml` | Manual or reusable | Hosted Linux production stability and socket churn |
 | `p0-gateway-final-gates.yml` | Manual | Aggregate the three current hosted workflows |
+| `build-release.yml` | Manual, exact dispatch SHA | Native macOS ARM64/Intel DMGs and Linux x86_64/ARM64 archives; uploads candidate assets and integrity evidence for the existing release publisher |
 
 Normal Rust checks select the organization `Default` runner group with the
 `cncf-ubuntu-16-64-x86` label. The organization must permit this public repository
@@ -78,7 +79,9 @@ maintainer validation; hosted benchmark smoke is not fixed-machine performance e
 
 The hosted Rust checks exclude `hiroute-desktop`. Frontend build/tests do not
 prove native Tauri interaction. macOS Desktop remains on the existing local
-validation path; these workflows provide no Windows or ARM validation evidence.
+validation path. The separate [release candidate workflow](release-builds.md)
+builds native macOS and Linux packages on both architectures; it does not change
+the backend test matrix. Windows is outside that release matrix.
 Real-provider credentials and separately provisioned production E2E fixtures are
 not supplied by this CI setup. Existing failing checks remain failures, not
 expected-red success or waived gates.

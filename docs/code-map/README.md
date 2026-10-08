@@ -28,6 +28,7 @@ results in the relevant run record.
 | Delegate, read, cancel or continue a Worker task | [Worker lifecycle and native differences](worker-context.md#follow-a-task-through-its-owners) | [Delegation](../../tools/product-e2e/tests/worker_delegation.rs), [read/Continue](../../tools/product-e2e/tests/worker_read.rs) |
 | Inspect sessions, content, cost and competence | [Observation owners](architecture.md#observation-and-conversation-boundaries), [decision attribution](decision-foundation.md#observation-and-public-consumers) | [Session queries](../../crates/observation/src/query_v2/sessions_tests.rs), [stage summaries](../../crates/observation/src/store/tests/plan_quality/summary.rs) |
 | Manage the service through CLI or Desktop | [client-core](../../crates/client-core/src), [CLI](../../crates/cli/src), [Desktop host](../../apps/desktop/src-tauri/src), [daemon control](../../crates/daemon/src/control) | [Real control process](../../tools/product-e2e/tests/control_shell.rs), [Desktop test map](../../apps/desktop/tests/README.md) |
+| Build macOS / Linux release installers for either architecture | [Release candidate entry](../../scripts/build-release.py), [build and publication guide](../release-builds.md) | [Package-to-publication contract](../../scripts/test-build-release.py); final publishing remains in [release.yml](../../.github/workflows/release.yml) |
 
 ## Read across boundaries
 

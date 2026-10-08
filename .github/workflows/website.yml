@@ -8,6 +8,10 @@ on:
       - 'experiments/**'
       - 'decision-extensions/**'
       - 'scripts/collect-third-party-licenses.py'
+      - 'scripts/build-cpa.py'
+      - 'scripts/build-release.py'
+      - 'scripts/test-build-release.py'
+      - '.github/workflows/build-release.yml'
       - 'scripts/install-standalone.py'
       - 'scripts/package-desktop.py'
       - 'scripts/package-standalone.py'
@@ -26,6 +30,10 @@ on:
       - 'experiments/**'
       - 'decision-extensions/**'
       - 'scripts/collect-third-party-licenses.py'
+      - 'scripts/build-cpa.py'
+      - 'scripts/build-release.py'
+      - 'scripts/test-build-release.py'
+      - '.github/workflows/build-release.yml'
       - 'scripts/install-standalone.py'
       - 'scripts/package-desktop.py'
       - 'scripts/package-standalone.py'
@@ -73,6 +81,7 @@ jobs:
         run: |
           python3 scripts/test-third-party-licenses.py
           python3 scripts/test-build-cpa.py
+          python3 scripts/test-build-release.py
           python3 scripts/test-package-desktop.py
           python3 scripts/test-standalone-install.py
       - uses: actions/upload-artifact@v4

@@ -329,6 +329,20 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(result["native_required"])
         self.assertIn(["python3", "scripts/test-contract-convergence.py"], result["commands"])
 
+    def test_release_build_tooling_selects_packaging_consumers(self):
+        for path in plan.RELEASE_BUILD_TOOLING:
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertEqual(result["mode"], "affected")
+                self.assertFalse(result["rust"])
+                self.assertFalse(result["frontend"])
+                for test in plan.RELEASE_BUILD_TESTS:
+                    self.assertIn(["python3", "scripts/" + test], result["commands"])
+        self.assertTrue(plan.select(["scripts/build-release.py", "crates/daemon/src/lib.rs"])["rust"])
+        self.assertTrue(plan.select(["vendor/cpa/source.json"])["rust"])
+        for test in plan.RELEASE_BUILD_TESTS:
+            self.assertIn(["python3", "scripts/" + test], plan.select([], full=True)["commands"])
+
     def test_release_contract_updates_select_their_checks_without_product_builds(self):
         for path in sorted(plan.RELEASE_CONTRACT_TOOLING | {"contracts/releases/v9.0.0.json"}):
             with self.subTest(path=path):
