@@ -6,12 +6,26 @@ Standalone 是不安装 Desktop 时的单用户运行方式。正式 `hiroute` C
 role-all daemon、Local Control、Gateway、业务存储和观测共同组成控制与运行闭环。它沿用同 UID
 本机信任边界，不需要额外的“CLI 管理 token”，也不提供第二套 Agent 管理 API。
 
-MVP 不允许 standalone 与 HiRoute Desktop 同时运行，不提供系统级多用户安装、Windows 安装、
+Standalone 与 HiRoute Desktop 不应同时管理同一用户的安装，不提供系统级多用户安装、Windows 安装、
 运行时下载或自动更新。macOS 可使用相同候选包机制，但本页验证与 Quickstart 以 Linux 为准。
 
-## 安装候选
+## 安装
 
-本仓库不声明官方下载地址。发行或集成方从精确 committed candidate 准备 `hiroute`、
+从 [hiroute.ai](https://hiroute.ai/download/) 安装适用于 `x86_64` 或 ARM64（`aarch64`）的
+最新稳定 Linux 版本：
+
+```sh
+curl -fsSL https://hiroute.ai/install.sh | sh
+hiroute service start --output json
+hiroute system status --output json
+```
+
+安装器会校验安装包并安装到当前用户目录，不会自动启动服务。主机要求和服务管理见
+[Linux 安装指南](https://hiroute.ai/docs/install-linux/)。
+
+## 构建候选包
+
+发行或集成方从精确 committed candidate 准备 `hiroute`、
 `hirouted` 和固定版本 CPA，再生成可复现归档及伴随 manifest：
 
 ```sh
@@ -21,7 +35,7 @@ python3 scripts/collect-third-party-licenses.py \
   --output /absolute/output/notices
 
 python3 scripts/package-standalone.py build \
-  --version 0.1.0 --revision FULL_COMMIT_SHA \
+  --version 0.2.0 --revision FULL_COMMIT_SHA \
   --target x86_64-unknown-linux-gnu \
   --hiroute /absolute/path/hiroute \
   --hirouted /absolute/path/hirouted \
@@ -510,7 +524,7 @@ hiroute gateway recover --output json
 
 `set` 保存 desired 后重启，并只在真实 ready 后推进 applied。自动端口首次选定后持久化；
 `0.0.0.0` 对本机管理客户端显示为 `127.0.0.1:<port>`。非 loopback 配置要求显式风险确认。
-HiRoute 不自动修改防火墙、TLS 或远端 Agent。IPv6、多监听器和防火墙管理不在 MVP。
+HiRoute 不自动修改防火墙、TLS 或远端 Agent。暂不支持 IPv6、多监听器和防火墙管理。
 
 ## 常见错误与恢复
 

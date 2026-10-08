@@ -2,11 +2,11 @@
 
 Linux 无界面版把 HiRoute 的本机服务、Gateway、CLI 和 Agent 管理 Skill 安装到当前用户目录，适合服务器、远程工作站和无图形界面的自动化环境。它不是精简的只读客户端：模型来源、智能路由、Agent 接入、会话观测和任务委派都可以从 CLI 完成。
 
-当前公开产品验证以 Linux 为准，支持 `x86_64` 和 `aarch64`。不需要 `sudo`；需要 `curl`、Python 3，以及能够运行 HiRoute 二进制的 glibc Linux 环境。
+Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`）。不需要 `sudo`；需要 `curl`、Python 3，以及能够运行 HiRoute 二进制的 glibc Linux 环境。
 
 ## 1. 安装
 
-首个稳定 Linux 包发布后，运行：
+运行以下命令安装最新稳定版：
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh

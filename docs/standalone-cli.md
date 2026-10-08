@@ -7,15 +7,29 @@ CLI, role-all `hirouted` daemon, Local Control, Gateway, business storage, and o
 form one control and execution loop. It uses the same-UID local trust boundary, needs no
 second “CLI management token,” and exposes no second Agent-management API.
 
-The MVP does not allow standalone and HiRoute Desktop to run at the same time. It does not
+Standalone and HiRoute Desktop must not manage the same user installation at the same time. It does not
 provide a system-wide multi-user install, a Windows installer, runtime downloads, or automatic
 updates. macOS can use the same candidate-package mechanism, but this page and the Quickstart
 are validated for Linux.
 
-## Candidate installation
+## Installation
 
-This repository does not declare an official download URL. A distributor or integrator
-prepares `hiroute`, `hirouted`, and the pinned CPA from one exact committed candidate, then
+Install the latest stable Linux package for `x86_64` or ARM64 (`aarch64`) from
+[hiroute.ai](https://hiroute.ai/en/download/):
+
+```sh
+curl -fsSL https://hiroute.ai/install.sh | sh
+hiroute service start --output json
+hiroute system status --output json
+```
+
+The installer verifies the package and installs for the current user. It does not start
+the service automatically. See the [Linux installation guide](https://hiroute.ai/en/docs/install-linux/)
+for host prerequisites and service management.
+
+## Build a candidate package
+
+A distributor or integrator prepares `hiroute`, `hirouted`, and the pinned CPA from one exact committed candidate, then
 builds a reproducible archive and companion manifest:
 
 ```sh
@@ -25,7 +39,7 @@ python3 scripts/collect-third-party-licenses.py \
   --output /absolute/output/notices
 
 python3 scripts/package-standalone.py build \
-  --version 0.1.0 --revision FULL_COMMIT_SHA \
+  --version 0.2.0 --revision FULL_COMMIT_SHA \
   --target x86_64-unknown-linux-gnu \
   --hiroute /absolute/path/hiroute \
   --hirouted /absolute/path/hirouted \
@@ -555,7 +569,7 @@ hiroute gateway recover --output json
 The first automatically chosen port is persisted. Local management clients see a
 `0.0.0.0` listener as `127.0.0.1:<port>`. A non-loopback address requires explicit risk
 acceptance. HiRoute never changes a firewall, configures TLS, or manages a remote Agent.
-IPv6, multiple listeners, and firewall management are outside the MVP.
+IPv6, multiple listeners, and firewall management are not supported.
 
 ## Common errors and recovery
 

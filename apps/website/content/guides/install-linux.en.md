@@ -2,11 +2,11 @@
 
 HiRoute headless installs the local service, Gateway, CLI, and Agent management Skill for the current user. It is designed for servers, remote workstations, and automation environments without a desktop UI. It is not a reduced read-only client: model sources, smart routes, Agent connections, session observation, and task delegation are all available through the CLI.
 
-The current public product validation covers Linux on `x86_64` and `aarch64`. Installation needs no `sudo`; it requires `curl`, Python 3, and a glibc Linux environment capable of running the HiRoute binaries.
+Linux packages support `x86_64` and ARM64 (`aarch64`). Installation needs no `sudo`; it requires `curl`, Python 3, and a glibc Linux environment capable of running the HiRoute binaries.
 
 ## 1. Install
 
-After the first stable Linux package is published, run:
+Run this command to install the latest stable release:
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh

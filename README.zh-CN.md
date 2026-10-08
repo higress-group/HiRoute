@@ -55,12 +55,12 @@ HiRoute 当前提供固定模型、智能省钱、自定义分支和免费优先
 ### macOS Desktop
 
 从 [hiroute.ai](https://hiroute.ai/download/) 下载当前 DMG，拖入“应用程序”目录。如果 macOS
-要求手动批准，请按[自签名安装说明](docs/macos-installation.zh-CN.md)操作。每个版本已验证的系统和
-架构以下载页为准。
+要求手动批准，请按[自签名安装说明](docs/macos-installation.zh-CN.md)操作。HiRoute 0.2.0 支持
+macOS 15 或更高版本，提供 Apple 芯片（`arm64`）与 Intel（`x86_64`）安装包。
 
 ### Linux 无界面版
 
-无需 `sudo`，安装到当前用户目录：
+支持 Linux `x86_64` 与 ARM64（`aarch64`），无需 `sudo`，安装到当前用户目录：
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh
@@ -165,8 +165,8 @@ npm run build
 
 ## 项目状态
 
-HiRoute 当前处于 MVP 阶段。平台和架构声明与每个版本的验证证据绑定；源码存在不代表所有环境均已
-验收。当前可用的 Agent 集成与后续方向会在[官网](https://hiroute.ai/)中明确区分。
+HiRoute 0.2.0 是稳定版本，提供 macOS Desktop 与 Linux 无界面版，两种平台均支持 x86_64 和
+ARM64。最新安装包与版本说明见[官网](https://hiroute.ai/download/)。
 
 HiRoute 使用 [Apache License 2.0](LICENSE)。缺陷和功能建议请提交到
 [GitHub Issues](https://github.com/higress-group/HiRoute/issues)。安全问题和 crash report 请按
