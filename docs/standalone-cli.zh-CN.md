@@ -493,6 +493,14 @@ hiroute worker executors --output json
 hiroute worker plans --output json
 ```
 
+Codex Worker 要求所选 `codex-acp` adapter 在初始化时声明 AIR `sessionFailure`
+能力。已核对的 1.1.5 缺少该能力，2.1.1 声明了该能力；HiRoute 检查能力，不使用版本
+白名单。如果任务以 `CapabilityUnavailable` 失败，可通过
+`hiroute worker read --run RUN_ID` 查看已保存的进展。缺少此能力时，`[HiRoute]`
+提示会说明原因和处理办法：更新所选 adapter，在 Worker 依赖配置中重新选择路径，再重新
+提交任务。新运行使用新的 submission key；重放旧 key 只会返回原来的失败运行。
+发现和选择不是兼容性预检查，也不会安装或更新 adapter。
+
 将路由 editor 的 `delegation_enabled` 设为 `true`，并加入
 `"work":{"harness":"codex_cli","protocol":"responses"}` 后重新发布。再提交、定位、等待和读取：
 

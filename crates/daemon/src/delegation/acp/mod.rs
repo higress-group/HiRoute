@@ -113,7 +113,7 @@ where
     let updates = Arc::new(Mutex::new(Updates::default()));
     let notifications = updates.clone();
     let notification_journal = journal.clone();
-    let notification_progress = progress;
+    let notification_progress = progress.clone();
     let permissions = updates.clone();
     let permission_journal = journal.clone();
     let permission_cancellation = input.cancellation.clone();
@@ -189,7 +189,7 @@ where
         .connect_with(
             transport::bounded_transport(reader, writer),
             async move |connection: ConnectionTo<Agent>| {
-                Ok(run_session(connection, input, journal, updates).await)
+                Ok(run_session(connection, input, journal, updates, progress).await)
             },
         );
     tokio::pin!(connected);
@@ -217,6 +217,7 @@ async fn run_session(
     input: AcpRunInput,
     journal: Arc<dyn AcpRunJournal>,
     updates: Arc<Mutex<Updates>>,
+    progress: Option<ProgressSink>,
 ) -> Result<AcpRunOutcome, DelegationErrorV1> {
     let initialized = phase(
         &input.cancellation,
@@ -230,6 +231,11 @@ async fn run_session(
     if input.identity_contract == AcpNativeIdentityContract::CodexThreadV1
         && !advertises_session_failure(initialized.meta.as_ref())
     {
+        // The adapter has already spawned. Use the lifecycle's bounded progress capture,
+        // which is flushed after owned-process cleanup, without inventing a model result.
+        if let Some(progress) = progress.as_ref() {
+            progress.push("[HiRoute] The selected codex-acp adapter does not advertise the required AIR v1 sessionFailure capability. Update the adapter to a version supporting this capability, select it again in Worker dependencies, and submit the task again.\n");
+        }
         return Err(DelegationErrorV1::CapabilityUnavailable);
     }
     journal.initialized();

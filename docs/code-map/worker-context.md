@@ -103,6 +103,12 @@ separate evidence; an acceptance pin is not a production version allowlist.
 
 ## State and lifetime
 
+Codex adapters missing AIR `sessionFailure` fail during actual initialize, before
+session creation/load. The [ACP owner](../../crates/daemon/src/delegation/acp/README.md)
+adds an actionable `[HiRoute]` reason to the existing Worker progress window;
+[lifecycle](../../crates/daemon/src/delegation/lifecycle.rs) flushes it after owned
+process cleanup. This host explanation is separate from the model result.
+
 The task root owns context descriptors and exact-session bindings. Run roots own
 temporary launch materials and credentials. Borrowed HOME/config/history remain
 native-owned; Continue reads the original descriptor rather than today's service
