@@ -144,6 +144,11 @@ impl DiagnosticEvent {
                 _ => Warn,
             },
             DiagnosticEvent::AttemptEnd(end) => match end.outcome {
+                AttemptOutcome::Completed
+                    if end.provider_result == Some(WireModelResult::Unknown) =>
+                {
+                    Warn
+                }
                 AttemptOutcome::Completed => Info,
                 _ => Warn,
             },

@@ -1251,7 +1251,7 @@
       "contract": "hiroute.diagnostic-event/v1",
       "mode": "recovery_read_only",
       "owner": "runtime-diagnostics",
-      "reason": "Read retained V1 diagnostic records without the newer optional model, reasoning, HTTP protocol, failure and commit facts. Missing fields remain unknown; current producers emit observed facts and never rewrite historical logs.",
+      "reason": "Read retained V1 diagnostic records without the newer optional model, reasoning, HTTP protocol, failure, model terminal result and commit facts. Missing fields remain unknown. Transport completion is separate from unknown model completion evidence; current producers emit observed facts and never rewrite historical logs.",
       "removal_condition": "Remove when retained V1 log support no longer includes records produced before the Bailian wire diagnostic extension.",
       "allowed_paths": [
         "crates/diagnostics/src/event/model.rs",

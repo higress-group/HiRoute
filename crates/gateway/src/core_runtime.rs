@@ -1283,6 +1283,9 @@ impl ProductionGatewayRuntime {
                     .unwrap_or_default();
                 let status = match (request_observation.has_accepted_attempt(), result.is_ok()) {
                     (true, true) if model_failed => AgentTurnStatus::Failed,
+                    (true, true) if request_observation.accepted_attempt_unknown() => {
+                        AgentTurnStatus::Unknown
+                    }
                     (true, true) => AgentTurnStatus::Completed,
                     (true, false) => AgentTurnStatus::Interrupted,
                     (false, _) => AgentTurnStatus::Failed,

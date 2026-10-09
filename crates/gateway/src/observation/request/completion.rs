@@ -169,11 +169,11 @@ impl RequestObservation {
         let model_failed = provider
             .and_then(|facts| facts.model_event.as_ref())
             .is_some_and(|event| {
-                matches!(
-                    event.as_str(),
-                    "response_failed" | "response_incomplete" | "response_unknown"
-                )
+                matches!(event.as_str(), "response_failed" | "response_incomplete")
             });
+        let model_unknown = provider
+            .and_then(|facts| facts.model_event.as_ref())
+            .is_some_and(|event| event.as_str() == "response_unknown");
         if observation.disposition == Disposition::Accept && accepted {
             let attempt = {
                 let mut state = self.lock_state();
@@ -183,6 +183,7 @@ impl RequestObservation {
                 } else {
                     state.accepted_attempt_finished = true;
                     state.accepted_attempt_failed = model_failed;
+                    state.accepted_attempt_unknown = model_unknown;
                     state.accepted_attempt_cancelled =
                         observation.downstream == AttemptDownstreamOutcome::Cancelled;
                     state.accepted_attempt.clone()
@@ -484,13 +485,12 @@ impl RequestObservation {
                     _ => None,
                 });
             let provider_error = provider_error.or(match provider_result {
-                Some(WireModelResult::Incomplete | WireModelResult::Unknown) => {
-                    Some(WireProviderError::InvalidOutput)
-                }
+                Some(WireModelResult::Incomplete) => Some(WireProviderError::InvalidOutput),
                 Some(WireModelResult::Failed) => Some(WireProviderError::Unknown),
                 _ => None,
             });
             let retain_controls = outcome != hiroute_diagnostics::event::AttemptOutcome::Completed
+                || provider_result == Some(WireModelResult::Unknown)
                 || self.inner.context.handle().level()
                     == Some(hiroute_diagnostics::DiagnosticLevel::Debug);
             self.emit_diagnostic(DiagnosticEvent::AttemptEnd(AttemptEnd {

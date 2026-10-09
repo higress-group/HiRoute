@@ -85,7 +85,7 @@ def response_body(protocol, streaming):
               'model': MODEL, 'usage': provider_usage(protocol, streaming)}
     if protocol == 'responses':
         return dict(common, status='completed', output=[{
-            'type': 'message', 'role': 'assistant', 'content': [{
+            'type': 'message', 'id': 'message', 'role': 'assistant', 'content': [{
                 'type': 'output_text', 'text': 'usage-ok'}]}])
     return dict(common, type='message', role='assistant', content=[{
         'type': 'text', 'text': 'usage-ok'}], stop_reason='end_turn',

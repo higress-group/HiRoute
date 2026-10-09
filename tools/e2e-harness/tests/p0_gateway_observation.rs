@@ -114,7 +114,7 @@ fn production_info_failure_logs_actual_wire_and_body_relay_without_content_captu
 }
 
 #[test]
-fn production_info_unknown_model_terminal_keeps_closed_failure_cause() {
+fn production_info_unknown_model_terminal_keeps_uncertainty_separate_from_failure() {
     // Native forward compatibility preserves this future status, while its
     // semantic result remains unknown despite HTTP 200.
     let provider = NativeProvider::start(vec![ProviderReply::Complete {
@@ -133,23 +133,72 @@ fn production_info_unknown_model_terminal_keeps_closed_failure_cause() {
         .as_ref()
         .unwrap()
         .join("daemon/current.jsonl");
-    let (log, records) = wait_diagnostic_terminal(&path, "failed");
-    let failed = records
+    let (log, records) = wait_diagnostic_terminal(&path, "completed");
+    let terminal = records
         .iter()
-        .find_map(|record| record.pointer("/event/attempt_end"))
-        .expect("model failure must have an attempt terminal");
-    assert_eq!(failed["outcome"], "failed", "{log}");
-    assert_eq!(failed["http_status"], 200, "{log}");
-    assert_eq!(failed["provider_result"], "unknown", "{log}");
-    assert_eq!(failed["provider_error"], "invalid_output", "{log}");
-    assert_eq!(failed["commits"]["downstream_body"], "committed", "{log}");
-    assert_eq!(failed["native_model"], "runtime-native-model-1", "{log}");
+        .find(|record| record.pointer("/event/attempt_end").is_some())
+        .expect("uncertain model result must have an attempt terminal");
+    assert_eq!(terminal["level"], "warn", "{log}");
+    let attempt = &terminal["event"]["attempt_end"];
+    assert_eq!(attempt["outcome"], "completed", "{log}");
+    assert_eq!(attempt["http_status"], 200, "{log}");
+    assert_eq!(attempt["provider_result"], "unknown", "{log}");
+    assert!(attempt["provider_error"].is_null(), "{log}");
+    assert_eq!(attempt["commits"]["downstream_body"], "committed", "{log}");
+    assert_eq!(attempt["native_model"], "runtime-native-model-1", "{log}");
     assert_eq!(
-        failed["request_reasoning"]["responses_effort"], "low",
+        attempt["request_reasoning"]["responses_effort"], "low",
         "{log}"
     );
     assert!(!log.contains("private-unknown-input") && !log.contains("private-unknown-response"));
     assert!(fixture.observation_root.is_none());
+}
+
+#[test]
+fn production_unknown_completion_retains_transport_usage_and_an_unknown_agent_turn() {
+    let provider = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: br#"{"id":"unknown-turn","model":"native-observed","status":"provider_future_status","output":[{"type":"message","id":"unknown-turn-message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"unknown-turn-response","annotations":[]}]}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}"#,
+    }]);
+    let fallback = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: ACCEPTED_BODY,
+    }]);
+    let fixture = RuntimeFixture::launch_classified_with_observation(
+        &[&provider, &fallback],
+        1,
+        ObservationFaults::healthy(),
+    );
+    let response = fixture
+        .request_body(br#"{"model":"runtime-model","input":"unknown-turn-input","stream":false}"#);
+    assert_eq!(response.status, 200);
+    assert_eq!(provider.calls(), 1);
+    assert_eq!(fallback.calls(), 0);
+    let facts = wait_complete_accepted_request(fixture.observation_root.as_deref().unwrap());
+    for (kind, field, expected) in [
+        ("request_finished", "outcome", "accepted"),
+        ("attempt_finished", "outcome", "accepted"),
+        ("agent_turn_finished", "status", "unknown"),
+    ] {
+        assert!(
+            facts
+                .iter()
+                .any(|row| { row["fact"]["kind"] == kind && row["fact"][field] == expected }),
+            "{kind} must retain its transport or semantic result: {facts:?}"
+        );
+    }
+    assert!(facts.iter().any(|row| {
+        row["fact"]["kind"] == "attempt_finished"
+            && row["fact"]["provider_model_event"] == "response_unknown"
+            && row["fact"]["error_class"].is_null()
+    }));
+    assert!(facts.iter().any(|row| {
+        row["fact"]["kind"] == "usage_and_cache"
+            && row["fact"]["input_tokens"] == 11
+            && row["fact"]["output_tokens"] == 7
+    }));
 }
 
 fn wait_diagnostic_terminal(path: &Path, outcome: &str) -> (String, Vec<Value>) {

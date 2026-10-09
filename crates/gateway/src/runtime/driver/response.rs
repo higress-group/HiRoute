@@ -320,7 +320,11 @@ pub(super) fn finalize_attempt_facts(
     {
         // A prebody failure keeps the classification that authorized relay.
         // Only a failure discovered after acceptance closes retryability here.
-        if outcome != SemanticTerminalOutcome::Complete && state.classified_failure.is_none() {
+        if matches!(
+            outcome,
+            SemanticTerminalOutcome::Failed | SemanticTerminalOutcome::Incomplete
+        ) && state.classified_failure.is_none()
+        {
             facts.error_class = Some(label("provider_rejected"));
             facts.retryability = RetryabilityFact::NonRetryable;
         }

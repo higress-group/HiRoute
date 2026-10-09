@@ -109,6 +109,7 @@ pub(super) struct RequestObservationState {
     pub(super) accepted_attempt_finished: bool,
     pub(super) accepted_attempt_cancelled: bool,
     pub(super) accepted_attempt_failed: bool,
+    pub(super) accepted_attempt_unknown: bool,
     pub(super) response_capture: Option<CanonicalCaptureHandle>,
     pub(super) tool_id_projection: Option<ToolIdProjection>,
     pub(super) response_part_ordinal: u32,
@@ -869,6 +870,10 @@ impl RequestObservation {
 
     pub fn accepted_attempt_failed(&self) -> bool {
         self.lock_state().accepted_attempt_failed
+    }
+
+    pub fn accepted_attempt_unknown(&self) -> bool {
+        self.lock_state().accepted_attempt_unknown
     }
 
     pub fn accepted_attempt_cancelled(&self) -> bool {

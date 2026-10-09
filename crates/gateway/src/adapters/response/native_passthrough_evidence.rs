@@ -359,6 +359,17 @@ fn delta_kind(event: &str) -> Option<(&'static str, &'static str, Option<&'stati
 
 fn final_text<'a>(item: &'a Map<String, Value>, position: usize, kind: &str) -> Option<&'a str> {
     match kind {
+        // Some native streams report reasoning_text deltas and retain the
+        // identical final text as a summary. Only absent/null content permits
+        // this equivalent evidence; explicit content always remains authoritative.
+        "reasoning_text" if item.get("content").is_none_or(Value::is_null) => item
+            .get("summary")?
+            .as_array()?
+            .get(position)?
+            .as_object()
+            .filter(|part| part.get("type").and_then(Value::as_str) == Some("summary_text"))?
+            .get("text")?
+            .as_str(),
         "output_text" | "refusal" | "reasoning_text" => item
             .get("content")?
             .as_array()?
