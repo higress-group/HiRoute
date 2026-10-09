@@ -9,6 +9,15 @@ branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
 
+Messages thinking computation is projected in
+[request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
+is resolved by [ingress.rs](src/adapters/ingress.rs) before Replay externalization.
+[Native response projection](src/adapters/response/native_passthrough.rs) preserves
+signatures and usage while enforcing omitted text. Cross-protocol Messages
+renderers omit foreign reasoning without inventing signatures. The
+[production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
+covers the listener boundary, including tool continuation.
+
 ## Decision operation
 
 [core_runtime/classification.rs](src/core_runtime/classification.rs) owns the

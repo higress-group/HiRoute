@@ -173,6 +173,16 @@ fn thinking_display_does_not_allow_unrelated_extensions_to_cross_protocol() {
     body["thinking"]["future_control"] = json!(true);
     let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
     assert!(request.native_only);
+    let native_default = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Messages,
+        IngressProtocol::Messages,
+        "physical",
+        fixed_reasoning("default"),
+    );
+    assert!(project_candidate_request(&request, &native_default).is_err());
+    let adaptive = project_candidate_request(&request, &display_profile("adaptive")).unwrap();
+    assert_eq!(adaptive.body["thinking"]["future_control"], true);
+    assert_eq!(adaptive.body["thinking"]["display"], "omitted");
     let profile = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Messages,
         IngressProtocol::ChatCompletions,

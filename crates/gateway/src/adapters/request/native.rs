@@ -190,6 +190,10 @@ fn normalize_messages_thinking(
     }
     if thinking.is_empty() {
         object.remove("thinking");
+    } else if !thinking.contains_key("type") {
+        return Err(ProtocolAdapterError::ClientUnrepresentable(
+            "thinking extensions require a selected Plan thinking mode".into(),
+        ));
     }
     Ok(())
 }
