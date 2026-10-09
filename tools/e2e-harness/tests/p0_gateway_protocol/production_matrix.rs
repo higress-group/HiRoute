@@ -654,7 +654,7 @@ fn messages_schema_format() -> Value {
 fn native_response(upstream: IngressProtocol) -> &'static [u8] {
     match upstream {
         IngressProtocol::Responses => br#"{"id":"native-provider","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#,
-        IngressProtocol::ChatCompletions => br#"{"id":"native-provider","object":"chat.completion","created":0,"model":"runtime-native","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
+        IngressProtocol::ChatCompletions => br#"{"id":"native-provider","object":"chat.completion","service_tier":"default","created":0,"model":"runtime-native","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
         IngressProtocol::Messages => br#"{"id":"native-provider","type":"message","role":"assistant","model":"runtime-native","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}"#,
     }
 }
@@ -662,7 +662,7 @@ fn native_response(upstream: IngressProtocol) -> &'static [u8] {
 fn native_same_protocol_response(upstream: IngressProtocol) -> &'static [u8] {
     match upstream {
         IngressProtocol::Responses => br#"{"id":"native-provider","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"provider_extension":{"model":"nested-untouched","future":true}}"#,
-        IngressProtocol::ChatCompletions => br#"{"id":"native-provider","object":"chat.completion","created":0,"model":"runtime-native","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"provider_extension":{"model":"nested-untouched","future":true}}"#,
+        IngressProtocol::ChatCompletions => br#"{"id":"native-provider","object":"chat.completion","service_tier":"default","created":0,"model":"runtime-native","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"provider_extension":{"model":"nested-untouched","future":true}}"#,
         IngressProtocol::Messages => br#"{"id":"native-provider","type":"message","role":"assistant","model":"runtime-native","content":[{"type":"thinking","thinking":"private thought","signature":"opaque-signature"},{"type":"text","text":"ok","provider_extension":{"future":true}}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1},"provider_extension":{"model":"nested-untouched"}}"#,
     }
 }
@@ -687,7 +687,7 @@ data: {"type":"response.completed","response":{"id":"native-stream","model":"run
 
 data: {"id":"native-stream","object":"chat.completion.chunk","created":1,"model":"runtime-native","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"provider_extension":{"future":true}}
 
-data: {"id":"native-stream","object":"chat.completion.chunk","created":1,"model":"runtime-native","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"provider_extension":{"future":true}}
+data: {"id":"native-stream","object":"chat.completion.chunk","created":1,"model":"runtime-native","choices":[],"service_tier":"default","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"provider_extension":{"future":true}}
 
 data: [DONE]
 
@@ -746,6 +746,7 @@ fn assert_same_protocol_stream(protocol: IngressProtocol, alias: &str, body: &[u
         }
         IngressProtocol::ChatCompletions => {
             assert!(wire.contains("data: [DONE]\n\n"));
+            assert!(wire.contains(r#""service_tier":"default""#));
         }
         IngressProtocol::Messages => {
             assert!(wire.contains("event: message.vendor_extension\nid: opaque\n"));

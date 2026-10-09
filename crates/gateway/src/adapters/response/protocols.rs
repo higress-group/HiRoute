@@ -779,7 +779,7 @@ fn decode_chat_sse(
         output,
     )?;
     reject_non_null(object, "system_fingerprint")?;
-    reject_non_null(object, "service_tier")?;
+    let _ = optional_str(object, "service_tier")?;
     if let Some(usage) = object.get("usage")
         && !usage.is_null()
     {
@@ -1038,7 +1038,7 @@ fn decode_chat_nonstream(
         ],
     )?;
     reject_non_null(object, "system_fingerprint")?;
-    reject_non_null(object, "service_tier")?;
+    let _ = optional_str(object, "service_tier")?;
     core.start_response(
         required_str(object, "id")?.into(),
         required_str(object, "model")?.into(),
