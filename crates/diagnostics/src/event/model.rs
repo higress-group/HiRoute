@@ -70,6 +70,8 @@ pub struct AttemptEnd {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_error: Option<WireProviderError>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_result: Option<WireModelResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commits: Option<AttemptWireCommits>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_model: Option<NativeModelId>,
@@ -341,6 +343,16 @@ pub enum WireRequestKind {
 pub enum WireHttpProtocol {
     Http1,
     Http2,
+}
+
+/// The observed model terminal is independent of successful HTTP transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireModelResult {
+    Complete,
+    Failed,
+    Incomplete,
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

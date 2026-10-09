@@ -27,7 +27,7 @@ fn production_info_failure_logs_actual_wire_and_body_relay_without_content_captu
     let accepted = NativeProvider::start(vec![ProviderReply::Complete {
         status: 200,
         error_kind: None,
-        body: ACCEPTED_BODY,
+        body: br#"{"id":"info-ok","model":"native-observed","status":"completed","output":[{"type":"message","id":"info-message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"accepted-info-response","annotations":[]}]}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}"#,
     }]);
     let fixture = RuntimeFixture::launch_with_info_diagnostics(&[&rejected, &accepted], 2);
     assert!(fixture.observation_root.is_none());
@@ -36,30 +36,13 @@ fn production_info_failure_logs_actual_wire_and_body_relay_without_content_captu
     );
     assert_eq!(response.status, 200);
     assert_eq!((rejected.calls(), accepted.calls()), (1, 1));
-    assert!(String::from_utf8_lossy(&response.body).contains("accepted-response-22008"));
+    assert!(String::from_utf8_lossy(&response.body).contains("accepted-info-response"));
     let path = fixture
         .diagnostics_root
         .as_ref()
         .unwrap()
         .join("daemon/current.jsonl");
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let (log, records) = loop {
-        let log = fs::read_to_string(&path).unwrap_or_default();
-        let records = log
-            .lines()
-            .map(|line| serde_json::from_str::<Value>(line).unwrap())
-            .collect::<Vec<_>>();
-        if records.iter().any(|record| {
-            record
-                .pointer("/event/request_end/outcome")
-                .and_then(Value::as_str)
-                == Some("completed")
-        }) {
-            break (log, records);
-        }
-        assert!(Instant::now() < deadline, "missing request terminal: {log}");
-        thread::sleep(Duration::from_millis(10));
-    };
+    let (log, records) = wait_diagnostic_terminal(&path, "completed");
     assert!(
         records.iter().any(|record| {
             record
@@ -87,6 +70,7 @@ fn production_info_failure_logs_actual_wire_and_body_relay_without_content_captu
         failed["provider_error"], "thinking_budget_rejected",
         "{log}"
     );
+    assert_eq!(failed["provider_result"], "failed", "{log}");
     assert!(failed["upstream_request_token"].as_str().is_some(), "{log}");
     assert_eq!(failed["commits"]["downstream_headers"], "clear", "{log}");
     assert_eq!(failed["commits"]["downstream_body"], "clear", "{log}");
@@ -96,12 +80,22 @@ fn production_info_failure_logs_actual_wire_and_body_relay_without_content_captu
         .expect("fallback must identify its next target");
     assert_eq!(next["next_attempt_index"], 2, "{log}");
     assert!(next["next_binding_token"].as_str().is_some(), "{log}");
+    assert!(
+        records.iter().any(|record| {
+            record.pointer("/event/attempt_end").is_some_and(|event| {
+                event["outcome"] == "completed"
+                    && event["provider_error"].is_null()
+                    && event["provider_result"] == "complete"
+            })
+        }),
+        "the successful fallback must not inherit the failed provider cause: {log}"
+    );
     for private in [
         "private-input-marker",
         "private-upstream-request-id",
         "provider-secret-1",
         "<400> InternalError",
-        "accepted-response-22008",
+        "accepted-info-response",
     ] {
         assert!(
             !log.contains(private),
@@ -117,6 +111,69 @@ fn production_info_failure_logs_actual_wire_and_body_relay_without_content_captu
         }),
         "Info failures must not enable successful request detail: {log}"
     );
+}
+
+#[test]
+fn production_info_unknown_model_terminal_keeps_closed_failure_cause() {
+    // Native forward compatibility preserves this future status, while its
+    // semantic result remains unknown despite HTTP 200.
+    let provider = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: br#"{"id":"unknown-info","model":"native-observed","status":"provider_future_status","output":[{"type":"message","id":"unknown-info-message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"private-unknown-response","annotations":[]}]}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}"#,
+    }]);
+    let fixture = RuntimeFixture::launch_with_info_diagnostics(&[&provider], 1);
+    let response = fixture.request_body(
+        br#"{"model":"runtime-model","input":"private-unknown-input","stream":false}"#,
+    );
+    assert_eq!(response.status, 200);
+    assert_eq!(provider.calls(), 1);
+    let path = fixture
+        .diagnostics_root
+        .as_ref()
+        .unwrap()
+        .join("daemon/current.jsonl");
+    let (log, records) = wait_diagnostic_terminal(&path, "failed");
+    let failed = records
+        .iter()
+        .find_map(|record| record.pointer("/event/attempt_end"))
+        .expect("model failure must have an attempt terminal");
+    assert_eq!(failed["outcome"], "failed", "{log}");
+    assert_eq!(failed["http_status"], 200, "{log}");
+    assert_eq!(failed["provider_result"], "unknown", "{log}");
+    assert_eq!(failed["provider_error"], "invalid_output", "{log}");
+    assert_eq!(failed["commits"]["downstream_body"], "committed", "{log}");
+    assert_eq!(failed["native_model"], "runtime-native-model-1", "{log}");
+    assert_eq!(
+        failed["request_reasoning"]["responses_effort"], "low",
+        "{log}"
+    );
+    assert!(!log.contains("private-unknown-input") && !log.contains("private-unknown-response"));
+    assert!(fixture.observation_root.is_none());
+}
+
+fn wait_diagnostic_terminal(path: &Path, outcome: &str) -> (String, Vec<Value>) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let log = fs::read_to_string(path).unwrap_or_default();
+        let records = log
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        if records.iter().any(|record| {
+            record
+                .pointer("/event/request_end/outcome")
+                .and_then(Value::as_str)
+                == Some(outcome)
+        }) {
+            return (log, records);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "missing {outcome} request terminal: {log}"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[test]

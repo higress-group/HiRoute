@@ -10,7 +10,7 @@ use hiroute_gateway_core::runtime::driver::{
 
 use hiroute_diagnostics::event::{
     AttemptEnd, AttemptWireCommits, DiagnosticEvent, ModelStageKind, RequestCancel, RequestTimeout,
-    WireCommitState, WireHttpProtocol,
+    WireCommitState, WireHttpProtocol, WireModelResult, WireProviderError,
 };
 
 use super::{
@@ -474,6 +474,22 @@ impl RequestObservation {
             )
         };
         if let Some(outcome) = attempt_outcome(outcome, timed_out) {
+            let provider_result = provider
+                .and_then(|facts| facts.model_event.as_ref())
+                .and_then(|event| match event.as_str() {
+                    "response_complete" => Some(WireModelResult::Complete),
+                    "response_failed" => Some(WireModelResult::Failed),
+                    "response_incomplete" => Some(WireModelResult::Incomplete),
+                    "response_unknown" => Some(WireModelResult::Unknown),
+                    _ => None,
+                });
+            let provider_error = provider_error.or(match provider_result {
+                Some(WireModelResult::Incomplete | WireModelResult::Unknown) => {
+                    Some(WireProviderError::InvalidOutput)
+                }
+                Some(WireModelResult::Failed) => Some(WireProviderError::Unknown),
+                _ => None,
+            });
             let retain_controls = outcome != hiroute_diagnostics::event::AttemptOutcome::Completed
                 || self.inner.context.handle().level()
                     == Some(hiroute_diagnostics::DiagnosticLevel::Debug);
@@ -497,6 +513,7 @@ impl RequestObservation {
                     },
                 ),
                 provider_error,
+                provider_result,
                 native_model: prepared_wire
                     .as_ref()
                     .filter(|_| retain_controls)

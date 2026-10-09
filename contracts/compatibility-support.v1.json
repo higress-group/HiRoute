@@ -1258,7 +1258,7 @@
         "crates/diagnostics/src/record.rs",
         "crates/diagnostics/src/runtime.rs"
       ],
-      "field": "optional model, reasoning, HTTP protocol, provider error, target and commit facts in retained V1 logs"
+      "field": "optional model, reasoning, HTTP protocol, provider error and model terminal result, target and commit facts in retained V1 logs"
     }
   ]
 }
