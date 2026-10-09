@@ -31,7 +31,7 @@ pub(super) use group_policy::{apply as apply_group_policy, execution_position};
 
 use super::ProductionGatewayRuntime;
 use super::adapters::{PreparedReplayTemplate, sequential_replay_body};
-use super::model_ir::{ContentPart, ModelRequestIRV1};
+use super::model_ir::{ContentPart, MessageRole, ModelRequestIRV1};
 use super::profiles::{
     BranchDecisionV1, ClassifierFallbackReasonV1, CompiledClassifierKindV1,
     CompiledComplexityStrategyV1, ComplexityDecisionSourceV1, ComplexityReasonCodeV1, ComplexityV1,

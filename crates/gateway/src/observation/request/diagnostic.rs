@@ -1,6 +1,7 @@
 //! Typed safe facts from the actual provider request and response boundaries.
 
 use super::RequestObservation;
+use crate::server::core_runtime::observation::wire_diagnostic;
 use hiroute_diagnostics::{correlation::CorrelationDomain, event::DiagnosticEvent};
 
 impl RequestObservation {
@@ -36,8 +37,7 @@ impl RequestObservation {
         headers: &http::HeaderMap,
         status: u16,
     ) {
-        let event =
-            super::provider::wire_diagnostic::response(headers, status, &self.inner.context);
+        let event = wire_diagnostic::response(headers, status, &self.inner.context);
         if let Some(error) = event.provider_error {
             self.lock_state().provider_error = Some(error);
         }
@@ -52,7 +52,7 @@ impl RequestObservation {
     ) {
         use hiroute_diagnostics::event::UpstreamWirePhase;
         self.lock_state().provider_error = Some(error);
-        let mut event = super::provider::wire_diagnostic::response(
+        let mut event = wire_diagnostic::response(
             &http::HeaderMap::new(),
             http_status.unwrap_or(0),
             &self.inner.context,
@@ -79,7 +79,7 @@ impl RequestObservation {
         serialized_template: &[u8],
     ) {
         if self.inner.context.handle().level().is_some() {
-            let event = super::provider::wire_diagnostic::request(headers, serialized_template);
+            let event = wire_diagnostic::request(headers, serialized_template);
             self.lock_state().prepared_wire = Some(event.clone());
             self.wire_diagnostic(event);
         }
