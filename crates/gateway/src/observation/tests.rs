@@ -1245,7 +1245,7 @@ fn native_alias_repeated_reads_preserve_the_staged_relay_identity() {
         state.previous_attempt_id = Some("attempt:previous".into());
         state.next_attempt_reason = Some("protocol".into());
     }
-    let key = RuntimeStateKey::credential(&native_alias, "credential:test", "key:test", 4);
+    let key = RuntimeStateKey::credential(native_alias.as_str(), "credential:test", "key:test", 4);
     let active = RuntimeStateEntry::default();
     request.runtime_state_read(&key, Some(&active), "active");
     request.runtime_state_read(&key, Some(&active), "active");
