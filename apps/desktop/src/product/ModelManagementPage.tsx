@@ -1023,7 +1023,7 @@ export function ModelManagementPage({
         </button>
         <button className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => { returnToScanList(); setSelectedSubscriptionRef(null); setRepairingSubscriptionSource(null); setSubscriptionNotice(''); setAddStage('scan'); void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]); }}>
           <span className="choice-icon"><UiIcon name="scan" /></span>
-          <div><strong>{language === 'zh' ? '扫描本机' : 'Scan this device'}</strong><span>{language === 'zh' ? '发现已有的 Agent、Codex 订阅和模型配置' : 'Find local agents, Codex subscriptions, and model configurations'}</span></div>
+          <div><strong>{language === 'zh' ? '扫描本机' : 'Scan this device'}</strong><span>{language === 'zh' ? '发现已有的 Agent、Codex / Claude Code 订阅和模型配置' : 'Find local agents, Codex / Claude Code subscriptions, and model configurations'}</span></div>
           <UiIcon name="chevronRight" />
         </button>
         <button className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => openConnection('free')}>
@@ -1050,7 +1050,7 @@ export function ModelManagementPage({
             ? <><p className="oc-meta">{language === 'zh' ? '选择要加入 HiRoute 的模型。' : 'Choose the models to add to HiRoute.'}</p><div className="v3-catalog">{selectableDiscoveryModels.map(model => <label className="check-row" key={model.model_ref}><input type="checkbox" disabled={!trustedAuthority} checked={selectedDiscoveryModels.has(model.model_ref)} onChange={() => toggleDiscoveryModel(model.model_ref)} /><div><strong>{model.display_name}</strong></div></label>)}</div></>
             : <p className="oc-meta">{language === 'zh' ? '这项配置中没有可接入的模型。' : 'No connectable model was found in this configuration.'}</p>)}
       </div> : selectedSubscription && effectiveSubscription ? <div className="oc-scan-detail">
-        <div className="oc-status-row"><BrandIcon kind="codex" label="Codex" /><div className="row-main"><strong>{effectiveSubscription.display_name}</strong><p>{language === 'zh' ? '复用本机登录，无需复制订阅凭据。' : 'Reuse the local sign-in without copying credentials.'}</p></div>{subscriptionReady && <span className="badge good">{language === 'zh' ? '可用' : 'Ready'}</span>}</div>
+        <div className="oc-status-row"><BrandIcon kind={agentBrandFromId(effectiveSubscription.display_name)} label={effectiveSubscription.display_name} /><div className="row-main"><strong>{effectiveSubscription.display_name}</strong><p>{language === 'zh' ? '复用本机登录，无需复制订阅凭据。' : 'Reuse the local sign-in without copying credentials.'}</p></div>{subscriptionReady && <span className="badge good">{language === 'zh' ? '可用' : 'Ready'}</span>}</div>
         {subscriptionReady && repairingSelectedSubscription
           ? <p className="oc-meta">{language === 'zh' ? '将保留原有模型、绑定和路由，仅更新当前订阅授权与可执行资格。' : 'Existing models, bindings, and routes will be retained; only current subscription access and execution eligibility will be updated.'}</p>
           : subscriptionReady ? subscriptionModels.length
@@ -1085,7 +1085,7 @@ export function ModelManagementPage({
     {management && !management.sources.length && !loading && !error && <div className="empty-state v3-empty"><div>
       <span className="empty-icon"><UiIcon name="models" /></span>
       <h3>{language === 'zh' ? '先连接一个模型' : 'Connect your first model'}</h3>
-      <p>{language === 'zh' ? '连接一个 API，或复用本机已有的 Codex 订阅。' : 'Connect an API or reuse a local Codex subscription.'}</p>
+      <p>{language === 'zh' ? '连接一个 API，或复用本机已有的 Codex / Claude Code 订阅。' : 'Connect an API or reuse a local Codex / Claude Code subscription.'}</p>
       <button ref={hasSources ? undefined : addButton} className="btn btn-primary" disabled={!trustedAuthority} onClick={openAdd}><UiIcon name="plus" />{text.add}</button>
       {!trustedAuthority && <p className="oc-meta">{language === 'zh' ? '本机服务尚未就绪，连接恢复后即可添加。' : 'The local service is not ready. Reconnect before adding a model.'}</p>}
     </div></div>}

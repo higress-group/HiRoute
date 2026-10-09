@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-10-08",
+  "as_of": "2026-10-09",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -1843,6 +1843,60 @@
       "collected_on": "2026-10-09",
       "bytes_digest": "sha256:50fb3e39b08d6660323b1267dd272b17db2b9c259d242f6d15d8e0612006c1d3",
       "digest_state": "captured"
+    },
+    {
+      "source_key": "source-179",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview",
+      "collected_on": "2026-10-09",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-180",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/models/sonnet-5-5/whats-new-sonnet-5-5",
+      "collected_on": "2026-10-09",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-181",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+      "collected_on": "2026-10-09",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-182",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/models/haiku-5-5/whats-new-haiku-5-5",
+      "collected_on": "2026-10-09",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-183",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/build-with-claude/effort",
+      "collected_on": "2026-10-09",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-184",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "collected_on": "2026-10-09",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -3072,6 +3126,47 @@
       ]
     },
     {
+      "model_key": "claude-haiku-5-5",
+      "publisher": "Anthropic",
+      "display_name": "Claude Haiku 5.5",
+      "canonical_identity": "claude-haiku-5-5",
+      "upstream_ids": [
+        "claude-haiku-5-5"
+      ],
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "max_output_scope": "standard Claude API Messages",
+      "max_output_note": "Message Batches API beta supports up to 300000 output tokens with output-300k-2026-03-24.",
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "supported",
+        "text_output": "supported"
+      },
+      "capabilities": {
+        "tool": "supported",
+        "streaming": "supported"
+      },
+      "reasoning": {
+        "kind": "adaptive",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "medium"
+      },
+      "identity_stability": "immutable-or-provider-stable",
+      "lifecycle": "active",
+      "source_stability_note": "current-platform",
+      "evidence_refs": [
+        "source-181",
+        "source-182",
+        "source-183"
+      ]
+    },
+    {
       "model_key": "claude-opus-5",
       "publisher": "Anthropic",
       "display_name": "Claude Opus 5",
@@ -3179,6 +3274,47 @@
       "evidence_refs": [
         "source-060",
         "source-061"
+      ]
+    },
+    {
+      "model_key": "claude-sonnet-5-5",
+      "publisher": "Anthropic",
+      "display_name": "Claude Sonnet 5.5",
+      "canonical_identity": "claude-sonnet-5-5",
+      "upstream_ids": [
+        "claude-sonnet-5-5"
+      ],
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "max_output_scope": "standard Claude API Messages",
+      "max_output_note": "Message Batches API beta supports up to 300000 output tokens with output-300k-2026-03-24.",
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "supported",
+        "text_output": "supported"
+      },
+      "capabilities": {
+        "tool": "supported",
+        "streaming": "supported"
+      },
+      "reasoning": {
+        "kind": "adaptive",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "high"
+      },
+      "identity_stability": "immutable-or-provider-stable",
+      "lifecycle": "active",
+      "source_stability_note": "current-platform",
+      "evidence_refs": [
+        "source-179",
+        "source-180",
+        "source-183"
       ]
     },
     {
@@ -4762,6 +4898,28 @@
   ],
   "endpoint_bindings": [
     {
+      "binding_key": "anthropic-platform/claude-haiku-5-5/claude-haiku-5-5",
+      "product_key": "anthropic-platform",
+      "model_key": "claude-haiku-5-5",
+      "upstream_model_id": "claude-haiku-5-5",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "anthropic-platform/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Claude API documented model; account entitlement and wire behavior require qualification. Thinking may be disabled only at low/medium/high effort; forced tool_choice any/tool is supported. Thinking history is bound to its originating or linked account."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-181",
+        "source-182",
+        "source-183",
+        "source-184"
+      ]
+    },
+    {
       "binding_key": "anthropic-platform/claude-opus-5-5/claude-opus-5-5",
       "product_key": "anthropic-platform",
       "model_key": "claude-opus-5-5",
@@ -4779,6 +4937,28 @@
       "evidence_refs": [
         "source-129",
         "source-130"
+      ]
+    },
+    {
+      "binding_key": "anthropic-platform/claude-sonnet-5-5/claude-sonnet-5-5",
+      "product_key": "anthropic-platform",
+      "model_key": "claude-sonnet-5-5",
+      "upstream_model_id": "claude-sonnet-5-5",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "anthropic-platform/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Claude API documented model; account entitlement and wire behavior require qualification. Thinking disabled and forced tool_choice any/tool are unsupported; between_tools thinking is allowed only at low/medium/high effort."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-179",
+        "source-180",
+        "source-183",
+        "source-184"
       ]
     },
     {
@@ -6839,6 +7019,53 @@
   ],
   "pricing_facts": [
     {
+      "pricing_key": "anthropic-platform/claude-haiku-5-5/claude-haiku-5-5",
+      "product_key": "anthropic-platform",
+      "model_key": "claude-haiku-5-5",
+      "upstream_model_id": "claude-haiku-5-5",
+      "currency": "USD",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "standard-global-long-context",
+          "condition": {
+            "kind": "prompt-token-threshold",
+            "minimum_input_tokens": 100001,
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "prompt_includes_cache_reads_and_writes": true
+          },
+          "application": "whole-request",
+          "rates": {
+            "input": "0.5",
+            "cache-read": "0.05",
+            "output": "2.5"
+          }
+        },
+        {
+          "schedule_key": "standard-global-short-context",
+          "condition": {
+            "kind": "prompt-token-threshold",
+            "maximum_input_tokens": 100000,
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "prompt_includes_cache_reads_and_writes": true
+          },
+          "application": "whole-request",
+          "rates": {
+            "input": "0.1",
+            "cache-read": "0.01",
+            "output": "0.5"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-181",
+        "source-184"
+      ]
+    },
+    {
       "pricing_key": "anthropic-platform/claude-opus-5-5/claude-opus-5-5",
       "product_key": "anthropic-platform",
       "model_key": "claude-opus-5-5",
@@ -6864,6 +7091,35 @@
       "evidence_refs": [
         "source-129",
         "source-130"
+      ]
+    },
+    {
+      "pricing_key": "anthropic-platform/claude-sonnet-5-5/claude-sonnet-5-5",
+      "product_key": "anthropic-platform",
+      "model_key": "claude-sonnet-5-5",
+      "upstream_model_id": "claude-sonnet-5-5",
+      "currency": "USD",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "standard-global",
+          "condition": {
+            "kind": "service-tier",
+            "tier": "standard",
+            "inference_geo": "global"
+          },
+          "application": "whole-request",
+          "rates": {
+            "input": "2",
+            "cache-read": "0.1",
+            "output": "10"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-179",
+        "source-184"
       ]
     },
     {
@@ -117389,6 +117645,20 @@
           }
         }
       ]
+    },
+    {
+      "connection_option_id": "claude.subscription.global.v1",
+      "provider_id": "anthropic",
+      "name": {
+        "zh": "Anthropic · Claude Code 订阅",
+        "en": "Anthropic · Claude Code subscription"
+      },
+      "description": {
+        "zh": "复用本机 Claude Code 订阅登录；模型实际可用性由账号权限与调用结果决定。",
+        "en": "Use the local Claude Code subscription login. Availability depends on account permissions and actual requests."
+      },
+      "documentation_url": "https://support.claude.com/",
+      "endpoint_defaults": []
     },
     {
       "connection_option_id": "codex.subscription.global.v1",

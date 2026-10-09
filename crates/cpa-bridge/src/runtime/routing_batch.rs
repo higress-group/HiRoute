@@ -19,6 +19,7 @@ pub struct CpaRoutingBatch<'a> {
     runtime: &'a ManagedCpaRuntime,
     identity: BatchIdentity,
     sources: Vec<CpaRegisteredSourceV1>,
+    additional: Vec<CpaRoutingBatch<'a>>,
 }
 
 impl<'a> CpaRoutingBatch<'a> {
@@ -37,7 +38,13 @@ impl<'a> CpaRoutingBatch<'a> {
             runtime,
             identity,
             sources,
+            additional: Vec::new(),
         })
+    }
+
+    pub(crate) fn extend(&mut self, other: Self) {
+        self.sources.extend(other.sources.iter().cloned());
+        self.additional.push(other);
     }
 
     pub fn sources(&self) -> &[CpaRegisteredSourceV1] {
@@ -49,7 +56,14 @@ impl<'a> CpaRoutingBatch<'a> {
         let mut inner = self.runtime.inner.lock();
         self.runtime
             .discover_materializations_locked(&mut inner, None)?;
-        Ok(self.identity == batch_identity(self.runtime, &inner)?)
+        let current = self.identity == batch_identity(self.runtime, &inner)?;
+        drop(inner);
+        for other in self.additional {
+            if !other.finish()? {
+                return Ok(false);
+            }
+        }
+        Ok(current)
     }
 }
 
@@ -58,13 +72,29 @@ impl CpaRoutingBatch<'_> {
         &self,
         request: ExactCpaAttemptRequest<'_>,
     ) -> Result<PreparedCpaTarget, CpaAttemptError> {
-        prepare_from_accounts(
-            self.runtime,
-            &self.identity.accounts,
-            self.identity.address,
-            self.identity.epochs,
-            request,
-        )
+        for batch in std::iter::once(self).chain(self.additional.iter()) {
+            if !batch.runtime.spec.bindings.iter().any(|binding| {
+                request.credential_ref.subject() == format!("connector/{}", binding.connector_id)
+            }) {
+                continue;
+            }
+            match prepare_from_accounts(
+                batch.runtime,
+                &batch.identity.accounts,
+                batch.identity.address,
+                batch.identity.epochs,
+                ExactCpaAttemptRequest {
+                    credential_ref: request.credential_ref,
+                    upstream_model_id: request.upstream_model_id,
+                    protocol: request.protocol,
+                },
+            ) {
+                Ok(target) => return Ok(target),
+                Err(CpaAttemptError::UnregisteredTarget) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Err(CpaAttemptError::UnregisteredTarget)
     }
 }
 
@@ -86,7 +116,7 @@ fn batch_identity(
 impl ManagedCpaRuntime {
     pub(crate) fn discover_materializations(
         &self,
-        expected: Option<&BorrowedCodexEvidence>,
+        expected: Option<&BorrowedSubscriptionEvidence>,
     ) -> Result<Vec<CpaAccountMaterializationV1>, CpaLifecycleError> {
         let mut inner = self.inner.lock();
         self.discover_materializations_locked(&mut inner, expected)
@@ -95,7 +125,7 @@ impl ManagedCpaRuntime {
     fn discover_materializations_locked(
         &self,
         inner: &mut RuntimeInner,
-        expected: Option<&BorrowedCodexEvidence>,
+        expected: Option<&BorrowedSubscriptionEvidence>,
     ) -> Result<Vec<CpaAccountMaterializationV1>, CpaLifecycleError> {
         if let Err(error) = self.ensure_ready_locked(inner, expected) {
             self.invalidate_runtime_accounts(inner, None);
@@ -107,23 +137,23 @@ impl ManagedCpaRuntime {
         let previous_auth_generation = live
             .auth_lease
             .as_ref()
-            .and_then(|lease| lease.codex_generation());
+            .and_then(|lease| lease.generation());
         let managed_identities = match live
             .auth_lease
             .as_mut()
             .ok_or(CpaLifecycleError::OwnerState)?
-            .refresh_expected(expected, None)
+            .refresh_subscription(expected, None)
         {
             Ok(identities) => identities,
             Err(error) => {
-                self.invalidate_live_accounts(live, Some(crate::CpaAccountKind::Codex));
+                self.invalidate_live_accounts(live, self.managed_kind());
                 let _ = save_account_state(&layout.accounts_path, &live.accounts);
                 return Err(error);
             }
         };
         let current_auth_generation = managed_identities
             .iter()
-            .find(|identity| identity.account_kind == crate::CpaAccountKind::Codex)
+            .find(|identity| Some(identity.account_kind) == self.managed_kind())
             .map(|identity| identity.generation);
         let control_started = Instant::now();
         self.emit_stage(
@@ -146,7 +176,7 @@ impl ManagedCpaRuntime {
                 control_started.elapsed().as_millis() as u64,
                 inner.restart_count,
             );
-            self.invalidate_live_accounts(live, Some(crate::CpaAccountKind::Codex));
+            self.invalidate_live_accounts(live, self.managed_kind());
             let _ = save_account_state(&layout.accounts_path, &live.accounts);
             return Err(CpaLifecycleError::BorrowedCodexClientVersionUnavailable);
         }
@@ -178,7 +208,7 @@ impl ManagedCpaRuntime {
                     inner.restart_count,
                 );
                 let affected_kind = if matches!(error, AccountDiscoveryError::AccountDisappeared) {
-                    Some(crate::CpaAccountKind::Codex)
+                    self.managed_kind()
                 } else {
                     None
                 };
@@ -187,6 +217,15 @@ impl ManagedCpaRuntime {
                 return Err(map_control_error(error));
             }
         };
+        // An approved recheck needs current inventory even while the saved source is disabled.
+        // Keep those observed identities separately; they must not reopen runtime admission.
+        let checked_accounts = expected.map(|_| {
+            discovered
+                .iter()
+                .filter(|account| account.active)
+                .map(|account| account.account_digest.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+        });
         // Disabled/removed discoveries never reactivate an account during the merge.
         // Otherwise every read would rotate its generation before projecting it inactive again.
         subscriptions::apply_management_projection(&mut discovered, &source_management);
@@ -207,15 +246,24 @@ impl ManagedCpaRuntime {
         }
         save_account_state(&layout.accounts_path, &live.accounts)?;
         let mut result = Vec::new();
-        for account in live.accounts.iter().filter(|account| account.active) {
+        for account in live.accounts.iter().filter(|account| {
+            account.active
+                || checked_accounts
+                    .as_ref()
+                    .is_some_and(|checked| checked.contains(&account.account_digest))
+        }) {
             let binding = self
                 .spec
                 .bindings
                 .iter()
                 .find(|binding| binding.account_kind == account.account_kind)
                 .ok_or(CpaLifecycleError::InvalidBinding)?;
+            // This copy supplies check facts only. Persisted state and request-scoped
+            // capability issuance retain Disabled until the separate SaveReady succeeds.
+            let mut checked = account.clone();
+            checked.active = true;
             result.push(
-                account
+                checked
                     .materialize(binding)
                     .map_err(|_| CpaLifecycleError::InvalidMaterialization)?,
             );

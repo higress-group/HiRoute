@@ -9,7 +9,11 @@
 mod accounts;
 mod artifact;
 mod attempt;
+mod borrowed_claude;
 mod borrowed_codex;
+mod borrowed_subscription;
+pub use borrowed_claude::{BorrowedClaudeAuthSpec, BorrowedClaudeEvidence};
+pub use borrowed_subscription::BorrowedSubscriptionEvidence;
 mod config;
 mod errors;
 mod http;
@@ -17,6 +21,8 @@ mod owner;
 mod process;
 mod proxy_environment;
 mod runtime;
+mod runtime_set;
+pub use runtime_set::ManagedCpaRuntimeSet;
 mod state;
 mod subscription;
 

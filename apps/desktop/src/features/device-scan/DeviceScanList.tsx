@@ -135,7 +135,7 @@ export function DeviceScanList({
     {subscriptions.map(candidate => {
       const repairing = Boolean(candidate.existing_source_id && candidate.existing_source_id === repairingSubscriptionSource);
       return <div className="oc-status-row" key={candidate.candidate.candidate_ref}>
-        <BrandIcon kind="codex" label="Codex" />
+        <BrandIcon kind={agentBrandFromId(candidate.display_name)} label={candidate.display_name} />
         <div className="row-main">
           <strong>{candidate.display_name}</strong>
           <p>{repairing ? text('重新检查当前订阅登录', 'Check the current subscription sign-in again') : candidate.existing_source_id ? text('已接入，可以在模型页查看', 'Connected. View it on the Models page') : text('已发现本机登录', 'Local sign-in found')}</p>
@@ -144,9 +144,9 @@ export function DeviceScanList({
         {candidate.existing_source_id && !repairing && <button className="btn" type="button" disabled={!trustedAuthority} onClick={() => onOpenSubscription(candidate)}>{text('调整模型', 'Choose models')}</button>}
       </div>;
     })}
-    {!subscriptions.length && !subscriptionScanFailed && !subscriptionRuntimeUnavailable && <p className="oc-meta" role="status">{text('没有发现可复用的 Codex 订阅。', 'No reusable Codex subscription was found.')}</p>}
-    {subscriptionRuntimeUnavailable && <div className="callout warn" role="status"><UiIcon name="warning" /><span>{text('当前环境暂时无法读取本机 Codex 登录，请稍后重试。', 'The local Codex sign-in cannot be read in this environment. Try again later.')}</span></div>}
-    {subscriptionScanFailed && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{text('暂时无法读取本机 Codex 订阅。', 'The local Codex subscription could not be read.')}</span></div>}
+    {!subscriptions.length && !subscriptionScanFailed && !subscriptionRuntimeUnavailable && <p className="oc-meta" role="status">{text('没有发现可复用的 Codex / Claude Code 订阅。', 'No reusable Codex / Claude Code subscription was found.')}</p>}
+    {subscriptionRuntimeUnavailable && <div className="callout warn" role="status"><UiIcon name="warning" /><span>{text('当前环境暂时无法读取本机订阅登录，请稍后重试。', 'The local subscription sign-in cannot be read in this environment. Try again later.')}</span></div>}
+    {subscriptionScanFailed && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{text('暂时无法读取本机订阅。', 'The local subscription could not be read.')}</span></div>}
 
     <h3 className="oc-section-label">{text('Agent 中的模型配置', 'Model configurations in agents')}</h3>
     {configurations.map(item => <div className="oc-status-row" key={item.discovery?.discovery_ref ?? `${item.agent_id}:${item.native_provider_id ?? item.connection_option_id}:${item.observed_model_id ?? 'unknown'}`}>

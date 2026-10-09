@@ -91,7 +91,10 @@ impl LocalControlAdapter {
         hiroute_application::control::ComputeManagementControlError,
     > {
         let expected = self.subscription_source_evidence(record, stored)?;
-        let source = match self.scanner.codex_subscription_source() {
+        let source = match self.scanner.subscription_source(
+            CpaAccountKind::from_candidate(&record.candidate_ref)
+                .ok_or(hiroute_application::control::ComputeManagementControlError::Corrupt)?,
+        ) {
             Ok(Some(source)) => source,
             Ok(None) => {
                 return Ok(Some((

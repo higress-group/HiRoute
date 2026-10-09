@@ -73,9 +73,44 @@ impl BorrowedCodexAuthSpec {
 pub(crate) struct ManagedAuthLease {
     _auth_dir_lock: File,
     codex: Option<BorrowedCodexLease>,
+    claude: Option<crate::borrowed_claude::BorrowedClaudeLease>,
 }
 
 impl ManagedAuthLease {
+    pub(crate) fn acquire_subscription(
+        auth_dir: &Path,
+        codex: Option<&BorrowedCodexAuthSpec>,
+        claude: Option<&crate::BorrowedClaudeAuthSpec>,
+        expected: Option<&crate::BorrowedSubscriptionEvidence>,
+    ) -> Result<Self, CpaLifecycleError> {
+        let mut lease = Self::acquire_expected(auth_dir, codex, expected.and_then(|v| v.codex()))?;
+        lease.claude = claude
+            .map(|spec| {
+                crate::borrowed_claude::BorrowedClaudeLease::acquire(
+                    auth_dir,
+                    spec,
+                    expected.and_then(|v| v.claude()),
+                )
+            })
+            .transpose()?;
+        Ok(lease)
+    }
+    pub(crate) fn generation(&self) -> Option<u64> {
+        self.codex_generation()
+            .or_else(|| self.claude.as_ref().and_then(|lease| lease.generation()))
+    }
+    pub(crate) fn refresh_subscription(
+        &mut self,
+        expected: Option<&crate::BorrowedSubscriptionEvidence>,
+        account: Option<&str>,
+    ) -> Result<Vec<ManagedAccountIdentity>, CpaLifecycleError> {
+        if let Some(claude) = &mut self.claude {
+            return claude
+                .refresh(expected.and_then(|v| v.claude()), account)
+                .map(|identity| vec![identity]);
+        }
+        self.refresh_expected(expected.and_then(|v| v.codex()), account)
+    }
     pub(crate) fn has_client_version(&self) -> bool {
         self.codex
             .as_ref()
@@ -108,6 +143,7 @@ impl ManagedAuthLease {
         Ok(Self {
             _auth_dir_lock: auth_dir_lock,
             codex,
+            claude: None,
         })
     }
 
@@ -526,7 +562,7 @@ fn canonical_private_source(path: &Path) -> Result<PathBuf, CpaLifecycleError> {
 }
 
 #[cfg(unix)]
-fn validate_source_metadata(metadata: &fs::Metadata) -> Result<(), CpaLifecycleError> {
+pub(super) fn validate_source_metadata(metadata: &fs::Metadata) -> Result<(), CpaLifecycleError> {
     use std::os::unix::fs::MetadataExt as _;
     if !metadata.is_file()
         || metadata.file_type().is_symlink()
@@ -540,7 +576,7 @@ fn validate_source_metadata(metadata: &fs::Metadata) -> Result<(), CpaLifecycleE
 }
 
 #[cfg(not(unix))]
-fn validate_source_metadata(metadata: &fs::Metadata) -> Result<(), CpaLifecycleError> {
+pub(super) fn validate_source_metadata(metadata: &fs::Metadata) -> Result<(), CpaLifecycleError> {
     if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Err(CpaLifecycleError::InvalidBorrowedCodexAuth);
     }
@@ -548,7 +584,7 @@ fn validate_source_metadata(metadata: &fs::Metadata) -> Result<(), CpaLifecycleE
 }
 
 #[cfg(unix)]
-fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
+pub(super) fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt as _;
     left.dev() == right.dev()
         && left.ino() == right.ino()
@@ -558,7 +594,7 @@ fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
 }
 
 #[cfg(not(unix))]
-fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
+pub(super) fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     left.len() == right.len() && left.modified().ok() == right.modified().ok()
 }
 
@@ -576,7 +612,7 @@ fn source_stamp(metadata: &fs::Metadata) -> Result<SourceStamp, CpaLifecycleErro
 }
 
 #[cfg(unix)]
-fn open_source_nofollow(path: &Path) -> Result<File, CpaLifecycleError> {
+pub(super) fn open_source_nofollow(path: &Path) -> Result<File, CpaLifecycleError> {
     use rustix::fs::{Mode, OFlags};
     rustix::fs::open(
         path,
@@ -588,7 +624,7 @@ fn open_source_nofollow(path: &Path) -> Result<File, CpaLifecycleError> {
 }
 
 #[cfg(not(unix))]
-fn open_source_nofollow(path: &Path) -> Result<File, CpaLifecycleError> {
+pub(super) fn open_source_nofollow(path: &Path) -> Result<File, CpaLifecycleError> {
     let metadata = fs::symlink_metadata(path).map_err(map_source_io)?;
     validate_source_metadata(&metadata)?;
     File::open(path).map_err(map_source_io)
@@ -619,7 +655,7 @@ fn source_lease_root_name() -> String {
     "hiroute-cpa-borrowed-leases-v1".to_owned()
 }
 
-fn acquire_lock(path: &Path) -> Result<File, CpaLifecycleError> {
+pub(super) fn acquire_lock(path: &Path) -> Result<File, CpaLifecycleError> {
     let parent = path
         .parent()
         .ok_or(CpaLifecycleError::BorrowedCodexAuthIo)?;

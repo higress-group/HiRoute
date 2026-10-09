@@ -60,6 +60,10 @@ impl LocalControlAdapter {
             },
         )?;
         let operation_id = accepted.operation().operation_id.to_string();
+        let _subscription_interaction =
+            super::subscriptions::interaction::ExplicitSubscriptionCheck::from_accepted(
+                accepted.operation(),
+            );
         let operation = measure(
             &diagnostics,
             PublicationStage::Execute,

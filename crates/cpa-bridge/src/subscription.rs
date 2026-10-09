@@ -17,14 +17,14 @@ use hiroute_domain::{
 };
 use hiroute_integrations::{CpaRegisteredSourceV1, register_cpa_account};
 
-use crate::{BorrowedCodexEvidence, CpaHealth, CpaLifecycleError, ManagedCpaRuntime};
+use crate::{BorrowedSubscriptionEvidence, CpaHealth, CpaLifecycleError, ManagedCpaRuntime};
 
 #[derive(Clone)]
 pub struct CpaSubscriptionEffectContext {
     approval_operation: OperationReferenceV1,
     candidate: ComputeCandidateRefV2,
     protected_source: ProtectedInputSourceDescriptorV1,
-    evidence: BorrowedCodexEvidence,
+    evidence: BorrowedSubscriptionEvidence,
     existing_source: Option<ComputeSavedSourceExpectationV2>,
     connector_id: String,
     resource_receipt: ComputeSubscriptionResourceReceiptV2,
@@ -36,7 +36,7 @@ impl CpaSubscriptionEffectContext {
         approval_operation: OperationReferenceV1,
         candidate: ComputeCandidateRefV2,
         protected_source: ProtectedInputSourceDescriptorV1,
-        evidence: BorrowedCodexEvidence,
+        evidence: BorrowedSubscriptionEvidence,
         existing_source: Option<ComputeSavedSourceExpectationV2>,
         connector_id: impl Into<String>,
         resource_receipt: ComputeSubscriptionResourceReceiptV2,
@@ -45,7 +45,7 @@ impl CpaSubscriptionEffectContext {
         candidate.validate_shape().map_err(|_| invalid_context())?;
         if approval_operation.operation_id.trim().is_empty()
             || approval_operation.sequence == 0
-            || connector_id.trim().is_empty()
+            || connector_id != evidence.kind().connector_id()
             || existing_source.as_ref().is_some_and(|source| {
                 source.source_id.trim().is_empty() || source.expected_revision == 0
             })
@@ -165,10 +165,10 @@ struct CpaCatalogModelFacts {
 }
 
 trait CpaSubscriptionRuntimePort: Send + Sync {
-    fn inspect(&self) -> Result<BorrowedCodexEvidence, CpaLifecycleError>;
+    fn inspect(&self) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError>;
     fn materialize(
         &self,
-        expected: &BorrowedCodexEvidence,
+        expected: &BorrowedSubscriptionEvidence,
     ) -> Result<Vec<CpaRegisteredSourceV1>, CpaLifecycleError>;
     fn catalog_model_facts(
         &self,
@@ -179,17 +179,13 @@ trait CpaSubscriptionRuntimePort: Send + Sync {
 }
 
 impl CpaSubscriptionRuntimePort for ManagedCpaRuntime {
-    fn inspect(&self) -> Result<BorrowedCodexEvidence, CpaLifecycleError> {
-        self.spec
-            .borrowed_codex_auth
-            .as_ref()
-            .ok_or(CpaLifecycleError::InvalidSpec)?
-            .inspect()
+    fn inspect(&self) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError> {
+        self.inspect_subscription()
     }
 
     fn materialize(
         &self,
-        expected: &BorrowedCodexEvidence,
+        expected: &BorrowedSubscriptionEvidence,
     ) -> Result<Vec<CpaRegisteredSourceV1>, CpaLifecycleError> {
         self.start_expected(Some(expected))?;
         self.discover_materializations(Some(expected))?
@@ -438,13 +434,17 @@ fn invalid_materialization() -> PortError {
 
 fn map_lifecycle_error(error: CpaLifecycleError) -> PortError {
     let (code, context) = match error {
-        CpaLifecycleError::BorrowedCodexAuthSourceChanged => {
+        CpaLifecycleError::BorrowedCodexAuthSourceChanged
+        | CpaLifecycleError::BorrowedClaudeAuthSourceChanged => {
             (PortErrorCode::Conflict, "cpa-subscription-source-changed")
         }
         CpaLifecycleError::StaleSourceManagement => {
             (PortErrorCode::Conflict, "cpa-subscription-management-stale")
         }
-        CpaLifecycleError::BorrowedCodexAuthMissing
+        CpaLifecycleError::BorrowedClaudeAuthMissing
+        | CpaLifecycleError::BorrowedClaudeAuthUnavailable
+        | CpaLifecycleError::InvalidBorrowedClaudeAuth
+        | CpaLifecycleError::BorrowedCodexAuthMissing
         | CpaLifecycleError::BorrowedCodexAuthUnavailable
         | CpaLifecycleError::InvalidBorrowedCodexAuth => (
             PortErrorCode::PermissionDenied,
@@ -483,7 +483,11 @@ pub fn cpa_subscription_availability(
             | CpaLifecycleError::UnsupportedArtifactVersion,
         ) => CpaSubscriptionAvailability::ArtifactUnavailable,
         Err(
-            CpaLifecycleError::BorrowedCodexAuthMissing
+            CpaLifecycleError::BorrowedClaudeAuthMissing
+            | CpaLifecycleError::BorrowedClaudeAuthUnavailable
+            | CpaLifecycleError::InvalidBorrowedClaudeAuth
+            | CpaLifecycleError::BorrowedClaudeAuthSourceChanged
+            | CpaLifecycleError::BorrowedCodexAuthMissing
             | CpaLifecycleError::BorrowedCodexAuthUnavailable
             | CpaLifecycleError::InvalidBorrowedCodexAuth
             | CpaLifecycleError::BorrowedCodexAuthSourceChanged,

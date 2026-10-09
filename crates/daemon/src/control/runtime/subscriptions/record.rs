@@ -18,7 +18,7 @@ use hiroute_domain::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{CONNECTOR_ID, invalid};
+use super::invalid;
 
 const RECORD_SCHEMA: &str = "hiroute.compute-subscription-validation-record/v1";
 
@@ -78,7 +78,7 @@ pub(super) struct StoredSubscriptionValidationV1 {
     display_name: String,
     pub(super) existing_source_id: Option<String>,
     pub(super) evidence_digest: CanonicalDigest,
-    connector_id: String,
+    pub(super) connector_id: String,
     pub(super) account_ref: String,
     target: ComputeCandidateTargetV2,
     authentication: GatewayAuthenticationSemanticsV1,
@@ -136,7 +136,7 @@ impl StoredSubscriptionValidationV1 {
 
     pub(super) fn checked_facts(&self) -> PortResult<ComputeCandidateFactsV2> {
         if self.schema != RECORD_SCHEMA
-            || self.connector_id != CONNECTOR_ID
+            || hiroute_cpa_bridge::CpaAccountKind::from_connector(&self.connector_id).is_none()
             || self.inventory_revision == 0
             || self.receipt_ref.is_empty()
             || self.receipt_revision == 0

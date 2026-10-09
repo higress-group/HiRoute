@@ -4,6 +4,16 @@ use crate::{CpaArtifactError, CpaConfigError, CpaExit, CpaProcessError};
 
 #[derive(Debug, Error)]
 pub enum CpaLifecycleError {
+    #[error("Claude native authentication is missing")]
+    BorrowedClaudeAuthMissing,
+    #[error(
+        "Claude native authentication is unavailable; unlock or authorize its credential store and retry"
+    )]
+    BorrowedClaudeAuthUnavailable,
+    #[error("Claude native authentication is expired or invalid")]
+    InvalidBorrowedClaudeAuth,
+    #[error("Claude native account or authentication changed")]
+    BorrowedClaudeAuthSourceChanged,
     #[error("CPA runtime specification is invalid")]
     InvalidSpec,
     #[error("CPA Release binding is invalid")]

@@ -62,6 +62,29 @@
         "cache_policy_revision": 1
       },
       {
+        "connector_id": "connector.cpa.claude",
+        "revision": 1,
+        "runtime_kind": "cpa_bridge",
+        "implementation_ref": "bridge/cpa",
+        "implementation_revision": 1,
+        "accepted_origins": [
+          "agent_subscription"
+        ],
+        "authentication": "connector_owned_opaque",
+        "required_secret_slots": [],
+        "endpoint_profile_refs": [
+          "endpoint.cpa.claude"
+        ],
+        "catalog_adapter_ref": "catalog.cpa",
+        "catalog_adapter_revision": 1,
+        "error_classifier_ref": "errors.cpa",
+        "error_classifier_revision": 1,
+        "usage_decoder_ref": "usage.cpa",
+        "usage_decoder_revision": 1,
+        "cache_policy_ref": "cache.cpa",
+        "cache_policy_revision": 1
+      },
+      {
         "connector_id": "connector.cpa.codex",
         "revision": 1,
         "runtime_kind": "cpa_bridge",
@@ -371,7 +394,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.anthropic.platform.global.v1.messages",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1791417600,
+        "last_verified_at": 1791504000,
         "logical_endpoint_group": "anthropic-platform",
         "protocol_endpoints": [
           {
@@ -570,6 +593,32 @@
         "last_verified_at": 1787788800
       },
       {
+        "endpoint_profile_id": "endpoint.cpa.claude",
+        "revision": 1,
+        "connector_id": "connector.cpa.claude",
+        "connector_revision": 1,
+        "provider_platform_id": "anthropic",
+        "service_offering_id": "claude-subscription",
+        "entitlement_id": "claude-subscription",
+        "usage_scope": "account",
+        "region_id": "global",
+        "logical_endpoint_group": "claude-code",
+        "protocol_endpoints": [
+          {
+            "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+            "protocol": "messages",
+            "base_url": "https://api.anthropic.com",
+            "request_path": "/v1/messages",
+            "adapter_ref": "adapter.anthropic-messages.v1",
+            "adapter_revision": 1,
+            "stable_preference": 0
+          }
+        ],
+        "inventory_strategy": "bundled_catalog",
+        "verification_evidence": "sha256:db45f2bfa02e6adcf5c96dae42d540ea969ce27e4437321775b673002de9266f",
+        "last_verified_at": 1791547200
+      },
+      {
         "endpoint_profile_id": "endpoint.cpa.codex",
         "revision": 1,
         "connector_id": "connector.cpa.codex",
@@ -602,7 +651,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.deepseek.official.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1791417600,
+        "last_verified_at": 1791504000,
         "logical_endpoint_group": "deepseek-official",
         "protocol_endpoints": [
           {
@@ -663,7 +712,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.google.gemini-api.global.v1.chat",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1791417600,
+        "last_verified_at": 1791504000,
         "logical_endpoint_group": "google-gemini-api",
         "protocol_endpoints": [
           {
@@ -877,7 +926,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.openai.platform.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1791417600,
+        "last_verified_at": 1791504000,
         "logical_endpoint_group": "openai-platform",
         "protocol_endpoints": [
           {
@@ -977,7 +1026,7 @@
         "endpoint_profile_id": "endpoint.zai.coding-plan.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1791417600,
+        "last_verified_at": 1791504000,
         "logical_endpoint_group": "zai-coding-plan",
         "protocol_endpoints": [
           {
@@ -1024,7 +1073,7 @@
         "endpoint_profile_id": "endpoint.zai.general.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1791417600,
+        "last_verified_at": 1791504000,
         "logical_endpoint_group": "zai-general",
         "protocol_endpoints": [
           {
@@ -1192,6 +1241,16 @@
         "connector_id": "connector.bailian.p0",
         "connector_revision": 1,
         "endpoint_profile_id": "endpoint.bailian.token-plan.cn.v1",
+        "endpoint_profile_revision": 1,
+        "billing_class": "subscription"
+      },
+      {
+        "connection_option_id": "claude.subscription.global.v1",
+        "display_name": "Anthropic · Claude Code subscription",
+        "origin": "agent_subscription",
+        "connector_id": "connector.cpa.claude",
+        "connector_revision": 1,
+        "endpoint_profile_id": "endpoint.cpa.claude",
         "endpoint_profile_revision": 1,
         "billing_class": "subscription"
       },
@@ -3487,7 +3546,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-10-08",
+      "as_of": "2026-10-09",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -3532,6 +3591,58 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "claude-fable-5-1"
+          ]
+        },
+        {
+          "canonical_identity": "claude-haiku-5-5",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Claude Haiku 5.5",
+          "evidence_refs": [
+            "source-181",
+            "source-182",
+            "source-183"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": "Message Batches API beta supports up to 300000 output tokens with output-300k-2026-03-24.",
+          "max_output_scope": "standard Claude API Messages",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "claude-haiku-5-5",
+          "publisher": "Anthropic",
+          "reasoning": {
+            "default": "medium",
+            "kind": "adaptive",
+            "note": null,
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-platform",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "claude-haiku-5-5"
           ]
         },
         {
@@ -3681,6 +3792,58 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "claude-sonnet-5"
+          ]
+        },
+        {
+          "canonical_identity": "claude-sonnet-5-5",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": null,
+          "display_name": "Claude Sonnet 5.5",
+          "evidence_refs": [
+            "source-179",
+            "source-180",
+            "source-183"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": "Message Batches API beta supports up to 300000 output tokens with output-300k-2026-03-24.",
+          "max_output_scope": "standard Claude API Messages",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "claude-sonnet-5-5",
+          "publisher": "Anthropic",
+          "reasoning": {
+            "default": "high",
+            "kind": "adaptive",
+            "note": null,
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-platform",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "claude-sonnet-5-5"
           ]
         },
         {
@@ -5888,6 +6051,30 @@
       "endpoint_bindings": [
         {
           "availability": {
+            "condition": "Claude API documented model; account entitlement and wire behavior require qualification. Thinking may be disabled only at low/medium/high effort; forced tool_choice any/tool is supported. Thinking history is bound to its originating or linked account.",
+            "state": "conditional"
+          },
+          "binding_key": "anthropic-platform/claude-haiku-5-5/claude-haiku-5-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-181",
+            "source-182",
+            "source-183",
+            "source-184"
+          ],
+          "interface_candidates": [
+            "anthropic-platform/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-haiku-5-5",
+          "product_key": "anthropic-platform",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-haiku-5-5"
+        },
+        {
+          "availability": {
             "condition": "Claude API documents availability to all customers; target account and wire behavior still require qualification. Adaptive thinking is always on and forced tool_choice any/tool is unsupported.",
             "state": "conditional"
           },
@@ -5907,6 +6094,30 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "versioned-id",
           "upstream_model_id": "claude-opus-5-5"
+        },
+        {
+          "availability": {
+            "condition": "Claude API documented model; account entitlement and wire behavior require qualification. Thinking disabled and forced tool_choice any/tool are unsupported; between_tools thinking is allowed only at low/medium/high effort.",
+            "state": "conditional"
+          },
+          "binding_key": "anthropic-platform/claude-sonnet-5-5/claude-sonnet-5-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-179",
+            "source-180",
+            "source-183",
+            "source-184"
+          ],
+          "interface_candidates": [
+            "anthropic-platform/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-sonnet-5-5",
+          "product_key": "anthropic-platform",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-sonnet-5-5"
         },
         {
           "availability": {
@@ -9902,6 +10113,60 @@
           "digest_state": "captured",
           "locator": "https://openrouter.ai/api/v1/models",
           "source_key": "source-178",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-09",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview",
+          "source_key": "source-179",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-09",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/sonnet-5-5/whats-new-sonnet-5-5",
+          "source_key": "source-180",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-09",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+          "source_key": "source-181",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-09",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/haiku-5-5/whats-new-haiku-5-5",
+          "source_key": "source-182",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-09",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "source_key": "source-183",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-09",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "source_key": "source-184",
           "source_kind": "provider-documentation"
         }
       ],
@@ -100598,7 +100863,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:f31468632d49c44e05b5592fd1bdcc5eac1cedc3eaa31f700282a3db9ce4ff1f"
+      "source_catalog_digest": "sha256:19bfce5170e59a72e65be97a61ff9d9e7b8c997c01170f133e7273db7e036c95"
     },
     "rating_snapshot": {
       "digest": "sha256:218f99f1450badaa7885ec1bdc76c94aad1720857f258c0ff25f73f437d6a467",

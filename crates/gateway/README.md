@@ -70,6 +70,7 @@ provider references, observation and the future tool-selection boundary.
 | Decision diagnostics use the production transport/parser without running a business model | `classifier_diagnostic_uses_the_production_transport_and_exact_protocol` in [classification.rs](src/core_runtime/classification.rs) |
 | Accepted execution history survives client rewrite/compaction with observation disabled | [accepted_history.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/accepted_history.rs) |
 | Tool continuation survives restart with authentication | [continuation.rs](../../tools/e2e-harness/tests/p0_gateway_protocol/continuation.rs) |
+| Claude direct tool callers preserve native history and portable call/result pairing | `messages_direct_tool_caller_preserves_native_history_and_portable_tool_pairing` in [adapter tests](src/adapters/tests.rs); ingress rejects programmatic execution authority |
 | Live publication cutover pins each request and preserves the last good version | [p0_gateway_request_authority.rs](../../tools/e2e-harness/tests/p0_gateway_request_authority.rs) |
 
 Use the repository [test planner](../../scripts/test-plan.py) and

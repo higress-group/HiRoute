@@ -99,9 +99,7 @@ impl CpaControlPlane for StockCpaControlPlane {
         let mut managed_names = BTreeSet::new();
         for identity in managed_identities {
             identity.validate()?;
-            if identity.account_kind != CpaAccountKind::Codex
-                || !managed_names.insert(identity.stock_file_name.as_str())
-            {
+            if !managed_names.insert(identity.stock_file_name.as_str()) {
                 return Err(AccountDiscoveryError::InvalidAccount);
             }
         }
@@ -394,7 +392,9 @@ fn account_controls_body(
         "request_retry": 0,
         "disable_cooling": true
     });
-    if let Some(identity) = managed {
+    if let Some(identity) =
+        managed.filter(|identity| identity.account_kind == CpaAccountKind::Codex)
+    {
         identity.validate()?;
         // CPA merges this PATCH into its loaded Auth, persists it, then invokes
         // synchronous discovery. Its watcher may still hold the previous file.

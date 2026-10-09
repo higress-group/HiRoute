@@ -136,6 +136,7 @@ fn configured_but_stopped_cpa(root: &Path, auth_source: PathBuf) -> Arc<ManagedC
                 instance_id: "subscription-discovery-test".into(),
                 state_root: root.join("cpa/state"),
                 auth_dir: root.join("cpa/auth"),
+                borrowed_claude_auth: None,
                 borrowed_codex_auth: Some(BorrowedCodexAuthSpec::new(auth_source)),
                 bindings: vec![CpaProfileBinding {
                     account_kind: CpaAccountKind::Codex,

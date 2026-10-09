@@ -275,6 +275,16 @@ fn fixture_catalog() -> Arc<TrustedReleaseCatalog> {
         "../../../../assets/release-facts/current/bundle/connector-registry.json"
     ))
     .unwrap();
+    // Replace the production Claude contract with this fixture's controlled endpoint.
+    registry
+        .connectors
+        .retain(|item| item.connector_id != "connector.cpa.claude");
+    registry
+        .endpoint_profiles
+        .retain(|item| item.endpoint_profile_id != "endpoint.cpa.claude");
+    registry
+        .connection_options
+        .retain(|item| item.connector_id != "connector.cpa.claude");
     registry.connectors.push(
         serde_json::from_value(connector_json(
             "connector.cpa.claude",
@@ -435,6 +445,7 @@ fn fixture_runtime(
         instance_id: "fixture-cpa".into(),
         state_root: root.path().join("state"),
         auth_dir: root.path().join("auth"),
+        borrowed_claude_auth: None,
         borrowed_codex_auth: Some(BorrowedCodexAuthSpec::new(codex_auth_source)),
         bindings: bindings(),
         startup_timeout: Duration::from_millis(200),
@@ -945,6 +956,9 @@ fn removed_account_revokes_old_reference_and_readdition_rotates_generation() {
     runtime.start().unwrap();
     let old = runtime
         .materialize_account("connector.cpa.claude", "endpoint.cpa.claude")
+        .unwrap();
+    runtime
+        .apply_account_management(&old.account_subject, 1, CpaSourceManagementState::Enabled)
         .unwrap();
     let old_target = prepare_target(
         &runtime,

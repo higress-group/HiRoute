@@ -663,9 +663,20 @@ fn decode_messages_content(
             ensure_keys(
                 context,
                 object,
-                &["type", "id", "name", "input", "cache_control"],
+                &["type", "id", "name", "input", "cache_control", "caller"],
                 "messages tool_use",
             )?;
+            if let Some(caller) = object.get("caller") {
+                let caller =
+                    checked_object(context, caller, &["type"], "messages tool_use caller")?;
+                // Direct calls retain ordinary tool semantics. Programmatic callers carry
+                // execution authority that cannot be silently dropped during projection.
+                if required_string(caller, "type")? != "direct" {
+                    return Err(ModelIrError::UnsupportedValue(
+                        "messages tool_use caller type".into(),
+                    ));
+                }
+            }
             validate_messages_cache_control(context, object.get("cache_control"))?;
             Ok(ContentPart::ToolCall {
                 logical_id: required_string(object, "id")?,

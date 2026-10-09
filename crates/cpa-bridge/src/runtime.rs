@@ -17,12 +17,13 @@ use hiroute_integrations::{
 };
 use parking_lot::Mutex;
 
+use crate::BorrowedSubscriptionEvidence;
 use crate::MANAGED_CPA_ARTIFACT_VERSION;
 use crate::accounts::{
     AccountDiscoveryError, AccountSnapshotRecord, CpaControlPlane, StockCpaControlPlane,
 };
 use crate::artifact::{CpaArtifactError, CpaBinaryLocator, VerifiedCpaBinary};
-use crate::borrowed_codex::{BorrowedCodexEvidence, ManagedAuthLease};
+use crate::borrowed_codex::ManagedAuthLease;
 use crate::config::{
     InstanceSecrets, SecretText, ensure_private_dir, private_atomic_write, render_managed_config,
     validate_private_file,
@@ -129,7 +130,7 @@ impl RuntimeEpochState {
 pub(crate) struct RuntimeInner {
     pub(crate) live: Option<LiveRuntime>,
     source_management: BTreeMap<String, SourceManagementProjection>,
-    codex_execution_suspended: bool,
+    subscription_execution_suspended: bool,
     last_exit: Option<CpaExit>,
     crashes: VecDeque<Instant>,
     restart_count: u64,
@@ -139,7 +140,7 @@ impl RuntimeInner {
     pub(crate) fn account_execution_is_admitted(&self, account: &AccountSnapshotRecord) -> bool {
         subscriptions::account_execution_is_admitted(
             &self.source_management,
-            self.codex_execution_suspended,
+            self.subscription_execution_suspended,
             account,
         )
     }
@@ -167,6 +168,35 @@ struct InstanceLayout {
 }
 
 impl ManagedCpaRuntime {
+    pub fn managed_kind(&self) -> Option<crate::CpaAccountKind> {
+        if self.spec.borrowed_claude_auth.is_some() {
+            Some(crate::CpaAccountKind::Claude)
+        } else if self.spec.borrowed_codex_auth.is_some() {
+            Some(crate::CpaAccountKind::Codex)
+        } else {
+            None
+        }
+    }
+    pub fn inspect_subscription_for_check(
+        &self,
+    ) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError> {
+        if let Some(spec) = &self.spec.borrowed_claude_auth {
+            return spec.inspect_for_check().map(Into::into);
+        }
+        self.inspect_subscription()
+    }
+    pub fn inspect_subscription(&self) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError> {
+        if let Some(spec) = &self.spec.borrowed_claude_auth {
+            return spec.inspect().map(Into::into);
+        }
+        self.spec
+            .borrowed_codex_auth
+            .as_ref()
+            .ok_or(CpaLifecycleError::InvalidSpec)?
+            .inspect()
+            .map(Into::into)
+    }
+
     pub fn new(
         spec: CpaRuntimeSpec,
         catalog: Arc<TrustedReleaseCatalog>,
@@ -217,6 +247,9 @@ impl ManagedCpaRuntime {
         values: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
     ) -> Self {
         self.proxy_environment = crate::proxy_environment::ProxyEnvironment::capture(values);
+        if let Some(spec) = self.spec.borrowed_claude_auth.as_mut() {
+            spec.set_proxy_environment(self.proxy_environment.clone());
+        }
         self
     }
 
@@ -247,7 +280,7 @@ impl ManagedCpaRuntime {
 
     pub(crate) fn start_expected(
         &self,
-        expected: Option<&BorrowedCodexEvidence>,
+        expected: Option<&BorrowedSubscriptionEvidence>,
     ) -> Result<CpaHealth, CpaLifecycleError> {
         let mut inner = self.inner.lock();
         if inner.live.is_some() {
@@ -475,14 +508,15 @@ impl ManagedCpaRuntime {
         record: OwnerRecord,
         artifact: VerifiedCpaBinary,
         layout: &InstanceLayout,
-        expected: Option<&BorrowedCodexEvidence>,
+        expected: Option<&BorrowedSubscriptionEvidence>,
         generation: u64,
     ) -> Result<LiveRuntime, CpaLifecycleError> {
         let mut candidate = None;
         let attempt = (|| {
-            let auth_lease = ManagedAuthLease::acquire_expected(
+            let auth_lease = ManagedAuthLease::acquire_subscription(
                 &layout.auth_dir,
                 self.spec.borrowed_codex_auth.as_ref(),
+                self.spec.borrowed_claude_auth.as_ref(),
                 expected,
             )?;
             let secrets = InstanceSecrets::generate()?;
@@ -570,7 +604,7 @@ impl ManagedCpaRuntime {
         transferred: OwnerRecord,
         artifact: VerifiedCpaBinary,
         layout: &InstanceLayout,
-        expected: Option<&BorrowedCodexEvidence>,
+        expected: Option<&BorrowedSubscriptionEvidence>,
         generation: u64,
     ) -> Result<LiveRuntime, CpaLifecycleError> {
         let ready_started = std::time::Instant::now();
@@ -587,9 +621,10 @@ impl ManagedCpaRuntime {
             {
                 return Err(CpaLifecycleError::UntrustedOrphan);
             }
-            let auth_lease = ManagedAuthLease::acquire_expected(
+            let auth_lease = ManagedAuthLease::acquire_subscription(
                 &layout.auth_dir,
                 self.spec.borrowed_codex_auth.as_ref(),
+                self.spec.borrowed_claude_auth.as_ref(),
                 expected,
             )?;
             let secrets = InstanceSecrets::read(&layout.capability_path)?;
@@ -790,7 +825,7 @@ impl ManagedCpaRuntime {
     pub(crate) fn ensure_ready_locked(
         &self,
         inner: &mut RuntimeInner,
-        expected: Option<&BorrowedCodexEvidence>,
+        expected: Option<&BorrowedSubscriptionEvidence>,
     ) -> Result<(), CpaLifecycleError> {
         let live = inner.live.as_mut().ok_or(CpaLifecycleError::NotStarted)?;
         validate_runtime_files(&self.prepare_layout()?)?;
@@ -847,7 +882,7 @@ impl ManagedCpaRuntime {
         live.auth_lease
             .as_mut()
             .ok_or(CpaLifecycleError::OwnerState)?
-            .refresh_expected(expected, None)?;
+            .refresh_subscription(expected, None)?;
         let spawn_started = Instant::now();
         self.emit_stage(
             CpaStageKind::ProcessSpawn,

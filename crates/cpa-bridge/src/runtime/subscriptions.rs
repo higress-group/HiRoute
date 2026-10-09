@@ -29,7 +29,7 @@ impl SourceManagementProjection {
 }
 
 impl ManagedCpaRuntime {
-    /// Revalidates the authority-owned native Codex input before a request-scoped capability is
+    /// Revalidates the authority-owned native input before a request-scoped capability is
     /// issued. Same-account rotation advances only CPA's private generation and target epoch;
     /// replacement or unreadable authentication fails closed.
     pub(crate) fn ensure_attempt_account_current_locked(
@@ -37,9 +37,7 @@ impl ManagedCpaRuntime {
         inner: &mut RuntimeInner,
         expected: &AccountSnapshotRecord,
     ) -> Result<(), CpaLifecycleError> {
-        if expected.account_kind != crate::CpaAccountKind::Codex
-            || self.spec.borrowed_codex_auth.is_none()
-        {
+        if Some(expected.account_kind) != self.managed_kind() {
             return Ok(());
         }
 
@@ -47,7 +45,7 @@ impl ManagedCpaRuntime {
             .live
             .as_ref()
             .and_then(|live| live.auth_lease.as_ref())
-            .and_then(|lease| lease.codex_generation());
+            .and_then(|lease| lease.generation());
         let refreshed = inner
             .live
             .as_mut()
@@ -55,10 +53,10 @@ impl ManagedCpaRuntime {
             .auth_lease
             .as_mut()
             .ok_or(CpaLifecycleError::OwnerState)?
-            .refresh_expected(None, Some(&expected.account_digest));
+            .refresh_subscription(None, Some(&expected.account_digest));
         let current = refreshed.as_ref().ok().and_then(|identities| {
             identities.iter().find(|identity| {
-                identity.account_kind == crate::CpaAccountKind::Codex
+                identity.account_kind == expected.account_kind
                     && identity.account_digest == expected.account_digest
             })
         });
@@ -69,7 +67,7 @@ impl ManagedCpaRuntime {
             && previous_auth_generation.is_some_and(|previous| current.generation > previous)
             && let Some(account) = inner.live.as_mut().and_then(|live| {
                 live.accounts.iter_mut().find(|account| {
-                    account.account_kind == crate::CpaAccountKind::Codex
+                    account.account_kind == expected.account_kind
                         && account.account_digest == expected.account_digest
                 })
             })
@@ -88,10 +86,11 @@ impl ManagedCpaRuntime {
             return Ok(());
         }
 
-        let was_suspended = std::mem::replace(&mut inner.codex_execution_suspended, true);
-        let accounts_changed = inner.live.as_mut().is_some_and(|live| {
-            deactivate_accounts(&mut live.accounts, Some(crate::CpaAccountKind::Codex))
-        });
+        let was_suspended = std::mem::replace(&mut inner.subscription_execution_suspended, true);
+        let accounts_changed = inner
+            .live
+            .as_mut()
+            .is_some_and(|live| deactivate_accounts(&mut live.accounts, self.managed_kind()));
         if !was_suspended || accounts_changed {
             self.epochs.advance_target();
         }
@@ -103,17 +102,22 @@ impl ManagedCpaRuntime {
         }
         match refreshed {
             Err(error) => Err(error),
-            Ok(_) => Err(CpaLifecycleError::BorrowedCodexAuthSourceChanged),
+            Ok(_) => Err(match self.managed_kind() {
+                Some(crate::CpaAccountKind::Claude) => {
+                    CpaLifecycleError::BorrowedClaudeAuthSourceChanged
+                }
+                _ => CpaLifecycleError::BorrowedCodexAuthSourceChanged,
+            }),
         }
     }
 
-    /// Immediately closes Codex admission after Local Control observes that the native
+    /// Immediately closes subscription admission after Local Control observes that the native
     /// authorization evidence no longer matches the committed source. A later exact enabled
     /// projection is the only way to reopen admission.
-    pub fn suspend_codex_execution(&self) {
+    pub fn suspend_subscription_execution(&self) {
         let mut inner = self.inner.lock();
-        if !inner.codex_execution_suspended {
-            inner.codex_execution_suspended = true;
+        if !inner.subscription_execution_suspended {
+            inner.subscription_execution_suspended = true;
             self.epochs.advance_target();
         }
     }
@@ -138,7 +142,7 @@ impl ManagedCpaRuntime {
             state,
         )?;
         let resumed = state == CpaSourceManagementState::Enabled
-            && std::mem::replace(&mut inner.codex_execution_suspended, false);
+            && std::mem::replace(&mut inner.subscription_execution_suspended, false);
         if !projection_changed && !resumed {
             return Ok(());
         }
@@ -192,14 +196,13 @@ fn update_management_projection(
 
 pub(super) fn account_execution_is_admitted(
     projections: &BTreeMap<String, SourceManagementProjection>,
-    codex_execution_suspended: bool,
+    subscription_execution_suspended: bool,
     account: &AccountSnapshotRecord,
 ) -> bool {
-    account.account_kind != crate::CpaAccountKind::Codex
-        || !codex_execution_suspended
-            && projections
-                .get(&account.account_digest)
-                .is_some_and(|projection| projection.state == CpaSourceManagementState::Enabled)
+    !subscription_execution_suspended
+        && projections
+            .get(&account.account_digest)
+            .is_some_and(|projection| projection.state == CpaSourceManagementState::Enabled)
 }
 
 pub(super) fn apply_management_projection(

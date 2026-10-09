@@ -1,4 +1,4 @@
-//! Fail-closed recovery of presentation-safe facts for a saved Codex subscription.
+//! Fail-closed recovery of presentation-safe facts for a saved native subscription.
 
 use hiroute_application::compute_management::{
     ComputeCandidateFactBasisV2, ComputeCandidateFactValueV2, ComputeCandidateFactsV2,
@@ -15,9 +15,9 @@ use hiroute_domain::{
 };
 use hiroute_local_storage::ComputeSubscriptionValidationStateV1;
 
+use super::LocalControlAdapter;
 use super::error::map_port;
 use super::record::decode_stored;
-use super::{CONNECTOR_ID, LocalControlAdapter};
 
 impl LocalControlAdapter {
     /// Returns the immutable checked candidate only when the retained validation, successful save
@@ -160,7 +160,7 @@ fn saved_source_matches_checked(
             && saved.validation_ref == checked_validation.validation_ref
             && saved.validation_revision == checked_validation.validation_revision
     });
-    connector_id == CONNECTOR_ID
+    hiroute_cpa_bridge::CpaAccountKind::from_connector(connector_id).is_some()
         && connector_id == checked_connector
         && account_ref == checked_account
         && source.display_name == checked.display_name

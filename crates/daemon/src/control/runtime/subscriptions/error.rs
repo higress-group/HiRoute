@@ -17,10 +17,14 @@ pub(super) fn map_preparation(error: SubscriptionPreparationError) -> PortError 
 
 pub(super) fn map_cpa(error: CpaLifecycleError) -> PortError {
     match error {
-        CpaLifecycleError::BorrowedCodexAuthSourceChanged => {
+        CpaLifecycleError::BorrowedCodexAuthSourceChanged
+        | CpaLifecycleError::BorrowedClaudeAuthSourceChanged => {
             conflict("subscription.source.changed")
         }
-        CpaLifecycleError::BorrowedCodexAuthMissing
+        CpaLifecycleError::BorrowedClaudeAuthMissing
+        | CpaLifecycleError::BorrowedClaudeAuthUnavailable
+        | CpaLifecycleError::InvalidBorrowedClaudeAuth
+        | CpaLifecycleError::BorrowedCodexAuthMissing
         | CpaLifecycleError::BorrowedCodexAuthUnavailable
         | CpaLifecycleError::InvalidBorrowedCodexAuth => PortError::new(
             PortErrorCode::PermissionDenied,
