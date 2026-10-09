@@ -82,61 +82,48 @@ pub fn check_pi_sdk_capability(
     cli: &Path,
     node: &Path,
     capability: PiSdkCapability,
-) -> Result<(), super::AgentFilesystemScanError> {
-    use super::AgentFilesystemScanError::SourceUnavailable;
+) -> Result<(), NativeDependencyFailureV1> {
     use std::io::Write;
-    use std::os::unix::process::CommandExt;
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant};
-    pi_cli_installation(cli)?;
+    use std::process::Command;
+    use std::time::Duration;
+    let failure = |reason| NativeDependencyFailureV1 {
+        check: NativeDependencyCheckV1::PiSdk,
+        reason,
+    };
+    pi_cli_installation(cli).map_err(|_| NativeDependencyFailureV1 {
+        check: NativeDependencyCheckV1::PiPackage,
+        reason: NativeDependencyFailureReasonV1::Unsupported,
+    })?;
     validate_pi_node(node)?;
     let mut script = tempfile::Builder::new()
         .suffix(".mjs")
         .tempfile()
-        .map_err(|_| SourceUnavailable)?;
+        .map_err(|_| failure(NativeDependencyFailureReasonV1::Unavailable))?;
     script
         .write_all(PI_SDK_CONTRACT.as_bytes())
-        .map_err(|_| SourceUnavailable)?;
+        .map_err(|_| failure(NativeDependencyFailureReasonV1::Unavailable))?;
     let scope = match capability {
         PiSdkCapability::Models => "models",
         PiSdkCapability::Collaboration => "collaboration",
         PiSdkCapability::Worker => "worker",
         PiSdkCapability::Continue => "continue",
     };
-    let capture = tempfile::NamedTempFile::new().map_err(|_| SourceUnavailable)?;
-    let child = Command::new(node)
+    let mut command = Command::new(node);
+    command
         .arg(script.path())
         .arg("--check")
         .arg(cli)
         .arg(scope)
         .env("PI_OFFLINE", "1")
-        .env("PI_TELEMETRY", "0")
-        .env_remove("NODE_OPTIONS")
-        .env_remove("HIROUTE_RUN_TOKEN")
-        .stdin(Stdio::null())
-        .stdout(capture.reopen().map_err(|_| SourceUnavailable)?)
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map_err(|_| SourceUnavailable)?;
-    let mut child = super::NativeProbeProcess::new(child);
-    let start = Instant::now();
-    loop {
-        match child.observe().map_err(|_| SourceUnavailable)? {
-            Some(true) => break,
-            Some(false) => return Err(SourceUnavailable),
-            None => {}
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            return Err(SourceUnavailable);
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    let bytes = super::native_probe_process::read_bounded(capture.path(), 128)
-        .map_err(|_| SourceUnavailable)?;
-    child.stop().map_err(|_| SourceUnavailable)?;
+        .env("PI_TELEMETRY", "0");
+    let bytes = bounded_check(
+        command,
+        NativeDependencyCheckV1::PiSdk,
+        Duration::from_secs(15),
+        128,
+    )?;
     if bytes.as_slice() != b"hiroute.pi-sdk-capability/v1:ok\n" {
-        return Err(SourceUnavailable);
+        return Err(failure(NativeDependencyFailureReasonV1::InvalidOutput));
     }
     Ok(())
 }
@@ -145,48 +132,89 @@ pub const PI_NODE_MINIMUM: (u32, u32, u32) = (22, 19, 0);
 
 /// One bounded native version read; neither stdout nor stderr reaches product diagnostics.
 #[cfg(unix)]
-pub fn validate_pi_node(node: &Path) -> Result<(), super::AgentFilesystemScanError> {
-    use super::AgentFilesystemScanError::SourceUnavailable;
-    use std::os::unix::process::CommandExt;
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant};
-    let capture = tempfile::NamedTempFile::new().map_err(|_| SourceUnavailable)?;
-    let child = Command::new(node)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(capture.reopen().map_err(|_| SourceUnavailable)?)
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map_err(|_| SourceUnavailable)?;
-    let mut child = super::NativeProbeProcess::new(child);
-    let start = Instant::now();
-    loop {
-        match child.observe().map_err(|_| SourceUnavailable)? {
-            Some(true) => break,
-            Some(false) => return Err(SourceUnavailable),
-            None => {}
-        }
-        if start.elapsed() > Duration::from_secs(2) {
-            return Err(SourceUnavailable);
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    let bytes = super::native_probe_process::read_bounded(capture.path(), 64)
-        .map_err(|_| SourceUnavailable)?;
-    child.stop().map_err(|_| SourceUnavailable)?;
+pub fn validate_pi_node(node: &Path) -> Result<(), NativeDependencyFailureV1> {
+    use std::process::Command;
+    use std::time::Duration;
+    let failure = |reason| NativeDependencyFailureV1 {
+        check: NativeDependencyCheckV1::PiNodeVersion,
+        reason,
+    };
+    let mut command = Command::new(node);
+    command.arg("--version");
+    let bytes = bounded_check(
+        command,
+        NativeDependencyCheckV1::PiNodeVersion,
+        Duration::from_secs(10),
+        64,
+    )?;
     let raw = std::str::from_utf8(&bytes)
-        .map_err(|_| SourceUnavailable)?
+        .map_err(|_| failure(NativeDependencyFailureReasonV1::InvalidOutput))?
         .trim()
         .strip_prefix('v')
-        .ok_or(SourceUnavailable)?;
+        .ok_or(failure(NativeDependencyFailureReasonV1::InvalidOutput))?;
     let version = raw
         .split('.')
         .map(str::parse::<u32>)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| SourceUnavailable)?;
-    if version.len() != 3 || (version[0], version[1], version[2]) < PI_NODE_MINIMUM {
-        return Err(SourceUnavailable);
+        .map_err(|_| failure(NativeDependencyFailureReasonV1::InvalidOutput))?;
+    if version.len() != 3 {
+        return Err(failure(NativeDependencyFailureReasonV1::InvalidOutput));
+    }
+    if (version[0], version[1], version[2]) < PI_NODE_MINIMUM {
+        return Err(failure(NativeDependencyFailureReasonV1::Unsupported));
     }
     Ok(())
 }
+
+#[cfg(unix)]
+use hiroute_domain::delegation::{
+    NativeDependencyCheckV1, NativeDependencyFailureReasonV1, NativeDependencyFailureV1,
+};
+
+#[cfg(unix)]
+fn bounded_check(
+    mut command: std::process::Command,
+    check: NativeDependencyCheckV1,
+    timeout: std::time::Duration,
+    output_limit: usize,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, NativeDependencyFailureV1> {
+    use NativeDependencyFailureReasonV1 as Reason;
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+    let failure = |reason| NativeDependencyFailureV1 { check, reason };
+    let start = Instant::now();
+    let capture = tempfile::NamedTempFile::new().map_err(|_| failure(Reason::Unavailable))?;
+    let child = command
+        .env_remove("NODE_OPTIONS")
+        .env_remove("HIROUTE_RUN_TOKEN")
+        .stdin(Stdio::null())
+        .stdout(capture.reopen().map_err(|_| failure(Reason::Unavailable))?)
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|_| failure(Reason::Unavailable))?;
+    let mut child = super::NativeProbeProcess::new(child);
+    let result = (|| {
+        loop {
+            if start.elapsed() >= timeout {
+                return Err(failure(Reason::Timeout));
+            }
+            match child.observe().map_err(|_| failure(Reason::Unavailable))? {
+                Some(true) => break,
+                Some(false) => return Err(failure(Reason::ProcessFailed)),
+                None => {}
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        super::native_probe_process::read_bounded(capture.path(), output_limit)
+            .map_err(|_| failure(Reason::InvalidOutput))
+    })();
+    // A failed check also stops and accounts for its owned scope before returning.
+    child.stop().map_err(|_| failure(Reason::CleanupFailed))?;
+    result
+}
+
+#[cfg(all(test, unix))]
+#[path = "pi_runtime_tests.rs"]
+mod tests;

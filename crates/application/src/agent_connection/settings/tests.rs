@@ -289,6 +289,22 @@ fn codex_restore_requires_an_original_catalog_model_for_a_stale_alias() {
             .iter()
             .any(|block| block.reason == SettingsBlockReason::RestoreNativeModelInvalid)
     );
+
+    codex(&mut facts).restored_native_model = None;
+    codex(&mut facts).restore_native_model_ids = Some(Vec::new());
+    let restore_default = serde_json::from_value(json!({
+        "schema_version": {"major": 2, "minor": 0},
+        "context_id": "agent-context/test",
+        "model": {"intent": "restore", "restore_point_ref": "restore/owned"}
+    }))
+    .unwrap();
+    assert!(
+        !preview_agent_settings(restore_default, &facts)
+            .unwrap()
+            .blockers
+            .iter()
+            .any(|block| block.reason == SettingsBlockReason::RestoreNativeModelInvalid)
+    );
 }
 
 #[test]

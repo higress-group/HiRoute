@@ -52,6 +52,8 @@ pub enum CpaLifecycleError {
     BorrowedCodexAuthAlreadyLeased,
     #[error("borrowed Codex authentication state could not be accessed")]
     BorrowedCodexAuthIo,
+    #[error("selected Codex client version is unavailable for subscription discovery")]
+    BorrowedCodexClientVersionUnavailable,
     #[error("CPA loopback address could not be reserved: {0}")]
     LoopbackBind(std::io::Error),
     #[error(transparent)]

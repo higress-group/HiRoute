@@ -810,6 +810,43 @@ def add_documented_zhipu_responses_capability(projection, catalog, data):
     projection["model_endpoint_capabilities"].append(responses)
     projection["model_endpoint_capabilities"].sort(key=lambda value: value["capability_id"])
 
+def apply_current_provider_limits(data, maintenance, catalog):
+    """Refresh frozen seed limits only through exact current provider records.
+
+    This does not promote endpoints, account availability, prices or ratings.
+    The retained seed remains immutable evidence of its original snapshot.
+    """
+    records = keyed(catalog["model_metadata_records"], "model_record_key")
+    models = keyed(data["models"], "model_configuration_id")
+    seen = set()
+    for mapping in maintenance.get("current_provider_limits", []):
+        identity = mapping["model_configuration_id"]
+        if identity in seen:
+            raise ValueError(f"duplicate current provider limit mapping: {identity}")
+        seen.add(identity)
+        record = records[mapping["model_record_key"]]
+        capabilities = [item for item in data["model_endpoint_capabilities"]
+            if item["model_configuration_id"] == identity]
+        if (record["provider_id"] != "openrouter" or not capabilities
+            or any(item["connector_id"] != "connector.openrouter.p0"
+                or item["upstream_model_id"] != record["upstream_model_id"]
+                for item in capabilities)):
+            raise ValueError(f"current provider limit mapping crosses identity: {identity}")
+        limits = {}
+        for field in ("context_tokens", "max_output_tokens"):
+            fact = record[field]
+            if (fact["state"] != "known" or type(fact["value"]) is not int
+                or fact["value"] <= 0):
+                raise ValueError(f"current provider limit is not executable: {identity}/{field}")
+            limits[field] = fact["value"]
+        models[identity]["capabilities"].update(limits)
+        for capability in capabilities:
+            capability["evidence_digest"] = digest([
+                capability["evidence_digest"], record["model_record_key"], limits,
+                record["provenance_refs"], record["source_assertions"],
+            ])
+
+
 def compile_candidate():
     maintenance = json.loads((HERE / "maintenance.json").read_text())
     if maintenance.get("schema") != "hiroute.native-rating-maintenance/v1":
@@ -859,6 +896,7 @@ def compile_candidate():
             "tool": "unknown_no_per_dimension_measurement_provenance",
             "other_configurations": "unknown_not_collected"})
     data = copy.deepcopy(old["data"])
+    apply_current_provider_limits(data, maintenance, metadata_catalog)
     for reference in maintenance.get("reference_models", []):
         identity = reference["model"]["model_configuration_id"]
         if identity in seen or not reference["sources"]:

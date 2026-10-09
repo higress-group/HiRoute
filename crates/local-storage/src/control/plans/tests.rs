@@ -130,6 +130,38 @@ fn reservation(version: &PlanVersionV1, owner: &str) -> VersionReservationV1 {
 }
 
 #[test]
+fn lifecycle_retention_includes_old_versions_and_requires_complete_recovery() {
+    let root = tempdir().unwrap();
+    let stores = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let store = stores.control();
+    let version = version();
+    seed(store, &version);
+    let reference = &version.reference;
+    let query = || store.plan_has_retained_versions(&reference.workspace_id, &reference.plan_id);
+    assert_eq!(query(), Err(PlanVersionError::RecoveryRequired));
+    store
+        .reconcile_plan_versions(&reference.workspace_id, &[], 1)
+        .unwrap();
+    assert_eq!(query(), Ok(false));
+    let hold = reservation(&version, "run/old-content");
+    store.acquire_exact_plan_version(&hold).unwrap();
+    // Query has no head revision: an older retained version still blocks deleting the Plan.
+    assert_eq!(query(), Ok(true));
+    store
+        .release_plan_version(&reference.workspace_id, &hold.owner)
+        .unwrap();
+    assert_eq!(query(), Ok(false));
+    store
+        .connection
+        .borrow()
+        .execute("UPDATE plan_versions SET state='prepared'", [])
+        .unwrap();
+    assert_eq!(query(), Ok(true));
+    store.begin_plan_version_recovery().unwrap();
+    assert_eq!(query(), Err(PlanVersionError::RecoveryRequired));
+}
+
+#[test]
 fn reservations_are_exact_idempotent_and_require_reconciliation_before_reclaim() {
     let root = tempdir().unwrap();
     let stores = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-worker-task-confirm-residual"
+description = "Enables the worker_task_confirm_residual command without any pre-configured scope."
+commands.allow = ["worker_task_confirm_residual"]
+
+[[permission]]
+identifier = "deny-worker-task-confirm-residual"
+description = "Denies the worker_task_confirm_residual command without any pre-configured scope."
+commands.deny = ["worker_task_confirm_residual"]

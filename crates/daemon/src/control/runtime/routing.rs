@@ -15,6 +15,52 @@ use hiroute_domain::{
 use super::LocalControlAdapter;
 
 impl RoutingFactsPort for LocalControlAdapter {
+    fn plan_lifecycle_snapshot(
+        &self,
+        workspace: &WorkspaceId,
+        change: &hiroute_application_api::PlanLifecycleChangeV1,
+    ) -> Result<hiroute_application::routing::PlanLifecycleSnapshotV1, ControlReadError> {
+        use hiroute_domain::{AgentPlanReferenceKind, AgentPlanReferenceReadPort};
+        // All Plan, Agent and retention writers share this store owner. Apply repeats this
+        // read under the existing writer/admission barrier before installing the publication.
+        let stores = self.stores_lock().map_err(super::map_port)?;
+        let control = stores.control();
+        let head = control
+            .plan_head(workspace, &change.plan_id)
+            .map_err(|_| ControlReadError::Corrupt)?
+            .ok_or(ControlReadError::NotFound)?;
+        let version = control
+            .lookup_exact_plan_version(&head.reference)
+            .map_err(|_| ControlReadError::Corrupt)?;
+        let publication = control
+            .active_publication(workspace)
+            .map_err(super::map_port)?
+            .ok_or(ControlReadError::Unavailable)?
+            .verify()
+            .map_err(|_| ControlReadError::Corrupt)?;
+        let references = control
+            .agent_plan_references(workspace, &change.plan_id)
+            .map_err(super::map_port)?;
+        let has_version_holds = control
+            .plan_has_retained_versions(workspace, &change.plan_id)
+            .map_err(|_| ControlReadError::Unavailable)?;
+        Ok(hiroute_application::routing::PlanLifecycleSnapshotV1 {
+            head,
+            version,
+            publication,
+            expected_revisions: control
+                .current_revisions(workspace)
+                .map_err(super::map_port)?,
+            references_digest: references.facts_digest,
+            has_agent_references: !references.references.is_empty(),
+            has_default_model_reference: references
+                .references
+                .iter()
+                .any(|reference| reference.kind == AgentPlanReferenceKind::DefaultModel),
+            has_version_holds,
+        })
+    }
+
     fn decision_services(
         &self,
         workspace: &WorkspaceId,

@@ -132,9 +132,10 @@ pub struct SessionDetailV1 {
     pub content_access: ContentAccess,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ValueGroupByV1 {
+    #[default]
     None,
     Day,
 }
@@ -254,6 +255,16 @@ pub trait ObservationQueryPort: Send + Sync {
         _accepted: &CanonicalDigest,
         _now_ms: i64,
     ) -> Result<super::SessionDeletionOutcomeV2, ObservationQueryError> {
+        Err(ObservationQueryError::Unavailable)
+    }
+
+    fn observed_value_report(
+        &self,
+        _reader: &super::ObservationReaderContext,
+        _query: &super::ObservationValueQueryV2,
+        _group_by: super::ValueGroupByV1,
+        _now_ms: i64,
+    ) -> Result<super::ObservationValueReportV2, ObservationQueryError> {
         Err(ObservationQueryError::Unavailable)
     }
 

@@ -5,14 +5,14 @@
 
 use hiroute_application_api::{
     DelegationAcceptedV1, DelegationCancelV1, DelegationGetV1, DelegationListV1,
-    DelegationResultV1, DelegationWaitV1, LOCAL_CONTROL_SCHEMA_V2, LocalControlWireRequestV2,
-    MachineEnvelopeV2, WORKER_EXECUTOR_AVAILABILITY_OPERATION_V1, WORKER_SETTINGS_GET_OPERATION_V1,
-    WORKER_SETTINGS_SET_OPERATION_V1, WorkPlanListV1, WorkerCancelRequestV1,
-    WorkerContinueRequestV1, WorkerDependenciesDiscoverRequestV1,
+    DelegationResultV1, DelegationRunViewV1, DelegationWaitV1, LOCAL_CONTROL_SCHEMA_V2,
+    LocalControlWireRequestV2, MachineEnvelopeV2, WORKER_EXECUTOR_AVAILABILITY_OPERATION_V1,
+    WORKER_SETTINGS_GET_OPERATION_V1, WORKER_SETTINGS_SET_OPERATION_V1, WorkPlanListV1,
+    WorkerCancelRequestV1, WorkerContinueRequestV1, WorkerDependenciesDiscoverRequestV1,
     WorkerDependenciesSelectRequestV1, WorkerDependenciesViewV1, WorkerExecRequestV1,
     WorkerExecutorAvailabilityListV1, WorkerListRequestV1, WorkerPlansRequestV1, WorkerReadDataV1,
-    WorkerReadRequestV1, WorkerResultRequestV1, WorkerSettingsV1, WorkerStatusRequestV1,
-    WorkerWaitRequestV1,
+    WorkerReadRequestV1, WorkerResidualConfirmRequestV1, WorkerResultRequestV1, WorkerSettingsV1,
+    WorkerStatusRequestV1, WorkerWaitRequestV1,
 };
 
 use crate::{Client, ClientFailure, FailureCode};
@@ -160,6 +160,15 @@ impl Client {
         request: &WorkerContinueRequestV1,
     ) -> Result<MachineEnvelopeV2<DelegationAcceptedV1>, ClientFailure> {
         self.worker_call("WorkerContinue", request_id, request)
+            .await
+    }
+
+    pub async fn confirm_worker_residual(
+        &self,
+        request_id: &str,
+        request: &WorkerResidualConfirmRequestV1,
+    ) -> Result<MachineEnvelopeV2<DelegationRunViewV1>, ClientFailure> {
+        self.worker_call("WorkerConfirmResidual", request_id, request)
             .await
     }
 

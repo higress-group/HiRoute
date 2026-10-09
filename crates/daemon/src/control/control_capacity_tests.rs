@@ -246,7 +246,7 @@ fn worker_cancel_remains_available_while_real_wait_transport_is_saturated() {
         "WorkerCancel",
         json!({
             "run_id": RUN_ID,
-            "idempotency_key": "cancel/control-capacity",
+            "idempotency_key": "cancel:control-capacity",
             "reason": "test-cancel",
         }),
         Duration::from_secs(1),

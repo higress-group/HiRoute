@@ -404,6 +404,34 @@ finally:
             assert exit_code == 0, (command, envelope)
         return exit_code, envelope
 
+    def public_cli(self, command, payload=None, secret=None, success=True):
+        """Exercise the released executable; secret input is an inherited descriptor only."""
+        arguments = [str(self.bin / 'hiroute'), *command.split(), '--output', 'json']
+        reader = None
+        if secret is not None:
+            assert len(secret.encode()) <= 4096
+            self.secrets.add(secret)
+            reader, writer = os.pipe()
+            try:
+                os.write(writer, secret.encode())
+            finally:
+                os.close(writer)
+            arguments += ['--secret-fd', str(reader)]
+        if payload is not None:
+            arguments.append('--request-stdin')
+        try:
+            result = subprocess.run(arguments, input=None if payload is None else encoded(payload),
+                                    env=self.env, cwd=self.project, capture_output=True, timeout=30,
+                                    pass_fds=() if reader is None else (reader,))
+        finally:
+            if reader is not None:
+                os.close(reader)
+        self.outputs.extend([result.stdout, result.stderr])
+        envelope = json.loads(result.stdout)
+        if success:
+            assert result.returncode == 0, (command, envelope)
+        return result.returncode, envelope
+
     def _control_request(self, command, payload):
         tokens = command.split()
         matches = [descriptor for descriptor in self.command_descriptors

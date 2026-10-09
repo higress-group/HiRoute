@@ -68,6 +68,7 @@
     "allow-worker-task-read",
     "allow-worker-task-wait",
     "allow-worker-task-cancel",
+    "allow-worker-task-confirm-residual",
     "allow-worker-task-continue",
     "allow-diagnostic-status",
     "allow-startup-status",

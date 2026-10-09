@@ -4,9 +4,9 @@
   "additionalProperties": false,
   "properties": {
     "idempotency_key": {
-      "maxLength": 256,
+      "maxLength": 200,
       "minLength": 1,
-      "pattern": "^[A-Za-z0-9_./:-]+$",
+      "pattern": "^[A-Za-z0-9_.:-]+$",
       "type": "string"
     },
     "reason": {

@@ -3,6 +3,22 @@ use hiroute_domain::{VersionOwnerRefV1, VersionReservationV1};
 use std::collections::BTreeSet;
 
 impl ControlStore {
+    /// Lifecycle deletion considers every revision, including old continuation holds and
+    /// prepared content. An unfinished recovery cannot prove that no owner remains.
+    pub fn plan_has_retained_versions(
+        &self,
+        workspace: &WorkspaceId,
+        plan: &AgentPlanId,
+    ) -> Result<bool, PlanVersionError> {
+        let connection = self.connection.borrow();
+        require_ready(&connection, workspace)?;
+        connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM plan_version_holds WHERE workspace_id=?1 AND plan_id=?2)
+             OR EXISTS(SELECT 1 FROM plan_versions WHERE workspace_id=?1 AND plan_id=?2 AND state='prepared')",
+            params![workspace.as_str(), plan.as_str()], |row| row.get(0),
+        ).map_err(storage)
+    }
+
     /// Each daemon startup closes retention recovery before exposing its admission ports.
     pub fn begin_plan_version_recovery(&self) -> Result<(), PlanVersionError> {
         self.connection

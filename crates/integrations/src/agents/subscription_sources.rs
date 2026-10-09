@@ -10,6 +10,38 @@ use hiroute_domain::CanonicalDigest;
 
 use super::{AgentFilesystemScanError, FilesystemAgentScannerV1};
 
+/// Shared source selection for discovery and CPA. This only selects a path; CPA owns
+/// no-follow, ownership, mode and access-only credential validation.
+pub fn codex_subscription_auth_from_environment(
+    home: &Path,
+) -> Result<PathBuf, AgentFilesystemScanError> {
+    let config =
+        super::filesystem::codex_config_path(home, std::env::var_os("CODEX_HOME").as_deref());
+    let selected = std::env::var_os("HIROUTE_CODEX_AUTH_SOURCE").map(PathBuf::from);
+    subscription_auth_path(&config, selected.as_deref())
+}
+
+fn subscription_auth_path(
+    config: &Path,
+    selected: Option<&Path>,
+) -> Result<PathBuf, AgentFilesystemScanError> {
+    let source = match selected {
+        Some(path) => path.to_owned(),
+        None => config
+            .parent()
+            .ok_or(AgentFilesystemScanError::SourceUnavailable)?
+            .join("auth.json"),
+    };
+    if !source.is_absolute()
+        || source
+            .components()
+            .any(|part| part == std::path::Component::ParentDir)
+    {
+        return Err(AgentFilesystemScanError::SourceUnavailable);
+    }
+    Ok(source)
+}
+
 #[derive(Clone)]
 pub struct ProtectedAgentSubscriptionSourceV1 {
     descriptor: ProtectedInputSourceDescriptorV1,
@@ -35,17 +67,15 @@ impl ProtectedAgentSubscriptionSourceV1 {
 }
 
 impl FilesystemAgentScannerV1 {
-    /// Resolves Codex's selected user home to its native auth source without reading the file.
+    /// Resolves the selected subscription source without reading the file.
     /// The CPA bridge performs the authoritative no-follow/owner/mode/content validation later.
     pub fn codex_subscription_source(
         &self,
     ) -> Result<Option<ProtectedAgentSubscriptionSourceV1>, AgentFilesystemScanError> {
-        let root = self
-            .layout
-            .codex_user_config
-            .parent()
-            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
-        let source_path = root.join("auth.json");
+        let source_path = subscription_auth_path(
+            &self.layout.codex_user_config,
+            self.layout.codex_subscription_auth_override.as_deref(),
+        )?;
         let metadata = match std::fs::symlink_metadata(&source_path) {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),

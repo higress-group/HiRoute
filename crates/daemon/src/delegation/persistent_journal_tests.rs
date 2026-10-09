@@ -318,8 +318,11 @@ fn persistent_journal_streams_result_before_revoking_the_exact_run_credential() 
     );
 }
 
-#[test]
-fn stop_evidence_reconciles_the_exact_lease_after_formal_cancel_advances_revision() {
+fn cancellation_fixture() -> (
+    tempfile::TempDir,
+    Arc<MemoryRuntime>,
+    PersistentWorkerRunJournal,
+) {
     let deadline_ms = now_ms().unwrap() + 30_000;
     let run = run(deadline_ms);
     let pair = RunCredentialPair::generate().unwrap();
@@ -362,6 +365,86 @@ fn stop_evidence_reconciles_the_exact_lease_after_formal_cancel_advances_revisio
             .root_context(),
     )
     .unwrap();
+
+    (temporary, runtime, journal)
+}
+
+#[test]
+fn prelaunch_dependency_failure_keeps_host_reason_in_progress_after_reopen() {
+    use hiroute_domain::delegation::{
+        NativeDependencyCheckV1, NativeDependencyFailureReasonV1, NativeDependencyFailureV1,
+    };
+    use hiroute_observation::managed_text::{ManagedTextProgressRead, ManagedTextProgressTarget};
+    let (temporary, _runtime, journal) = cancellation_fixture();
+    let failure = NativeDependencyFailureV1 {
+        check: NativeDependencyCheckV1::ClaudeVersion,
+        reason: NativeDependencyFailureReasonV1::Timeout,
+    };
+    journal
+        .execution_failed(DelegationErrorV1::DependencyCheckFailed(failure))
+        .unwrap();
+    journal
+        .execution_failed(DelegationErrorV1::DependencyCheckFailed(failure))
+        .unwrap();
+    let run = journal.run().unwrap();
+    assert_eq!(run.progress.state, RunStateV1::Failed);
+    assert!(run.progress.workspace_releasable());
+    assert!(run.process.is_none());
+    assert!(run.result_body.is_none());
+    let target = ManagedTextProgressTarget {
+        scope: ManagedTextScope {
+            workspace_id: run.workspace_id,
+            task_id: run.task_id,
+            run_id: run.run_id,
+        },
+        created_at_ms: run.accepted_at_ms.unwrap() as i64,
+    };
+    let reopened =
+        LocalObservationStore::open(temporary.path(), DigestAuthority::new([7; 32])).unwrap();
+    let ManagedTextProgressRead::Available(page) = reopened
+        .managed_text_progress_read(&target, None, 4096)
+        .unwrap()
+    else {
+        panic!("host failure must be available through ordinary Worker progress");
+    };
+    assert_eq!(page.text.matches("[HiRoute]").count(), 1);
+    assert!(page.text.contains("claude_version: timeout"));
+    assert!(page.text.contains("Retry the same dependency selection"));
+}
+
+#[test]
+fn cancelled_preparation_refreshes_without_restoring_launch_authority() {
+    let (_temporary, runtime, journal) = cancellation_fixture();
+    runtime.cancel_outside_journal();
+    assert!(journal.before_launch().is_err());
+    journal
+        .execution_failed(DelegationErrorV1::Conflict)
+        .unwrap();
+    let cancelled = journal.run().unwrap();
+    assert_eq!(cancelled.progress.state, RunStateV1::Cancelled);
+    assert!(cancelled.progress.workspace_releasable());
+    assert!(cancelled.lease_revoked);
+    assert!(cancelled.process.is_none());
+}
+
+#[test]
+fn cancellation_racing_unrecorded_spawn_retains_unknown_cleanup() {
+    let (_temporary, runtime, journal) = cancellation_fixture();
+    journal.before_launch().unwrap();
+    runtime.cancel_outside_journal();
+    journal.spawned_unrecorded().unwrap();
+    journal
+        .execution_failed(DelegationErrorV1::Conflict)
+        .unwrap();
+    let run = journal.run().unwrap();
+    assert_eq!(run.progress.cleanup, RunCleanupV1::Unknown);
+    assert!(!run.progress.workspace_releasable());
+    assert!(run.lease_revoked);
+}
+
+#[test]
+fn stop_evidence_reconciles_the_exact_lease_after_formal_cancel_advances_revision() {
+    let (_temporary, runtime, journal) = cancellation_fixture();
 
     journal.before_launch().unwrap();
     journal

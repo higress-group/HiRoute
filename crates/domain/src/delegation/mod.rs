@@ -4,6 +4,8 @@ use thiserror::Error;
 
 mod installation;
 pub use installation::*;
+mod dependency_check;
+pub use dependency_check::*;
 mod progress;
 pub use progress::*;
 mod process;
@@ -212,6 +214,8 @@ pub enum DelegationErrorV1 {
     DependenciesInvalid,
     #[error("the selected Worker dependency metadata cannot be inspected")]
     DependenciesUnavailable,
+    #[error("native dependency check failed ({0})")]
+    DependencyCheckFailed(NativeDependencyFailureV1),
     #[error("the original native session cannot be resumed")]
     ResumeUnavailable,
     #[error("run content is unavailable or incomplete")]

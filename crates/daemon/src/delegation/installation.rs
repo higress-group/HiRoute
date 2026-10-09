@@ -163,7 +163,7 @@ pub(super) fn check_installation(
                 Path::new(node),
                 hiroute_integrations::PiSdkCapability::Worker,
             )
-            .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+            .map_err(DelegationErrorV1::DependencyCheckFailed)?;
         }
         WorkerLaunchFormV1::NativeAcp { cli } => check_entry(Path::new(cli), true)?,
         WorkerLaunchFormV1::AdapterAcp { cli, adapter, node } => {

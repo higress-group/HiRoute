@@ -51,12 +51,28 @@ mod process {
     }
 
     #[test]
-    fn selected_cli_runs_only_version_without_inherited_context_or_secrets() {
+    fn supported_cold_claude_version_is_not_rejected_after_two_seconds() {
+        let root = tempfile::tempdir().unwrap();
+        let binary = executable(root.path(), "sleep 3; printf '2.1.231 (Claude Code)\\n'");
+        assert_eq!(
+            require_host_managed_provider(&binary, "/usr/bin:/bin"),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn selected_cli_runs_only_version_in_disposable_native_roots_without_secrets() {
         let root = tempfile::tempdir().unwrap();
         let binary = executable(
             root.path(),
             r#"test "$#" -eq 1 && test "$1" = '--version' || exit 2
-test -z "$HOME$CODEX_HOME$CLAUDE_CONFIG_DIR$ANTHROPIC_AUTH_TOKEN$HIROUTE_RUN_TOKEN" || exit 3
+test -z "$ANTHROPIC_AUTH_TOKEN$HIROUTE_RUN_TOKEN" || exit 3
+test -n "$HOME" && test -d "$HOME" && test "$PWD" = "$HOME" || exit 5
+test "$CODEX_HOME" = "$HOME/.codex" && test -d "$CODEX_HOME" || exit 6
+test "$CLAUDE_CONFIG_DIR" = "$HOME/.claude" && test -d "$CLAUDE_CONFIG_DIR" || exit 7
+test ! -e "$CODEX_HOME/auth.json" && test ! -e "$CLAUDE_CONFIG_DIR/settings.json" || exit 8
+printf '%s' "$HOME" > "$0.probe-home"
+touch "$CLAUDE_CONFIG_DIR/startup-cache" || exit 9
 test "$PATH" = '/selected/node:/usr/bin:/bin' || exit 4
 printf '2.1.231 (Claude Code)\n'"#,
         );
@@ -64,27 +80,36 @@ printf '2.1.231 (Claude Code)\n'"#,
             require_host_managed_provider(&binary, "/selected/node:/usr/bin:/bin"),
             Ok(())
         );
+        let home = std::fs::read_to_string(root.path().join("selected-claude.probe-home")).unwrap();
+        assert!(!home.is_empty());
+        assert!(!Path::new(&home).exists(), "probe material was not removed");
     }
 
     #[test]
     fn old_failed_missing_or_oversized_cli_metadata_cannot_authorize_borrowing() {
-        for body in [
-            "printf '2.1.230 (Claude Code)\\n'",
-            "printf '2.1.231 (Claude Code)\\n'; exit 7",
-            "printf '2.1.231 (Claude Code)\\n' >&2",
-            "while :; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; done",
+        for (body, reason) in [
+            ("printf '2.1.230 (Claude Code)\\n'", Reason::Unsupported),
+            (
+                "printf '2.1.231 (Claude Code)\\n'; exit 7",
+                Reason::ProcessFailed,
+            ),
+            ("printf '2.1.231 (Claude Code)\\n' >&2", Reason::Unsupported),
+            (
+                "while :; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; done",
+                Reason::InvalidOutput,
+            ),
         ] {
             let root = tempfile::tempdir().unwrap();
             let binary = executable(root.path(), body);
             assert_eq!(
                 require_host_managed_provider(&binary, "/usr/bin:/bin"),
-                Err(DelegationErrorV1::CapabilityUnavailable)
+                Err(failure(reason))
             );
         }
         let root = tempfile::tempdir().unwrap();
         assert_eq!(
             require_host_managed_provider(&root.path().join("missing"), "/usr/bin:/bin"),
-            Err(DelegationErrorV1::CapabilityUnavailable)
+            Err(failure(Reason::Unavailable))
         );
     }
 
@@ -151,7 +176,7 @@ printf '2.1.231 (Claude Code)\n'"#,
         let started = Instant::now();
         assert_eq!(
             require_version(&binary, "/usr/bin:/bin", Duration::from_secs(1)),
-            Err(DelegationErrorV1::CapabilityUnavailable)
+            Err(failure(Reason::Unavailable))
         );
         assert!(started.elapsed() < Duration::from_secs(1));
         assert!(!root.path().join("selected-claude.started").exists());
@@ -159,26 +184,66 @@ printf '2.1.231 (Claude Code)\n'"#,
     }
 
     #[test]
+    fn output_limit_pipe_closure_does_not_hide_the_failure_as_cleanup_unknown() {
+        let root = tempfile::tempdir().unwrap();
+        let binary = executable(
+            root.path(),
+            "while :; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; done",
+        );
+        // Closing the bounded reader races the shell's SIGPIPE exit against
+        // group signalling. Darwin can report EPERM before WNOWAIT sees exit.
+        for _ in 0..16 {
+            assert_eq!(
+                require_host_managed_provider(&binary, "/usr/bin:/bin"),
+                Err(failure(Reason::InvalidOutput))
+            );
+        }
+    }
+
+    #[test]
     fn timeout_stops_owned_descendants_without_stopping_unrelated_processes() {
         let root = tempfile::tempdir().unwrap();
         let binary = executable(
             root.path(),
-            r#"(printf 'started' > "$0.child-started"; sleep 0.8; printf 'survived' > "$0.child-survived") &
+            r#"sleep 0.5
+sleep 90 &
+printf '%s' "$!" > "$0.child-started"
 wait"#,
         );
-        let mut unrelated = Command::new("/bin/sleep").arg("10").spawn().unwrap();
+        let mut unrelated = Command::new("/bin/sleep").arg("30").spawn().unwrap();
         let started = Instant::now();
-        let result = require_version(&binary, "/usr/bin:/bin", Duration::from_millis(300));
+        // Use the real admission budget: a sub-second startup deadline does not
+        // establish that a descendant existed, especially on a cold Darwin host.
+        // Observe readiness independently before evaluating cleanup assertions.
+        let probe =
+            std::thread::spawn(move || require_host_managed_provider(&binary, "/usr/bin:/bin"));
+        let marker = root.path().join("selected-claude.child-started");
+        while !marker.exists() && started.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let ready = marker.exists();
+        let result = probe.join().unwrap();
         let elapsed = started.elapsed();
         let unrelated_running = unrelated.try_wait().unwrap().is_none();
         let _ = unrelated.kill();
         let _ = unrelated.wait();
-        std::thread::sleep(Duration::from_millis(1000));
-        assert_eq!(result, Err(DelegationErrorV1::CapabilityUnavailable));
-        assert!(elapsed < Duration::from_secs(2));
+        assert_eq!(result, Err(failure(Reason::Timeout)));
+        assert!(elapsed < Duration::from_secs(12));
         assert!(unrelated_running);
-        assert!(root.path().join("selected-claude.child-started").exists());
-        assert!(!root.path().join("selected-claude.child-survived").exists());
+        assert!(
+            ready,
+            "fixture descendant did not become ready before timeout"
+        );
+        let pid = std::fs::read_to_string(marker).unwrap();
+        let state = Command::new("/bin/ps")
+            .args(["-p", pid.trim(), "-o", "stat="])
+            .output()
+            .unwrap();
+        let state = String::from_utf8_lossy(&state.stdout);
+        assert!(
+            state.trim().is_empty() || state.trim().starts_with('Z'),
+            "owned descendant remains active: {state}"
+        );
     }
 
     #[test]
@@ -213,18 +278,27 @@ wait"#,
         let root = tempfile::tempdir().unwrap();
         let binary = executable(
             root.path(),
-            r#"(printf 'started' > "$0.child-started"; sleep 0.8; printf 'survived' > "$0.child-survived") &
-while test ! -f "$0.child-started"; do sleep 0.01; done
+            r#"sleep 3
+sleep 90 &
+printf '%s' "$!" > "$0.child-started"
 printf '2.1.231 (Claude Code)\n'
 exit 0"#,
         );
         let started = Instant::now();
-        let result = require_version(&binary, "/usr/bin:/bin", Duration::from_secs(2));
+        let result = require_host_managed_provider(&binary, "/usr/bin:/bin");
         let elapsed = started.elapsed();
-        std::thread::sleep(Duration::from_millis(1000));
-        assert_eq!(result, Ok(()));
-        assert!(elapsed < Duration::from_secs(2));
-        assert!(root.path().join("selected-claude.child-started").exists());
-        assert!(!root.path().join("selected-claude.child-survived").exists());
+        assert_eq!(result, Ok(()), "cold probe elapsed: {elapsed:?}");
+        assert!(elapsed < Duration::from_secs(12));
+        let pid = std::fs::read_to_string(root.path().join("selected-claude.child-started"))
+            .expect("successful version must follow descendant readiness");
+        let state = Command::new("/bin/ps")
+            .args(["-p", pid.trim(), "-o", "stat="])
+            .output()
+            .unwrap();
+        let state = String::from_utf8_lossy(&state.stdout);
+        assert!(
+            state.trim().is_empty() || state.trim().starts_with('Z'),
+            "owned descendant remains active after leader exit: {state}"
+        );
     }
 }

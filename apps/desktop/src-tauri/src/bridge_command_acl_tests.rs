@@ -43,6 +43,7 @@ const WORKER_TASK_COMMANDS: &[&str] = &[
     "worker_task_read",
     "worker_task_wait",
     "worker_task_cancel",
+    "worker_task_confirm_residual",
     "worker_task_continue",
 ];
 const DIAGNOSTIC_COMMANDS: &[&str] = &[

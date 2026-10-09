@@ -107,7 +107,7 @@ impl WorkerPlatformPort for Fixture {
                 methods.lock().unwrap().push(method.into());
                 let result = match method {
                     "initialize" => {
-                        serde_json::json!({"protocolVersion":1,"agentCapabilities":{"loadSession":true}})
+                        serde_json::json!({"protocolVersion":1,"agentCapabilities":{"loadSession":true},"_meta":{"jetbrains":{"air":{"version":1,"capabilities":["sessionFailure"]}}}})
                     }
                     "session/new" => serde_json::json!({
                         "sessionId":"native-session",
@@ -303,7 +303,7 @@ for line in sys.stdin:
         break
     modes = {'currentModeId':'agent-full-access','availableModes':[{'id':'agent-full-access','name':'Autonomous'}]}
     if method == 'initialize':
-        result = {'protocolVersion':1,'agentCapabilities':{'loadSession':True}}
+        result = {'protocolVersion':1,'agentCapabilities':{'loadSession':True},'_meta':{'jetbrains':{'air':{'version':1,'capabilities':['sessionFailure']}}}}
     elif method == 'session/new':
         assert case == 'new'
         result = {'sessionId':'native-session','modes':modes}

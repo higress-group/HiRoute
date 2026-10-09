@@ -7,6 +7,12 @@ use thiserror::Error;
 pub const STANDALONE_INSTALL_SCHEMA_V1: &str = "hiroute.standalone-install/v1";
 const MAX_MARKER_BYTES: u64 = 16 * 1024;
 
+/// Shared by Desktop, standalone and their CLI. Keep this no longer than control.sock
+/// so credential input does not impose a stricter native Unix socket path limit.
+pub fn protected_input_socket(runtime_root: impl AsRef<Path>) -> PathBuf {
+    runtime_root.as_ref().join("hiroute/input.sock")
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StandaloneLayout {
     pub home: PathBuf,
@@ -79,7 +85,7 @@ impl StandaloneLayout {
     }
 
     pub fn protected_input_socket(&self) -> PathBuf {
-        self.runtime_root.join("hiroute/protected-input-v1.sock")
+        protected_input_socket(&self.runtime_root)
     }
 }
 

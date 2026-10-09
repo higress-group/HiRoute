@@ -116,6 +116,21 @@ impl WorkerProgressWriter {
     fn into_inner(self) -> Arc<dyn ProgressBatchWriter> {
         self.0
     }
+
+    /// A prelaunch check has no native output/capture task. Record only closed host facts.
+    pub(crate) fn dependency_failure(
+        &self,
+        failure: hiroute_domain::delegation::NativeDependencyFailureV1,
+        now_ms: i64,
+    ) {
+        let action = if failure.reason.retryable() {
+            "Retry the same dependency selection after the temporary check failure."
+        } else {
+            "Check the selected native executable and its required capabilities."
+        };
+        let text = format!("[HiRoute] Worker dependency check failed: {failure}. {action}\n");
+        let _ = self.0.write_batch(&text, false, now_ms);
+    }
 }
 
 pub(crate) trait WorkerRunJournal: AcpRunJournal {

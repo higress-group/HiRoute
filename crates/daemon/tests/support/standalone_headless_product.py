@@ -210,12 +210,26 @@ config = json.loads(os.environ['CODEX_CONFIG'])
 base = urlparse(config['model_providers'][config['model_provider']]['base_url'])
 token = os.environ['HIROUTE_RUN_TOKEN']
 session = 'headless-acp-session'
+# External ACP fixture owns its exact native session receipt across process restarts.
+session_receipt = os.path.join(os.environ['CODEX_HOME'], 'headless-acp-session.json')
 for line in sys.stdin:
     request = json.loads(line)
     method = request['method']
     if method == 'initialize':
-        result = {'protocolVersion': 1, 'agentCapabilities': {'loadSession': True}}
-    elif method == 'session/new':
+        air = request['params']['clientCapabilities']['_meta']['jetbrains']['air']
+        assert air['version'] >= 1 and 'sessionFailure' in air['capabilities']
+        result = {'protocolVersion': 1, 'agentCapabilities': {'loadSession': True},
+                  '_meta': {'jetbrains': {'air': {
+                      'version': 1, 'capabilities': ['sessionFailure']}}}}
+    elif method in ('session/new', 'session/load'):
+        if method == 'session/load':
+            assert request['params']['sessionId'] == session
+            with open(session_receipt, encoding='utf-8') as stream:
+                assert json.load(stream) == {'id': session, 'cwd': request['params']['cwd']}
+        else:
+            assert not os.path.exists(session_receipt), 'Continue must load the existing session'
+            with open(session_receipt, 'w', encoding='utf-8') as stream:
+                json.dump({'id': session, 'cwd': request['params']['cwd']}, stream)
         result = {'sessionId': session, '_meta': {'agentSessionId': session}, 'modes': {
             'currentModeId': 'agent-full-access',
             'availableModes': [{'id': 'agent-full-access', 'name': 'Autonomous'}]},
@@ -228,22 +242,27 @@ for line in sys.stdin:
         prompt = request['params']['prompt'][0]['text']
         body = json.dumps({'model': config['model'], 'input': prompt, 'stream': False}).encode()
         client = http.client.HTTPConnection(base.hostname, base.port, timeout=30)
+        result = {'stopReason': 'end_turn'}
+        answer = ''
         try:
             client.request('POST', base.path.rstrip('/') + '/responses', body=body, headers={
                 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
             response = client.getresponse()
             payload = json.loads(response.read())
             if response.status != 200:
-                raise RuntimeError(payload)
-            answer = ''.join(part.get('text', '') for item in payload.get('output', [])
-                             for part in item.get('content', []))
+                result['_meta'] = {'jetbrains': {'air': {'version': 1, 'sessionFailure': {
+                    'id': 'fixture-upstream-error', 'revision': 1, 'category': 'service',
+                    'severity': 'error', 'title': 'Fixture upstream rejected the request',
+                    'actions': ['retry']}}}}
+            else:
+                answer = ''.join(part.get('text', '') for item in payload.get('output', [])
+                                 for part in item.get('content', []))
         finally:
             client.close()
         print(json.dumps({'jsonrpc': '2.0', 'method': 'session/update', 'params': {
             'sessionId': session, 'update': {'sessionUpdate': 'agent_message_chunk',
                                              'content': {'type': 'text', 'text': answer}}}}),
               flush=True)
-        result = {'stopReason': 'end_turn'}
     else:
         raise RuntimeError(method)
     print(json.dumps({'jsonrpc': '2.0', 'id': request['id'], 'result': result}), flush=True)
@@ -511,6 +530,80 @@ def save_candidate(product, candidate, validation, key):
     return preview, applied
 
 
+def assert_worker_source_pause_resume(product, source_id, plan_id, task_id, run_id):
+    def save(disabled, label, key_enabled=None):
+        snapshot = product.cli('compute', 'list')['data']
+        source = next(item for item in snapshot['sources'] if item['source_id'] == source_id)
+        assert len(source['keys']) == 1, source
+        key = source['keys'][0]
+        edits = [] if key_enabled is None else [{
+            'action': 'set_enabled', 'key_id': key['key_id'],
+            'expected_generation': key['generation'], 'enabled': key_enabled,
+        }]
+        change = {
+            'schema': 'hiroute.compute-management-change/v2',
+            'subject': {'kind': 'saved_source', 'source_id': source_id},
+            'expected_revisions': snapshot['revisions'],
+            'selected_model_refs': [model['model_ref'] for model in source['models']],
+            'intent': 'save_disabled' if disabled else 'save_ready', 'key_edits': edits,
+        }
+        preview = product.cli('compute', 'connection', 'preview', '--request-stdin',
+                              payload={'change': change})['data']
+        applied = apply_from_preview(product, ('compute', 'connection', 'apply'),
+                                     preview, 'headless-worker-source-' + label)
+        assert applied['operation']['state'] == 'succeeded', applied
+
+    for label, key_enabled in [('source', None), ('key', False)]:
+        # This comparison needs settled public facts. Immediate Continue's
+        # finalization-lock guarantee is independently covered by its own test.
+        deadline = time.monotonic() + 30
+        while True:
+            before = next(item for item in product.cli('worker', 'list')['data']['tasks']
+                          if item['task_id'] == task_id)
+            assert before['latest_run_id'] == run_id and before['run']['state'] == 'succeeded', before
+            if before['run']['cleanup'] == 'complete' and before['resumable_until_ms'] is not None:
+                break
+            assert time.monotonic() < deadline, before
+            time.sleep(.1)
+        save(True, label + '-off', key_enabled)
+        plans = product.cli('worker', 'plans')['data']['plans']
+        assert next(item for item in plans if item['agent_plan_id'] == plan_id)['availability'] == 'unavailable'
+        with product.upstream.lock:
+            attempts = len(product.upstream.requests)
+        continuation = ('worker', 'continue', '--task', task_id,
+                        '--expected-latest-run', run_id, '--no-wait',
+                        '--submission-key', 'headless-resume-' + label, '--file', '-')
+        rejected = product.cli(*continuation, payload='continue exact fixture session', expected=6)
+        assert rejected['error']['code'] == 'CAPABILITY_UNAVAILABLE', rejected
+        rejected_start = product.cli(
+            'worker', 'exec', '--plan', plan_id, '--cwd', str(product.project),
+            '--no-wait', '--submission-key', 'headless-blocked-' + label, '--file', '-',
+            payload='must not start while disabled', expected=6)
+        assert rejected_start['error']['code'] == 'CAPABILITY_UNAVAILABLE', rejected_start
+        after = next(item for item in product.cli('worker', 'list')['data']['tasks']
+                      if item['task_id'] == task_id)
+        for field in ['latest_run_id', 'latest_admission_sequence', 'resumable_until_ms']:
+            assert after[field] == before[field], (field, before, after)
+        assert after['run'] == before['run'], (before, after)
+        with product.upstream.lock:
+            assert len(product.upstream.requests) == attempts, 'rejected admission reached upstream'
+        save(False, label + '-on', True if key_enabled is False else None)
+        accepted = product.cli(*continuation, payload='continue exact fixture session')['data']
+        assert accepted['task_id'] == task_id and accepted['run_id'] != run_id, accepted
+        product.cli('worker', 'wait', '--run', accepted['run_id'], '--wait-timeout', '30')
+        deadline = time.monotonic() + 60
+        while True:
+            result = product.cli('worker', 'result', '--run', accepted['run_id'])['data']
+            if terminal(result['run_state']):
+                break
+            assert time.monotonic() < deadline, result
+            time.sleep(.1)
+        assert result['run_state'] == 'succeeded' and 'native product answer' in result['result'], result
+        with product.upstream.lock:
+            assert len(product.upstream.requests) == attempts + 1
+        run_id = accepted['run_id']
+
+
 def plan_change(intent, editor, plan_id=None, head=None, creation_key=None):
     target = ({'intent': 'create', 'creation_key': creation_key}
               if intent == 'create' else
@@ -773,20 +866,44 @@ def run(repository):
         assert usage['input_tokens'] == 4 and usage['output_tokens'] == 3, usage
         observation_status = product.cli('sessions', 'status')['data']
         assert observation_status['facts_completeness'] != 'unavailable', observation_status
-        value = product.cli('value', 'show', '--routing', plan_id,
-                            '--session', session_id)['data']
-        assert len(value['plans']) == 1, value
-        plan_value = value['plans'][0]
-        assert plan_value['agent_plan_id'] == plan_id, plan_value
-        # No price evidence was declared for this user-provided model. The immutable receipt still
-        # exposes the reported usage above, while the value ledger must not fabricate a priced row.
-        assert plan_value['input_tokens'] == 0 and plan_value['output_tokens'] == 0, plan_value
-        assert plan_value['actual_incremental_cost_micros'] is None, plan_value
-        assert plan_value['facts_completeness'] == 'unknown', plan_value
+        # Receipt ingestion and the bounded valuation worker commit separately.
+        # Wait for the public pending marker before asserting the settled report.
+        deadline = time.monotonic() + 30
+        while True:
+            value = product.cli('value', 'show', '--routing', plan_id,
+                                '--session', session_id)['data']
+            if value['summary']['pending_requests'] == 0:
+                break
+            assert time.monotonic() < deadline, value
+            time.sleep(.1)
+        assert value['group_by'] == 'none' and value['days'] == [], value
+        summary = value['summary']
+        totals = {item['metric']: item for item in summary['usage']}
+        assert totals['input']['known_sum'] == 4, value
+        assert totals['output']['known_sum'] == 3, value
+        assert totals['input']['coverage'] == 'complete', value
+        assert totals['output']['coverage'] == 'complete', value
+        assert summary['pending_requests'] == 0, value
+        # This model has real usage but no declared pricing. Current Value reads
+        # the same usage as the receipt; unknown price must not erase token counts
+        # or fabricate a zero-priced contribution.
+        assert all(item['known_sum_micros'] is None
+                   for item in summary['amounts']), value
+        grouped = product.cli('value', 'show', '--routing', plan_id,
+                              '--session', session_id, '--group-by', 'day')['data']
+        assert grouped['group_by'] == 'day' and grouped['day_timezone'] == 'UTC', grouped
+        assert grouped['days'], grouped
+        for metric, expected in [('input', 4), ('output', 3)]:
+            day_total = sum(item['known_sum'] or 0 for day in grouped['days']
+                            for item in day['usage'] if item['metric'] == metric)
+            assert day_total == expected, grouped
+        assert all(item['known_sum_micros'] is None
+                   for day in grouped['days'] for item in day['amounts']), grouped
 
         stage = 'worker-selection-submit-wait-result-replay'
-        discovered = product.cli(
-            'worker', 'dependencies', 'discover', '--harness', 'codex_cli')['data']
+        discovered = product.cli('worker', 'dependencies', 'discover')['data']
+        assert {item['harness'] for item in discovered['selection_revisions']} == {
+            'codex_cli', 'claude_code', 'qoder_cli', 'pi', 'deepseek_harness'}, discovered
         revision = next(item['revision'] for item in discovered['selection_revisions']
                         if item['harness'] == 'codex_cli')
         selected = product.cli(
@@ -825,6 +942,10 @@ def run(repository):
         assert replayed['replayed'] and replayed['run_id'] == run_id, replayed
         listed = product.cli('worker', 'list')['data']
         assert any(item['run']['run_id'] == run_id for item in listed['tasks']), listed
+
+        stage = 'worker-source-pause-preserves-exact-continue'
+        assert_worker_source_pause_resume(product, native_source['source_id'], plan_id,
+                                          accepted['data']['task_id'], run_id)
 
         stage = 'agent-restore'
         restore_spec = {'schema_version': {'major': 2, 'minor': 0}, 'context_id': context,

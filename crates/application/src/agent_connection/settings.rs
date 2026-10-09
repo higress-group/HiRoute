@@ -355,12 +355,14 @@ pub fn preview_agent_settings(
                     .restore_native_model
                     .as_ref()
                     .or(model.restored_native_model.as_ref());
-                let valid = model
-                    .restore_native_model_ids
-                    .as_ref()
-                    .is_some_and(|models| {
-                        !models.is_empty() && chosen.is_none_or(|model| models.contains(model))
-                    });
+                // Restoring the absence of a model returns selection to Codex. It
+                // requires neither account access nor a locally cached catalog.
+                let valid = chosen.is_none_or(|chosen| {
+                    model
+                        .restore_native_model_ids
+                        .as_ref()
+                        .is_some_and(|models| models.contains(chosen))
+                });
                 if !valid {
                     blockers.push(AgentSettingsBlock {
                         facet: AgentSettingsFacet::Model,

@@ -2,6 +2,11 @@ use super::*;
 
 #[test]
 fn changed_or_unrecorded_proxy_policy_replaces_only_an_authenticated_orphan() {
+    if isolated_owner_recovery_case(
+        "runtime::tests::proxy_recovery::changed_or_unrecorded_proxy_policy_replaces_only_an_authenticated_orphan",
+    ) {
+        return;
+    }
     for legacy in [false, true] {
         let root = tempfile::tempdir().unwrap();
         let backend = Arc::new(FakeBackend::default());
@@ -38,6 +43,23 @@ fn changed_or_unrecorded_proxy_policy_replaces_only_an_authenticated_orphan() {
         assert_eq!(backend.attach_count(), 0);
 
         control.set_fail_probes(false);
+        // Reproduce the exact full-suite failure deterministically. An inherited
+        // or independent descriptor still owning this lock must block adoption;
+        // failure must leave the original authenticated process untouched.
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(root.path().join("auth/.hiroute-managed-auth.lock"))
+            .unwrap();
+        fs2::FileExt::lock_exclusive(&held).unwrap();
+        assert!(matches!(
+            second.start(),
+            Err(CpaLifecycleError::BorrowedCodexAuthAlreadyLeased)
+        ));
+        assert!(backend.pid_is_running(pid).unwrap());
+        assert_eq!(backend.spawn_count(), 1);
+        assert_eq!(backend.attach_count(), 0);
+        drop(held);
         let CpaHealth::Ready {
             pid: replacement,
             adopted,

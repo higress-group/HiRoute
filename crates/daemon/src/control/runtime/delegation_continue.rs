@@ -238,6 +238,30 @@ impl LocalControlAdapter {
             let version = ExactPlanVersionPort::acquire_exact(self, guard, &reservation)
                 .map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
             reservation_acquired = true;
+            if super::work_plans::worker_context_blocker(
+                prior_task.plan.harness,
+                version
+                    .compiled
+                    .body
+                    .materialized
+                    .context_window_tokens()
+                    .ok(),
+            )
+            .is_some()
+            {
+                return Err(DelegationErrorV1::ResumeUnavailable);
+            }
+            if super::work_plans::worker_source_blocker(
+                &*self
+                    .stores_lock()
+                    .map_err(|_| DelegationErrorV1::StorageUnavailable)?,
+                &version.compiled.body.materialized,
+            )
+            .map_err(|_| DelegationErrorV1::StorageUnavailable)?
+            .is_some()
+            {
+                return Err(DelegationErrorV1::ResumeUnavailable);
+            }
             if !version.configuration.delegation_enabled
                 || version.reference != reference
                 || version.configuration.work.as_ref().is_none_or(|work| {

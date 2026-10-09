@@ -32,6 +32,7 @@ use super::{
 pub(super) struct CurrentPlan {
     pub(super) binding: DelegationPlanBindingV1,
     pub(super) reference: PlanExecutionRef,
+    pub(super) runtime_blocker: Option<&'static str>,
 }
 
 /// Internal instance partition. It is derived by the daemon and never comes from a Worker DTO.
@@ -120,6 +121,9 @@ impl LocalControlAdapter {
             AdmissionAction::Start,
             &request.submission_key,
         )?;
+        if selected.runtime_blocker.is_some() {
+            return Err(DelegationErrorV1::CapabilityUnavailable);
+        }
         self.ensure_worker_dependencies(selected.binding.harness, false)?;
         let deadline_ms = now_ms
             .checked_add(execution.duration_ms)
@@ -235,6 +239,9 @@ impl LocalControlAdapter {
             if refreshed.reference != selected.reference || refreshed.binding != selected.binding {
                 return Err(DelegationErrorV1::Conflict);
             }
+            if refreshed.runtime_blocker.is_some() {
+                return Err(DelegationErrorV1::CapabilityUnavailable);
+            }
             let reservation = VersionReservationV1 {
                 owner: reservation_owner.clone(),
                 reference: current.reference,
@@ -337,6 +344,20 @@ impl LocalControlAdapter {
         let configuration_digest =
             CanonicalDigest::of(&work).map_err(|_| DelegationErrorV1::InvalidArguments)?;
         Ok(CurrentPlan {
+            runtime_blocker: super::work_plans::worker_context_blocker(
+                harness,
+                version
+                    .compiled
+                    .body
+                    .materialized
+                    .context_window_tokens()
+                    .ok(),
+            )
+            .or(super::work_plans::worker_source_blocker(
+                &stores,
+                &version.compiled.body.materialized,
+            )
+            .map_err(|_| DelegationErrorV1::StorageUnavailable)?),
             binding: DelegationPlanBindingV1 {
                 authority_id: publication.authority_id,
                 plan_id: plan_id.clone(),

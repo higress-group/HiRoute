@@ -15,7 +15,27 @@ potentially billable model checks. Those flows keep their own consent and creden
 The Desktop WebView can only use its explicitly exposed native commands and cannot supply an
 arbitrary Local Control request.
 
+The routing editor displays the current head's call state separately from unsaved
+edits and saved drafts. A disabled route remains visibly stopped even while its
+configuration is being edited; only a successful lifecycle change enables calls.
+
 ## Codex CLI profile
+
+For an isolated instance, set `HOME` and `CODEX_HOME` to its private directories.
+`HIROUTE_CODEX_AUTH_SOURCE` may independently select an absolute, owner-only Codex
+`auth.json` for subscription discovery and CPA's access-only lease. Set it on the
+process that starts the daemon. Without this override, the source remains
+`CODEX_HOME/auth.json` (or `HOME/.codex/auth.json`). An explicit invalid or missing
+source never falls back to another account. Discovery and CPA use the same source;
+the override does not select the native Agent configuration or Worker history root.
+CPA never receives the source's refresh token and never refreshes or rewrites the
+source. The original Codex retains refresh ownership.
+
+An isolated acceptance process must also clear inherited provider credentials,
+model-routing variables and Claude context overrides. A private `HOME` alone does
+not remove higher-precedence process settings. A settings preview must explain
+missing effective-configuration or safe-write evidence without exposing settings
+values; it must not bypass those checks to make a save succeed.
 
 The default Codex connection owns one `hiroute.config.toml` profile in the detected original
 `CODEX_HOME`. It preserves `config.toml` and the ordinary CLI/Desktop default provider.

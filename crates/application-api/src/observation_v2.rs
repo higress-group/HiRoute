@@ -38,6 +38,7 @@ pub enum ObservationReadIntentV2 {
     Search(ObservationSearchQueryV2),
     Value(ObservationValueQueryV2),
     HomeValue(ObservationHomeValueQueryV2),
+    ValueReport(ObservationValueReportOptionsV2),
     PlanQuality(PlanQualitySamplesQuery),
 }
 impl ObservationReadRequestV2 {
@@ -54,7 +55,9 @@ impl ObservationReadRequestV2 {
             | ObservationReadIntentV2::Search(_) => "ListSessions",
             ObservationReadIntentV2::PlanQuality(_) => "GetPlanQualitySamples",
             ObservationReadIntentV2::Facts(_) => "GetRoutingReceipt",
-            ObservationReadIntentV2::Value(_) | ObservationReadIntentV2::HomeValue(_) => "GetValue",
+            ObservationReadIntentV2::Value(_)
+            | ObservationReadIntentV2::HomeValue(_)
+            | ObservationReadIntentV2::ValueReport(_) => "GetValue",
             _ => "GetSession",
         }
     }
@@ -69,9 +72,9 @@ impl ObservationReadRequestV2 {
             ObservationReadIntentV2::Content(_) => "ReadSessionContentV2",
             ObservationReadIntentV2::Facts(_) => "ReadSessionFactsV2",
             ObservationReadIntentV2::Search(_) => "SearchSessionContentV2",
-            ObservationReadIntentV2::Value(_) | ObservationReadIntentV2::HomeValue(_) => {
-                "GetValueV2"
-            }
+            ObservationReadIntentV2::Value(_)
+            | ObservationReadIntentV2::HomeValue(_)
+            | ObservationReadIntentV2::ValueReport(_) => "GetValueV2",
             ObservationReadIntentV2::PlanQuality(_) => "ReadPlanQualitySamplesV1",
         }
     }
@@ -106,3 +109,16 @@ pub struct ObservationHomeValueQueryV2 {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationStatusQueryV2 {}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationValueReportOptionsV2 {
+    pub agent_plan_id: Option<crate::AgentPlanId>,
+    pub from_ms: Option<i64>,
+    pub to_ms: Option<i64>,
+    pub period: Option<crate::ValuePeriodV1>,
+    #[serde(default)]
+    pub group_by: crate::ValueGroupByV1,
+    pub currency: Option<String>,
+    pub session_id: Option<crate::SessionId>,
+}

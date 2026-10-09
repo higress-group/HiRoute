@@ -122,7 +122,9 @@ adapter launch behavior.
 
 At a borrowed Claude launch, the [runtime capability check](claude_runtime.rs)
 executes only the selected CLI's bounded `--version` with the selected command
-search path and no HOME, native config, or run credential. This narrowly requires
+search path and disposable HOME/native/XDG roots and cwd, without inherited run
+credentials or user configuration. The owned process group is stopped before
+those temporary roots are removed. This narrowly requires
 the known Claude 2.x host-managed-provider capability (2.1.231 or later); it is not
 an installation readiness probe or a compatibility guarantee. An unsupported,
 unknown, failed or timed-out response rejects this launch before model execution.

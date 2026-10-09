@@ -49,6 +49,7 @@ export function Agents({
   initialTab = 'configuration',
   initialTaskId = null,
   onTaskCancel,
+  onTaskConfirmResidual,
   onOpenTaskSession,
   onOpenTasks,
   onLoadMoreTasks,
@@ -69,6 +70,7 @@ export function Agents({
   taskRead?: AgentTaskRead;
   initialTab?: 'configuration' | 'tasks';
   initialTaskId?: string | null;
+  onTaskConfirmResidual?: (task: AgentTask) => Promise<AgentTask>;
   onTaskCancel?: (task: AgentTask, onAccepted?: (status: AgentTask['status']) => void) => Promise<AgentTask['status']>;
   onOpenTaskSession?: (sessionId: string) => void;
   onOpenTasks?: () => void;
@@ -461,7 +463,7 @@ export function Agents({
       {!snapshot && !loadError && <div className="empty-state" role="status"><div><span className="oc-spinner" /><p>{text('正在读取本地 Agent…', 'Reading local Agents…')}</p></div></div>}
       {!snapshot && loadError && <div className="empty-state" data-error-code={loadError}><div><span className="empty-icon"><UiIcon name="agent" /></span><h2>{text('暂时无法读取 Agent', 'Agents are temporarily unavailable')}</h2><p>{text('请确认本机服务正在运行，然后重试。', 'Make sure the local service is running, then retry.')}</p><button className="btn btn-primary" type="button" onClick={() => void refresh()}>{text('重试', 'Retry')}</button></div></div>}
       {tab === 'tasks'
-        ? <AgentTasks language={language} read={taskRead} initialTaskId={initialTaskId} onCancel={onTaskCancel} onOpenSession={onOpenTaskSession} onBackToAgents={() => setTab('configuration')} onRefresh={onOpenTasks} onLoadMore={onLoadMoreTasks} onReadTask={onReadTask} onLoadTaskResult={onLoadTaskResult} active={active} />
+        ? <AgentTasks language={language} read={taskRead} initialTaskId={initialTaskId} onCancel={onTaskCancel} onConfirmResidual={onTaskConfirmResidual} onOpenSession={onOpenTaskSession} onBackToAgents={() => setTab('configuration')} onRefresh={onOpenTasks} onLoadMore={onLoadMoreTasks} onReadTask={onReadTask} onLoadTaskResult={onLoadTaskResult} active={active} />
         : snapshot && !snapshot.agents.length
           ? <div className="empty-state"><div><span className="empty-icon"><UiIcon name="agent" /></span><h2>{text('没有发现可接入的 Agent', 'No compatible Agent found')}</h2><p>{text('安装或启动支持的 Agent 后再返回此页。', 'Install or start a supported Agent, then return here.')}</p><button className="btn" type="button" onClick={() => void refresh()}>{text('重新扫描', 'Scan again')}</button></div></div>
           : tab === 'configuration' && <div className={`split-view oc-agents${showAgentList ? '' : ' oc-agent-detail-open'}`}>

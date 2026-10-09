@@ -23,6 +23,13 @@ and return the prior live model; the check here prevents prompting that session
 under a different Plan. These observations justify the capability check, not a
 version allowlist. This owner does not infer effort semantics from model IDs.
 
+Codex adapters must also advertise the negotiated AIR v1 `sessionFailure`
+extension in their initialize response before a session or prompt is sent.
+`codex-acp` 1.1.5 can report a rejected model request as ordinary assistant text
+followed by `end_turn`; it cannot establish task success. The official 2.1.1
+adapter advertises terminal failure metadata. Missing capability fails closed;
+error-looking assistant prose is never parsed as a substitute terminal signal.
+
 The Rust ACP dependency provides typed config options and a typed setter; its
 current v1 schema does not retain legacy `models` response fields. A legacy
 `currentModelId` claim cannot substitute for confirming the current selector.

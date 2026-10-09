@@ -164,7 +164,10 @@ struct FakeControl {
     accounts: Mutex<Vec<AccountSnapshotRecord>>,
     probes: AtomicUsize,
     discoveries: AtomicUsize,
+    last_client_version: Mutex<Option<String>>,
+    refresh_requested: AtomicBool,
     fail_probes: AtomicBool,
+    discovery_error: Mutex<Option<AccountDiscoveryError>>,
 }
 
 impl FakeControl {
@@ -198,15 +201,25 @@ impl CpaControlPlane for FakeControl {
     fn discover_and_pin(
         &self,
         address: SocketAddr,
-        _auth_dir: &Path,
+        auth_dir: &Path,
         managed_identities: &[ManagedAccountIdentity],
         secrets: &InstanceSecrets,
         expected_version: &str,
         timeout: Duration,
-        _refresh_models: bool,
+        refresh_models: bool,
     ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         self.discoveries.fetch_add(1, Ordering::SeqCst);
+        self.refresh_requested
+            .store(refresh_models, Ordering::SeqCst);
+        *self.last_client_version.lock() =
+            std::fs::read(auth_dir.join("hiroute-managed-codex.json"))
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                .and_then(|value| value["hiroute_client_version"].as_str().map(str::to_owned));
         self.probe_ready(address, secrets, expected_version, timeout)?;
+        if let Some(error) = self.discovery_error.lock().take() {
+            return Err(error);
+        }
         let mut accounts = self.accounts.lock().clone();
         for identity in managed_identities {
             let account = accounts
@@ -792,8 +805,38 @@ fn crash_restart_is_bounded_and_reports_child_exit_separately() {
     assert_eq!(runtime.last_exit(), Some(CpaExit { code: Some(31) }));
 }
 
+// Closing one descriptor cannot release copies inherited by concurrently forked
+// tests before exec. Exercise immediate owner handoffs in their own process while
+// retaining explicit contention assertions and the duplicated-descriptor regression.
+fn isolated_owner_recovery_case(case: &str) -> bool {
+    const CHILD: &str = "HIROUTE_ISOLATED_CPA_OWNER_TEST";
+    if std::env::var(CHILD).as_deref() == Ok(case) {
+        return false;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", case, "--test-threads=1"])
+        .env(CHILD, case)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success()
+            && stdout
+                .lines()
+                .any(|line| line == format!("test {case} ... ok")),
+        "isolated owner recovery must execute its exact case: {stdout} {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
 #[test]
 fn stale_live_child_is_authenticated_and_adopted_without_duplicate_spawn() {
+    if isolated_owner_recovery_case(
+        "runtime::tests::stale_live_child_is_authenticated_and_adopted_without_duplicate_spawn",
+    ) {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     let backend = Arc::new(FakeBackend::default());
     let control = Arc::new(FakeControl::default());
@@ -810,6 +853,20 @@ fn stale_live_child_is_authenticated_and_adopted_without_duplicate_spawn() {
     std::mem::forget(first);
 
     let second = fixture_runtime(&root, Arc::clone(&backend), control, 2);
+    // Deterministically reproduce the observed OwnerState under an extra lock owner.
+    // The rejected attempt must neither steal ownership nor spawn/attach a second CPA.
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(root.path().join("state/fixture-cpa/.owner-reclaim.lock"))
+        .unwrap();
+    fs2::FileExt::try_lock_exclusive(&held).unwrap();
+    let old_owner = std::fs::read(&owner_path).unwrap();
+    assert!(matches!(second.start(), Err(CpaLifecycleError::OwnerState)));
+    assert_eq!(std::fs::read(&owner_path).unwrap(), old_owner);
+    assert_eq!(backend.spawn_count(), 1);
+    assert_eq!(backend.attach_count(), 0);
+    drop(held);
     assert_eq!(
         second.start().unwrap(),
         CpaHealth::Ready {
@@ -826,6 +883,11 @@ fn stale_live_child_is_authenticated_and_adopted_without_duplicate_spawn() {
 
 #[test]
 fn failed_orphan_authentication_restores_stale_owner_for_bounded_retry() {
+    if isolated_owner_recovery_case(
+        "runtime::tests::failed_orphan_authentication_restores_stale_owner_for_bounded_retry",
+    ) {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     let backend = Arc::new(FakeBackend::default());
     let control = Arc::new(FakeControl::default());
@@ -1138,6 +1200,11 @@ fn single_terminal(records: &[StageRecord], stage: &str) -> String {
 /// which never spawns — reports no spawn step at all.
 #[test]
 fn cpa_stage_terminals_are_unique_ordered_and_never_fabricated() {
+    if isolated_owner_recovery_case(
+        "runtime::tests::cpa_stage_terminals_are_unique_ordered_and_never_fabricated",
+    ) {
+        return;
+    }
     // A spawn that completes, then a bounded ready wait that fails.
     let root = tempfile::tempdir().unwrap();
     let logs = tempfile::tempdir().unwrap();

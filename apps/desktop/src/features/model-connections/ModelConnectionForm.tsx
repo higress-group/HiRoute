@@ -20,6 +20,7 @@ import {
   modelSaveCompleted,
   saveEligibility,
   selectedModelRefsForSave,
+  selectedModelRefsAfterRecheck,
 } from './state';
 import type {
   ComputeCandidateRef,
@@ -442,6 +443,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       draftRef.current = acceptedDraft;
       setDraft(acceptedDraft);
       setResult(checked);
+      setSelected(selectedModelRefsAfterRecheck(inferenceModelId ? result : null, selected, checked));
       const checkFailure = checkFailureCode(checked);
       if (checkFailure) {
         setError(checkFailure);
@@ -476,9 +478,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         setPhase('editing');
         return;
       }
-      // The catalog is a review step: do not silently opt the user into every
-      // model returned by an account-wide directory request.
-      setSelected(new Set());
+      // An inventory check starts unselected; a tool recheck retains only the
+      // user's existing choices that remain selectable in this exact candidate.
       setScreen('models');
       setPhase('editing');
     } catch (caught) {

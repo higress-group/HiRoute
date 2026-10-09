@@ -48,6 +48,11 @@ fn real_process_v2_plan_content_and_alias_recover_exactly() {
 }
 
 #[test]
+fn real_process_plan_lifecycle_preserves_content_and_checks_references() {
+    run_script("plan_lifecycle_process.py");
+}
+
+#[test]
 fn real_process_native_model_save_publishes_and_reaches_gateway() {
     run_script("model_connections_product.py");
 }

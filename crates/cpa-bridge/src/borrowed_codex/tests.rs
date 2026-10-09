@@ -72,6 +72,41 @@ fn missing_engine_does_not_invent_a_client_version() {
     assert!(flat_value(&auth_dir)["hiroute_client_version"].is_null());
 }
 
+#[cfg(unix)]
+#[test]
+fn explicit_recheck_recovers_a_failed_version_within_the_same_access_lease() {
+    use std::os::unix::fs::PermissionsExt;
+    let (temp, auth_dir, source) = setup();
+    let executable = temp.path().join("selected-codex");
+    fs::write(&executable, "#!/bin/sh\nexit 7\n").unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    let spec = BorrowedCodexAuthSpec::new(&source).with_executable(executable.clone());
+    let original = fs::read(&source).unwrap();
+    let evidence = spec.inspect().unwrap();
+    let mut lease = ManagedAuthLease::acquire(&auth_dir, Some(&spec)).unwrap();
+    let first = lease.refresh().unwrap();
+    assert!(flat_value(&auth_dir)["hiroute_client_version"].is_null());
+    fs::write(&executable, "#!/bin/sh\nprintf 'codex-cli 0.162.0\\n'\n").unwrap();
+    assert_eq!(
+        lease.refresh().unwrap(),
+        first,
+        "ordinary reads changed identity"
+    );
+    assert!(flat_value(&auth_dir)["hiroute_client_version"].is_null());
+    let refreshed = lease.refresh_expected(Some(&evidence), None).unwrap();
+    assert_eq!(refreshed[0].account_kind, first[0].account_kind);
+    assert_eq!(refreshed[0].stock_file_name, first[0].stock_file_name);
+    assert_eq!(refreshed[0].account_digest, first[0].account_digest);
+    assert_eq!(refreshed[0].generation, first[0].generation);
+    assert_eq!(refreshed[0].client_version.as_deref(), Some("0.162.0"));
+    let flat = flat_value(&auth_dir);
+    assert_eq!(flat["hiroute_client_version"], "0.162.0");
+    assert!(flat.get("refresh_token").is_none());
+    assert_eq!(fs::read(&source).unwrap(), original);
+    // The existing source lock continues to exclude a concurrent CPA borrower.
+    assert!(ManagedAuthLease::acquire(&auth_dir, Some(&spec)).is_err());
+}
+
 #[test]
 fn evidence_scan_is_read_only_and_redacts_the_source() {
     let temp = tempfile::tempdir().unwrap();

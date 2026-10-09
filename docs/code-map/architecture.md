@@ -26,6 +26,12 @@ module before extending it; a local feature does not require a facade-wide rewri
 
 ## Model sources and native configuration
 
+CLI secret entry uses the shared same-user [protected input socket](../../crates/daemon/src/control/standalone.rs)
+in both standalone and Desktop-owned `role=all` processes. The [CLI input owner](../../crates/cli/src/host_commands.rs)
+reads inherited descriptors; ordinary control requests never carry secret bytes.
+All current hosts and the CLI resolve its `hiroute/input.sock` path through host-runtime.
+The name must fit any runtime root that supports `hiroute/control.sock`, including macOS.
+
 | User step | Owners to follow | Representative guard |
 | --- | --- | --- |
 | Discover a native source without executing it | [Native model connections](../../crates/integrations/src/model_connections), [Pi reader](../../crates/integrations/src/agents/pi_sources.rs), [DSH reader](../../crates/integrations/src/agents/dsh_sources.rs) | Static declarations and supported credential references only; OAuth/helpers are not executed by discovery |

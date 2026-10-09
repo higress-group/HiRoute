@@ -34,8 +34,10 @@ BINARIES = ("hiroute-desktop", "hirouted", "hiroute", "cliproxyapi")
 def validate_release_versions(version):
     # Local Control uses the application-api package version for its exact
     # same-release handshake. It must track the shipped clients and daemon.
+    # ProcessStart uses the diagnostics library's compiled package version.
     for relative in ("crates/application-api/Cargo.toml", "crates/cli/Cargo.toml",
-                     "crates/daemon/Cargo.toml", "apps/desktop/src-tauri/Cargo.toml"):
+                     "crates/daemon/Cargo.toml", "apps/desktop/src-tauri/Cargo.toml",
+                     "crates/diagnostics/Cargo.toml"):
         section = re.search(r"(?ms)^\[package\]\s*\n(.*?)(?=^\[|\Z)",
                             (REPO / relative).read_text())
         declared = re.search(r'^version\s*=\s*"([^"]+)"\s*$', section[1], re.M) if section else None

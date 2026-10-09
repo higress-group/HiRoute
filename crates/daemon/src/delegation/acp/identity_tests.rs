@@ -18,7 +18,8 @@ async fn fixture(stream: tokio::io::DuplexStream, expected_setting: &'static str
         let method = request["method"].as_str().unwrap();
         methods.push(method.to_owned());
         let response = match method {
-            "initialize" => json!({"protocolVersion":1,"agentCapabilities":{"loadSession":true}}),
+            "initialize" => json!({"protocolVersion":1,"agentCapabilities":{"loadSession":true},
+                "_meta":{"jetbrains":{"air":{"version":1,"capabilities":["sessionFailure"]}}}}),
             "session/new" => {
                 assert_eq!(
                     request["params"]["_meta"]["fixtureRunSetting"],

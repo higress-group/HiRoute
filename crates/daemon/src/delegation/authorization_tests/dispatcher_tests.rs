@@ -157,6 +157,18 @@ async fn absent_or_unverifiable_identity_never_claims_stop_and_late_attach_sees_
         .runtime()
         .accept(&sample("task-a", "run-a", "root-a"))
         .unwrap();
+    let a = stores
+        .runtime()
+        .checkpoint(
+            &a.workspace_id,
+            &a.run_id,
+            a.progress.revision,
+            "preparing",
+            &DelegationCheckpointV1::Progress {
+                event: RunEventV1::Preparing,
+            },
+        )
+        .unwrap();
     let b = stores
         .runtime()
         .accept(&sample("task-b", "run-b", "root-b"))
@@ -189,6 +201,13 @@ async fn absent_or_unverifiable_identity_never_claims_stop_and_late_attach_sees_
             .any(|r| r.run_id == a.run_id && r.state == CancellationDispatchState::PendingIdentity)
     );
     assert!(result.iter().all(|r| r.run_id != b.run_id));
+    let pending = stores
+        .runtime()
+        .run(&a.workspace_id, &a.run_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(pending.progress.state, RunStateV1::Cancelling);
+    assert_eq!(pending.progress.cleanup, RunCleanupV1::Pending);
     assert_ne!(
         stores
             .runtime()

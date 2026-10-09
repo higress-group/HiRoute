@@ -118,7 +118,8 @@ impl ApplicationService {
             | "WorkerResult"
             | "WorkerRead"
             | "WorkerContinue"
-            | "WorkerCancel" => delegation::tasks::dispatch(self, request),
+            | "WorkerCancel"
+            | "WorkerConfirmResidual" => delegation::tasks::dispatch(self, request),
             "GetSystemStatus" => self.system_status(request),
             "PreviewSetup" => self.preview_setup(request),
             "ApplySetup" => self.apply_setup(request),

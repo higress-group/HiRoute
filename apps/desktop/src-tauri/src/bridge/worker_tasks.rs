@@ -2,11 +2,12 @@ use super::{DesktopState, main_window};
 use crate::failure::DesktopFailure;
 use hiroute_application_api::{
     DelegationAcceptedV1, DelegationCancelV1, DelegationGetV1, DelegationListV1,
-    DelegationResultV1, DelegationWaitV1, MachineEnvelopeV2, WorkPlanListV1, WorkerCancelRequestV1,
-    WorkerContinueRequestV1, WorkerDependenciesDiscoverRequestV1,
+    DelegationResultV1, DelegationRunViewV1, DelegationWaitV1, MachineEnvelopeV2, WorkPlanListV1,
+    WorkerCancelRequestV1, WorkerContinueRequestV1, WorkerDependenciesDiscoverRequestV1,
     WorkerDependenciesSelectRequestV1, WorkerDependenciesViewV1, WorkerExecutorAvailabilityListV1,
     WorkerListRequestV1, WorkerPlansRequestV1, WorkerReadDataV1, WorkerReadRequestV1,
-    WorkerResultRequestV1, WorkerSettingsV1, WorkerStatusRequestV1, WorkerWaitRequestV1,
+    WorkerResidualConfirmRequestV1, WorkerResultRequestV1, WorkerSettingsV1, WorkerStatusRequestV1,
+    WorkerWaitRequestV1,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
@@ -515,6 +516,29 @@ pub async fn worker_task_wait(
         .client
         .clone();
     Ok(client.worker_wait(&crate::random_id()?, &input).await?)
+}
+
+#[tauri::command]
+pub async fn worker_task_confirm_residual(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: WorkerResidualConfirmRequestV1,
+) -> Result<MachineEnvelopeV2<DelegationRunViewV1>, DesktopFailure> {
+    main_window(&window)?;
+    if !input.valid() {
+        return Err("REQUEST_INVALID".into());
+    }
+    let client = state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .client
+        .clone();
+    Ok(client
+        .confirm_worker_residual(&crate::random_id()?, &input)
+        .await?)
 }
 
 #[tauri::command]

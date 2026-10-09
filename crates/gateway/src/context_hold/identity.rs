@@ -91,10 +91,7 @@ pub(crate) fn identity_facts(
     observation_key: &[u8; 32],
 ) -> ContextIdentityFacts {
     if let Some(run) = authorized.verified_run_observation() {
-        return valid_identity(&run.run_id)
-            .map_or_else(ContextIdentityFacts::request_scoped, |run_id| {
-                reliable("verified_worker", vec![run_id], true)
-            });
+        return verified_worker_identity(run);
     }
 
     match codex_identity(ingress, headers, request) {
@@ -132,6 +129,16 @@ pub(crate) fn identity_facts(
             )),
         },
     }
+}
+
+fn verified_worker_identity(
+    run: &crate::server::request_plan::VerifiedRunObservationContext,
+) -> ContextIdentityFacts {
+    // Every request remains authorized by its exact run token. A Continue resumes the
+    // same task's conversation and decision history; run IDs are separate receipt links.
+    valid_identity(&run.task_id).map_or_else(ContextIdentityFacts::request_scoped, |task_id| {
+        reliable("verified_worker_task", vec![task_id], true)
+    })
 }
 
 fn reliable(kind: &'static str, parts: Vec<String>, verified_worker: bool) -> ContextIdentityFacts {
@@ -313,6 +320,38 @@ mod tests {
         CanonicalMessage, MODEL_REQUEST_IR_SCHEMA, RequestedReasoningControl,
         ResponsesRequestOptionsV1, ToolChoice,
     };
+
+    #[test]
+    fn worker_continue_keeps_conversation_identity_without_joining_other_tasks() {
+        let context = |task: &str, run: &str, native: Option<&str>| {
+            crate::server::request_plan::VerifiedRunObservationContext {
+                task_id: task.into(),
+                run_id: run.into(),
+                plan_id: "plan/one".into(),
+                plan_revision: 1,
+                publication_ref: "publication/one".into(),
+                harness_id: "pi".into(),
+                native_session_id: native.map(str::to_owned),
+                parent_context_ref: None,
+                continued_from_run_id: None,
+            }
+        };
+        let initial = verified_worker_identity(&context("task/one", "run/initial", None));
+        let continued =
+            verified_worker_identity(&context("task/one", "run/continue", Some("native-one")));
+        assert_eq!(initial.hold_identity(), continued.hold_identity());
+        assert_eq!(
+            initial.observation_identity(),
+            continued.observation_identity()
+        );
+        assert_eq!(continued.correlation_provenance(), "protocol_state");
+        assert_eq!(continued.session_scope(), "conversation");
+        let other = verified_worker_identity(&context("task/two", "run/other", Some("native-one")));
+        assert_ne!(initial.hold_identity(), other.hold_identity());
+        assert_ne!(initial.observation_identity(), other.observation_identity());
+        let invalid = verified_worker_identity(&context("", "run/valid", None));
+        assert_eq!(invalid.session_scope(), "request_scoped");
+    }
 
     fn request(text: &str) -> ModelRequestIRV1 {
         ModelRequestIRV1 {

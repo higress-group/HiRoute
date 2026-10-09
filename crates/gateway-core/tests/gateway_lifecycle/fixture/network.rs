@@ -205,6 +205,7 @@ pub(crate) async fn serve_h1_chunked_sse_until_release<S>(
     mut stream: S,
     events_sent: Arc<Notify>,
     release_eos: Arc<Notify>,
+    post_terminal_tail: bool,
 ) -> Result<(), TestError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -230,6 +231,14 @@ where
     stream.flush().await?;
     events_sent.notify_one();
     release_eos.notified().await;
+    if post_terminal_tail {
+        let tail = vec![b' '; 64 * 1024];
+        stream
+            .write_all(format!("{:x}\r\n", tail.len()).as_bytes())
+            .await?;
+        stream.write_all(&tail).await?;
+        stream.write_all(b"\r\n").await?;
+    }
     stream.write_all(b"0\r\n\r\n").await?;
     stream.flush().await?;
     Ok(())

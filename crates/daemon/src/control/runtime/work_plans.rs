@@ -8,7 +8,9 @@ use hiroute_application::delegation::work_plans::{
 use hiroute_application_api::{ErrorCode, WorkPlanAvailabilityV1};
 use hiroute_domain::delegation::{DelegationErrorV1, DelegationGrantAuthorityPort};
 use hiroute_domain::{
-    AgentCollaborationGrant, AgentPlanId, PlanLifecycleV1, PublicationRepositoryPort, WorkspaceId,
+    AgentCollaborationGrant, AgentPlanId, ComputeManagementRepositoryPort, ConnectorRuntimeKind,
+    MaterializationState, MaterializedAgentPlanV1, PlanLifecycleV1, PublicationRepositoryPort,
+    WorkspaceId,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -132,8 +134,26 @@ impl LocalControlAdapter {
                 continue;
             };
             let harness = work.harness;
-            let (availability, reason) =
+            let (mut availability, mut reason) =
                 worker_availability(worker_availability_snapshot.as_ref(), harness);
+            if let Some(blocker) = worker_context_blocker(
+                harness,
+                version
+                    .compiled
+                    .body
+                    .materialized
+                    .context_window_tokens()
+                    .ok(),
+            ) {
+                availability = WorkPlanAvailabilityV1::Unavailable;
+                reason = Some(blocker.to_owned());
+            }
+            if let Some(blocker) =
+                worker_source_blocker(&stores, &version.compiled.body.materialized)?
+            {
+                availability = WorkPlanAvailabilityV1::Unavailable;
+                reason = Some(blocker.to_owned());
+            }
             result.push(WorkPlanMetadataV1 {
                 agent_plan_id: head.reference.plan_id,
                 alias: head.model_alias.as_str().to_owned(),
@@ -148,6 +168,61 @@ impl LocalControlAdapter {
         result.sort_by(|left, right| left.agent_plan_id.cmp(&right.agent_plan_id));
         Ok(result)
     }
+}
+
+/// A frozen route does not freeze permission to use a managed Native source/Key.
+/// This metadata-only preflight rejects a known empty route before accepting a run.
+/// Unknown/external authorities remain the responsibility of the exact request lease.
+pub(super) fn worker_source_blocker(
+    stores: &hiroute_local_storage::LocalStorageSet,
+    plan: &MaterializedAgentPlanV1,
+) -> Result<Option<&'static str>, ErrorCode> {
+    for candidate in plan
+        .attempt_owned
+        .groups
+        .iter()
+        .flat_map(|group| &group.candidates)
+    {
+        if candidate.connector_runtime != ConnectorRuntimeKind::BuiltinNative
+            || candidate.credential_refs.is_empty()
+            || candidate
+                .credential_refs
+                .iter()
+                .any(|id| !id.starts_with("credential/managed-"))
+        {
+            return Ok(None);
+        }
+        let source = stores
+            .control()
+            .compute_management_source(&candidate.source_id)
+            .map_err(|_| ErrorCode::CapabilityUnavailable)?;
+        if source.is_some_and(|source| {
+            source.state == MaterializationState::Ready
+                && source.credentials.iter().any(|credential| {
+                    credential.enabled
+                        && candidate
+                            .credential_refs
+                            .iter()
+                            .any(|id| id == credential.credential.credential_id())
+                })
+        }) {
+            return Ok(None);
+        }
+    }
+    Ok(Some(
+        "This plan has no enabled source and saved Key available for Worker execution",
+    ))
+}
+
+pub(super) fn worker_context_blocker(
+    harness: hiroute_domain::delegation::WorkerHarnessV1,
+    context_window: Option<u64>,
+) -> Option<&'static str> {
+    (harness == hiroute_domain::delegation::WorkerHarnessV1::ClaudeCode
+        && context_window
+            .and_then(hiroute_domain::claude_context_window)
+            .is_none())
+    .then_some("Claude Code requires a verified Plan context window of at least 100,000 tokens")
 }
 
 fn worker_availability(
@@ -214,6 +289,31 @@ mod tests {
     use super::*;
     use crate::delegation::installation::WorkerExecutorAvailabilityRegistry;
     use hiroute_domain::delegation::WorkerHarnessV1;
+
+    #[test]
+    fn claude_worker_context_boundary_does_not_restrict_other_harnesses() {
+        assert!(
+            worker_context_blocker(WorkerHarnessV1::ClaudeCode, Some(32_000))
+                .unwrap()
+                .contains("100,000")
+        );
+        assert!(worker_context_blocker(WorkerHarnessV1::ClaudeCode, None).is_some());
+        assert_eq!(
+            worker_context_blocker(WorkerHarnessV1::ClaudeCode, Some(100_000)),
+            None
+        );
+        assert_eq!(
+            worker_context_blocker(WorkerHarnessV1::ClaudeCode, Some(1_050_000)),
+            None
+        );
+        for harness in [
+            WorkerHarnessV1::CodexCli,
+            WorkerHarnessV1::Pi,
+            WorkerHarnessV1::DeepseekHarness,
+        ] {
+            assert_eq!(worker_context_blocker(harness, Some(32_000)), None);
+        }
+    }
 
     #[test]
     fn directory_availability_requires_behavior_proven_harness() {

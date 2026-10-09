@@ -92,6 +92,7 @@ fn layout_with_claude_version(root: &Path, claude_version: &str) -> AgentFilesys
         qoder_home: home.clone(),
         qoder_config_root: home.join(".qoder"),
         codex_user_config: home.join(".codex/config.toml"),
+        codex_subscription_auth_override: None,
         claude_launch_settings: None,
         claude_project_settings: vec![root.join("project/.claude/settings.json")],
         claude_user_settings: home.join(".claude/settings.json"),
@@ -1001,6 +1002,44 @@ fn codex_subscription_identity_is_stable_across_token_rotation() {
     assert_eq!(rotated.descriptor(), first.descriptor());
     assert_eq!(rotated.evidence_digest(), first.evidence_digest());
     assert_eq!(rotated.source_path(), first.source_path());
+}
+
+#[test]
+fn codex_subscription_override_does_not_rebind_native_configuration_or_fall_back() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut layout = layout(directory.path());
+    let native_config = layout.codex_user_config.clone();
+    let private_auth = native_config.parent().unwrap().join("auth.json");
+    let borrowed_auth = directory.path().join("login/auth.json");
+    // Discovery only inspects metadata. Credential parsing and the access-only
+    // lease remain CPA's responsibility, even with an explicit source.
+    write_secret_settings(&private_auth, json!({"private": "not-selected"}));
+    write_secret_settings(&borrowed_auth, json!({"borrowed": "not-read"}));
+    layout.codex_subscription_auth_override = Some(borrowed_auth.clone());
+    let scanner = FilesystemAgentScannerV1::new(layout.clone(), registry());
+    let source = scanner.codex_subscription_source().unwrap().unwrap();
+    assert_eq!(
+        source.source_path(),
+        fs::canonicalize(&borrowed_auth).unwrap()
+    );
+    assert_eq!(scanner.layout.codex_user_config, native_config);
+    let public = serde_json::to_string(source.descriptor()).unwrap();
+    assert!(!public.contains(borrowed_auth.to_str().unwrap()));
+    assert!(!public.contains("not-read"));
+    fs::remove_file(&borrowed_auth).unwrap();
+    assert!(scanner.codex_subscription_source().unwrap().is_none());
+    assert!(
+        private_auth.exists(),
+        "missing explicit source must not select private auth"
+    );
+    for invalid in ["", "relative/auth.json", "/tmp/../other/auth.json"] {
+        layout.codex_subscription_auth_override = Some(PathBuf::from(invalid));
+        assert!(
+            FilesystemAgentScannerV1::new(layout.clone(), registry())
+                .codex_subscription_source()
+                .is_err()
+        );
+    }
 }
 
 #[path = "source_candidates/tests.rs"]

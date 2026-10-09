@@ -55,7 +55,7 @@ impl WorkerPlatformPort for Arc<StartupFixture> {
                 let result = match method {
                     "initialize" => {
                         fixture.initialize.acquire().await.unwrap().forget();
-                        serde_json::json!({"protocolVersion":fixture.protocol_version,"agentCapabilities":{"loadSession":true}})
+                        serde_json::json!({"protocolVersion":fixture.protocol_version,"agentCapabilities":{"loadSession":true},"_meta":{"jetbrains":{"air":{"version":1,"capabilities":["sessionFailure"]}}}})
                     }
                     "session/new" | "session/load" => {
                         fixture.sessions.acquire().await.unwrap().forget();

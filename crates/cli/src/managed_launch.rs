@@ -349,6 +349,14 @@ mod tests {
         format!("'{}'", value.replace('\'', "'\\''"))
     }
 
+    fn trusted_helper() -> String {
+        std::fs::canonicalize(std::env::current_exe().unwrap())
+            .unwrap()
+            .into_os_string()
+            .into_string()
+            .unwrap()
+    }
+
     #[test]
     fn parser_requires_agent_context_and_delimiter_and_directs_model_settings() {
         let parsed = parse(&[
@@ -588,7 +596,7 @@ mod tests {
     #[test]
     fn configured_child_carries_routing_environment_without_empty_setting_sources() {
         let executable = std::env::current_exe().unwrap();
-        let descriptor = descriptor(executable.to_str().unwrap(), "/opt/hiroute/bin/hiroute");
+        let descriptor = descriptor(executable.to_str().unwrap(), &trusted_helper());
         let invocation = ManagedLaunchInvocation {
             connection_id: descriptor.connection_id.clone(),
             child_arguments: ["--model".into(), "opus".into()].to_vec(),
@@ -598,7 +606,7 @@ mod tests {
             &descriptor,
             &invocation.user_settings,
             &invocation.child_arguments,
-            "/opt/hiroute/bin/hiroute",
+            &trusted_helper(),
         )
         .unwrap();
         let command = process.command_mut();
@@ -686,25 +694,17 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let executable = std::env::current_exe().unwrap();
-        let descriptor = descriptor(executable.to_str().unwrap(), "/opt/hiroute/bin/hiroute");
+        let descriptor = descriptor(executable.to_str().unwrap(), &trusted_helper());
         let user_settings = serde_json::json!({
             "permissions": {"allow": ["Bash(ls)"]},
             "env": {"UNRELATED": "keep", "ANTHROPIC_API_KEY": "user-secret"},
         });
-        let mut process = ManagedClaudeProcessV1::prepare(
-            &descriptor,
-            &user_settings,
-            &[],
-            "/opt/hiroute/bin/hiroute",
-        )
-        .unwrap();
-        let mut concurrent = ManagedClaudeProcessV1::prepare(
-            &descriptor,
-            &user_settings,
-            &[],
-            "/opt/hiroute/bin/hiroute",
-        )
-        .unwrap();
+        let mut process =
+            ManagedClaudeProcessV1::prepare(&descriptor, &user_settings, &[], &trusted_helper())
+                .unwrap();
+        let mut concurrent =
+            ManagedClaudeProcessV1::prepare(&descriptor, &user_settings, &[], &trusted_helper())
+                .unwrap();
         let path = PathBuf::from(process.command_mut().get_args().nth(1).unwrap());
         let concurrent_path = PathBuf::from(concurrent.command_mut().get_args().nth(1).unwrap());
         let directory = path.parent().unwrap().to_path_buf();
@@ -731,7 +731,10 @@ mod tests {
         let overlay_json: serde_json::Value = serde_json::from_str(&contents).unwrap();
         assert_eq!(
             overlay_json["apiKeyHelper"],
-            "'/opt/hiroute/bin/hiroute' '__internal-agent-grant-v1' 'agent-connection/agent-context/claude/0011223344556677'"
+            format!(
+                "{} '__internal-agent-grant-v1' 'agent-connection/agent-context/claude/0011223344556677'",
+                shell_quote(&trusted_helper())
+            )
         );
         assert_eq!(
             overlay_json["env"]["ANTHROPIC_BASE_URL"],
@@ -770,6 +773,55 @@ mod tests {
         assert!(concurrent_path.exists());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn stable_helper_link_is_verified_and_pinned_per_launch() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let stable = directory.path().join("hiroute");
+        let helper = trusted_helper();
+        symlink(&helper, &stable).unwrap();
+        let descriptor = descriptor(&helper, stable.to_str().unwrap());
+        // The original lexical comparison rejected a valid installer-owned alias.
+        assert!(descriptor.validate_trusted_helper(&helper).is_err());
+        let mut process =
+            ManagedClaudeProcessV1::prepare(&descriptor, &serde_json::json!({}), &[], &helper)
+                .unwrap();
+        let overlay = PathBuf::from(process.command_mut().get_args().nth(1).unwrap());
+        let original = std::fs::read_to_string(&overlay).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&original).unwrap();
+        assert_eq!(
+            value["apiKeyHelper"],
+            format!(
+                "{} '__internal-agent-grant-v1' '{}'",
+                shell_quote(&helper),
+                descriptor.connection_id,
+            )
+        );
+        assert_eq!(descriptor.helper_executable, stable.to_str().unwrap());
+
+        let different_file = directory.path().join("different");
+        std::fs::write(&different_file, b"not the trusted binary").unwrap();
+        // Retargeting the stable entry must not change an already prepared launch.
+        // Different files, dangling links and directories must not prepare another.
+        for target in [
+            different_file,
+            directory.path().join("missing"),
+            directory.path().to_owned(),
+        ] {
+            std::fs::remove_file(&stable).unwrap();
+            symlink(target, &stable).unwrap();
+            assert!(
+                ManagedClaudeProcessV1::prepare(&descriptor, &serde_json::json!({}), &[], &helper,)
+                    .is_err()
+            );
+            assert_eq!(std::fs::read_to_string(&overlay).unwrap(), original);
+        }
+        drop(process);
+        assert!(!overlay.exists());
+    }
+
     /// Signal handling is process-global, so the tests that install forwarding handlers or
     /// raise process-level signals must never run concurrently with each other.
     static SIGNAL_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -801,7 +853,7 @@ mod tests {
             .into_os_string()
             .into_string()
             .unwrap();
-        let descriptor = descriptor(&executable, "/opt/hiroute/bin/hiroute");
+        let descriptor = descriptor(&executable, &trusted_helper());
         let invocation = ManagedLaunchInvocation {
             connection_id: descriptor.connection_id.clone(),
             child_arguments: ["--print".into(), "$(must-not-run)".into()].to_vec(),
@@ -809,7 +861,7 @@ mod tests {
         };
 
         assert_eq!(
-            launch(&descriptor, &invocation, "/opt/hiroute/bin/hiroute").unwrap(),
+            launch(&descriptor, &invocation, &trusted_helper()).unwrap(),
             23
         );
         assert_eq!(
@@ -852,14 +904,14 @@ mod tests {
             .into_os_string()
             .into_string()
             .unwrap();
-        let descriptor = descriptor(&executable, "/opt/hiroute/bin/hiroute");
+        let descriptor = descriptor(&executable, &trusted_helper());
         let invocation = ManagedLaunchInvocation {
             connection_id: descriptor.connection_id.clone(),
             child_arguments: Vec::new(),
             user_settings: serde_json::json!({}),
         };
         assert_eq!(
-            launch(&descriptor, &invocation, "/opt/hiroute/bin/hiroute").unwrap(),
+            launch(&descriptor, &invocation, &trusted_helper()).unwrap(),
             128 + 15
         );
     }
@@ -921,7 +973,7 @@ mod tests {
             .into_os_string()
             .into_string()
             .unwrap();
-        let descriptor = descriptor(&executable, "/opt/hiroute/bin/hiroute");
+        let descriptor = descriptor(&executable, &trusted_helper());
         let invocation = ManagedLaunchInvocation {
             connection_id: descriptor.connection_id.clone(),
             child_arguments: Vec::new(),
@@ -942,7 +994,7 @@ mod tests {
             nix::sys::signal::kill(nix::unistd::Pid::from_raw(target), signal).unwrap();
         });
         assert_eq!(
-            launch(&descriptor, &invocation, "/opt/hiroute/bin/hiroute").unwrap(),
+            launch(&descriptor, &invocation, &trusted_helper()).unwrap(),
             7
         );
         signaller.join().unwrap();

@@ -141,7 +141,7 @@ fn validate_selection_for(
                 .ok_or(DelegationErrorV1::DependenciesInvalid)?,
             capability,
         )
-        .map_err(|_| DelegationErrorV1::DependenciesInvalid)?;
+        .map_err(DelegationErrorV1::DependencyCheckFailed)?;
     }
     Ok(WorkerDependenciesSelectRequestV1 {
         harness: request.harness,
@@ -448,21 +448,22 @@ impl HarnessScan {
                 true,
             );
         }
-        let Some(adapter) = adapter else {
-            return;
-        };
-        self.add_discovered(
-            WorkerDependencyComponentV1::Adapter,
-            &directory.join(adapter),
-            source,
-            false,
-        );
-        self.add_discovered(
-            WorkerDependencyComponentV1::Node,
-            &directory.join("node"),
-            source,
-            true,
-        );
+        if let Some(adapter) = adapter {
+            self.add_discovered(
+                WorkerDependencyComponentV1::Adapter,
+                &directory.join(adapter),
+                source,
+                false,
+            );
+        }
+        if adapter.is_some() || self.harness == WorkerHarnessV1::Pi {
+            self.add_discovered(
+                WorkerDependencyComponentV1::Node,
+                &directory.join("node"),
+                source,
+                true,
+            );
+        }
     }
 
     fn add_npm_package(&mut self, prefix: &Path, source: WorkerDependencyCandidateSourceV1) {

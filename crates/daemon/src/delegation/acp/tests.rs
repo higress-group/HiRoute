@@ -76,6 +76,22 @@ async fn fixture(
 }
 
 #[tokio::test]
+async fn codex_without_terminal_failure_capability_stops_before_session_or_prompt() {
+    let (client, server) = tokio::io::duplex(16_384);
+    let server = tokio::spawn(fixture(server, true, false));
+    let (read, write) = tokio::io::split(client);
+    let journal = Arc::new(Journal::default());
+    let mut request = input();
+    request.identity_contract = AcpNativeIdentityContract::CodexThreadV1;
+    assert!(matches!(
+        run_acp(read, write, request, journal.clone()).await,
+        Err(DelegationErrorV1::CapabilityUnavailable)
+    ));
+    assert!(journal.0.lock().unwrap().is_empty());
+    assert_eq!(server.await.unwrap(), ["initialize"]);
+}
+
+#[tokio::test]
 async fn terminal_session_failure_metadata_fails_the_prompt() {
     let (client, server) = tokio::io::duplex(16_384);
     let server = tokio::spawn(async move {

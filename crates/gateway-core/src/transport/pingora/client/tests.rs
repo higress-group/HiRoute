@@ -356,6 +356,102 @@ async fn same_selected_socket_reuses_a_real_h1_connection_after_dns_answer_chang
 }
 
 #[tokio::test]
+async fn accepted_early_terminal_drains_queued_eos_and_reuses_the_real_upstream_socket() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        // Every request must arrive on this single accepted connection.
+        let (mut socket, _) = listener.accept().await.unwrap();
+        for _ in 0..16 {
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                socket.read_exact(&mut byte).await.unwrap();
+                head.push(byte[0]);
+                assert!(head.len() < 8192);
+            }
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok",
+                )
+                .await
+                .unwrap();
+        }
+    });
+    let target = plain_target(address, 46);
+    let mut client =
+        PingoraClientSession::new(Arc::new(PingoraConnectorRegistry::default()), [0; 32]);
+    let mut headers = http::HeaderMap::new();
+    headers.insert("Host", "provider.test".parse().unwrap());
+    let head = PreparedRequestHead {
+        method: http::Method::GET,
+        path_and_query: "/".into(),
+        headers,
+    };
+    for index in 0..16 {
+        client.connect(&target, address).await.unwrap();
+        assert_eq!(
+            client.reused(),
+            index != 0,
+            "request {index} lost the upstream pool entry"
+        );
+        client.write_request_head(&head).await.unwrap();
+        client.finish_request_body().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let event = std::future::poll_fn(|cx| client.poll_precommit(cx))
+                    .await
+                    .unwrap();
+                if matches!(event, Some(TransportPrecommitEvent::Body(_))) {
+                    break;
+                }
+            }
+            // Model protocol completion has been consumed, but transport EOS has not.
+            // Make both JoinHandle and its final mailbox receipt ready before cleanup.
+            while !client
+                .connected
+                .as_ref()
+                .unwrap()
+                .reader
+                .as_ref()
+                .unwrap()
+                .task
+                .task
+                .as_ref()
+                .unwrap()
+                .is_finished()
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!client.response_eos_emitted);
+        assert_eq!(
+            client
+                .connected
+                .as_ref()
+                .unwrap()
+                .reader
+                .as_ref()
+                .unwrap()
+                .events
+                .len(),
+            1
+        );
+        client.finish_accepted(true).await.unwrap();
+        assert!(
+            client.response_eos_emitted,
+            "completed reader lost queued EOS"
+        );
+    }
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
 async fn unresolved_authority_never_reaches_the_native_connector() {
     let provider = std::net::TcpListener::bind("127.0.0.1:0").expect("provider sentinel");
     provider

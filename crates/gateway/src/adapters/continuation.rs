@@ -220,9 +220,12 @@ impl AcceptedResponseDeliveryScanner {
 mod tests {
     use super::*;
     use crate::server::core_runtime::adapters::{
-        NativeResponseDecoder, decode_ingress_request, project_candidate_request,
+        ClientResponseRenderer, NativeResponseDecoder, RenderedClientResponse,
+        decode_ingress_request, project_candidate_request,
     };
-    use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
+    use crate::server::core_runtime::profiles::{
+        CandidateProtocolProfile, ClientProtocolProfile, fixed_reasoning,
+    };
     use serde_json::json;
 
     #[tokio::test]
@@ -360,7 +363,7 @@ mod tests {
             "index":0,"message":{"role":"assistant","content":null,"tool_calls":[{
                 "id":id,"type":"function","function":{"name":"lookup","arguments":"{}"}
             }]},"finish_reason":"tool_calls"
-        }]});
+        }],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}});
         let mut decoder = NativeResponseDecoder::new(&profile, 200, false).unwrap();
         decoder
             .feed(&serde_json::to_vec(&body).unwrap(), true)
@@ -368,15 +371,75 @@ mod tests {
         let response = decoder.finish().unwrap();
         let wire_id = &response.response.tool_id_map[0].logical_id;
         assert_eq!(wire_id, &"native".repeat(20));
-        let request = decode_ingress_request(IngressProtocol::Responses, &json!({"model":"alias",
-            "tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],
-            "input":[{"type":"function_call","call_id":wire_id,"name":"lookup","arguments":"{}"},
-                     {"type":"function_call_output","call_id":wire_id,"output":"done"}]
-        })).unwrap();
+        let client = ClientProtocolProfile::for_candidate(&profile).unwrap();
+        let RenderedClientResponse::Json { body, .. } =
+            ClientResponseRenderer::render_nonstream_with_profile(
+                &client,
+                "alias",
+                &response.response,
+            )
+            .unwrap()
+        else {
+            panic!("expected nonstream response");
+        };
+        let returned_call = &body["output"][0];
+        assert!(returned_call["id"].is_string());
+        assert_eq!(returned_call["status"], "completed");
+        let request = decode_ingress_request(
+            IngressProtocol::Responses,
+            &json!({"model":"alias",
+                "tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],
+                "input":[returned_call,
+                         {"type":"function_call_output","call_id":wire_id,"output":"done"}]
+            }),
+        )
+        .unwrap();
         let wire = project_candidate_request(&request, &profile).unwrap().body;
         assert_eq!(wire["messages"][0]["tool_calls"][0]["id"], *wire_id);
         assert_eq!(wire["messages"][1]["tool_call_id"], *wire_id);
     }
+    #[test]
+    fn completed_response_envelopes_are_portable_but_native_metadata_is_not() {
+        let completed = json!({"model":"alias",
+            "tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],
+            "input":[
+            {"type":"message","role":"assistant","id":"msg_1","status":"completed",
+             "content":[{"type":"output_text","text":"using a tool","annotations":[]}]},
+            {"type":"function_call","id":"fc_1","status":"completed",
+             "call_id":"call_1","name":"lookup","arguments":"{}"},
+            {"type":"function_call_output","call_id":"call_1","output":"done"}
+        ]});
+        for target in [IngressProtocol::ChatCompletions, IngressProtocol::Messages] {
+            let profile = CandidateProtocolProfile::exact_portable_path(
+                IngressProtocol::Responses,
+                target,
+                "candidate",
+                fixed_reasoning("fixed"),
+            );
+            let request = decode_ingress_request(IngressProtocol::Responses, &completed).unwrap();
+            project_candidate_request(&request, &profile).unwrap();
+            for status in ["in_progress", "incomplete", "provider-private"] {
+                let mut unfinished = completed.clone();
+                unfinished["input"][1]["status"] = json!(status);
+                let request =
+                    decode_ingress_request(IngressProtocol::Responses, &unfinished).unwrap();
+                assert!(
+                    project_candidate_request(&request, &profile).is_err(),
+                    "{status}"
+                );
+            }
+            let mut phased = completed.clone();
+            phased["input"][0]["phase"] = json!("analysis");
+            let request = decode_ingress_request(IngressProtocol::Responses, &phased).unwrap();
+            assert!(project_candidate_request(&request, &profile).is_err());
+            let mut instruction = completed.clone();
+            instruction["input"][0] = json!({"type":"message","role":"system","id":"sys_1",
+                "status":"completed","content":"native instruction identity"});
+            let request = decode_ingress_request(IngressProtocol::Responses, &instruction).unwrap();
+            assert!(project_candidate_request(&request, &profile).is_err());
+        }
+    }
+
     #[test]
     fn native_id_and_stateless_cross_protocol_adaptation() {
         use IngressProtocol::*;

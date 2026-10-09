@@ -21,6 +21,29 @@ mod ephemeral;
 mod http;
 const CONTRACT: &str = "hiroute.codex-native-responses/v1";
 
+/// Preserve installation discovery's absolute executable search paths for npm wrappers.
+/// Authentication and routing environment are still cleared, and relative project paths
+/// never enter the isolated probe workspace.
+pub(super) fn native_probe_path() -> std::ffi::OsString {
+    probe_path(std::env::var_os("PATH").as_deref())
+}
+
+fn probe_path(path: Option<&std::ffi::OsStr>) -> std::ffi::OsString {
+    let mut directories = path
+        .map(std::env::split_paths)
+        .into_iter()
+        .flatten()
+        .filter(|path| path.is_absolute())
+        .collect::<Vec<_>>();
+    for system in ["/usr/bin", "/bin"] {
+        let system = std::path::PathBuf::from(system);
+        if !directories.contains(&system) {
+            directories.push(system);
+        }
+    }
+    std::env::join_paths(directories).expect("split absolute Unix paths remain joinable")
+}
+
 #[derive(Clone, Copy, Debug, thiserror::Error)]
 #[error("native ingress probe could not establish {0}")]
 pub struct NativeIngressProbeError(&'static str);
@@ -145,7 +168,7 @@ impl CodexNativeIngressProbe {
             .env("HOME", home)
             .env("CODEX_HOME", &config_root)
             .env("TMPDIR", workspace)
-            .env("PATH", "/usr/bin:/bin")
+            .env("PATH", native_probe_path())
             .current_dir(workspace)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -358,6 +381,39 @@ pub(super) fn cache_error() -> NativeIngressProbeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn isolated_native_probe_keeps_the_selected_npm_runtime_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let node = root.path().join("node");
+        fs::write(&node, "#!/bin/sh\necho selected-runtime\n").unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o700)).unwrap();
+        let wrapper = root.path().join("codex");
+        fs::write(&wrapper, "#!/usr/bin/env node\nfixture wrapper body\n").unwrap();
+        fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
+        let supplied = std::env::join_paths([
+            std::path::Path::new("."),
+            root.path(),
+            std::path::Path::new("relative/bin"),
+        ])
+        .unwrap();
+        let selected_path = probe_path(Some(&supplied));
+        assert!(std::env::split_paths(&selected_path).all(|path| path.is_absolute()));
+        let output = Command::new(wrapper)
+            .env_clear()
+            .env("PATH", selected_path)
+            .current_dir(root.path())
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .starts_with("selected-runtime")
+        );
+        assert_eq!(probe_path(None), std::ffi::OsString::from("/usr/bin:/bin"));
+    }
     use hiroute_domain::{ConnectorRegistryBundleV1, ReleaseModelDataBundleV2};
     use std::os::unix::fs::PermissionsExt;
     #[test]

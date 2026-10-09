@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:abc35e142a0e31f2529450a545a6b9c6d57575d0212e844609cff5216623337b",
+  "descriptor_digest": "sha256:8c90ff220c2fbcef60423bc358642fbd743a1f8270ce92ca7bf59b276e5f560f",
   "visibility": "planned",
   "commands": [
     {
@@ -1897,13 +1897,13 @@
       "stdin_channels": [],
       "idempotency": "not_applicable",
       "help": {
-        "purpose": "Read configured Codex and Claude launch availability without requiring a Plan or Agent allowlist.",
+        "purpose": "Read configured Codex, Claude Code, Qoder, Pi, and DeepSeek Harness launch availability without requiring a Plan or Agent allowlist.",
         "usage": "hiroute worker executors [--output <json|text|quiet>]",
         "arguments_and_options": "No Agent, Plan, allowlist, capability FD, or request body is accepted. The query checks configured entry metadata and executability, not program contents or compatibility. Ready allows a launch attempt; it does not prove optional capabilities, install, configure, authorize, or admit a run.",
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Ready permits a managed launch attempt, not a promise of execution or authorization. Optional capabilities remain unknown until the actual ACP handshake; start, load and cancel report real outcomes.",
-        "output": "Default text renders overall and scoped states for Codex then Claude. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints the two stable Harness names.",
+        "output": "Default text renders overall and scoped states for all five supported Harnesses. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints their stable wire names.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "hiroute worker executors --output json"
@@ -1944,12 +1944,12 @@
       "idempotency": "not_applicable",
       "help": {
         "purpose": "Discover and validate local Worker CLI, adapter, and Node candidates.",
-        "usage": "hiroute worker dependencies discover [--harness <codex_cli|claude_code>] [--output <json|text|quiet>]",
+        "usage": "hiroute worker dependencies discover [--harness <codex_cli|claude_code|qoder_cli|pi|deepseek_harness>] [--output <json|text|quiet>]",
         "arguments_and_options": "Optionally restrict discovery to one Harness. The query checks the selected path, PATH, common locations, npm globals and npx cache without installing or selecting anything.",
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Automation must use --output json. For the chosen Harness, select only found candidates and copy that Harness's selection_revisions revision into expected_selection_revision; discovery never installs or selects anything.",
-        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli or claude_code), one per line, and is empty when nothing is selected.",
+        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), one per line, and is empty when nothing is selected.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "hiroute worker dependencies discover --harness codex_cli --output json"
@@ -1993,11 +1993,11 @@
       "help": {
         "purpose": "Select one validated Worker dependency tuple through same-UID local management.",
         "usage": "hiroute worker dependencies select --request-stdin [--output <json|text|quiet>]",
-        "arguments_and_options": "Same-UID local management only. --request-stdin reads one strict JSON object with harness (codex_cli or claude_code), absolute adapter_path and cli_path, optional absolute node_path, and expected_selection_revision copied from the matching selection_revisions entry returned by worker dependencies discover --output json. All paths and the revision are validated again before an atomic selection update; the command never installs software or accepts an Apply capability.",
+        "arguments_and_options": "Same-UID local management only. --request-stdin reads one strict JSON object with harness (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), absolute cli_path, and expected_selection_revision copied from the matching selection_revisions entry returned by worker dependencies discover --output json. codex_cli and claude_code require absolute adapter_path and accept optional absolute node_path. pi requires absolute node_path and forbids adapter_path. qoder_cli and deepseek_harness accept only cli_path and forbid adapter_path and node_path. All paths and the revision are validated again before an atomic selection update; the command never installs software or accepts an Apply capability.",
         "effects": "Application-owned journaled operation after exact spec, digest, selection-revision CAS, and idempotency checks on owner-only Local Control.",
         "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
         "automation": "Preserve the submitted JSON document. If delivery may have succeeded but no response was received, replay that same document unchanged; its deterministic request identity returns the existing Operation instead of applying twice. Do not substitute paths or a newer revision until the server reports a conflict and discovery is run again.",
-        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli or claude_code), one per line, and is empty when nothing is selected.",
+        "output": "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), one per line, and is empty when nothing is selected.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
         "examples": [
           "printf '%s\\n' '{\"harness\":\"codex_cli\",\"adapter_path\":\"/ABSOLUTE/PATH/TO/codex-acp\",\"cli_path\":\"/ABSOLUTE/PATH/TO/codex\",\"node_path\":\"/ABSOLUTE/PATH/TO/node\",\"expected_selection_revision\":0}' | hiroute worker dependencies select --request-stdin --output json"
@@ -2424,6 +2424,52 @@
       },
       "negative": {
         "scenario_id": "p0.worker.cancel.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "worker.cleanup.confirm",
+      "path": [
+        "worker",
+        "cleanup",
+        "confirm"
+      ],
+      "operation_id": "WorkerConfirmResidual",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "action",
+      "request_schema": "hiroute.worker-residual-confirm-request/v1",
+      "response_schema": "hiroute.worker-command-data/v1",
+      "effect": "typed_action",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "required",
+      "help": {
+        "purpose": "Confirm user-handled residual resources for one exact terminal run without changing its result.",
+        "usage": "hiroute worker cleanup confirm --run <ID> --expected-revision <REVISION> --handled [--idempotency-key <KEY>]",
+        "arguments_and_options": "Use only after the user handles remaining processes/resources. Requires the observed revision and explicit --handled; known-live or stale runs are rejected. Exact retries reuse the idempotency key. Only the local occupied slot is released; task result and file changes remain.",
+        "effects": "Application-owned typed operation; side effects are recorded by the Operation and external ledgers.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable submission keys and task/run locators. A bounded wait timing out is pending, never cancellation; query status or wait again, and read result only when available.",
+        "output": "Default text renders the response for people. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints only a completed result and sends pending locators to stderr.",
+        "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
+        "examples": [
+          "hiroute worker cleanup confirm --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id worker.cleanup.confirm"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.worker.cleanup.confirm.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.worker.cleanup.confirm.negative",
         "polarity": "negative",
         "state": "executable"
       }
@@ -3995,8 +4041,8 @@
       "scope": "p0",
       "lifecycle": "released",
       "kind": "query",
-      "request_schema": "hiroute.value-query/v1",
-      "response_schema": "hiroute.value-view/v1",
+      "request_schema": "hiroute.observation.query/v2",
+      "response_schema": "hiroute.observation.value-report/v2",
       "effect": "none",
       "network": "local_control_only",
       "model_call": "never",
@@ -4006,9 +4052,9 @@
       ],
       "idempotency": "not_applicable",
       "help": {
-        "purpose": "Read immutable token, cache, cost, baseline, and savings facts.",
+        "purpose": "Read recorded token, cache and valuation totals with coverage.",
         "usage": "hiroute value show ([OPTIONS] | --request-stdin) [--capability-fd <FD>] --non-interactive --output json",
-        "arguments_and_options": "Human options retain the v1 value query. Alternatively, --request-stdin accepts only a strict v2 value or home_value intent. Same-UID reads return recorded known and unknown amounts without computing or filling missing values.",
+        "arguments_and_options": "Human options use the current v2 value_report intent; defaults are the last seven days and separate totals for every currency. --group-by day returns UTC day buckets from the same snapshot. --request-stdin accepts strict v2 value, home_value or value_report intents. Same-UID reads retain known/unknown usage, amounts and coverage; missing values are never filled with zero.",
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",

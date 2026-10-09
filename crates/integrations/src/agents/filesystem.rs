@@ -135,6 +135,8 @@ pub struct AgentFilesystemLayoutV1 {
     pub qoder_home: PathBuf,
     pub qoder_config_root: PathBuf,
     pub codex_user_config: PathBuf,
+    /// Subscription discovery only; never changes native settings or Worker history.
+    pub codex_subscription_auth_override: Option<PathBuf>,
     pub claude_launch_settings: Option<PathBuf>,
     pub claude_project_settings: Vec<PathBuf>,
     pub claude_user_settings: PathBuf,
@@ -191,6 +193,8 @@ impl AgentFilesystemLayoutV1 {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".qoder")),
             codex_user_config: codex_config_path(home, std::env::var_os("CODEX_HOME").as_deref()),
+            codex_subscription_auth_override: std::env::var_os("HIROUTE_CODEX_AUTH_SOURCE")
+                .map(PathBuf::from),
             claude_launch_settings: None,
             claude_project_settings: vec![
                 project.join(".claude/settings.local.json"),
@@ -856,6 +860,9 @@ impl FilesystemAgentScannerV1 {
             self.layout
                 .claude_project_settings
                 .iter()
+                // Launching from HOME makes .claude/settings.json the user settings file,
+                // not an independent project override of the fields we just installed.
+                .filter(|path| !same_claude_settings_file(path, &self.layout.claude_user_settings))
                 .cloned()
                 .map(|path| ClaudeSource::File(ConfigLayerV1::Project, path)),
         );
@@ -872,6 +879,11 @@ impl FilesystemAgentScannerV1 {
         );
         sources
     }
+}
+
+fn same_claude_settings_file(left: &Path, right: &Path) -> bool {
+    left == right
+        || matches!((left.canonicalize(), right.canonicalize()), (Ok(left), Ok(right)) if left == right)
 }
 
 fn discovered_credential(source: &ObservedClaudeSettings) -> DiscoveredCredentialRefV1 {
@@ -1069,7 +1081,7 @@ fn probe_report(
     report_only_agent(agent_id, kind, String::new(), reason)
 }
 
-fn codex_config_path(home: &Path, configured: Option<&std::ffi::OsStr>) -> PathBuf {
+pub(super) fn codex_config_path(home: &Path, configured: Option<&std::ffi::OsStr>) -> PathBuf {
     configured
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)

@@ -1,6 +1,79 @@
 use super::*;
 
 #[test]
+fn claude_home_launch_does_not_treat_owned_user_settings_as_project_override() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut layout = layout(directory.path());
+    let distinct_project = layout.claude_project_settings[0].clone();
+    layout
+        .claude_project_settings
+        .push(layout.claude_user_settings.clone());
+    write_secret_settings(
+        &layout.claude_user_settings,
+        json!({
+            "apiKeyHelper": "hiroute agent grant",
+            "env": {
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:43210/v1",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "hiroute-route",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "hiroute-route",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "hiroute-route",
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "272000"
+            }
+        }),
+    );
+    let scanner = FilesystemAgentScannerV1::new(layout.clone(), registry());
+    assert!(!scanner.claude_context_override().unwrap());
+    assert!(!scanner.claude_native_routing_conflict().unwrap());
+    let observations = scanner.claude_observations().unwrap();
+    assert_eq!(
+        observations
+            .iter()
+            .filter(|value| value.settings.api_key_helper_present)
+            .count(),
+        1
+    );
+    assert_eq!(
+        observations
+            .iter()
+            .find(|value| value.settings.api_key_helper_present)
+            .unwrap()
+            .layer,
+        ConfigLayerV1::User
+    );
+
+    // A separate project setting still has higher precedence and must block user-file routing.
+    write_secret_settings(
+        &distinct_project,
+        json!({"env": {
+            "ANTHROPIC_BASE_URL": "https://different.example.invalid",
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "100000"
+        }}),
+    );
+    assert!(scanner.claude_context_override().unwrap());
+    assert!(scanner.claude_native_routing_conflict().unwrap());
+}
+
+#[test]
+#[cfg(unix)]
+fn claude_project_symlink_to_user_settings_is_not_a_second_configuration_layer() {
+    let directory = tempfile::tempdir().unwrap();
+    let layout = layout(directory.path());
+    write_secret_settings(
+        &layout.claude_user_settings,
+        json!({"env": {
+            "ANTHROPIC_BASE_URL": "http://127.0.0.1:43210/v1",
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "272000"
+        }}),
+    );
+    let project = &layout.claude_project_settings[0];
+    fs::create_dir_all(project.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&layout.claude_user_settings, project).unwrap();
+    let scanner = FilesystemAgentScannerV1::new(layout, registry());
+    assert!(!scanner.claude_context_override().unwrap());
+    assert!(!scanner.claude_native_routing_conflict().unwrap());
+}
+
+#[test]
 fn claude_settings_discovery_does_not_gate_save_on_version_probe() {
     let directory = tempfile::tempdir().unwrap();
     let layout = layout(directory.path());

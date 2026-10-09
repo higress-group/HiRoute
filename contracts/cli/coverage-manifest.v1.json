@@ -715,6 +715,20 @@
       }
     },
     {
+      "command_id": "worker.cleanup.confirm",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.worker.cleanup.confirm.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.worker.cleanup.confirm.positive",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "tasks.list",
       "lifecycle": "planned",
       "negative": {
@@ -1191,7 +1205,7 @@
       }
     }
   ],
-  "descriptor_digest": "sha256:abc35e142a0e31f2529450a545a6b9c6d57575d0212e844609cff5216623337b",
+  "descriptor_digest": "sha256:8c90ff220c2fbcef60423bc358642fbd743a1f8270ce92ca7bf59b276e5f560f",
   "schema_version": {
     "major": 1,
     "minor": 0

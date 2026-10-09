@@ -157,12 +157,36 @@ impl ManagedClaudeProcessV1 {
         trusted_hiroute_executable: &str,
     ) -> Result<Self, ManagedClaudeProcessError> {
         descriptor
-            .validate_trusted_helper(trusted_hiroute_executable)
+            .validate()
             .map_err(|_| ManagedClaudeProcessError::Unavailable)?;
-        verify_claude_executable(descriptor)?;
-        let overlay = TemporaryLaunchOverlay::create(descriptor, user_settings)?;
+        if !Path::new(trusted_hiroute_executable).is_absolute() {
+            return Err(ManagedClaudeProcessError::Unavailable);
+        }
+        let trusted = std::fs::canonicalize(trusted_hiroute_executable)
+            .map_err(|_| ManagedClaudeProcessError::Unavailable)?;
+        let helper = std::fs::canonicalize(&descriptor.helper_executable)
+            .map_err(|_| ManagedClaudeProcessError::Unavailable)?;
+        if !helper.is_file() {
+            return Err(ManagedClaudeProcessError::Unavailable);
+        }
+        // The persisted descriptor may name the installer-owned stable symlink.
+        // Validate its target and pin this launch's overlay to that resolved file.
+        let mut descriptor = descriptor.clone();
+        descriptor.helper_executable = helper
+            .to_str()
+            .ok_or(ManagedClaudeProcessError::Unavailable)?
+            .to_owned();
+        descriptor
+            .validate_trusted_helper(
+                trusted
+                    .to_str()
+                    .ok_or(ManagedClaudeProcessError::Unavailable)?,
+            )
+            .map_err(|_| ManagedClaudeProcessError::Unavailable)?;
+        verify_claude_executable(&descriptor)?;
+        let overlay = TemporaryLaunchOverlay::create(&descriptor, user_settings)?;
         let mut command = Command::new(&descriptor.executable);
-        configure_command(&mut command, descriptor, overlay.path(), child_arguments);
+        configure_command(&mut command, &descriptor, overlay.path(), child_arguments);
         Ok(Self {
             command,
             _overlay: overlay,

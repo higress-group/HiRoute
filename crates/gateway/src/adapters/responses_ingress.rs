@@ -122,6 +122,7 @@ pub(super) fn decode_responses_input(
                     "name",
                     "input",
                     "id",
+                    "status",
                     "internal_chat_message_metadata_passthrough",
                 ],
                 "responses custom_tool_call",

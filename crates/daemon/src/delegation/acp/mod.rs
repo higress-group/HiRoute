@@ -227,6 +227,11 @@ async fn run_session(
     if initialized.protocol_version != ProtocolVersion::V1 {
         return Err(DelegationErrorV1::CapabilityUnavailable);
     }
+    if input.identity_contract == AcpNativeIdentityContract::CodexThreadV1
+        && !advertises_session_failure(initialized.meta.as_ref())
+    {
+        return Err(DelegationErrorV1::CapabilityUnavailable);
+    }
     journal.initialized();
     if let Some(authentication) = input.authentication {
         let request: AuthenticateRequest = serde_json::from_value(authentication)
@@ -430,6 +435,26 @@ async fn run_session(
         text: std::mem::take(&mut state.text),
         content_incomplete: state.incomplete,
     })
+}
+
+fn advertises_session_failure(meta: Option<&Map<String, Value>>) -> bool {
+    let Some(air) = meta
+        .and_then(|meta| meta.get("jetbrains"))
+        .and_then(|value| value.get("air"))
+    else {
+        return false;
+    };
+    air.get("version")
+        .and_then(Value::as_u64)
+        .is_some_and(|version| version >= 1)
+        && air
+            .get("capabilities")
+            .and_then(Value::as_array)
+            .is_some_and(|capabilities| {
+                capabilities
+                    .iter()
+                    .any(|value| value.as_str() == Some("sessionFailure"))
+            })
 }
 
 fn initialize_request() -> Result<InitializeRequest, DelegationErrorV1> {

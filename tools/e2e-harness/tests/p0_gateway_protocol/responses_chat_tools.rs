@@ -195,7 +195,7 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
     let second = request(
         address,
         "responses-chat-tools-token",
-        &codex_tool_results_request(&function_logical_id, &custom_logical_id),
+        &codex_tool_results_request(function_item, custom_item),
     );
     assert_eq!(
         second.status,
@@ -480,16 +480,16 @@ fn codex_tools_request(stream: bool) -> Value {
     })
 }
 
-fn codex_tool_results_request(function_id: &str, custom_id: &str) -> Value {
+fn codex_tool_results_request(function_item: &Value, custom_item: &Value) -> Value {
     json!({
         "model":"responses-chat-tools",
         "stream":false,
         "input":[
             {"type":"message","role":"user","content":[{"type":"input_text","text":"continue the tool roundtrip"}]},
-            {"type":"function_call","call_id":function_id,"namespace":"records","name":"lookup","arguments":"{\"key\":\"lookup-input-secret-121\"}"},
-            {"type":"custom_tool_call","call_id":custom_id,"name":"shell","input":"custom-input-secret-121"},
-            {"type":"function_call_output","call_id":function_id,"output":"lookup-result-secret-121"},
-            {"type":"custom_tool_call_output","call_id":custom_id,"output":"custom-result-secret-121"},
+            function_item,
+            custom_item,
+            {"type":"function_call_output","call_id":function_item["call_id"],"output":"lookup-result-secret-121"},
+            {"type":"custom_tool_call_output","call_id":custom_item["call_id"],"output":"custom-result-secret-121"},
             {"type":"additional_tools","tools":[
                 {"type":"custom","name":"shell","description":"execute freeform input"}
             ]}

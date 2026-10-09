@@ -370,6 +370,10 @@ pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
             })),
         ),
         (
+            "worker-residual-confirm-request.v1.schema.json",
+            pretty_json(&worker::residual_confirm()),
+        ),
+        (
             "worker-cancel-request.v1.schema.json",
             pretty_json(&worker::cancel()),
         ),
@@ -556,6 +560,7 @@ mod tests {
                 "worker-list-request.v1.schema.json",
                 "worker-plans-request.v1.schema.json",
                 "worker-read-request.v1.schema.json",
+                "worker-residual-confirm-request.v1.schema.json",
                 "worker-result-request.v1.schema.json",
                 "worker-status-request.v1.schema.json",
                 "worker-wait-request.v1.schema.json",

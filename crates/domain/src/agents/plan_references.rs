@@ -11,7 +11,7 @@ pub enum AgentPlanReferenceSubject {
         agent_id: String,
         profile_id: String,
     },
-    CollaborationContext {
+    ModelContext {
         context_id: String,
     },
 }
@@ -21,14 +21,13 @@ pub enum AgentPlanReferenceSubject {
 pub enum AgentPlanReferenceKind {
     DefaultModel,
     ModelAllowed,
-    CollaborationAllowed,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 pub struct AgentPlanReference {
     pub subject: AgentPlanReferenceSubject,
     pub kind: AgentPlanReferenceKind,
-    /// Model connection revision or collaboration grant generation, according to subject.
+    /// Model connection revision or the settings operation's installed publication revision.
     pub revision: u64,
 }
 

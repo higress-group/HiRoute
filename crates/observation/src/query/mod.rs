@@ -62,6 +62,17 @@ impl ObservationQueryPort for LocalObservationStore {
         self.apply_session_deletion_v2(principal, preview, accepted, now_ms)
     }
 
+    fn observed_value_report(
+        &self,
+        reader: &hiroute_domain::ObservationReaderContext,
+        query: &hiroute_domain::ObservationValueQueryV2,
+        group_by: hiroute_domain::ValueGroupByV1,
+        now_ms: i64,
+    ) -> Result<hiroute_domain::ObservationValueReportV2, ObservationQueryError> {
+        self.observed_value_report(reader, query, group_by, now_ms)
+            .map_err(crate::query_v2::ObservationV2Error::into_domain)
+    }
+
     fn observed_value_totals(
         &self,
         reader: &hiroute_domain::ObservationReaderContext,

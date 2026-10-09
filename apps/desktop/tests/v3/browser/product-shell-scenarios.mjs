@@ -38,6 +38,43 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  scenario('desktop.models.tool-check-selection', ['model-connections'], 'A tool check retains the chosen model with its fresh reference without selecting new inventory', async () => {
+    await fresh(); await click('模型'); await click('添加模型');
+    await until(() => all('button').some(item => item.textContent.includes('添加 API')), 'add API entry');
+    all('button').find(item => item.textContent.includes('添加 API')).click();
+    await until(() => document.querySelector('[role="dialog"] input[type="password"]'), 'API key input');
+    setInput(document.querySelector('[role="dialog"] input[type="password"]'), 'synthetic-tool-check-input');
+    c().handlers.check_registered_model_connection = payload => {
+      const result = c().fixtureResponse('check_registered_model_connection', payload);
+      if (payload.request.inference_model_id) {
+        result.inference = 'verified';
+        result.candidate.models = result.candidate.models.map(model => ({ ...model, model_ref: `${model.model_ref}/checked` }));
+      }
+      return result;
+    };
+    await click('检查接入');
+    await until(() => all('.model-result-row input[type="checkbox"]').length === 2, 'inventory');
+    assert(all('.model-result-row input:checked').length === 0, 'Inventory selected models without consent');
+    all('.model-result-row input[type="checkbox"]')[0].click(); await pause(40);
+    await click('验证工具调用（仅所选模型，可能计费）');
+    await until(() => calls('check_registered_model_connection').length === 2 && button('保存接入'), 'tool check completed');
+    assert(all('.model-result-row input:checked').length === 1, 'Tool check lost the explicit model selection');
+    assert(!button('保存接入').disabled, 'Successful tool check disabled save');
+    await click('保存接入');
+    await until(() => calls('preview_compute_save').length === 1, 'save preview');
+    const preview = JSON.stringify(calls('preview_compute_save')[0].payload);
+    assert(preview.includes('model-ref/qwen3-coder-plus/checked') && !preview.includes('model-ref/qwen3-max/checked'), 'Save did not use only the selected fresh model reference');
+  }),
+  scenario('desktop.routing.disabled-header', ['routing-editor'], 'A stopped route stays visibly disabled while its editor has unsaved changes', async () => {
+    await fresh(() => {
+      c().desktop.catalog.plans[0].head.status = 'disabled';
+    });
+    await routing();
+    const header = () => document.querySelector('.plan-editor .editor-header').textContent;
+    assert(header().includes('已停用') && !header().includes('已启用'), 'Stopped route is labelled active');
+    setInput(document.querySelector('.plan-identity-fields input'), 'Stopped route edit'); await pause(40);
+    assert(header().includes('已停用') && header().includes('有未发布更改'), 'Editing hid the stopped call state');
+  }),
   scenario('desktop.quality.evidence-return', ['routing-editor', 'sessions'], 'Quality evidence names the exact request, preserves it on refresh and returns to the same filtered performance view', async () => {
     const session = 'session/quality-link';
     const selectedId = 'request/quality-selection';
@@ -396,6 +433,25 @@ const scenarios = [
     assert(publication?.action === 'publish' && publication.editor.limits.context_window_tokens === 32000, 'The accepted request did not publish the edited budget');
     assert(contextWindow.value === '32000' && !contextWindow.disabled && !button('发布更改').disabled, 'Checkpoint failure discarded or locked the local edit');
     assert(calls('preview_agent_settings').length === 0 && calls('check_agent_live').length === 0, 'Checkpoint failure implicitly changed an Agent connection or called a model');
+  }),
+  scenario('desktop.home.reactivation-usage', ['home', 'sessions'], 'Returning home refreshes usage alongside recent activity without remounting the app', async () => {
+    let input = 2400;
+    const usage = () => document.querySelector('.v3-usage-body')?.textContent ?? '';
+    await fresh(() => {
+      c().handlers.observation_read = payload => {
+        const result = c().fixtureResponse('observation_read', payload);
+        if (payload.request.intent.view !== 'home_value' || payload.request.intent.query.session_id) return result;
+        return { ...result, usage: result.usage.map(metric => metric.metric === 'input' ? { ...metric, known_sum: input } : metric) };
+      };
+    });
+    await until(() => usage().includes('2,400'), 'initial usage');
+    await click('会话');
+    input = 9322197;
+    const before = calls('observation_read').filter(call => call.payload.request.intent.view === 'home_value').length;
+    await click('首页');
+    await until(() => usage().includes('9,322,197'), 'new usage on ordinary home navigation');
+    assert(calls('observation_read').filter(call => call.payload.request.intent.view === 'home_value').length > before, 'Returning home reused the old summary');
+    assert(usage().includes('尚未计价') && !usage().includes('2,400'), 'Refresh fabricated a price or retained the old total');
   }),
   scenario('desktop.routing.reactivation-models', ['routing-editor'], 'Returning to an existing route reloads saved model choices and scopes quality to active models', async () => {
     await fresh(); await routing();
