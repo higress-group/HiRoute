@@ -11,8 +11,8 @@
     {
       "channel": "stable",
       "file": "v0.2.0.json",
-      "revision": "bfb8edb4ab9dd6946e2f74e65b47036c1f7acd86",
-      "sha256": "c46f86b619feb2119f5bf79180495d3e94349c20c000264fefdefc7e25d30fa9",
+      "revision": "d625e653048b2306c88da07826d52027e9891675",
+      "sha256": "42368944d311960b42e89c468fca164904928f106908301165381328fbc84a7b",
       "tag": "v0.2.0"
     }
   ],

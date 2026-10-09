@@ -2,12 +2,12 @@
   "contracts": {
     "cli_contract_set": {
       "content": {
-        "descriptor_digest": "sha256:8c90ff220c2fbcef60423bc358642fbd743a1f8270ce92ca7bf59b276e5f560f",
+        "descriptor_digest": "sha256:abc35e142a0e31f2529450a545a6b9c6d57575d0212e844609cff5216623337b",
         "files": {
           "agent-check-request.v1.schema.json": "sha256:fbd9e9b19282a5ed8c3e30b5ae16538bc01318a70e4bb7c7a55e8e0472553feb",
           "agent-launch-descriptor-request.v1.schema.json": "sha256:28f2f9d2d7f9a1618bea0f13383002429bc9e0ff56166cbee86958a245d0fd48",
           "agent-plan-catalog-query.v2.schema.json": "sha256:920dbff3fbd63d670f50960f51b737d09024ab0931db65857e114935b0b20183",
-          "coverage-manifest.v1.json": "sha256:7b52b86a6a0705550b00d308ddb459364918b4fe01fe3b18a8e414050b572c1b",
+          "coverage-manifest.v1.json": "sha256:7eb76edd11972ed802f056482c3164ec65e40b9c09964616f474e30764b54101",
           "delegation-cancel-request.v1.schema.json": "sha256:0822c53fc16acfcd618fbef66410939f33f634313389a6df4705f414a468b878",
           "delegation-continue-request.v1.schema.json": "sha256:da2f81607f37d154a0fa698a107b37d4b0e9d5a03693dcbcc41e0b7e65db5b93",
           "delegation-get-request.v1.schema.json": "sha256:85b29839c1c508018ebe40e4b2bb5c1dce7c3a87c27efa30b196b2d1b6658471",
@@ -19,21 +19,21 @@
           "local-control-hello.v2.schema.json": "sha256:169b944fd7d6a6c48e6615e875ec1dfe7b0045e09186312fd2c2b7cc92b56aa6",
           "local-control.v2.schema.json": "sha256:4b654de90cd6e333b3953379e5b2e1c5125f1dcbe307b7c7c73f12bb2032d18c",
           "machine-envelope.v2.schema.json": "sha256:5a0b47ce1fd80628f760a3da5a88de7dc01f6df83cb6eef47fd4a6c8289070ba",
-          "manifest.v1.json": "sha256:eb0979fafe18874e4bce7fad7da17d209f84b9363497e4d9ec90d272d27250ea",
+          "manifest.v1.json": "sha256:972e21fd37596e829afd1bbf64fef9a110903cbb0880e1eb514e444c21e865c7",
           "operation-cancel-request.v1.schema.json": "sha256:0071cbcf27de3bfb7f6644478fe2b73bb5387ebe33db93629ff5672959e8495f",
           "operation-lookup.v1.schema.json": "sha256:0fbaaa15b0e75b4186979bdd856bed0485d55a4bd33a33f3caf3bd92e01a7850",
           "plan-content-change.v2.schema.json": "sha256:5b752e26bc81adfb3ccd1bab98f938a44f7b64059789d33b6f6f278abf1a3ca9",
           "plan-draft-change.v1.schema.json": "sha256:be0b7aff74d2163ae2cbecd05308ef59350938ff434e26c4ba9da3108ee39a24",
           "plan-editor.v2.schema.json": "sha256:8f2547be8bdde8236c4b83c0027e863f7daa4eac5b8d5ab646dec6db67c50e39",
           "plan-lifecycle-change.v1.schema.json": "sha256:c9336293241f2a027c5c9478da25ec5cd70e9cfe0608241fdf85447e37297bc3",
-          "planned-manifest.v1.json": "sha256:6fc9e0524d0fcad41f8696546fe1ee234365b516731c4ca78e2b17576fe96c38",
+          "planned-manifest.v1.json": "sha256:a8b5eed8d4615659b3400373b42e6f8a2e843b307f69f7a9506a52d4911b86af",
           "session-list-query.v1.schema.json": "sha256:1f71a89fc019b59c3499708c0760b694b8cb8532028b56d98702cd3b2721cd44",
           "session-lookup.v1.schema.json": "sha256:0c9e0ea31bdde7f720a9a17e8dc175902a20b3fb92abc21ce4bdae9fc3d97587",
           "setup-apply-request.v1.schema.json": "sha256:b44377ecb53e609574cd2e1d49624d6bc8e148f7b60a99c2ea9db861e0c2cabd",
           "setup-request.v1.schema.json": "sha256:e7fb0a57d7cbe41caf90b4a57e56b8434aa01b91054935447666cb2af5bc98fd",
           "value-query.v1.schema.json": "sha256:7dbc91344f1b1f9635a8b62c010567cad9e6f29207d8f1d89f5b4abb80fdbfae",
           "work-plan-list-request.v1.schema.json": "sha256:d50adc8e139cbed719fcec6412c796a7cf4d4f280dd7a56c525619f72c26c58d",
-          "worker-cancel-request.v1.schema.json": "sha256:425379b653e8c2e572b254baeabe572539ce5eb16200832411f0cbcf7aa08b0b",
+          "worker-cancel-request.v1.schema.json": "sha256:f731e6a6be762d409a53afe9697be105d0debb89fe5e28be96b15ae03b31dfdc",
           "worker-continue-request.v1.schema.json": "sha256:cfe89487d3524061dd277a97b11291fcd0db4a0a0ca333118023628ab7d61b3b",
           "worker-dependencies-discover-request.v1.schema.json": "sha256:a585c2c179b5349a0491b63bebf41cd72308054fee6b9aa4f047a19847575423",
           "worker-dependencies-select-request.v1.schema.json": "sha256:72518d78c18877ac30360fa29ca4f510dca90e2603fc579dd0e037167b311795",
@@ -41,7 +41,6 @@
           "worker-list-request.v1.schema.json": "sha256:f1a2b5900b0412d8d561a5925a6f9489b495e74c41f386a3504175b2be3aff64",
           "worker-plans-request.v1.schema.json": "sha256:a7f2d13869ab542223bf51eef4f0c1a05a4c8afef43f202165fd3025a2ab72c1",
           "worker-read-request.v1.schema.json": "sha256:9821ee686f0e6c58b187b7c1addf0d3703954995f6081389370c1b5f599922ba",
-          "worker-residual-confirm-request.v1.schema.json": "sha256:376d688d08a1edc45c5a1fff0604e2d27ef5b023fd6611a8db50632e726be5d9",
           "worker-result-request.v1.schema.json": "sha256:af6a9f65eb32e9d85b95b8b643af8d9bbe3fe88d8093e7e06c4353fadf332c8f",
           "worker-status-request.v1.schema.json": "sha256:d2a03db6c4e064c2b1948520a37143e2d224b2d9af4d1a015b009988be6473d2",
           "worker-wait-request.v1.schema.json": "sha256:6d72ac0dcee361d7240cebbf02a6290a47c765a80d7dcd1c7d795b245923702b"
@@ -54,7 +53,7 @@
         }
       },
       "path": "contracts/cli/contract-set.v1.json",
-      "sha256": "66bcd48cb09ed3bbf1e8e81bf48dfe2273322072577b3ccf3cb71eaa30821a57"
+      "sha256": "dc8da6bbc16cf4cb71d882d15c4e3846fdcb1afde94668960528e8cbabc46309"
     },
     "compatibility_register": {
       "content": {
@@ -281,18 +280,6 @@
             "owner": "domain/observation",
             "reason": "Read retained immutable observations made before branch competence metadata. New ingestion accepts only the current digest.",
             "removal_condition": "Remove after the retained observation window no longer includes pre-branch producers."
-          },
-          {
-            "allowed_paths": [
-              "crates/daemon/src/control/runtime/delegation_tasks.rs",
-              "crates/daemon/src/control/runtime_early_cancel_tests.rs"
-            ],
-            "contract": "hiroute.delegation-run/v1",
-            "field": "pre-release 0.2.0 Accepted cancellation at revision 2 with no preparation, process or prompt witness",
-            "mode": "recovery_read_only",
-            "owner": "daemon delegation startup",
-            "reason": "The previous producer retained CancelRequested at revision 2 forever. Startup recognizes only this exact revoked unbound pre-spawn record and uses the current CAS checkpoint producer to record Cancelled/complete. Revision 3 or later still requires owned cleanup. The synthetic SQLite fixture freezes only this old producer in a private test store.",
-            "removal_condition": "Remove after all supported pre-release 0.2.0 stores have completed this exact recovery; never infer cleanup for prepared or uncertain processes."
           }
         ],
         "forbidden_contracts": [
@@ -546,7 +533,6 @@
           "hiroute.observation.run-link/v1",
           "hiroute.observation.serialization-failure/v1",
           "hiroute.observation.valuation-summary/v2",
-          "hiroute.observation.value-report/v2",
           "hiroute.operation-cancel-request/v1",
           "hiroute.operation-event/v1",
           "hiroute.operation-idempotency-lookup/v1",
@@ -676,7 +662,6 @@
           "hiroute.worker-read-data/v1",
           "hiroute.worker-read-request/v1",
           "hiroute.worker-receipt/v1",
-          "hiroute.worker-residual-confirm-request/v1",
           "hiroute.worker-result-request/v1",
           "hiroute.worker-settings/v1",
           "hiroute.worker-status-request/v1",
@@ -1251,90 +1236,50 @@
               }
             ],
             "subject": "qoder_native_provider_restore"
-          },
-          {
-            "audited_prefixes": [
-              "hiroute.value-query",
-              "hiroute.value-view",
-              "hiroute.observation.value-report"
-            ],
-            "current_contracts": [
-              "hiroute.observation.query/v2",
-              "hiroute.observation.value-report/v2"
-            ],
-            "legacy_support": [
-              {
-                "allowed_paths": [
-                  "crates/application/src/observation_query/control.rs",
-                  "crates/application-api/src/protocol.rs",
-                  "crates/application-api/src/lib.rs",
-                  "crates/daemon/src/control/runtime_observation_tests.rs"
-                ],
-                "contract": "hiroute.value-query/v1",
-                "mode": "recovery_read_only",
-                "owner": "observation-storage",
-                "reason": "Read existing frozen ValueSnapshot ledgers for recovery only; current CLI producers use observation value_report and current usage/valuation facts.",
-                "removal_condition": "Remove when supported activity stores and backups contain no frozen ValueSnapshot ledger/daily-rollup rows and their recovery interface is retired."
-              },
-              {
-                "allowed_paths": [
-                  "crates/application/src/observation_query/control.rs",
-                  "crates/application-api/src/protocol.rs",
-                  "crates/application-api/src/lib.rs",
-                  "crates/daemon/src/control/runtime_observation_tests.rs"
-                ],
-                "contract": "hiroute.value-view/v1",
-                "mode": "recovery_read_only",
-                "owner": "observation-storage",
-                "reason": "Read existing frozen ValueSnapshot ledgers for recovery only; current CLI producers use observation value_report and current usage/valuation facts.",
-                "removal_condition": "Remove when supported activity stores and backups contain no frozen ValueSnapshot ledger/daily-rollup rows and their recovery interface is retired."
-              }
-            ],
-            "subject": "value_read_entry"
           }
         ]
       },
       "path": "contracts/compatibility-support.v1.json",
-      "sha256": "393dd93cb0c30af254d83eadb5ee6d4721fe8e167fa7ceceb6e39e246d313bd2"
+      "sha256": "0c026dbf4f4e9b58a8deb9c5cc5f9a189084455ca77cfc6b993a921547974fac"
     }
   },
   "release": {
     "artifacts": [
       {
-        "filename": "HiRoute-0.2.0-d625e653048b-macos-arm64-trial.dmg",
-        "sha256": "681b6386b941a3bc8770944b33a897eef55b644d17ba7e355471e417d0c59652",
-        "size": 81139417
+        "filename": "HiRoute-0.2.0-bfb8edb4ab9d-macos-arm64-trial.dmg",
+        "sha256": "cd72bf30bf05d1daf459f60ca8d246b82fa3a5a72950466a74f3ee909049c45a",
+        "size": 80973041
       },
       {
-        "filename": "HiRoute-0.2.0-d625e653048b-macos-x86_64-trial.dmg",
-        "sha256": "0bba159f5520b80039c5eedb00e6ec8dd9483dabd67c5c4300401c25b592ac58",
-        "size": 88082806
+        "filename": "HiRoute-0.2.0-bfb8edb4ab9d-macos-x86_64-trial.dmg",
+        "sha256": "ca18ef89a193e142d11a0aaf88aa98602227547735f18a9c20cb9ce853b8cd04",
+        "size": 87918623
       },
       {
-        "filename": "hiroute-0.2.0-d625e653048b-aarch64-unknown-linux-gnu.tar.gz",
-        "sha256": "4deda43fd12f87e189541aa57c1a3a79df9dd3a08b704f3b0dec3be2428a7935",
-        "size": 62684585
+        "filename": "hiroute-0.2.0-bfb8edb4ab9d-aarch64-unknown-linux-gnu.tar.gz",
+        "sha256": "06f9c7aa08db255b82039c85c61f780d902bf0ab631cd0245817539496e53902",
+        "size": 62540657
       },
       {
-        "filename": "hiroute-0.2.0-d625e653048b-aarch64-unknown-linux-gnu.tar.gz.json",
-        "sha256": "0696d9add3eb07136c047313d5e296410b359f832c3f8fe9141d480aa4562b3a",
+        "filename": "hiroute-0.2.0-bfb8edb4ab9d-aarch64-unknown-linux-gnu.tar.gz.json",
+        "sha256": "fcf983baca2f9ec448149a18df258a41f979c2c97a4863023a92d01d8d2bb9a9",
         "size": 2123
       },
       {
-        "filename": "hiroute-0.2.0-d625e653048b-x86_64-unknown-linux-gnu.tar.gz",
-        "sha256": "9b4f2034835fd3c9d1247ae354ebd8c2b635635a5f6622b3b96b53a3e02b31cb",
-        "size": 66763949
+        "filename": "hiroute-0.2.0-bfb8edb4ab9d-x86_64-unknown-linux-gnu.tar.gz",
+        "sha256": "03492a9fc45035589fb7280a4ed164b2f6ad49ac877582b12f68688b725bf57d",
+        "size": 66626440
       },
       {
-        "filename": "hiroute-0.2.0-d625e653048b-x86_64-unknown-linux-gnu.tar.gz.json",
-        "sha256": "7b6a08ff470376f3f4643e13bc2d73af80e953ef8f0cc58ee6bd0c4822392ffd",
+        "filename": "hiroute-0.2.0-bfb8edb4ab9d-x86_64-unknown-linux-gnu.tar.gz.json",
+        "sha256": "b0b78970e232f49788ad8751326f24f65a222ba7f555f35e148e01eef72dbaa3",
         "size": 2121
       }
     ],
     "channel": "stable",
     "published_at": "2026-10-08T13:06:08Z",
     "repository": "higress-group/HiRoute",
-    "revision": "d625e653048b2306c88da07826d52027e9891675",
+    "revision": "bfb8edb4ab9dd6946e2f74e65b47036c1f7acd86",
     "tag": "v0.2.0"
   },
   "schema": "hiroute.release-contract-snapshot/v1",
