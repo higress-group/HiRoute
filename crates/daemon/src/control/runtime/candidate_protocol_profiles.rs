@@ -193,56 +193,7 @@ pub(super) fn reasoning_profiles(
                     GatewayReasoningControlKindV1::Toggle,
                     GatewayNativeReasoningRenderV1::ExactFields {
                         protocol,
-                        fields: if parameter == "deepseek_thinking" {
-                            match protocol {
-                                UpstreamProtocol::Responses => vec![field(
-                                    "reasoning.effort",
-                                    GatewayNativeReasoningValueV1::String(
-                                        if enabled { "high" } else { "none" }.into(),
-                                    ),
-                                    protocol,
-                                )],
-                                UpstreamProtocol::ChatCompletions | UpstreamProtocol::Messages => {
-                                    vec![field(
-                                        "thinking.type",
-                                        GatewayNativeReasoningValueV1::String(
-                                            if enabled { "enabled" } else { "disabled" }.into(),
-                                        ),
-                                        protocol,
-                                    )]
-                                }
-                            }
-                        } else if parameter == "enable_thinking" {
-                            match protocol {
-                                UpstreamProtocol::ChatCompletions => vec![field(
-                                    "enable_thinking",
-                                    GatewayNativeReasoningValueV1::Bool(enabled),
-                                    protocol,
-                                )],
-                                UpstreamProtocol::Responses => vec![field(
-                                    "reasoning.effort",
-                                    GatewayNativeReasoningValueV1::String(
-                                        if enabled { "high" } else { "none" }.into(),
-                                    ),
-                                    protocol,
-                                )],
-                                UpstreamProtocol::Messages => {
-                                    vec![field(
-                                        "thinking.type",
-                                        GatewayNativeReasoningValueV1::String(
-                                            if enabled { "enabled" } else { "disabled" }.into(),
-                                        ),
-                                        protocol,
-                                    )]
-                                }
-                            }
-                        } else {
-                            vec![field(
-                                parameter,
-                                GatewayNativeReasoningValueV1::Bool(enabled),
-                                protocol,
-                            )]
-                        },
+                        fields: toggle_fields(parameter, enabled, protocol),
                     },
                 )
             })
@@ -306,6 +257,9 @@ pub(super) fn reasoning_profiles(
             maximum_tokens,
             step_tokens,
         } => {
+            if protocol == UpstreamProtocol::Responses {
+                return None;
+            }
             let count = u64::from((maximum_tokens - minimum_tokens) / step_tokens) + 1;
             if count > MAX_MATERIALIZED_BUDGET_PROFILES {
                 return None;
@@ -319,11 +273,21 @@ pub(super) fn reasoning_profiles(
                         GatewayReasoningControlKindV1::Budget,
                         GatewayNativeReasoningRenderV1::ExactBudget {
                             protocol,
-                            fields: vec![field(
-                                parameter,
-                                GatewayNativeReasoningValueV1::U64(value),
-                                protocol,
-                            )],
+                            fields: {
+                                let mut fields = vec![field(
+                                    parameter,
+                                    GatewayNativeReasoningValueV1::U64(value),
+                                    protocol,
+                                )];
+                                if protocol == UpstreamProtocol::Messages {
+                                    fields.push(field(
+                                        "thinking.type",
+                                        GatewayNativeReasoningValueV1::String("enabled".into()),
+                                        protocol,
+                                    ));
+                                }
+                                fields
+                            },
                             budget_path: parameter_path(parameter, protocol),
                             selected_tokens: value,
                             min_tokens: u64::from(*minimum_tokens),
@@ -408,4 +372,47 @@ pub(super) fn field(
 
 pub(super) fn parameter_path(parameter: &str, protocol: UpstreamProtocol) -> Vec<String> {
     GatewayNativeReasoningFieldAssignmentV1::parameter_path(parameter, protocol)
+}
+
+fn toggle_fields(
+    parameter: &str,
+    enabled: bool,
+    protocol: UpstreamProtocol,
+) -> Vec<GatewayNativeReasoningFieldAssignmentV1> {
+    match protocol {
+        UpstreamProtocol::Responses => vec![field(
+            "reasoning.effort",
+            GatewayNativeReasoningValueV1::String(if enabled { "low" } else { "none" }.into()),
+            protocol,
+        )],
+        UpstreamProtocol::Messages => {
+            let mut fields = vec![field(
+                "thinking.type",
+                GatewayNativeReasoningValueV1::String(
+                    if enabled { "enabled" } else { "disabled" }.into(),
+                ),
+                protocol,
+            )];
+            if enabled {
+                fields.push(field(
+                    "thinking.budget_tokens",
+                    GatewayNativeReasoningValueV1::U64(1024),
+                    protocol,
+                ));
+            }
+            fields
+        }
+        UpstreamProtocol::ChatCompletions if parameter == "deepseek_thinking" => vec![field(
+            "thinking.type",
+            GatewayNativeReasoningValueV1::String(
+                if enabled { "enabled" } else { "disabled" }.into(),
+            ),
+            protocol,
+        )],
+        UpstreamProtocol::ChatCompletions => vec![field(
+            parameter,
+            GatewayNativeReasoningValueV1::Bool(enabled),
+            protocol,
+        )],
+    }
 }

@@ -1,6 +1,8 @@
 use hiroute_diagnostics::event::{
-    UpstreamWire, UpstreamWirePhase, WireContentType, WireReasoningEffort, WireRequestReasoning,
+    NativeModelId, UpstreamWire, UpstreamWirePhase, WireContentType, WireProviderError,
+    WireReasoningEffort, WireRequestKind, WireRequestReasoning, WireThinkingType,
 };
+use hiroute_diagnostics::{context::DiagnosticContext, correlation::CorrelationDomain};
 use http::HeaderMap;
 use serde::Deserialize;
 use serde::de::{IgnoredAny, MapAccess, SeqAccess, Visitor};
@@ -34,10 +36,17 @@ fn shape(headers: &HeaderMap, phase: UpstreamWirePhase, status: Option<u16>) -> 
         http_status: status,
         content_type,
         request_reasoning: None,
+        request_kind: Some(WireRequestKind::ModelInference),
+        attempt_token: None,
+        attempt_index: None,
+        native_model: None,
+        upstream_request_token: None,
+        http_protocol: None,
+        provider_error: status.and_then(status_error),
     }
 }
 
-pub(in crate::server::core_runtime::observation) fn request(
+pub(in crate::server::core_runtime) fn request(
     headers: &HeaderMap,
     serialized_template: &[u8],
 ) -> UpstreamWire {
@@ -51,26 +60,80 @@ pub(in crate::server::core_runtime::observation) fn request(
     }
     // Read only controls from the exact encoder template. Serde skips other
     // fields without allocating their strings or expanding Replay references.
-    event.request_reasoning = serde_json::from_slice::<Controls>(serialized_template)
-        .ok()
-        .map(|body| WireRequestReasoning {
+    if let Ok(body) = serde_json::from_slice::<Controls>(serialized_template) {
+        event.native_model = body.model;
+        event.request_reasoning = Some(WireRequestReasoning {
             responses_effort: body.reasoning.and_then(|value| value.effort.0),
             chat_effort: body.reasoning_effort.0,
             messages_effort: body.output_config.and_then(|value| value.effort.0),
+            messages_thinking: body.thinking.as_ref().and_then(|value| value.kind.0),
+            messages_budget_tokens: body.thinking.as_ref().and_then(|value| value.budget_tokens),
+            enable_thinking: body.enable_thinking,
+            thinking_enabled: body.thinking.as_ref().and_then(|value| value.enabled),
         });
+    }
     event
 }
 
-pub(super) fn response(headers: &HeaderMap, status: u16) -> UpstreamWire {
-    shape(headers, UpstreamWirePhase::Response, Some(status))
+pub(in crate::server::core_runtime) fn response(
+    headers: &HeaderMap,
+    status: u16,
+    context: &DiagnosticContext,
+) -> UpstreamWire {
+    let mut event = shape(headers, UpstreamWirePhase::Response, Some(status));
+    // Values never leave this boundary. Different provider header spellings map
+    // to the same correlation domain, with a bounded input to the HMAC.
+    event.upstream_request_token = ["x-request-id", "x-dashscope-request-id", "request-id"]
+        .iter()
+        .find_map(|name| headers.get(*name))
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty() && value.len() <= 1024)
+        .and_then(|value| context.token(CorrelationDomain::ExternalRequest, value));
+    event
+}
+
+pub(in crate::server::core_runtime) fn status_error(status: u16) -> Option<WireProviderError> {
+    match status {
+        401 | 403 => Some(WireProviderError::AuthenticationRejected),
+        429 => Some(WireProviderError::RateLimited),
+        400..=499 => Some(WireProviderError::InputRejected),
+        500..=599 => Some(WireProviderError::UpstreamUnavailable),
+        _ => None,
+    }
 }
 
 #[derive(Deserialize)]
 struct Controls {
+    model: Option<NativeModelId>,
     reasoning: Option<EffortObject>,
     #[serde(default)]
     reasoning_effort: Effort,
     output_config: Option<EffortObject>,
+    thinking: Option<Thinking>,
+    enable_thinking: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct Thinking {
+    #[serde(default, rename = "type")]
+    kind: ThinkingType,
+    budget_tokens: Option<u64>,
+    enabled: Option<bool>,
+}
+
+#[derive(Default)]
+struct ThinkingType(Option<WireThinkingType>);
+
+impl<'de> Deserialize<'de> for ThinkingType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self(Some(match value.as_str() {
+            "enabled" => WireThinkingType::Enabled,
+            "disabled" => WireThinkingType::Disabled,
+            "adaptive" => WireThinkingType::Adaptive,
+            _ => WireThinkingType::Other,
+        })))
+    }
 }
 
 #[derive(Deserialize)]
@@ -155,16 +218,24 @@ mod tests {
             "content-type",
             "application/json; charset=utf-8".parse().unwrap(),
         );
-        assert_eq!(response(&headers, 403).content_type, WireContentType::Json);
-        assert_eq!(response(&headers, 403).http_status, Some(403));
-        assert!(response(&headers, 403).request_reasoning.is_none());
+        let context = hiroute_diagnostics::context::DiagnosticHandle::default().context();
+        assert_eq!(
+            response(&headers, 403, &context).content_type,
+            WireContentType::Json
+        );
+        assert_eq!(response(&headers, 403, &context).http_status, Some(403));
+        assert!(
+            response(&headers, 403, &context)
+                .request_reasoning
+                .is_none()
+        );
     }
 
     #[test]
     fn wire_reasoning_controls_are_closed_and_distinguish_missing_from_unavailable() {
         let headers = HeaderMap::new();
         let encoded = serde_json::to_vec(&serde_json::json!({
-            "model":"secret-model", "input":"secret-prompt".repeat(20_000),
+            "model":"native-model", "input":"secret-prompt".repeat(20_000),
             "reasoning":{"effort":"medium", "summary":"secret-summary"},
             "reasoning_effort":"secret-control", "output_config":{"effort":null}
         }))
@@ -174,6 +245,7 @@ mod tests {
         assert_eq!(value["request_reasoning"]["responses_effort"], "medium");
         assert_eq!(value["request_reasoning"]["chat_effort"], "other");
         assert_eq!(value["request_reasoning"]["messages_effort"], "other");
+        assert_eq!(value["native_model"], "native-model");
         assert!(!serde_json::to_string(&event).unwrap().contains("secret"));
         let empty = request(&headers, br#"{}"#).request_reasoning.unwrap();
         assert_eq!(empty.responses_effort, None);
@@ -236,5 +308,22 @@ mod tests {
                 body["reasoning"]["effort"]
             );
         }
+    }
+
+    #[test]
+    fn messages_controls_record_exact_type_budget_and_switches_without_other_fields() {
+        let event = request(&HeaderMap::new(), br#"{"model":"qwen3.6-flash","thinking":{"type":"enabled","budget_tokens":1024,"enabled":true,"secret":"private"},"enable_thinking":false,"messages":[{"content":"secret-prompt"}]}"#);
+        let value = serde_json::to_value(event).unwrap();
+        assert_eq!(value["native_model"], "qwen3.6-flash");
+        assert_eq!(value["request_reasoning"]["messages_thinking"], "enabled");
+        assert_eq!(value["request_reasoning"]["messages_budget_tokens"], 1024);
+        assert_eq!(value["request_reasoning"]["thinking_enabled"], true);
+        assert_eq!(value["request_reasoning"]["enable_thinking"], false);
+        assert!(!value.to_string().contains("private") && !value.to_string().contains("secret"));
+        let disabled = request(&HeaderMap::new(), br#"{"thinking":{"type":"disabled"}}"#);
+        assert_eq!(
+            disabled.request_reasoning.unwrap().messages_budget_tokens,
+            None
+        );
     }
 }

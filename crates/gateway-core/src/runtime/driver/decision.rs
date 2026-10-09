@@ -763,6 +763,7 @@ pub(super) fn preexchange_transport_facts(
 ) -> AttemptTransportFacts {
     AttemptTransportFacts {
         started_at: selected.budget.issued_at,
+        upstream_protocol: None,
         connect_elapsed: None,
         request_write_elapsed: None,
         upstream_ttfb: None,

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialAuthMode, protectedInput, sameEndpointOrigin, testKey, decisionReferences } from '../src/features/decision-services/presentation.ts';
+import { decisionFailureHelp, initialAuthMode, protectedInput, sameEndpointOrigin, testKey, decisionReferences } from '../src/features/decision-services/presentation.ts';
 import { protocolExamples, protocolCurl } from '../src/features/decision-services/protocol-examples.ts';
 import { defaultJudgment, judgmentIssue } from '../src/features/decision-services/types.ts';
 import { readFileSync } from 'node:fs';
@@ -53,4 +53,12 @@ test('protocol examples separate the new task decision from its prior assessment
     assert.deepEqual(Object.keys(request).sort(), ['assessment_target', 'decision', 'history_partial', 'latest_user', 'visible_conversation']);
     assert.deepEqual(request, protocolExamples[key].request);
   }
+});
+
+test('decision diagnostics distinguish confirmed causes without exposing arbitrary service text', () => {
+  assert.match(decisionFailureHelp('CLASSIFIER_AUTH_REJECTED', 'en'), /Authentication was rejected/);
+  assert.match(decisionFailureHelp('CLASSIFIER_ENDPOINT_REJECTED', 'en'), /workspace endpoint/);
+  assert.match(decisionFailureHelp('CLASSIFIER_RATE_LIMITED', 'en'), /rate limit/);
+  assert.match(decisionFailureHelp('CLASSIFIER_INPUT_REJECTED', 'zh'), /协议兼容性/);
+  assert.doesNotMatch(decisionFailureHelp('private upstream details', 'en'), /private upstream details/);
 });

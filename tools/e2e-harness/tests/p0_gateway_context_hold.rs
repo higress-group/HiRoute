@@ -271,6 +271,12 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
             "runtime.context_hold.responses_search_append"
         ]
     );
+    // This scenario exercises a failure after output delivery. A coalesced
+    // delta+failure received before any downstream body is now relayable.
+    let failure_start = RESPONSES_FAILED_AFTER_SEMANTIC
+        .windows(b"event: response.failed".len())
+        .position(|part| part == b"event: response.failed")
+        .unwrap();
     let simple = NativeProvider::start(vec![
         complete(),
         complete(),
@@ -286,9 +292,13 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
             error_kind: None,
             body: RESPONSES_INCOMPLETE,
         },
-        ProviderReply::StreamComplete {
+        ProviderReply::StreamDrip {
             status: 200,
-            body: RESPONSES_FAILED_AFTER_SEMANTIC,
+            chunks: vec![
+                RESPONSES_FAILED_AFTER_SEMANTIC[..failure_start].to_vec(),
+                RESPONSES_FAILED_AFTER_SEMANTIC[failure_start..].to_vec(),
+            ],
+            interval: std::time::Duration::from_secs(1),
         },
     ]);
     let complex = NativeProvider::start(vec![

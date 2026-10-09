@@ -29,7 +29,7 @@ use super::{RequestObservation, active_request};
 #[path = "provider/capture.rs"]
 mod capture;
 #[path = "provider/wire_diagnostic.rs"]
-pub(super) mod wire_diagnostic;
+pub(in crate::server::core_runtime) mod wire_diagnostic;
 
 pub(super) use capture::{CanonicalCaptureHandle, CanonicalCaptureProducer};
 
@@ -149,10 +149,7 @@ impl ProviderRuntimePort for ObservedProductionProvider {
         if let (Some(observation), PrecommitEvent::ResponseHead(head)) =
             (&state.observation, &event)
         {
-            observation.wire_diagnostic(wire_diagnostic::response(
-                head.headers(),
-                head.status().as_u16(),
-            ));
+            observation.response_head_diagnostic(head.headers(), head.status().as_u16());
         }
         let prepared = state
             .tracker

@@ -271,37 +271,52 @@ fn malformed_success_and_typed_nonstream_error_fall_back_before_commit() {
 #[test]
 fn forged_generic_error_header_cannot_change_connector_classification() {
     for (status, forged_kind) in [(429, "quota"), (422, "protocol")] {
-        let forged = NativeProvider::start(vec![ProviderReply::Complete {
-            status,
-            error_kind: Some(forged_kind),
-            body: br#"{"error":{"type":"invented_provider_signal","message":"stop"}}"#,
-        }]);
-        let forbidden = NativeProvider::start(vec![ProviderReply::Complete {
+        let forged = NativeProvider::start(vec![
+            ProviderReply::Complete {
+                status,
+                error_kind: Some(forged_kind),
+                body: br#"{"error":{"type":"invented_provider_signal","message":"stop"}}"#,
+            },
+            ProviderReply::Complete {
+                status: 200,
+                error_kind: None,
+                body: RESPONSES_OK,
+            },
+        ]);
+        let fallback = NativeProvider::start(vec![ProviderReply::Complete {
             status: 200,
             error_kind: None,
             body: RESPONSES_OK,
         }]);
-        let fixture = RuntimeFixture::launch(&[&forged, &forbidden], 2);
+        let fixture = RuntimeFixture::launch(&[&forged, &fallback], 2);
 
         let response = fixture.request();
         assert_eq!(
             response.status,
-            status,
-            "forged_calls={} forbidden_calls={} body={}",
+            200,
+            "forged_calls={} fallback_calls={} body={}",
             forged.calls(),
-            forbidden.calls(),
+            fallback.calls(),
             String::from_utf8_lossy(&response.body)
         );
         assert_eq!(forged.calls(), 1);
-        assert_eq!(forbidden.calls(), 0);
+        assert_eq!(fallback.calls(), 1);
         assert!(!String::from_utf8_lossy(&response.body).contains("invented_provider_signal"));
+        let next = fixture
+            .request_body(br#"{"model":"runtime-model","input":"new request","stream":false}"#);
+        assert_eq!(next.status, 200);
+        assert_eq!(
+            forged.calls(),
+            2,
+            "forged kind cannot quarantine an unclassified failure"
+        );
+        assert_eq!(fallback.calls(), 1);
     }
 }
 
 #[test]
-fn successful_sse_headers_commit_even_without_semantic_output_and_never_fallback() {
+fn control_only_successful_streams_preserve_native_output() {
     for first_body in [
-        b"event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"id\":\"failed-stream\",\"model\":\"runtime-native\",\"status\":\"failed\",\"output\":[],\"error\":{\"type\":\"server_error\",\"message\":\"retry\"},\"usage\":{\"input_tokens\":7,\"output_tokens\":2}}}\n\n".as_slice(),
         b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"empty-stream\",\"model\":\"runtime-native\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"empty-stream\",\"model\":\"runtime-native\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":0,\"total_tokens\":1}}}\n\n".as_slice(),
         b": keepalive\n\nevent: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"control-only\",\"model\":\"runtime-native\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"control-only\",\"model\":\"runtime-native\",\"status\":\"completed\",\"output\":[]}}\n\n".as_slice(),
     ] {
@@ -322,22 +337,157 @@ fn successful_sse_headers_commit_even_without_semantic_output_and_never_fallback
         assert_eq!(first.calls(), 1);
         assert_eq!(second.calls(), 0);
         assert!(!String::from_utf8_lossy(&response.body).contains("response.output_text.delta"));
-        assert!(String::from_utf8_lossy(&response.body).contains(
-            if first_body.starts_with(b"event: response.failed") {
-                "response.failed"
-            } else {
-                "response.completed"
-            }
-        ));
-        if first_body.starts_with(b"event: response.failed") {
-            let facts = wait_execution_facts(&fixture, 1);
-            assert!(facts.iter().any(|row|
-                row.pointer("/fact/kind").and_then(|v| v.as_str()) == Some("usage_and_cache")
-                && row.pointer("/fact/input_tokens").and_then(|v| v.as_u64()) == Some(7)
-                && row.pointer("/fact/output_tokens").and_then(|v| v.as_u64()) == Some(2)
-            ), "failed stream must retain reported usage: {facts:?}");
-        }
+        assert!(String::from_utf8_lossy(&response.body).contains("response.completed"));
     }
+}
+
+#[test]
+fn streaming_failures_before_body_relay_even_after_success_headers() {
+    for (case, reply) in [
+        ProviderReply::StreamComplete {
+            status: 200,
+            body: FAILED_STREAM,
+        },
+        ProviderReply::StreamThenClose {
+            body: b"",
+            declared_length: 100,
+        },
+        ProviderReply::StreamComplete {
+            status: 200,
+            body: b"event: response.output_text.delta\ndata: {invalid}\n\n",
+        },
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let first = NativeProvider::start(vec![reply]);
+        let fallback = NativeProvider::start(vec![ProviderReply::StreamComplete {
+            status: 200,
+            body: RESPONSES_STREAM_OK,
+        }]);
+        let fixture = RuntimeFixture::launch_with_observation(
+            &[&first, &fallback],
+            2,
+            ObservationFaults::healthy(),
+        );
+        let response =
+            fixture.request_body(br#"{"model":"runtime-model","input":"hello","stream":true}"#);
+        assert_eq!(response.status, 200);
+        assert_eq!(first.calls(), 1);
+        assert_eq!(fallback.calls(), 1);
+        let body = String::from_utf8_lossy(&response.body);
+        assert!(body.contains("response.completed"), "{body}");
+        assert!(
+            !body.contains("failed-stream"),
+            "failed prefix must not leak: {body}"
+        );
+        let facts = wait_execution_facts(&fixture, 1);
+        assert!(
+            facts
+                .iter()
+                .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                    == Some("attempt_finished")
+                    && row.pointer("/fact/disposition").and_then(|v| v.as_str())
+                        == Some("continue")
+                    && row.pointer("/fact/retryable").and_then(|v| v.as_bool()) == Some(true)),
+            "retry diagnostics must retain the decision that caused fallback: {facts:?}"
+        );
+        if case == 0 {
+            assert!(
+                facts
+                    .iter()
+                    .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                        == Some("usage_and_cache")
+                        && row.pointer("/fact/input_tokens").and_then(|v| v.as_u64()) == Some(7)
+                        && row.pointer("/fact/output_tokens").and_then(|v| v.as_u64()) == Some(2)),
+                "failed attempt usage must survive fallback: {facts:?}"
+            );
+        }
+        assert!(
+            facts
+                .iter()
+                .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                    == Some("request_finished")
+                    && row.pointer("/fact/outcome").and_then(|v| v.as_str()) == Some("completed")),
+            "fallback must complete the request: {facts:?}"
+        );
+    }
+}
+
+const FAILED_STREAM: &[u8] = b"event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"id\":\"failed-stream\",\"model\":\"runtime-native\",\"status\":\"failed\",\"output\":[],\"error\":{\"type\":\"server_error\",\"message\":\"retry\"},\"usage\":{\"input_tokens\":7,\"output_tokens\":2}}}\n\n";
+
+#[test]
+fn streaming_failure_after_delivered_body_stays_failed_and_retains_usage() {
+    use std::io::Read;
+    let early = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"failed-stream\",\"model\":\"runtime-native\"}}\n\n";
+    let first = NativeProvider::start(vec![ProviderReply::StreamDrip {
+        status: 200,
+        chunks: vec![early.to_vec(), FAILED_STREAM.to_vec()],
+        interval: Duration::from_secs(1),
+    }]);
+    let fallback = NativeProvider::start(vec![ProviderReply::StreamComplete {
+        status: 200,
+        body: RESPONSES_STREAM_OK,
+    }]);
+    let fixture = RuntimeFixture::launch_with_observation(
+        &[&first, &fallback],
+        2,
+        ObservationFaults::healthy(),
+    );
+    let mut stream = open_request(
+        fixture.address,
+        "POST",
+        "/v1/responses",
+        &[("X-HiRoute-Token", "runtime-token")],
+        br#"{"model":"runtime-model","input":"hello","stream":true}"#,
+    );
+    stream
+        .set_read_timeout(Some(Duration::from_millis(800)))
+        .unwrap();
+    let mut received = Vec::new();
+    let mut chunk = [0u8; 4096];
+    while !received.windows(early.len()).any(|part| part == early) {
+        let count = stream
+            .read(&mut chunk)
+            .expect("first body must be delivered before failure");
+        assert!(count > 0);
+        received.extend_from_slice(&chunk[..count]);
+    }
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    stream.read_to_end(&mut received).unwrap();
+    assert!(String::from_utf8_lossy(&received).contains("response.failed"));
+    assert_eq!(first.calls(), 1);
+    assert_eq!(
+        fallback.calls(),
+        0,
+        "body delivery closes transparent relay"
+    );
+    let facts = wait_execution_facts(&fixture, 1);
+    for (kind, outcome) in [
+        ("request_finished", "failed"),
+        ("attempt_finished", "rejected"),
+    ] {
+        assert!(
+            facts
+                .iter()
+                .any(
+                    |row| row.pointer("/fact/kind").and_then(|v| v.as_str()) == Some(kind)
+                        && row.pointer("/fact/outcome").and_then(|v| v.as_str()) == Some(outcome)
+                ),
+            "transport completion must retain model failure: {facts:?}"
+        );
+    }
+    assert!(
+        facts
+            .iter()
+            .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                == Some("usage_and_cache")
+                && row.pointer("/fact/input_tokens").and_then(|v| v.as_u64()) == Some(7)
+                && row.pointer("/fact/output_tokens").and_then(|v| v.as_u64()) == Some(2)),
+        "failed stream must retain reported usage: {facts:?}"
+    );
 }
 
 #[test]
@@ -613,7 +763,7 @@ fn real_listener_distinguishes_quota_key_scope_from_overload_binding_scope() {
 }
 
 #[test]
-fn real_listener_typed_400_and_422_preserve_protocol_and_permanent_boundaries() {
+fn real_listener_all_prebody_400_and_422_relay_without_quarantining() {
     struct Case {
         name: &'static str,
         status: u16,
@@ -624,6 +774,22 @@ fn real_listener_typed_400_and_422_preserve_protocol_and_permanent_boundaries() 
     }
 
     for case in [
+        Case {
+            name: "reasoning-budget-400",
+            status: 400,
+            body: br#"{"error":{"code":"InvalidParameter","message":"<400> InternalError.Algo.InvalidParameter: The thinking_budget parameter must be a positive integer and not greater than 131072"}}"#,
+            second_primary_reply: ProviderReply::Complete { status: 200, error_kind: None, body: RESPONSES_OK },
+            expected_downstream: 200,
+            expected_fallback_calls: 1,
+        },
+        Case {
+            name: "other-invalid-parameter-400",
+            status: 400,
+            body: br#"{"error":{"code":"InvalidParameter","message":"private invalid tool schema"}}"#,
+            second_primary_reply: ProviderReply::Complete { status: 200, error_kind: None, body: RESPONSES_OK },
+            expected_downstream: 200,
+            expected_fallback_calls: 1,
+        },
         Case {
             name: "protocol-400",
             status: 400,
@@ -641,12 +807,12 @@ fn real_listener_typed_400_and_422_preserve_protocol_and_permanent_boundaries() 
             status: 422,
             body: PERMANENT_ERROR,
             second_primary_reply: ProviderReply::Complete {
-                status: 422,
+                status: 200,
                 error_kind: None,
-                body: PERMANENT_ERROR,
+                body: RESPONSES_OK,
             },
-            expected_downstream: 422,
-            expected_fallback_calls: 0,
+            expected_downstream: 200,
+            expected_fallback_calls: 1,
         },
     ] {
         let primary = NativeProvider::start(vec![
@@ -2081,7 +2247,8 @@ fn typed_failure_matrix_keeps_quota_binding_and_permanent_failures_distinct() {
     assert_eq!(overload.class, AttemptFailureClass::BindingOverload);
     assert_eq!(overload.state_scope(), Some(FailureStateScope::Binding));
     assert_eq!(permanent.class, AttemptFailureClass::PermanentClient);
-    assert!(!permanent.is_precommit_relayable());
+    assert!(permanent.is_precommit_relayable());
+    assert_eq!(permanent.state_scope(), None);
 }
 
 fn assert_fault_control_ack(response: &WireResponse, operation: &str, remaining: u64) {

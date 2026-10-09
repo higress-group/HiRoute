@@ -21,6 +21,7 @@ mod pricing;
 mod producer;
 #[path = "observation/provider.rs"]
 mod provider;
+pub(super) use provider::wire_diagnostic;
 #[path = "observation/request.rs"]
 mod request;
 #[path = "observation/schema.rs"]
@@ -242,6 +243,13 @@ fn reliable_observation_session_id(
 }
 
 impl GatewayObservation {
+    pub(super) fn diagnostic_context(&self) -> hiroute_diagnostics::context::DiagnosticContext {
+        self.diagnostics
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .handle()
+            .context()
+    }
     pub fn with_price_source(mut self, source: Arc<dyn RequestPriceSource>) -> Self {
         self.price_source = Some(source);
         self

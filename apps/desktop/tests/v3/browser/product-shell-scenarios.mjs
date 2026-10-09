@@ -301,7 +301,7 @@ const scenarios = [
     assert(saved.secret === 'synthetic-test-key', 'Built-in auth was incorrectly prefixed by UI');
     const tested = calls('test_classifier_decision').at(-1).payload.input.classifier.service;
     assert(tested.revision === 1 && tested.connection.auth_header.value_secret_ref === 'protected/r1', 'Test used the unsaved editor or old credential');
-    assert(text().includes('核对 API Key 权限') && !text().includes('CLASSIFIER_INPUT_REJECTED'), 'Failure is not actionable or exposes raw code by default');
+    assert(text().includes('协议兼容性') && !text().includes('CLASSIFIER_INPUT_REJECTED'), 'Failure is not actionable or exposes raw code by default');
     await click('修改连接'); await click('更换');
     setInput(input('credential'), 'replacement-key');
     form().querySelector('summary').click(); await pause(30);

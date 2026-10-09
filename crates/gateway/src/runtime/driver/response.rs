@@ -1,3 +1,6 @@
+#[path = "response_prefix.rs"]
+mod prefix;
+
 use super::response_diagnostics;
 use hiroute_diagnostics::event::{
     ResponseFailureReason as FailureReason, ResponseFailureStage as FailureStage,
@@ -106,28 +109,15 @@ pub(super) fn classify_precommit(
                     .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
                 );
             }
-            if state.streaming && status.is_success() {
-                // HTTP acceptance, not the arrival of a recognized semantic event,
-                // closes the transparent retry window. Body parsing stays bounded
-                // and executes only on the accepted response path.
-                return Ok(PrecommitClassification::classified(
-                    ClassifiedAttemptResult {
-                        facts: ProviderClassificationFacts {
-                            http_status: Some(status),
-                            readiness: label("response_headers"),
-                            retryability: RetryabilityFact::NonRetryable,
-                            ..ProviderClassificationFacts::default()
-                        },
-                        readiness: take_readiness(state, status, "text/event-stream", false)?,
-                    },
-                ));
-            }
             Ok(PrecommitClassification::pending())
         }
         PrecommitEvent::Body(bytes) => {
             let status = state
                 .response_status
                 .ok_or_else(|| Arc::from("provider body arrived before final response head"))?;
+            if state.streaming && status.is_success() {
+                return prefix::classify_stream_prefix(state, bytes.bytes(), false);
+            }
             if state.native_output && status.is_success() {
                 let projected = state
                     .projector
@@ -169,6 +159,9 @@ pub(super) fn classify_precommit(
             let status = state
                 .response_status
                 .ok_or_else(|| Arc::from("provider ended before final response head"))?;
+            if state.streaming && status.is_success() {
+                return prefix::classify_stream_prefix(state, &[], true);
+            }
             if state.native_output && status.is_success() {
                 let units = match state
                     .projector
@@ -325,6 +318,12 @@ pub(super) fn finalize_attempt_facts(
         .and_then(|readiness| readiness.semantic_terminal)
         .or(state.semantic_terminal)
     {
+        // A prebody failure keeps the classification that authorized relay.
+        // Only a failure discovered after acceptance closes retryability here.
+        if outcome != SemanticTerminalOutcome::Complete && state.classified_failure.is_none() {
+            facts.error_class = Some(label("provider_rejected"));
+            facts.retryability = RetryabilityFact::NonRetryable;
+        }
         facts.model_event = Some(label(match outcome {
             SemanticTerminalOutcome::Complete => "response_complete",
             SemanticTerminalOutcome::Incomplete => "response_incomplete",
@@ -610,6 +609,16 @@ fn sanitized_provider_kind(
         return None;
     }
     let code = error.code.as_deref()?.to_ascii_lowercase();
+    // Preserve a precise cause without guessing one for generic InvalidParameter.
+    // Relay eligibility is independent of this diagnostic classification.
+    if code == "invalidparameter"
+        && error
+            .message
+            .as_deref()
+            .is_some_and(reasoning_budget_rejected)
+    {
+        return Some(ProviderFailureKind::Protocol);
+    }
     if code == "invalid_encrypted_content" {
         return Some(ProviderFailureKind::ReasoningHistory);
     }
@@ -652,6 +661,20 @@ fn sanitized_provider_kind(
     }
 }
 
+fn reasoning_budget_rejected(message: &str) -> bool {
+    const PREFIX: &str =
+        "The thinking_budget parameter must be a positive integer and not greater than ";
+    message
+        .strip_prefix("<400> InternalError.Algo.InvalidParameter: ")
+        .unwrap_or(message)
+        .strip_prefix(PREFIX)
+        .is_some_and(|limit| {
+            !limit.is_empty()
+                && limit.len() <= 10
+                && limit.bytes().all(|byte| byte.is_ascii_digit())
+        })
+}
+
 fn sealed_connector_semantics(profile: &CandidateProtocolProfile) -> bool {
     profile.schema_version == "hiroute.candidate-protocol-profile/v1"
         && profile.capability.schema_version == "hiroute.candidate-capability/v1"
@@ -672,6 +695,7 @@ fn classify_model_error(
     error: ModelError,
     response_status: StatusCode,
 ) -> Result<PrecommitClassification<ProductionReadiness, ProductionDecodedSse>, Arc<str>> {
+    response_diagnostics::model_error(&error, Some(response_status.as_u16()));
     let kind = sanitized_provider_kind(&state.profile, &error);
     let status = error.status.unwrap_or(response_status.as_u16());
     let raw = RawAttemptFailure::Http {
@@ -768,7 +792,8 @@ fn project_native_chunk_readiness(
         if terminal {
             return Err(Arc::from("native stream emitted bytes after terminal"));
         }
-        if unit.failure.is_some() {
+        if let Some(error) = &unit.failure {
+            response_diagnostics::model_error(error, Some(readiness.response_status.as_u16()));
             response_diagnostics::note(
                 FailureStage::ProviderStream,
                 FailureReason::ProviderRejected,
@@ -851,7 +876,8 @@ fn decode_stream_chunk_readiness(
     loop {
         for event in decoder.take_events() {
             observe_semantic_terminal(&mut readiness.semantic_terminal, &event.event);
-            if matches!(event.event, ModelEvent::ResponseFailed { .. }) {
+            if let ModelEvent::ResponseFailed { error } = &event.event {
+                response_diagnostics::model_error(error, Some(readiness.response_status.as_u16()));
                 response_diagnostics::note(
                     FailureStage::ProviderStream,
                     FailureReason::ProviderRejected,

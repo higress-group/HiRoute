@@ -15,6 +15,12 @@ use http::header::{CONTENT_LENGTH, CONTENT_TYPE, HOST};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use tokio_util::sync::CancellationToken;
 
+#[path = "classification/diagnostic.rs"]
+mod diagnostic;
+#[cfg(test)]
+use diagnostic::classifier_status_failure;
+use diagnostic::{CallDiagnostic, classifier_response_failure, diagnostic_request};
+
 #[path = "classification/group_policy.rs"]
 mod group_policy;
 #[path = "classification/protocol.rs"]
@@ -25,10 +31,7 @@ pub(super) use group_policy::{apply as apply_group_policy, execution_position};
 
 use super::ProductionGatewayRuntime;
 use super::adapters::{PreparedReplayTemplate, sequential_replay_body};
-use super::model_ir::{
-    CanonicalMessage, ContentPart, MODEL_REQUEST_IR_SCHEMA, MessageRole, ModelRequestIRV1,
-    RequestedReasoningControl, ToolChoice,
-};
+use super::model_ir::{ContentPart, ModelRequestIRV1};
 use super::profiles::{
     BranchDecisionV1, ClassifierFallbackReasonV1, CompiledClassifierKindV1,
     CompiledComplexityStrategyV1, ComplexityDecisionSourceV1, ComplexityReasonCodeV1, ComplexityV1,
@@ -40,7 +43,7 @@ use crate::ports::{ExecutionScope, HeaderSecretLeaseRequest};
 use crate::replay::{ReplayError, ReplayStore};
 use crate::runtime::TargetResolver;
 use crate::server::request_plan::{
-    ClassifierAuthenticationAuthorityV1, IngressProtocol, RestBranchClassifierAuthorityV1,
+    ClassifierAuthenticationAuthorityV1, RestBranchClassifierAuthorityV1,
 };
 use protocol::{
     ClassifierAssessment, ClassifierResponse, classifier_request_template,
@@ -65,6 +68,9 @@ pub enum ClassifierDiagnosticError {
     Timeout,
     Unavailable,
     RejectedInput,
+    AuthenticationRejected,
+    RateLimited,
+    EndpointRejected,
     InvalidOutput,
     Cancelled,
     Resource,
@@ -78,6 +84,9 @@ impl ClassifierDiagnosticError {
             Self::Timeout => "CLASSIFIER_TIMEOUT",
             Self::Unavailable => "CLASSIFIER_UNAVAILABLE",
             Self::RejectedInput => "CLASSIFIER_INPUT_REJECTED",
+            Self::AuthenticationRejected => "CLASSIFIER_AUTH_REJECTED",
+            Self::RateLimited => "CLASSIFIER_RATE_LIMITED",
+            Self::EndpointRejected => "CLASSIFIER_ENDPOINT_REJECTED",
             Self::InvalidOutput => "CLASSIFIER_OUTPUT_INVALID",
             Self::Cancelled => "CLASSIFIER_TEST_CANCELLED",
             Self::Resource => "CLASSIFIER_TEST_RESOURCE_UNAVAILABLE",
@@ -114,6 +123,7 @@ struct PreparedDecisionRequest {
 }
 
 pub(super) struct ClassificationOutcome {
+    diagnostic_failure: Option<ClassifierDiagnosticError>,
     pub(super) decision: BranchDecisionV1,
     pub(super) facts: SanitizedStructuralFactsV1,
     pub(super) assessment: Option<BoundAssessment>,
@@ -131,6 +141,9 @@ enum CallFailure {
     Timeout,
     Unavailable,
     RejectedInput,
+    AuthenticationRejected,
+    RateLimited,
+    EndpointRejected,
     InvalidOutput,
 }
 
@@ -235,6 +248,9 @@ impl ProductionGatewayRuntime {
                 ClassificationError::Integrity => ClassifierDiagnosticError::Integrity,
                 ClassificationError::Resource => ClassifierDiagnosticError::Resource,
             })?;
+        if let Some(failure) = result.diagnostic_failure {
+            return Err(failure);
+        }
         if result.decision.fallback_used {
             return Err(match result.decision.fallback_reason {
                 Some(ClassifierFallbackReasonV1::Timeout) => ClassifierDiagnosticError::Timeout,
@@ -288,6 +304,7 @@ impl ProductionGatewayRuntime {
             || strategy.classifier_kind == CompiledClassifierKindV1::LocalRules
         {
             return Ok(ClassificationOutcome {
+                diagnostic_failure: None,
                 decision: local_decision,
                 facts,
                 assessment: None,
@@ -359,6 +376,7 @@ impl ProductionGatewayRuntime {
                         .map(|target| bind_assessment(target, assessment))
                 });
                 Ok(ClassificationOutcome {
+                    diagnostic_failure: None,
                     decision: BranchDecisionV1 {
                         policy: None,
                         competence_trigger: None,
@@ -397,11 +415,16 @@ impl ProductionGatewayRuntime {
                 fallback.classification_duration_micros = Some(classification_duration_micros);
                 fallback.fallback_reason = Some(match failure {
                     CallFailure::Timeout => ClassifierFallbackReasonV1::Timeout,
-                    CallFailure::Unavailable => ClassifierFallbackReasonV1::Unavailable,
-                    CallFailure::RejectedInput => ClassifierFallbackReasonV1::RejectedInput,
+                    CallFailure::Unavailable
+                    | CallFailure::AuthenticationRejected
+                    | CallFailure::RateLimited => ClassifierFallbackReasonV1::Unavailable,
+                    CallFailure::RejectedInput | CallFailure::EndpointRejected => {
+                        ClassifierFallbackReasonV1::RejectedInput
+                    }
                     CallFailure::InvalidOutput => ClassifierFallbackReasonV1::InvalidOutput,
                 });
                 Ok(ClassificationOutcome {
+                    diagnostic_failure: Some(failure.diagnostic()),
                     decision: fallback,
                     facts,
                     assessment: None,
@@ -423,6 +446,7 @@ impl ProductionGatewayRuntime {
         cancellation: CancellationToken,
     ) -> Result<Result<ClassifierResponse, CallFailure>, ClassificationError> {
         let template = &prepared.template;
+        let mut diagnostic = CallDiagnostic::new(self.observation.diagnostic_context());
         let scope = ExecutionScope::new(call_deadline, cancellation.clone());
         ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
 
@@ -474,6 +498,7 @@ impl ProductionGatewayRuntime {
             }
         }
 
+        diagnostic.prepared(&headers, &template.bytes);
         let resolver = TargetResolver::new();
         let target = match resolver
             .resolve(classifier.transport_target.clone(), &scope)
@@ -548,10 +573,19 @@ impl ProductionGatewayRuntime {
             .budget()
             .reserve(MemoryRole::ResponsePrefix, CLASSIFIER_RESPONSE_BYTES)
             .map_err(|_| ClassificationError::Resource)?;
-        let exchange_result = collect_response(&mut exchange, call_deadline).await;
+        let exchange_result = collect_response(&mut exchange, call_deadline, &mut diagnostic).await;
+        diagnostic.protocol(exchange.transport_facts().upstream_protocol);
         let (status, body) = match exchange_result {
             Ok(response) => response,
             Err(CollectResponseError::Attempt(error)) => {
+                diagnostic.failure(match error {
+                    AttemptError::DeadlineExceeded
+                    | AttemptError::ConnectTimeout
+                    | AttemptError::FirstByteTimeout
+                    | AttemptError::StreamIdleTimeout
+                    | AttemptError::RequestWriteTimeout => CallFailure::Timeout,
+                    _ => CallFailure::Unavailable,
+                });
                 let _ = exchange
                     .finish_or_abort_bounded(classifier_cleanup_timeout(call_deadline))
                     .await;
@@ -565,6 +599,7 @@ impl ProductionGatewayRuntime {
                 );
             }
             Err(CollectResponseError::InvalidOutput) => {
+                diagnostic.failure(CallFailure::InvalidOutput);
                 let _ = exchange
                     .finish_or_abort_bounded(classifier_cleanup_timeout(call_deadline))
                     .await;
@@ -625,48 +660,16 @@ impl ProductionGatewayRuntime {
         }
 
         if status == StatusCode::OK {
-            return Ok(match &prepared.bindings {
+            let result = match &prepared.bindings {
                 Some(bindings) => system_one::parse_response(&body, bindings),
                 None => parse_classifier_response(&body, &classifier.decision, prepared.has_target),
-            });
+            };
+            diagnostic.finish(result.as_ref().err().copied());
+            return Ok(result);
         }
-        Ok(Err(classifier_status_failure(status)))
-    }
-}
-
-fn diagnostic_request() -> ModelRequestIRV1 {
-    ModelRequestIRV1 {
-        native_body: None,
-        native_only: false,
-        schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
-        ingress_protocol: IngressProtocol::Responses,
-        responses_options: None,
-        responses_item_ids: Default::default(),
-        responses_item_statuses: Default::default(),
-        served_model_id: "hiroute-classifier-diagnostic".into(),
-        stream: false,
-        instructions: Vec::new(),
-        messages: vec![CanonicalMessage {
-            role: MessageRole::User,
-            content: vec![ContentPart::Text {
-                text: CLASSIFIER_DIAGNOSTIC_LATEST_USER.into(),
-            }],
-            name: None,
-        }],
-        tools: Vec::new(),
-        tool_namespaces: Vec::new(),
-        responses_tool_order: Vec::new(),
-        web_search: None,
-        responses_search_history: Default::default(),
-        responses_annotations: Default::default(),
-        responses_message_phases: Default::default(),
-        responses_internal_chat_message_metadata: Default::default(),
-        responses_reasoning_history: Default::default(),
-        tool_choice: ToolChoice::None,
-        parallel_tool_calls: false,
-        requested_reasoning: RequestedReasoningControl::absent(),
-        requested_max_output_tokens: None,
-        provider_state: Vec::new(),
+        let failure = classifier_response_failure(status, &body);
+        diagnostic.finish(Some(failure));
+        Ok(Err(failure))
     }
 }
 
@@ -691,6 +694,7 @@ fn bind_assessment(target: AssessmentTarget, assessment: ClassifierAssessment) -
 async fn collect_response<T: hiroute_gateway_core::runtime::attempt::AttemptTransport>(
     exchange: &mut AttemptExchange<T>,
     deadline: Instant,
+    diagnostic: &mut CallDiagnostic,
 ) -> Result<(StatusCode, Vec<u8>), CollectResponseError> {
     let mut status = None;
     let mut body = Vec::new();
@@ -700,8 +704,9 @@ async fn collect_response<T: hiroute_gateway_core::runtime::attempt::AttemptTran
             .drive_writer_once()
             .await
             .map_err(CollectResponseError::Attempt)?;
+        diagnostic.protocol(exchange.transport_facts().upstream_protocol);
         while let Some(event) = exchange.next_precommit_event() {
-            consume_response_event(event, &mut status, &mut body, &mut ended)?;
+            consume_response_event(event, &mut status, &mut body, &mut ended, diagnostic)?;
         }
     }
     while !ended {
@@ -712,7 +717,7 @@ async fn collect_response<T: hiroute_gateway_core::runtime::attempt::AttemptTran
         else {
             return Err(CollectResponseError::InvalidOutput);
         };
-        consume_response_event(event, &mut status, &mut body, &mut ended)?;
+        consume_response_event(event, &mut status, &mut body, &mut ended, diagnostic)?;
     }
     let status = status.ok_or(CollectResponseError::InvalidOutput)?;
     Ok((status, body))
@@ -723,12 +728,14 @@ fn consume_response_event(
     status: &mut Option<StatusCode>,
     body: &mut Vec<u8>,
     ended: &mut bool,
+    diagnostic: &mut CallDiagnostic,
 ) -> Result<(), CollectResponseError> {
     if *ended {
         return Err(CollectResponseError::InvalidOutput);
     }
     match event {
         PrecommitEvent::ResponseHead(head) if status.is_none() => {
+            diagnostic.response(head.headers(), head.status());
             *status = Some(head.status());
         }
         PrecommitEvent::ResponseHead(_) => {
@@ -757,21 +764,6 @@ fn map_preparation_error(error: AttemptError) -> ClassificationError {
         AttemptError::DeadlineExceeded => ClassificationError::Deadline,
         AttemptError::Cancelled => ClassificationError::Cancelled,
         _ => ClassificationError::Integrity,
-    }
-}
-
-fn classifier_status_failure(status: StatusCode) -> CallFailure {
-    if status == StatusCode::UNAUTHORIZED
-        || status == StatusCode::FORBIDDEN
-        || status == StatusCode::TOO_MANY_REQUESTS
-        || status.as_u16() == 529
-        || status.is_server_error()
-    {
-        CallFailure::Unavailable
-    } else if status.is_client_error() {
-        CallFailure::RejectedInput
-    } else {
-        CallFailure::InvalidOutput
     }
 }
 
@@ -951,9 +943,6 @@ mod tests {
             );
         }
         for status in [
-            StatusCode::UNAUTHORIZED,
-            StatusCode::FORBIDDEN,
-            StatusCode::TOO_MANY_REQUESTS,
             StatusCode::INTERNAL_SERVER_ERROR,
             StatusCode::from_u16(529).unwrap(),
         ] {
@@ -967,6 +956,29 @@ mod tests {
             classify_attempt_failure(&AttemptError::Body(BodyError::BodyLimitExceeded)),
             CallFailure::InvalidOutput
         );
+        for status in [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN] {
+            assert_eq!(
+                classifier_response_failure(status, b"private token"),
+                CallFailure::AuthenticationRejected
+            );
+        }
+        assert_eq!(
+            classifier_status_failure(StatusCode::TOO_MANY_REQUESTS),
+            CallFailure::RateLimited
+        );
+        assert_eq!(
+            classifier_response_failure(
+                StatusCode::BAD_REQUEST,
+                br#"{"error":{"message":"Workspace endpoint is invalid."}}"#
+            ),
+            CallFailure::EndpointRejected
+        );
+        let failure = classifier_response_failure(
+            StatusCode::BAD_REQUEST,
+            br#"{"error":{"message":"private token details"}}"#,
+        );
+        assert_eq!(failure, CallFailure::RejectedInput);
+        assert_eq!(failure.diagnostic().code(), "CLASSIFIER_INPUT_REJECTED");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1040,7 +1052,24 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let publications =
             Arc::new(GatewayPublicationInstaller::open(root.join("publication.json")).unwrap());
-        let runtime = ProductionGatewayRuntime::compose(ProductionPorts::fail_closed(publications));
+        let diagnostics = hiroute_diagnostics::runtime::DiagnosticRuntime::start(
+            hiroute_diagnostics::runtime::RuntimeConfig {
+                root: root.join("diagnostics"),
+                role: hiroute_diagnostics::event::ProcessRole::Daemon,
+                component: hiroute_diagnostics::record::Component::Gateway,
+                parent_session_id: None,
+                level_override: Some(hiroute_diagnostics::DiagnosticLevel::Debug),
+            },
+        );
+        let observation = Arc::new(
+            super::super::observation::GatewayObservation::from_environment()
+                .with_diagnostics(diagnostics.port()),
+        );
+        let runtime = ProductionGatewayRuntime::compose_with_planner_and_observation(
+            ProductionPorts::fail_closed(publications),
+            Arc::new(super::super::PublicationPlannerInputAuthority),
+            observation,
+        );
         let mode = hiroute_domain::ComplexityClassifierModeV1::DecisionService {
             service: Box::new(hiroute_domain::DecisionServiceV1 {
                 id: "decision-fixture".into(),
@@ -1057,6 +1086,15 @@ mod tests {
         let outcome = runtime.test_classifier_decision(&mode).await.unwrap();
         assert_eq!(outcome.branch_id, "local");
         server.join().unwrap();
+        diagnostics.shutdown();
+        let log = std::fs::read_to_string(root.join("diagnostics/daemon/current.jsonl")).unwrap();
+        assert!(
+            log.contains("\"request_kind\":\"decision_service\""),
+            "{log}"
+        );
+        assert!(log.contains("\"http_protocol\":\"http1\""), "{log}");
+        assert!(log.contains("\"phase\":\"completed\""), "{log}");
+        assert!(!log.contains(CLASSIFIER_DIAGNOSTIC_LATEST_USER), "{log}");
         std::fs::remove_dir_all(root).unwrap();
     }
 }

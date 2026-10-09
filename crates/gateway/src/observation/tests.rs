@@ -212,6 +212,16 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
     );
     request.record_plan_stage(std::time::Duration::from_millis(4));
     request.no_credential_materialized("binding:test", "credential/none/source-local-test");
+    let mut wire_headers = http::HeaderMap::new();
+    wire_headers.insert(
+        "x-request-id",
+        "provider-secret-request-id".parse().unwrap(),
+    );
+    request.prepared_request_diagnostic(
+        &wire_headers,
+        br#"{"model":"native-model","reasoning":{"effort":"low"},"input":"secret-prompt-marker"}"#,
+    );
+    request.response_head_diagnostic(&wire_headers, 200);
     use hiroute_diagnostics::event::ReasoningCleanupReason;
     request.reasoning_cleanup(ReasoningCleanupReason::ContextBreakRetry, 2, Some(3));
     request.reasoning_cleanup(ReasoningCleanupReason::SuccessfulPrefixReuse, 0, Some(3));
@@ -257,6 +267,7 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
         "request_end",
         "model_stage",
         "response_failure",
+        "upstream_wire",
     ] {
         assert!(
             log.contains(&format!("\"{kind}\":")),
@@ -264,6 +275,12 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
         );
     }
     assert!(log.contains("\"attempt_index\":1"), "{log}");
+    assert!(log.contains("\"native_model\":\"native-model\""), "{log}");
+    assert!(log.contains("\"responses_effort\":\"low\""), "{log}");
+    assert!(
+        !log.contains("provider-secret-request-id") && !log.contains("secret-prompt-marker"),
+        "{log}"
+    );
     assert!(log.contains("\"outcome\":\"completed\""), "{log}");
     assert!(log.contains("\"stage\":\"parse\""), "{log}");
     assert!(log.contains("\"state\":\"semantic_committed\""), "{log}");
@@ -375,6 +392,7 @@ fn accepted_client_cancellation_finishes_the_request_as_cancelled() {
             failure: None,
             transport: AttemptTransportFacts {
                 started_at: now,
+                upstream_protocol: Some(hiroute_gateway_core::transport::HttpProtocol::Http1),
                 connect_elapsed: None,
                 request_write_elapsed: None,
                 upstream_ttfb: None,
@@ -405,6 +423,8 @@ fn accepted_client_cancellation_finishes_the_request_as_cancelled() {
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).unwrap())
         .collect::<Vec<_>>();
+    assert!(log.contains("\"http_protocol\":\"http1\""), "{log}");
+    assert!(log.contains("\"downstream_body\":\"committed\""), "{log}");
     for kind in ["attempt_end", "request_end"] {
         assert!(
             events

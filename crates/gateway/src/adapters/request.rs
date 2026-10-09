@@ -12,6 +12,8 @@ use super::{ChatToolProjection, ProtocolAdapterError};
 
 mod native;
 mod reader;
+mod reasoning;
+use reasoning::render_reasoning;
 mod template;
 mod tools;
 pub use reader::sequential_attempt_body;
@@ -930,87 +932,6 @@ fn validate_message_shapes(
         }
         // Serializers split representable user content at tool-result boundaries.
         // Message-role and cross-protocol Tool ID validation above remain required.
-    }
-    Ok(())
-}
-
-fn render_reasoning(
-    body: &mut Map<String, Value>,
-    reasoning: &ReasoningProfileCapability,
-    protocol: IngressProtocol,
-) -> Result<(), ProtocolAdapterError> {
-    match &reasoning.render {
-        NativeReasoningRender::NoControlParameter => {}
-        NativeReasoningRender::ExactFields {
-            protocol: owner,
-            fields,
-        }
-        | NativeReasoningRender::ExactBudget {
-            protocol: owner,
-            fields,
-            ..
-        } if *owner == protocol => {
-            for field in fields {
-                insert_exact_field(body, &field.path, native_reasoning_value(&field.value))?;
-            }
-        }
-        NativeReasoningRender::ExactFields { .. } | NativeReasoningRender::ExactBudget { .. } => {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "reasoning render belongs to another upstream protocol".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn native_reasoning_value(value: &NativeReasoningValue) -> Value {
-    match value {
-        NativeReasoningValue::Bool(value) => Value::Bool(*value),
-        NativeReasoningValue::String(value) => Value::String(value.clone()),
-        NativeReasoningValue::U64(value) => Value::from(*value),
-    }
-}
-
-fn insert_exact_field(
-    body: &mut Map<String, Value>,
-    path: &[String],
-    value: Value,
-) -> Result<(), ProtocolAdapterError> {
-    let Some((root, tail)) = path.split_first() else {
-        return Err(ProtocolAdapterError::ClientUnrepresentable(
-            "reasoning field path is empty".into(),
-        ));
-    };
-    if tail.is_empty() {
-        if body.insert(root.clone(), value).is_some() {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "reasoning field collides with native request".into(),
-            ));
-        }
-        return Ok(());
-    }
-    let root_value = body
-        .entry(root.clone())
-        .or_insert_with(|| Value::Object(Map::new()));
-    let mut object = root_value.as_object_mut().ok_or_else(|| {
-        ProtocolAdapterError::ClientUnrepresentable(
-            "reasoning path collides with a non-object native field".into(),
-        )
-    })?;
-    for part in &tail[..tail.len() - 1] {
-        let child = object
-            .entry(part.clone())
-            .or_insert_with(|| Value::Object(Map::new()));
-        object = child.as_object_mut().ok_or_else(|| {
-            ProtocolAdapterError::ClientUnrepresentable(
-                "reasoning path collides with a non-object native field".into(),
-            )
-        })?;
-    }
-    if object.insert(tail[tail.len() - 1].clone(), value).is_some() {
-        return Err(ProtocolAdapterError::ClientUnrepresentable(
-            "reasoning field is assigned more than once".into(),
-        ));
     }
     Ok(())
 }

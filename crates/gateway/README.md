@@ -76,3 +76,18 @@ Use the repository [test planner](../../scripts/test-plan.py) and
 [configured validation runner](../../scripts/validation.py). An isolated Jev or
 diagnostic success does not establish product routing success. Source-text
 assertions and private helper names are not substitutes for these behaviors.
+
+## Native controls and completed responses
+
+[Reasoning serialization](src/adapters/request/reasoning.rs) owns protocol-level
+switch semantics and normalizes supported released projections without rewriting
+frozen publication identities. The daemon produces current profiles; explicit
+effort, manual budget and adaptive controls remain distinct. Shared Pingora
+transport assigns HTTP/2 authority once for model and classifier calls.
+
+[Response classification](src/runtime/driver/response.rs) classifies upstream
+failures for bounded relay within the frozen plan before the first downstream body.
+Streaming headers alone leave relay open; a later failed model terminal stays a failure in attempt,
+request and Agent turn observations even when its native bytes were delivered.
+The decision diagnostic uses closed error codes; provider text is not a public
+error message or a substitute for evidence of credential failure.
