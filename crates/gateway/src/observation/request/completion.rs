@@ -224,7 +224,13 @@ impl RequestObservation {
             let mut state = self.lock_state();
             state.published_disposition = None;
             let attempt = state.current_attempt.take();
-            if observation.disposition == Disposition::Continue
+            // A group's final failure can be Terminate even when the frozen request
+            // plan continues into another group. Cache the last real attempt here;
+            // a fallback event is emitted only if another real attempt starts.
+            if matches!(
+                observation.disposition,
+                Disposition::Continue | Disposition::Terminate
+            ) && observation.commits.downstream_semantic.is_clear()
                 && let Some(attempt) = &attempt
             {
                 state.previous_attempt_id = Some(attempt.attempt_id.clone());

@@ -266,9 +266,11 @@ fn production_native_tool_history_survives_restart_with_request_authentication()
             "Use the same legal namespace shape",
         ),
     );
+    // The only authorized candidate rejected a legal upstream shape. A bounded
+    // relay has no next target, so the sanitized exhausted-attempt result is 502.
     assert_eq!(
         rejected.status,
-        400,
+        502,
         "{}",
         String::from_utf8_lossy(&rejected.body)
     );

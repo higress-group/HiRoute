@@ -18,6 +18,116 @@ const ACCEPTED_STREAM_TEXT: &[u8] = b"event: response.output_text.delta\ndata: {
 const ACCEPTED_STREAM_COMPLETED: &[u8] = b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"observation-stream\",\"model\":\"native-observed\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"observation-message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"accepted-stream-22008\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":13,\"output_tokens\":5,\"total_tokens\":18,\"input_tokens_details\":{\"cached_tokens\":4},\"output_tokens_details\":{\"reasoning_tokens\":3}}}}\n\n";
 
 #[test]
+fn production_info_cross_group_relay_links_only_actual_attempts() {
+    for relay_allowed in [true, false] {
+        let rejected = NativeProvider::start(vec![ProviderReply::StreamComplete {
+            status: 200,
+            body: br#"event: response.failed
+data: {"type":"response.failed","response":{"id":"cross-group-failure","model":"native-observed","status":"failed","output":[],"error":{"type":"invalid_request_error","message":"<400> InternalError.Algo.InvalidParameter: The thinking_budget parameter must be a positive integer and not greater than 81920"},"usage":{"input_tokens":7,"output_tokens":2}}}
+
+"#,
+        }]);
+        let accepted = NativeProvider::start(vec![ProviderReply::StreamComplete {
+            status: 200,
+            body: br#"event: response.completed
+data: {"type":"response.completed","response":{"id":"cross-group-success","model":"native-observed","status":"completed","output":[{"type":"message","id":"cross-group-message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"accepted-cross-group-response","annotations":[]}]}],"usage":{"input_tokens":11,"output_tokens":7}}}
+
+"#,
+        }]);
+        let fixture = RuntimeFixture::launch_classified_with_info_diagnostics(
+            &[&rejected, &accepted],
+            if relay_allowed { 2 } else { 1 },
+        );
+        assert!(fixture.observation_root.is_none());
+        let response = fixture.request_body(
+            br#"{"model":"runtime-model","input":"private-cross-group-input","stream":true}"#,
+        );
+        assert_eq!(response.status, if relay_allowed { 200 } else { 502 });
+        assert_eq!(rejected.calls(), 1);
+        assert_eq!(accepted.calls(), usize::from(relay_allowed));
+        let path = fixture
+            .diagnostics_root
+            .as_ref()
+            .unwrap()
+            .join("daemon/current.jsonl");
+        let (log, records) =
+            wait_diagnostic_terminal(&path, if relay_allowed { "completed" } else { "failed" });
+        let attempts = records
+            .iter()
+            .filter_map(|record| record.pointer("/event/attempt_begin"))
+            .collect::<Vec<_>>();
+        let ended = records
+            .iter()
+            .filter_map(|record| record.pointer("/event/attempt_end"))
+            .collect::<Vec<_>>();
+        let relays = records
+            .iter()
+            .filter_map(|record| record.pointer("/event/fallback"))
+            .collect::<Vec<_>>();
+        assert_eq!(attempts.len(), if relay_allowed { 2 } else { 1 }, "{log}");
+        assert_eq!(ended.len(), attempts.len(), "{log}");
+        assert_eq!(ended[0]["native_model"], "runtime-native-model-1", "{log}");
+        assert_eq!(
+            ended[0]["request_reasoning"]["responses_effort"], "low",
+            "{log}"
+        );
+        assert_eq!(ended[0]["http_status"], 200, "{log}");
+        assert_eq!(ended[0]["provider_result"], "failed", "{log}");
+        assert_eq!(
+            ended[0]["provider_error"], "thinking_budget_rejected",
+            "{log}"
+        );
+        assert_eq!(ended[0]["commits"]["downstream_body"], "clear", "{log}");
+        assert_eq!(relays.len(), usize::from(relay_allowed), "{log}");
+        if relay_allowed {
+            let relay = relays[0];
+            assert_eq!(relay["reason"], "upstream_failure", "{log}");
+            assert_eq!(
+                relay["from_attempt_index"], attempts[0]["attempt_index"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["next_attempt_index"], attempts[1]["attempt_index"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["request_token"], attempts[0]["request_token"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["request_token"], attempts[1]["request_token"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["next_attempt_token"], attempts[1]["attempt_token"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["next_binding_token"], attempts[1]["binding_token"],
+                "{log}"
+            );
+            assert_ne!(
+                attempts[0]["binding_token"], attempts[1]["binding_token"],
+                "{log}"
+            );
+            assert_eq!(ended[1]["provider_result"], "complete", "{log}");
+            assert_eq!(ended[1]["outcome"], "completed", "{log}");
+        }
+        for private in [
+            "private-cross-group-input",
+            "provider-secret-1",
+            "<400> InternalError",
+            "accepted-cross-group-response",
+        ] {
+            assert!(
+                !log.contains(private),
+                "private content reached Info diagnostics"
+            );
+        }
+    }
+}
+
+#[test]
 fn production_info_failure_logs_actual_wire_and_body_relay_without_content_capture() {
     let rejected = NativeProvider::start(vec![ProviderReply::CompleteWithRequestId {
         status: 400,

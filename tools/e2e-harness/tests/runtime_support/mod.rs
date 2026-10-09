@@ -746,6 +746,26 @@ impl RuntimeFixture {
         )
     }
 
+    pub fn launch_classified_with_info_diagnostics(
+        providers: &[&NativeProvider],
+        max_attempts: u32,
+    ) -> Self {
+        assert_eq!(providers.len(), 2);
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                classified_route: true,
+                diagnostic_level: Some("info"),
+                reasoning_choices: true,
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
     pub fn launch_rest_classified(providers: &[&NativeProvider], max_attempts: u32) -> Self {
         assert_eq!(
             providers.len(),
