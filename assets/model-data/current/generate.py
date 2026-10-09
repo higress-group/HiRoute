@@ -644,7 +644,9 @@ def build_runtime_projection(catalog):
         inventory = endpoint_by_interface[registration["inventory_interface"]]
         evidence_refs = sorted(set(product["evidence_refs"]))
         evidence_digest = digest([evidence_ref for evidence_ref in evidence_refs])
-        verified_at = int(datetime.datetime.strptime(catalog["as_of"], "%Y-%m-%d").replace(
+        # A scoped refresh must not advance unrelated products' verification dates.
+        verified_on = max(evidence[reference]["collected_on"] for reference in evidence_refs)
+        verified_at = int(datetime.datetime.strptime(verified_on, "%Y-%m-%d").replace(
             tzinfo=datetime.timezone.utc).timestamp())
         profile = {
             "endpoint_profile_id": registration["endpoint_profile_id"], "revision": 1,

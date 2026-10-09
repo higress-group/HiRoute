@@ -79,6 +79,12 @@ fn switched_account_is_rejected_before_replacing_cpa_credentials() {
 
 #[test]
 fn reacquired_lease_keeps_persisted_account_until_explicit_recheck() {
+    if crate::borrowed_codex::tests::isolated_lock_test(
+        "borrowed_claude::tests::reacquired_lease_keeps_persisted_account_until_explicit_recheck",
+    ) {
+        return;
+    }
+
     let root = tempfile::tempdir().unwrap();
     let auth = tempfile::tempdir().unwrap();
     ensure_private_dir(auth.path()).unwrap();

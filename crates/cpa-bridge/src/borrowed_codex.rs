@@ -770,4 +770,4 @@ fn valid_digest(value: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

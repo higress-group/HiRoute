@@ -394,7 +394,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.anthropic.platform.global.v1.messages",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1791504000,
+        "last_verified_at": 1789257600,
         "logical_endpoint_group": "anthropic-platform",
         "protocol_endpoints": [
           {
@@ -651,7 +651,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.deepseek.official.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1791504000,
+        "last_verified_at": 1790294400,
         "logical_endpoint_group": "deepseek-official",
         "protocol_endpoints": [
           {
@@ -712,7 +712,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.google.gemini-api.global.v1.chat",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1791504000,
+        "last_verified_at": 1789257600,
         "logical_endpoint_group": "google-gemini-api",
         "protocol_endpoints": [
           {
@@ -926,7 +926,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.openai.platform.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1791504000,
+        "last_verified_at": 1789257600,
         "logical_endpoint_group": "openai-platform",
         "protocol_endpoints": [
           {
@@ -1026,7 +1026,7 @@
         "endpoint_profile_id": "endpoint.zai.coding-plan.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1791504000,
+        "last_verified_at": 1789257600,
         "logical_endpoint_group": "zai-coding-plan",
         "protocol_endpoints": [
           {
@@ -1073,7 +1073,7 @@
         "endpoint_profile_id": "endpoint.zai.general.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1791504000,
+        "last_verified_at": 1789257600,
         "logical_endpoint_group": "zai-general",
         "protocol_endpoints": [
           {
