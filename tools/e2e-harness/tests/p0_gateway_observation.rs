@@ -81,7 +81,7 @@ data: {"type":"response.completed","response":{"id":"cross-group-success","model
         assert_eq!(relays.len(), usize::from(relay_allowed), "{log}");
         if relay_allowed {
             let relay = relays[0];
-            assert_eq!(relay["reason"], "upstream_failure", "{log}");
+            assert_eq!(relay["reason"], "input_rejected", "{log}");
             assert_eq!(
                 relay["from_attempt_index"], attempts[0]["attempt_index"],
                 "{log}"
