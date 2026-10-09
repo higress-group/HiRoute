@@ -1,0 +1,303 @@
+use super::*;
+use crate::server::core_runtime::profiles::fixed_reasoning;
+use crate::server::request_plan::IngressProtocol;
+use std::os::unix::fs::PermissionsExt;
+use std::time::{Duration, Instant};
+
+fn setup() -> PathBuf {
+    let mut random = [0u8; 16];
+    getrandom::fill(&mut random).unwrap();
+    let root = fs::canonicalize(std::env::temp_dir())
+        .unwrap()
+        .join(format!("hiroute-capture-{:x}", u128::from_le_bytes(random)));
+    fs::create_dir(&root).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    let session = Session {
+        source_sha: "a".repeat(40),
+        binary_sha256: "b".repeat(64),
+        client: "fixture".into(),
+        expires_at: now() + 60,
+        delete_after: now() + 120,
+    };
+    private_file(&root.join("session.json"))
+        .unwrap()
+        .write_all(&serde_json::to_vec(&session).unwrap())
+        .unwrap();
+    root
+}
+fn profile() -> CandidateProtocolProfile {
+    CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Messages,
+        IngressProtocol::ChatCompletions,
+        "physical",
+        fixed_reasoning("fixed"),
+    )
+}
+
+// Only after the test has dropped its previous writer. A concurrent process
+// spawn can inherit the open-file description until CLOEXEC closes it. Wait
+// for that actual kernel ownership to end; all other errors remain failures.
+fn open_after_capture_release(root: &Path, mut on_blocked: impl FnMut()) -> Capture {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        match Capture::open(root, &profile(), None, 2, true) {
+            Ok(capture) => return capture,
+            Err(error)
+                if error.kind() == io::ErrorKind::WouldBlock && Instant::now() < deadline =>
+            {
+                on_blocked();
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(error) => panic!("capture ownership did not release: {error}"),
+        }
+    }
+}
+
+#[test]
+fn completed_capture_waits_for_inherited_lock_descriptor_release() {
+    let root = setup();
+    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    // A descriptor duplicate models the same open-file description inherited
+    // across fork, even when the originating writer has already been dropped.
+    let inherited = capture.0.lock().unwrap()._lock.try_clone().unwrap();
+    drop(capture);
+    assert_eq!(
+        Capture::open(&root, &profile(), None, 2, true)
+            .err()
+            .unwrap()
+            .kind(),
+        io::ErrorKind::WouldBlock,
+        "live descriptor ownership must still reject another writer"
+    );
+    let (release, observed) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        observed.recv_timeout(Duration::from_secs(2)).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        drop(inherited);
+    });
+    let mut blocked = 0;
+    let next = open_after_capture_release(&root, || {
+        blocked += 1;
+        if blocked == 1 {
+            release.send(()).unwrap();
+        }
+    });
+    holder.join().unwrap();
+    assert!(
+        blocked > 0,
+        "re-admission must observe the retained kernel lock"
+    );
+    drop(next);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn capture_preserves_bytes_and_replays_request_bound_tools_across_chunks() {
+    let root = setup();
+    let request = serde_json::json!({"model":"alias", "max_tokens":64,"messages":[{"role":"user","content":"hello"}], "tools":[{"name":"known","description":"tool", "input_schema":{"type":"object"}}]});
+    let ir = adapters::decode_ingress_request(IngressProtocol::Messages, &request).unwrap();
+    let tools = adapters::ChatToolProjection::for_request(&ir).unwrap();
+    let body = serde_json::to_vec(&request).unwrap();
+    let capture = Capture::open(&root, &profile(), Some(&tools), body.len(), true).unwrap();
+    capture.record(1, &body[..9]);
+    capture.record(1, &body[9..]);
+    capture.record(2, &[]);
+    capture.record(3, &103u16.to_le_bytes());
+    capture.record(3, &200u16.to_le_bytes());
+    let sse = b"data: {\"id\":\"resp\",\"model\":\"physical\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call\",\"type\":\"function\",\"function\":{\"name\":\"unknown_secret_tool\",\"arguments\":\"{}\"}}]},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n";
+    capture.record(4, &sse[..17]);
+    capture.record(4, &sse[17..]);
+    capture.failed();
+    // The supervisor may stop the process as soon as this marker appears.
+    // A failed sample must already be durable and sealed while other owners still exist.
+    assert!(root.join("stopped").exists());
+    assert!(root.join("active.lock").exists());
+    let at_stop = read_private(&root.join("attempt-1.capture"), MAX_FILE).unwrap();
+    assert_eq!(replay::records(&at_stop).unwrap().last().unwrap().0, 8);
+    for size in [0, 1, 4096] {
+        let replay = replay_capture(&root.join("attempt-1.capture"), size)
+            .await
+            .unwrap();
+        assert_eq!(replay["decoder"]["result"], "rejected");
+        assert_eq!(replay["decoder"]["reason"], "missing_tool_identity");
+    }
+    capture.record(4, b"cannot append after seal");
+    drop(capture);
+    let path = root.join("attempt-1.capture");
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let bytes = read_private(&path, MAX_FILE).unwrap();
+    let records = replay::records(&bytes).unwrap();
+    let actual: Vec<u8> = records
+        .iter()
+        .filter(|r| r.0 == 1)
+        .flat_map(|r| r.1.iter().copied())
+        .collect();
+    assert_eq!(actual, body);
+    let chunks: Vec<_> = records.iter().filter(|r| r.0 == 4).map(|r| r.1).collect();
+    assert_eq!(chunks, vec![&sse[..17], &sse[17..]]);
+    for size in [0, 1, 4096] {
+        let result = replay_capture(&path, size).await.unwrap();
+        assert_eq!(result["decoder"]["result"], "rejected");
+        assert!(!result.to_string().contains("unknown_secret_tool"));
+    }
+    assert!(
+        Capture::open(&root, &profile(), None, 2, true).is_err(),
+        "first failure stops further captures"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn bounded_capture_is_fail_closed_without_mutating_business_input() {
+    let root = setup();
+    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    assert!(
+        Capture::open(&root, &profile(), None, 2, true).is_err(),
+        "one writer per session"
+    );
+    {
+        let mut writer = capture.0.lock().unwrap();
+        writer.limit = writer.written + 10;
+    }
+    capture.record(1, b"{}");
+    drop(capture);
+    assert!(
+        replay_capture(&root.join("attempt-1.capture"), 0)
+            .await
+            .is_err()
+    );
+    fs::set_permissions(root.join("session.json"), fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(Capture::open(&root, &profile(), None, 2, true).is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn capture_redacts_transport_headers_and_enforces_expiry() {
+    let root = setup();
+    let mut profile = profile();
+    if let crate::server::core_runtime::profiles::CriticalFact::Exact(headers) =
+        &mut profile.connector.headers
+    {
+        headers
+            .required_headers
+            .push(("x-api-key".into(), "SECRET_CREDENTIAL".into()));
+    }
+    let capture = Capture::open(&root, &profile, None, 2, true).unwrap();
+    {
+        let mut writer = capture.0.lock().unwrap();
+        writer.expires_at = now() - 1;
+    }
+    capture.record(1, b"{}");
+    drop(capture);
+    let bytes = read_private(&root.join("attempt-1.capture"), MAX_FILE).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("SECRET_CREDENTIAL"));
+    assert_ne!(replay::records(&bytes).unwrap().last().unwrap().0, 8);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn capture_limits_and_partial_request_cannot_produce_replay_evidence() {
+    let root = setup();
+    assert!(Capture::open(&root, &profile(), None, MAX_FILE as usize, true).is_err());
+    assert!(root.join("active.lock").exists());
+    let capture = open_after_capture_release(&root, || {});
+    capture.record(1, b"{");
+    capture.record(3, &200u16.to_le_bytes());
+    capture.failed();
+    drop(capture);
+    assert_eq!(
+        replay_capture(&root.join("attempt-1.capture"), 0)
+            .await
+            .unwrap_err(),
+        "request body capture incomplete"
+    );
+    fs::remove_dir_all(root).unwrap();
+
+    let root = setup();
+    for _ in 0..MAX_ATTEMPTS {
+        drop(open_after_capture_release(&root, || {}));
+    }
+    assert!(Capture::open(&root, &profile(), None, 2, true).is_err());
+    assert!(root.join("active.lock").exists());
+    fs::remove_dir_all(root).unwrap();
+
+    let root = setup();
+    private_file(&root.join("existing.capture"))
+        .unwrap()
+        .set_len(MAX_TOTAL)
+        .unwrap();
+    assert!(Capture::open(&root, &profile(), None, 2, true).is_err());
+    assert!(root.join("active.lock").exists());
+    fs::remove_dir_all(root).unwrap();
+
+    let root = setup();
+    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    capture.0.lock().unwrap().records = MAX_RECORDS;
+    capture.record(1, b"{}");
+    drop(capture);
+    assert!(
+        replay_capture(&root.join("attempt-1.capture"), 0)
+            .await
+            .is_err()
+    );
+    assert!(replay::records(&[4, 2, 0, 0, 0, 0, 0, 0, 0, 1]).is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn replay_uses_final_head_and_rejects_paths_without_decoder_equivalence() {
+    let body = b"{}";
+    let response = b"data: {\"id\":\"resp\",\"model\":\"physical\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"resp\",\"model\":\"physical\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+    let mut mismatches = Vec::new();
+    for native in [false, true] {
+        for (heads, invalid) in [
+            (&[200u16][..], None),
+            (&[103u16, 200][..], None),
+            (&[103, 200, 200][..], Some("multiple final statuses")),
+            (&[429][..], Some("unsupported_capture_path")),
+            (&[103, 429][..], Some("unsupported_capture_path")),
+            (&[503][..], Some("unsupported_capture_path")),
+            (&[103, 503][..], Some("unsupported_capture_path")),
+            (&[103][..], Some("missing final status")),
+            (
+                &[200, 103][..],
+                Some("informational head after final status"),
+            ),
+        ] {
+            let root = setup();
+            let mut profile = profile();
+            if native {
+                profile.ingress_protocol = profile.capability.upstream_protocol;
+            }
+            let capture = Capture::open(&root, &profile, None, body.len(), true).unwrap();
+            capture.record(1, body);
+            capture.record(2, &[]);
+            for head in heads {
+                capture.record(3, &head.to_le_bytes());
+            }
+            capture.record(4, &response[..23]);
+            capture.record(4, &response[23..]);
+            capture.record(5, &[]);
+            drop(capture);
+            for size in [0, 1, 4096] {
+                let result = replay_capture(&root.join("attempt-1.capture"), size).await;
+                let expected = invalid.or(native.then_some("unsupported_capture_path"));
+                let matched = match (&result, expected) {
+                    (Err(actual), Some(expected)) => *actual == expected,
+                    (Ok(actual), None) => actual["decoder"]["result"] == "accepted",
+                    _ => false,
+                };
+                if !matched {
+                    mismatches.push(format!(
+                        "heads={heads:?} native={native} chunk={size} expected={expected:?} actual={result:?}"
+                    ));
+                }
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}

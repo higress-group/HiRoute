@@ -459,6 +459,13 @@ pub(super) async fn materialize_attempt(
         ),
         Some(_) | None => None,
     };
+    #[cfg(all(unix, debug_assertions))]
+    let capture = crate::runtime::stream_capture::Capture::begin(
+        profile,
+        prepared.chat_tool_projection.as_ref(),
+        prepared.wire_len,
+        streaming,
+    );
     let chat_tool_projection = prepared.chat_tool_projection.take();
     let body = adapters::sequential_attempt_body(
         prepared.clone(),
@@ -467,6 +474,11 @@ pub(super) async fn materialize_attempt(
         quantum,
     )
     .map_err(safe_error)?;
+    #[cfg(all(unix, debug_assertions))]
+    let body = match capture.as_ref() {
+        Some(capture) => capture.wrap(body),
+        None => body,
+    };
     let lease = context.leases.acquire().map_err(safe_error)?;
     let mut headers = HeaderMap::new();
     let authority = resolved_target.authority.as_ref();
@@ -548,6 +560,8 @@ pub(super) async fn materialize_attempt(
             body,
         },
         ProductionAttemptState {
+            #[cfg(all(unix, debug_assertions))]
+            capture,
             response_status: None,
             resolved_target,
             permits,

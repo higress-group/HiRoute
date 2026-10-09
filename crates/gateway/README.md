@@ -76,3 +76,44 @@ Use the repository [test planner](../../scripts/test-plan.py) and
 [configured validation runner](../../scripts/validation.py). An isolated Jev or
 diagnostic success does not establish product routing success. Source-text
 assertions and private helper names are not substitutes for these behaviors.
+
+## Response failure evidence
+
+`runtime/driver/response_diagnostics.rs` owns the closed, payload-free failure
+classification; `adapters/response/decoder.rs` reports SSE event ordinal and
+received-byte upper bound without per-token logs. Unix Debug-only
+`runtime/stream_capture.rs` can capture an explicitly enabled private session;
+its `stream_replay` example restores the actual attempt profile and tool mapping.
+This is offline decoder evidence, not proof of network timing or task completion.
+
+The helper requires Unix Python with non-reaping `os.waitid`/`os.WNOWAIT`
+(Linux, or Python 3.13+ on macOS). It checks support before creating a session.
+From a clean checkout of the exact candidate, wrap the managed Debug daemon and
+its isolated settings arguments with:
+
+```sh
+python3 scripts/private-stream-capture.py run \
+  --root /absolute/new-private-session --source-sha FULL_CANDIDATE_SHA \
+  --client isolated-client-version --seconds 300 --attempts 3 \
+  -- /absolute/managed-debug-hirouted ISOLATED_DAEMON_ARGUMENTS
+```
+
+The helper issues no requests. Disable client retries, use a separate API-key
+context, and stop on the first failure. Each private file is limited to 8 MiB,
+the session to 32 MiB and four underlying attempts, and capture expires within
+one hour. Credentials in transport headers are excluded. Never commit or upload
+the files. Run the same candidate's Debug `stream_replay` executable with the
+private `attempt-N.capture` path to check original, one-byte and 4096-byte chunks;
+it prints only safe results. Incomplete or unsealed samples are rejected.
+Replay supports successful cross-protocol decoder paths, skips informational
+HTTP heads, and rejects native projector or non-success paths as
+`unsupported_capture_path` without a decoder verdict.
+A separate, bounded retention owner stops the isolated candidate's entire process
+group, including descendants after the leader exits, and reaps the leader. It
+deletes the raw session within 24 hours, even after the CLI returns. Its PID is printed;
+SIGTERM also stops the candidate and deletes the session immediately. Keep the
+owner running until deletion. Host shutdown or SIGKILL of that owner cannot run
+cleanup; after recovery, delete the exact expired session with
+`python3 scripts/private-stream-capture.py cleanup /absolute/new-private-session`.
+Kernel locks release on candidate crashes, so stale lock files do not prevent
+recovery cleanup. No shared scheduler or daily daemon is modified.

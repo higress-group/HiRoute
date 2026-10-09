@@ -1232,6 +1232,17 @@
         "crates/daemon/src/control/runtime/delegation_tasks.rs",
         "crates/daemon/src/control/runtime_early_cancel_tests.rs"
       ]
+    },
+    {
+      "contract": "hiroute.diagnostic-event/v1",
+      "field": "ResponseFailure payload before detailed response reason, field and decoder position extension",
+      "mode": "frozen_fixture",
+      "owner": "diagnostics",
+      "reason": "The current diagnostic reader accepts supported v0.2.0 ResponseFailure bytes from released producer d625e653048b2306c88da07826d52027e9891675, defaulting absent optional attempt correlation, field and position. New writers emit the current closed event contract; old readers are not promised forward compatibility.",
+      "removal_condition": "Retire only when v0.2.0 diagnostic records are outside the supported source and retention policy.",
+      "allowed_paths": [
+        "crates/diagnostics/tests/response_failure_compatibility.rs"
+      ]
     }
   ]
 }

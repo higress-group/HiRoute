@@ -54,6 +54,10 @@ pub(super) fn classify_precommit(
     state: &mut ProductionAttemptState,
     event: PrecommitEvent,
 ) -> Result<PrecommitClassification<ProductionReadiness, ProductionDecodedSse>, Arc<str>> {
+    #[cfg(all(unix, debug_assertions))]
+    if let Some(capture) = &state.capture {
+        capture.response(&event);
+    }
     match event {
         PrecommitEvent::ResponseHead(head) if head.status().is_informational() => {
             Ok(PrecommitClassification::pending())
@@ -135,7 +139,8 @@ pub(super) fn classify_precommit(
                     .ok_or_else(|| Arc::from("native response projector is unavailable"))?
                     .feed(bytes.bytes(), false);
                 drop(bytes);
-                if projected.is_err() {
+                if let Err(error) = projected {
+                    response_diagnostics::adapter(FailureStage::NativeProjection, error);
                     let raw = response_decode_failure(status, state.retry_after);
                     return classify_state_failure(
                         state,
@@ -151,7 +156,8 @@ pub(super) fn classify_precommit(
                     .ok_or_else(|| Arc::from("native response decoder is unavailable"))?
                     .feed(bytes.bytes(), false);
                 drop(bytes);
-                if decoded.is_err() {
+                if let Err(error) = decoded {
+                    response_diagnostics::adapter(FailureStage::Decode, error);
                     let raw = response_decode_failure(status, state.retry_after);
                     return classify_state_failure(
                         state,
@@ -373,6 +379,24 @@ pub(super) fn encode_accepted_event(
     readiness: &mut ProductionReadiness,
     event: ProviderAcceptedEvent<ProductionDecodedSse>,
 ) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
+    #[cfg(all(unix, debug_assertions))]
+    if let (Some(capture), ProviderAcceptedEvent::Raw(raw)) = (&readiness.capture, &event) {
+        capture.response(raw);
+    }
+    let result = encode_accepted_event_inner(readiness, event);
+    #[cfg(all(unix, debug_assertions))]
+    if result.is_err()
+        && let Some(capture) = &readiness.capture
+    {
+        capture.failed();
+    }
+    result
+}
+
+fn encode_accepted_event_inner(
+    readiness: &mut ProductionReadiness,
+    event: ProviderAcceptedEvent<ProductionDecodedSse>,
+) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
     let event = match event {
         ProviderAcceptedEvent::Terminal {
             body, provenance, ..
@@ -443,7 +467,9 @@ pub(super) fn encode_accepted_event(
                     .take()
                     .ok_or_else(|| Arc::from("accepted native decoder is unavailable"))?
                     .finish()
-                    .map_err(|_| Arc::from("accepted native stream ended without terminal"))?;
+                    .map_err(|error| {
+                        response_diagnostics::adapter(FailureStage::EndOfStream, error)
+                    })?;
                 (rendered, true)
             };
             queue_accepted_stream_output(readiness, rendered, projected_terminal)
@@ -691,6 +717,10 @@ fn classify_state_failure(
     raw: RawAttemptFailure,
     local_status: StatusCode,
 ) -> Result<PrecommitClassification<ProductionReadiness, ProductionDecodedSse>, Arc<str>> {
+    #[cfg(all(unix, debug_assertions))]
+    if let Some(capture) = &state.capture {
+        capture.failed();
+    }
     let failure = classify_failure(&raw, connector_error_profile(&state.profile)?);
     let facts = failure_facts(&failure);
     state.classified_failure = Some(failure);
@@ -732,6 +762,8 @@ fn take_readiness(
     prefix_eos_pending: bool,
 ) -> Result<ProductionReadiness, Arc<str>> {
     Ok(ProductionReadiness {
+        #[cfg(all(unix, debug_assertions))]
+        capture: state.capture.take(),
         response_status,
         content_type,
         prefix: state
@@ -844,9 +876,13 @@ fn decode_stream_chunk_readiness(
         .renderer
         .as_mut()
         .ok_or_else(|| Arc::from("accepted client renderer is unavailable"))?;
-    let mut status = decoder
-        .feed(bytes, end_stream)
-        .map_err(|error| response_diagnostics::adapter(FailureStage::Decode, error))?;
+    let mut status = decoder.feed(bytes, end_stream).map_err(|error| {
+        response_diagnostics::adapter_at(
+            FailureStage::Decode,
+            error,
+            Some(decoder.diagnostic_position()),
+        )
+    })?;
     let mut output = Vec::new();
     loop {
         for event in decoder.take_events() {
@@ -872,9 +908,13 @@ fn decode_stream_chunk_readiness(
         if status != adapters::ResponseDecodeStatus::NeedDrain {
             break;
         }
-        status = decoder
-            .resume()
-            .map_err(|_| Arc::from("accepted native stream drain failed"))?;
+        status = decoder.resume().map_err(|error| {
+            response_diagnostics::adapter_at(
+                FailureStage::Decode,
+                error,
+                Some(decoder.diagnostic_position()),
+            )
+        })?;
     }
     let terminal = status == adapters::ResponseDecodeStatus::Terminal;
     if terminal && !end_stream {
@@ -889,10 +929,13 @@ fn finish_native_stream_on_terminal(
     let active = decoder
         .as_mut()
         .ok_or_else(|| Arc::from("native stream decoder is unavailable"))?;
-    if active
-        .feed(&[], true)
-        .map_err(|_| Arc::from("native stream has a malformed terminal tail"))?
-        != adapters::ResponseDecodeStatus::Terminal
+    if active.feed(&[], true).map_err(|error| {
+        response_diagnostics::adapter_at(
+            FailureStage::EndOfStream,
+            error,
+            Some(active.diagnostic_position()),
+        )
+    })? != adapters::ResponseDecodeStatus::Terminal
         || !active.take_events().is_empty()
     {
         return Err(Arc::from("native stream has events after terminal"));
@@ -901,7 +944,7 @@ fn finish_native_stream_on_terminal(
         .take()
         .expect("terminal decoder is present")
         .finish()
-        .map_err(|_| Arc::from("native stream terminal is incomplete"))?;
+        .map_err(|error| response_diagnostics::adapter(FailureStage::EndOfStream, error))?;
     Ok(())
 }
 
