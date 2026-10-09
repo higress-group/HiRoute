@@ -17,6 +17,9 @@ fn explicit_recheck_syncs_fresh_version_before_stale_manager_writeback() {
 
 fn check_stale_manager(old: Option<&str>) {
     let root = tempfile::tempdir().unwrap();
+    // Exercise the usual hosted-runner umask without mutating the process-wide umask.
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o755)).unwrap();
+    ensure_private_dir(root.path()).unwrap();
     let auth_dir = ensure_private_dir(&root.path().join("auth")).unwrap();
     let source = root.path().join("source.json");
     let source_bytes = serde_json::to_vec(&serde_json::json!({

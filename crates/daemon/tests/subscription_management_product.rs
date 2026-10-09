@@ -126,6 +126,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         length = int(self.headers.get("content-length", "0"))
         update = json.loads(self.rfile.read(length))
+        assert update["hiroute_client_version"] == "0.162.0"
         current = managed()
         current["prefix"] = update["prefix"]
         current["request_retry"] = update["request_retry"]
@@ -161,6 +162,15 @@ fn assert_error<T: std::fmt::Debug>(envelope: &MachineEnvelopeV2<T>, code: Error
 }
 
 fn install_subscription_fixture(root: &Path) -> (PathBuf, String) {
+    // Formal subscription checks require the selected native client's version.
+    // Keep this entirely within ProductDaemon's private PATH and HOME.
+    let codex = root.join("bin/codex");
+    fs::write(
+        &codex,
+        "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = --version ] || exit 97\nprintf 'codex-cli 0.162.0\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&codex, fs::Permissions::from_mode(0o700)).unwrap();
     let auth = root.join("home/.codex/auth.json");
     fs::create_dir_all(auth.parent().unwrap()).unwrap();
     fs::set_permissions(auth.parent().unwrap(), fs::Permissions::from_mode(0o700)).unwrap();
@@ -334,7 +344,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
         "{checked_apply:?}"
     );
     let checked_apply: ApplyResultV1 = checked_apply.data.clone().unwrap();
-    assert_eq!(checked_apply.state, "succeeded");
+    assert_eq!(checked_apply.state, "succeeded", "{checked_apply:?}");
     let checked: ComputeSubscriptionCheckResultV2 = succeeded(
         daemon
             .client

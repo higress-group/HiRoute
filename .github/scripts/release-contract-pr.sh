@@ -5,6 +5,11 @@ set -euo pipefail
 : "${RELEASE_REVISION:?verified source revision required}"
 : "${WEBSITE_REVISION:?verified release-manifest revision required}"
 : "${GH_REPO:?repository required}"
+set --
+if [[ -n ${SUPERSEDE_UNPROMOTED_REVISION:-} ]]; then
+  [[ "$SUPERSEDE_UNPROMOTED_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid prior revision' >&2; exit 1; }
+  set -- --supersede-unpromoted-revision "$SUPERSEDE_UNPROMOTED_REVISION"
+fi
 
 root=$(git rev-parse --show-toplevel)
 scratch=$(mktemp -d)
@@ -27,11 +32,15 @@ python3 "$root/scripts/release-contracts.py" record --repo "$root" \
   --repository "$GH_REPO" > /dev/null
 
 branch="chore/release-contracts-${RELEASE_TAG}"
+if [[ $# -gt 0 ]]; then
+  branch="${branch}-${RELEASE_REVISION:0:12}"
+fi
 git fetch origin main --tags
 # Fast path after the generated PR has already merged.
 git worktree add --detach "$worktree" origin/main
 python3 "$root/scripts/release-contracts.py" record --repo "$root" \
   --directory "$worktree/contracts/releases" --manifest "$scratch/releases.json" \
+  "$@" \
   --release-json "$scratch/release.json" --revision "$RELEASE_REVISION" \
   --repository "$GH_REPO" > /dev/null
 if [[ -z $(git -C "$worktree" status --porcelain -- contracts/releases) ]]; then
@@ -68,6 +77,7 @@ fi
 
 python3 "$root/scripts/release-contracts.py" record --repo "$root" \
   --directory "$worktree/contracts/releases" --manifest "$scratch/releases.json" \
+  "$@" \
   --release-json "$scratch/release.json" --revision "$RELEASE_REVISION" \
   --repository "$GH_REPO" > /dev/null
 python3 "$root/scripts/release-contracts.py" check --repo "$root" \
@@ -88,7 +98,8 @@ including storage schema, frozen contract descriptors and installer identities.
 
 The release publication and package-verification jobs succeeded before this update.
 Merging this PR advances the recorded stable baseline when this is a newer stable release;
-previous snapshots remain immutable. This inventory does not claim migration acceptance.
+previous snapshots remain immutable, including revision-bound archives when an explicitly
+authorized unpromoted release is replaced. This inventory does not claim migration acceptance.
 
 Validation: deterministic snapshot generation and frozen-source/index verification.
 EOF

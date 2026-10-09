@@ -194,6 +194,90 @@ class ReleaseContractsTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             contracts.pull_request_base(env)
 
+    def replacement(self):
+        old = self.snapshot()
+        self.directory = self.repo / "contracts/releases"
+        contracts.record_snapshot(self.directory, old)
+        self.run_git("add", ".")
+        self.run_git("commit", "-qm", "record baseline")
+        base = self.run_git("rev-parse", "HEAD").strip()
+        self.write(contracts.STORAGE_SOURCE, "pub const LATEST_SCHEMA_VERSION: u32 = 8;\n")
+        self.run_git("add", ".")
+        self.run_git("commit", "-qm", "replacement producer")
+        self.revision = self.run_git("rev-parse", "HEAD").strip()
+        self.run_git("tag", "-f", "v1.2.0")
+        self.release, self.manifest = self.metadata("v1.2.0")
+        return old, self.snapshot(), base
+
+    def test_explicit_supersession_preserves_evidence_and_advances_current(self):
+        old, new, base = self.replacement()
+        previous = old["release"]["revision"]
+        before = (self.directory / "v1.2.0.json").read_bytes()
+        with self.assertRaisesRegex(ValueError, "immutable"):
+            contracts.record_snapshot(self.directory, new)
+        with self.assertRaisesRegex(ValueError, "immutable"):
+            contracts.record_snapshot(self.directory, new, "0" * 40)
+        contracts.record_snapshot(self.directory, new, previous)
+        archived = self.directory / "archive" / contracts.archive_name(old)
+        self.assertEqual(archived.read_bytes(), before)
+        self.assertEqual(contracts.current(self.repo, self.directory), new)
+        contracts.check_append_only(self.repo, self.directory, base)
+        contracts.verify_sources(self.repo, old, archived=True)
+        with self.assertRaisesRegex(ValueError, "tag has moved"):
+            contracts.verify_sources(self.repo, old)
+        files = {p: p.read_bytes() for p in self.directory.rglob("*.json")}
+        contracts.record_snapshot(self.directory, new, previous)
+        contracts.record_snapshot(self.directory, new)
+        self.assertEqual(files, {p: p.read_bytes() for p in self.directory.rglob("*.json")})
+        self.run_git("add", ".")
+        self.run_git("commit", "-qm", "record replacement")
+        archived.write_bytes(before + b" ")
+        for ref in [base, "HEAD"]:
+            with self.assertRaisesRegex(ValueError, "changed or deleted"):
+                contracts.check_append_only(self.repo, self.directory, ref)
+
+    def test_replacement_index_write_recovery_requires_exact_archived_revision(self):
+        old, new, _ = self.replacement()
+        previous = old["release"]["revision"]
+        index = (self.directory / contracts.INDEX).read_bytes()
+        contracts.record_snapshot(self.directory, new, previous)
+        (self.directory / contracts.INDEX).write_bytes(index)
+        with self.assertRaisesRegex(ValueError, "index/hash mismatch"):
+            contracts.record_snapshot(self.directory, new)
+        with self.assertRaisesRegex(ValueError, "lacks archived"):
+            contracts.record_snapshot(self.directory, new, "0" * 40)
+        contracts.record_snapshot(self.directory, new, previous)
+        self.assertEqual(contracts.current(self.repo, self.directory), new)
+
+    def test_supersession_cannot_change_identity_or_rewrite_same_revision(self):
+        old, new, _ = self.replacement()
+        previous = old["release"]["revision"]
+        for key, value in [("repository", "other/project"), ("channel", "preview")]:
+            changed = copy.deepcopy(new)
+            changed["release"][key] = value
+            with self.assertRaisesRegex(ValueError, "identity"):
+                contracts.record_snapshot(self.directory, changed, previous)
+        changed = copy.deepcopy(old)
+        changed["release"]["artifacts"][0]["sha256"] = "3" * 64
+        with self.assertRaisesRegex(ValueError, "new source revision"):
+            contracts.record_snapshot(self.directory, changed, previous)
+        self.assertEqual(contracts.read_directory(self.directory)["v1.2.0.json"], old)
+
+    def test_archive_symlink_or_edited_source_is_rejected(self):
+        old, new, _ = self.replacement()
+        external = Path(self.temporary.name) / "external"
+        external.mkdir()
+        archive = self.directory / "archive"
+        archive.symlink_to(external, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            contracts.record_snapshot(self.directory, new, old["release"]["revision"])
+        self.assertEqual(list(external.iterdir()), [])
+        archive.unlink()
+        contracts.record_snapshot(self.directory, new, old["release"]["revision"])
+        old["storage"]["sql_schema_version"] = 999
+        with self.assertRaisesRegex(ValueError, "released storage"):
+            contracts.verify_sources(self.repo, old, archived=True)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,10 @@ on:
         description: Published GitHub Release tag, for example v0.1.0
         required: true
         type: string
+      supersede_unpromoted_revision:
+        description: Explicit prior full SHA to archive when replacing an unpromoted same-version release
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -135,4 +139,5 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_REVISION: ${{ needs.verify-release.outputs.revision }}
           WEBSITE_REVISION: ${{ needs.verify-release.outputs.website_revision }}
+          SUPERSEDE_UNPROMOTED_REVISION: ${{ inputs.supersede_unpromoted_revision }}
         run: bash .github/scripts/release-contract-pr.sh
