@@ -416,3 +416,34 @@ fn an_early_failure_that_cannot_be_recorded_claims_nothing() {
         "no terminal is claimed for a failure that was not recorded: {log}"
     );
 }
+
+#[test]
+fn cancel_before_executor_preparation_is_cancelled_without_launching() {
+    let temporary = crate::test_support::private_tempdir();
+    let (report, runtime, executor) = fixture(&temporary, 11);
+    {
+        let mut run = runtime.run.lock().unwrap();
+        run.progress.advance(RunEventV1::CancelRequested).unwrap();
+        run.lease_revoked = true;
+    }
+    let context = report.port().handle().root_context();
+    run_failure_entry(&executor, &context);
+    let run = runtime.run.lock().unwrap();
+    assert_eq!(
+        run.progress.state,
+        hiroute_domain::delegation::RunStateV1::Cancelled
+    );
+    assert!(run.progress.workspace_releasable());
+    assert!(run.process.is_none());
+    assert!(!run.progress.prompt_may_have_executed);
+    drop(run);
+    run_failure_entry(&executor, &context);
+    report.shutdown();
+    let log =
+        std::fs::read_to_string(temporary.path().join("diagnostics/daemon/current.jsonl")).unwrap();
+    let terminals = task_lifecycles(&log);
+    assert!(
+        terminals.is_empty(),
+        "the cancel transaction already settled the run"
+    );
+}

@@ -164,7 +164,7 @@ fn is_worker_invocation(arguments: &[String]) -> bool {
 
 fn worker_option_arity(option: &str) -> Option<usize> {
     match option {
-        "--no-wait" | "--request-stdin" => Some(0),
+        "--no-wait" | "--request-stdin" | "--handled" => Some(0),
         "--title"
         | "--cursor"
         | "--limit"
@@ -181,6 +181,7 @@ fn worker_option_arity(option: &str) -> Option<usize> {
         | "--parent-task"
         | "--task"
         | "--expected-latest-run"
+        | "--expected-revision"
         | "--run"
         | "--after-revision"
         | "--offset"
@@ -276,5 +277,33 @@ mod tests {
         .unwrap();
         assert_eq!(remaining[2..], ["--unknown", "value", "--json"]);
         assert_eq!(globals.output, OutputMode::Text);
+    }
+
+    #[test]
+    fn cleanup_confirmation_accepts_trailing_global_output() {
+        let (remaining, globals) = split_globals(
+            [
+                "worker",
+                "cleanup",
+                "confirm",
+                "--run",
+                "run/one",
+                "--expected-revision",
+                "3",
+                "--handled",
+                "--idempotency-key",
+                "cleanup-one",
+                "--output",
+                "json",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        )
+        .unwrap();
+        assert_eq!(globals.output, OutputMode::Json);
+        assert_eq!(remaining.last().map(String::as_str), Some("cleanup-one"));
+        assert!(remaining.iter().any(|value| value == "--handled"));
+        assert!(remaining.iter().any(|value| value == "--expected-revision"));
     }
 }

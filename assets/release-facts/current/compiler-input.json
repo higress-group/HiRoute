@@ -371,7 +371,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.anthropic.platform.global.v1.messages",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1790640000,
+        "last_verified_at": 1791417600,
         "logical_endpoint_group": "anthropic-platform",
         "protocol_endpoints": [
           {
@@ -602,7 +602,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.deepseek.official.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1790640000,
+        "last_verified_at": 1791417600,
         "logical_endpoint_group": "deepseek-official",
         "protocol_endpoints": [
           {
@@ -663,7 +663,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.google.gemini-api.global.v1.chat",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1790640000,
+        "last_verified_at": 1791417600,
         "logical_endpoint_group": "google-gemini-api",
         "protocol_endpoints": [
           {
@@ -877,7 +877,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.openai.platform.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1790640000,
+        "last_verified_at": 1791417600,
         "logical_endpoint_group": "openai-platform",
         "protocol_endpoints": [
           {
@@ -977,7 +977,7 @@
         "endpoint_profile_id": "endpoint.zai.coding-plan.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1790640000,
+        "last_verified_at": 1791417600,
         "logical_endpoint_group": "zai-coding-plan",
         "protocol_endpoints": [
           {
@@ -1024,7 +1024,7 @@
         "endpoint_profile_id": "endpoint.zai.general.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1790640000,
+        "last_verified_at": 1791417600,
         "logical_endpoint_group": "zai-general",
         "protocol_endpoints": [
           {
@@ -1569,6 +1569,21 @@
           "upstream_protocol": "responses"
         },
         {
+          "capability_id": "cap.openai.gpt-6-luna.codex.responses",
+          "connector_id": "connector.cpa.codex",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.codex",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:2096131aad66a953256d309aa1ffab512126ff65aac2f21941b961deda04938e",
+          "model_configuration_id": "model.openai.gpt-6-luna",
+          "protocol_endpoint_id": "endpoint.cpa.codex.responses",
+          "required_adapter_ref": "adapter.openai-responses.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "gpt-6-luna",
+          "upstream_protocol": "responses"
+        },
+        {
           "capability_id": "cap.openai.gpt-6-sol.codex.responses",
           "connector_id": "connector.cpa.codex",
           "connector_revision": 1,
@@ -1589,7 +1604,7 @@
           "connector_revision": 1,
           "endpoint_profile_id": "endpoint.cpa.codex",
           "endpoint_profile_revision": 1,
-          "evidence_digest": "sha256:ae45bef7140f1b7116b23c9bfc1eabb524adab2998d8e7bf6938817dc8b15495",
+          "evidence_digest": "sha256:c1261ae21aaf00ce210102e9677b2235d0338f1737f24cd37983576922a6d0a4",
           "model_configuration_id": "model.openai.gpt-6.1-sol",
           "protocol_endpoint_id": "endpoint.cpa.codex.responses",
           "required_adapter_ref": "adapter.openai-responses.v1",
@@ -1619,7 +1634,7 @@
           "connector_revision": 1,
           "endpoint_profile_id": "endpoint.openrouter.free.global.v1",
           "endpoint_profile_revision": 1,
-          "evidence_digest": "sha256:bb15c8a4f748f13f3f6903e12eee04de7e8b492dfd171fb177d5fe15f6119b18",
+          "evidence_digest": "sha256:9ecb92e5558d80efa7de0fdbb60e37fc32b77b7a995618d46d963444b3242a4b",
           "model_configuration_id": "model.openrouter.liquid-lfm-2.5-2.6b-free",
           "protocol_endpoint_id": "endpoint.openrouter.free.global.v1.chat",
           "required_adapter_ref": "adapter.openai-chat.v1",
@@ -1634,7 +1649,7 @@
           "connector_revision": 1,
           "endpoint_profile_id": "endpoint.openrouter.free.global.v1",
           "endpoint_profile_revision": 1,
-          "evidence_digest": "sha256:bb15c8a4f748f13f3f6903e12eee04de7e8b492dfd171fb177d5fe15f6119b18",
+          "evidence_digest": "sha256:a57251ac29245fa7a6261a532bc8b1cb201869f049da1cab624145b829333484",
           "model_configuration_id": "model.openrouter.nvidia-nemotron-3-super-120b-a12b-free",
           "protocol_endpoint_id": "endpoint.openrouter.free.global.v1.chat",
           "required_adapter_ref": "adapter.openai-chat.v1",
@@ -1880,6 +1895,19 @@
             "tool": true,
             "vision": true
           },
+          "display_name": "GPT-6 Luna",
+          "model_configuration_id": "model.openai.gpt-6-luna",
+          "publisher_id": "publisher.openai",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1050000,
+            "max_output_tokens": 128000,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
           "display_name": "GPT-6 Sol",
           "model_configuration_id": "model.openai.gpt-6-sol",
           "publisher_id": "publisher.openai",
@@ -1887,7 +1915,7 @@
         },
         {
           "capabilities": {
-            "context_tokens": 272000,
+            "context_tokens": 1050000,
             "max_output_tokens": 128000,
             "streaming": true,
             "tool": true,
@@ -1914,7 +1942,7 @@
         {
           "capabilities": {
             "context_tokens": 65536,
-            "max_output_tokens": 64,
+            "max_output_tokens": 8192,
             "streaming": true,
             "tool": true,
             "vision": false
@@ -1927,7 +1955,7 @@
         {
           "capabilities": {
             "context_tokens": 262144,
-            "max_output_tokens": 64,
+            "max_output_tokens": 235929,
             "streaming": true,
             "tool": true,
             "vision": false
@@ -1986,7 +2014,7 @@
           "endpoint_profile_id": "endpoint.cpa.codex",
           "endpoint_profile_revision": 1,
           "entitlement_id": "codex-subscription",
-          "evidence_digest": "sha256:6520cf042302b957dd255e53e99b7fc71b4a888c0a02419c30955da66783aa93",
+          "evidence_digest": "sha256:e10d4f066d8a1f54071ec5333083feeacd34794196b88deef6bfa15cc921e96f",
           "model_configuration_ids": [
             "model.openai.gpt-5.3-codex-spark",
             "model.openai.gpt-5.5",
@@ -1994,6 +2022,7 @@
             "model.openai.gpt-5.6-sol",
             "model.openai.gpt-5.6-terra",
             "model.openai.gpt-6-astra",
+            "model.openai.gpt-6-luna",
             "model.openai.gpt-6-sol",
             "model.openai.gpt-6.1-sol"
           ],
@@ -3458,7 +3487,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-09-29",
+      "as_of": "2026-10-08",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -9058,10 +9087,10 @@
         },
         {
           "authority": "developers.openai.com",
-          "bytes_digest": null,
-          "collected_on": "2026-09-13",
-          "digest_state": "not-captured",
-          "locator": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+          "bytes_digest": "sha256:b7c19b3bb89e87a392a0f3f8b732c5e7c9f0bf558cbe3022c491575a947fcef8",
+          "collected_on": "2026-10-08",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6-astra.md",
           "source_key": "source-088",
           "source_kind": "provider-documentation"
         },
@@ -9400,19 +9429,19 @@
         },
         {
           "authority": "developers.openai.com",
-          "bytes_digest": null,
-          "collected_on": "2026-09-29",
-          "digest_state": "not-captured",
-          "locator": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+          "bytes_digest": "sha256:ae565284e1285009ee1758919e8b627944419986ff74bc8a9959700b2c555448",
+          "collected_on": "2026-10-08",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6-sol.md",
           "source_key": "source-126",
           "source_kind": "provider-documentation"
         },
         {
           "authority": "developers.openai.com",
-          "bytes_digest": null,
-          "collected_on": "2026-09-23",
-          "digest_state": "not-captured",
-          "locator": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "bytes_digest": "sha256:efb95e473a811ad36452a8b5f560e820b8b03bde18a9a462ba3b18348630d87f",
+          "collected_on": "2026-10-08",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6-luna.md",
           "source_key": "source-127",
           "source_kind": "provider-documentation"
         },
@@ -9841,10 +9870,10 @@
         },
         {
           "authority": "developers.openai.com",
-          "bytes_digest": null,
-          "collected_on": "2026-09-30",
-          "digest_state": "not-captured",
-          "locator": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+          "bytes_digest": "sha256:1d9758e64a86c1f5445a2bbee51e20132400fe80b71a41c4ec2e3a8a42caeb74",
+          "collected_on": "2026-10-08",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6.1-sol.md",
           "source_key": "source-175",
           "source_kind": "provider-documentation"
         },
@@ -9865,6 +9894,15 @@
           "locator": "https://chatgpt.com/backend-api/codex/models?client_version=0.159.0",
           "source_key": "source-177",
           "source_kind": "authenticated-service-metadata"
+        },
+        {
+          "authority": "openrouter.ai",
+          "bytes_digest": "sha256:50fb3e39b08d6660323b1267dd272b17db2b9c259d242f6d15d8e0612006c1d3",
+          "collected_on": "2026-10-09",
+          "digest_state": "captured",
+          "locator": "https://openrouter.ai/api/v1/models",
+          "source_key": "source-178",
+          "source_kind": "provider-documentation"
         }
       ],
       "inference_rules": [
@@ -9981,6 +10019,19 @@
           "reason": "The authenticated Codex directory publishes context and effort profiles but no output limit. Conservatively inherit the same GPT-6.1 Sol model's public 128,000 output limit as an explicitly labeled inference, not a measured subscription entitlement. Runtime account eligibility remains separate.",
           "record_kind": "model",
           "rule_key": "rule.codex.gpt-6.1-sol-output/v1"
+        },
+        {
+          "basis": "inferred",
+          "collected_on": "2026-10-08",
+          "evidence_refs": [
+            "source-088",
+            "source-126",
+            "source-127",
+            "source-175"
+          ],
+          "reason": "Use the exact public model's documented 1,050,000-token ceiling for the maintained Codex subscription model mapping. This is explicitly inferred for the subscription, not a measured account entitlement. Retain the native client directory's default/max-window settings as raw source assertions; do not substitute its 272,000 default for the model maximum. Account inventory and any independently proven endpoint limit remain separate execution constraints. No API token price is assigned to a subscription.",
+          "record_kind": "model",
+          "rule_key": "rule.codex.gpt6-model-context/v1"
         },
         {
           "basis": "inferred",
@@ -40722,6 +40773,12 @@
           "execution_fit": {
             "state": "native_text_representable"
           },
+          "field_provenance": {
+            "context_tokens": {
+              "basis": "inferred",
+              "rule_key": "rule.codex.gpt6-model-context/v1"
+            }
+          },
           "input_modalities": [
             "image",
             "text"
@@ -40795,6 +40852,12 @@
           "display_name": "GPT-6 Sol",
           "execution_fit": {
             "state": "native_text_representable"
+          },
+          "field_provenance": {
+            "context_tokens": {
+              "basis": "inferred",
+              "rule_key": "rule.codex.gpt6-model-context/v1"
+            }
           },
           "input_modalities": [
             "image",
@@ -54404,6 +54467,77 @@
         {
           "capability_hints": {
             "reasoning": "supported",
+            "streaming": "conditional",
+            "tool": "supported",
+            "vision": "unsupported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 65536
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Liquid LFM2.5-2.6B (free)",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "field_provenance": {
+            "reasoning_rendering_hints": {
+              "basis": "inferred",
+              "rule_key": "rule.fallback.unclassified-text-model/v1"
+            }
+          },
+          "input_modalities": [
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 8192
+          },
+          "metadata_completeness": {
+            "capabilities": "partial",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "not_applicable"
+          },
+          "model_record_key": "hermes-agent/openrouter/liquid%2Flfm-2.5-2.6b%3Afree",
+          "normalized_model_matches": [],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-178"
+            }
+          ],
+          "provider_id": "openrouter",
+          "provider_record_key": "hermes-agent/openrouter",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [],
+            "thinking_level_maps": []
+          },
+          "reasoning_rendering_state": "not_applicable",
+          "replacement_upstream_ids": [],
+          "roles": [],
+          "status_candidates": [],
+          "upstream_model_id": "liquid/lfm-2.5-2.6b:free",
+          "usable_for": [
+            "context-limit-prefill",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
             "streaming": "supported",
             "tool": "supported",
             "vision": "supported"
@@ -55320,10 +55454,6 @@
               "basis": "inferred",
               "rule_key": "rule.nvidia.nemotron/v1"
             },
-            "context_tokens": {
-              "basis": "inferred",
-              "rule_key": "rule.nvidia.nemotron/v1"
-            },
             "execution_fit": {
               "basis": "inferred",
               "rule_key": "rule.nvidia.nemotron/v1"
@@ -55333,10 +55463,6 @@
               "rule_key": "rule.nvidia.nemotron/v1"
             },
             "lifecycle": {
-              "basis": "inferred",
-              "rule_key": "rule.nvidia.nemotron/v1"
-            },
-            "max_output_tokens": {
               "basis": "inferred",
               "rule_key": "rule.nvidia.nemotron/v1"
             },
@@ -55351,7 +55477,7 @@
           "lifecycle": "active",
           "max_output_tokens": {
             "state": "known",
-            "value": 8192
+            "value": 235929
           },
           "metadata_completeness": {
             "capabilities": "complete",
@@ -55368,6 +55494,10 @@
             {
               "kind": "client-discovery-run",
               "source_key": "hermes-agent"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-178"
             }
           ],
           "provider_id": "openrouter",
@@ -65953,7 +66083,88 @@
           },
           "context_tokens": {
             "state": "known",
-            "value": 272000
+            "value": 1050000
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "GPT-6 Luna",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "field_provenance": {
+            "context_tokens": {
+              "basis": "inferred",
+              "rule_key": "rule.codex.gpt6-model-context/v1"
+            }
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/openai-codex/gpt-6-luna",
+          "normalized_model_matches": [
+            "gpt-6-luna"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-127"
+            }
+          ],
+          "provider_id": "openai-codex",
+          "provider_record_key": "hermes-agent/openai-codex",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [],
+          "status_candidates": [],
+          "upstream_model_id": "gpt-6-luna",
+          "usable_for": [
+            "context-limit-prefill",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
           },
           "cost_hint_state": "not_recorded",
           "cost_hints": [],
@@ -65962,6 +66173,10 @@
             "state": "native_text_representable"
           },
           "field_provenance": {
+            "context_tokens": {
+              "basis": "inferred",
+              "rule_key": "rule.codex.gpt6-model-context/v1"
+            },
             "max_output_tokens": {
               "basis": "inferred",
               "rule_key": "rule.codex.gpt-6.1-sol-output/v1"
@@ -100383,11 +100598,11 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:352407a24bcd56b693811dda49c6d4040d35eb2aa1be6f1c0031351115dffe84"
+      "source_catalog_digest": "sha256:f31468632d49c44e05b5592fd1bdcc5eac1cedc3eaa31f700282a3db9ce4ff1f"
     },
     "rating_snapshot": {
-      "digest": "sha256:57ebd8c66d5f0967b6d479c43d843a96d7313b7c56fb9e3b18b130a3ea8f4d6b",
-      "model_catalog_digest": "sha256:43c4b308418bce39d573dc138cd986cea6ec1e5729b871468cbe69179058cfba",
+      "digest": "sha256:218f99f1450badaa7885ec1bdc76c94aad1720857f258c0ff25f73f437d6a467",
+      "model_catalog_digest": "sha256:14dca993490853d1f9ca10a0642f0775d0e4ac0537eae0d585062bea615bf444",
       "models": [
         {
           "capability": {
@@ -100546,6 +100761,21 @@
             ]
           },
           "model_configuration_id": "model.openai.gpt-6-astra"
+        },
+        {
+          "capability": {
+            "kind": "discrete",
+            "parameter": "reasoning_effort",
+            "profiles": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "model_configuration_id": "model.openai.gpt-6-luna"
         },
         {
           "capability": {
@@ -101480,6 +101710,120 @@
             "state": "unknown"
           },
           "model_configuration_id": "model.openai.gpt-6-astra",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "xhigh"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-luna",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "high"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-luna",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "low"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-luna",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "max"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-luna",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "medium"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-luna",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "none"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.openai.gpt-6-luna",
           "native_configuration": {
             "kind": "profile",
             "profile": "xhigh"

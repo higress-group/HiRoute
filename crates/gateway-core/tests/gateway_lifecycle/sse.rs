@@ -139,7 +139,8 @@ async fn buffered_attempt_sse_drop_preserves_the_forwarded_source_sequence() -> 
     let server_release_eos = Arc::clone(&release_eos);
     let server = tokio::spawn(async move {
         let (socket, _) = listener.accept().await?;
-        serve_h1_chunked_sse_until_release(socket, server_events_sent, server_release_eos).await
+        serve_h1_chunked_sse_until_release(socket, server_events_sent, server_release_eos, false)
+            .await
     });
     let plan = PlanRevision(111);
     let binding = ResolvedTargetBindingId::new(plan, 1);

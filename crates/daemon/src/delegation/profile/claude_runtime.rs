@@ -1,11 +1,14 @@
 //! Admission for borrowing Claude settings requires the native host-managed provider flag.
 //! Older CLIs silently ignore that flag, so ACP success cannot prove routing ownership.
 //! This metadata check is only for a selected borrowed Worker launch, never discovery/probing.
-use hiroute_domain::delegation::DelegationErrorV1;
+use hiroute_domain::delegation::{
+    DelegationErrorV1, NativeDependencyCheckV1, NativeDependencyFailureReasonV1 as Reason,
+    NativeDependencyFailureV1,
+};
 use std::path::Path;
 use std::time::Duration;
 
-const VERSION_TIMEOUT: Duration = Duration::from_secs(2);
+const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 #[cfg(unix)]
 const OUTPUT_LIMIT: usize = 4096;
 
@@ -21,12 +24,22 @@ fn require_version(
     search_path: &str,
     timeout: Duration,
 ) -> Result<(), DelegationErrorV1> {
-    let output = bounded_version(binary, search_path, timeout)?;
+    let output = bounded_version(binary, search_path, timeout).map_err(|error| match error {
+        DelegationErrorV1::DependencyCheckFailed(_) => error,
+        _ => failure(Reason::Unavailable),
+    })?;
     if supports_host_managed_provider(&output) {
         Ok(())
     } else {
-        Err(DelegationErrorV1::CapabilityUnavailable)
+        Err(failure(Reason::Unsupported))
     }
+}
+
+fn failure(reason: Reason) -> DelegationErrorV1 {
+    DelegationErrorV1::DependencyCheckFailed(NativeDependencyFailureV1 {
+        check: NativeDependencyCheckV1::ClaudeVersion,
+        reason,
+    })
 }
 
 fn supports_host_managed_provider(output: &[u8]) -> bool {
@@ -73,12 +86,28 @@ fn bounded_version(
     if !binary.is_absolute() || search_path.is_empty() {
         return Err(DelegationErrorV1::CapabilityUnavailable);
     }
+    let probe_home = tempfile::Builder::new()
+        .prefix("hiroute-claude-version-")
+        .tempdir()
+        .map_err(|_| failure(Reason::Unavailable))?;
+    let home =
+        std::fs::canonicalize(probe_home.path()).map_err(|_| failure(Reason::Unavailable))?;
+    for relative in [".codex", ".claude", ".config", ".cache", ".local/share"] {
+        std::fs::create_dir_all(home.join(relative)).map_err(|_| failure(Reason::Unavailable))?;
+    }
     let started = Instant::now();
     let mut command = Command::new(binary);
     command
         .arg("--version")
         .env_clear()
         .env("PATH", search_path)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("CLAUDE_CONFIG_DIR", home.join(".claude"))
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("XDG_CACHE_HOME", home.join(".cache"))
+        .env("XDG_DATA_HOME", home.join(".local/share"))
+        .current_dir(&home)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -105,20 +134,20 @@ fn bounded_version(
         let mut buffer = [0; 1024];
         loop {
             if started.elapsed() >= timeout {
-                return Err(DelegationErrorV1::CapabilityUnavailable);
+                return Err(failure(Reason::Timeout));
             }
             // Observe exit without reaping: the leader must reserve its PID/PGID
             // until cleanup has stopped the group, including surviving descendants.
             let status = observe_version_child(&child)?;
             loop {
                 if started.elapsed() >= timeout {
-                    return Err(DelegationErrorV1::CapabilityUnavailable);
+                    return Err(failure(Reason::Timeout));
                 }
                 match stdout.read(&mut buffer) {
                     Ok(0) => break,
                     Ok(count) => {
                         if output.len() + count > OUTPUT_LIMIT {
-                            return Err(DelegationErrorV1::CapabilityUnavailable);
+                            return Err(failure(Reason::InvalidOutput));
                         }
                         output.extend_from_slice(&buffer[..count]);
                     }
@@ -131,13 +160,17 @@ fn bounded_version(
                 return if success {
                     Ok(output)
                 } else {
-                    Err(DelegationErrorV1::CapabilityUnavailable)
+                    Err(failure(Reason::ProcessFailed))
                 };
             }
             std::thread::sleep(Duration::from_millis(5));
         }
     })();
-    stop_version_child(&mut child)?;
+    if stop_version_child(&mut child).is_err() {
+        // Do not remove a live/unknown descendant's working directory.
+        let _ = probe_home.keep();
+        return Err(failure(Reason::CleanupFailed));
+    }
     result
 }
 
@@ -216,11 +249,7 @@ fn stop_version_child(child: &mut VersionChild) -> Result<(), DelegationErrorV1>
     // a group containing only its exited leader; verify absence read-only after reap.
     match group_stop {
         Ok(()) | Err(Errno::SRCH) => Ok(()),
-        Err(Errno::PERM)
-            if exited && matches!(test_kill_process_group(group), Err(Errno::SRCH)) =>
-        {
-            Ok(())
-        }
+        Err(Errno::PERM) if matches!(test_kill_process_group(group), Err(Errno::SRCH)) => Ok(()),
         Err(_) => Err(DelegationErrorV1::CapabilityUnavailable),
     }
 }

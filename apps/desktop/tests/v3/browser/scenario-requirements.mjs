@@ -1,6 +1,7 @@
 // Reviewed capability gates. New discovered scenarios run in full mode automatically.
 // Retire a required ID only with an explicit replacement of its unique guarantee.
 export const agentTrustRequired = ['codex.restore.conflict-active',
+  'claude.routing.blocker-guidance',
   'codex.enable.draft-cancel',
   'claude.enable.shared-presets',
   'codex.enable.confirmed-command',
@@ -48,6 +49,9 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.home.reactivation-usage',
+  'desktop.models.tool-check-selection',
+  'desktop.routing.disabled-header',
   'desktop.quality.evidence-return',
   'desktop.models.return-from-decisions',
   'desktop.routing.judgment-settings',

@@ -40,6 +40,8 @@ export function AgentSettingsFeedback({ preview, agent: selected, facet, default
           ? text('当前默认模型名称或所选路由无法用于 Codex Responses。请在“默认选择”中改选已勾选且支持该入口的路由；若要保留原生模型，请先接入对应来源。配置未修改。', 'The current default model name or a selected route cannot be used by Codex Responses. Under Default selection, choose an enabled route that supports this ingress; to preserve a native model, connect its source first. Configuration was not changed.')
         : block.reason === 'model_plan_unavailable' && selected?.agent_id === 'agent_codex_default'
           ? text('所选路由、固定来源或当前默认模型无法用于 Codex Responses。请核对路由是否已启用并支持该入口协议，或改选可用路由；配置未修改。', 'A selected route, fixed source, or current default model cannot be used by Codex Responses. Check that the route is enabled and supports this ingress protocol, or choose an available route. Configuration was not changed.')
+        : block.reason === 'model_plan_unavailable'
+          ? text('所选路由或原生默认模型当前不可用。请检查路由是否已启用、支持当前 Agent 的入口协议；Claude 的 Opus、Sonnet、Haiku 映射都需要可用的目标。', 'A selected route or native default model is unavailable. Check that routes are enabled and support this Agent’s ingress protocol; each Claude Opus, Sonnet and Haiku mapping needs a usable target.')
         : block.reason === 'codex_context_override'
           ? text('Codex 的显式窗口配置会覆盖计划设置。请移除有效配置中的 model_context_window 和 model_auto_compact_token_limit 后重试；HiRoute 不会删除这些配置。', 'Explicit Codex window settings override the plan. Remove model_context_window and model_auto_compact_token_limit from the effective configuration and retry; HiRoute will not delete these settings.')
         : block.reason === 'claude_plan_capability_unavailable'
@@ -50,6 +52,14 @@ export function AgentSettingsFeedback({ preview, agent: selected, facet, default
           ? text('所选计划的共同窗口低于 Claude Code 的 100K 最低值。请调整计划窗口或使用 Codex。', 'The shared plan window is below Claude Code’s 100K minimum. Adjust the plan window or use Codex.')
         : block.reason === 'skill_file_conflict'
           ? text('同名任务委派技能内容不同；原文件已保留。请先移走或明确处理该文件后再预览。', 'A task delegation skill with different content already exists. The original was preserved; move or explicitly resolve it before previewing again.')
+        : capabilities.has('effective_configuration')
+          ? text('无法确认当前有效配置。请检查启动进程的环境变量、项目和受管配置是否覆盖用户设置，处理冲突后重新保存；只更改 HOME 不会清除环境变量。', 'The effective configuration could not be confirmed. Check whether process environment variables, project or managed settings override user settings, resolve conflicts, then save again. Changing HOME does not clear environment variables.')
+        : capabilities.has('atomic_managed_replace')
+          ? text('无法安全写入 Agent 配置。请检查配置目录及目标文件的所有者、权限和符号链接，再重新保存；现有文件已保留。', 'The Agent configuration cannot be written safely. Check ownership, permissions and symbolic links of its directory and target file, then save again. Existing files were preserved.')
+        : capabilities.has('model_catalog')
+          ? text('当前模型目录尚不可用。请刷新 Agent 和路由资料，确认所选模型仍可用后重新保存。', 'The current model catalog is unavailable. Refresh Agent and route details, confirm the selected models remain available, then save again.')
+        : block.reason === 'restore_point_unavailable'
+          ? text('当前配置的恢复记录不可用。请刷新连接详情并核对原来的操作记录，再重试恢复。', 'The restore record for this configuration is unavailable. Refresh connection details and check the original operation before retrying restore.')
         : capabilities.has('skill_loading') || capabilities.has('trusted_cli_execution')
           ? text('任务委派技能尚未确认。', 'Task delegation skill capability is unconfirmed.')
           : text('有前置条件尚未满足，请检查当前 Agent 状态。', 'A prerequisite is unmet. Check the current Agent state.');

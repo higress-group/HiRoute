@@ -257,7 +257,7 @@ impl WorkerDependenciesViewV1 {
             .collect::<BTreeSet<_>>();
         self.schema == WORKER_DEPENDENCIES_VIEW_SCHEMA_V1
             && !self.selection_revisions.is_empty()
-            && self.selection_revisions.len() <= 3
+            && self.selection_revisions.len() <= 5
             && revisions.len() == self.selection_revisions.len()
             && selections.len() == self.selected.len()
             && self.selected.iter().all(|selection| {
@@ -269,7 +269,7 @@ impl WorkerDependenciesViewV1 {
                 )
                 .is_ok()
             })
-            && self.candidates.len() <= 256
+            && self.candidates.len() <= 5 * 64
             && self.candidates.iter().all(|candidate| {
                 absolute_path(&candidate.path)
                     && candidate
@@ -556,7 +556,7 @@ pub struct WorkerCancelRequestV1 {
 impl WorkerCancelRequestV1 {
     pub fn valid(&self) -> bool {
         reference(&self.run_id)
-            && reference(&self.idempotency_key)
+            && hiroute_domain::validate_idempotency_key(&self.idempotency_key).is_ok()
             && (self.reason.is_empty() || reference(&self.reason))
     }
 }
@@ -730,7 +730,7 @@ fn valid_run_timeout(run_timeout_secs: u32) -> bool {
     (1..=MAX_WORKER_RUN_SECS).contains(&run_timeout_secs)
 }
 
-fn reference(value: &str) -> bool {
+pub(super) fn reference(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 256
         && !value.starts_with('/')

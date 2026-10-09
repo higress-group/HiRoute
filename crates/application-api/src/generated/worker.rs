@@ -9,6 +9,11 @@ fn reference() -> Value {
     })
 }
 
+fn operation_key() -> Value {
+    json!({"type": "string", "minLength": 1, "maxLength": 200,
+           "pattern": "^[A-Za-z0-9_.:-]+$"})
+}
+
 fn task_input() -> Value {
     json!({
         "type": "object",
@@ -180,7 +185,7 @@ pub(super) fn cancel() -> Value {
         "required": ["run_id", "idempotency_key"],
         "properties": {
             "run_id": reference(),
-            "idempotency_key": reference(),
+            "idempotency_key": operation_key(),
             "reason": reference()
         }
     })
@@ -262,5 +267,20 @@ pub(super) fn dependencies_select() -> Value {
         "else": {"if": {"properties": {"harness": {"const": "pi"}}},
             "then": {"required": ["node_path"], "properties": {"adapter_path": false}},
             "else": {"required": ["adapter_path"]}}
+    })
+}
+
+pub(super) fn residual_confirm() -> Value {
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "hiroute://contracts/cli/worker-residual-confirm-request.v1.schema.json",
+        "type": "object", "additionalProperties": false,
+        "required": ["run_id", "expected_revision", "idempotency_key", "user_confirmed"],
+        "properties": {
+            "run_id": reference(),
+            "idempotency_key": operation_key(),
+            "expected_revision": {"type": "integer", "minimum": 1},
+            "user_confirmed": {"const": true}
+        }
     })
 }

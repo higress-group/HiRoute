@@ -583,9 +583,13 @@ impl DelegationRunExecutor {
             .runtime
             .run(workspace, run_id)?
             .ok_or(DelegationErrorV1::Conflict)?;
-        if run.progress.state != hiroute_domain::delegation::RunStateV1::Accepted
-            || run.process.is_some()
-            || run.lease_revoked
+        if !matches!(
+            run.progress.state,
+            hiroute_domain::delegation::RunStateV1::Accepted
+                | hiroute_domain::delegation::RunStateV1::Cancelling
+        ) || run.process.is_some()
+            || run.progress.prompt_may_have_executed
+            || (run.lease_revoked && !run.progress.cancel_requested)
         {
             return Ok(());
         }

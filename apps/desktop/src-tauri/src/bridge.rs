@@ -1032,6 +1032,7 @@ pub fn run() {
             worker_task_read,
             worker_task_wait,
             worker_task_cancel,
+            worker_task_confirm_residual,
             worker_task_continue,
             cli_entry_status,
             cli_entry_install,

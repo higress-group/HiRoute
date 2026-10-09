@@ -367,6 +367,13 @@ impl PersistentWorkerRunJournal {
         };
         self.checkpoint(state, stage, &event)?;
         state.failed = true;
+        if state.run.process.is_none()
+            && state.run.progress.state == RunStateV1::Failed
+            && let DelegationErrorV1::DependencyCheckFailed(failure) = error
+            && let Ok(now) = now_ms().and_then(to_i64)
+        {
+            self.progress_writer.dependency_failure(failure, now);
+        }
         // The end state is the product run state this checkpoint actually produced; a
         // cancel-after-prompt becomes Unknown rather than being reported as failed.
         let end_state = task_state(state.run.progress.state);
@@ -528,7 +535,16 @@ impl WorkerRunJournal for PersistentWorkerRunJournal {
 
     fn execution_failed(&self, error: DelegationErrorV1) -> Result<(), DelegationErrorV1> {
         let mut state = self.lock_state()?;
-        self.record_failure(&mut state, error)
+        match self.record_failure(&mut state, error) {
+            Err(DelegationErrorV1::Conflict) => {
+                self.refresh_after_external_cancel(&mut state)?;
+                if state.run.progress.workspace_releasable() {
+                    return Ok(());
+                }
+                self.record_failure(&mut state, error)
+            }
+            result => result,
+        }
     }
 
     fn spawned_unrecorded(&self) -> Result<(), DelegationErrorV1> {
@@ -536,13 +552,16 @@ impl WorkerRunJournal for PersistentWorkerRunJournal {
         if state.run.process.is_some() {
             return Err(DelegationErrorV1::Conflict);
         }
-        self.checkpoint(
-            &mut state,
-            "spawned-unrecorded",
-            &DelegationCheckpointV1::ProcessObserved {
-                observation: hiroute_domain::delegation::RunProcessObservationV1::Unknown,
-            },
-        )?;
+        let event = DelegationCheckpointV1::ProcessObserved {
+            observation: hiroute_domain::delegation::RunProcessObservationV1::Unknown,
+        };
+        match self.checkpoint(&mut state, "spawned-unrecorded", &event) {
+            Err(DelegationErrorV1::Conflict) => {
+                self.refresh_after_external_cancel(&mut state)?;
+                self.checkpoint(&mut state, "spawned-unrecorded", &event)?;
+            }
+            result => result?,
+        }
         state.failed = true;
         Ok(())
     }

@@ -103,7 +103,14 @@ impl RunProgressV1 {
             }
             (S::Running, E::PromptCompleted) => self.state = S::Succeeded,
             (S::Running, E::PromptFailed) => self.state = S::Failed,
-            (S::Accepted | S::Preparing | S::Running | S::Unknown, E::CancelRequested) => {
+            (S::Accepted, E::CancelRequested) => {
+                // Preparing is persisted before spawn. This revision change also fences an
+                // executor that read Accepted but has not yet acquired launch authority.
+                self.cancel_requested = true;
+                self.state = S::Cancelled;
+                self.cleanup = RunCleanupV1::Complete;
+            }
+            (S::Preparing | S::Running | S::Unknown, E::CancelRequested) => {
                 self.cancel_requested = true;
                 self.state = S::Cancelling;
             }

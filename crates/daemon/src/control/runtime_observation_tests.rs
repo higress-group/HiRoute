@@ -857,6 +857,43 @@ fn failed_live_check_with_known_usage_is_excluded_by_real_receipt_identity() {
     assert_eq!(before.excluded_requests, 0);
     assert_eq!(before.usage[0].known_sum, Some(100));
 
+    // The human CLI now emits this current report intent, not a ValueSnapshot
+    // ledger query. These production facts deliberately contain no legacy value.
+    let application = ApplicationService::new(runtime.application_ports());
+    let value_request = hiroute_application_api::ObservationReadRequestV2::new(
+        hiroute_application_api::ObservationReadIntentV2::ValueReport(
+            hiroute_application_api::ObservationValueReportOptionsV2 {
+                from_ms: Some(query.from_ms),
+                to_ms: Some(query.to_ms),
+                session_id: Some(session.clone()),
+                group_by: hiroute_domain::ValueGroupByV1::Day,
+                ..Default::default()
+            },
+        ),
+    );
+    let response = application.dispatch(LocalControlRequestV2 {
+        schema_version: LOCAL_CONTROL_SCHEMA_V2,
+        request_id: "current-value-report".into(),
+        principal: PrincipalV1::ambient_local_peer(),
+        operation_id: "GetValue".into(),
+        payload: serde_json::to_value(value_request).unwrap(),
+        protected_grant: None,
+    });
+    assert!(response.error.is_none(), "{response:?}");
+    let report = response.data.unwrap();
+    assert_eq!(report["summary"]["usage"][0]["known_sum"], 100);
+    assert_eq!(report["summary"]["usage"][1]["known_sum"], 25);
+    assert_eq!(report["day_timezone"], "UTC");
+    assert_eq!(
+        report["days"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|day| day["usage"][0]["known_sum"].as_u64())
+            .sum::<u64>(),
+        100
+    );
+
     assert!(
         runtime
             .adapter

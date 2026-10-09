@@ -26,8 +26,20 @@ registered catalog without repeating an already-correct auth control PATCH.
 An explicit subscription check refreshes it; credential/version changes use the
 existing auth update path. This keeps remote directory availability out of
 unchanged preview/publication reads while retaining all account pin checks.
+The fields PATCH carries the validated lease's current `hiroute_client_version`
+alongside its controls. CPA persists and synchronously discovers that version
+even when its watcher still holds the preceding metadata. No access or refresh
+token is included in this control request.
 
 Focused upstream tests are shipped in the patch:
+
+For the stale-manager/current-file regression, copy
+`vendor/cpa/tests/managed_version_sync_test.go` into the prepared pinned source's
+`internal/api/handlers/management/` directory, then run
+`go test ./internal/api/handlers/management -run '^TestHiRouteManagedVersionSyncBeforeWatcher$' -count=1`.
+It uses the real fields handler, file store and patched discovery executor with
+a synthetic transport. Legacy requests reproduce rollback; current requests
+verify synchronous version consumption and access-only ownership.
 
 ```sh
 go test ./sdk/cliproxy ./internal/runtime/executor ./cmd/server ./internal/api/handlers/management \

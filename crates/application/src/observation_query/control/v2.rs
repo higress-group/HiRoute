@@ -101,6 +101,44 @@ impl ObservationControl {
             ObservationReadIntentV2::Value(q) => {
                 serde_json::to_value(self.service.observed_value_totals(&reader, &q, now)?)
             }
+            ObservationReadIntentV2::ValueReport(q) => {
+                if q.from_ms.is_some() && q.period.is_some() {
+                    return Err(ObservationQueryError::InvalidQuery);
+                }
+                let to_ms = q.to_ms.unwrap_or(now);
+                let from_ms = match q.from_ms {
+                    Some(from_ms) => from_ms,
+                    None => match q
+                        .period
+                        .unwrap_or(hiroute_application_api::ValuePeriodV1::SevenDays)
+                    {
+                        hiroute_application_api::ValuePeriodV1::Today => {
+                            self.clock.local_day_start_ms(to_ms).map_err(map_control)?
+                        }
+                        hiroute_application_api::ValuePeriodV1::SevenDays => to_ms
+                            .saturating_sub(7 * DAY_MILLIS)
+                            .saturating_add(i64::from(q.session_id.is_some())),
+                        hiroute_application_api::ValuePeriodV1::ThirtyDays => {
+                            to_ms.saturating_sub(30 * DAY_MILLIS)
+                        }
+                    },
+                };
+                if from_ms >= to_ms {
+                    return Err(ObservationQueryError::InvalidQuery);
+                }
+                serde_json::to_value(self.service.observed_value_report(
+                    &reader,
+                    &hiroute_domain::ObservationValueQueryV2 {
+                        from_ms,
+                        to_ms,
+                        session_id: q.session_id.map(|id| id.to_string()),
+                        plan_id: q.agent_plan_id.map(|id| id.as_str().to_owned()),
+                        currency: q.currency,
+                    },
+                    q.group_by,
+                    now,
+                )?)
+            }
             ObservationReadIntentV2::PlanQuality(q) => serde_json::to_value(
                 self.service
                     .observed_plan_quality_samples(&reader, &q, now)?,

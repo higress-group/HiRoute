@@ -51,6 +51,25 @@ class BundleIdentityTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "release version mismatch: crates/application-api"):
                     package.validate_release_versions(version)
 
+    def test_release_rejects_stale_process_diagnostic_version(self):
+        import json
+        version = json.loads((package.NATIVE / "tauri.conf.json").read_text())["version"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in ("crates/application-api/Cargo.toml", "crates/cli/Cargo.toml",
+                             "crates/daemon/Cargo.toml", "apps/desktop/src-tauri/Cargo.toml",
+                             "crates/diagnostics/Cargo.toml"):
+                manifest = root / relative
+                manifest.parent.mkdir(parents=True, exist_ok=True)
+                manifest.write_text((package.REPO / relative).read_text())
+            # Diagnostics expands CARGO_PKG_VERSION in the shared library, so a
+            # stale library version mislabels both shipped processes' logs.
+            (root / "crates/diagnostics/Cargo.toml").write_text(
+                '[package]\nversion = "0.0.0"\n')
+            with patch.object(package, "REPO", root):
+                with self.assertRaisesRegex(ValueError, "release version mismatch: crates/diagnostics"):
+                    package.validate_release_versions(version)
+
     def test_build_children_do_not_inherit_validation_lock_descriptors(self):
         completed = package.subprocess.CompletedProcess(
             ["fixture"], 0, stdout="ok\n", stderr=""

@@ -240,6 +240,7 @@
     "hiroute.observation.run-link/v1",
     "hiroute.observation.serialization-failure/v1",
     "hiroute.observation.valuation-summary/v2",
+    "hiroute.observation.value-report/v2",
     "hiroute.operation-cancel-request/v1",
     "hiroute.operation-event/v1",
     "hiroute.operation-idempotency-lookup/v1",
@@ -369,6 +370,7 @@
     "hiroute.worker-read-data/v1",
     "hiroute.worker-read-request/v1",
     "hiroute.worker-receipt/v1",
+    "hiroute.worker-residual-confirm-request/v1",
     "hiroute.worker-result-request/v1",
     "hiroute.worker-settings/v1",
     "hiroute.worker-status-request/v1",
@@ -937,6 +939,46 @@
           ]
         }
       ]
+    },
+    {
+      "subject": "value_read_entry",
+      "audited_prefixes": [
+        "hiroute.value-query",
+        "hiroute.value-view",
+        "hiroute.observation.value-report"
+      ],
+      "current_contracts": [
+        "hiroute.observation.query/v2",
+        "hiroute.observation.value-report/v2"
+      ],
+      "legacy_support": [
+        {
+          "contract": "hiroute.value-query/v1",
+          "mode": "recovery_read_only",
+          "owner": "observation-storage",
+          "reason": "Read existing frozen ValueSnapshot ledgers for recovery only; current CLI producers use observation value_report and current usage/valuation facts.",
+          "removal_condition": "Remove when supported activity stores and backups contain no frozen ValueSnapshot ledger/daily-rollup rows and their recovery interface is retired.",
+          "allowed_paths": [
+            "crates/application/src/observation_query/control.rs",
+            "crates/application-api/src/protocol.rs",
+            "crates/application-api/src/lib.rs",
+            "crates/daemon/src/control/runtime_observation_tests.rs"
+          ]
+        },
+        {
+          "contract": "hiroute.value-view/v1",
+          "mode": "recovery_read_only",
+          "owner": "observation-storage",
+          "reason": "Read existing frozen ValueSnapshot ledgers for recovery only; current CLI producers use observation value_report and current usage/valuation facts.",
+          "removal_condition": "Remove when supported activity stores and backups contain no frozen ValueSnapshot ledger/daily-rollup rows and their recovery interface is retired.",
+          "allowed_paths": [
+            "crates/application/src/observation_query/control.rs",
+            "crates/application-api/src/protocol.rs",
+            "crates/application-api/src/lib.rs",
+            "crates/daemon/src/control/runtime_observation_tests.rs"
+          ]
+        }
+      ]
     }
   ],
   "forbidden_contracts": [
@@ -999,7 +1041,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -1177,6 +1219,18 @@
       "removal_condition": "Remove after the retained observation window no longer includes pre-branch producers.",
       "allowed_paths": [
         "crates/domain/src/observation/execution_validation.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.delegation-run/v1",
+      "field": "pre-release 0.2.0 Accepted cancellation at revision 2 with no preparation, process or prompt witness",
+      "mode": "recovery_read_only",
+      "owner": "daemon delegation startup",
+      "reason": "The previous producer retained CancelRequested at revision 2 forever. Startup recognizes only this exact revoked unbound pre-spawn record and uses the current CAS checkpoint producer to record Cancelled/complete. Revision 3 or later still requires owned cleanup. The synthetic SQLite fixture freezes only this old producer in a private test store.",
+      "removal_condition": "Remove after all supported pre-release 0.2.0 stores have completed this exact recovery; never infer cleanup for prepared or uncertain processes.",
+      "allowed_paths": [
+        "crates/daemon/src/control/runtime/delegation_tasks.rs",
+        "crates/daemon/src/control/runtime_early_cancel_tests.rs"
       ]
     }
   ]

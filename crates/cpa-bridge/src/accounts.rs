@@ -26,11 +26,22 @@ pub(crate) struct ManagedAccountIdentity {
     pub(crate) stock_file_name: String,
     pub(crate) account_digest: String,
     pub(crate) generation: u64,
+    /// Current non-secret control metadata; does not rotate account identity/generation.
+    pub(crate) client_version: Option<String>,
 }
 
 impl ManagedAccountIdentity {
     pub(crate) fn validate(&self) -> Result<(), AccountDiscoveryError> {
         validate_opaque_stock_field(&self.stock_file_name)?;
+        if self.client_version.as_ref().is_some_and(|version| {
+            version.is_empty()
+                || version.len() > 128
+                || !version
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || byte == b'.')
+        }) {
+            return Err(AccountDiscoveryError::InvalidAccount);
+        }
         if self.generation == 0
             || self.account_digest.len() != 64
             || !self

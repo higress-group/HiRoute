@@ -4,8 +4,8 @@ use std::io::Read;
 
 use hiroute_application_api::{
     AgentPlanId, ErrorCode, ModelSwitchFilter, ObservationReadIntentV2, ObservationReadRequestV2,
-    SessionContentModeV1, SessionListRequestV1, SessionLookupV1, ValueGroupByV1, ValuePeriodV1,
-    ValueRequestV1,
+    ObservationValueReportOptionsV2, SessionContentModeV1, SessionListRequestV1, SessionLookupV1,
+    ValueGroupByV1, ValuePeriodV1,
 };
 use serde_json::Value;
 
@@ -147,7 +147,7 @@ pub(super) fn value_show(options: &[String]) -> Result<Value, ErrorCode> {
     if options == ["--request-stdin"] {
         return observation_read_payload(ObservationCommand::Value, std::io::stdin());
     }
-    let mut query = ValueRequestV1::default();
+    let mut query = ObservationValueReportOptionsV2::default();
     let mut index = 0;
     while index < options.len() {
         match options[index].as_str() {
@@ -159,7 +159,7 @@ pub(super) fn value_show(options: &[String]) -> Result<Value, ErrorCode> {
             }
             "--from-ms" => query.from_ms = Some(parse_i64(options, &mut index)?),
             "--to-ms" => query.to_ms = Some(parse_i64(options, &mut index)?),
-            "--currency" => query.currency = next(options, &mut index)?,
+            "--currency" => query.currency = Some(next(options, &mut index)?),
             "--session" => {
                 query.session_id = Some(
                     hiroute_application_api::SessionId::parse(next(options, &mut index)?)
@@ -185,7 +185,10 @@ pub(super) fn value_show(options: &[String]) -> Result<Value, ErrorCode> {
         }
         index += 1;
     }
-    serde_json::to_value(query).map_err(|_| ErrorCode::Internal)
+    serde_json::to_value(ObservationReadRequestV2::new(
+        ObservationReadIntentV2::ValueReport(query),
+    ))
+    .map_err(|_| ErrorCode::Internal)
 }
 
 #[derive(Clone, Copy)]
@@ -210,7 +213,9 @@ fn observation_read_payload(
         }
         (
             ObservationCommand::Value,
-            ObservationReadIntentV2::Value(_) | ObservationReadIntentV2::HomeValue(_),
+            ObservationReadIntentV2::Value(_)
+            | ObservationReadIntentV2::HomeValue(_)
+            | ObservationReadIntentV2::ValueReport(_),
         ) => true,
         (ObservationCommand::PlanQuality, ObservationReadIntentV2::PlanQuality(query)) => {
             query.plan_id.is_some() || query.session_id.is_some()
@@ -261,11 +266,52 @@ mod tests {
         assert_eq!(sessions.limit, None);
         assert_eq!(sessions.cursor, None);
 
-        let value: ValueRequestV1 = serde_json::from_value(value_show(&[]).unwrap()).unwrap();
+        let request: ObservationReadRequestV2 =
+            serde_json::from_value(value_show(&[]).unwrap()).unwrap();
+        let ObservationReadIntentV2::ValueReport(value) = request.intent else {
+            panic!("human value options must read current observation totals");
+        };
         assert_eq!(value.agent_plan_id, None);
         assert_eq!(value.from_ms, None);
         assert_eq!(value.to_ms, None);
         assert_eq!(value.period, None);
+        assert_eq!(value.currency, None);
+    }
+
+    #[test]
+    fn human_value_flags_use_current_scoped_totals_and_day_groups() {
+        let payload = value_show(
+            &[
+                "--routing",
+                "plan/current",
+                "--session",
+                "observation-session-current",
+                "--from-ms",
+                "100",
+                "--to-ms",
+                "90000000",
+                "--group-by",
+                "day",
+                "--currency",
+                "CNY",
+            ]
+            .map(str::to_owned),
+        )
+        .unwrap();
+        assert_eq!(payload["schema"], "hiroute.observation.query/v2");
+        assert_eq!(payload["intent"]["view"], "value_report");
+        let request: ObservationReadRequestV2 = serde_json::from_value(payload).unwrap();
+        let ObservationReadIntentV2::ValueReport(q) = request.intent else {
+            panic!()
+        };
+        assert_eq!(q.agent_plan_id.unwrap().as_str(), "plan/current");
+        assert_eq!(
+            q.session_id.unwrap().as_str(),
+            "observation-session-current"
+        );
+        assert_eq!((q.from_ms, q.to_ms), (Some(100), Some(90_000_000)));
+        assert_eq!(q.group_by, ValueGroupByV1::Day);
+        assert_eq!(q.currency.as_deref(), Some("CNY"));
     }
 
     #[test]

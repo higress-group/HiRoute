@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
-  "as_of": "2026-09-29",
-  "catalog_digest_compared": "sha256:352407a24bcd56b693811dda49c6d4040d35eb2aa1be6f1c0031351115dffe84",
+  "as_of": "2026-10-08",
+  "catalog_digest_compared": "sha256:f31468632d49c44e05b5592fd1bdcc5eac1cedc3eaa31f700282a3db9ce4ff1f",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -11,26 +11,26 @@
     "determinate_outcome_closure_script": ".agents/skills/model-metadata-maintainer/scripts/close_model_metadata.py"
   },
   "materialization": {
-    "model_metadata_record_count": 767,
+    "model_metadata_record_count": 769,
     "provider_metadata_record_count": 105,
     "scenario_eligible_record_counts": {
       "adapter-planning": 4,
-      "context-limit-prefill": 763,
+      "context-limit-prefill": 765,
       "cost-hint-display": 233,
       "credential-setup-hint": 105,
       "custom-api-endpoint-prefill": 85,
-      "custom-api-model-prefill": 767,
-      "lifecycle-warning": 767,
-      "model-directory": 767,
+      "custom-api-model-prefill": 769,
+      "lifecycle-warning": 769,
+      "model-directory": 769,
       "model-discovery-setup": 102,
-      "output-limit-prefill": 736,
+      "output-limit-prefill": 738,
       "provider-directory": 105,
-      "reasoning-capability-prefill": 763,
-      "reasoning-rendering-hint": 367,
-      "request-limit-prefill": 739,
-      "vision-capability-prefill": 765
+      "reasoning-capability-prefill": 765,
+      "reasoning-rendering-hint": 368,
+      "request-limit-prefill": 741,
+      "vision-capability-prefill": 767
     },
-    "unique_upstream_model_id_count": 400
+    "unique_upstream_model_id_count": 401
   },
   "runs": [
     {
@@ -98,9 +98,15 @@
       "catalog_result": "761 model records and 103 provider records are fully determinate; inference rules, field provenance, execution_fit outcomes, and the extended vocabulary are embedded in the catalog and re-verified by closure fixed-point and field validators."
     },
     {
+      "change_key": "gpt6-subscription-context-and-luna",
+      "client_signal": "A known gpt-6-luna subscription inventory ID fell back to the generic 131072-token non-thinking model; GPT-6.1 Sol incorrectly used the native client default as its model maximum.",
+      "provider_resolution": "Reviewed exact GPT-6 Astra/Sol/Luna and GPT-6.1 Sol official model pages on 2026-10-08: 1050000 context and 128000 output. Preserve client policy assertions and label the public context ceiling as an inference for the subscription; current CPA inventory remains the account gate.",
+      "catalog_result": "Register Luna in the existing Codex Responses offer, preserve none..max native reasoning, and keep the model ceiling separate from the unchanged 272000 default plan window. No subscription API price or full-context account acceptance is claimed."
+    },
+    {
       "change_key": "gpt61-codex-subscription-projection",
       "client_signal": "The authenticated Codex 0.159.0 directory advertises GPT-6.1 Sol and reasoning profiles; the previous current source only described the public API product.",
-      "provider_resolution": "Add a separate Codex provider-scoped record using the advertised default context and documented low..max wire efforts. Label the public-model output limit as an inference and keep subscription cost hints absent. Existing pinned client scans are unchanged; no new repository scan is claimed.",
+      "provider_resolution": "Keep the native directory default/max-window values as source assertions and project the documented public model ceiling through an explicit subscription inference. Preserve documented low..max wire efforts, the separately inferred output bound and absent subscription cost hints. Existing pinned client scans are unchanged; no new repository scan is claimed.",
       "catalog_result": "The existing Codex Responses offer gains the reviewed GPT-6.1 Sol definition and reasoning profiles. Account eligibility remains gated by current observed inventory."
     },
     {

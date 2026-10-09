@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:abc35e142a0e31f2529450a545a6b9c6d57575d0212e844609cff5216623337b",
+  "descriptor_digest": "sha256:8c90ff220c2fbcef60423bc358642fbd743a1f8270ce92ca7bf59b276e5f560f",
   "expected_red_reasons": [],
   "planned_commands": [
     "schema.list",
@@ -53,6 +53,7 @@
     "worker.read",
     "worker.continue",
     "worker.cancel",
+    "worker.cleanup.confirm",
     "tasks.list",
     "tasks.show",
     "tasks.start",
@@ -133,6 +134,7 @@
     "worker.read",
     "worker.continue",
     "worker.cancel",
+    "worker.cleanup.confirm",
     "routing.list",
     "routing.show",
     "routing.preview",

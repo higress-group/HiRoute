@@ -158,6 +158,40 @@ else:
         self.assertEqual(self.remote("refs/heads/" + BRANCH), before)
         self.assertEqual(self.calls(["pr", "create"]), [])
 
+    def test_explicit_replacement_uses_new_branch_and_preserves_old_bytes(self):
+        self.publish()
+        self.git("fetch", "origin", BRANCH)
+        self.git("merge", "--ff-only", "FETCH_HEAD")
+        self.git("push", "origin", "main")
+        previous = self.env["RELEASE_REVISION"]
+        original = (self.repo / "contracts/releases/v1.2.0.json").read_bytes()
+        self.write("replacement.txt", "new exact package source")
+        self.commit("replacement producer")
+        revision = self.git("rev-parse", "HEAD").strip()
+        self.git("tag", "-f", "v1.2.0")
+        manifest_path = self.repo / "apps/website/data/releases.json"
+        manifest_path.write_text(manifest_path.read_text().replace(previous[:12], revision[:12]))
+        self.release["assets"][0]["name"] = self.release["assets"][0]["name"].replace(previous[:12], revision[:12])
+        (self.base / "release.json").write_text(json.dumps(self.release))
+        self.commit("replacement package manifest")
+        self.git("push", "origin", "main")
+        self.git("push", "--force", "origin", "refs/tags/v1.2.0")
+        self.main = self.git("rev-parse", "HEAD").strip()
+        self.env.update(RELEASE_REVISION=revision, WEBSITE_REVISION=self.main)
+        (self.base / "pr.json").unlink()  # The new revision branch has no PR yet.
+        self.publish(False)
+        self.publish(False, SUPERSEDE_UNPROMOTED_REVISION="0" * 40)
+        self.publish(SUPERSEDE_UNPROMOTED_REVISION=previous)
+        branch = BRANCH + "-" + revision[:12]
+        self.git("fetch", "origin", branch)
+        archived = f"contracts/releases/archive/v1.2.0.{previous}.json"
+        self.assertEqual(self.git("show", "FETCH_HEAD:" + archived).encode(), original)
+        self.git("merge", "--ff-only", "FETCH_HEAD")
+        self.git("push", "origin", "main")
+        (self.base / "pr.json").write_text('{"state":"MERGED"}')
+        self.publish(SUPERSEDE_UNPROMOTED_REVISION=previous)
+        self.assertEqual(len(self.calls(["pr", "create"])), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

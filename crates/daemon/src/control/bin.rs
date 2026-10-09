@@ -240,6 +240,8 @@ fn run_all(arguments: Arguments, diagnostics: &DiagnosticRuntime) -> Result<(), 
     let mut shutdown = ProtectedReader::new(protected_inherited_reader(shutdown_fd)?)?;
     let mut capabilities = ProtectedFrameReader::new(protected_inherited_reader(capability_fd)?)?;
     diagnostics.stage_end(StartupStage::RootValidate, StageOutcome::Completed);
+    #[cfg(unix)]
+    let protected_input_path = hiroute_host_runtime::protected_input_socket(&runtime_root);
     let mut config = RoleAllConfig::new(storage_root, runtime_root, listen, lkg)
         .with_diagnostics(diagnostics.port());
     match (arguments.cpa_binary, arguments.cpa_sha256) {
@@ -288,6 +290,18 @@ fn run_all(arguments: Arguments, diagnostics: &DiagnosticRuntime) -> Result<(), 
         .map_err(|error| StartupError::new(StartupFailureCode::ReadyChannelFailed, error))?;
     let mut role = result
         .map_err(|error| StartupError::new(classify_role_all_error(&error), error.to_string()))?;
+    #[cfg(unix)]
+    let protected_inputs = match standalone::ProtectedInputServer::bind_path(protected_input_path) {
+        Ok(server) => server,
+        Err(error) => {
+            role.shutdown();
+            let _ = role.join(Duration::from_secs(30));
+            return Err(StartupError::new(
+                StartupFailureCode::ControlUnavailable,
+                error,
+            ));
+        }
+    };
     write_ready(&role, diagnostics)
         .map_err(|error| StartupError::new(StartupFailureCode::ReadyChannelFailed, error))?;
     diagnostics.emit(DiagnosticEvent::StartupEnd(StartupEnd {
@@ -298,6 +312,8 @@ fn run_all(arguments: Arguments, diagnostics: &DiagnosticRuntime) -> Result<(), 
         if shutdown.poll_eof()? {
             break;
         }
+        #[cfg(unix)]
+        protected_inputs.poll(&role)?;
         for frame in capabilities.read_available()? {
             let registration_id = frame.registration_id();
             if acknowledgements.is_none() {
@@ -545,7 +561,7 @@ fn run_all_standalone(
             ));
         }
     };
-    let server = match standalone::StandaloneServer::bind(&layout) {
+    let server = match standalone::ProtectedInputServer::bind(&layout) {
         Ok(server) => server,
         Err(error) => {
             role.shutdown();

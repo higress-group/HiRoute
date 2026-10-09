@@ -1,0 +1,33 @@
+{
+  "$id": "hiroute://contracts/cli/worker-residual-confirm-request.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "expected_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "type": "string"
+    },
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_./:-]+$",
+      "type": "string"
+    },
+    "user_confirmed": {
+      "const": true
+    }
+  },
+  "required": [
+    "run_id",
+    "expected_revision",
+    "idempotency_key",
+    "user_confirmed"
+  ],
+  "type": "object"
+}

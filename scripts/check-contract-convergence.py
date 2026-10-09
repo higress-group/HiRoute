@@ -67,13 +67,22 @@ def historical_release_snapshot(path, source):
     # These files describe released producers, never current readers/writers or test
     # fixtures. Their full index, digest and Git-source validation belongs to
     # release-contracts.py check. Do not exempt code, arbitrary JSON or other paths.
-    if not re.fullmatch(r"contracts/releases/v[0-9][0-9A-Za-z.+-]*\.json", path):
+    active = re.fullmatch(r"contracts/releases/v[0-9][0-9A-Za-z.+-]*\.json", path)
+    semver = r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
+    archived = re.fullmatch(rf"contracts/releases/archive/({semver})\.([0-9a-f]{{40}})\.json", path)
+    if not active and not archived:
         return False
     try:
         value = json.loads(source)
     except ValueError:
         return False
-    return isinstance(value, dict) and value.get("schema") == "hiroute.release-contract-snapshot/v1"
+    if not isinstance(value, dict) or value.get("schema") != "hiroute.release-contract-snapshot/v1":
+        return False
+    if archived:
+        release = value.get("release")
+        return (isinstance(release, dict) and release.get("tag") == archived[1]
+                and release.get("revision") == archived[2])
+    return True
 
 
 def production_source_path(path):

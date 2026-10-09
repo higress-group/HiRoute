@@ -504,3 +504,92 @@ fn native_messages_tool_delivery_hints_survive_without_authorizing_unknown_tools
         );
     }
 }
+
+#[test]
+fn messages_batched_tool_results_project_to_ordered_chat_messages() {
+    for mixed in [false, true] {
+        let calls = (0..4)
+            .map(|index| {
+                json!({
+                    "type":"tool_use", "id":format!("read-{index}"), "name":"Read",
+                    "input":{"path":format!("file-{index}")}
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut results = Vec::new();
+        if mixed {
+            results.push(json!({"type":"text","text":"before"}));
+        }
+        for index in 0..4 {
+            if mixed && index == 2 {
+                results.push(json!({"type":"text","text":"between"}));
+            }
+            results.push(
+                json!({"type":"tool_result","tool_use_id":format!("read-{index}"),
+                "content":format!("result-{index}"),"is_error":index == 2}),
+            );
+        }
+        if mixed {
+            results.push(json!({"type":"text","text":"after"}));
+        }
+        let request = decode_ingress_request(
+            IngressProtocol::Messages,
+            &json!({
+                "model":"alias", "max_tokens":8192, "stream":true,
+                "tools":[{"name":"Read","input_schema":{"type":"object"}}],
+                "messages":[{"role":"assistant","content":calls},{"role":"user","content":results}]
+            }),
+        )
+        .unwrap();
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Messages,
+            IngressProtocol::ChatCompletions,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        let projected = project_candidate_request(&request, &profile).unwrap();
+        let messages = projected.body["messages"].as_array().unwrap();
+        let projected_calls = messages[0]["tool_calls"].as_array().unwrap();
+        assert_eq!(projected_calls.len(), 4);
+        let expected_roles = if mixed {
+            vec![
+                "assistant",
+                "user",
+                "tool",
+                "tool",
+                "user",
+                "tool",
+                "tool",
+                "user",
+            ]
+        } else {
+            vec!["assistant", "tool", "tool", "tool", "tool"]
+        };
+        assert_eq!(
+            messages
+                .iter()
+                .map(|m| m["role"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            expected_roles
+        );
+        let outputs = messages
+            .iter()
+            .filter(|m| m["role"] == "tool")
+            .collect::<Vec<_>>();
+        for (index, output) in outputs.iter().enumerate() {
+            assert_eq!(output["tool_call_id"], projected_calls[index]["id"]);
+            assert_eq!(output["content"], format!("result-{index}"));
+            assert!(output.get("is_error").is_none());
+        }
+        if mixed {
+            assert_eq!(
+                (
+                    messages[1]["content"].as_str(),
+                    messages[4]["content"].as_str(),
+                    messages[7]["content"].as_str()
+                ),
+                (Some("before"), Some("between"), Some("after"))
+            );
+        }
+    }
+}

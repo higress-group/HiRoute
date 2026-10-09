@@ -1,9 +1,10 @@
-//! Coherent read projection of original Operation model settings and independent grants.
+//! Coherent model-reference projection of the original successful settings Operations.
 use super::{ControlStore, agent_read::decode_succeeded_agent, port};
 use hiroute_domain::{
-    AgentCollaborationGrant, AgentPlanId, AgentPlanReference, AgentPlanReferenceKind,
-    AgentPlanReferenceReadPort, AgentPlanReferenceSubject, AgentPlanReferences, CanonicalDigest,
-    PortErrorCode, PortResult, WorkspaceId,
+    AgentFacetIntent, AgentModelDefaultSelectionV2, AgentModelSelectionV2, AgentPlanId,
+    AgentPlanReference, AgentPlanReferenceKind, AgentPlanReferenceReadPort,
+    AgentPlanReferenceSubject, AgentPlanReferences, AgentSettingsSpecV2, CanonicalDigest,
+    OperationStepKind, PortErrorCode, PortResult, SettingsServiceCompletionV1, WorkspaceId,
 };
 use rusqlite::params;
 use std::collections::BTreeSet;
@@ -50,6 +51,43 @@ impl AgentPlanReferenceReadPort for ControlStore {
                 if &operation.workspace_id != workspace {
                     return Err(port(PortErrorCode::Corrupt, "agents.references.workspace"));
                 }
+                if operation.plan.spec().command_id == "agents.settings.apply" {
+                    let settings: AgentSettingsSpecV2 =
+                        serde_json::from_value(operation.plan.spec().desired_state.clone())
+                            .map_err(|_| {
+                                port(PortErrorCode::Corrupt, "agents.references.settings")
+                            })?;
+                    // A collaboration-only edit does not supersede the model facet. A restore
+                    // does supersede it, even when another facet is configured in the same edit.
+                    if matches!(settings.model, AgentFacetIntent::Keep)
+                        || !seen.insert(format!("agent-connection/{}", settings.context_id))
+                    {
+                        continue;
+                    }
+                    if let AgentFacetIntent::Configure {
+                        settings: selection,
+                    } = settings.model
+                    {
+                        let revision = operation
+                            .step(OperationStepKind::Activate)
+                            .terminal_result
+                            .as_deref()
+                            .and_then(SettingsServiceCompletionV1::parse)
+                            .filter(|receipt| receipt.publication_revision > 0)
+                            .ok_or_else(|| {
+                                port(PortErrorCode::Corrupt, "agents.references.receipt")
+                            })?
+                            .publication_revision;
+                        append_settings_references(
+                            &mut references,
+                            plan,
+                            settings.context_id,
+                            &selection,
+                            revision,
+                        );
+                    }
+                    continue;
+                }
                 let connection_id = operation
                     .plan
                     .spec()
@@ -93,48 +131,6 @@ impl AgentPlanReferenceReadPort for ControlStore {
                 }
             }
         }
-        {
-            let mut statement = transaction.prepare("SELECT grant_json,context_id,generation,grant_id FROM agent_collaboration_grants WHERE workspace_id=?1 ORDER BY context_id")
-                .map_err(|_| port(PortErrorCode::Unavailable, "agents.references.grants"))?;
-            let rows = statement
-                .query_map(params![workspace.as_str()], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, u64>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
-                })
-                .map_err(|_| port(PortErrorCode::Unavailable, "agents.references.grant_rows"))?;
-            for row in rows {
-                let (json, context, generation, grant_id) =
-                    row.map_err(|_| port(PortErrorCode::Corrupt, "agents.references.grant_row"))?;
-                let grant: AgentCollaborationGrant = serde_json::from_str(&json)
-                    .map_err(|_| port(PortErrorCode::Corrupt, "agents.references.grant_decode"))?;
-                grant
-                    .validate()
-                    .map_err(|_| port(PortErrorCode::Corrupt, "agents.references.grant_invalid"))?;
-                if &grant.workspace_id != workspace
-                    || grant.context_id != context
-                    || grant.generation != generation
-                    || grant.grant_id != grant_id
-                {
-                    return Err(port(
-                        PortErrorCode::Corrupt,
-                        "agents.references.grant_identity",
-                    ));
-                }
-                if grant.enabled && grant.allowed_plan_ids.contains(plan) {
-                    references.push(AgentPlanReference {
-                        subject: AgentPlanReferenceSubject::CollaborationContext {
-                            context_id: grant.context_id,
-                        },
-                        kind: AgentPlanReferenceKind::CollaborationAllowed,
-                        revision: grant.generation,
-                    });
-                }
-            }
-        }
         references.sort();
         let facts_digest = CanonicalDigest::of(&(workspace, plan, &references))
             .map_err(|_| port(PortErrorCode::Corrupt, "agents.references.digest"))?;
@@ -147,5 +143,111 @@ impl AgentPlanReferenceReadPort for ControlStore {
             references,
             facts_digest,
         })
+    }
+}
+
+fn append_settings_references(
+    references: &mut Vec<AgentPlanReference>,
+    plan: &AgentPlanId,
+    context_id: String,
+    selection: &AgentModelSelectionV2,
+    revision: u64,
+) {
+    if !selection.allowed_plan_ids().contains(plan) {
+        return;
+    }
+    let subject = AgentPlanReferenceSubject::ModelContext { context_id };
+    // Claude's named presets are native model selections; each must remain usable. Additional
+    // model providers have no HiRoute-owned default selection and contribute only allowed refs.
+    if matches!(selection, AgentModelSelectionV2::ClaudeLauncher { .. })
+        || matches!(selection, AgentModelSelectionV2::CodexDefault {
+            default_selection: AgentModelDefaultSelectionV2::Plan { plan_id }, ..
+        } if plan_id == plan)
+    {
+        references.push(AgentPlanReference {
+            subject: subject.clone(),
+            kind: AgentPlanReferenceKind::DefaultModel,
+            revision,
+        });
+    }
+    references.push(AgentPlanReference {
+        subject,
+        kind: AgentPlanReferenceKind::ModelAllowed,
+        revision,
+    });
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn current_model_references_distinguish_defaults_from_additional_routes() {
+        let plan = AgentPlanId::parse("plan/review").unwrap();
+        let cases = [
+            (
+                json!({"mode":"codex_default", "native_model_mode":"hiroute_only",
+                    "fixed_models":[], "allowed_plan_ids":["plan/review"],
+                    "default_selection":{"kind":"plan", "plan_id":"plan/review"}}),
+                true,
+            ),
+            (
+                json!({"mode":"codex_default", "native_model_mode":"preserve_available",
+                    "fixed_models":[], "allowed_plan_ids":["plan/review"],
+                    "default_selection":{"kind":"preserve_native"}}),
+                false,
+            ),
+            (
+                json!({"mode":"claude_launcher", "surfaces":["claude_cli"], "fixed_models":[],
+                    "preset_mappings":{"opus":{"kind":"plan", "plan_id":"plan/review"},
+                        "sonnet":{"kind":"preserve_native"}, "haiku":{"kind":"preserve_native"}}}),
+                true,
+            ),
+            (
+                json!({"mode":"qoder_additional", "allowed_plan_ids":["plan/review"]}),
+                false,
+            ),
+            (
+                json!({"mode":"pi_additional", "allowed_plan_ids":["plan/review"]}),
+                false,
+            ),
+            (
+                json!({"mode":"dsh_additional", "allowed_plan_ids":["plan/review"]}),
+                false,
+            ),
+        ];
+        for (value, is_default) in cases {
+            let selection: AgentModelSelectionV2 = serde_json::from_value(value).unwrap();
+            selection.validate().unwrap();
+            let mut references = Vec::new();
+            append_settings_references(&mut references, &plan, "context/one".into(), &selection, 9);
+            let expected = if is_default {
+                vec![
+                    AgentPlanReferenceKind::DefaultModel,
+                    AgentPlanReferenceKind::ModelAllowed,
+                ]
+            } else {
+                vec![AgentPlanReferenceKind::ModelAllowed]
+            };
+            assert_eq!(
+                references.iter().map(|r| r.kind).collect::<Vec<_>>(),
+                expected
+            );
+            assert!(references.iter().all(|r| r.revision == 9
+                && r.subject
+                    == AgentPlanReferenceSubject::ModelContext {
+                        context_id: "context/one".into()
+                    }));
+            references.clear();
+            append_settings_references(
+                &mut references,
+                &AgentPlanId::parse("plan/other").unwrap(),
+                "context/one".into(),
+                &selection,
+                9,
+            );
+            assert!(references.is_empty());
+        }
     }
 }

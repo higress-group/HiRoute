@@ -113,6 +113,25 @@ export function defaultSelectedModelRefs(result: ModelConnectionCheckView): stri
     .map(model => model.model_ref);
 }
 
+/** Carry explicit choices across a tool recheck, never across a connection edit. */
+export function selectedModelRefsAfterRecheck(
+  previous: ModelConnectionCheckView | null,
+  selected: ReadonlySet<string>,
+  checked: ModelConnectionCheckView,
+): Set<string> {
+  if (!previous
+    || previous.candidate.candidate.candidate_ref !== checked.candidate.candidate.candidate_ref
+    || previous.candidate.correlation.edit_revision !== checked.candidate.correlation.edit_revision) {
+    return new Set();
+  }
+  const identities = new Set(previous.candidate.models
+    .filter(model => selected.has(model.model_ref))
+    .map(model => model.upstream_model_id));
+  return new Set(checked.candidate.models
+    .filter(model => identities.has(model.upstream_model_id) && modelCanBeSelected(checked, model, true))
+    .map(model => model.model_ref));
+}
+
 export function selectedModelRefsForSave(
   result: ModelConnectionCheckView,
   selected: ReadonlySet<string>,

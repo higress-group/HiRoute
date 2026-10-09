@@ -15,15 +15,18 @@ use zeroize::{Zeroize, Zeroizing};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
 
-pub(super) struct StandaloneServer {
+/// Same-user credential input shared by standalone and Desktop-owned role-all processes.
+pub(super) struct ProtectedInputServer {
     listener: UnixListener,
     path: PathBuf,
-    shutdown: Receiver<()>,
 }
 
-impl StandaloneServer {
+impl ProtectedInputServer {
     pub(super) fn bind(layout: &StandaloneLayout) -> Result<Self, String> {
-        let path = layout.protected_input_socket();
+        Self::bind_path(layout.protected_input_socket())
+    }
+
+    pub(super) fn bind_path(path: PathBuf) -> Result<Self, String> {
         let parent = path
             .parent()
             .ok_or("protected input socket parent is unavailable")?;
@@ -37,31 +40,39 @@ impl StandaloneServer {
         listener
             .set_nonblocking(true)
             .map_err(|_| "protected input socket setup failed")?;
-        Ok(Self {
-            listener,
-            path,
-            shutdown: shutdown_signal()?,
-        })
+        Ok(Self { listener, path })
+    }
+
+    pub(super) fn poll(&self, role: &hiroute_daemon::RoleAllHandle) -> Result<(), String> {
+        match self.listener.accept() {
+            Ok((stream, _)) => {
+                // Reject one malformed/unauthorized request without stopping the service.
+                let _ = handle_connection(role, stream);
+                Ok(())
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                ) =>
+            {
+                Ok(())
+            }
+            Err(_) => Err("protected input socket accept failed".into()),
+        }
     }
 
     pub(super) fn run(self, mut role: hiroute_daemon::RoleAllHandle) -> Result<(), String> {
-        let result = loop {
-            if self.shutdown.try_recv().is_ok() {
-                break Ok(());
-            }
-            match self.listener.accept() {
-                Ok((stream, _)) => {
-                    // A malformed or unauthorized client is rejected per connection. It cannot
-                    // stop the user's service or poison the next bounded request.
-                    let _ = handle_connection(&role, stream);
+        let result = (|| {
+            let shutdown = shutdown_signal()?;
+            loop {
+                if shutdown.try_recv().is_ok() {
+                    break Ok(());
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(_) => break Err("protected input socket accept failed".into()),
+                self.poll(&role)?;
+                std::thread::sleep(Duration::from_millis(20));
             }
-        };
+        })();
         role.shutdown();
         let joined = role
             .join(Duration::from_secs(30))
@@ -71,7 +82,7 @@ impl StandaloneServer {
     }
 }
 
-impl Drop for StandaloneServer {
+impl Drop for ProtectedInputServer {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
     }
@@ -313,5 +324,35 @@ mod tests {
         std::fs::write(&path, b"unrelated").unwrap();
         assert!(remove_stale_socket(&path).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"unrelated");
+    }
+
+    #[test]
+    fn protected_input_fits_a_runtime_root_that_supports_local_control() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir_in(std::fs::canonicalize("/tmp").unwrap()).unwrap();
+        let prefix = directory.path().as_os_str().as_encoded_bytes().len();
+        // control.sock fits macOS's 104-byte sockaddr_un including the trailing NUL.
+        // The old protected-input-v1.sock name exceeded it in ordinary Desktop roots.
+        let runtime = directory.path().join("r".repeat(82 - prefix - 1));
+        let private = runtime.join("hiroute");
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let _control = UnixListener::bind(private.join("control.sock")).unwrap();
+        let mut layout = StandaloneLayout::from_values(
+            true,
+            Some(directory.path().to_owned()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        layout.runtime_root = runtime;
+        let server = ProtectedInputServer::bind(&layout).unwrap();
+        let _client = UnixStream::connect(layout.protected_input_socket()).unwrap();
+        let (peer, _) = server.listener.accept().unwrap();
+        validate_peer_owner(&peer).unwrap();
+        drop(server);
+        assert!(!layout.protected_input_socket().exists());
     }
 }

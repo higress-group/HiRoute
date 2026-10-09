@@ -41,6 +41,16 @@ async fn early_accept_finishes_request_without_reset_and_preserves_response()
 #[tokio::test]
 async fn delivered_protocol_terminal_survives_disconnect_while_upstream_tail_is_released()
 -> Result<(), TestError> {
+    delivered_terminal_cleanup(false, true).await
+}
+
+#[tokio::test]
+async fn delivered_protocol_terminal_drains_upstream_tail_without_cleanup_timeout()
+-> Result<(), TestError> {
+    delivered_terminal_cleanup(true, false).await
+}
+
+async fn delivered_terminal_cleanup(tail: bool, disconnect: bool) -> Result<(), TestError> {
     let _network_guard = NETWORK_TEST_LOCK.lock().await;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
@@ -50,7 +60,8 @@ async fn delivered_protocol_terminal_survives_disconnect_while_upstream_tail_is_
     let server_release_eos = Arc::clone(&release_eos);
     let server = tokio::spawn(async move {
         let (socket, _) = listener.accept().await?;
-        serve_h1_chunked_sse_until_release(socket, server_events_sent, server_release_eos).await
+        serve_h1_chunked_sse_until_release(socket, server_events_sent, server_release_eos, tail)
+            .await
     });
 
     let plan = PlanRevision(7701);
@@ -119,11 +130,20 @@ async fn delivered_protocol_terminal_survives_disconnect_while_upstream_tail_is_
 
     events_sent.notified().await;
     terminal_written.await?;
-    cancellation.cancel();
+    if disconnect {
+        cancellation.cancel();
+    }
     release_eos.notify_one();
 
     let (result, session) = process.await?;
-    assert_eq!(result?, SessionReuse::Close);
+    assert_eq!(
+        result?,
+        if disconnect {
+            SessionReuse::Close
+        } else {
+            SessionReuse::Reusable
+        }
+    );
     assert!(session.response_eos);
     let completed = selection.completed();
     assert_eq!(completed.len(), 1);

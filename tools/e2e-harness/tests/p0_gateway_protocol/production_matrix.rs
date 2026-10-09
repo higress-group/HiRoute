@@ -206,6 +206,26 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
                     {"type":"text","text":"continue"}]}),
             ]);
         }
+        if ingress == IngressProtocol::Messages && upstream == IngressProtocol::ChatCompletions {
+            request["tools"] = json!([{"name":"probe","input_schema":{"type":"object"}}]);
+            let calls = (0..4)
+                .map(|index| {
+                    json!({"type":"tool_use","id":format!("call_{index}"),
+                "name":"probe","input":{"value":index}})
+                })
+                .collect::<Vec<_>>();
+            let mut results = (0..4)
+                .map(|index| {
+                    json!({"type":"tool_result", "tool_use_id":format!("call_{index}"),
+                "content":format!("result-{index}"), "is_error":index == 2})
+                })
+                .collect::<Vec<_>>();
+            results.insert(2, json!({"type":"text","text":"between results"}));
+            request["messages"].as_array_mut().unwrap().extend([
+                json!({"role":"assistant","content":calls}),
+                json!({"role":"user","content":results}),
+            ]);
+        }
         if ingress == upstream {
             request["temperature"] = json!(0.2);
             request["provider_payload_hint"] = json!({"future":"kept"});
@@ -580,6 +600,24 @@ fn expected_native_body(
         } else {
             body["response_format"] = json!({"type":"json_schema","json_schema":{
                 "name":"hiroute_structured_output","strict":true,"schema":schema}});
+        }
+        if upstream == IngressProtocol::ChatCompletions {
+            body["tools"] = json!([{"type":"function","function":{"name":"probe","parameters":{"type":"object"}}}]);
+            body["tool_choice"] = json!("auto");
+            body["parallel_tool_calls"] = json!(false);
+            body["messages"].as_array_mut().unwrap().extend([
+                json!({"role":"assistant","tool_calls":[
+                    {"id":"call_0","type":"function","function":{"name":"probe","arguments":"{\"value\":0}"}},
+                    {"id":"call_1","type":"function","function":{"name":"probe","arguments":"{\"value\":1}"}},
+                    {"id":"call_2","type":"function","function":{"name":"probe","arguments":"{\"value\":2}"}},
+                    {"id":"call_3","type":"function","function":{"name":"probe","arguments":"{\"value\":3}"}}
+                ]}),
+                json!({"role":"tool","tool_call_id":"call_0","content":"result-0"}),
+                json!({"role":"tool","tool_call_id":"call_1","content":"result-1"}),
+                json!({"role":"user","content":"between results"}),
+                json!({"role":"tool","tool_call_id":"call_2","content":"result-2"}),
+                json!({"role":"tool","tool_call_id":"call_3","content":"result-3"}),
+            ]);
         }
         if upstream == IngressProtocol::Responses {
             body["tools"] =

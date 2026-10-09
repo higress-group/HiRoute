@@ -76,6 +76,12 @@ pub(crate) struct ManagedAuthLease {
 }
 
 impl ManagedAuthLease {
+    pub(crate) fn has_client_version(&self) -> bool {
+        self.codex
+            .as_ref()
+            .is_none_or(|lease| lease.client_version.is_some())
+    }
+
     pub(crate) fn codex_generation(&self) -> Option<u64> {
         self.codex
             .as_ref()
@@ -125,6 +131,7 @@ impl ManagedAuthLease {
 
 struct BorrowedCodexLease {
     canonical_source: PathBuf,
+    executable: PathBuf,
     client_version: Option<String>,
     source_path_digest: String,
     _source_lock: File,
@@ -149,9 +156,12 @@ impl BorrowedCodexLease {
         let source_lock = acquire_lock(&lease_root.join(format!("{source_path_digest}.lock")))?;
         let mut lease = Self {
             canonical_source,
-            client_version: hiroute_integrations::codex_subscription_client_version(
-                &source.executable,
-            ),
+            executable: source.executable.clone(),
+            client_version: if expected.is_none() {
+                hiroute_integrations::codex_subscription_client_version(&source.executable)
+            } else {
+                None // The explicit check below probes once after source validation.
+            },
             source_path_digest,
             _source_lock: source_lock,
             flat_path: auth_dir.join(MANAGED_FILE_NAME),
@@ -190,6 +200,12 @@ impl BorrowedCodexLease {
             return Err(CpaLifecycleError::BorrowedCodexAuthSourceChanged);
         }
 
+        if expected.is_some() {
+            // Explicit subscription checks refresh selected-engine facts, including recovery
+            // from an earlier bounded probe failure. Ordinary reads/inference never probe.
+            self.client_version =
+                hiroute_integrations::codex_subscription_client_version(&self.executable);
+        }
         let prefix = "hiroute-codex-current".to_owned();
         let rendered = render_access_only_auth(&source, &prefix, self.client_version.as_deref())?;
         let revision_digest = revision_digest(&source);
@@ -251,6 +267,7 @@ impl BorrowedCodexLease {
             stock_file_name: MANAGED_FILE_NAME.to_owned(),
             account_digest,
             generation,
+            client_version: self.client_version.clone(),
         })
     }
 }

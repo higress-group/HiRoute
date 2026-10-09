@@ -354,6 +354,7 @@ fn cancel_intent_is_durable_idempotent_and_does_not_claim_stopped() {
     let store = open(dir.path());
     let input = sample("task", "run", "a");
     let run = store.accept(&input).unwrap();
+    let run = advance(&store, &run, RunEventV1::Preparing);
     let operation = OperationId::parse("op_00000000000000000000000000000001").unwrap();
     let receipt = store
         .request_cancel(&run.workspace_id, &run.run_id, &operation, "user")
@@ -373,6 +374,52 @@ fn cancel_intent_is_durable_idempotent_and_does_not_claim_stopped() {
     assert!(run.lease_revoked);
     assert_eq!(run.progress.state, RunStateV1::Cancelling);
     assert!(!run.progress.workspace_releasable());
+}
+
+#[test]
+fn cancel_before_preparation_releases_capacity_and_fences_stale_launch_after_reopen() {
+    let dir = crate::test_tempdir().unwrap();
+    let store = open(dir.path());
+    let accepted = store.accept(&sample("task", "run", "root")).unwrap();
+    let operation = OperationId::parse("op_00000000000000000000000000000003").unwrap();
+    let receipt = store
+        .request_cancel(&accepted.workspace_id, &accepted.run_id, &operation, "user")
+        .unwrap();
+    drop(store);
+    let store = open(dir.path());
+    assert_eq!(
+        store
+            .request_cancel(&accepted.workspace_id, &accepted.run_id, &operation, "user")
+            .unwrap(),
+        receipt
+    );
+    let cancelled = store
+        .run(&accepted.workspace_id, &accepted.run_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(cancelled.progress.state, RunStateV1::Cancelled);
+    assert!(cancelled.progress.workspace_releasable());
+    assert!(cancelled.lease_revoked);
+    assert!(cancelled.process.is_none());
+    assert!(!cancelled.progress.prompt_may_have_executed);
+    assert!(
+        store
+            .checkpoint(
+                &accepted.workspace_id,
+                &accepted.run_id,
+                accepted.progress.revision,
+                "stale-launch",
+                &DelegationCheckpointV1::Progress {
+                    event: RunEventV1::Preparing
+                }
+            )
+            .is_err()
+    );
+    assert!(
+        store
+            .accept(&sample("next-task", "next-run", "root"))
+            .is_ok()
+    );
 }
 
 #[test]

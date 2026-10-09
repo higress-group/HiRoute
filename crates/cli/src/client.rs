@@ -72,7 +72,7 @@ impl LocalControlClient {
     }
 
     pub fn protected_input_endpoint(&self) -> PathBuf {
-        self.runtime_root.join("hiroute/protected-input-v1.sock")
+        hiroute_host_runtime::protected_input_socket(&self.runtime_root)
     }
 
     #[cfg(unix)]

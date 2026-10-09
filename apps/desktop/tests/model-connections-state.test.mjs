@@ -11,9 +11,25 @@ import {
   saveEligibility,
   savedSourceConnectionFields,
   selectedModelRefsForSave,
+  selectedModelRefsAfterRecheck,
   blankModel,
   withCapabilityFallback,
 } from '../src/features/model-connections/state.ts';
+
+test('tool recheck keeps explicit model identities with fresh refs and drops unavailable choices', () => {
+  const checked = (ref, revision, models) => ({ candidate: {
+    candidate: { candidate_ref: ref }, correlation: { edit_revision: revision }, models,
+  } });
+  const model = (id, ref, selectable = true) => ({ upstream_model_id: id, model_ref: ref, selectable });
+  const before = checked('account-a', 3, [model('chosen', 'old'), model('removed', 'old-removed'), model('blocked', 'old-blocked')]);
+  const after = checked('account-a', 3, [model('chosen', 'fresh'), model('new', 'new-ref'), model('blocked', 'fresh-blocked', false)]);
+  const selected = new Set(['old', 'old-removed', 'old-blocked']);
+  assert.deepEqual([...selectedModelRefsAfterRecheck(before, selected, after)], ['fresh']);
+  assert.deepEqual([...selectedModelRefsAfterRecheck(null, selected, after)], []);
+  assert.deepEqual([...selectedModelRefsAfterRecheck(before, selected, checked('account-b', 3, after.candidate.models))], []);
+  assert.deepEqual([...selectedModelRefsAfterRecheck(before, selected, checked('account-a', 4, after.candidate.models))], []);
+  assert.deepEqual([...selected], ['old', 'old-removed', 'old-blocked']);
+});
 
 test('unknown capability fallback is explicit and leaves user facts untouched', () => {
   const model = blankModel('unknown-model');

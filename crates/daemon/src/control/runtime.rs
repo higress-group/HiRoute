@@ -63,6 +63,7 @@ mod delegation_continue;
 mod delegation_cursors;
 mod delegation_maintenance;
 mod delegation_reads;
+mod delegation_residual;
 mod delegation_results;
 mod delegation_runtime_port;
 mod delegation_task_queries;
@@ -830,7 +831,6 @@ impl NativeCredentialAuthorityV1 for ControlNativeCredentialAuthority {
                     "control.runtime.native_credential_lock",
                 )
             })?
-            .secrets()
             .lease_native_credential_exact(request)
     }
 
@@ -1509,3 +1509,7 @@ mod tests;
 #[cfg(test)]
 #[path = "runtime_worker_dependencies_tests.rs"]
 mod worker_dependencies_tests;
+
+#[cfg(test)]
+#[path = "runtime_early_cancel_tests.rs"]
+mod early_cancel_tests;

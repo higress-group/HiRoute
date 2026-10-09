@@ -1,5 +1,148 @@
 use super::*;
 
+#[cfg(unix)]
+#[test]
+fn explicit_subscription_recheck_refreshes_version_before_forced_catalog_discovery() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let logs = tempfile::tempdir().unwrap();
+    ensure_private_dir(logs.path()).unwrap();
+    let diagnostics_root = logs.path().join("d");
+    let report = DiagnosticRuntime::start(RuntimeConfig {
+        root: diagnostics_root.clone(),
+        role: hiroute_diagnostics::event::ProcessRole::Daemon,
+        component: hiroute_diagnostics::record::Component::Cpa,
+        parent_session_id: None,
+        level_override: Some(hiroute_diagnostics::level::DiagnosticLevel::Debug),
+    });
+    let executable = root.path().join("selected-codex");
+    std::fs::write(&executable, "#!/bin/sh\nexit 7\n").unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let control = Arc::new(FakeControl::default());
+    control.set_accounts(vec![snapshot(CpaAccountKind::Codex, 'a', "gpt-5.5")]);
+    let mut runtime = fixture_runtime(
+        &root,
+        Arc::new(FakeBackend::default()),
+        Arc::clone(&control),
+        2,
+    )
+    .with_diagnostics(report.port());
+    runtime.spec.borrowed_codex_auth = runtime
+        .spec
+        .borrowed_codex_auth
+        .take()
+        .map(|spec| spec.with_executable(executable.clone()));
+    let spec = runtime.spec.borrowed_codex_auth.as_ref().unwrap();
+    let expected = spec.inspect().unwrap();
+    let source_path = spec.source_path().to_owned();
+    let source_before = std::fs::read(&source_path).unwrap();
+    runtime.start().unwrap();
+    let count = control.discoveries.load(Ordering::SeqCst);
+    assert!(matches!(
+        runtime.discover_materializations(Some(&expected)),
+        Err(CpaLifecycleError::BorrowedCodexClientVersionUnavailable)
+    ));
+    assert_eq!(
+        control.discoveries.load(Ordering::SeqCst),
+        count,
+        "missing local version must not wait for a remote pin timeout"
+    );
+    std::fs::write(&executable, "#!/bin/sh\nprintf 'codex-cli 0.162.0\\n'\n").unwrap();
+    assert!(
+        !runtime
+            .discover_materializations(Some(&expected))
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        control.last_client_version.lock().as_deref(),
+        Some("0.162.0")
+    );
+    assert!(control.refresh_requested.load(Ordering::SeqCst));
+    assert_eq!(std::fs::read(source_path).unwrap(), source_before);
+    runtime.shutdown().unwrap();
+    report.shutdown();
+    let log = std::fs::read_to_string(diagnostics_root.join("daemon/current.jsonl")).unwrap();
+    assert!(log.contains("\"code\":\"native_client_version_unavailable\""));
+    assert!(!log.contains("fixture-refresh-never-imported"));
+}
+
+#[test]
+fn failed_discovery_records_a_safe_control_stage_and_preserves_failure() {
+    for (error, code) in [
+        (
+            AccountDiscoveryError::Http(crate::http::LoopbackHttpError::Io(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "SECRET_CONTROL_ERROR_SENTINEL",
+            ))),
+            "control_timeout",
+        ),
+        (
+            AccountDiscoveryError::Http(crate::http::LoopbackHttpError::Io(std::io::Error::new(
+                std::io::ErrorKind::ConnectionRefused,
+                "SECRET_CONTROL_ERROR_SENTINEL",
+            ))),
+            "control_transport",
+        ),
+        (
+            AccountDiscoveryError::ManagementAuthentication,
+            "control_authentication",
+        ),
+        (
+            AccountDiscoveryError::PinNotApplied,
+            "control_pin_not_applied",
+        ),
+        (
+            AccountDiscoveryError::SecretBearingResponse,
+            "control_rejected",
+        ),
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let logs = tempfile::tempdir().unwrap();
+        ensure_private_dir(logs.path()).unwrap();
+        let diagnostics_root = logs.path().join("d");
+        let report = DiagnosticRuntime::start(RuntimeConfig {
+            root: diagnostics_root.clone(),
+            role: hiroute_diagnostics::event::ProcessRole::Daemon,
+            component: hiroute_diagnostics::record::Component::Cpa,
+            parent_session_id: None,
+            level_override: Some(hiroute_diagnostics::level::DiagnosticLevel::Debug),
+        });
+        let control = Arc::new(FakeControl::default());
+        let runtime = fixture_runtime(
+            &root,
+            Arc::new(FakeBackend::default()),
+            Arc::clone(&control),
+            2,
+        )
+        .with_diagnostics(report.port());
+        runtime.start().unwrap();
+        *control.discovery_error.lock() = Some(error);
+        assert!(runtime.discover_materializations(None).is_err());
+        runtime.shutdown().unwrap();
+        report.shutdown();
+        let log = std::fs::read_to_string(diagnostics_root.join("daemon/current.jsonl")).unwrap();
+        let stages = log
+            .lines()
+            .filter(|line| line.contains("\"stage\":\"control_call\""))
+            .collect::<Vec<_>>();
+        // Search the serialized allowlisted events, never raw backend error text.
+        assert!(
+            stages
+                .iter()
+                .any(|line| line.contains("\"outcome\":\"entered\""))
+        );
+        assert_eq!(
+            stages
+                .iter()
+                .filter(|line| line.contains(&format!("\"code\":\"{code}\"")))
+                .count(),
+            1
+        );
+        assert!(!log.contains("SECRET_CONTROL_ERROR_SENTINEL"));
+    }
+}
+
 #[test]
 fn routing_batch_probe_cost_is_constant_for_models_protocols_and_credentials() {
     for (plan_candidates, workspace_candidates) in [(1, 1), (5, 5), (10, 10), (1, 40)] {

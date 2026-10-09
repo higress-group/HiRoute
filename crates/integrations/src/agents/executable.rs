@@ -40,6 +40,7 @@ pub(super) enum ProbeFailure {
     PipeSetupFailed(i32),
     PipeReadFailed(Option<i32>),
     WaitFailed(Option<i32>),
+    CleanupFailed,
     Failed,
     TimedOut,
     OutputLimit,
@@ -127,8 +128,6 @@ fn check_runnable(path: &Path) -> Result<(), ProbeFailure> {
 #[cfg(unix)]
 fn bounded_version(path: &Path, timeout: Duration) -> Result<Vec<u8>, ProbeFailure> {
     use nix::fcntl::{FcntlArg, OFlag, fcntl};
-    use nix::sys::signal::{Signal, killpg};
-    use nix::unistd::Pid;
     use std::io::Read;
     use std::os::fd::AsFd;
     use std::os::unix::process::CommandExt;
@@ -166,10 +165,38 @@ fn bounded_version(path: &Path, timeout: Duration) -> Result<Vec<u8>, ProbeFailu
             }
         }
     }
+    // Removing HOME alone lets native startup fall back to the OS account home.
+    // Even --version can create aliases/caches, so give every probe disposable roots.
+    let probe_home = tempfile::Builder::new()
+        .prefix("hiroute-version-")
+        .tempdir()
+        .map_err(|_| ProbeFailure::Unavailable)?;
+    let home = std::fs::canonicalize(probe_home.path()).map_err(|_| ProbeFailure::Unavailable)?;
+    let codex_home = home.join(".codex");
+    let claude_home = home.join(".claude");
+    let config_home = home.join(".config");
+    let cache_home = home.join(".cache");
+    let data_home = home.join(".local/share");
+    for directory in [
+        &codex_home,
+        &claude_home,
+        &config_home,
+        &cache_home,
+        &data_home,
+    ] {
+        std::fs::create_dir_all(directory).map_err(|_| ProbeFailure::Unavailable)?;
+    }
     let mut command = Command::new(path);
     command
         .arg("--version")
         .env_clear()
+        .env("HOME", &home)
+        .env("CODEX_HOME", &codex_home)
+        .env("CLAUDE_CONFIG_DIR", &claude_home)
+        .env("XDG_CONFIG_HOME", &config_home)
+        .env("XDG_CACHE_HOME", &cache_home)
+        .env("XDG_DATA_HOME", &data_home)
+        .current_dir(&home)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -195,9 +222,12 @@ fn bounded_version(path: &Path, timeout: Duration) -> Result<Vec<u8>, ProbeFailu
             Err(error) => return Err(ProbeFailure::LaunchFailed(error.raw_os_error())),
         }
     };
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let mut child = super::NativeProbeProcess::new(child);
     let result = (|| {
-        let mut stdout = child.stdout.take().ok_or(ProbeFailure::Unavailable)?;
-        let mut stderr = child.stderr.take().ok_or(ProbeFailure::Unavailable)?;
+        let mut stdout = stdout.ok_or(ProbeFailure::Unavailable)?;
+        let mut stderr = stderr.ok_or(ProbeFailure::Unavailable)?;
         nonblocking(&stdout)?;
         nonblocking(&stderr)?;
         let (mut out, mut err, mut total) = (Vec::new(), Vec::new(), 0);
@@ -205,12 +235,12 @@ fn bounded_version(path: &Path, timeout: Duration) -> Result<Vec<u8>, ProbeFailu
             drain(&mut stdout, &mut out, &mut total)?;
             drain(&mut stderr, &mut err, &mut total)?;
             if let Some(status) = child
-                .try_wait()
+                .observe()
                 .map_err(|error| ProbeFailure::WaitFailed(error.raw_os_error()))?
             {
                 drain(&mut stdout, &mut out, &mut total)?;
                 drain(&mut stderr, &mut err, &mut total)?;
-                return if status.success() {
+                return if status {
                     Ok(if out.is_empty() { err } else { out })
                 } else {
                     Err(ProbeFailure::Failed)
@@ -222,12 +252,12 @@ fn bounded_version(path: &Path, timeout: Duration) -> Result<Vec<u8>, ProbeFailu
             std::thread::sleep(Duration::from_millis(5));
         }
     })();
-    // Reap the probe, including descendants retaining pipe handles, on every outcome.
-    if let Ok(pid) = i32::try_from(child.id()) {
-        let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
+    // WNOWAIT reserves the leader until every mutating group signal is finished.
+    // Never signal a numeric PID/PGID after reap or discard unproven live material.
+    if child.stop().is_err() {
+        let _ = probe_home.keep();
+        return Err(ProbeFailure::CleanupFailed);
     }
-    let _ = child.kill();
-    let _ = child.wait();
     result
 }
 

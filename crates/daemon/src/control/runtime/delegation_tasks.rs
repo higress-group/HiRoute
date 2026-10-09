@@ -18,12 +18,13 @@ use hiroute_application_api::{
     WorkerContinueRequestV1, WorkerDependenciesDiscoverRequestV1,
     WorkerDependenciesSelectRequestV1, WorkerDependenciesViewV1, WorkerExecRequestV1,
     WorkerExecutorAvailabilityListV1, WorkerListRequestV1, WorkerPlansRequestV1, WorkerReadDataV1,
-    WorkerReadRequestV1, WorkerResultRequestV1, WorkerSettingsV1, WorkerStatusRequestV1,
-    WorkerWaitRequestV1,
+    WorkerReadRequestV1, WorkerResidualConfirmRequestV1, WorkerResultRequestV1, WorkerSettingsV1,
+    WorkerStatusRequestV1, WorkerWaitRequestV1,
 };
 use hiroute_domain::delegation::{
-    DelegationBodyRefV1, DelegationErrorV1, DelegationPermitMutationV1, DelegationPermitStorePort,
-    DelegationRuntimePort, DelegationWorkspaceV1, WorkerConcurrencySettingsV1,
+    DelegationBodyRefV1, DelegationCheckpointV1, DelegationErrorV1, DelegationPermitMutationV1,
+    DelegationPermitStorePort, DelegationRuntimePort, DelegationWorkspaceV1, RunCleanupV1,
+    RunEventV1, RunStateV1, WorkerConcurrencySettingsV1,
 };
 use hiroute_domain::{
     PlanExecutionRef, VersionOwnerKindV1, VersionOwnerPurposeV1, VersionOwnerRefV1,
@@ -144,6 +145,12 @@ impl DelegationTaskPort for ScheduledDelegationTaskPort {
         let result = DelegationTaskPort::worker_cancel(self.adapter.as_ref(), request)?;
         let _ = self.executor.wake_cancellation(&WorkspaceId::default());
         Ok(result)
+    }
+    fn confirm_worker_residual(
+        &self,
+        request: &WorkerResidualConfirmRequestV1,
+    ) -> Result<hiroute_application_api::DelegationRunViewV1, DelegationErrorV1> {
+        DelegationTaskPort::confirm_worker_residual(self.adapter.as_ref(), request)
     }
     fn worker_continue(
         &self,
@@ -303,6 +310,33 @@ impl LocalControlAdapter {
             .map_err(|error| error.to_string())?;
         let mut owners = Vec::with_capacity(runs.len() + resumable.len());
         for run in runs {
+            // The old producer persisted Accepted -> Cancelling at revision 2. Preparing
+            // consumes revision 2 before spawn, so this exact witness cannot hide a process.
+            // Later revisions and every process/prompt witness still require owned cleanup.
+            if run.progress.state == RunStateV1::Cancelling
+                && run.progress.revision == 2
+                && run.progress.cancel_requested
+                && run.lease_revoked
+                && run.progress.cleanup == RunCleanupV1::Pending
+                && !run.progress.process_running
+                && !run.progress.prompt_may_have_executed
+                && run.process.is_none()
+                && run.session.is_none()
+                && run.stop_evidence.is_none()
+            {
+                DelegationRuntimePort::checkpoint(
+                    self,
+                    &workspace,
+                    &run.run_id,
+                    2,
+                    "startup-cancel-before-preparation",
+                    &DelegationCheckpointV1::Progress {
+                        event: RunEventV1::LaunchFailedBeforeSpawn,
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+                continue;
+            }
             let task = DelegationRuntimePort::task(self, &workspace, &run.task_id)
                 .map_err(|error| error.to_string())?
                 .ok_or_else(|| "active delegation run has no task record".to_owned())?;
@@ -567,6 +601,12 @@ impl DelegationTaskPort for LocalControlAdapter {
         )
     }
 
+    fn confirm_worker_residual(
+        &self,
+        request: &WorkerResidualConfirmRequestV1,
+    ) -> Result<hiroute_application_api::DelegationRunViewV1, DelegationErrorV1> {
+        self.confirm_delegation_residual(request)
+    }
     fn worker_continue(
         &self,
         request: &WorkerContinueRequestV1,

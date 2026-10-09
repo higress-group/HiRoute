@@ -2,14 +2,44 @@ use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use hiroute_domain::{
-    CredentialRefV1, GatewayAuthenticationSemanticsV1, HeaderSecretLeaseRequestV1,
-    NativeCredentialAuthorityV1, NativeCredentialAuthorizationCapabilityV1,
-    NativeCredentialCapabilityErrorV1, NativeCredentialLeaseRequestV1, NativeCredentialLeaseV1,
-    PortErrorCode, PortResult, ProtectedSecret, SensitiveAuthorizationTargetV1,
+    ComputeManagementRepositoryPort, CredentialRefV1, GatewayAuthenticationSemanticsV1,
+    HeaderSecretLeaseRequestV1, MaterializationState, NativeCredentialAuthorityV1,
+    NativeCredentialAuthorizationCapabilityV1, NativeCredentialCapabilityErrorV1,
+    NativeCredentialLeaseRequestV1, NativeCredentialLeaseV1, PortErrorCode, PortResult,
+    ProtectedSecret, SensitiveAuthorizationTargetV1,
 };
 use zeroize::Zeroizing;
 
 use super::{LocalSecretStore, port, read_entry, read_head};
+
+impl crate::LocalStorageSet {
+    /// A published route freezes its model selection, not the user's current permission to
+    /// use a managed source or Key. Check that permission under the same composition-owned
+    /// store guard as secret resolution, before decrypting any authorization material.
+    pub fn lease_native_credential_exact(
+        &self,
+        request: &NativeCredentialLeaseRequestV1,
+    ) -> PortResult<Option<NativeCredentialLeaseV1>> {
+        self.secrets()
+            .lease_native_credential_with_guard(request, |reference| {
+                // Only the current management producer owns this identity namespace.
+                // Other exact Secret users keep their existing authority unchanged.
+                if !reference.credential_id().starts_with("credential/managed-") {
+                    return Ok(true);
+                }
+                let Some(source_id) = reference.owner_scope().strip_prefix("source/") else {
+                    return Ok(false);
+                };
+                let source = self.control().compute_management_source(source_id)?;
+                Ok(source.is_some_and(|source| {
+                    source.state == MaterializationState::Ready
+                        && source.credentials.iter().any(|credential| {
+                            credential.enabled && credential.credential == *reference
+                        })
+                }))
+            })
+    }
+}
 
 /// Thread-safe owner of the local Secret authority. The Gateway-facing adapter depends only on
 /// `NativeCredentialAuthorityV1`; SQLite and the master-key implementation remain private here.
@@ -34,6 +64,14 @@ impl LocalSecretStore {
     pub fn lease_native_credential_exact(
         &self,
         request: &NativeCredentialLeaseRequestV1,
+    ) -> PortResult<Option<NativeCredentialLeaseV1>> {
+        self.lease_native_credential_with_guard(request, |_| Ok(true))
+    }
+
+    fn lease_native_credential_with_guard(
+        &self,
+        request: &NativeCredentialLeaseRequestV1,
+        guard: impl FnOnce(&CredentialRefV1) -> PortResult<bool>,
     ) -> PortResult<Option<NativeCredentialLeaseV1>> {
         request.validate().map_err(|_| {
             port(
@@ -75,6 +113,9 @@ impl LocalSecretStore {
             .iter()
             .any(|excluded| excluded == reference.credential_id())
         {
+            return Ok(None);
+        }
+        if !guard(&reference)? {
             return Ok(None);
         }
         // Decryption is deliberately last: every schema, target, destination, auth and generation

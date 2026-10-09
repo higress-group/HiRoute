@@ -21,6 +21,7 @@ export type AgentTask = {
   acceptedTimeState?: 'recorded' | 'legacy_unavailable';
   admissionSequence?: string | number;
   status: 'queued' | 'running' | 'cancelling' | 'complete' | 'failed' | 'cancelled' | 'unknown';
+  stateRevision?: number;
   cleanup?: 'pending' | 'complete' | 'unknown' | 'residual_acknowledged';
   brief: string;
   contentAvailability?: 'available' | 'unavailable' | 'indeterminate';
@@ -47,6 +48,7 @@ export function AgentTasks({
   read,
   initialTaskId = null,
   onCancel,
+  onConfirmResidual,
   onOpenSession,
   onBackToAgents,
   onRefresh,
@@ -58,6 +60,7 @@ export function AgentTasks({
   language: 'zh' | 'en';
   read: AgentTaskRead;
   initialTaskId?: string | null;
+  onConfirmResidual?: (task: AgentTask) => Promise<AgentTask>;
   onCancel?: (task: AgentTask, onAccepted?: (status: AgentTask['status']) => void) => Promise<AgentTask['status']>;
   onOpenSession?: (sessionId: string) => void;
   onBackToAgents(): void;
@@ -78,6 +81,7 @@ export function AgentTasks({
     return initial ? taskKey(initial) : null;
   });
   const [confirming, setConfirming] = useState<AgentTask | null>(null);
+  const [confirmingResidual, setConfirmingResidual] = useState<AgentTask | null>(null);
   const [choosingSession, setChoosingSession] = useState<AgentTask | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -246,6 +250,22 @@ export function AgentTasks({
     }
   }
 
+  async function confirmResidual() {
+    if (!confirmingResidual || !onConfirmResidual) return;
+    const target = confirmingResidual;
+    setBusy(true);
+    setError('');
+    try {
+      const updated = await onConfirmResidual(target);
+      setTasks(current => current.map(task => sameRun(task, target) ? updated : task));
+      setConfirmingResidual(null);
+    } catch {
+      setError(text('未能确认释放占用。请刷新任务状态，核实残留后重试。', 'The occupied slot could not be released. Refresh the task, check remaining resources, and retry.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (read.status === 'loading') return <div className="empty-state" role="status"><div><span className="oc-spinner" /><p>{text('正在读取任务记录…', 'Reading task history…')}</p></div></div>;
   if (read.status === 'unavailable' || read.status === 'error') return <div className="empty-state"><div><span className="empty-icon"><UiIcon name="tasks" /></span><h3>{text('任务记录暂时不可用', 'Task history is unavailable')}</h3><p>{read.message || text('当前本机服务还不能提供可核实的任务记录。', 'The local service cannot currently provide verified task history.')}</p>{onRefresh && <button className="btn btn-primary" type="button" onClick={onRefresh}>{text('重新读取', 'Try again')}</button>}</div></div>;
   if (!tasks.length) return <div className="empty-state"><div><span className="empty-icon"><UiIcon name="tasks" /></span><h3>{text('还没有任务记录', 'No task history yet')}</h3><p>{text('启用任务委派后，在常用 Agent 中提出任务。执行结果会显示在这里。', 'Enable task delegation and ask for a task in your usual Agent. Results will appear here.')}</p><button className="btn btn-primary" type="button" onClick={onBackToAgents}>{text('查看 Agent 配置', 'View Agent settings')}</button></div></div>;
@@ -255,18 +275,25 @@ export function AgentTasks({
     <section className="detail-pane">{selected && <div className="detail-inner task-detail">
       <div className="detail-hero"><div className="detail-identity"><div><h2>{taskTitle(selected)}</h2><p>{executionLabel(selected)} · {text('创建于', 'Created')} {taskTime(selected)}</p><p className="oc-meta">task_id: {selected.taskId} · run_id: {selected.runId}</p></div></div><span className={`badge ${statusTone(selected.status)}`}>{statusLabel(selected.status)}</span></div>
       <div className="task-actions">{['queued', 'running'].includes(selected.status) && onCancel && <button ref={cancelTrigger} className="btn btn-danger" type="button" onClick={() => { setError(''); setConfirming(selected); }}>{text('取消任务', 'Cancel task')}</button>}{sessions(selected).length > 0 && onOpenSession && <button className="btn" type="button" onClick={() => openSessions(selected)}><UiIcon name="sessions" />{sessions(selected).length > 1 ? text(`查看 ${sessions(selected).length} 个关联会话`, `View ${sessions(selected).length} related sessions`) : text('查看关联会话', 'View related session')}</button>}</div>
+      {selected.detailsLoaded && selected.stateRevision && selected.cleanup === 'unknown' && !['queued', 'running', 'cancelling'].includes(selected.status) && onConfirmResidual && <button className="btn" type="button" disabled={busy} onClick={() => { setError(''); setConfirmingResidual(selected); }}>{text('处理残留占用', 'Resolve remaining resources')}</button>}
       {selected.sessionsComplete === false && <div className="callout warn"><UiIcon name="warning" /><span>{text('关联会话仍在整理，当前列表可能不完整。', 'Related sessions are still being prepared, so this list may be incomplete.')}</span></div>}
       <section className="detail-section"><h3>{text('任务简述', 'Task summary')}</h3><p className="task-text">{taskBrief(selected)}</p></section>
       {error && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{error}</span></div>}
       <section className="detail-section"><h3>{text('执行结果', 'Result')}</h3>{loadingDetails === taskKey(selected) ? <div className="oc-status-row"><span className="oc-spinner" /><p>{text('正在读取执行结果…', 'Reading the result…')}</p></div> : selected.status === 'cancelling' ? <div className="oc-status-row"><span className="oc-spinner" /><p>{text('已请求停止，正在等待执行结束。', 'Stop requested. Waiting for execution to end.')}</p></div> : ['queued', 'running'].includes(selected.status) ? <p className="oc-meta">{text('任务正在执行，结果将在完成后显示。', 'The task is running. The result will appear when it finishes.')}</p> : <><p className="task-text">{selected.result || (selected.status === 'cancelled' ? text('任务已取消，已经发生的文件变更不会自动撤销。', 'The task was cancelled. Existing file changes were not reverted.') : selected.status === 'unknown' ? text('当前结果尚无法核实，请稍后刷新。', 'The result cannot currently be verified. Refresh later.') : text('没有可用的结果文本。', 'No result text is available.'))}</p>{selected.resultIncomplete && <button className="btn" type="button" disabled={loadingResult} onClick={() => void loadMoreResult(selected)}>{loadingResult ? text('正在读取…', 'Loading…') : text('继续读取结果', 'Load more result')}</button>}</>}</section>
-      {!['queued', 'running', 'cancelling'].includes(selected.status) && selected.cleanup !== 'complete' && <div className="callout warn"><UiIcon name="warning" /><span>{text(
+      {!['queued', 'running', 'cancelling'].includes(selected.status) && selected.cleanup !== 'complete' && selected.cleanup !== 'residual_acknowledged' && <div className="callout warn"><UiIcon name="warning" /><span>{text(
         `任务已处于 ${statusLabel(selected.status)} 状态，但临时资源清理状态为“${selected.cleanup ?? 'unknown'}”。任务结果与资源回收分别确认。`,
         `The task is ${statusLabel(selected.status)}, while temporary-resource cleanup is “${selected.cleanup ?? 'unknown'}”. Task outcome and resource cleanup are tracked separately.`,
       )}</span></div>}
+      {selected.cleanup === 'residual_acknowledged' && <p className="oc-meta">{text('用户已确认处理残留，本次本地占用已释放；任务结果保持不变。', 'The user confirmed remaining resources were handled. This local slot is released; the task result is unchanged.')}</p>}
       <p className="oc-meta">{text('后续操作以当前任务状态和服务返回的可用动作为准。', 'Use the current task state and the actions returned by the service for follow-up work.')}</p>
     </div>}</section>
 
     <Dialog open={Boolean(confirming)} title={text('取消这个任务？', 'Cancel this task?')} description={confirming?.title} closeLabel={text('关闭取消确认', 'Close cancellation confirmation')} closeDisabled={busy} onClose={() => !busy && setConfirming(null)} footer={<><button className="btn" type="button" disabled={busy} onClick={() => setConfirming(null)}>{text('继续执行', 'Keep running')}</button><button className="btn btn-danger" type="button" disabled={busy} onClick={() => void confirmCancel()}>{busy ? text('正在取消…', 'Cancelling…') : text('取消任务', 'Cancel task')}</button></>}><p>{text('只停止这次执行；已经发生的文件变更不会自动撤销，其他任务不受影响。', 'Stop only this run. Existing file changes will not be reverted, and other tasks are unaffected.')}</p>{error && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{error}</span></div>}</Dialog>
+
+    <Dialog open={Boolean(confirmingResidual)} title={text('确认已处理这次运行的残留？', 'Confirm remaining resources are handled?')} description={confirmingResidual?.title} closeLabel={text('关闭残留处理确认', 'Close resource confirmation')} closeDisabled={busy} onClose={() => !busy && setConfirmingResidual(null)} footer={<><button className="btn" type="button" disabled={busy} onClick={() => setConfirmingResidual(null)}>{text('取消', 'Cancel')}</button><button className="btn btn-primary" type="button" disabled={busy} onClick={() => void confirmResidual()}>{busy ? text('正在确认…', 'Confirming…') : text('已处理，释放占用', 'Handled; release slot')}</button></>}>
+      <p>{text('请先检查并处理这次运行遗留的进程和临时资源。确认只释放这次运行的本地占用，不撤销文件改动，也不把任务标记为成功。已知仍在运行的进程不能通过此操作释放。', 'First inspect and handle processes and temporary resources left by this run. Confirmation releases only this run’s local slot. It does not undo file changes or mark the task successful. Known running processes cannot be released by this action.')}</p>
+      {error && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{error}</span></div>}
+    </Dialog>
 
     <Dialog open={Boolean(choosingSession)} title={text('选择关联会话', 'Choose a related session')} description={choosingSession?.title} closeLabel={text('关闭会话选择', 'Close session picker')} onClose={() => setChoosingSession(null)} footer={<button className="btn" type="button" onClick={() => setChoosingSession(null)}>{text('取消', 'Cancel')}</button>}>
       <div className="native-list v3-catalog">{choosingSession && sessions(choosingSession).map((sessionId, index) => <button className="list-row" type="button" key={sessionId} onClick={() => { setChoosingSession(null); onOpenSession?.(sessionId); }}><UiIcon name="sessions" /><span className="row-main"><span className="row-title">{text(`关联会话 ${index + 1}`, `Related session ${index + 1}`)}</span><span className="row-meta">{text('查看这次任务关联的会话内容', 'View the session linked to this task')}</span></span><UiIcon name="chevronRight" /></button>)}</div>

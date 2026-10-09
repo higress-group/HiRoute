@@ -176,7 +176,22 @@ impl AttemptTransport for PingoraClientSession {
             None => false,
         };
         let mut session = if let Some(mut reader) = connected.reader.take() {
-            match tokio::time::timeout(SHUTDOWN_REQUEST_JOIN_TIMEOUT, &mut reader.task).await {
+            // A provider may complete its protocol before HTTP EOS. The bounded reader
+            // mailbox still owns trailing wire chunks; joining without consuming it can
+            // deadlock the reader on sender.reserve(), even after upstream sent HTTP EOS.
+            // Drain only transport receipts, never emit another downstream model event.
+            let join = async {
+                // A finished reader can still have its final EOS queued. Sender closure,
+                // rather than task readiness, establishes that every receipt was consumed.
+                while let Some(receipt) = reader.events.recv().await {
+                    if matches!(receipt, Ok(receipt) if matches!(receipt.event, TransportPrecommitEvent::EndStream))
+                    {
+                        self.response_eos_emitted = true;
+                    }
+                }
+                (&mut reader.task).await
+            };
+            match tokio::time::timeout(SHUTDOWN_REQUEST_JOIN_TIMEOUT, join).await {
                 Ok(Ok(session)) => session,
                 Ok(Err(error)) => {
                     return Err(AttemptError::Transport(

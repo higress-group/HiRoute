@@ -53,12 +53,12 @@ pub(super) fn automation(command_id: &str) -> &'static str {
 }
 pub(super) fn output(command_id: &str) -> &'static str {
     if command_id == "worker.executors" {
-        "Default text renders overall and scoped states for Codex then Claude. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints the two stable Harness names."
+        "Default text renders overall and scoped states for all five supported Harnesses. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints their stable wire names."
     } else if matches!(
         command_id,
         "worker.dependencies.discover" | "worker.dependencies.select"
     ) {
-        "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli or claude_code), one per line, and is empty when nothing is selected."
+        "Default text renders selected tuples and discovered candidates but omits the CAS revisions, so automation must use --output json. --output quiet prints only selected Harness wire names (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), one per line, and is empty when nothing is selected."
     } else if command_id == "worker.list" {
         "Default text renders the instance task/state/title-or-ID/canonical-cwd page plus its next cursor. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints task IDs. A page length is never a total count."
     } else if command_id.starts_with("worker.") {

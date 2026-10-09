@@ -641,4 +641,16 @@ mod tests {
             Err(super::super::DispatchError::Unauthorized)
         ));
     }
+
+    #[test]
+    fn same_task_conversation_does_not_authorize_another_run() {
+        let mut other = verified(Arc::new(Safety(AtomicUsize::new(0))));
+        // Keeping the task identity does not transfer the first run's credential.
+        assert_eq!(other.locator.task_id(), "task/one");
+        other.locator.run_id = "run/two".into();
+        assert!(matches!(
+            other.begin(&format!("Bearer {TOKEN}"), IngressProtocol::Responses),
+            Err(RunRequestAuthorityError::Denied)
+        ));
+    }
 }

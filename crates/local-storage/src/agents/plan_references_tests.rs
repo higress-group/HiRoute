@@ -131,7 +131,7 @@ fn begin_plan(control: &ControlStore, restoring: bool, key: &str) -> OperationV1
     operation
 }
 #[test]
-fn agent_plan_references_join_independent_grants_restore_and_workspace() {
+fn agent_plan_references_restore_and_workspace_ignore_retired_collaboration_allowlists() {
     let dir = tempdir().unwrap();
     let control = ControlStore::open(
         &crate::test_storage_authority(),
@@ -168,7 +168,7 @@ fn agent_plan_references_join_independent_grants_restore_and_workspace() {
     operation.state = OperationState::Succeeded;
     control.finish_operation(&mut operation).unwrap();
     let initial = control.agent_plan_references(&workspace, &plan).unwrap();
-    assert_eq!(initial.references.len(), 3);
+    assert_eq!(initial.references.len(), 2);
     assert_eq!(
         initial,
         control.agent_plan_references(&workspace, &plan).unwrap()
@@ -193,11 +193,7 @@ fn agent_plan_references_join_independent_grants_restore_and_workspace() {
     restore.state = OperationState::Succeeded;
     control.finish_operation(&mut restore).unwrap();
     let after = control.agent_plan_references(&workspace, &plan).unwrap();
-    assert_eq!(after.references.len(), 1);
-    assert_eq!(
-        after.references[0].kind,
-        AgentPlanReferenceKind::CollaborationAllowed
-    );
+    assert!(after.references.is_empty());
     assert_ne!(initial.facts_digest, after.facts_digest);
 }
 #[test]

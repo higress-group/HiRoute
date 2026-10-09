@@ -14,7 +14,9 @@ python3 scripts/release-contracts.py current
 ```
 
 PR CI also compares every historical snapshot byte-for-byte with the actual PR base; editing
-or deleting one fails even if the index is recomputed. Locally use `check --base BASE_REF` for
+or deleting its evidence fails even if the index is recomputed. An explicitly superseded
+unpromoted snapshot is retained byte-for-byte in `archive/<tag>.<full-revision>.json`.
+Locally use `check --base BASE_REF` for
 the same check. The index itself is regenerated as new snapshots are appended.
 
 The [index](../contracts/releases/index.v1.json) selects the highest recorded stable
@@ -28,6 +30,8 @@ The snapshot is evidence, not another current contract producer or a promise of 
 Fetch missing source objects/tags from the configured public remote without replacing an existing
 tag. A missing/moved tag or index/hash mismatch must be resolved, not regenerated into agreement.
 Never use a branch tip or a same-version development package as the released source.
+Archived snapshots verify their original commit and contract bytes without requiring the
+superseded tag to continue pointing at that commit; active snapshots still require the exact tag.
 
 Before compatibility work and release handoff, compare the index with the observed public stable
 Release channel (use the repository in the snapshot). A newly published Release may have its
@@ -79,6 +83,28 @@ Generate twice and confirm the second run has no diff. Commit the snapshot/index
 PR. Do not edit historical snapshots or overwrite a collision to get a green check. Publication
 records and contract-source checks do not establish real old-package upgrade/manual restoration;
 supported-source acceptance remains a separate release obligation after the first 0.2.0 baseline.
+
+### Explicit replacement before promotion
+
+An owner may authorize replacing a same-version release before public promotion. This is an
+exceptional publication decision, never inferred from the version number or a moved tag. Build
+and verify the new exact source and package identities first; retain the old source and artifact
+identities. Then manually dispatch `publish-release` with the tag and
+`supersede_unpromoted_revision` set to the exact previous 40-character source SHA. The ordinary
+release event and default dispatch cannot replace an existing record.
+
+After package/site publication, recording archives the previous snapshot without changing any
+byte and updates only the active same-tag record and index. The repository and channel must
+remain unchanged and the new source revision must differ. The replacement PR uses
+`chore/release-contracts-<tag>-<new-revision-prefix>` so a previously merged snapshot PR cannot
+block the replacement. Review and merge it normally. Local recovery uses
+`record --supersede-unpromoted-revision OLD_FULL_SHA` with the same verified publication inputs;
+repeating it is idempotent, including recovery after the active record was written but its index
+was not. `check --base BASE_REF` protects both prior archives and the newly archived old record.
+
+Archived trial records do not introduce another supported migration baseline. For the authorized
+0.2.0 replacement before promotion, the active verified 0.2.0 record establishes that baseline;
+the earlier package identities remain historical evidence.
 
 ## Find the current storage and upgrade boundaries
 

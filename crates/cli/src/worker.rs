@@ -19,7 +19,7 @@ mod render;
 
 use input::{
     parse_cancel, parse_dependencies_discover, parse_dependency_selection, parse_list, parse_read,
-    parse_result, parse_status, parse_submission, parse_wait,
+    parse_residual_confirm, parse_result, parse_status, parse_submission, parse_wait,
 };
 use receipt::{ReceiptError, SubmissionReceipt};
 use render::{
@@ -165,6 +165,18 @@ pub(crate) fn execute(command: &str, options: &[String], globals: Globals) -> Cl
             };
             let response = call(client.shared_client().worker_read(&request_id, &request));
             render_transport(response, globals.output, "worker.read", None)
+        }
+        "worker.cleanup.confirm" => {
+            let request = match parse_residual_confirm(options) {
+                Ok(request) => request,
+                Err(code) => return failure(code, globals.output, Some(request_id)),
+            };
+            let response = call(
+                client
+                    .shared_client()
+                    .confirm_worker_residual(&request_id, &request),
+            );
+            render_transport(response, globals.output, "worker.cleanup.confirm", None)
         }
         "worker.cancel" => {
             let request = match parse_cancel(options, &request_id) {

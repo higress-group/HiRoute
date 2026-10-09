@@ -824,6 +824,7 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         "worker.wait" => "hiroute.worker-wait-request/v1",
         "worker.result" => "hiroute.worker-result-request/v1",
         "worker.read" => "hiroute.worker-read-request/v1",
+        "worker.cleanup.confirm" => "hiroute.worker-residual-confirm-request/v1",
         "worker.cancel" => "hiroute.worker-cancel-request/v1",
         "worker.continue" => "hiroute.worker-continue-request/v1",
         "tasks.list" => "hiroute.delegation-list-request/v1",
@@ -863,7 +864,7 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         "models.show" => "hiroute.model-catalog-query/v1",
         "sessions.list" => "hiroute.session-list-query/v1",
         "sessions.show" | "sessions.receipt" => "hiroute.session-lookup/v1",
-        "value.show" => "hiroute.value-query/v1",
+        "value.show" => "hiroute.observation.query/v2",
         "observation.plan-quality.samples" => "hiroute.observation.query/v2",
         _ => "hiroute.empty-request/v1",
     }
@@ -877,8 +878,13 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
             "hiroute.worker-dependencies-view/v1"
         }
         "worker.list" => "hiroute.delegation-list/v1",
-        "worker.exec" | "worker.status" | "worker.wait" | "worker.result" | "worker.continue"
-        | "worker.cancel" => "hiroute.worker-command-data/v1",
+        "worker.exec"
+        | "worker.status"
+        | "worker.wait"
+        | "worker.result"
+        | "worker.continue"
+        | "worker.cancel"
+        | "worker.cleanup.confirm" => "hiroute.worker-command-data/v1",
         "worker.read" => "hiroute.worker-read-data/v1",
         "tasks.list" => "hiroute.delegation-list/v1",
         "tasks.show" => "hiroute.delegation-get/v1",
@@ -924,7 +930,7 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "sessions.show" => "hiroute.session-detail/v1",
         "sessions.receipt" => "hiroute.routing-receipt/v1",
         "sessions.status" => "hiroute.session-store-status/v1",
-        "value.show" => "hiroute.value-view/v1",
+        "value.show" => "hiroute.observation.value-report/v2",
         "observation.plan-quality.samples" => "hiroute.plan-quality-samples-page/v1",
         _ => "hiroute.command-result/v1",
     }
@@ -1011,7 +1017,8 @@ pub(crate) fn command_idempotency(command_id: &str) -> &'static str {
         | "tasks.continue"
         | "worker.exec"
         | "worker.continue"
-        | "worker.cancel" => "required",
+        | "worker.cancel"
+        | "worker.cleanup.confirm" => "required",
         "worker.dependencies.select" => "deterministic_request_replay",
         _ => "not_applicable",
     }
@@ -1032,7 +1039,7 @@ pub(crate) fn staged_coverage(command_id: &str, positive: bool) -> Option<Covera
 pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
     match command_id {
         "worker.executors" => "hiroute worker executors [--output <json|text|quiet>]".into(),
-        "worker.dependencies.discover" => "hiroute worker dependencies discover [--harness <codex_cli|claude_code>] [--output <json|text|quiet>]".into(),
+        "worker.dependencies.discover" => "hiroute worker dependencies discover [--harness <codex_cli|claude_code|qoder_cli|pi|deepseek_harness>] [--output <json|text|quiet>]".into(),
         "worker.dependencies.select" => "hiroute worker dependencies select --request-stdin [--output <json|text|quiet>]".into(),
         "worker.plans" => "hiroute worker plans [--output <json|text|quiet>]".into(),
         "worker.list" => "hiroute worker list [--title <TITLE>] [--cursor <OPAQUE>] [--limit <1..200>] [--output <json|text|quiet>]".into(),
@@ -1041,6 +1048,7 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
         "worker.wait" => "hiroute worker wait --run <ID> [--after-revision <N>] [--wait-timeout <1..30>]".into(),
         "worker.result" => "hiroute worker result --run <ID> [--offset <N>] [--max-bytes <N>]".into(),
         "worker.read" => "hiroute worker read --run <ID> [--cursor <OPAQUE>] [--max-bytes <1..32768>]".into(),
+        "worker.cleanup.confirm" => "hiroute worker cleanup confirm --run <ID> --expected-revision <REVISION> --handled [--idempotency-key <KEY>]".into(),
         "worker.cancel" => "hiroute worker cancel --run <ID> [--reason <REFERENCE>] [--idempotency-key <KEY>]".into(),
         "worker.continue" => "hiroute worker continue --task <ID> --expected-latest-run <ID> [--cwd <PATH>] [--permission-policy <approve-all|approve-reads|deny-all>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)".into(),
         "tasks.list" => "hiroute tasks list --request-stdin (--agent <codex|claude-code> | --capability-fd <FD>) --json".into(),
@@ -1093,7 +1101,7 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
     match command_id {
         "worker.executors" => "No Agent, Plan, allowlist, capability FD, or request body is accepted. The query checks configured entry metadata and executability, not program contents or compatibility. Ready allows a launch attempt; it does not prove optional capabilities, install, configure, authorize, or admit a run.".into(),
         "worker.dependencies.discover" => "Optionally restrict discovery to one Harness. The query checks the selected path, PATH, common locations, npm globals and npx cache without installing or selecting anything.".into(),
-        "worker.dependencies.select" => "Same-UID local management only. --request-stdin reads one strict JSON object with harness (codex_cli or claude_code), absolute adapter_path and cli_path, optional absolute node_path, and expected_selection_revision copied from the matching selection_revisions entry returned by worker dependencies discover --output json. All paths and the revision are validated again before an atomic selection update; the command never installs software or accepts an Apply capability.".into(),
+        "worker.dependencies.select" => "Same-UID local management only. --request-stdin reads one strict JSON object with harness (codex_cli, claude_code, qoder_cli, pi, or deepseek_harness), absolute cli_path, and expected_selection_revision copied from the matching selection_revisions entry returned by worker dependencies discover --output json. codex_cli and claude_code require absolute adapter_path and accept optional absolute node_path. pi requires absolute node_path and forbids adapter_path. qoder_cli and deepseek_harness accept only cli_path and forbid adapter_path and node_path. All paths and the revision are validated again before an atomic selection update; the command never installs software or accepts an Apply capability.".into(),
         "worker.plans" => "Lists every currently published and delegation-enabled Worker Plan in this daemon instance; no main-Agent selector or allowlist participates.".into(),
         "worker.list" => "Pages the daemon instance's durable tasks newest-first. --title is normalized exact matching; the signed opaque cursor is bound to that filter. Default 50, maximum 200, and no total count.".into(),
         "worker.exec" => "Plan, cwd, and exactly one text source are required. Permission policy defaults to approve-all; approve-reads and deny-all are explicit run restrictions and fail unavailable unless the exact Harness mapping proves them. cwd is scheduling context, not directory authorization. A private receipt is saved before transmission; uncertain delivery keeps the same submission key.".into(),
@@ -1101,6 +1109,7 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "worker.read" => "Reads a bounded best-effort public assistant-message progress window. It is not a complete log or completion proof; cursors are opaque, signed and run-bound.".into(),
         "worker.wait" => "Wait is bounded to 1..30 seconds and never cancels the run. A timeout is a pending observation with a reusable run locator.".into(),
         "worker.result" => "Reads the actual persisted result, optionally by UTF-8 byte page. Query success can honestly report a failed, cancelled, active, incomplete, or unavailable run.".into(),
+        "worker.cleanup.confirm" => "Use only after the user handles remaining processes/resources. Requires the observed revision and explicit --handled; known-live or stale runs are rejected. Exact retries reuse the idempotency key. Only the local occupied slot is released; task result and file changes remain.".into(),
         "worker.cancel" => "Cancellation is idempotent for one exact run. Omitting the idempotency key creates one; only the owned Worker scope is stopped.".into(),
         "worker.continue" => "Task and expected latest run are mandatory. cwd is optional but, when present, must canonicalize to the persisted task root. Permission policy defaults to approve-all and configures only this run; Continue never falls back to a new task, newest Plan, or session/new.".into(),
         "tasks.list" => "Required identity: --agent or --capability-fd. stdin carries the typed caller plus optional cursor/limit; default 50, maximum 200. Only tasks visible to the current verified collaboration grant are returned.".into(),
@@ -1127,7 +1136,7 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "agents.connect.preview" | "agents.connect.apply" | "agents.restore.preview" | "agents.restore.apply" => "--request-stdin accepts only the strict v1 connection or v2 managed-settings request. Apply is same-UID, revision-checked, idempotent, and writes only owned Agent fields; restore refuses concurrent ownership drift.".to_owned(),
         "sessions.list" => "Human options retain the v1 query. Fact-only listing is available to the same-UID Local Control peer; --query searches retained text and therefore still requires a separately delivered protected capability. --request-stdin accepts only a strict v2 sessions intent.".to_owned(),
         "observation.plan-quality.samples" => "Provide at least --plan-id or --session-id. Use --competence below-floor|meets-floor to compare the latest reliable score with the floor saved for that stage, or --unrated for missing/partial scores. Score bounds remain strict open bounds. Detail filters do not alter full-scope summaries. Facts are same-UID reads; protected evidence content is never returned.".to_owned(),
-        "value.show" => "Human options retain the v1 value query. Alternatively, --request-stdin accepts only a strict v2 value or home_value intent. Same-UID reads return recorded known and unknown amounts without computing or filling missing values.".to_owned(),
+        "value.show" => "Human options use the current v2 value_report intent; defaults are the last seven days and separate totals for every currency. --group-by day returns UTC day buckets from the same snapshot. --request-stdin accepts strict v2 value, home_value or value_report intents. Same-UID reads retain known/unknown usage, amounts and coverage; missing values are never filled with zero.".to_owned(),
         "sessions.show" => "Human options retain the v1 lookup and content defaults to none. Same-UID facts/timeline reads need no extra token; messages, tool content, catalog, ancestry, content pages, and search still require an exact protected capability.".to_owned(),
         "sessions.receipt" | "setup.status" | "operations.get" | "operations.watch" | "operations.cancel" => "An exact typed resource ID is required; arbitrary storage keys and SQL are forbidden.".to_owned(),
         _ => "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.".to_owned(),

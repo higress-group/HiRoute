@@ -157,6 +157,7 @@ fn decode_responses(
                 } else {
                     let item_status = item
                         .get("status")
+                        .filter(|status| item_type != Some("reasoning") || !status.is_null())
                         .map(|status| {
                             status
                                 .as_str()

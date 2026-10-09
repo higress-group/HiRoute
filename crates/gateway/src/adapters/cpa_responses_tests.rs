@@ -283,6 +283,7 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
         ] {
             let mut item = item.clone();
             item["status"] = status.clone();
+            let nullable_reasoning = item["type"] == "reasoning" && status.is_null();
             let decoded = decode_ingress_request(
                 IngressProtocol::Responses,
                 &json!({"model":"alias","input":[item]}),
@@ -302,6 +303,13 @@ fn native_input_status_preserves_function_output_lifecycle_only() {
                 assert_eq!(
                     decoded.responses_item_statuses.get(&0).map(String::as_str),
                     status.as_str()
+                );
+            } else if nullable_reasoning {
+                let decoded = decoded.unwrap();
+                assert!(decoded.responses_item_statuses.is_empty());
+                assert_eq!(
+                    decoded.responses_reasoning_history[&0].native_fields["status"],
+                    Value::Null
                 );
             } else {
                 assert!(decoded.is_err(), "accepted {status}");

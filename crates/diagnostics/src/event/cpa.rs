@@ -91,6 +91,18 @@ pub enum CpaFailureCode {
     ReadyTimeout,
     /// The process exited or answered unsafely before it became ready.
     ReadyRejected,
+    /// A management socket or the complete control deadline timed out.
+    ControlTimeout,
+    /// The local management transport could not complete.
+    ControlTransport,
+    /// Local management or downstream capability authentication was rejected.
+    ControlAuthentication,
+    /// Account controls or the prefixed model catalog did not converge in time.
+    ControlPinNotApplied,
+    /// Explicit subscription discovery could not obtain the selected native client version.
+    NativeClientVersionUnavailable,
+    /// Control data was invalid, unsafe, or no longer described the expected account.
+    ControlRejected,
     /// The cause is not part of this vocabulary.
     Unknown,
 }

@@ -53,6 +53,20 @@ Do not duplicate the shared admission, process or retention lifecycle for an eco
 
 ### Pi compatibility is a capability contract
 
+Selected dependency checks allow bounded cold startup: native version reads have
+a 10-second deadline and the offline Pi SDK check has 15 seconds. This is separate
+from directory discovery's scan budget and from the admitted task deadline. A
+timeout does not invalidate the saved selection or consume a submission key.
+Failures expose a closed check stage and reason through the existing machine
+error message key, with transient inspection/timeouts marked retryable. No native
+output, environment value or credential is included. A dependency failure after
+admission leaves the run Failed and writes an explicitly HiRoute-authored reason
+to its existing progress stream, never a successful model result. The same
+selection and exact Continue request can be retried after a transient check.
+
+The existing error envelope and managed progress format remain current; this
+adds no saved dependency fields, schema conversion or alternate legacy reader.
+
 [Runtime admission](../../crates/integrations/src/agents/pi_runtime.rs) and the
 [SDK contract](../../crates/integrations/src/agents/pi_sdk_contract.mjs) bind the selected
 CLI's declared executable and SDK export from the same package. Production checks
@@ -99,6 +113,13 @@ Only registered old Codex/Claude tasks may use the legacy private-root recovery
 path in the [compatibility registry](../../contracts/compatibility-support.v1.json).
 A corrupted current binding is not legacy absence. Resource discovery and native
 permission policy are separate; using one OS account does not make HOME a sandbox.
+
+`Preparing` is committed before any native process can spawn. Cancelling an
+`Accepted` run therefore atomically records `Cancelled` with complete cleanup;
+a stale executor cannot cross the preparation revision check. Once preparation
+has started, cancellation still needs owned-process stop evidence. Startup may
+settle the old revision-2 `Cancelling` record only when the exact record proves
+that preparation, process binding and prompt intent never occurred.
 
 Codex [startup coordination](../../crates/daemon/src/delegation/lifecycle/startup.rs)
 serializes only same-daemon, same borrowed-root spawn/initialize, releasing before

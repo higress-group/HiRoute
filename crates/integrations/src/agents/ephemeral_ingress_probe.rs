@@ -96,7 +96,7 @@ impl CodexNativeIngressProbe {
             .env("HOME", &home)
             .env("CODEX_HOME", &codex_home)
             .env("TMPDIR", &workspace)
-            .env("PATH", "/usr/bin:/bin")
+            .env("PATH", native_probe_path())
             .current_dir(&workspace)
             .stdin(Stdio::null())
             .stdout(Stdio::null())

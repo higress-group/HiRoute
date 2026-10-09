@@ -562,7 +562,7 @@ fn start_cpa(
             endpoint_profile_id: "endpoint.cpa.codex".into(),
         }],
         startup_timeout: Duration::from_secs(20),
-        control_timeout: Duration::from_secs(5),
+        control_timeout: hiroute_cpa_bridge::MANAGED_CPA_CONTROL_TIMEOUT,
         shutdown_timeout: Duration::from_secs(5),
         restart_policy: RestartPolicy::default(),
     };
@@ -590,14 +590,8 @@ fn selected_codex_auth() -> Result<PathBuf, RoleAllError> {
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
         .ok_or(RoleAllError::InvalidConfiguration)?;
-    let root = std::env::var_os("CODEX_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".codex"));
-    if !root.is_absolute() {
-        return Err(RoleAllError::InvalidConfiguration);
-    }
-    Ok(root.join("auth.json"))
+    hiroute_integrations::agents::codex_subscription_auth_from_environment(&home)
+        .map_err(|_| RoleAllError::InvalidConfiguration)
 }
 
 fn managed_cli_entry(
@@ -668,6 +662,52 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn subscription_source_override_keeps_worker_and_agent_native_roots_private() {
+        const TEST: &str = "role_all::tests::subscription_source_override_keeps_worker_and_agent_native_roots_private";
+        const CHILD: &str = "HIROUTE_AUTH_SOURCE_SELECTION_TEST";
+        if std::env::var(CHILD).as_deref() != Ok(TEST) {
+            let directory = tempfile::tempdir().unwrap();
+            let home = directory.path().join("private");
+            let source = directory.path().join("original/auth.json");
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--nocapture"])
+                .env_clear()
+                .env(CHILD, TEST)
+                .env("HOME", &home)
+                .env("CODEX_HOME", home.join(".codex"))
+                .env("HIROUTE_CODEX_AUTH_SOURCE", source)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+            return;
+        }
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        let source = PathBuf::from(std::env::var_os("HIROUTE_CODEX_AUTH_SOURCE").unwrap());
+        assert_eq!(selected_codex_auth().unwrap(), source);
+        let layout =
+            hiroute_integrations::agents::AgentFilesystemLayoutV1::from_process(&home, &home);
+        assert_eq!(
+            layout.codex_subscription_auth_override,
+            Some(source.clone())
+        );
+        assert_eq!(layout.codex_user_config, home.join(".codex/config.toml"));
+        let worker = crate::delegation::profile::NativeWorkerContext::from_environment(
+            hiroute_domain::delegation::WorkerHarnessV1::CodexCli,
+        )
+        .unwrap();
+        assert_eq!(worker.config_root(), home.join(".codex"));
+        assert!(
+            !source.exists(),
+            "selection must not materialize credentials"
+        );
+    }
 
     #[test]
     fn standalone_agent_helper_uses_verified_stable_entry_across_upgrade() {

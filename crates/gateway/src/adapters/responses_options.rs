@@ -121,15 +121,16 @@ pub(super) fn reasoning_history(
         .ok_or(ModelIrError::InvalidField("input[]"))?;
     let native_fields = object
         .iter()
-        .filter(|(key, _)| {
-            !matches!(
-                key.as_str(),
-                "type"
-                    | "id"
-                    | "status"
-                    | "encrypted_content"
-                    | "internal_chat_message_metadata_passthrough"
-            )
+        .filter(|(key, value)| {
+            (key.as_str() == "status" && value.is_null())
+                || !matches!(
+                    key.as_str(),
+                    "type"
+                        | "id"
+                        | "status"
+                        | "encrypted_content"
+                        | "internal_chat_message_metadata_passthrough"
+                )
         })
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
@@ -654,29 +655,35 @@ mod tests {
             "physical",
             fixed_reasoning("fixed"),
         );
-        for content in [
-            None,
-            Some(Value::Null),
-            Some(json!([])),
-            Some(json!([{"type":"reasoning_text","text":"provider-owned plain text"}])),
-        ] {
-            for encrypted_content in [None, Some(Value::Null), Some(json!(""))] {
-                let mut reasoning = json!({
-                    "type":"reasoning",
-                    "id":"reasoning-item",
-                    "summary":[{"type":"summary_text","text":"used a tool"}]
-                });
-                if let Some(content) = &content {
-                    reasoning["content"] = content.clone();
+        for status in [None, Some(Value::Null), Some(json!("completed"))] {
+            for content in [
+                None,
+                Some(Value::Null),
+                Some(json!([])),
+                Some(json!([{"type":"reasoning_text","text":"provider-owned plain text"}])),
+            ] {
+                for encrypted_content in [None, Some(Value::Null), Some(json!(""))] {
+                    let mut reasoning = json!({
+                        "type":"reasoning",
+                        "id":"reasoning-item",
+                        "summary":[{"type":"summary_text","text":"used a tool"}]
+                    });
+                    if let Some(content) = &content {
+                        reasoning["content"] = content.clone();
+                    }
+                    if let Some(status) = &status {
+                        reasoning["status"] = status.clone();
+                    }
+                    if let Some(value) = encrypted_content {
+                        reasoning["encrypted_content"] = value;
+                    }
+                    let native = json!({"model":"alias","input":[reasoning]});
+                    let request =
+                        decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
+                    assert!(request.messages[0].content.is_empty());
+                    let projected = project_candidate_request(&request, &profile).unwrap().body;
+                    assert_eq!(projected["input"], native["input"]);
                 }
-                if let Some(value) = encrypted_content {
-                    reasoning["encrypted_content"] = value;
-                }
-                let native = json!({"model":"alias","input":[reasoning]});
-                let request = decode_ingress_request(IngressProtocol::Responses, &native).unwrap();
-                assert!(request.messages[0].content.is_empty());
-                let projected = project_candidate_request(&request, &profile).unwrap().body;
-                assert_eq!(projected["input"], native["input"]);
             }
         }
 

@@ -29,6 +29,44 @@ fn make_file(path: &Path, mode: u32) {
 }
 
 #[test]
+fn pi_discovers_path_node_without_an_adapter() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = root.path().join("bin");
+    make_file(&bin.join("pi"), 0o700);
+    make_file(&bin.join("node"), 0o700);
+    let view = discover_with_environment(
+        &StaticSelection(None),
+        &WorkerDependenciesDiscoverRequestV1 {
+            harness: Some(WorkerHarnessV1::Pi),
+        },
+        &ScanEnvironment {
+            path: Some(std::env::join_paths([&bin]).unwrap()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(view.candidates.iter().any(|candidate| {
+        candidate.component == WorkerDependencyComponentV1::Node
+            && candidate.path
+                == fs::canonicalize(bin.join("node"))
+                    .unwrap()
+                    .to_string_lossy()
+            && candidate.state == WorkerDependencyCandidateStateV1::Found
+    }));
+    assert!(
+        view.candidates
+            .iter()
+            .all(|candidate| { candidate.component != WorkerDependencyComponentV1::Adapter })
+    );
+    assert!(
+        view.install_hints
+            .iter()
+            .all(|hint| { hint.component != WorkerDependencyComponentV1::Node })
+    );
+    assert!(view.selected.is_empty());
+}
+
+#[test]
 #[cfg(unix)]
 fn pi_resume_checks_its_own_capability_instead_of_new_session_admission() {
     let root = tempfile::tempdir().unwrap();
@@ -48,7 +86,12 @@ fn pi_resume_checks_its_own_capability_instead_of_new_session_admission() {
     assert!(validate_persisted_installation_for_run(&config, true).is_ok());
     assert!(matches!(
         validate_persisted_installation_for_run(&config, false),
-        Err(DelegationErrorV1::DependenciesInvalid)
+        Err(DelegationErrorV1::DependencyCheckFailed(
+            hiroute_domain::delegation::NativeDependencyFailureV1 {
+                check: hiroute_domain::delegation::NativeDependencyCheckV1::PiSdk,
+                reason: hiroute_domain::delegation::NativeDependencyFailureReasonV1::ProcessFailed
+            }
+        ))
     ));
     fs::write(
         config.node_binary.as_ref().unwrap(),
@@ -57,7 +100,12 @@ fn pi_resume_checks_its_own_capability_instead_of_new_session_admission() {
     .unwrap();
     assert!(matches!(
         validate_persisted_installation_for_run(&config, true),
-        Err(DelegationErrorV1::DependenciesInvalid)
+        Err(DelegationErrorV1::DependencyCheckFailed(
+            hiroute_domain::delegation::NativeDependencyFailureV1 {
+                check: hiroute_domain::delegation::NativeDependencyCheckV1::PiSdk,
+                reason: hiroute_domain::delegation::NativeDependencyFailureReasonV1::ProcessFailed
+            }
+        ))
     ));
 }
 
@@ -328,4 +376,34 @@ fn metadata_symlink_loop_is_unavailable_not_missing() {
     std::os::unix::fs::symlink(&entry, &entry).unwrap();
     let fact = inspect(&entry, true);
     assert_eq!(fact.state, WorkerDependencyCandidateStateV1::Unavailable);
+}
+
+#[test]
+fn default_discovery_returns_every_supported_harness_without_a_selection() {
+    let view = discover_with_environment(
+        &StaticSelection(None),
+        &WorkerDependenciesDiscoverRequestV1 { harness: None },
+        &ScanEnvironment::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        view.selection_revisions
+            .iter()
+            .map(|item| item.harness)
+            .collect::<Vec<_>>(),
+        WORKER_HARNESSES
+    );
+    assert!(
+        view.selection_revisions
+            .iter()
+            .all(|item| item.revision == 0)
+    );
+    assert!(view.selected.is_empty());
+    assert!(view.valid());
+    let round_trip: WorkerDependenciesViewV1 =
+        serde_json::from_value(serde_json::to_value(&view).unwrap()).unwrap();
+    assert_eq!(view, round_trip);
+    let mut duplicate = view;
+    duplicate.selection_revisions[4] = duplicate.selection_revisions[0].clone();
+    assert!(!duplicate.valid());
 }

@@ -24,6 +24,16 @@ pub struct ObservationValueSummaryV2 {
     pub usage: Vec<ObservationUsageTotalV2>,
     pub input_cache_hit: ObservationCacheHitSummaryV2,
 }
+
+/// Summary and optional UTC day buckets from one database snapshot. Partial
+/// first/last days retain their actual half-open query bounds.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ObservationValueReportV2 {
+    pub summary: ObservationValueSummaryV2,
+    pub group_by: crate::ValueGroupByV1,
+    pub day_timezone: Option<String>,
+    pub days: Vec<ObservationValueSummaryV2>,
+}
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationValueTotalV2 {
     pub currency: String,

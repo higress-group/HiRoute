@@ -549,10 +549,23 @@ fn serialize_chat(
                 ContentPart::ToolResult {
                     logical_id, output, ..
                 } => {
-                    if message.content.len() != 1 || message.role != MessageRole::User {
+                    if message.role != MessageRole::User {
                         return Err(ProtocolAdapterError::ClientUnrepresentable(
-                            "Chat Tool result must be one request message".into(),
+                            "Chat Tool result must belong to a user message".into(),
                         ));
+                    }
+                    // Messages batches tool results in one user turn. Chat needs
+                    // one tool message per result, with any intervening user content
+                    // emitted before this result instead of reordered to the end.
+                    if !base_content.is_empty() {
+                        let mut content = json!({
+                            "role": "user",
+                            "content": collapse_chat_content(std::mem::take(&mut base_content)),
+                        });
+                        if let Some(name) = &message.name {
+                            content["name"] = Value::String(name.clone());
+                        }
+                        messages.push(content);
                     }
                     let mut object = Map::new();
                     object.insert("role".into(), Value::String("tool".into()));
@@ -775,6 +788,28 @@ fn serialize_messages(
     Ok(Value::Object(body))
 }
 
+// Responses envelope identity is separate from a tool's call_id. A completed
+// assistant item can be replayed to another protocol without its envelope, but
+// unfinished items and native-only fields still require their original protocol.
+fn portable_completed_response_item(request: &ModelRequestIRV1, index: usize) -> bool {
+    request
+        .responses_item_statuses
+        .get(&index)
+        .is_none_or(|status| status == "completed")
+        && request.messages.get(index).is_some_and(|message| {
+            message.role == MessageRole::Assistant
+                && !message.content.is_empty()
+                && message.content.iter().all(|part| {
+                    matches!(
+                        part,
+                        ContentPart::Text { .. }
+                            | ContentPart::Image { .. }
+                            | ContentPart::ToolCall { .. }
+                    )
+                })
+        })
+}
+
 fn validate_message_shapes(
     request: &ModelRequestIRV1,
     target: IngressProtocol,
@@ -784,14 +819,14 @@ fn validate_message_shapes(
         || !request.responses_search_history.is_empty()
         || request.web_search.is_some()
         || request.responses_options.is_some()
-        || request
-            .responses_item_ids
-            .keys()
-            .any(|index| !request.responses_reasoning_history.contains_key(index))
-        || request
-            .responses_item_statuses
-            .keys()
-            .any(|index| !request.responses_reasoning_history.contains_key(index))
+        || request.responses_item_ids.keys().any(|index| {
+            !request.responses_reasoning_history.contains_key(index)
+                && !portable_completed_response_item(request, *index)
+        })
+        || request.responses_item_statuses.keys().any(|index| {
+            !request.responses_reasoning_history.contains_key(index)
+                && !portable_completed_response_item(request, *index)
+        })
         || !request.responses_message_phases.is_empty()
         || !request.responses_internal_chat_message_metadata.is_empty()
         || (target == IngressProtocol::Messages
@@ -805,6 +840,7 @@ fn validate_message_shapes(
     if request
         .responses_message_phases
         .keys()
+        .chain(request.responses_item_ids.keys())
         .chain(request.responses_item_statuses.keys())
         .chain(request.responses_internal_chat_message_metadata.keys())
         .chain(request.responses_reasoning_history.keys())
@@ -892,20 +928,8 @@ fn validate_message_shapes(
                 ContentPart::ProviderState { .. } => {}
             }
         }
-        // Responses ordered input already flushes text at each tool boundary;
-        // a Messages text/tool/text block is representable without reordering.
-        if target == IngressProtocol::ChatCompletions
-            && message
-                .content
-                .iter()
-                .filter(|part| matches!(part, ContentPart::ToolResult { .. }))
-                .count()
-                > 1
-        {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "Chat requires one message per Tool result".into(),
-            ));
-        }
+        // Serializers split representable user content at tool-result boundaries.
+        // Message-role and cross-protocol Tool ID validation above remain required.
     }
     Ok(())
 }

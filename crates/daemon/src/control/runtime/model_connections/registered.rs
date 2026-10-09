@@ -446,9 +446,9 @@ mod tests {
             &catalog.current_release_model_data().metadata_catalog
         );
         assert_eq!(metadata.provider_records.len(), 105);
-        assert_eq!(metadata.model_records.len(), 767);
-        assert_eq!(metadata.inference_rules.len(), 189);
-        assert_eq!(metadata.evidence_sources.len(), 177);
+        assert_eq!(metadata.model_records.len(), 769);
+        assert_eq!(metadata.inference_rules.len(), 190);
+        assert_eq!(metadata.evidence_sources.len(), 178);
         assert_eq!(metadata.endpoint_bindings.len(), 101);
         let token_plan_team = metadata
             .access_products

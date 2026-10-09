@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-09-29",
+  "as_of": "2026-10-08",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -1029,10 +1029,10 @@
       "source_key": "source-088",
       "authority": "developers.openai.com",
       "source_kind": "provider-documentation",
-      "locator": "https://developers.openai.com/api/docs/models/gpt-6-astra",
-      "collected_on": "2026-09-13",
-      "bytes_digest": null,
-      "digest_state": "not-captured"
+      "locator": "https://developers.openai.com/api/docs/models/gpt-6-astra.md",
+      "collected_on": "2026-10-08",
+      "bytes_digest": "sha256:b7c19b3bb89e87a392a0f3f8b732c5e7c9f0bf558cbe3022c491575a947fcef8",
+      "digest_state": "captured"
     },
     {
       "source_key": "source-089",
@@ -1371,19 +1371,19 @@
       "source_key": "source-126",
       "authority": "developers.openai.com",
       "source_kind": "provider-documentation",
-      "locator": "https://developers.openai.com/api/docs/models/gpt-6-sol",
-      "collected_on": "2026-09-29",
-      "bytes_digest": null,
-      "digest_state": "not-captured"
+      "locator": "https://developers.openai.com/api/docs/models/gpt-6-sol.md",
+      "collected_on": "2026-10-08",
+      "bytes_digest": "sha256:ae565284e1285009ee1758919e8b627944419986ff74bc8a9959700b2c555448",
+      "digest_state": "captured"
     },
     {
       "source_key": "source-127",
       "authority": "developers.openai.com",
       "source_kind": "provider-documentation",
-      "locator": "https://developers.openai.com/api/docs/models/gpt-6-luna",
-      "collected_on": "2026-09-23",
-      "bytes_digest": null,
-      "digest_state": "not-captured"
+      "locator": "https://developers.openai.com/api/docs/models/gpt-6-luna.md",
+      "collected_on": "2026-10-08",
+      "bytes_digest": "sha256:efb95e473a811ad36452a8b5f560e820b8b03bde18a9a462ba3b18348630d87f",
+      "digest_state": "captured"
     },
     {
       "source_key": "source-128",
@@ -1812,10 +1812,10 @@
       "source_key": "source-175",
       "authority": "developers.openai.com",
       "source_kind": "provider-documentation",
-      "locator": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
-      "collected_on": "2026-09-30",
-      "bytes_digest": null,
-      "digest_state": "not-captured"
+      "locator": "https://developers.openai.com/api/docs/models/gpt-6.1-sol.md",
+      "collected_on": "2026-10-08",
+      "bytes_digest": "sha256:1d9758e64a86c1f5445a2bbee51e20132400fe80b71a41c4ec2e3a8a42caeb74",
+      "digest_state": "captured"
     },
     {
       "source_key": "source-176",
@@ -1833,6 +1833,15 @@
       "locator": "https://chatgpt.com/backend-api/codex/models?client_version=0.159.0",
       "collected_on": "2026-09-30",
       "bytes_digest": "sha256:50360739bc708185822a742414cd3fb5e7906dc40ace7290e8d528696f46c1c8",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-178",
+      "authority": "openrouter.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://openrouter.ai/api/v1/models",
+      "collected_on": "2026-10-09",
+      "bytes_digest": "sha256:50fb3e39b08d6660323b1267dd272b17db2b9c259d242f6d15d8e0612006c1d3",
       "digest_state": "captured"
     }
   ],
@@ -47617,7 +47626,13 @@
       "execution_fit": {
         "state": "native-text-representable"
       },
-      "cost_hint_state": "not-recorded"
+      "cost_hint_state": "not-recorded",
+      "field_provenance": {
+        "context_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt6-model-context/v1"
+        }
+      }
     },
     {
       "model_record_key": "hermes-agent/openai-codex/gpt-6-sol",
@@ -47698,7 +47713,13 @@
       "execution_fit": {
         "state": "native-text-representable"
       },
-      "cost_hint_state": "not-recorded"
+      "cost_hint_state": "not-recorded",
+      "field_provenance": {
+        "context_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt6-model-context/v1"
+        }
+      }
     },
     {
       "model_record_key": "hermes-agent/openai-codex/gpt-image-1.5",
@@ -62237,6 +62258,116 @@
       "cost_hint_state": "not-recorded"
     },
     {
+      "model_record_key": "hermes-agent/openrouter/liquid%2Flfm-2.5-2.6b%3Afree",
+      "provider_record_key": "hermes-agent/openrouter",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-178"
+        }
+      ],
+      "provider_id": "openrouter",
+      "upstream_model_id": "liquid/lfm-2.5-2.6b:free",
+      "display_name": "Liquid LFM2.5-2.6B (free)",
+      "context_tokens": {
+        "state": "known",
+        "value": 65536
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 8192
+      },
+      "input_modalities": [
+        "text"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "conditional",
+        "tool": "supported",
+        "vision": "unsupported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [],
+      "normalized_model_matches": [],
+      "metadata_completeness": {
+        "capabilities": "partial",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "not-applicable"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [
+        {
+          "source_key": "source-178",
+          "upstream_model_id": "liquid/lfm-2.5-2.6b:free",
+          "context_length": 65536,
+          "top_provider": {
+            "context_length": 65536,
+            "max_completion_tokens": 8192,
+            "is_moderated": false
+          },
+          "supported_parameters": [
+            "frequency_penalty",
+            "include_reasoning",
+            "logprobs",
+            "max_completion_tokens",
+            "max_tokens",
+            "min_p",
+            "presence_penalty",
+            "reasoning",
+            "repetition_penalty",
+            "response_format",
+            "seed",
+            "stop",
+            "structured_outputs",
+            "temperature",
+            "tool_choice",
+            "tools",
+            "top_k",
+            "top_logprobs",
+            "top_p"
+          ],
+          "scope": "OpenRouter public directory top_provider limits, not the publisher model ceiling or account availability"
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-178"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "field_provenance": {
+        "reasoning_rendering_hints": {
+          "basis": "inferred",
+          "rule_key": "rule.fallback.unclassified-text-model/v1"
+        }
+      },
+      "cost_hint_state": "not-recorded",
+      "reasoning_rendering_state": "not-applicable"
+    },
+    {
       "model_record_key": "hermes-agent/openrouter/meta%2Fmuse-spark-1.2",
       "provider_record_key": "hermes-agent/openrouter",
       "provenance_refs": [
@@ -63192,6 +63323,10 @@
         {
           "kind": "client-discovery-run",
           "source_key": "hermes-agent"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-178"
         }
       ],
       "provider_id": "openrouter",
@@ -63203,7 +63338,7 @@
       },
       "max_output_tokens": {
         "state": "known",
-        "value": 8192
+        "value": 235929
       },
       "input_modalities": [
         "text"
@@ -63251,7 +63386,32 @@
         "request-limit-prefill",
         "vision-capability-prefill"
       ],
-      "source_assertions": [],
+      "source_assertions": [
+        {
+          "source_key": "source-178",
+          "upstream_model_id": "nvidia/nemotron-3-super-120b-a12b:free",
+          "context_length": 262144,
+          "top_provider": {
+            "context_length": 262144,
+            "max_completion_tokens": 235929,
+            "is_moderated": false
+          },
+          "supported_parameters": [
+            "include_reasoning",
+            "max_tokens",
+            "reasoning",
+            "reasoning_effort",
+            "response_format",
+            "seed",
+            "structured_outputs",
+            "temperature",
+            "tool_choice",
+            "tools",
+            "top_p"
+          ],
+          "scope": "OpenRouter public directory top_provider limits, not the publisher model ceiling or account availability"
+        }
+      ],
       "source_locations": [
         {
           "path": "hermes_cli/models_catalog_static.py",
@@ -63279,10 +63439,6 @@
           "basis": "inferred",
           "rule_key": "rule.nvidia.nemotron/v1"
         },
-        "context_tokens": {
-          "basis": "inferred",
-          "rule_key": "rule.nvidia.nemotron/v1"
-        },
         "execution_fit": {
           "basis": "inferred",
           "rule_key": "rule.nvidia.nemotron/v1"
@@ -63292,10 +63448,6 @@
           "rule_key": "rule.nvidia.nemotron/v1"
         },
         "lifecycle": {
-          "basis": "inferred",
-          "rule_key": "rule.nvidia.nemotron/v1"
-        },
-        "max_output_tokens": {
           "basis": "inferred",
           "rule_key": "rule.nvidia.nemotron/v1"
         },
@@ -74644,6 +74796,112 @@
       "cost_hint_state": "recorded"
     },
     {
+      "model_record_key": "official/openai-codex/gpt-6-luna",
+      "provider_record_key": "hermes-agent/openai-codex",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-127"
+        }
+      ],
+      "provider_id": "openai-codex",
+      "upstream_model_id": "gpt-6-luna",
+      "display_name": "GPT-6 Luna",
+      "context_tokens": {
+        "state": "known",
+        "value": 1050000
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 128000
+      },
+      "input_modalities": [
+        "image",
+        "text"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [
+          "high",
+          "low",
+          "max",
+          "medium",
+          "none",
+          "xhigh"
+        ],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [],
+      "normalized_model_matches": [
+        "gpt-6-luna"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "complete"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "reasoning-rendering-hint",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [
+        {
+          "id": "gpt-6-luna",
+          "contextWindow": 1050000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ],
+          "defaultEffort": "medium",
+          "supportedReasoningEfforts": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-127"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "cost_hint_state": "not-recorded",
+      "field_provenance": {
+        "context_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt6-model-context/v1"
+        }
+      }
+    },
+    {
       "model_record_key": "official/openai-codex/gpt-6.1-sol",
       "provider_record_key": "hermes-agent/openai-codex",
       "provenance_refs": [
@@ -74661,7 +74919,7 @@
       "display_name": "GPT-6.1 Sol",
       "context_tokens": {
         "state": "known",
-        "value": 272000
+        "value": 1050000
       },
       "max_output_tokens": {
         "state": "known",
@@ -74735,7 +74993,7 @@
             "max",
             "ultra"
           ],
-          "runtimeEffortNote": "ultra advertises automatic delegation, not a documented Responses reasoning.effort value; the executable projection uses the intersection with the public model's low..max profiles. Context uses the advertised default, not an experimental maximum."
+          "runtimeEffortNote": "ultra advertises automatic delegation, not a documented Responses reasoning.effort value; the executable projection uses the intersection with the public model's low..max profiles. The captured client default (272000), maxContextWindow (872000), and experimental flag are retained as client-directory facts. The model ceiling is a separately labeled public-model inference, not a measured subscription entitlement."
         }
       ],
       "source_locations": [
@@ -74751,6 +75009,10 @@
       },
       "cost_hint_state": "not-recorded",
       "field_provenance": {
+        "context_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt6-model-context/v1"
+        },
         "max_output_tokens": {
           "basis": "inferred",
           "rule_key": "rule.codex.gpt-6.1-sol-output/v1"
@@ -111544,6 +111806,29 @@
         "source-177"
       ],
       "collected_on": "2026-09-30"
+    },
+    {
+      "rule_key": "rule.codex.gpt6-model-context/v1",
+      "record_kind": "model",
+      "match": {
+        "provider_id_pattern": "^openai-codex$",
+        "upstream_model_id_pattern": "^(gpt-6-(astra|sol|luna)|gpt-6\\.1-sol)$"
+      },
+      "assignments": {
+        "context_tokens": {
+          "state": "known",
+          "value": 1050000
+        }
+      },
+      "basis": "inferred",
+      "reason": "Use the exact public model's documented 1,050,000-token ceiling for the maintained Codex subscription model mapping. This is explicitly inferred for the subscription, not a measured account entitlement. Retain the native client directory's default/max-window settings as raw source assertions; do not substitute its 272,000 default for the model maximum. Account inventory and any independently proven endpoint limit remain separate execution constraints. No API token price is assigned to a subscription.",
+      "evidence_refs": [
+        "source-088",
+        "source-126",
+        "source-127",
+        "source-175"
+      ],
+      "collected_on": "2026-10-08"
     },
     {
       "rule_key": "rule.cohere.command-a-plus/v1",

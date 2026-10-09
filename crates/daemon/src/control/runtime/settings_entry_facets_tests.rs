@@ -174,6 +174,20 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
         ClaudeRegistrationIndexV1::from_verified_model_data(&registry, &models.data).unwrap(),
     );
     let runtime = open_with_scanner(root.path(), scanner);
+    // Live launch validates the actual helper file, so this fixture must own one
+    // instead of relying on configure_runtime's non-executed /test/hiroute label.
+    let helper = root.path().join("hiroute-helper-fixture");
+    fs::write(&helper, b"#!/bin/sh\nexit 97\n").unwrap();
+    fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+    let helper = helper.canonicalize().unwrap();
+    runtime
+        .adapter
+        .managed_agent_runtime
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .trusted_hiroute_executable = helper.to_str().unwrap().to_owned();
     runtime.adapter.reconcile_startup_and_open().unwrap();
 
     let ordinary = LocalControlDaemon::new(ApplicationService::new(runtime.application_ports()));
@@ -419,6 +433,10 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
         "http://127.0.0.1:5837"
     );
     assert_eq!(launch_descriptor["grant_generation"], 1);
+    assert_eq!(
+        launch_descriptor["helper_executable"],
+        helper.to_str().unwrap()
+    );
     let window = launch_descriptor["context_window_tokens"]
         .as_u64()
         .expect("Claude launch carries plan window");

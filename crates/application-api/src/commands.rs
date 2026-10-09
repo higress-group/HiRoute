@@ -577,7 +577,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         [],
         Released,
         Query,
-        "Read configured Codex and Claude launch availability without requiring a Plan or Agent allowlist."
+        "Read configured Codex, Claude Code, Qoder, Pi, and DeepSeek Harness launch availability without requiring a Plan or Agent allowlist."
     ),
     command!(
         "worker.dependencies.discover",
@@ -677,6 +677,15 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         Released,
         Action,
         "Persist cancellation for one exact Worker run and wake only its owned scope."
+    ),
+    command!(
+        "worker.cleanup.confirm",
+        ["worker", "cleanup", "confirm"],
+        "WorkerConfirmResidual",
+        [],
+        Released,
+        Action,
+        "Confirm user-handled residual resources for one exact terminal run without changing its result."
     ),
     command!(
         "tasks.list",
@@ -973,7 +982,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         ["CLI-039", "APP-039"],
         Released,
         Query,
-        "Read immutable token, cache, cost, baseline, and savings facts."
+        "Read recorded token, cache and valuation totals with coverage."
     ),
     command!(
         "observation.plan-quality.samples",

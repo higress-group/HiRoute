@@ -252,5 +252,6 @@ impl FilesystemAgentScannerV1 {
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
         super::super::check_pi_sdk_capability(executable, &node, capability)
+            .map_err(|_| AgentFilesystemScanError::SourceUnavailable)
     }
 }

@@ -287,7 +287,7 @@ hiroute compute connection options --output json > connection-options.json
 
 ```sh
 jq '{candidate:([.data.subscriptions.candidates[] |
-    select(.provenance=="connector_owned")] | first)}' \
+    select(.provenance=="connector_owned") | .candidate] | first)}' \
   connection-options.json \
   | hiroute compute connection preview --request-stdin --output json \
   > subscription-preview.json

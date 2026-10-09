@@ -69,12 +69,14 @@ impl ObservationControl {
             &request,
             request.query.is_none(),
         )?;
-        let to_ms = match request.to_ms {
+        let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+        let to_ms = match request.to_ms.or_else(|| cursor.as_ref().map(|c| c.to_ms)) {
             Some(to_ms) => to_ms,
             None => self.clock.now_ms().map_err(map_control)?,
         };
         let from_ms = request
             .from_ms
+            .or_else(|| cursor.as_ref().map(|c| c.from_ms))
             .unwrap_or(to_ms.saturating_sub(7 * DAY_MILLIS));
         let limit = usize::from(request.limit.unwrap_or(DEFAULT_SESSION_LIMIT as u16));
         if from_ms >= to_ms || limit == 0 || limit > MAX_SESSION_LIMIT {
@@ -88,15 +90,16 @@ impl ObservationControl {
             model_switch: request.model_switch,
             include_unlinked: request.include_unlinked,
         };
-        let mut sessions = self.service.list_sessions(&principal, &query)?.sessions;
         let binding = CanonicalDigest::of(&json!({ "query": query, "limit": limit }))
             .map_err(|_| ObservationQueryError::InvalidQuery)?;
-        let offset = request
-            .cursor
-            .as_deref()
-            .map(|cursor| decode_cursor(cursor, &binding))
-            .transpose()?
-            .unwrap_or(0);
+        let offset = match cursor {
+            Some(cursor) if cursor.binding == binding.as_str().trim_start_matches("sha256:") => {
+                cursor.offset
+            }
+            Some(_) => return Err(ObservationQueryError::InvalidQuery),
+            None => 0,
+        };
+        let mut sessions = self.service.list_sessions(&principal, &query)?.sessions;
         if offset > sessions.len() {
             return Err(ObservationQueryError::InvalidQuery);
         }
@@ -107,7 +110,7 @@ impl ObservationControl {
         let page = SessionListPageV1 {
             sessions,
             next_cursor: (next_offset < offset + remaining)
-                .then(|| encode_cursor(next_offset, &binding)),
+                .then(|| encode_cursor(next_offset, from_ms, to_ms, &binding)),
         };
         serde_json::to_value(page).map_err(|_| ObservationQueryError::Corrupt)
     }
@@ -185,6 +188,8 @@ impl ObservationControl {
             return self.read_v2(grant, payload, "GetValue");
         }
 
+        // Recovery-only hiroute.value-query/v1 -> hiroute.value-view/v1 for
+        // existing frozen ledgers. Current clients emit observation v2 intents.
         let request: ValueRequestV1 =
             serde_json::from_value(payload).map_err(|_| ObservationQueryError::InvalidQuery)?;
         let principal = self.local_or_protected_principal(grant, "GetValue", &request, true)?;
@@ -313,29 +318,44 @@ impl ObservationControl {
     }
 }
 
-fn encode_cursor(offset: usize, binding: &CanonicalDigest) -> String {
+fn encode_cursor(offset: usize, from_ms: i64, to_ms: i64, binding: &CanonicalDigest) -> String {
     format!(
-        "lc1:{offset}:{}",
+        "lc2:{offset}:{from_ms}:{to_ms}:{}",
         binding.as_str().trim_start_matches("sha256:")
     )
 }
 
-fn decode_cursor(
-    cursor: &str,
-    expected_binding: &CanonicalDigest,
-) -> Result<usize, ObservationQueryError> {
+struct SessionCursor<'a> {
+    offset: usize,
+    from_ms: i64,
+    to_ms: i64,
+    binding: &'a str,
+}
+
+fn decode_cursor(cursor: &str) -> Result<SessionCursor<'_>, ObservationQueryError> {
     let mut fields = cursor.split(':');
-    let (Some("lc1"), Some(offset), Some(binding), None) =
-        (fields.next(), fields.next(), fields.next(), fields.next())
-    else {
+    let (Some("lc2"), Some(offset), Some(from_ms), Some(to_ms), Some(binding), None) = (
+        fields.next(),
+        fields.next(),
+        fields.next(),
+        fields.next(),
+        fields.next(),
+        fields.next(),
+    ) else {
         return Err(ObservationQueryError::InvalidQuery);
     };
-    if binding != expected_binding.as_str().trim_start_matches("sha256:") {
-        return Err(ObservationQueryError::InvalidQuery);
-    }
-    offset
-        .parse::<usize>()
-        .map_err(|_| ObservationQueryError::InvalidQuery)
+    Ok(SessionCursor {
+        offset: offset
+            .parse()
+            .map_err(|_| ObservationQueryError::InvalidQuery)?,
+        from_ms: from_ms
+            .parse()
+            .map_err(|_| ObservationQueryError::InvalidQuery)?,
+        to_ms: to_ms
+            .parse()
+            .map_err(|_| ObservationQueryError::InvalidQuery)?,
+        binding,
+    })
 }
 
 fn map_control(error: ControlReadError) -> ObservationQueryError {
@@ -353,6 +373,7 @@ fn map_control(error: ControlReadError) -> ObservationQueryError {
 mod tests {
     use std::collections::BTreeSet;
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicI64, Ordering};
 
     use hiroute_application_api::{
         PrincipalKind, ProtectedClientGrantV2, SessionContentModeV1, SessionLookupV1,
@@ -368,7 +389,7 @@ mod tests {
     use crate::control::ControlStateSnapshotV1;
 
     struct FixedPorts {
-        now_ms: i64,
+        now_ms: AtomicI64,
         queries: Mutex<Vec<SessionListQueryV1>>,
         content_modes: Mutex<Vec<ContentMode>>,
         plans: Vec<AgentPlanId>,
@@ -377,7 +398,7 @@ mod tests {
     impl FixedPorts {
         fn new(now_ms: i64, plans: &[&str]) -> Self {
             Self {
-                now_ms,
+                now_ms: AtomicI64::new(now_ms),
                 queries: Mutex::new(Vec::new()),
                 content_modes: Mutex::new(Vec::new()),
                 plans: plans
@@ -452,7 +473,7 @@ mod tests {
             Ok((at_ms + 8 * 3_600_000).div_euclid(DAY_MILLIS) * DAY_MILLIS - 8 * 3_600_000)
         }
         fn now_ms(&self) -> Result<i64, ControlReadError> {
-            Ok(self.now_ms)
+            Ok(self.now_ms.load(Ordering::Relaxed))
         }
     }
 
@@ -630,6 +651,7 @@ mod tests {
             .unwrap();
         assert_eq!(first["sessions"].as_array().unwrap().len(), 2);
         let cursor = first["next_cursor"].as_str().unwrap();
+        ports.now_ms.fetch_add(DAY_MILLIS, Ordering::Relaxed);
         let second = control(ports.clone())
             .list(
                 PrincipalKind::Skill,
@@ -641,6 +663,27 @@ mod tests {
         let query = ports.queries.lock().unwrap()[0].clone();
         assert_eq!(query.from_ms, Some(3 * DAY_MILLIS));
         assert_eq!(query.to_ms, Some(10 * DAY_MILLIS));
+        let second_query = ports.queries.lock().unwrap()[1].clone();
+        assert_eq!(query.from_ms, second_query.from_ms);
+        assert_eq!(query.to_ms, second_query.to_ms);
+        for changed in [
+            json!({"limit": 1, "cursor": cursor}),
+            json!({"limit": 2, "cursor": cursor, "include_unlinked": true}),
+            json!({"limit": 2, "cursor": cursor, "to_ms": 11 * DAY_MILLIS}),
+            json!({"limit": 2, "cursor": "lc1:2:obsolete"}),
+        ] {
+            assert!(matches!(
+                control(ports.clone()).list(PrincipalKind::Skill, Some(&grant()), changed),
+                Err(ObservationQueryError::InvalidQuery)
+            ));
+        }
+        control(ports.clone())
+            .list(PrincipalKind::Skill, Some(&grant()), json!({"limit": 2}))
+            .unwrap();
+        assert_eq!(
+            ports.queries.lock().unwrap().last().unwrap().to_ms,
+            Some(11 * DAY_MILLIS)
+        );
     }
 
     #[test]

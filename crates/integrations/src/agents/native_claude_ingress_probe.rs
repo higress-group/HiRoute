@@ -186,7 +186,7 @@ impl ClaudeNativeIngressProbe {
             .env("HOME", &home)
             .env("CLAUDE_CONFIG_DIR", &config)
             .env("TMPDIR", &workspace)
-            .env("PATH", "/usr/bin:/bin")
+            .env("PATH", super::native_ingress_probe::native_probe_path())
             .current_dir(&workspace)
             .stdin(Stdio::null())
             .stdout(Stdio::from(
@@ -272,9 +272,9 @@ impl ClaudeIngressEvidence {
         executable: &Path,
         installation: &mut SupportedAgentInstallationV1,
     ) {
-        if !self.collaboration {
-            self.attach(executable, installation);
-        }
+        // The collaboration challenge proves authentication too. Project only that
+        // capability for a model-only save, without granting Skill/CLI permission.
+        self.attach_capabilities(executable, installation, false);
     }
 
     pub(super) fn attach_collaboration(
@@ -291,6 +291,15 @@ impl ClaudeIngressEvidence {
         &self,
         executable: &Path,
         installation: &mut SupportedAgentInstallationV1,
+    ) {
+        self.attach_capabilities(executable, installation, self.collaboration);
+    }
+
+    fn attach_capabilities(
+        &self,
+        executable: &Path,
+        installation: &mut SupportedAgentInstallationV1,
+        collaboration: bool,
     ) {
         if self.observed.elapsed() > Duration::from_secs(300)
             || binary_identity(executable).ok().as_ref() != Some(&self.binary)
@@ -319,7 +328,7 @@ impl ClaudeIngressEvidence {
         proof.reason = None;
         proof.adapter_contract = CONTRACT.into();
         proof.observed_at_unix_ms = self.observed_at;
-        if self.collaboration {
+        if collaboration {
             for proof in &mut installation.capability_evidence {
                 if matches!(
                     proof.capability,
@@ -469,7 +478,7 @@ mod tests {
         assert!(
             model_only
                 .require_action(hiroute_domain::AgentAction::ConfigureModel)
-                .is_err()
+                .is_ok()
         );
         assert!(
             model_only
@@ -479,6 +488,13 @@ mod tests {
 
         let mut expired = evidence.clone();
         expired.observed = Instant::now() - Duration::from_secs(301);
+        let mut expired_authentication = sample();
+        expired.attach_authentication(&binary, &mut expired_authentication);
+        assert!(
+            expired_authentication
+                .require_action(hiroute_domain::AgentAction::ConfigureModel)
+                .is_err()
+        );
         expired.attach_collaboration(&binary, &mut model_only);
         assert!(
             model_only

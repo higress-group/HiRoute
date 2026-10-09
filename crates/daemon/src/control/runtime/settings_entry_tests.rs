@@ -253,9 +253,47 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
         .unwrap();
     assert_eq!(fs::read(&repeated_path).unwrap(), catalog_bytes);
     assert_eq!(fs::read(&artifact_path).unwrap(), catalog_bytes);
+    let references = || {
+        use hiroute_domain::AgentPlanReferenceReadPort;
+        runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .control()
+            .agent_plan_references(&WorkspaceId::default(), &plan.agent_plan_id)
+            .unwrap()
+    };
+    let configured_references = references();
+    assert_eq!(configured_references.references.len(), 2);
+    assert!(configured_references.references.iter().any(|reference|
+        reference.kind == hiroute_domain::AgentPlanReferenceKind::DefaultModel));
+    // Explicit fixture capabilities cover the journal/facet join here. This does not claim
+    // the shell fixture actually implements a native Skill probe.
+    let collaboration_service =
+        LocalControlDaemon::new(ApplicationService::new(
+            runtime.application_ports().with_agent_connection(Arc::new(
+                FixtureFacts::collaboration(runtime.adapter.clone()),
+            )),
+        ));
+    apply(
+        &collaboration_service,
+        &runtime,
+        json!({"schema_version":{"major":2,"minor":0},"context_id":context,
+            "collaboration":{"intent":"configure","settings":{"trigger_mode":"explicit"}}}),
+        "catalog-keep-model",
+    );
+    assert_eq!(
+        references(),
+        configured_references,
+        "a collaboration-only Operation must not shadow the model facet"
+    );
     let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
         "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&same_operation)}});
     apply(&ordinary, &runtime, restore, "catalog-disable");
+    assert!(
+        references().references.is_empty(),
+        "model Restore must release references while collaboration remains configured"
+    );
     assert_eq!(fs::read(&path).unwrap(), before);
     assert_eq!(fs::read(&artifact_path).unwrap(), catalog_bytes);
     let protected_config = fs::read(&path).unwrap();

@@ -125,6 +125,31 @@ impl ManagedCpaRuntime {
             .iter()
             .find(|identity| identity.account_kind == crate::CpaAccountKind::Codex)
             .map(|identity| identity.generation);
+        let control_started = Instant::now();
+        self.emit_stage(
+            CpaStageKind::ControlCall,
+            CpaStageOutcome::Entered,
+            0,
+            inner.restart_count,
+        );
+        if expected.is_some()
+            && !live
+                .auth_lease
+                .as_ref()
+                .is_some_and(|lease| lease.has_client_version())
+        {
+            self.emit_stage(
+                CpaStageKind::ControlCall,
+                CpaStageOutcome::Failed {
+                    code: CpaFailureCode::NativeClientVersionUnavailable,
+                },
+                control_started.elapsed().as_millis() as u64,
+                inner.restart_count,
+            );
+            self.invalidate_live_accounts(live, Some(crate::CpaAccountKind::Codex));
+            let _ = save_account_state(&layout.accounts_path, &live.accounts);
+            return Err(CpaLifecycleError::BorrowedCodexClientVersionUnavailable);
+        }
         let mut discovered = match self.control.discover_and_pin(
             live.address,
             &layout.auth_dir,
@@ -134,8 +159,24 @@ impl ManagedCpaRuntime {
             self.spec.control_timeout,
             expected.is_some(),
         ) {
-            Ok(discovered) => discovered,
+            Ok(discovered) => {
+                self.emit_stage(
+                    CpaStageKind::ControlCall,
+                    CpaStageOutcome::Completed,
+                    control_started.elapsed().as_millis() as u64,
+                    inner.restart_count,
+                );
+                discovered
+            }
             Err(error) => {
+                self.emit_stage(
+                    CpaStageKind::ControlCall,
+                    CpaStageOutcome::Failed {
+                        code: control_failure_code(&error),
+                    },
+                    control_started.elapsed().as_millis() as u64,
+                    inner.restart_count,
+                );
                 let affected_kind = if matches!(error, AccountDiscoveryError::AccountDisappeared) {
                     Some(crate::CpaAccountKind::Codex)
                 } else {
@@ -180,5 +221,25 @@ impl ManagedCpaRuntime {
             );
         }
         Ok(result)
+    }
+}
+
+fn control_failure_code(error: &AccountDiscoveryError) -> CpaFailureCode {
+    use crate::http::LoopbackHttpError;
+    match error {
+        AccountDiscoveryError::Http(LoopbackHttpError::Io(error)) => {
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            ) {
+                CpaFailureCode::ControlTimeout
+            } else {
+                CpaFailureCode::ControlTransport
+            }
+        }
+        AccountDiscoveryError::ManagementAuthentication
+        | AccountDiscoveryError::DownstreamAuthentication => CpaFailureCode::ControlAuthentication,
+        AccountDiscoveryError::PinNotApplied => CpaFailureCode::ControlPinNotApplied,
+        _ => CpaFailureCode::ControlRejected,
     }
 }

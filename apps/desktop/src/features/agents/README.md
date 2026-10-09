@@ -132,3 +132,8 @@ Use a user journey to decide what can be shared after the first real integration
 feature has no universal plugin protocol or dynamic form schema, and does not claim support
 for additional ecosystems. New native commands, Worker harnesses, configuration formats or
 recovery semantics require their own contract work rather than a new UI label.
+## Acceptance feedback
+
+Settings Preview blockers remain authoritative. Show the missing capability and an
+actionable next step for configuration conflicts, unsafe write targets, and native
+authentication checks; do not collapse distinct blockers into repeated generic text.

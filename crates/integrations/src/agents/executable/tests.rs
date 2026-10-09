@@ -24,11 +24,46 @@ fn agent_probe_missing_and_failed_probe_are_distinct() {
 }
 
 #[test]
-fn agent_probe_version_is_diagnostic_and_private_environment_is_not_inherited() {
+fn version_probe_keeps_native_startup_writes_in_a_disposable_home() {
+    let dir = tempfile::tempdir().unwrap();
+    let observed = dir.path().join("observed-home");
+    let output_path = observed.to_str().unwrap().replace('\'', "'\\''");
+    let path = program(
+        dir.path(),
+        &format!(
+            "test -n \"$HOME\" || exit 4; \
+             test -d \"$CODEX_HOME\" || exit 5; \
+             test \"$CODEX_HOME\" = \"$HOME/.codex\" || exit 6; \
+             test ! -e \"$CODEX_HOME/auth.json\" || exit 7; \
+             test ! -e \"$CODEX_HOME/config.toml\" || exit 8; \
+             test \"$PWD\" = \"$HOME\" || exit 9; \
+             printf '%s' \"$HOME\" > '{output_path}'; \
+             touch \"$CODEX_HOME/startup-alias\" || exit 10; \
+             printf 'codex-cli 0.162.0-alpha.2\\n'"
+        ),
+    );
+    assert_eq!(
+        codex_subscription_client_version(&path).as_deref(),
+        Some("0.162.0")
+    );
+    let private_home = std::fs::read_to_string(observed).unwrap();
+    assert!(!private_home.is_empty());
+    assert!(
+        !Path::new(&private_home).exists(),
+        "probe home was not removed"
+    );
+}
+
+#[test]
+fn agent_probe_version_is_diagnostic_and_uses_an_empty_private_home() {
     let dir = tempfile::tempdir().unwrap();
     let path = program(
         dir.path(),
-        "test -z \"$HOME\" || exit 4; printf 'codex-cli 99.123.456-beta.1\\n'",
+        "test -n \"$HOME\" || exit 4; \
+         test \"$CODEX_HOME\" = \"$HOME/.codex\" || exit 5; \
+         test ! -e \"$CODEX_HOME/auth.json\" || exit 6; \
+         test ! -e \"$CODEX_HOME/config.toml\" || exit 7; \
+         printf 'codex-cli 99.123.456-beta.1\\n'",
     );
     let mut completed = 0;
     for _ in 0..64 {
@@ -40,7 +75,7 @@ fn agent_probe_version_is_diagnostic_and_private_environment_is_not_inherited() 
             }
         };
         // A bounded diagnostic may time out before the interpreter runs when probes
-        // launch concurrently. A completed probe still proves the child saw no HOME.
+        // launch concurrently. A completed probe still proves the child saw an empty home.
         if !found.version.is_empty() {
             assert_eq!(found.version, "99.123.456-beta.1");
             completed += 1;
@@ -53,6 +88,21 @@ fn agent_probe_version_is_diagnostic_and_private_environment_is_not_inherited() 
 }
 
 #[test]
+fn output_limit_pipe_closure_preserves_the_probe_failure() {
+    let root = tempfile::tempdir().unwrap();
+    let path = program(
+        root.path(),
+        "while :; do printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; done",
+    );
+    for _ in 0..16 {
+        assert!(matches!(
+            bounded_version(&path, Duration::from_secs(10)),
+            Err(ProbeFailure::OutputLimit)
+        ));
+    }
+}
+
+#[test]
 fn agent_probe_timeout_kills_process_group_without_waiting_for_output_eof() {
     let dir = tempfile::tempdir().unwrap();
     let path = program(dir.path(), "sleep 30 & wait");
@@ -60,6 +110,33 @@ fn agent_probe_timeout_kills_process_group_without_waiting_for_output_eof() {
     assert!(matches!(probe(&path, Duration::from_millis(80)),
         ExecutableProbe::Installed(ExecutableObservationV1 { version, .. }) if version.is_empty()));
     assert!(start.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn version_probe_leader_exit_cannot_leave_a_delayed_writer_alive() {
+    let root = tempfile::tempdir().unwrap();
+    let path = program(
+        root.path(),
+        r#"(printf 'started' > "$0.child-started"; sleep 0.8; printf 'survived' > "$0.child-survived") &
+while test ! -f "$0.child-started"; do sleep 0.01; done
+printf 'codex-cli 0.162.0\n'
+exit 0"#,
+    );
+    let mut unrelated = std::process::Command::new("/bin/sleep")
+        .arg("10")
+        .spawn()
+        .unwrap();
+    // A lingering orphan zombie may conservatively make cleanup unknown; success is
+    // not required, but leaving an active descendant or stopping another group is forbidden.
+    let found = probe(&path, Duration::from_secs(2));
+    let unrelated_running = unrelated.try_wait().unwrap().is_none();
+    let _ = unrelated.kill();
+    let _ = unrelated.wait();
+    std::thread::sleep(Duration::from_millis(1000));
+    assert!(matches!(found, ExecutableProbe::Installed(_)));
+    assert!(unrelated_running);
+    assert!(root.path().join("agent.child-started").exists());
+    assert!(!root.path().join("agent.child-survived").exists());
 }
 
 #[test]

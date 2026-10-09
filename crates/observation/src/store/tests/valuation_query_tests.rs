@@ -69,6 +69,64 @@ fn value_query(session_id: Option<String>, to_ms: i64) -> ObservationValueQueryV
 }
 
 #[test]
+fn current_value_report_keeps_unpriced_usage_scoped_and_groups_utc_days() {
+    const DAY: i64 = 86_400_000;
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let first = Fixture::new("report-first");
+    let mut second = Fixture::new("report-second");
+    second.session = first.session.clone();
+    let other = Fixture::new("report-other-session");
+    for (fixture, offset, input) in [(&first, 0, 100), (&second, DAY, 200), (&other, 0, 900)] {
+        let mut events = facts(fixture, UsageFrameKindV1::Cumulative);
+        set_usage_pair(&mut events, Some(input), None);
+        for mut event in events {
+            event.occurred_at_unix_nanos += offset as u64 * 1_000_000;
+            event.pricing = None;
+            store.ingest_fact(&event, &[]).unwrap();
+        }
+    }
+    store.settle_pending_valuations(16).unwrap();
+    let now = DAY + 1_000;
+    let reader = local_reader(&first, now);
+    let mut query = ObservationValueQueryV2 {
+        from_ms: 50,
+        to_ms: now,
+        session_id: Some(first.session.to_string()),
+        plan_id: Some("plan/codex-daily".into()),
+        currency: None,
+    };
+    let report = store
+        .observed_value_report(&reader, &query, ValueGroupByV1::Day, now)
+        .unwrap();
+    assert_eq!(
+        report.summary,
+        store.observed_value_totals(&reader, &query, now).unwrap()
+    );
+    assert_eq!(report.summary.usage[0].known_sum, Some(300));
+    assert_eq!(report.summary.usage[1].known_sum, Some(50));
+    assert_eq!(report.summary.usage[2].known_sum, None);
+    assert_eq!(report.day_timezone.as_deref(), Some("UTC"));
+    assert_eq!(report.days.len(), 2);
+    assert_eq!((report.days[0].from_ms, report.days[0].to_ms), (50, DAY));
+    assert_eq!((report.days[1].from_ms, report.days[1].to_ms), (DAY, now));
+    assert_eq!(report.days[0].usage[0].known_sum, Some(100));
+    assert_eq!(report.days[1].usage[0].known_sum, Some(200));
+    query.plan_id = Some("plan/other".into());
+    let absent = store
+        .observed_value_report(&reader, &query, ValueGroupByV1::None, now)
+        .unwrap();
+    assert!(absent.summary.usage.iter().all(|u| u.known_sum.is_none()));
+    assert!(absent.days.is_empty());
+    query.to_ms = 201 * DAY;
+    assert!(
+        store
+            .observed_value_report(&reader, &query, ValueGroupByV1::Day, now)
+            .is_err()
+    );
+}
+
+#[test]
 fn aggregate_reads_one_scope_and_does_not_double_count_legacy_and_v2() {
     let directory = tempfile::tempdir().unwrap();
     let store = open_store(directory.path());

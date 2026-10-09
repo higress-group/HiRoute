@@ -149,8 +149,27 @@ def make_index(snapshots):
     return {"schema": INDEX_SCHEMA, "latest_stable": latest, "releases": records}
 
 
-def read_directory(directory, pending=None):
+def archive_name(snapshot):
+    release = snapshot["release"]
+    return f"{release['tag']}.{release['revision']}.json"
+
+
+def read_archives(directory):
+    archive = directory / "archive"
+    require(not archive.is_symlink(), "archive directory must not be a symlink")
+    snapshots = {}
+    for path in sorted(archive.glob("*.json")):
+        require(not path.is_symlink() and path.is_file(), "invalid archive entry")
+        snapshot = json.loads(path.read_bytes())
+        validate_snapshot(snapshot, snapshot["release"]["tag"] + ".json")
+        require(path.name == archive_name(snapshot), "archive filename/revision mismatch")
+        snapshots[path.name] = snapshot
+    return snapshots
+
+
+def read_directory(directory, pending=None, supersede_revision=None):
     require(not directory.is_symlink(), "ledger directory must not be a symlink")
+    archives = read_archives(directory)
     snapshots = {}
     for path in sorted(directory.glob("*.json")):
         require(not path.is_symlink() and path.is_file(), "invalid ledger entry")
@@ -163,6 +182,10 @@ def read_directory(directory, pending=None):
         filename = pending["release"]["tag"] + ".json"
         if prior.get(filename) == pending:
             del prior[filename]
+            if supersede_revision:
+                old = archives.get(f"{pending['release']['tag']}.{supersede_revision}.json")
+                require(old is not None, "replacement retry lacks archived prior snapshot")
+                prior[filename] = old
     if index_path.exists():
         index = json.loads(index_path.read_bytes())
         require(index == make_index(snapshots) or
@@ -183,26 +206,46 @@ def atomic_write(path, data):
             temporary.unlink(missing_ok=True)
 
 
-def record_snapshot(directory, snapshot):
-    snapshots = read_directory(directory, pending=snapshot)
+def record_snapshot(directory, snapshot, supersede_revision=None):
+    if supersede_revision is not None:
+        require(SHA.fullmatch(supersede_revision), "superseded revision must be an exact SHA")
+        require(supersede_revision != snapshot["release"]["revision"], "replacement must have a new source revision")
+    snapshots = read_directory(directory, pending=snapshot, supersede_revision=supersede_revision)
     filename = snapshot["release"]["tag"] + ".json"
+    old = snapshots.get(filename)
+    replacing = old is not None and old != snapshot
     if filename in snapshots:
-        require(snapshots[filename] == snapshot, "published contract snapshot is immutable")
+        if replacing:
+            require(supersede_revision == old["release"]["revision"], "published contract snapshot is immutable; explicit prior revision required")
+            require(all(old["release"][key] == snapshot["release"][key]
+                        for key in ("tag", "repository", "channel")), "replacement changed release identity")
+    elif supersede_revision:
+        raise ValueError("cannot supersede an absent release snapshot")
     snapshots[filename] = snapshot
     index = make_index(snapshots)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / filename
-    if not path.exists():
+    if replacing:
+        archive = directory / "archive"
+        archive.mkdir(exist_ok=True)
+        archived = archive / archive_name(old)
+        prior_bytes = path.read_bytes()
+        if archived.exists():
+            require(archived.read_bytes() == prior_bytes, "archived snapshot is immutable")
+        else:
+            atomic_write(archived, prior_bytes)
+    if not path.exists() or replacing:
         atomic_write(path, encoded(snapshot))
     atomic_write(directory / INDEX, encoded(index))
     return index
 
 
-def verify_sources(repo, snapshot):
+def verify_sources(repo, snapshot, *, archived=False):
     release = snapshot["release"]
     revision = release["revision"]
-    tag_revision = git(repo, "rev-parse", "--verify", f"refs/tags/{release['tag']}^{{commit}}").decode().strip()
-    require(tag_revision == revision, "recorded tag has moved")
+    if not archived:
+        tag_revision = git(repo, "rev-parse", "--verify", f"refs/tags/{release['tag']}^{{commit}}").decode().strip()
+        require(tag_revision == revision, "recorded tag has moved")
     for key, path in SOURCES.items():
         raw = git(repo, "show", f"{revision}:{path}")
         require(snapshot["contracts"][key] == {"path": path, "sha256": digest(raw), "content": json.loads(raw)},
@@ -233,16 +276,28 @@ def pull_request_base(environment):
 
 
 def check_append_only(repo, directory, base):
-    # The index advances, but every snapshot already merged on the PR base is fixed.
+    # Preserve every prior byte, either in place or at its revision-bound archive path.
+    require(not directory.is_symlink() and not (directory / "archive").is_symlink(), "ledger directory must not be a symlink")
     revision = git(repo, "rev-parse", "--verify", f"{base}^{{commit}}").decode().strip()
     paths = git(repo, "ls-tree", "-r", "--name-only", revision, "--", "contracts/releases").decode().splitlines()
     for path in paths:
         name = Path(path).name
         if not path.endswith(".json") or name == INDEX:
             continue
-        target = directory / name
+        relative = Path(path).relative_to("contracts/releases")
+        target = directory / relative
+        require(not target.is_symlink(), "invalid ledger entry")
+        original = git(repo, "show", f"{revision}:{path}")
+        if relative.parent == Path(".") and target.is_file() and target.read_bytes() != original:
+            old = json.loads(original)
+            replacement = json.loads(target.read_bytes())
+            require(all(old["release"][key] == replacement["release"][key]
+                        for key in ("tag", "repository", "channel")) and
+                    old["release"]["revision"] != replacement["release"]["revision"],
+                    f"historical snapshot changed or deleted: {path}")
+            target = directory / "archive" / archive_name(old)
         require(target.is_file() and not target.is_symlink() and
-                target.read_bytes() == git(repo, "show", f"{revision}:{path}"),
+                target.read_bytes() == original,
                 f"historical snapshot changed or deleted: {path}")
 
 
@@ -256,12 +311,15 @@ def main():
     parser.add_argument("--revision")
     parser.add_argument("--repository")
     parser.add_argument("--base", help="check historical snapshots against this Git ref; defaults to the Actions PR base")
+    parser.add_argument("--supersede-unpromoted-revision", help="explicitly replace an unpromoted same-version release; archive this exact prior revision")
     args = parser.parse_args()
+    require(args.command == "record" or args.supersede_unpromoted_revision is None,
+            "supersession is only valid for record")
     if args.command == "record":
         require(args.release_json and args.revision and args.repository, "record requires release JSON, revision and repository")
         snapshot = create_snapshot(args.repo, json.loads(args.release_json.read_bytes()),
                                    json.loads(args.manifest.read_bytes()), args.revision, args.repository)
-        result = record_snapshot(args.directory, snapshot)
+        result = record_snapshot(args.directory, snapshot, args.supersede_unpromoted_revision)
     elif args.command == "check":
         base = args.base or pull_request_base(os.environ)
         if base:
@@ -271,6 +329,8 @@ def main():
         require(result["releases"], "empty release ledger")
         for snapshot in snapshots.values():
             verify_sources(args.repo, snapshot)
+        for snapshot in read_archives(args.directory).values():
+            verify_sources(args.repo, snapshot, archived=True)
     else:
         result = current(args.repo, args.directory)
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

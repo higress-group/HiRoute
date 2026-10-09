@@ -110,9 +110,13 @@ fn current_catalog_reconciles_observed_models_without_cross_provider_matching() 
 }
 
 #[test]
-fn current_codex_subscription_catalog_qualifies_sol_only_on_its_exact_account_inventory() {
+fn current_codex_subscription_catalog_qualifies_gpt6_on_its_exact_account_inventory() {
     let catalog = current_catalog();
     for (upstream_model_id, profiles) in [
+        (
+            "gpt-6-astra",
+            &["low", "medium", "high", "xhigh", "max"][..],
+        ),
         (
             "gpt-6-sol",
             &["none", "low", "medium", "high", "xhigh", "max"][..],
@@ -120,6 +124,10 @@ fn current_codex_subscription_catalog_qualifies_sol_only_on_its_exact_account_in
         (
             "gpt-6.1-sol",
             &["low", "medium", "high", "xhigh", "max"][..],
+        ),
+        (
+            "gpt-6-luna",
+            &["none", "low", "medium", "high", "xhigh", "max"][..],
         ),
     ] {
         let models = catalog
@@ -140,6 +148,22 @@ fn current_codex_subscription_catalog_qualifies_sol_only_on_its_exact_account_in
         assert_eq!(
             models[0].model_configuration_id.as_deref(),
             Some(configuration_id.as_str())
+        );
+        let definition = catalog.model_data().model(&configuration_id).unwrap();
+        assert_eq!(definition.capabilities.context_tokens, 1_050_000);
+        assert_eq!(definition.capabilities.max_output_tokens, 128_000);
+        let other_provider = catalog
+            .reconcile_observed_inventory(
+                "endpoint.bailian.payg.cn.v1",
+                [ObservedModelV1 {
+                    upstream_model_id: upstream_model_id.into(),
+                    metadata: Default::default(),
+                }],
+            )
+            .unwrap();
+        assert_eq!(
+            other_provider[0].disposition,
+            hiroute_domain::InventoryDisposition::InventoryOnly
         );
         assert_eq!(
             catalog

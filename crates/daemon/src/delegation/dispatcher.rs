@@ -148,16 +148,9 @@ impl DelegationCancellationDispatcher {
                 }
             } else {
                 // Spawn may have happened before its binding was committed. No identity is
-                // never treated as proof that no process exists or as successful stopping.
-                runtime.checkpoint(
-                    workspace,
-                    &run.run_id,
-                    run.progress.revision,
-                    "cancel-recovery-missing-identity",
-                    &DelegationCheckpointV1::ProcessObserved {
-                        observation: RunProcessObservationV1::Unknown,
-                    },
-                )?;
+                // neither failure nor proof of stopping. Leave durable cancellation pending
+                // for the execution owner (or startup reconciliation) to settle; publishing
+                // ProcessUnknown here races an executor that has not reached spawn at all.
                 CancellationDispatchState::PendingIdentity
             };
             results.push(CancellationDispatchResult {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   cancelWorkerTask,
+  confirmWorkerTaskResidual,
   readWorkerTask,
   WorkerTaskPager,
   workerTaskDisplayTitle,
@@ -225,4 +226,33 @@ test('an uncertain cancel retry reuses one idempotency key and waits on the exac
     command: 'worker_task_wait',
     input: { run_id: task.runId, after_revision: 5, wait_timeout_secs: 5 },
   });
+});
+
+
+test('residual confirmation retries the exact run/revision and preserves its failed result', async () => {
+  const task = { taskId: 'task-residual', runId: 'run-residual', stateRevision: 9,
+    cleanup: 'unknown', status: 'failed', result: 'original failure' };
+  const calls = [];
+  const updated = await confirmWorkerTaskResidual(task, async (command, args) => {
+    calls.push({ command, input: structuredClone(args.input) });
+    if (calls.length === 1) throw new Error('reply lost');
+    return envelope({ task_id: task.taskId, run_id: task.runId, state: 'failed',
+      state_revision: 10, cleanup: 'residual_acknowledged' });
+  });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], calls[1]);
+  assert.equal(calls[0].input.expected_revision, 9);
+  assert.equal(calls[0].input.user_confirmed, true);
+  assert.equal(updated.status, 'failed');
+  assert.equal(updated.result, 'original failure');
+  assert.equal(updated.cleanup, 'residual_acknowledged');
+});
+
+test('residual confirmation does not submit running tasks or accept another run receipt', async () => {
+  const task = { taskId: 'task-residual', runId: 'run-residual', stateRevision: 9,
+    cleanup: 'unknown', status: 'running' };
+  await assert.rejects(confirmWorkerTaskResidual(task, async () => assert.fail('must not submit')));
+  await assert.rejects(confirmWorkerTaskResidual({ ...task, status: 'failed' }, async () =>
+    envelope({ task_id: task.taskId, run_id: 'different-run', state: 'failed',
+      state_revision: 10, cleanup: 'residual_acknowledged' })));
 });

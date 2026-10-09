@@ -3695,6 +3695,28 @@
       "evidence_refs": [
         "source-079"
       ]
+    },
+    {
+      "rule_key": "rule.codex.gpt6-model-context/v1",
+      "record_kind": "model",
+      "collected_on": "2026-10-08",
+      "match": {
+        "provider_id_pattern": "^openai-codex$",
+        "upstream_model_id_pattern": "^(gpt-6-(astra|sol|luna)|gpt-6\\.1-sol)$"
+      },
+      "assignments": {
+        "context_tokens": {
+          "state": "known",
+          "value": 1050000
+        }
+      },
+      "reason": "Use the exact public model's documented 1,050,000-token ceiling for the maintained Codex subscription model mapping. This is explicitly inferred for the subscription, not a measured account entitlement. Retain the native client directory's default/max-window settings as raw source assertions; do not substitute its 272,000 default for the model maximum. Account inventory and any independently proven endpoint limit remain separate execution constraints. No API token price is assigned to a subscription.",
+      "evidence_refs": [
+        "source-088",
+        "source-126",
+        "source-127",
+        "source-175"
+      ]
     }
   ],
   "provider_rules": [
@@ -5618,10 +5640,10 @@
       "source_key": "source-088",
       "authority": "developers.openai.com",
       "source_kind": "provider-documentation",
-      "locator": "https://developers.openai.com/api/docs/models/gpt-6-astra",
-      "collected_on": "2026-09-13",
-      "bytes_digest": null,
-      "digest_state": "not-captured"
+      "locator": "https://developers.openai.com/api/docs/models/gpt-6-astra.md",
+      "collected_on": "2026-10-08",
+      "bytes_digest": "sha256:b7c19b3bb89e87a392a0f3f8b732c5e7c9f0bf558cbe3022c491575a947fcef8",
+      "digest_state": "captured"
     },
     {
       "source_key": "source-089",

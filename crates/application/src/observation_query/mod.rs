@@ -50,6 +50,18 @@ impl ObservationQueryService {
         self.port.observed_maintenance_status(reader, now_ms)
     }
 
+    pub fn observed_value_report(
+        &self,
+        reader: &hiroute_domain::ObservationReaderContext,
+        query: &hiroute_domain::ObservationValueQueryV2,
+        group_by: hiroute_domain::ValueGroupByV1,
+        now_ms: i64,
+    ) -> Result<hiroute_domain::ObservationValueReportV2, ObservationQueryError> {
+        reader.check(now_ms, false, false)?;
+        self.port
+            .observed_value_report(reader, query, group_by, now_ms)
+    }
+
     pub fn observed_value_totals(
         &self,
         reader: &hiroute_domain::ObservationReaderContext,

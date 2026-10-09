@@ -15,9 +15,10 @@ use hiroute_application_api::{
     WorkerDependenciesDiscoverRequestV1, WorkerDependenciesSelectRequestV1,
     WorkerDependenciesViewV1, WorkerExecRequestV1, WorkerExecutorAvailabilityListV1,
     WorkerListRequestV1, WorkerObservedOperationV1, WorkerPlansRequestV1, WorkerReadActionStateV1,
-    WorkerReadContentStateV1, WorkerReadDataV1, WorkerReadRequestV1, WorkerResultRequestV1,
-    WorkerRunActionFactsV1, WorkerSettingsV1, WorkerStatusRequestV1, WorkerWaitRequestV1,
-    normalize_worker_title, worker_next_actions,
+    WorkerReadContentStateV1, WorkerReadDataV1, WorkerReadRequestV1,
+    WorkerResidualConfirmRequestV1, WorkerResultRequestV1, WorkerRunActionFactsV1,
+    WorkerSettingsV1, WorkerStatusRequestV1, WorkerWaitRequestV1, normalize_worker_title,
+    worker_next_actions,
 };
 use hiroute_domain::VerifiedCollaborationPrincipal;
 use hiroute_domain::delegation::DelegationErrorV1;
@@ -117,6 +118,12 @@ pub trait DelegationTaskPort: Send + Sync {
         &self,
         _request: &WorkerCancelRequestV1,
     ) -> Result<DelegationCancelV1, DelegationErrorV1> {
+        Err(DelegationErrorV1::CapabilityUnavailable)
+    }
+    fn confirm_worker_residual(
+        &self,
+        _request: &WorkerResidualConfirmRequestV1,
+    ) -> Result<DelegationRunViewV1, DelegationErrorV1> {
         Err(DelegationErrorV1::CapabilityUnavailable)
     }
     fn worker_continue(
@@ -449,6 +456,17 @@ fn dispatch_worker(
             },
             |_, _| Vec::new(),
         ),
+        "WorkerConfirmResidual" => {
+            invoke_worker_with_actions::<WorkerResidualConfirmRequestV1, _, _, _>(
+                tasks,
+                request.payload,
+                request.request_id,
+                WorkerResidualConfirmRequestV1::valid,
+                |port, value| port.confirm_worker_residual(value),
+                |_, run| run_view_actions(WorkerObservedOperationV1::Status, run, None, false),
+                |_, _| Vec::new(),
+            )
+        }
         "WorkerContinue" => invoke_worker_with_actions::<WorkerContinueRequestV1, _, _, _>(
             tasks,
             request.payload,
@@ -750,6 +768,11 @@ fn failed_delegation(
     request_id: String,
 ) -> MachineEnvelopeV2<serde_json::Value> {
     let mut failure = hiroute_application_api::ErrorV1::new(map_error(error));
+    if let DelegationErrorV1::DependencyCheckFailed(reason) = error {
+        failure.message_key = reason.message_key();
+        failure.retryable = reason.reason.retryable();
+        return MachineEnvelopeV2::failed(failure, Some(request_id));
+    }
     failure.message_key = match error {
         DelegationErrorV1::DependenciesMissing => "worker.dependencies.missing",
         DelegationErrorV1::DependenciesInvalid => "worker.dependencies.invalid",
@@ -772,6 +795,7 @@ fn map_error(error: DelegationErrorV1) -> ErrorCode {
         | DelegationErrorV1::CapabilityUnavailable
         | DelegationErrorV1::DependenciesMissing
         | DelegationErrorV1::DependenciesInvalid
+        | DelegationErrorV1::DependencyCheckFailed(_)
         | DelegationErrorV1::ResumeUnavailable
         | DelegationErrorV1::ContentUnavailable
         | DelegationErrorV1::StorageUnavailable
@@ -898,6 +922,44 @@ mod tests {
             },
         );
         assert_eq!(rejected.status, ErrorCode::InvalidArguments.status());
+    }
+
+    #[test]
+    fn dependency_check_error_names_stage_and_marks_only_transient_failures_retryable() {
+        use hiroute_domain::delegation::{
+            NativeDependencyCheckV1 as Check, NativeDependencyFailureReasonV1 as Reason,
+            NativeDependencyFailureV1,
+        };
+        for check in [Check::ClaudeVersion, Check::PiNodeVersion, Check::PiSdk] {
+            for reason in [
+                Reason::Timeout,
+                Reason::Unavailable,
+                Reason::CleanupFailed,
+                Reason::ProcessFailed,
+                Reason::Unsupported,
+                Reason::InvalidOutput,
+            ] {
+                let failure = NativeDependencyFailureV1 { check, reason };
+                let response = failed_delegation(
+                    DelegationErrorV1::DependencyCheckFailed(failure),
+                    "probe".into(),
+                );
+                assert_eq!(response.status, MachineStatus::Unavailable);
+                let error = response.error.unwrap();
+                assert_eq!(error.code, ErrorCode::CapabilityUnavailable);
+                assert_eq!(
+                    error.message_key,
+                    format!("worker.dependencies.{}.{}", check.key(), reason.key())
+                );
+                assert_eq!(
+                    error.retryable,
+                    matches!(
+                        reason,
+                        Reason::Timeout | Reason::Unavailable | Reason::CleanupFailed
+                    )
+                );
+            }
+        }
     }
 
     #[test]

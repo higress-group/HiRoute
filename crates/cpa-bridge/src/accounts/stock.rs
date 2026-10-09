@@ -154,6 +154,7 @@ impl CpaControlPlane for StockCpaControlPlane {
                     remaining_timeout(deadline)?,
                     &account.id,
                     &prefix,
+                    managed,
                 )?;
             }
             let models = wait_for_account_pin(
@@ -360,6 +361,7 @@ fn parse_auth_file_response(
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn patch_account_controls(
     address: SocketAddr,
     secrets: &InstanceSecrets,
@@ -367,8 +369,9 @@ fn patch_account_controls(
     timeout: Duration,
     id: &str,
     prefix: &str,
+    managed: Option<&ManagedAccountIdentity>,
 ) -> Result<(), AccountDiscoveryError> {
-    let body = account_controls_body(id, prefix)?;
+    let body = account_controls_body(id, prefix, managed)?;
     let response = request(LoopbackRequest {
         address,
         method: "PATCH",
@@ -380,14 +383,26 @@ fn patch_account_controls(
     validate_management_response(&response, expected_version)
 }
 
-fn account_controls_body(id: &str, prefix: &str) -> Result<Vec<u8>, AccountDiscoveryError> {
-    serde_json::to_vec(&serde_json::json!({
+fn account_controls_body(
+    id: &str,
+    prefix: &str,
+    managed: Option<&ManagedAccountIdentity>,
+) -> Result<Vec<u8>, AccountDiscoveryError> {
+    let mut body = serde_json::json!({
         "name": id,
         "prefix": prefix,
         "request_retry": 0,
         "disable_cooling": true
-    }))
-    .map_err(AccountDiscoveryError::Json)
+    });
+    if let Some(identity) = managed {
+        identity.validate()?;
+        // CPA merges this PATCH into its loaded Auth, persists it, then invokes
+        // synchronous discovery. Its watcher may still hold the previous file.
+        // Carry the validated lease's current version so stale metadata cannot
+        // overwrite it. No token material enters this control request.
+        body["hiroute_client_version"] = serde_json::json!(identity.client_version);
+    }
+    serde_json::to_vec(&body).map_err(AccountDiscoveryError::Json)
 }
 
 fn get_account_models(
@@ -575,7 +590,8 @@ mod tests {
     fn exact_control_patch_and_prefix_stripping_are_fail_closed() {
         let prefix = format!("hiroute-{}", "a".repeat(24));
         let body: Value =
-            serde_json::from_slice(&account_controls_body("stock-a", &prefix).unwrap()).unwrap();
+            serde_json::from_slice(&account_controls_body("stock-a", &prefix, None).unwrap())
+                .unwrap();
         assert_eq!(body["request_retry"], 0);
         assert_eq!(body["disable_cooling"], true);
         let models =
@@ -588,3 +604,6 @@ mod tests {
 
 #[cfg(test)]
 mod pin_tests;
+
+#[cfg(all(test, unix))]
+mod version_sync_tests;

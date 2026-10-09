@@ -39,11 +39,12 @@ impl NativeProbeProcess {
     }
 
     fn signal(&self, signal: Signal) -> io::Result<()> {
-        let exited = self.observe()?.is_some();
+        self.observe()?;
         match kill_process_group(self.group, signal) {
             Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
-            // Darwin may refuse signalling an exited leader. Absence is checked after reap.
-            Err(rustix::io::Errno::PERM) if exited => Ok(()),
+            // Darwin may refuse a group that exits between observe and signal.
+            // This is provisional: stop still requires reap and proven group absence.
+            Err(rustix::io::Errno::PERM) => Ok(()),
             Err(error) => Err(error.into()),
         }
     }

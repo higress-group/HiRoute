@@ -184,6 +184,42 @@ pub const LATEST_SCHEMA_VERSION: u32 = 29;
             any("escapes registered support" in error for error in errors), errors
         )
 
+    def test_revision_bound_archive_is_history_with_strict_identity(self):
+        revision = "a" * 40
+        path = f"contracts/releases/archive/v1.0.0.{revision}.json"
+        value = {"schema": "hiroute.release-contract-snapshot/v1",
+                 "release": {"tag": "v1.0.0", "revision": revision},
+                 "contracts": ["hiroute.sample/v1", "hiroute.forbidden/v1"]}
+        snapshot = json.dumps(value)
+        self.assertEqual(self.run_audit({"legacy.rs": '"hiroute.sample/v1"', path: snapshot}), [])
+        for invalid in [path.replace(revision, "a" * 39), path.replace(revision, "A" * 40),
+                        path.replace("archive/", "archive/nested/"), path.replace(".json", ".rs"),
+                        path.replace("v1.0.0", "v01.0.0"), path.replace("v1.0.0", "v2.0.0"),
+                        path.replace(revision, "b" * 40), "contracts/releases/archive/other.json"]:
+            with self.subTest(path=invalid):
+                errors = self.run_audit({"legacy.rs": '"hiroute.sample/v1"', invalid: snapshot})
+                self.assertTrue(any("forbidden contract" in error for error in errors), errors)
+        for update in [{"schema": "ordinary-json"}, {"release": None}, {"release": {}}]:
+            errors = self.run_audit({"legacy.rs": '"hiroute.sample/v1"', path: json.dumps({**value, **update})})
+            self.assertTrue(any("forbidden contract" in error for error in errors), errors)
+        errors = self.run_audit({path: snapshot})
+        self.assertTrue(any("stale compatibility registration" in error for error in errors), errors)
+
+    def test_real_release_record_remains_history_when_archived(self):
+        root = MODULE_PATH.parent.parent
+        snapshot = (root / "contracts/releases/v0.2.0.json").read_text()
+        release = json.loads(snapshot)["release"]
+        archived = f"contracts/releases/archive/{release['tag']}.{release['revision']}.json"
+        paths = MODULE.repository_files(root)
+        value = json.loads((root / MODULE.REGISTRY_PATH).read_text())
+        # Feed the actual released bytes to the real current audit without writing the checkout.
+        original = MODULE.load_text
+        try:
+            MODULE.load_text = lambda repo, path: snapshot if path == archived else original(repo, path)
+            self.assertEqual(MODULE.audit(root, value, [*paths, archived]), [])
+        finally:
+            MODULE.load_text = original
+
     def test_unknown_version_and_forbidden_contract_are_rejected(self):
         errors = self.run_audit(
             {

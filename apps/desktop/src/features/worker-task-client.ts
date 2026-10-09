@@ -158,6 +158,7 @@ function projectTask(
     admissionSequence: task.run.admission_sequence,
     status: workerTaskState(task.run.state),
     cleanup: task.run.cleanup,
+    stateRevision: task.run.state_revision,
     brief: task.brief?.trim() || presentation.unavailableBrief,
     contentAvailability: task.content_availability,
     result: result?.text,
@@ -290,4 +291,29 @@ export async function cancelWorkerTask(
     input: { run_id: task.runId, after_revision: value.run.state_revision, wait_timeout_secs: 5 },
   });
   return workerTaskState(envelopeData(waitedEnvelope).run.state);
+}
+
+
+export async function confirmWorkerTaskResidual(
+  task: AgentTask,
+  invokeWorker: WorkerInvoke = nativeInvoke,
+): Promise<AgentTask> {
+  if (!task.stateRevision || task.cleanup !== 'unknown'
+    || ['queued', 'running', 'cancelling'].includes(task.status)) {
+    throw new Error('RESIDUAL_CONFIRMATION_UNAVAILABLE');
+  }
+  const input = {
+    run_id: task.runId, expected_revision: task.stateRevision,
+    idempotency_key: `desktop-residual:${crypto.randomUUID()}`, user_confirmed: true,
+  };
+  let envelope: WorkerEnvelope<WorkerRun>;
+  try {
+    envelope = await invokeWorker<WorkerEnvelope<WorkerRun>>('worker_task_confirm_residual', { input });
+  } catch {
+    envelope = await invokeWorker<WorkerEnvelope<WorkerRun>>('worker_task_confirm_residual', { input });
+  }
+  const run = envelopeData(envelope);
+  if (run.task_id !== task.taskId || run.run_id !== task.runId
+    || run.cleanup !== 'residual_acknowledged') throw new Error('RESIDUAL_CONFIRMATION_UNAVAILABLE');
+  return { ...task, status: workerTaskState(run.state), cleanup: run.cleanup, stateRevision: run.state_revision };
 }

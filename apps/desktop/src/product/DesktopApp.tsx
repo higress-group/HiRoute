@@ -9,6 +9,7 @@ import type { AgentTask, AgentTaskRead } from '../features/AgentTasks';
 import { Sessions } from '../features/Sessions';
 import {
   cancelWorkerTask,
+  confirmWorkerTaskResidual,
   readWorkerTask,
   readWorkerTaskResultPage,
   WorkerTaskPager,
@@ -302,7 +303,7 @@ export function DesktopApp() {
   }
 
   function openPage(next: Page) {
-    if (next === 'home' && page !== 'home') void home.refreshActivity();
+    if (next === 'home' && page !== 'home') void Promise.allSettled([home.refreshActivity(), home.refreshValue()]);
     setVisited(current => current.has(next) ? current : new Set([...current, next]));
     setPage(next);
     if (next !== 'models') { decisionReturn.current = null; setReturningToRoute(false); }
@@ -713,6 +714,7 @@ export function DesktopApp() {
             }}
             onOperation={acceptOperation}
             onUnverifiedOperation={acceptUnverifiedOperation}
+            onTaskConfirmResidual={confirmWorkerTaskResidual}
             onTaskCancel={async (task: AgentTask, onAccepted) => cancelWorkerTask(task, onAccepted)}
             onOpenTasks={() => void loadTaskHistory(true)}
             onLoadMoreTasks={() => loadTaskHistory(false)}

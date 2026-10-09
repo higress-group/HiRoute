@@ -10,6 +10,7 @@ struct Fixture {
     address: SocketAddr,
     patches: Arc<AtomicUsize>,
     reject_patch: Arc<AtomicBool>,
+    patch_delay_ms: Arc<AtomicUsize>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -32,8 +33,10 @@ impl Fixture {
         let address = listener.local_addr().unwrap();
         let patches = Arc::new(AtomicUsize::new(0));
         let reject_patch = Arc::new(AtomicBool::new(false));
+        let patch_delay_ms = Arc::new(AtomicUsize::new(0));
         let stop = Arc::new(AtomicBool::new(false));
         let (count, reject, stopped) = (patches.clone(), reject_patch.clone(), stop.clone());
+        let delay = patch_delay_ms.clone();
         let worker = thread::spawn(move || {
             for stream in listener.incoming() {
                 let mut stream = stream.unwrap();
@@ -60,6 +63,7 @@ impl Fixture {
                 stream.read_exact(&mut body).unwrap();
                 let (status, body) = if header.starts_with("PATCH ") {
                     count.fetch_add(1, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(delay.load(Ordering::SeqCst) as u64));
                     let body: Value = serde_json::from_slice(&body).unwrap();
                     assert_eq!(body["prefix"], "hiroute-codex-current");
                     if reject.load(Ordering::SeqCst) {
@@ -85,7 +89,15 @@ impl Fixture {
                 } else {
                     panic!("unexpected request: {}", header.lines().next().unwrap());
                 };
-                write!(stream, "HTTP/1.1 {status} OK\r\nX-CPA-Version: 8.0.4-hiroute.2\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                let written = write!(
+                    stream,
+                    "HTTP/1.1 {status} OK\r\nX-CPA-Version: 8.0.4-hiroute.2\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                // The legacy-deadline negative case deliberately closes this socket early.
+                if delay.load(Ordering::SeqCst) == 0 {
+                    written.unwrap();
+                }
             }
         });
         Self {
@@ -93,12 +105,21 @@ impl Fixture {
             address,
             patches,
             reject_patch,
+            patch_delay_ms,
             stop,
             worker: Some(worker),
         }
     }
 
     fn discover(&self, refresh: bool) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
+        self.discover_with_timeout(refresh, Duration::from_secs(2))
+    }
+
+    fn discover_with_timeout(
+        &self,
+        refresh: bool,
+        timeout: Duration,
+    ) -> Result<Vec<AccountSnapshotRecord>, AccountDiscoveryError> {
         StockCpaControlPlane.discover_and_pin(
             self.address,
             self.root.path(),
@@ -107,13 +128,34 @@ impl Fixture {
                 stock_file_name: "codex-a.json".into(),
                 account_digest: "a".repeat(64),
                 generation: 1,
+                client_version: None,
             }],
             &InstanceSecrets::generate().unwrap(),
             "8.0.4-hiroute.2",
-            Duration::from_secs(2),
+            timeout,
             refresh,
         )
     }
+}
+
+#[test]
+fn production_control_budget_covers_synchronous_refresh_and_pin_readback() {
+    let fixture = Fixture::new();
+    // A management update includes synchronous upstream registration hooks, plus local work.
+    fixture.patch_delay_ms.store(5_200, Ordering::SeqCst);
+    assert!(
+        fixture
+            .discover_with_timeout(true, Duration::from_secs(5))
+            .is_err()
+    );
+    let accounts = fixture
+        .discover_with_timeout(true, crate::MANAGED_CPA_CONTROL_TIMEOUT)
+        .unwrap();
+    assert_eq!(
+        accounts[0].observed_model_ids,
+        BTreeSet::from(["future-model".into()])
+    );
+    assert_eq!(fixture.patches.load(Ordering::SeqCst), 2);
 }
 
 impl Drop for Fixture {
@@ -172,6 +214,7 @@ fn live_managed_cpa_pin_reads() {
         stock_file_name: field("stock_file_name").into(),
         account_digest: "a".repeat(64),
         generation: 1,
+        client_version: None,
     };
     for _ in 0..6 {
         let accounts = StockCpaControlPlane

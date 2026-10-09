@@ -155,20 +155,25 @@ def declared(value):
 
 def save_native_source(product, upstream, token=None, unknown=False,
                        protocol='responses', upstream_model_id=MODEL, variant='',
-                       context_tokens=32768):
+                       context_tokens=32768, cli_input=False):
     status = control(product, 'GetClientServiceStatus', {})['data']
     suffix = ('-unknown' if unknown else '') + ('-' + variant if variant else '')
     candidate_ref = 'candidate/native/product' + suffix
     if token is not None:
         product.secrets.add(token)
-        product.register_protected_frame({
-            'schema': 'hiroute.protected-input/v1',
-            'registration_id': hashlib.sha256(
-                encoded(('native-input', candidate_ref, time.monotonic_ns()))).hexdigest(),
-            'candidate_ref': candidate_ref,
-            'candidate_revision': 1,
-            'secret': token,
-        })
+        if cli_input:
+            result = product.public_cli('protected-input register --candidate ' + candidate_ref,
+                                        secret=token)[1]
+            assert result['data']['registered'], result
+        else:
+            product.register_protected_frame({
+                'schema': 'hiroute.protected-input/v1',
+                'registration_id': hashlib.sha256(
+                    encoded(('native-input', candidate_ref, time.monotonic_ns()))).hexdigest(),
+                'candidate_ref': candidate_ref,
+                'candidate_revision': 1,
+                'secret': token,
+            })
     draft = {
         'inference_model_id': None,
         'candidate_ref': candidate_ref if token is not None else None,
@@ -450,7 +455,7 @@ def publish_plan_and_agent(product, binding_id):
     assert [model['id'] for model in catalog['data']] == expected_models, catalog
 
 
-def gateway_request(product):
+def gateway_request(product, allowed=True):
     client = http.client.HTTPConnection('127.0.0.1', product.port, timeout=30)
     try:
         client.request('POST', '/v1/responses', body=encoded({
@@ -464,9 +469,64 @@ def gateway_request(product):
         response = client.getresponse()
         body = response.read()
         product.outputs.append(body)
-        assert response.status == 200 and b'native product answer' in body, (response.status, body)
+        if allowed:
+            assert response.status == 200 and b'native product answer' in body, (response.status, body)
+        else:
+            assert response.status >= 400 and b'native product answer' not in body, (response.status, body)
     finally:
         client.close()
+
+
+def assert_live_credential_switches(product, upstream, saved):
+    """Keep the published plan while current source/Key eligibility changes through Apply."""
+    def save(disabled, label, key_enabled=None):
+        snapshot = control(product, 'ListCompute', {})['data']
+        source = next(item for item in snapshot['sources'] if item['source_id'] == saved['source_id'])
+        key = source['keys'][1]  # First key was disabled before this plan was published.
+        edits = [] if key_enabled is None else [{
+            'action': 'set_enabled', 'key_id': key['key_id'],
+            'expected_generation': key['generation'], 'enabled': key_enabled,
+        }]
+        change = {
+            'schema': 'hiroute.compute-management-change/v2',
+            'subject': {'kind': 'saved_source', 'source_id': saved['source_id']},
+            'expected_revisions': snapshot['revisions'],
+            'selected_model_refs': [model['model_ref'] for model in source['models']],
+            'intent': 'save_disabled' if disabled else 'save_ready', 'key_edits': edits,
+        }
+        preview = control(product, 'PreviewComputeSave', {'change': change})['data']
+        applied = control(product, 'ApplyComputeSave', {
+            'spec': preview['spec'], 'accept_digest': preview['accept_digest'],
+            'expected_revisions': preview['expected_revisions'],
+            'idempotency_key': 'live-switch-' + label,
+        })
+        result = control(product, 'GetComputeSaveResult', {'operation': applied['operation']})['data']
+        assert result['disposition'] == 'saved', result
+        saved['source_revision'] = result['saved_revision']
+        after = next(item for item in control(product, 'ListCompute', {})['data']['sources']
+                     if item['source_id'] == saved['source_id'])
+        assert after['state'] == ('disabled' if disabled else 'ready'), after
+        if key_enabled is not None:
+            assert after['keys'][1]['enabled'] is key_enabled, after
+
+    def rejected_without_upstream():
+        with upstream.lock:
+            before = len(upstream.requests)
+        gateway_request(product, allowed=False)
+        with upstream.lock:
+            assert len(upstream.requests) == before, 'disabled credential reached the upstream'
+
+    save(True, 'disable-source')
+    rejected_without_upstream()
+    product.stop()
+    product.start()
+    rejected_without_upstream()
+    save(False, 'enable-source')
+    gateway_request(product)
+    save(True, 'disable-last-key', False)
+    rejected_without_upstream()
+    save(False, 'enable-last-key', True)
+    gateway_request(product)
 
 
 def assert_session_record(product, started_ms):
@@ -536,7 +596,8 @@ def run(repository, expected_sha=None):
     started_ms = int(time.time() * 1000)
     try:
         product.start()
-        saved = save_native_source(product, upstream, NATIVE_TOKEN)
+        saved = save_native_source(product, upstream, NATIVE_TOKEN, cli_input=True)
+        product.public_cli('protected-input release --candidate candidate/native/product')
         unknown = save_native_source(product, upstream, unknown=True)
         assert unknown['source_id'] != saved['source_id']
         assert unknown['binding_id'] != saved['binding_id']
@@ -556,6 +617,7 @@ def run(repository, expected_sha=None):
         publish_plan_and_agent(product, saved['binding_id'])
         gateway_request(product)
         session_id, observed_model = assert_session_record(product, started_ms)
+        assert_live_credential_switches(product, upstream, saved)
         product.stop()
         product.start()
         recheck_saved_native_source(product, saved, 3, 'after-restart')
@@ -563,10 +625,12 @@ def run(repository, expected_sha=None):
         with upstream.lock:
             requests = list(upstream.requests)
         assert [request['path'] for request in requests] == [
-            '/v1/models', '/v1/models', '/v1/responses', '/v1/models'], requests
+            '/v1/models', '/v1/models', '/v1/responses', '/v1/responses',
+            '/v1/responses', '/v1/models'], requests
         assert [request['authorization'] for request in requests] == [
             'Bearer ' + token for token in
-            [NATIVE_TOKEN, NATIVE_TOKEN, replacement_token, replacement_token]], requests
+            [NATIVE_TOKEN, NATIVE_TOKEN, replacement_token, replacement_token,
+             replacement_token, replacement_token]], requests
         assert all(request['api_key'] is None for request in requests), requests
         print(json.dumps({
             'scenario': 'native-model-desktop-contract-to-gateway',
@@ -575,7 +639,8 @@ def run(repository, expected_sha=None):
             'directory_status': 404,
             'saved_binding': saved['binding_id'],
             'saved_source_rechecks': 2,
-            'gateway_attempts': 1,
+            'gateway_attempts': 3,
+            'disabled_requests_without_upstream': 3,
             'credential_resolver_mode': 'saved_bearer',
             'session_record': session_id,
             'session_model': observed_model,

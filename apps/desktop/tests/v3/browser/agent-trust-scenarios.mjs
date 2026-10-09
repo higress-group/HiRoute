@@ -60,6 +60,26 @@ function changeSelect(select, value) {
 const configureSpecs = () => calls('preview_agent_settings').map(item => item.payload.input.spec);
 
 const scenarios = [
+  scenario('claude.routing.blocker-guidance', ['agent-model-routing'], 'Claude save explains configuration and route blockers without applying or making a model call', async () => {
+    await fresh('notRunnable', true);
+    c().handlers.preview_agent_settings = () => ({
+      preview: { applicable: false, blockers: [
+        { reason: 'capability_unavailable', capabilities: [{ capability: 'effective_configuration', reason: 'unknown' }] },
+        { reason: 'model_plan_unavailable' },
+      ] }, mutation: null,
+    });
+    await openEditor('model', false);
+    const route = dialog().querySelector('select[aria-label="Claude Code 路由"]');
+    changeSelect(route, [...route.options].find(option => option.value && !option.disabled).value);
+    await tick();
+    assert(!submit().disabled, 'Explicit Claude route is not ready to preview');
+    submit().click();
+    await until(() => visible(dialog()?.querySelector('.agent-feedback')), 'blocked save feedback');
+    const feedback = dialog().querySelector('.agent-feedback').textContent;
+    assert(feedback.includes('环境变量') && feedback.includes('Opus、Sonnet、Haiku'), 'Distinct blockers lack actionable configuration and route guidance');
+    assert(!feedback.includes('有前置条件尚未满足'), 'Known blockers fell back to generic repeated text');
+    assert(c().operations.length === 0 && c().mutations === 0 && calls('check_agent_live').length === 0, 'Blocked save applied settings or called a model');
+  }),
   scenario('codex.restore.conflict-active', ['agent-recovery'], 'Codex file conflicts preserve active access and allow other settings', async () => {
     await freshCodex('splitCodexStatus');
     const agent = c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default');

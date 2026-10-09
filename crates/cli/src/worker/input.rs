@@ -6,8 +6,9 @@ use hiroute_application_api::{
     AgentPlanId, DEFAULT_WORKER_RUN_SECS, DEFAULT_WORKER_WAIT_SECS,
     DelegationSubmissionOperationV1, ErrorCode, MAX_DELEGATION_INPUT_BYTES, WorkerCancelRequestV1,
     WorkerDependenciesDiscoverRequestV1, WorkerDependenciesSelectRequestV1, WorkerHarnessV1,
-    WorkerListRequestV1, WorkerPermissionPolicyV1, WorkerReadRequestV1, WorkerResultRequestV1,
-    WorkerStatusRequestV1, WorkerWaitRequestV1,
+    WorkerListRequestV1, WorkerPermissionPolicyV1, WorkerReadRequestV1,
+    WorkerResidualConfirmRequestV1, WorkerResultRequestV1, WorkerStatusRequestV1,
+    WorkerWaitRequestV1,
 };
 
 const MAX_FILE_BYTES: u64 = (MAX_DELEGATION_INPUT_BYTES + 1) as u64;
@@ -186,6 +187,46 @@ pub(super) fn parse_result(options: &[String]) -> Result<WorkerResultRequestV1, 
         .ok_or(ErrorCode::InvalidArguments)
 }
 
+pub(super) fn parse_residual_confirm(
+    options: &[String],
+) -> Result<WorkerResidualConfirmRequestV1, ErrorCode> {
+    let mut run_id = None;
+    let mut expected_revision = None;
+    let mut idempotency_key = None;
+    let mut handled = false;
+    let mut index = 0;
+    while index < options.len() {
+        match options[index].as_str() {
+            "--run" => run_id = unique(run_id, next(options, &mut index)?)?,
+            "--expected-revision" => {
+                expected_revision = unique(expected_revision, next(options, &mut index)?)?
+            }
+            "--idempotency-key" => {
+                idempotency_key = unique(idempotency_key, next(options, &mut index)?)?
+            }
+            "--handled" if !handled => handled = true,
+            _ => return Err(ErrorCode::InvalidArguments),
+        }
+        index += 1;
+    }
+    let request = WorkerResidualConfirmRequestV1 {
+        run_id: run_id.ok_or(ErrorCode::InvalidArguments)?,
+        expected_revision: expected_revision
+            .ok_or(ErrorCode::InvalidArguments)?
+            .parse()
+            .map_err(|_| ErrorCode::InvalidArguments)?,
+        idempotency_key: match idempotency_key {
+            Some(key) => key,
+            None => random_key("worker-residual")?.replace('/', ":"),
+        },
+        user_confirmed: handled,
+    };
+    request
+        .valid()
+        .then_some(request)
+        .ok_or(ErrorCode::InvalidArguments)
+}
+
 pub(super) fn parse_cancel(
     options: &[String],
     _request_id: &str,
@@ -213,7 +254,7 @@ pub(super) fn parse_cancel(
         run_id: run_id.ok_or(ErrorCode::InvalidArguments)?,
         idempotency_key: match idempotency_key {
             Some(key) => key,
-            None => random_key("worker-cancel")?,
+            None => random_key("worker-cancel")?.replace('/', ":"),
         },
         reason,
     };
@@ -578,6 +619,43 @@ mod tests {
                 "request",
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn cancellation_default_key_is_accepted_by_the_operation_boundary() {
+        let options = ["--run", "run/test"].map(str::to_owned);
+        assert!(parse_cancel(&options, "request-test").unwrap().valid());
+        let invalid = ["--run", "run/test", "--idempotency-key", "cancel/test"].map(str::to_owned);
+        assert!(parse_cancel(&invalid, "request-test").is_err());
+    }
+
+    #[test]
+    fn residual_confirmation_requires_explicit_user_action_and_revision() {
+        let options = [
+            "--run",
+            "run/test",
+            "--expected-revision",
+            "9",
+            "--handled",
+            "--idempotency-key",
+            "confirm-test",
+        ]
+        .map(str::to_owned);
+        let parsed = parse_residual_confirm(&options).unwrap();
+        assert_eq!(parsed.expected_revision, 9);
+        assert!(parsed.user_confirmed);
+        assert!(parse_residual_confirm(&options[..5]).unwrap().valid());
+        let mut invalid_key = options.clone();
+        invalid_key[6] = "confirm/test".into();
+        assert!(parse_residual_confirm(&invalid_key).is_err());
+        assert!(parse_residual_confirm(&options[..4]).is_err());
+        let mut stale = options.clone();
+        stale[3] = "0".into();
+        assert!(parse_residual_confirm(&stale).is_err());
+        assert!(
+            parse_residual_confirm(&["--run".into(), "run/test".into(), "--handled".into()])
+                .is_err()
         );
     }
 
