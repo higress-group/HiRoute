@@ -352,6 +352,27 @@ def prepare_service_directory(home):
             current.mkdir(mode=0o700)
 
 
+def prepare_state_directory(paths):
+    """Create Linux state parents privately; preserve safe existing ancestors."""
+    if platform.system() != "Linux":
+        return
+    state = paths["state"]
+    if not state.is_absolute() or ".." in state.parts:
+        raise ValueError("standalone state parent is unsafe")
+    current = Path(state.anchor)
+    for part in state.parts[1:]:
+        current = current / part
+        if current.exists() or current.is_symlink():
+            metadata = current.lstat()
+            writable = metadata.st_mode & 0o022
+            if (not stat.S_ISDIR(metadata.st_mode)
+                    or (writable and not metadata.st_mode & 0o1000)
+                    or (current == state and (metadata.st_uid != os.geteuid() or writable))):
+                raise ValueError(f"standalone state parent is unsafe: {current}")
+        else:
+            current.mkdir(mode=0o700)
+
+
 def current_owned_link(path, owned_root, expected_name):
     if not path.is_symlink():
         return False
@@ -555,6 +576,7 @@ def install(args):
         version_parent = version_root.parent
         resource_parent = resource_root.parent
         prepare_service_directory(paths["home"])
+        prepare_state_directory(paths)
         version_parent.mkdir(parents=True, exist_ok=True)
         resource_parent.mkdir(parents=True, exist_ok=True)
         staged_bin = Path(tempfile.mkdtemp(prefix=f".{version}.", dir=version_parent))

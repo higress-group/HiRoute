@@ -31,9 +31,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Linux build prerequisites
+      - name: Linux container host
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes cmake clang pkg-config libssl-dev binutils
+        run: docker version
       - name: Mac build prerequisites
         if: runner.os == 'macOS'
         run: command -v cmake >/dev/null || brew install cmake
@@ -81,6 +81,9 @@ jobs:
             target/release-candidate/**/assets/*
             target/release-candidate/**/result.json
             target/release-candidate/**/build.log
+            target/release-candidate/**/linux-abi.json
+            target/release-candidate/**/runtime/*.log
+            target/release-candidate/**/runtime/diagnostics/**/*.jsonl
             target/release-candidate/**/*.provenance.json
             target/desktop-package/**/result.json
             target/desktop-package/**/build.log

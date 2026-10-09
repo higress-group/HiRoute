@@ -18,13 +18,14 @@ REPO = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("build_release", REPO / "scripts/build-release.py")
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
-MODULES = {name: builder.module(name) for name in ("package-desktop", "package-standalone", "build-cpa", "local-rust")}
+MODULES = {name: builder.module(name) for name in ("package-desktop", "package-standalone", "build-cpa", "local-rust", "linux-release-abi")}
 
 
 def elf(path, machine):
     path.parent.mkdir(parents=True, exist_ok=True)
     header = bytearray(64)
     header[:6] = b"\x7fELF\x02\x01"
+    struct.pack_into("<H", header, 16, 2)
     struct.pack_into("<H", header, 18, machine)
     path.write_bytes(header)
     path.chmod(0o755)
@@ -54,6 +55,8 @@ class CandidateTests(unittest.TestCase):
             path.write_bytes((REPO / relative).read_bytes())
             path.chmod(0o644)
         self.commands = []
+        patch.object(builder.platform, "libc_ver", return_value=("glibc", "2.31")).start()
+        patch.dict(os.environ, {"HIROUTE_LINUX_BASELINE_IMAGE": MODULES["linux-release-abi"].baseline()["build_image"]}).start()
 
     def command(self, *args, **kwargs):
         self.commands.append(args)
@@ -109,7 +112,8 @@ class CandidateTests(unittest.TestCase):
                 patch.object(MODULES["local-rust"], "Store") as store:
             store.return_value.locked.return_value = nullcontext()
             result = self.candidate.build()
-        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["status"], "awaiting_runtime")
+        self.assertEqual(set(result["linux_abi"]["files"]), {"bin/hiroute", "bin/hirouted", "libexec/cliproxyapi"})
         self.assertEqual(result["website_artifact"]["architecture"], "aarch64")
         artifacts = list(Path(result["assets"]).iterdir())
         self.assertEqual(len(artifacts), 2)
@@ -127,6 +131,23 @@ class CandidateTests(unittest.TestCase):
         archive = next(path for path in artifacts if path.name.endswith(".tar.gz"))
         archive.write_bytes(b"tampered")
         self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+
+    def test_archive_with_new_glibc_requirement_cannot_produce_accepted_assets(self):
+        def newer(*args, **kwargs):
+            if args[0] == "readelf":
+                return "Version needs section '.gnu.version_r':\n Name: GLIBC_2.34 Flags: none Version: 2"
+            return self.command(*args, **kwargs)
+        with patch.object(self.candidate, "run", side_effect=newer), \
+                patch.object(self.candidate, "script", side_effect=self.script), \
+                patch.object(MODULES["package-desktop"], "ensure_sccache_server"), \
+                patch.object(MODULES["local-rust"], "Store") as store:
+            store.return_value.locked.return_value = nullcontext()
+            with self.assertRaisesRegex(ValueError, "archive bin/hiroute.*GLIBC_2.34"):
+                self.candidate.build()
+        result = json.loads((self.candidate.output / "result.json").read_text())
+        self.assertEqual(result["status"], "failed")
+        self.assertNotIn("website_artifact", result)
+        self.assertFalse((self.candidate.output / "assets").exists())
 
     def test_elf_architecture_rejects_mislabelled_and_non_elf_binaries(self):
         binary = self.root / "binary"
