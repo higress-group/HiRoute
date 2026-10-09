@@ -1050,6 +1050,11 @@ mod tests {
             address.port()
         ));
         std::fs::create_dir_all(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
         let publications =
             Arc::new(GatewayPublicationInstaller::open(root.join("publication.json")).unwrap());
         let diagnostics = hiroute_diagnostics::runtime::DiagnosticRuntime::start(
@@ -1060,6 +1065,10 @@ mod tests {
                 parent_session_id: None,
                 level_override: Some(hiroute_diagnostics::DiagnosticLevel::Debug),
             },
+        );
+        assert!(
+            diagnostics.owns_role(),
+            "diagnostic fixture must own its writer"
         );
         let observation = Arc::new(
             super::super::observation::GatewayObservation::from_environment()

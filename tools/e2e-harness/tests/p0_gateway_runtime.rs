@@ -408,7 +408,7 @@ fn streaming_failures_before_body_relay_even_after_success_headers() {
                 .iter()
                 .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
                     == Some("request_finished")
-                    && row.pointer("/fact/outcome").and_then(|v| v.as_str()) == Some("completed")),
+                    && row.pointer("/fact/outcome").and_then(|v| v.as_str()) == Some("accepted")),
             "fallback must complete the request: {facts:?}"
         );
     }
@@ -446,7 +446,13 @@ fn streaming_failure_after_delivered_body_stays_failed_and_retains_usage() {
         .unwrap();
     let mut received = Vec::new();
     let mut chunk = [0u8; 4096];
-    while !received.windows(early.len()).any(|part| part == early) {
+    // Native model identifiers are rewritten to the served alias. Match the
+    // delivered event, not the provider's pre-projection JSON bytes.
+    let first_body_marker = b"event: response.created\n";
+    while !received
+        .windows(first_body_marker.len())
+        .any(|part| part == first_body_marker)
+    {
         let count = stream
             .read(&mut chunk)
             .expect("first body must be delivered before failure");
