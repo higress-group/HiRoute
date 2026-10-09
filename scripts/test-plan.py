@@ -327,6 +327,10 @@ def select(paths, full=False):
             continue
         if path in SELECTION_TOOLING or path == INTEGRATION_SKILL:
             selection_tooling = True
+        elif path == "apps/website/data/releases.json":
+            # The native upgrade reader embeds this catalog in its contract test.
+            targets.add(("hiroute-host-runtime", "lib"))
+            reasons.append("release catalog upgrade reader: " + path)
         elif path in WEBSITE_TOOLING or path.startswith(WEBSITE_PREFIXES):
             # Static site and OSS/release publication have their own Node/browser
             # workflow. They do not change Desktop or backend product behavior.
