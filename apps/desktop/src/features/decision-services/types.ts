@@ -35,7 +35,7 @@ export function newBranch(name: string, condition = ''): RouteBranch {
 export function branchRouting(service?: DecisionService): BranchRouting {
   const branches = [newBranch('分支 1'), newBranch('分支 2')];
   return { classifier: { kind: 'decision_service', service: service ?? emptyService() }, branches,
-    default_branch_id: branches[1].id, judgment: structuredClone(defaultJudgment), reselect_on_user_message: false };
+    default_branch_id: branches[1].id, judgment: structuredClone(defaultJudgment), reselect_on_user_message: true };
 }
 export const providers = [
   { id: 'bailian-token-plan', name: '百炼 Token Plan', endpoint: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone', model: 'decision-model-preview' },
