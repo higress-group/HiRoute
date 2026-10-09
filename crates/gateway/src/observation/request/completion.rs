@@ -68,7 +68,7 @@ impl RequestObservation {
         &self,
         disposition: &PublishedDisposition,
     ) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         {
@@ -87,7 +87,7 @@ impl RequestObservation {
         failure: &AttemptFailureFacts,
         disposition: Disposition,
     ) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let error_class = failure
@@ -109,7 +109,7 @@ impl RequestObservation {
         observation: &CompletedAttemptObservation,
         stable_binding_id: Option<&str>,
     ) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let promoted = stable_binding_id.and_then(|stable_binding_id| {
@@ -462,7 +462,21 @@ impl RequestObservation {
         });
         let timed_out = transport.and_then(|facts| facts.timeout).is_some();
         let commit = commit_state(observation);
+        let (prepared_wire, provider_error, upstream_request_token) = {
+            let mut state = self.lock_state();
+            (
+                state.prepared_wire.take(),
+                state.provider_error,
+                state
+                    .response_wire
+                    .as_ref()
+                    .and_then(|wire| wire.upstream_request_token),
+            )
+        };
         if let Some(outcome) = attempt_outcome(outcome, timed_out) {
+            let retain_controls = outcome != hiroute_diagnostics::event::AttemptOutcome::Completed
+                || self.inner.context.handle().level()
+                    == Some(hiroute_diagnostics::DiagnosticLevel::Debug);
             self.emit_diagnostic(DiagnosticEvent::AttemptEnd(AttemptEnd {
                 reasoning_fields_removed: attempt.reasoning_fields_removed,
                 attempt_token: self.attempt_token(&attempt.attempt_id),
@@ -482,7 +496,16 @@ impl RequestObservation {
                         }
                     },
                 ),
-                provider_error: self.lock_state().provider_error,
+                provider_error,
+                native_model: prepared_wire
+                    .as_ref()
+                    .filter(|_| retain_controls)
+                    .and_then(|wire| wire.native_model.clone()),
+                request_reasoning: prepared_wire
+                    .as_ref()
+                    .filter(|_| retain_controls)
+                    .and_then(|wire| wire.request_reasoning.clone()),
+                upstream_request_token,
                 commits: observation.map(|value| AttemptWireCommits {
                     upstream_request: diagnostic_fence(value.commits.upstream_request),
                     downstream_headers: diagnostic_fence(value.commits.downstream_headers),

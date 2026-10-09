@@ -113,6 +113,8 @@ pub(super) struct RequestObservationState {
     pub(super) tool_id_projection: Option<ToolIdProjection>,
     pub(super) response_part_ordinal: u32,
     pub(super) provider_error: Option<hiroute_diagnostics::event::WireProviderError>,
+    pub(super) prepared_wire: Option<hiroute_diagnostics::event::UpstreamWire>,
+    pub(super) response_wire: Option<hiroute_diagnostics::event::UpstreamWire>,
 }
 
 /// Aggregate counters for one content capture cycle. Only sizes and counts are kept, so a
@@ -393,6 +395,10 @@ impl RequestObservation {
         self.inner.enabled || self.inner.agent_turn_output.get().is_some()
     }
 
+    pub(in crate::server::core_runtime::observation) fn tracks_attempts(&self) -> bool {
+        self.is_enabled() || self.inner.context.handle().level().is_some()
+    }
+
     pub(crate) fn bind_agent_turn_output(
         &self,
         store: Arc<crate::agent_turn_history::AgentTurnHistoryStore>,
@@ -449,7 +455,7 @@ impl RequestObservation {
     /// observation-only identity; generation zero records that no credential
     /// authority or credential runtime state participated.
     pub(super) fn no_credential_materialized(&self, stable_binding_id: &str, credential_ref: &str) {
-        if !self.is_enabled() || !credential_ref.starts_with("credential/none/") {
+        if !self.tracks_attempts() || !credential_ref.starts_with("credential/none/") {
             return;
         }
         self.start_attempt(stable_binding_id, credential_ref, credential_ref, 0);
@@ -461,7 +467,7 @@ impl RequestObservation {
         result: Option<&RuntimeStateEntry>,
         outcome: &str,
     ) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let fields = state_key_fields(key);
@@ -598,7 +604,7 @@ impl RequestObservation {
         frame_id: &str,
         byte_count: usize,
     ) -> Option<AttemptObservation> {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return None;
         }
         let attempt = {
@@ -643,7 +649,7 @@ impl RequestObservation {
     }
 
     pub fn finish(&self, outcome: &str) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let terminal_attempt = {
@@ -723,6 +729,7 @@ impl RequestObservation {
         state.published_disposition = None;
         state.accepted_wire_usage_recorded = false;
         state.provider_error = None;
+        state.response_wire = None;
         let candidate =
             state
                 .candidates

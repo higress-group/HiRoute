@@ -107,7 +107,7 @@ impl ProviderRuntimePort for ObservedProductionProvider {
             .starts_with("credential/none/")
             .then(|| context.credential_ref().as_str().to_owned());
         let (request, inner) = self.inner.materialize_attempt(logical, context).await?;
-        let observation = active_request().filter(RequestObservation::is_enabled);
+        let observation = active_request().filter(RequestObservation::tracks_attempts);
         if let (Some(observation), Some(credential_ref)) = (&observation, no_credential_ref) {
             observation.no_credential_materialized(&stable_binding_id, &credential_ref);
         }

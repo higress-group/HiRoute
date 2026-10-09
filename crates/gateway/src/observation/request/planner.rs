@@ -11,7 +11,7 @@ use super::{CandidateObservation, RequestObservation};
 
 impl RequestObservation {
     pub fn record_planner(&self, input: &PlannerInputV1, output: &PlannerOutputV1) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let plan_id = match &output.identity {

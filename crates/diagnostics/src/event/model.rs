@@ -71,6 +71,12 @@ pub struct AttemptEnd {
     pub provider_error: Option<WireProviderError>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commits: Option<AttemptWireCommits>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_model: Option<NativeModelId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_reasoning: Option<WireRequestReasoning>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_request_token: Option<CorrelationToken>,
 }
 
 /// Counts only; never records history, signatures or provider error bodies.

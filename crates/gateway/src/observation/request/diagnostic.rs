@@ -41,6 +41,7 @@ impl RequestObservation {
         if let Some(error) = event.provider_error {
             self.lock_state().provider_error = Some(error);
         }
+        self.lock_state().response_wire = Some(event.clone());
         self.wire_diagnostic(event);
     }
 
@@ -59,6 +60,16 @@ impl RequestObservation {
         event.phase = UpstreamWirePhase::Failure;
         event.http_status = http_status;
         event.provider_error = Some(error);
+        let state = self.lock_state();
+        if let Some(prepared) = &state.prepared_wire {
+            event.native_model = prepared.native_model.clone();
+            event.request_reasoning = prepared.request_reasoning.clone();
+        }
+        event.upstream_request_token = state
+            .response_wire
+            .as_ref()
+            .and_then(|wire| wire.upstream_request_token);
+        drop(state);
         self.wire_diagnostic(event);
     }
 
@@ -67,14 +78,10 @@ impl RequestObservation {
         headers: &http::HeaderMap,
         serialized_template: &[u8],
     ) {
-        if self.is_enabled()
-            && self.inner.context.handle().level()
-                == Some(hiroute_diagnostics::DiagnosticLevel::Debug)
-        {
-            self.wire_diagnostic(super::provider::wire_diagnostic::request(
-                headers,
-                serialized_template,
-            ));
+        if self.inner.context.handle().level().is_some() {
+            let event = super::provider::wire_diagnostic::request(headers, serialized_template);
+            self.lock_state().prepared_wire = Some(event.clone());
+            self.wire_diagnostic(event);
         }
     }
 }

@@ -135,6 +135,14 @@ fn request_with_diagnostics(
     policy: OtelContentPolicy,
     diagnostics: DiagnosticsPort,
 ) -> RequestObservation {
+    request_with_capture(policy, diagnostics, true)
+}
+
+fn request_with_capture(
+    policy: OtelContentPolicy,
+    diagnostics: DiagnosticsPort,
+    enabled: bool,
+) -> RequestObservation {
     let gateway = GatewayObservation::with_sinks_and_policy(
         true,
         64 * 1024,
@@ -143,7 +151,7 @@ fn request_with_diagnostics(
     );
     RequestObservation::new(
         super::request::RequestObservationCapture {
-            enabled: true,
+            enabled,
             content: true,
         },
         gateway.key,
@@ -173,6 +181,70 @@ fn request_with_diagnostics(
         },
         diagnostics,
     )
+}
+
+#[test]
+fn info_failure_keeps_actual_reasoning_and_safe_provider_attribution_without_content_capture() {
+    use hiroute_diagnostics::{
+        DiagnosticLevel,
+        event::{ProcessRole, WireProviderError},
+        record::Component,
+        runtime::{DiagnosticRuntime, RuntimeConfig},
+    };
+    for enabled in [true, false] {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-info-wire-{}-{enabled}-{}",
+            std::process::id(),
+            super::unix_nanos()
+        ));
+        let runtime = DiagnosticRuntime::start(RuntimeConfig {
+            root: root.clone(),
+            role: ProcessRole::Daemon,
+            component: Component::Gateway,
+            parent_session_id: None,
+            level_override: Some(DiagnosticLevel::Info),
+        });
+        let request = request_with_capture(OtelContentPolicy::Disabled, runtime.port(), enabled);
+        assert_eq!(request.captures_content(), enabled);
+        assert_eq!(request.is_enabled(), enabled);
+        request.no_credential_materialized("binding:test", "credential/none/test");
+        request.prepared_request_diagnostic(&http::HeaderMap::new(), br#"{"model":"qwen3.6-flash","reasoning":{"effort":"high"},"thinking":{"type":"enabled","budget_tokens":81920},"input":"private-prompt-marker"}"#);
+        let mut headers = http::HeaderMap::new();
+        headers.insert("x-request-id", "private-provider-id".parse().unwrap());
+        request.response_head_diagnostic(&headers, 400);
+        request.provider_failure_diagnostic(Some(400), WireProviderError::ThinkingBudgetRejected);
+        request.disposition_published(&PublishedDisposition {
+            request_id: RequestId(1),
+            attempt_id: AttemptId(1),
+            generation: AttemptGeneration(1),
+            disposition: Disposition::Continue,
+        });
+        request.finish("failed");
+        runtime.shutdown();
+        let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
+        assert!(
+            log.contains("thinking_budget_rejected") && log.contains("qwen3.6-flash"),
+            "{log}"
+        );
+        assert!(
+            log.contains("\"responses_effort\":\"high\"")
+                && log.contains("\"messages_budget_tokens\":81920"),
+            "{log}"
+        );
+        assert!(
+            log.contains("upstream_request_token") && log.contains("\"outcome\":\"failed\""),
+            "{log}"
+        );
+        assert!(
+            !log.contains("private-prompt-marker") && !log.contains("private-provider-id"),
+            "{log}"
+        );
+        assert!(
+            !log.contains("\"phase\":\"request\"") && !log.contains("\"phase\":\"response\""),
+            "{log}"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 /// Drives the real observation branches that production runs: candidate staging, the
