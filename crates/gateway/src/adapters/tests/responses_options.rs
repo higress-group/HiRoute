@@ -190,7 +190,7 @@ fn pi_options_survive_externalized_history_and_attempt_replay() {
             .unwrap()
             .as_nanos()
     ));
-    let manager = ReplayManager::new(ReplayConfig {
+    let manager = ReplayManager::open(ReplayConfig {
         root: root.clone(),
         memory_threshold_bytes: 128,
         record_bytes: 31,
