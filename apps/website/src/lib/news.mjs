@@ -9,12 +9,13 @@ const seen = new Set();
 for (const post of posts) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(post.slug) || seen.has(post.slug)) throw Error('invalid or duplicate news slug');
   seen.add(post.slug);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(post.date)) throw Error('invalid news date');
+  if (post.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(post.date)) throw Error('invalid news date');
   for (const language of ['zh', 'en']) {
     if (!post.title[language] || !post.description[language] || !/^[A-Za-z0-9.-]+\.md$/.test(post.files[language])) throw Error('incomplete news translation');
   }
 }
-posts.sort((a, b) => b.date.localeCompare(a.date) || a.slug.localeCompare(b.slug));
+// Undated backfills follow dated news and do not replace the latest homepage article.
+posts.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.slug.localeCompare(b.slug));
 export const newsRoute = (slug, language) => `${language === 'en' ? '/en' : ''}/news/${slug ? slug + '/' : ''}`;
 
 export function articleLink(href) {

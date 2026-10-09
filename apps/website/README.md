@@ -39,6 +39,8 @@ The repository-root `news/index.json` indexes bilingual articles in `news/`.
 Both GitHub and the website use those same Markdown sources. Add an entry with a
 unique slug, date, title, description, and file for each language; the article lists,
 language links and newest-article homepage entry follow the index automatically.
+For an older introduction with no recorded publication date, omit `date`; it
+appears after dated articles and leaves the latest-article homepage entry intact.
 An optional localized `shortTitle` keeps the homepage link concise; without one,
 it uses the full article title. Public article URLs remain under `/news/`.
 Article images live in `news/assets/` and are copied to ignored `public/news-assets/`

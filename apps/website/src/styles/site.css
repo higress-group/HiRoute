@@ -484,10 +484,10 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .hero-article:hover{border-color:#aeb8e8;background:#eef0fb}
 .hero-article-label{flex:none;padding:3px 7px;border-radius:4px;background:#e8ecfc;color:#4255b8;font-size:11px;font-weight:600}
 .hero-article-copy{min-width:0;text-wrap:pretty}.hero-article-arrow{flex:none;margin-left:auto}
-.news-shell{max-width:1024px;padding-top:52px;padding-bottom:80px}.news-shell h1{font-size:clamp(28px,4vw,44px);line-height:1.3;letter-spacing:-.025em}
+.news-shell{max-width:1024px;padding-top:52px;padding-bottom:80px}.news-shell h1{font-size:clamp(28px,4vw,44px);line-height:1.3;letter-spacing:-.025em;text-wrap:balance}
 .news-article{max-width:860px;margin:24px auto}.news-article header{margin-bottom:32px}.news-shell time{font-size:14px;color:#606a7d}.news-prose{font-size:17px;line-height:1.85;overflow-wrap:anywhere}
 .news-prose h2{font-size:27px;line-height:1.4;margin:48px 0 18px}.news-prose p,.news-prose ul,.news-prose ol{margin:20px 0}.news-prose ul,.news-prose ol{padding-left:26px}.news-prose li{margin:8px 0}
-.news-prose img{display:block;max-width:100%;height:auto;border-radius:14px;margin:30px auto}.news-prose a{color:#4055ce;text-decoration:underline;text-underline-offset:3px}
+.news-prose img{display:block;width:100%;max-width:100%;height:auto;border-radius:14px;margin:30px auto}.news-prose a{color:#4055ce;text-decoration:underline;text-underline-offset:3px}
 .news-prose table{display:block;overflow-x:auto;border-collapse:collapse;width:100%;font-size:14px;line-height:1.6;margin:28px 0}.news-prose th,.news-prose td{border:1px solid #dce1eb;padding:12px;min-width:100px;text-align:left}.news-prose th{background:#eef1f8}
 .news-prose pre{overflow-x:auto;background:#172034;color:#e6edf8;padding:20px;border-radius:12px;font-size:14px;line-height:1.65}.news-prose code{font-size:.9em}.news-list{display:grid;gap:24px;margin:36px 0}.news-card{border:1px solid #dce1eb;border-radius:18px;padding:28px;background:white}.news-card h2{font-size:25px;line-height:1.4}.news-card p{line-height:1.75;color:#535d72}
 @media(max-width:700px){.news-shell{padding-top:32px}.news-prose{font-size:16px}.news-card{padding:20px}.news-prose h2{font-size:23px}.news-prose th,.news-prose td{padding:8px}}

@@ -147,3 +147,55 @@ those responsibilities rather than prescribing internal process or crate boundar
 The article describes the Higress engineering lineage separately from HiRoute's Rust
 implementation. The existing product overview remains in the introduction; the
 historical prompt file also retains an earlier, unexecuted redraw brief.
+
+## Open-source introduction
+
+The [Chinese](hiroute-open-source.zh-CN.md) and [English](hiroute-open-source.en.md)
+introduction preserve the reviewed launch article's six chapters. It is an undated
+backfill, rather than a new launch announcement replacing the homepage case study.
+
+- The new [Chinese routing overview](assets/launch-product-routing-zh.png) and
+  [local architecture](assets/launch-local-architecture-zh.png) are explanatory
+  image-generation illustrations from the reviewed launch draft. The matching
+  [English overview](assets/launch-product-routing-en.svg) and
+  [architecture](assets/launch-local-architecture-en.svg) are editable SVGs with
+  the same independent routing layers, local boundary and call directions.
+  Decision services are external; CPA connects subscriptions. Neither diagram
+  depicts an embedded Higress/Envoy dependency.
+- The [ecosystem figure](assets/launch-agent-ecosystem.png) comes from the
+  user-supplied AGNTCon + MCPCon China keynote. Its original labels are English,
+  so both article versions use the same image. The ecosystem is background
+  context, not a claim that HiRoute integrates every depicted project.
+- Context continuity has [Chinese](assets/launch-context-continuity-zh.svg) and
+  [English](assets/launch-context-continuity-en.svg) vector versions. A rebuilt
+  complete prefix differs even if the same model continues; an unchanged common
+  prefix may remain reusable. New user requests are reassessed, and different
+  models do not share KV Cache. These are mechanism illustrations.
+- The new native stage-performance captures
+  ([Chinese](assets/launch-stage-competence-zh.png),
+  [English](assets/launch-stage-competence-en.png)) reuse the current homepage's
+  exact localized captures. They show constructed documentation data for Qwen
+  Flash and Qwen Max, not new benchmark measurements; see the
+  [original capture provenance](../decision-extensions/assets/README.md).
+- Research cost, unattended handoffs and historical HTTPX observation reuse the
+  existing case study's localized assets and original evidence. Their numerical
+  values, stage counts and unrated final stage remain unchanged.
+
+The three setup steps use actual native macOS product captures, with matching
+language for each article:
+
+| Step | Chinese | English |
+| --- | --- | --- |
+| Add models | [Capture](assets/launch-model-connections-zh.png) | [Capture](assets/launch-model-connections-en.png) |
+| Smart saving | [Capture](assets/launch-smart-saving-zh.png) | [Capture](assets/launch-smart-saving-en.png) |
+| Agent connection | [Capture](assets/launch-agent-connections-zh.png) | [Capture](assets/launch-agent-connections-en.png) |
+
+The Chinese smart-saving capture was made on 2026-10-08; the other setup captures
+were made on 2026-10-09. Both smart-saving views show an unsaved Qwen 3.8 Flash
+economy group and Qwen 3.8 Max primary group. No plan was saved, enabled or published
+for the captures. Agent views show the connection controls, without changing agent
+configuration. The English interface was selected through the product's language
+setting, then restored to its original setting. Native JPEG captures were encoded
+as PNG with the decoded pixels and dimensions verified unchanged. Product text
+was not translated by retouching screenshots. These setup pictures illustrate the
+real configuration flow; they are not inference or acceptance evidence.
