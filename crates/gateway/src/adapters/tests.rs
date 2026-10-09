@@ -163,6 +163,63 @@ fn malformed_tool_arguments_above_inline_limit_replay_exactly() {
 }
 
 #[test]
+fn messages_direct_tool_caller_preserves_native_history_and_portable_tool_pairing() {
+    let mut body = json!({
+        "model": "alias", "max_tokens": 16, "stream": true,
+        "messages": [
+            {"role":"user","content":"Use return_ok with value OK."},
+            {"role":"assistant","content":[{
+                "type":"tool_use","id":"toolu_fixture","name":"return_ok",
+                "input":{"value":"OK"},"caller":{"type":"direct"}
+            }]},
+            {"role":"user","content":[{
+                "type":"tool_result","tool_use_id":"toolu_fixture","content":"OK"
+            }]}
+        ],
+        "tools":[{"name":"return_ok","input_schema":{"type":"object"}}]
+    });
+    let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
+    assert!(!request.native_only);
+    let native = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Messages,
+        IngressProtocol::Messages,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let projected = project_candidate_request(&request, &native).unwrap();
+    assert_eq!(projected.body["messages"], body["messages"]);
+    assert_eq!(projected.body["stream"], true);
+    let portable = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Messages,
+        IngressProtocol::Responses,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let projected = project_candidate_request(&request, &portable).unwrap();
+    assert_eq!(projected.body["input"][1]["type"], "function_call");
+    assert_eq!(projected.body["input"][2]["type"], "function_call_output");
+    assert_eq!(
+        projected.body["input"][1]["call_id"],
+        projected.body["input"][2]["call_id"]
+    );
+    assert_eq!(projected.body["input"][2]["output"], "OK");
+
+    // A direct caller adds no execution authority. Programmatic execution and unknown
+    // fields must not be admitted by widening the surrounding tool-field allowlist.
+    for caller in [
+        json!(null),
+        json!("direct"),
+        json!({}),
+        json!({"type":"future"}),
+        json!({"type":"direct","tool_id":"unexpected"}),
+        json!({"type":"code_execution_20260120","tool_id":"srvtoolu_fixture"}),
+    ] {
+        body["messages"][1]["content"][0]["caller"] = caller;
+        assert!(decode_ingress_request(IngressProtocol::Messages, &body).is_err());
+    }
+}
+
+#[test]
 fn messages_ingress_accepts_claude_compaction_after_tool_roundtrip() {
     let body = json!({
         "model": "alias",
