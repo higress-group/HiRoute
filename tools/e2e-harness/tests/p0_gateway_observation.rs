@@ -18,6 +18,108 @@ const ACCEPTED_STREAM_TEXT: &[u8] = b"event: response.output_text.delta\ndata: {
 const ACCEPTED_STREAM_COMPLETED: &[u8] = b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"observation-stream\",\"model\":\"native-observed\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"observation-message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"accepted-stream-22008\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":13,\"output_tokens\":5,\"total_tokens\":18,\"input_tokens_details\":{\"cached_tokens\":4},\"output_tokens_details\":{\"reasoning_tokens\":3}}}}\n\n";
 
 #[test]
+fn production_info_failure_logs_actual_wire_and_body_relay_without_content_capture() {
+    let rejected = NativeProvider::start(vec![ProviderReply::CompleteWithRequestId {
+        status: 400,
+        request_id: "private-upstream-request-id",
+        body: br#"{"error":{"message":"<400> InternalError.Algo.InvalidParameter: The thinking_budget parameter must be a positive integer and not greater than 81920","type":"invalid_request_error"}}"#,
+    }]);
+    let accepted = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: ACCEPTED_BODY,
+    }]);
+    let fixture = RuntimeFixture::launch_with_info_diagnostics(&[&rejected, &accepted], 2);
+    assert!(fixture.observation_root.is_none());
+    let response = fixture.request_body(
+        br#"{"model":"runtime-model","input":"private-input-marker","stream":false}"#,
+    );
+    assert_eq!(response.status, 200);
+    assert_eq!((rejected.calls(), accepted.calls()), (1, 1));
+    assert!(String::from_utf8_lossy(&response.body).contains("accepted-response-22008"));
+    let path = fixture
+        .diagnostics_root
+        .as_ref()
+        .unwrap()
+        .join("daemon/current.jsonl");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let (log, records) = loop {
+        let log = fs::read_to_string(&path).unwrap_or_default();
+        let records = log
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        if records.iter().any(|record| {
+            record
+                .pointer("/event/request_end/outcome")
+                .and_then(Value::as_str)
+                == Some("completed")
+        }) {
+            break (log, records);
+        }
+        assert!(Instant::now() < deadline, "missing request terminal: {log}");
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert!(
+        records.iter().any(|record| {
+            record
+                .pointer("/event/level_applied/level")
+                .and_then(Value::as_str)
+                == Some("info")
+        }),
+        "{log}"
+    );
+    let failed = records
+        .iter()
+        .find_map(|record| {
+            let event = record.pointer("/event/attempt_end")?;
+            (event["outcome"] == "failed").then_some(event)
+        })
+        .expect("failed attempt must remain visible at Info");
+    assert_eq!(failed["native_model"], "runtime-native-model-1", "{log}");
+    assert_eq!(
+        failed["request_reasoning"]["responses_effort"], "low",
+        "{log}"
+    );
+    assert_eq!(failed["http_status"], 400, "{log}");
+    assert_eq!(failed["http_protocol"], "http1", "{log}");
+    assert_eq!(
+        failed["provider_error"], "thinking_budget_rejected",
+        "{log}"
+    );
+    assert!(failed["upstream_request_token"].as_str().is_some(), "{log}");
+    assert_eq!(failed["commits"]["downstream_headers"], "clear", "{log}");
+    assert_eq!(failed["commits"]["downstream_body"], "clear", "{log}");
+    let next = records
+        .iter()
+        .find_map(|record| record.pointer("/event/fallback"))
+        .expect("fallback must identify its next target");
+    assert_eq!(next["next_attempt_index"], 2, "{log}");
+    assert!(next["next_binding_token"].as_str().is_some(), "{log}");
+    for private in [
+        "private-input-marker",
+        "private-upstream-request-id",
+        "provider-secret-1",
+        "<400> InternalError",
+        "accepted-response-22008",
+    ] {
+        assert!(
+            !log.contains(private),
+            "private content reached Info diagnostics"
+        );
+    }
+    assert!(
+        !records.iter().any(|record| {
+            record
+                .pointer("/event/upstream_wire/phase")
+                .and_then(Value::as_str)
+                == Some("request")
+        }),
+        "Info failures must not enable successful request detail: {log}"
+    );
+}
+
+#[test]
 fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_content() {
     hiroute_e2e::p0_execution_receipt!(
         "observation.accepted_content",

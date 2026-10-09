@@ -429,7 +429,7 @@ fn streaming_failure_after_delivered_body_stays_failed_and_retains_usage() {
         status: 200,
         body: RESPONSES_STREAM_OK,
     }]);
-    let fixture = RuntimeFixture::launch_with_observation(
+    let fixture = RuntimeFixture::launch_classified_with_observation(
         &[&first, &fallback],
         2,
         ObservationFaults::healthy(),
@@ -471,6 +471,14 @@ fn streaming_failure_after_delivered_body_stays_failed_and_retains_usage() {
         "body delivery closes transparent relay"
     );
     let facts = wait_execution_facts(&fixture, 1);
+    assert!(
+        facts
+            .iter()
+            .any(|row| row.pointer("/fact/kind").and_then(|v| v.as_str())
+                == Some("agent_turn_finished")
+                && row.pointer("/fact/status").and_then(|v| v.as_str()) == Some("failed")),
+        "a delivered model failure must not complete the Agent turn: {facts:?}"
+    );
     for (kind, outcome) in [
         ("request_finished", "failed"),
         ("attempt_finished", "rejected"),

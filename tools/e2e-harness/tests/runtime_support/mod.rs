@@ -44,6 +44,11 @@ pub enum ProviderReply {
         retry_after_secs: u64,
         body: &'static [u8],
     },
+    CompleteWithRequestId {
+        status: u16,
+        request_id: &'static str,
+        body: &'static [u8],
+    },
     DelayedComplete {
         duration: Duration,
         status: u16,
@@ -391,6 +396,19 @@ fn write_provider_reply(stream: &mut TestTlsStream, reply: ProviderReply) -> std
                 },
             );
         }
+        ProviderReply::CompleteWithRequestId {
+            status,
+            request_id,
+            body,
+        } => {
+            write!(
+                stream,
+                "HTTP/1.1 {status} Provider Response\r\nContent-Type: application/json\r\nX-Request-Id: {request_id}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )?;
+            stream.write_all(body)?;
+            stream.flush()?;
+        }
         ProviderReply::EarlyComplete { status, body } => {
             write!(
                 stream,
@@ -466,6 +484,7 @@ pub struct RuntimeFixture {
     pub address: SocketAddr,
     pub replay_root: PathBuf,
     pub observation_root: Option<PathBuf>,
+    pub diagnostics_root: Option<PathBuf>,
     runtime_state_control: Option<(SocketAddr, String)>,
     _serial: std::sync::MutexGuard<'static, ()>,
     _directory: tempfile::TempDir,
@@ -479,6 +498,7 @@ struct RuntimeLaunchOptions {
     replay_root_mode: ReplayRootMode,
     orphan_ttl_ms: u64,
     observation: Option<ObservationFaults>,
+    diagnostic_level: Option<&'static str>,
     test_control: bool,
     classified_route: bool,
     rest_classifier: bool,
@@ -527,6 +547,7 @@ impl Default for RuntimeLaunchOptions {
             replay_root_mode: ReplayRootMode::Normal,
             orphan_ttl_ms: 24 * 60 * 60 * 1_000,
             observation: None,
+            diagnostic_level: None,
             test_control: false,
             classified_route: false,
             rest_classifier: false,
@@ -685,6 +706,41 @@ impl RuntimeFixture {
             None,
             RuntimeLaunchOptions {
                 classified_route: true,
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
+    pub fn launch_classified_with_observation(
+        providers: &[&NativeProvider],
+        max_attempts: u32,
+        faults: ObservationFaults,
+    ) -> Self {
+        assert_eq!(providers.len(), 2);
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                classified_route: true,
+                observation: Some(faults),
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
+    pub fn launch_with_info_diagnostics(providers: &[&NativeProvider], max_attempts: u32) -> Self {
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                diagnostic_level: Some("info"),
+                reasoning_choices: true,
                 ..RuntimeLaunchOptions::default()
             },
         )
@@ -1112,6 +1168,9 @@ impl RuntimeFixture {
         let observation_root = options
             .observation
             .map(|_| directory.path().join("observation"));
+        let diagnostics_root = options
+            .diagnostic_level
+            .map(|_| directory.path().join("diagnostics"));
         if let Some(root) = &observation_root {
             std::fs::create_dir(root).unwrap();
         }
@@ -1197,6 +1256,7 @@ impl RuntimeFixture {
             address,
             replay_root,
             observation_root,
+            diagnostics_root,
             runtime_state_control: control.map(|(control, _)| control),
             _serial: serial,
         }
@@ -1339,6 +1399,12 @@ impl Hirouted {
             .arg(publication)
             .arg("--credentials")
             .arg(credentials);
+        if let Some(level) = options.diagnostic_level {
+            command
+                .arg("--diagnostics-root")
+                .arg(directory.join("diagnostics"))
+                .args(["--diagnostic-level-override", level]);
+        }
         if let Some(attempt_timeout_ms) = options.attempt_timeout_ms {
             command.env(E2E_ATTEMPT_TIMEOUT_MS_ENV, attempt_timeout_ms.to_string());
         }
