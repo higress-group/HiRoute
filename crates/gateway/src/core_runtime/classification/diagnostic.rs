@@ -112,59 +112,6 @@ impl Drop for CallDiagnostic {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn info_decision_failures_keep_closed_authentication_and_endpoint_causes() {
-        let root = std::env::temp_dir().join(format!(
-            "hiroute-info-decision-{}-{}",
-            std::process::id(),
-            crate::server::core_runtime::observation::unix_nanos()
-        ));
-        let runtime = hiroute_diagnostics::runtime::DiagnosticRuntime::start(
-            hiroute_diagnostics::runtime::RuntimeConfig {
-                root: root.clone(),
-                role: hiroute_diagnostics::event::ProcessRole::Daemon,
-                component: hiroute_diagnostics::record::Component::Gateway,
-                parent_session_id: None,
-                level_override: Some(hiroute_diagnostics::DiagnosticLevel::Info),
-            },
-        );
-        for (status, failure) in [
-            (
-                StatusCode::UNAUTHORIZED,
-                CallFailure::AuthenticationRejected,
-            ),
-            (StatusCode::BAD_REQUEST, CallFailure::EndpointRejected),
-        ] {
-            let mut diagnostic = CallDiagnostic::new(runtime.port().handle().context());
-            diagnostic.prepared(
-                &HeaderMap::new(),
-                br#"{"model":"decision-model-preview","input":"private-decision-prompt"}"#,
-            );
-            diagnostic.protocol(Some(HttpProtocol::Http2));
-            diagnostic.response(&HeaderMap::new(), status);
-            diagnostic.finish(Some(failure));
-        }
-        runtime.shutdown();
-        let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
-        for expected in [
-            "authentication_rejected",
-            "endpoint_rejected",
-            "decision-model-preview",
-            "http2",
-            "decision_service",
-        ] {
-            assert!(log.contains(expected), "{expected}: {log}");
-        }
-        assert!(!log.contains("private-decision-prompt"), "{log}");
-        assert!(!log.contains("\"phase\":\"request\""), "{log}");
-        std::fs::remove_dir_all(root).unwrap();
-    }
-}
-
 pub(super) fn classifier_response_failure(status: StatusCode, body: &[u8]) -> CallFailure {
     if status == StatusCode::BAD_REQUEST
         && let Ok(value) = serde_json::from_slice::<serde_json::Value>(body)
@@ -243,5 +190,58 @@ impl CallFailure {
             Self::RateLimited => ClassifierDiagnosticError::RateLimited,
             Self::EndpointRejected => ClassifierDiagnosticError::EndpointRejected,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn info_decision_failures_keep_closed_authentication_and_endpoint_causes() {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-info-decision-{}-{}",
+            std::process::id(),
+            crate::server::core_runtime::observation::unix_nanos()
+        ));
+        let runtime = hiroute_diagnostics::runtime::DiagnosticRuntime::start(
+            hiroute_diagnostics::runtime::RuntimeConfig {
+                root: root.clone(),
+                role: hiroute_diagnostics::event::ProcessRole::Daemon,
+                component: hiroute_diagnostics::record::Component::Gateway,
+                parent_session_id: None,
+                level_override: Some(hiroute_diagnostics::DiagnosticLevel::Info),
+            },
+        );
+        for (status, failure) in [
+            (
+                StatusCode::UNAUTHORIZED,
+                CallFailure::AuthenticationRejected,
+            ),
+            (StatusCode::BAD_REQUEST, CallFailure::EndpointRejected),
+        ] {
+            let mut diagnostic = CallDiagnostic::new(runtime.port().handle().context());
+            diagnostic.prepared(
+                &HeaderMap::new(),
+                br#"{"model":"decision-model-preview","input":"private-decision-prompt"}"#,
+            );
+            diagnostic.protocol(Some(HttpProtocol::Http2));
+            diagnostic.response(&HeaderMap::new(), status);
+            diagnostic.finish(Some(failure));
+        }
+        runtime.shutdown();
+        let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
+        for expected in [
+            "authentication_rejected",
+            "endpoint_rejected",
+            "decision-model-preview",
+            "http2",
+            "decision_service",
+        ] {
+            assert!(log.contains(expected), "{expected}: {log}");
+        }
+        assert!(!log.contains("private-decision-prompt"), "{log}");
+        assert!(!log.contains("\"phase\":\"request\""), "{log}");
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

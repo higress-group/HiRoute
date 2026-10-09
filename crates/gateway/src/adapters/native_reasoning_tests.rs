@@ -147,7 +147,7 @@ fn released_toggle_profiles_render_standard_controls_without_changing_frozen_byt
 #[test]
 fn messages_explicit_budget_is_preserved_and_checked_against_output_cap() {
     for budget in [512, 1024, 2048, 4096] {
-        let mut profile = fixed_reasoning(&format!("budget-{budget}"));
+        let mut profile = fixed_reasoning(format!("budget-{budget}"));
         profile.control_kind = ReasoningControlKind::Budget;
         profile.render = NativeReasoningRender::ExactBudget {
             protocol: IngressProtocol::Messages,
