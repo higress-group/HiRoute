@@ -557,6 +557,7 @@ pub(super) async fn materialize_attempt(
             served_model_alias,
             streaming,
             native_output,
+            omit_thinking: ir.requested_reasoning.messages_omit_thinking,
             chat_tool_projection,
             chat_tool_projection_budget,
             decoder: None,

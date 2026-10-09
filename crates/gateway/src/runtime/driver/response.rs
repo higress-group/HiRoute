@@ -92,7 +92,8 @@ pub(super) fn classify_precommit(
                         state.chat_tool_projection.take(),
                         state.budget.clone(),
                     )
-                    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
+                    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+                    .with_omitted_thinking(state.omit_thinking),
                 ));
             } else {
                 state.decoder = Some(

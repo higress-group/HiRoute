@@ -191,7 +191,7 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
             request["output_config"] = json!({"format": messages_schema_format()});
         }
         if !fixed && ingress == IngressProtocol::Messages {
-            request["thinking"] = json!({"type":"adaptive"});
+            request["thinking"] = json!({"type":"adaptive","display":"omitted"});
             request["output_config"]["effort"] = json!("high");
         }
         if ingress == IngressProtocol::Messages && upstream == IngressProtocol::Responses {
@@ -199,7 +199,7 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
             request["messages"].as_array_mut().unwrap().extend([
                 json!({"role":"assistant","content":[
                     {"type":"text","text":"before"},
-                    {"type":"tool_use","id":"call_1","name":"probe","input":{"value":1}},
+                    {"type":"tool_use","id":"call_1","name":"probe","input":{"value":1},"caller":{"type":"direct"}},
                     {"type":"text","text":"after"}]}),
                 json!({"role":"user","content":[
                     {"type":"tool_result","tool_use_id":"call_1","content":"1"},
@@ -211,7 +211,7 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
             let calls = (0..4)
                 .map(|index| {
                     json!({"type":"tool_use","id":format!("call_{index}"),
-                "name":"probe","input":{"value":index}})
+                "name":"probe","input":{"value":index},"caller":{"type":"direct"}})
                 })
                 .collect::<Vec<_>>();
             let mut results = (0..4)
@@ -245,9 +245,13 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
             String::from_utf8_lossy(&response.body),
             process.stderr()
         );
+        let mut expected = expected_client_body(ingress, upstream, &alias);
+        if !fixed && ingress == IngressProtocol::Messages && upstream == ingress {
+            expected["content"][0]["thinking"] = json!("");
+        }
         assert_eq!(
             serde_json::from_slice::<Value>(&response.body).unwrap(),
-            expected_client_body(ingress, upstream, &alias),
+            expected,
             "{path}: {}",
             String::from_utf8_lossy(&response.body)
         );
@@ -264,7 +268,7 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
             request["output_config"] = json!({"format": messages_schema_format()});
         }
         if !fixed && protocol == IngressProtocol::Messages {
-            request["thinking"] = json!({"type":"adaptive"});
+            request["thinking"] = json!({"type":"adaptive","display":"omitted"});
             request["output_config"]["effort"] = json!("high");
         }
         request["stream"] = Value::Bool(true);
@@ -302,6 +306,11 @@ fn run_protocol_matrix(fixed: bool, pairs: Vec<(IngressProtocol, IngressProtocol
             Some("text/event-stream")
         );
         assert_same_protocol_stream(protocol, &alias, &response.body);
+        if protocol == IngressProtocol::Messages {
+            let text = std::str::from_utf8(&response.body).unwrap();
+            assert_eq!(text.contains("private thought"), fixed);
+            assert!(text.contains("opaque-signature"));
+        }
     }
     let invalid = single_write_request(
         address,
@@ -654,7 +663,7 @@ fn native_same_protocol_response(upstream: IngressProtocol) -> &'static [u8] {
     match upstream {
         IngressProtocol::Responses => br#"{"id":"native-provider","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"provider_extension":{"model":"nested-untouched","future":true}}"#,
         IngressProtocol::ChatCompletions => br#"{"id":"native-provider","object":"chat.completion","created":0,"model":"runtime-native","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"provider_extension":{"model":"nested-untouched","future":true}}"#,
-        IngressProtocol::Messages => br#"{"id":"native-provider","type":"message","role":"assistant","model":"runtime-native","content":[{"type":"text","text":"ok","provider_extension":{"future":true}}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1},"provider_extension":{"model":"nested-untouched"}}"#,
+        IngressProtocol::Messages => br#"{"id":"native-provider","type":"message","role":"assistant","model":"runtime-native","content":[{"type":"thinking","thinking":"private thought","signature":"opaque-signature"},{"type":"text","text":"ok","provider_extension":{"future":true}}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1},"provider_extension":{"model":"nested-untouched"}}"#,
     }
 }
 
@@ -689,6 +698,18 @@ data: {"type":"message.vendor_extension","provider_extension":{"model":"nested-u
 
 event: message_start
 data: {"type":"message_start","message":{"id":"native-stream","type":"message","role":"assistant","model":"runtime-native","content":[],"stop_reason":null,"usage":{"input_tokens":1},"provider_extension":{"future":true}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":7,"content_block":{"type":"thinking","thinking":"private thought"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":7,"delta":{"type":"thinking_delta","thinking":"private thought delta"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":7,"delta":{"type":"signature_delta","signature":"opaque-signature"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":7}
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"","provider_extension":{"future":true}}}
@@ -764,7 +785,7 @@ fn stream_terminal_partition(protocol: IngressProtocol) -> &'static [u8] {
         IngressProtocol::ChatCompletions => {
             b"data: {\"id\":\"native-stream\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"runtime-native\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}"
         }
-        IngressProtocol::Messages => b"event: content_block_stop\n",
+        IngressProtocol::Messages => b"event: message_delta\n",
     }
 }
 
@@ -772,7 +793,7 @@ fn stream_visible_marker(protocol: IngressProtocol) -> &'static [u8] {
     match protocol {
         IngressProtocol::Responses => b"response.output_text.delta",
         IngressProtocol::ChatCompletions => b"\"content\":\"ok\"",
-        IngressProtocol::Messages => b"content_block_delta",
+        IngressProtocol::Messages => b"\"text\":\"ok\"",
     }
 }
 

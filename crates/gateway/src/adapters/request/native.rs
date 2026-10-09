@@ -111,6 +111,12 @@ pub(super) fn project(
             remove_assignment(object, &field.path);
         }
         render_reasoning(object, reasoning, request.ingress_protocol)?;
+        if request.ingress_protocol == IngressProtocol::Messages {
+            normalize_messages_thinking(
+                object,
+                request.requested_reasoning.messages_omit_thinking,
+            )?;
+        }
     }
 
     // Preserve the existing Claude instruction-reminder normalization.
@@ -150,6 +156,42 @@ pub(super) fn project(
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
     Ok(body)
+}
+
+fn normalize_messages_thinking(
+    object: &mut Map<String, Value>,
+    omit_thinking: bool,
+) -> Result<(), ProtocolAdapterError> {
+    let Some(thinking) = object.get_mut("thinking").and_then(Value::as_object_mut) else {
+        return Ok(());
+    };
+    match thinking.get("type").and_then(Value::as_str) {
+        Some("enabled") => (),
+        Some("adaptive") => {
+            thinking.remove("budget_tokens");
+        }
+        None | Some("disabled") => {
+            thinking.remove("budget_tokens");
+            if thinking.contains_key("display") {
+                if !omit_thinking {
+                    return Err(ProtocolAdapterError::ClientUnrepresentable(
+                        "thinking.display cannot be preserved with the selected Plan mode".into(),
+                    ));
+                }
+                thinking.remove("display");
+            }
+        }
+        Some(_) if thinking.contains_key("display") => {
+            return Err(ProtocolAdapterError::ClientUnrepresentable(
+                "thinking.display has no mapping for the selected Plan mode".into(),
+            ));
+        }
+        Some(_) => (),
+    }
+    if thinking.is_empty() {
+        object.remove("thinking");
+    }
+    Ok(())
 }
 
 fn append_instruction_blocks(
