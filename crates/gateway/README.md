@@ -9,6 +9,12 @@ branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
 
+The standalone `hirouted` entry can attach the same typed diagnostics using
+`--diagnostics-root <private-root>` and an optional temporary
+`--diagnostic-level-override`. These diagnostics do not enable session content
+capture or execution-fact storage. At Info, failed attempts retain the safe
+actual model and reasoning controls, HTTP protocol/status and body commit state.
+
 ## Decision operation
 
 [core_runtime/classification.rs](src/core_runtime/classification.rs) owns the

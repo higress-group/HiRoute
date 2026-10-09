@@ -260,11 +260,15 @@ impl GatewayObservation {
     /// are produced, and channel loss/NACK projection stays inert until a port
     /// exists.
     pub fn with_diagnostics(self, diagnostics: DiagnosticsPort) -> Self {
+        self.set_diagnostics(diagnostics);
+        self
+    }
+
+    pub(crate) fn set_diagnostics(&self, diagnostics: DiagnosticsPort) {
         *self
             .diagnostics
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = diagnostics;
-        self
     }
     pub fn from_environment() -> Self {
         let environment = EnvironmentObservation::load();

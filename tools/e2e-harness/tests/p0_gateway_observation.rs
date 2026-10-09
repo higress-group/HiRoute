@@ -505,7 +505,7 @@ fn real_native_client_completion_before_http_close_keeps_response_and_observatio
     let reasoning = serde_json::json!({"type":"reasoning","id":"thought","status":null,
         "summary":[{"type":"summary_text","text":"fixture thought"}],"content":null});
     let reasoning_stream = [
-        serde_json::json!({"type":"response.reasoning_text.delta","output_index":0,"item_id":"thought","content_index":0,"delta":"fixture thought"}),
+        serde_json::json!({"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"thought","summary_index":0,"delta":"fixture thought"}),
         serde_json::json!({"type":"response.output_item.done","output_index":0,"item":reasoning}),
     ].into_iter().flat_map(|event| format!("data:{event}\n\n").into_bytes()).collect::<Vec<_>>();
     let text = String::from_utf8(ACCEPTED_STREAM_TEXT.to_vec())
