@@ -122,12 +122,29 @@ mod tests {
         )
         .unwrap();
         let workspace = WorkspaceId::default();
+        // This runtime starts maintenance with the real clock; synthetic epoch
+        // timestamps would race expiry while the fixture's body is being written.
+        let now_ms = super::super::delegation_tasks::current_time_ms().unwrap();
         let body = runtime
             .adapter
-            .persist_task_input(&workspace, "task-residual", "run-residual", "fixture", 10)
+            .persist_task_input(
+                &workspace,
+                "task-residual",
+                "run-residual",
+                "fixture",
+                now_ms,
+            )
             .unwrap();
-        let acceptance =
-            super::super::tests::worker_list_acceptance("task-residual", "run-residual", body, 10);
+        assert!(
+            body.original_retention_deadline_ms > now_ms as i64,
+            "residual fixture body is already expired under the runtime maintenance clock"
+        );
+        let acceptance = super::super::tests::worker_list_acceptance(
+            "task-residual",
+            "run-residual",
+            body,
+            now_ms,
+        );
         let mut run = DelegationRuntimePort::accept(runtime.adapter.as_ref(), &acceptance).unwrap();
         let daemon = LocalControlDaemon::new(ApplicationService::new(runtime.application_ports()))
             .with_released_commands_only();
