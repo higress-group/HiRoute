@@ -14,7 +14,7 @@ const body = post ? await renderNews(slug, language) : '';
     {post ? <>
       <a class="text-link" href={newsRoute('', language)}>← {en ? 'All articles' : '全部文章'}</a>
       <article class="news-article">
-        <header><time datetime={post.date}>{post.date}</time><h1>{title}</h1></header>
+        <header>{post.date && <time datetime={post.date}>{post.date}</time>}<h1>{title}</h1></header>
         <div class="news-prose" set:html={body} />
         <a class="text-link" href={`https://github.com/higress-group/HiRoute/blob/main/news/${post.files[language]}`}>{en ? 'Read the source on GitHub' : '在 GitHub 阅读原文'} ↗</a>
       </article>
@@ -22,7 +22,7 @@ const body = post ? await renderNews(slug, language) : '';
       <p class="eyebrow">{en ? 'From the HiRoute team' : '来自 HiRoute 团队'}</p>
       <h1>{en ? 'Articles' : '文章'}</h1>
       <p>{description}</p>
-      <div class="news-list">{posts.map(p => <article class="news-card"><time datetime={p.date}>{p.date}</time><h2><a href={newsRoute(p.slug, language)}>{p.title[language]}</a></h2><p>{p.description[language]}</p><a class="text-link" href={newsRoute(p.slug, language)}>{en ? 'Read the article' : '阅读全文'} →</a></article>)}</div>
+      <div class="news-list">{posts.map(p => <article class="news-card">{p.date && <time datetime={p.date}>{p.date}</time>}<h2><a href={newsRoute(p.slug, language)}>{p.title[language]}</a></h2><p>{p.description[language]}</p><a class="text-link" href={newsRoute(p.slug, language)}>{en ? 'Read the article' : '阅读全文'} →</a></article>)}</div>
     </>}
   </div>
 </SiteLayout>

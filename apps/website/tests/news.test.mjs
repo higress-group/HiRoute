@@ -28,3 +28,11 @@ test('routing case keeps numerical evidence and the public reproduction link', a
     assert.match(html, /github\.com\/higress-group\/HiRoute\/blob\/main\/experiments\//);
   }
 });
+
+test('the backfilled open-source introduction leaves dated news ahead of it', () => {
+  const introduction = posts.findIndex(post => post.slug === 'hiroute-open-source');
+  const caseStudy = posts.findIndex(post => post.slug === 'astra-qwen-smart-routing');
+  assert.ok(caseStudy >= 0 && introduction > caseStudy);
+  assert.equal(posts[introduction].date, undefined);
+  assert.ok(posts[0].date, 'the homepage latest-article entry must remain dated news');
+});

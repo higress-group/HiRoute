@@ -18,5 +18,20 @@
       "zh": "2026-10-04-astra-qwen.zh-CN.md",
       "en": "2026-10-04-astra-qwen.en.md"
     }
+  },
+  {
+    "slug": "hiroute-open-source",
+    "title": {
+      "zh": "让 AI Agent 更能干，让模型订阅更耐用：HiRoute 正式开源",
+      "en": "HiRoute Is Open Source: Help Your Agents Do More and Your Subscriptions Go Further"
+    },
+    "description": {
+      "zh": "从开源缘起、核心价值和真实实战，到三步上手与本地架构：了解 HiRoute 如何连接已有 Agent、模型与订阅，把主力能力留给关键工作。",
+      "en": "Why we built HiRoute, what it delivers, and how to get started: connect your existing agents, models, and subscriptions, and reserve your strongest models for the work that needs them."
+    },
+    "files": {
+      "zh": "hiroute-open-source.zh-CN.md",
+      "en": "hiroute-open-source.en.md"
+    }
   }
 ]
