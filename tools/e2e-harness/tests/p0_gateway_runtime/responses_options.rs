@@ -42,7 +42,7 @@ fn pi_options_reach_real_gateway_chat_upstream_with_exact_auth_and_tools() {
         assert!(wire.starts_with(b"POST /v1/chat/completions "));
         assert_eq!(
             wire_header(wire, "authorization"),
-            Some("Bearer provider-secret-1-1".into())
+            Some("Bearer provider-secret-1".into())
         );
         assert!(wire_header(wire, "x-hiroute-token").is_none());
         let offset = wire
