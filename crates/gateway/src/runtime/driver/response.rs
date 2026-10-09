@@ -190,6 +190,13 @@ pub(super) fn classify_precommit(
                 if let Some(error) = failure {
                     return classify_model_error(state, error, status);
                 }
+                if known_terminal_failure(state.semantic_terminal) {
+                    return classify_state_failure(
+                        state,
+                        RawAttemptFailure::Protocol,
+                        StatusCode::BAD_GATEWAY,
+                    );
+                }
                 if !state.semantic_seen || state.semantic_terminal.is_none() {
                     return classify_state_failure(
                         state,
@@ -232,8 +239,24 @@ pub(super) fn classify_precommit(
                     }
                 };
                 state.semantic_terminal = semantic_terminal_for_response(&decoded.response);
-                if let Some(error) = decoded.response.error.clone() {
-                    return classify_model_error(state, error, status);
+                if known_terminal_failure(state.semantic_terminal) {
+                    let mut classified = if let Some(error) = decoded.response.error.clone() {
+                        classify_model_error(state, error, status)?
+                    } else {
+                        classify_state_failure(
+                            state,
+                            RawAttemptFailure::Protocol,
+                            StatusCode::BAD_GATEWAY,
+                        )?
+                    };
+                    // Nonstream decoding consumes the decoder before rendering.
+                    // Preserve its reported usage even when no client body is built.
+                    if !decoded.response.usage.is_empty()
+                        && let Some(result) = classified.classified.as_mut()
+                    {
+                        result.facts.usage = Some(model_usage_fact(&decoded.response.usage));
+                    }
+                    return Ok(classified);
                 }
                 if !decoded
                     .events
@@ -933,6 +956,13 @@ fn finish_native_stream_on_terminal(
         .finish()
         .map_err(|_| Arc::from("native stream terminal is incomplete"))?;
     Ok(())
+}
+
+fn known_terminal_failure(terminal: Option<SemanticTerminalOutcome>) -> bool {
+    matches!(
+        terminal,
+        Some(SemanticTerminalOutcome::Failed | SemanticTerminalOutcome::Incomplete)
+    )
 }
 
 fn semantic_terminal_for_response(response: &ModelResponseIRV1) -> Option<SemanticTerminalOutcome> {

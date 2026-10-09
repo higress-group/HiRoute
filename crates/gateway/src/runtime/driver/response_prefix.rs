@@ -24,12 +24,7 @@ pub(super) fn classify_stream_prefix(
         }
         Ok(None) => {}
     }
-    if state.semantic_terminal.is_some_and(|terminal| {
-        matches!(
-            terminal,
-            SemanticTerminalOutcome::Failed | SemanticTerminalOutcome::Incomplete
-        )
-    }) {
+    if known_terminal_failure(state.semantic_terminal) {
         return classify_state_failure(state, RawAttemptFailure::Protocol, StatusCode::BAD_GATEWAY);
     }
     let empty = state.prefix.as_ref().is_none_or(|prefix| prefix.is_empty());

@@ -97,3 +97,9 @@ Streaming headers alone leave relay open; a later failed model terminal stays a 
 request and Agent turn observations even when its native bytes were delivered.
 The decision diagnostic uses closed error codes; provider text is not a public
 error message or a substitute for evidence of credential failure.
+
+Known incomplete nonstream JSON responses follow the same prebody relay boundary
+as streaming failures, for both native and converted protocols. Reported usage
+survives fallback; partial response content is not delivered. Attempt/deadline
+limits and fixed-source authority still apply, and unknown completion remains
+separate from an explicit failure.
