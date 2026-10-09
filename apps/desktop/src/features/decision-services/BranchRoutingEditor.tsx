@@ -35,13 +35,14 @@ export function BranchRoutingEditor({ routing, services, language, onChange, onO
     })}
     <section className="editor-section"><button className="btn" type="button" disabled={routing.branches.length >= 16} onClick={() => patch({ branches: [...routing.branches, newBranch(t(`分支 ${routing.branches.length + 1}`, `Branch ${routing.branches.length + 1}`))] })}><UiIcon name="plus" />{t('添加分支', 'Add branch')}</button></section>
     <section className="editor-section"><Disclosure label={t(`计划默认判断设置 · ${judgmentSummary(routing.judgment, true, language)}`, `Plan default judgment · ${judgmentSummary(routing.judgment, true, language)}`)} language={language}><JudgmentFields value={routing.judgment} onChange={judgment => patch({ judgment })} id="global" language={language} /></Disclosure></section>
-    <section className="editor-section"><Disclosure label={t('追问偏好与失败处理', 'Follow-up preference and failure handling')} language={language}>
+    <section className="editor-section"><Disclosure label={t('默认分支', 'Default branch')} language={language}>
       <label className="field"><span className="field-label">{t('默认分支', 'Default branch')}</span><select className="input" value={routing.default_branch_id} onChange={e => patch({ default_branch_id: e.target.value })}>{routing.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select><span className="field-help">{t('没有匹配的任务条件时使用。整体决策失败时也使用此分支，有主力则使用主力。', 'Used when no task condition matches. Decision failures also use this branch, preferring its primary group when present.')}</span></label>
+    </Disclosure></section>
+    <section className="editor-section"><Disclosure label={t('追问设置', 'Follow-up settings')} language={language}>
       <FollowUpPreference value={routing.reselect_on_user_message} onChange={reselect_on_user_message => patch({ reselect_on_user_message })} language={language} />
-      <p className="field-help">{t('模型不可用时依次尝试本组候选，常规组耗尽后尝试本分支主力组。主力组耗尽后停止并提示。', 'Try candidates in order on failure; exhausted regular groups continue to this branch’s primary group. Stop when primary candidates are exhausted.')}</p>
     </Disclosure></section>
   </>;
 }
 export function FollowUpPreference({ value, onChange, language }: { value: boolean; onChange(value: boolean): void; language: 'zh' | 'en' }) {
-  return <label className="field"><span><input type="checkbox" checked={!value} onChange={e => onChange(!e.target.checked)} />{language === 'zh' ? '优先保持当前模型' : 'Prefer the current model'}</span><span className="field-help">{language === 'zh' ? '每条新消息都会重新决策，此偏好只在本次选中的模型组内生效。' : 'Every new message gets a fresh decision. This preference applies only within the selected model group.'}</span></label>;
+  return <label className="field"><span><input type="checkbox" checked={value} onChange={e => onChange(e.target.checked)} />{language === 'zh' ? '追问时允许换模型' : 'Allow model switching on follow-up'}</span><span className="field-help">{language === 'zh' ? '关闭后，追问优先沿用当前模型；模型不可用时仍会自动切换。' : 'When off, follow-ups prefer the current model; unavailable models still trigger automatic switching.'}</span></label>;
 }
