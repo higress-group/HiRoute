@@ -448,8 +448,8 @@ mod tests {
         assert_eq!(metadata.provider_records.len(), 105);
         assert_eq!(metadata.model_records.len(), 769);
         assert_eq!(metadata.inference_rules.len(), 190);
-        assert_eq!(metadata.evidence_sources.len(), 178);
-        assert_eq!(metadata.endpoint_bindings.len(), 101);
+        assert_eq!(metadata.evidence_sources.len(), 184);
+        assert_eq!(metadata.endpoint_bindings.len(), 103);
         let token_plan_team = metadata
             .access_products
             .iter()
