@@ -329,6 +329,28 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(result["native_required"])
         self.assertIn(["python3", "scripts/test-contract-convergence.py"], result["commands"])
 
+    def test_release_catalog_selects_upgrade_reader(self):
+        reader = ["cargo", "test", "--locked", "-p", "hiroute-host-runtime",
+                  "--all-features", "--lib"]
+        catalog = "apps/website/data/releases.json"
+        for paths in ([catalog], [catalog, "apps/website/src/pages/index.astro"],
+                      [catalog, "crates/daemon/src/lib.rs"]):
+            with self.subTest(paths=paths):
+                result = plan.select(paths)
+                self.assertEqual(result["mode"], "affected")
+                self.assertTrue(result["rust"])
+                self.assertFalse(result["frontend"])
+                self.assertFalse(result["native_required"])
+                self.assertEqual(result["commands"].count(reader), 1)
+                self.assertIn(["cargo", "clippy", "--locked", "-p", "hiroute-host-runtime",
+                               "--all-targets", "--all-features", "--", "-D", "warnings"],
+                              result["commands"])
+        # The full workspace already includes this library; do not run it twice.
+        full = plan.select([catalog], full=True)
+        self.assertNotIn(reader, full["commands"])
+        self.assertIn(["cargo", "test", "--locked", "--workspace", "--exclude",
+                       "hiroute-desktop", "--all-features"], full["commands"])
+
     def test_release_build_tooling_selects_packaging_consumers(self):
         for path in plan.RELEASE_BUILD_TOOLING:
             with self.subTest(path=path):

@@ -34,6 +34,11 @@ Changes to `gateway-core.yml`, `ci-run.py`, or `ci-shards.py` force a full plan 
 request because those files define the hosted backend execution contract. Changes only to
 their tests or documentation keep the ordinary tooling-only selection.
 
+The website release catalog (`apps/website/data/releases.json`) also selects the
+`hiroute-host-runtime` library tests and package Clippy in backend CI. The native
+upgrade reader consumes this data, so website validation alone cannot cover a new
+release. Other website-only edits retain their dedicated workflow.
+
 The toolchain comes from `rust-toolchain.toml`. Cargo sources are cached, not
 `target/`; shards do not exchange compiled binaries or claim another runner's build
 evidence. The shared Rust setup exports `CARGO_NET_GIT_FETCH_WITH_CLI=true` for

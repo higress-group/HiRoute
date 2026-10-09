@@ -283,21 +283,50 @@ mod tests {
     fn current_website_catalog_is_the_upgrade_reader_contract() {
         let bytes = include_bytes!("../../../apps/website/data/releases.json");
         let catalog = WebsiteReleasesV2::parse(bytes).unwrap();
-        let update = catalog.desktop_update("0.0.1", "arm64").unwrap().unwrap();
-        assert!(
-            update
-                .download_url()
-                .starts_with("https://hiroute.ai/releases/0.1.0/HiRoute-")
-        );
-        assert!(catalog.desktop_update("0.1.0", "arm64").unwrap().is_none());
-        assert!(catalog.desktop_update("99.0.0", "arm64").unwrap().is_none());
+        let original: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        for architecture in ["arm64", "x86_64"] {
+            let update = catalog
+                .desktop_update("0.0.1", architecture)
+                .unwrap()
+                .unwrap();
+            let release = original["releases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|r| r["version"] == update.version && r["channel"] == "stable")
+                .unwrap();
+            let artifact = release["artifacts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["kind"] == "desktop" && a["architecture"] == architecture)
+                .unwrap();
+            assert_eq!(update.filename, artifact["filename"].as_str().unwrap());
+            assert_eq!(update.sha256, artifact["sha256"].as_str().unwrap());
+            assert_eq!(update.size, artifact["size"].as_u64().unwrap());
+            assert_eq!(update.architecture, architecture);
+            assert_eq!(
+                update.download_url(),
+                format!(
+                    "https://hiroute.ai/releases/{}/{}",
+                    release["version"].as_str().unwrap(),
+                    artifact["filename"].as_str().unwrap()
+                )
+            );
+            assert!(update.revision_prefix().is_ok());
+            assert!(
+                catalog
+                    .desktop_update(&update.version, architecture)
+                    .unwrap()
+                    .is_none()
+            );
+        }
         assert!(
             catalog
                 .desktop_update("0.0.1", "riscv64")
                 .unwrap()
                 .is_none()
         );
-        let original: serde_json::Value = serde_json::from_slice(bytes).unwrap();
         for (field, bad) in [
             ("filename", "../other.dmg"),
             ("sha256", "unverified"),
@@ -305,7 +334,14 @@ mod tests {
             ("distribution", "unsigned"),
         ] {
             let mut broken = original.clone();
-            broken["releases"][0]["artifacts"][0][field] = bad.into();
+            let desktop = broken["releases"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .flat_map(|r| r["artifacts"].as_array_mut().unwrap())
+                .find(|a| a["kind"] == "desktop")
+                .unwrap();
+            desktop[field] = bad.into();
             assert!(
                 WebsiteReleasesV2::parse(&serde_json::to_vec(&broken).unwrap()).is_err(),
                 "{field}"
@@ -314,5 +350,51 @@ mod tests {
         let mut broken = original;
         broken["download_url"] = "https://other.invalid".into();
         assert!(WebsiteReleasesV2::parse(&serde_json::to_vec(&broken).unwrap()).is_err());
+    }
+
+    #[test]
+    fn update_selection_uses_latest_stable_version_for_each_architecture() {
+        let release = |version: &str, channel: &str, architecture: &str| {
+            serde_json::json!({
+                "version": version, "channel": channel, "published_at": "2026-10-09",
+                "notes": {"zh": "版本说明", "en": "Release notes"},
+                "artifacts": [{
+                    "kind": "desktop", "platform": "macOS", "architecture": architecture,
+                    "format": "dmg", "minimum_os": "15.0", "distribution": "self-signed",
+                    "filename": format!("HiRoute-{version}-0123456789ab-macos-{architecture}-trial.dmg"),
+                    "sha256": "a".repeat(64), "size": 1024
+                }]
+            })
+        };
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema": "hiroute.website.releases/v2",
+            "releases": [
+                release("0.10.0", "stable", "arm64"),
+                release("1.0.0-rc.1", "preview", "arm64"),
+                release("0.11.0", "stable", "x86_64"),
+                release("0.2.0", "stable", "arm64")
+            ]
+        }))
+        .unwrap();
+        let catalog = WebsiteReleasesV2::parse(&bytes).unwrap();
+        for (architecture, expected) in [("arm64", "0.10.0"), ("x86_64", "0.11.0")] {
+            let update = catalog
+                .desktop_update("0.1.0", architecture)
+                .unwrap()
+                .unwrap();
+            assert_eq!(update.version, expected);
+            assert!(
+                catalog
+                    .desktop_update(expected, architecture)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                catalog
+                    .desktop_update("2.0.0", architecture)
+                    .unwrap()
+                    .is_none()
+            );
+        }
     }
 }
