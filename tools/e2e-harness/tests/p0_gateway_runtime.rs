@@ -44,6 +44,9 @@ mod accepted_history;
 #[path = "p0_gateway_runtime/nonstream_terminal.rs"]
 mod nonstream_terminal;
 
+#[path = "p0_gateway_runtime/responses_options.rs"]
+mod responses_options;
+
 #[test]
 fn fixed_requests_retry_only_same_source_keys_and_never_enter_an_allowed_plan() {
     for (status, error) in [(401, AUTH_ERROR), (403, AUTH_ERROR), (429, QUOTA_ERROR)] {

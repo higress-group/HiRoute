@@ -1,5 +1,5 @@
-//! Controls observed on the installed Codex Responses client. Preserve their exact values
-//! only on a Responses upstream; they convey no HiRoute identity or provider-state ownership.
+//! Responses client controls. Store=false and prompt_cache_key also have explicit Chat
+//! representations; native controls convey no HiRoute identity or provider-state ownership.
 use super::*;
 
 pub(super) fn annotations(
