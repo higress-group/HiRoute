@@ -505,6 +505,7 @@ struct RuntimeLaunchOptions {
     decision_branch_preset: Option<bool>,
     fixed_route: bool,
     reasoning_choices: bool,
+    native_profile_targets: bool,
     isolated_fixed_grants: bool,
     attempt_timeout_ms: Option<u64>,
 }
@@ -554,6 +555,7 @@ impl Default for RuntimeLaunchOptions {
             decision_branch_preset: None,
             fixed_route: false,
             reasoning_choices: false,
+            native_profile_targets: false,
             isolated_fixed_grants: false,
             attempt_timeout_ms: None,
         }
@@ -761,6 +763,7 @@ impl RuntimeFixture {
                 classified_route: true,
                 diagnostic_level: Some("info"),
                 reasoning_choices: true,
+                native_profile_targets: true,
                 ..RuntimeLaunchOptions::default()
             },
         )
@@ -1170,6 +1173,9 @@ impl RuntimeFixture {
         }
         if options.reasoning_choices {
             publication::add_reasoning_choices(&mut publication);
+        }
+        if options.native_profile_targets {
+            publication::add_native_profile_targets(&mut publication);
         }
         if options.fixed_route {
             publication::make_first_route_fixed(&mut publication);

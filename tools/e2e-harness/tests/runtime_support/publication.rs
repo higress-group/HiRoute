@@ -282,6 +282,23 @@ pub(super) fn add_reasoning_choices(snapshot: &mut GatewayPublicationSnapshotV3)
     snapshot.validate().unwrap();
 }
 
+pub(super) fn add_native_profile_targets(snapshot: &mut GatewayPublicationSnapshotV3) {
+    // Real compute publication has a per-profile native target and derives
+    // endpoint state aliases; legacy sealed fixtures otherwise bypass that path.
+    for candidate in &mut snapshot.aliases[0].candidates {
+        for profile in &mut candidate.protocol_profiles {
+            profile.native_target = Some(hiroute_domain::GatewayNativeProfileTargetV2 {
+                operational_target: candidate.operational_target.clone(),
+                credential_destination_ref: candidate.credential_destination_ref.clone(),
+            });
+        }
+        candidate.protocol_profile_digest =
+            hiroute_domain::CanonicalDigest::of(&candidate.protocol_profiles).unwrap();
+    }
+    snapshot.payload_digest = snapshot.canonical_digest().unwrap();
+    snapshot.validate().unwrap();
+}
+
 pub(super) fn make_first_route_fixed(snapshot: &mut GatewayPublicationSnapshotV3) {
     use hiroute_gateway::server::publication::ModelRouteV2;
     let plan = &mut snapshot.aliases[0];

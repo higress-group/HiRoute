@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 use hiroute_diagnostics::runtime::DiagnosticsPort;
 
-use crate::ports::{ProbeLeaseOutcome, RuntimeStateKey};
+use crate::ports::{ProbeLeaseOutcome, RuntimeStateEntry, RuntimeStateKey};
 use hiroute_gateway_core::runtime::attempt::{
     AttemptGeneration, AttemptId, Disposition, PublishedDisposition, RequestId,
 };
@@ -1204,6 +1204,86 @@ fn mapper_and_envelope_versions_are_explicit() {
     ] {
         assert!(schema.ends_with("/v1"));
     }
+}
+
+#[test]
+fn native_alias_repeated_reads_preserve_the_staged_relay_identity() {
+    let request = request(OtelContentPolicy::Disabled);
+    let digest = hiroute_domain::CanonicalDigest::of_bytes(b"native-profile");
+    let native_alias =
+        crate::runtime::native_endpoint_state_key("binding:test", digest.as_str()).unwrap();
+    let candidate = super::request::CandidateObservation {
+        candidate_id: "candidate:test".into(),
+        stable_binding_id: "binding:test".into(),
+        declared_order: 0,
+        profile_digest: digest.to_string(),
+        provider_name: "provider:test".into(),
+        request_model: "native:test".into(),
+        upstream_protocol: "responses".into(),
+        model_configuration_id: "model:test".into(),
+        adapter_revision: "adapter:test@1".into(),
+        effective_cost_micros: None,
+        cost_class: "unknown".into(),
+        protocol_profile: None,
+        streaming: true,
+    };
+    {
+        let mut state = request.lock_state();
+        state
+            .candidates
+            .insert(native_alias.clone(), candidate.clone());
+        state
+            .candidates
+            .insert("binding:test".into(), candidate.clone());
+        state.candidates.insert(
+            "binding:other".into(),
+            super::request::CandidateObservation {
+                stable_binding_id: "binding:other".into(),
+                ..candidate
+            },
+        );
+        state.previous_attempt_id = Some("attempt:previous".into());
+        state.next_attempt_reason = Some("protocol".into());
+    }
+    let key = RuntimeStateKey::credential(&native_alias, "credential:test", "key:test", 4);
+    let active = RuntimeStateEntry::default();
+    request.runtime_state_read(&key, Some(&active), "active");
+    request.runtime_state_read(&key, Some(&active), "active");
+    // A logical-key read is the same candidate as its native state alias.
+    request.runtime_state_read(
+        &RuntimeStateKey::credential("binding:test", "credential:test", "key:test", 4),
+        Some(&active),
+        "active",
+    );
+    {
+        let state = request.lock_state();
+        let pending = state.pending_attempt.as_ref().unwrap();
+        assert_eq!(pending.stable_binding_id, "binding:test");
+        assert_eq!(
+            pending.previous_attempt_id.as_deref(),
+            Some("attempt:previous")
+        );
+        assert_eq!(pending.start_reason, "protocol");
+        assert_eq!(pending.credential_ref, "credential:test");
+        assert_eq!(pending.key_id, "key:test");
+        assert_eq!(pending.credential_generation, 4);
+        assert_eq!(state.next_attempt_ordinal, 1);
+    }
+    // Sharing a credential does not collapse a genuinely different binding.
+    request.runtime_state_read(
+        &RuntimeStateKey::credential("binding:other", "credential:test", "key:test", 4),
+        Some(&active),
+        "active",
+    );
+    assert_eq!(
+        request
+            .lock_state()
+            .pending_attempt
+            .as_ref()
+            .unwrap()
+            .stable_binding_id,
+        "binding:other"
+    );
 }
 
 #[test]

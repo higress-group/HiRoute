@@ -23,7 +23,7 @@ fn production_info_cross_group_relay_links_only_actual_attempts() {
         let rejected = NativeProvider::start(vec![ProviderReply::StreamComplete {
             status: 200,
             body: br#"event: response.failed
-data: {"type":"response.failed","response":{"id":"cross-group-failure","model":"native-observed","status":"failed","output":[],"error":{"type":"invalid_request_error","message":"<400> InternalError.Algo.InvalidParameter: The thinking_budget parameter must be a positive integer and not greater than 81920"},"usage":{"input_tokens":7,"output_tokens":2}}}
+data: {"type":"response.failed","response":{"id":"cross-group-failure","model":"native-observed","status":"failed","output":[],"error":{"code":"InvalidParameter","message":"<400> InternalError.Algo.InvalidParameter: The thinking_budget parameter must be a positive integer and not greater than 81920"},"usage":{"input_tokens":7,"output_tokens":2}}}
 
 "#,
         }]);
@@ -81,7 +81,7 @@ data: {"type":"response.completed","response":{"id":"cross-group-success","model
         assert_eq!(relays.len(), usize::from(relay_allowed), "{log}");
         if relay_allowed {
             let relay = relays[0];
-            assert_eq!(relay["reason"], "input_rejected", "{log}");
+            assert_eq!(relay["reason"], "invalid_output", "{log}");
             assert_eq!(
                 relay["from_attempt_index"], attempts[0]["attempt_index"],
                 "{log}"

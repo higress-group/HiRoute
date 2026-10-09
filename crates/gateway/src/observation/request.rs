@@ -719,10 +719,18 @@ impl RequestObservation {
         generation: u64,
     ) {
         let mut state = self.lock_state();
+        // Native endpoint state uses an alias of the logical binding. Repeated
+        // credential reads must retain the same staged attempt and relay link.
+        let logical_binding_id = state
+            .candidates
+            .get(stable_binding_id)
+            .map_or(stable_binding_id, |candidate| {
+                candidate.stable_binding_id.as_str()
+            });
         if state.current_attempt.is_some()
             || state.accepted_attempt.is_some()
             || state.pending_attempt.as_ref().is_some_and(|pending| {
-                pending.stable_binding_id == stable_binding_id && pending.key_id == key_id
+                pending.stable_binding_id == logical_binding_id && pending.key_id == key_id
             })
         {
             return;
