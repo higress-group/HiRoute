@@ -54,6 +54,7 @@ pub struct CpaStage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CpaStageKind {
+    SubscriptionMaintenance,
     NativeCredentialRead,
     ManagedCredentialRead,
     ArtifactLocate,

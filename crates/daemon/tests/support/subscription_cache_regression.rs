@@ -473,6 +473,18 @@ async fn cached_checked_candidate_does_not_hide_same_source_lineage_replacement(
     daemon.stop();
 }
 
+fn maintenance_cycle_count(root: &Path) -> usize {
+    fs::read_to_string(root.join("storage/diagnostics/daemon/current.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|record| {
+            record["event"]["cpa_stage"]["stage"] == "subscription_maintenance"
+                && record["event"]["cpa_stage"]["outcome"] == "completed"
+        })
+        .count()
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn saved_borrowed_mode_and_membership_survive_native_credential_failures() {
     let (directory, _proxy, mut daemon) = cache_fixture();
@@ -494,6 +506,7 @@ async fn saved_borrowed_mode_and_membership_survive_native_credential_failures()
     let config_path = directory.path().join("home/.codex/config.toml");
     let config = fs::read(&config_path).unwrap_or_default();
     for case in ["store", "account", "login"] {
+        let mut cycles_before_change = maintenance_cycle_count(directory.path());
         match case {
             "store" => {
                 let mut changed = b"cli_auth_credentials_store = \"keyring\"\n".to_vec();
@@ -505,10 +518,21 @@ async fn saved_borrowed_mode_and_membership_survive_native_credential_failures()
         }
         for needs_auth in [true, false] {
             if !needs_auth {
+                cycles_before_change = maintenance_cycle_count(directory.path());
                 fs::write(&config_path, &config).unwrap();
                 fs::write(&auth_path, &auth).unwrap();
             }
-            let deadline = Instant::now() + Duration::from_secs(20);
+            // Two completed cycles cover a cycle already in progress when the source changed.
+            // Do not query first: direct inspection can hide an incorrect maintenance projection.
+            let maintenance_deadline = Instant::now() + Duration::from_secs(25);
+            while maintenance_cycle_count(directory.path()) < cycles_before_change + 2 {
+                assert!(
+                    Instant::now() < maintenance_deadline,
+                    "saved-source maintenance did not execute for {case}"
+                );
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 let snapshot = succeeded(
                     daemon

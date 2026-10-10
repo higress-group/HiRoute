@@ -149,6 +149,11 @@ impl LocalControlAdapter {
             return housekeeping;
         }
 
+        let cycle_started = std::time::Instant::now();
+        self.emit_subscription_maintenance_cycle(
+            hiroute_diagnostics::event::CpaStageOutcome::Entered,
+            0,
+        );
         for source in sources {
             if shutdown_failures.contains(&source.source_id) {
                 self.set_subscription_maintenance_status(
@@ -332,7 +337,32 @@ impl LocalControlAdapter {
                 )?,
             }
         }
+        self.emit_subscription_maintenance_cycle(
+            hiroute_diagnostics::event::CpaStageOutcome::Completed,
+            cycle_started
+                .elapsed()
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+        );
         housekeeping
+    }
+
+    // A completed cycle records that saved-source maintenance ran, not that every source is ready.
+    // Closed stage data contains no source/account reference, path or credential material.
+    fn emit_subscription_maintenance_cycle(
+        &self,
+        outcome: hiroute_diagnostics::event::CpaStageOutcome,
+        elapsed_ms: u64,
+    ) {
+        use hiroute_diagnostics::event::{CpaStage, CpaStageKind};
+        if let Ok(port) = self.publication_diagnostics.lock() {
+            port.emit(hiroute_diagnostics::DiagnosticEvent::CpaStage(CpaStage {
+                stage: CpaStageKind::SubscriptionMaintenance,
+                outcome,
+                elapsed_ms,
+                restart_generation: 0,
+            }));
+        }
     }
 
     fn suspend_subscription_execution(&self) {

@@ -275,7 +275,9 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let root = tempfile::tempdir().unwrap();
-            let home = root.path().join("Users/test user");
+            // macOS tempfile roots use /var, while the installed CLI is canonicalized to /private/var.
+            let canonical_root = std::fs::canonicalize(root.path()).unwrap();
+            let home = canonical_root.join("Users/test user");
             let applications = home.join("Applications");
             let target = applications.join("HiRoute.app/Contents/MacOS/hiroute");
             std::fs::create_dir_all(target.parent().unwrap()).unwrap();
