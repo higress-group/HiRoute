@@ -30,7 +30,10 @@ fn keychain_interaction_restores_process_policy() {
             }
         });
         assert_eq!(result.is_err(), fail);
-        assert!(allowed(), "both success and error restore the original flag");
+        assert!(
+            allowed(),
+            "both success and error restore the original flag"
+        );
     }
     let disabled = SecKeychain::disable_user_interaction().unwrap();
     for explicit_check in [false, true] {
