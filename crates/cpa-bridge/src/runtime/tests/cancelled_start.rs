@@ -134,6 +134,13 @@ impl CpaProcessHandle for FailingStopHandle {
 
 #[test]
 fn cancelled_ready_start_retains_owner_and_auth_lock_when_stop_fails_until_retry() {
+    // The final close/reacquire assertion cannot share descriptors with unrelated
+    // concurrently forked test children. The worker/barrier race still runs here.
+    if isolated_owner_recovery_case(
+        "runtime::tests::cancelled_start::cancelled_ready_start_retains_owner_and_auth_lock_when_stop_fails_until_retry",
+    ) {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     let backend = Arc::new(FakeBackend::default());
     let fake_control = Arc::new(FakeControl::default());
@@ -330,14 +337,16 @@ fn cancelled_ready_start_retains_owner_and_auth_lock_when_stop_fails_until_retry
     assert!(!backend.pid_is_running(record.cpa_pid).unwrap());
     assert!(!layout.lock_dir.exists());
     assert!(runtime.inner.lock().live.is_none());
+    let released = crate::borrowed_codex::ManagedAuthLease::acquire_subscription(
+        &runtime.spec.auth_dir,
+        None,
+        None,
+        Some(CpaAccountKind::Codex),
+        None,
+    );
     assert!(
-        crate::borrowed_codex::ManagedAuthLease::acquire_subscription(
-            &runtime.spec.auth_dir,
-            None,
-            None,
-            Some(CpaAccountKind::Codex),
-            None
-        )
-        .is_ok()
+        released.is_ok(),
+        "auth lease after stop: {:?}",
+        released.err()
     );
 }
