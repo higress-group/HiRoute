@@ -38,6 +38,44 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  scenario('desktop.models.selection-survives-save-refresh', ['model-connections'], 'Renaming a selected connection does not jump back to the previous save result', async () => {
+    let a; let b; let beforeB; let latestChange;
+    await fresh(() => {
+      b = c().management.sources.find(source => source.source_id === 'source/bailian/coding');
+      a = structuredClone(b); a.source_id = 'source/selection-a'; a.display_name = '接入 A';
+      a.models = a.models.map(model => ({ ...model, model_ref: `${model.model_ref}/a`, binding_id: `${model.binding_id}/a` }));
+      c().management.sources = [a, b]; beforeB = JSON.stringify(b);
+      c().handlers.get_compute_save_result = payload => ({ ...c().fixtureResponse('get_compute_save_result', payload), source_id: b.source_id });
+      c().handlers.preview_compute_save = payload => { latestChange = payload.change; return c().fixtureResponse('preview_compute_save', payload); };
+      c().handlers.apply_compute_save = payload => {
+        if (latestChange?.subject.kind === 'saved_source' && latestChange.subject.source_id === a.source_id && latestChange.edit?.action === 'rename') {
+          a.display_name = latestChange.edit.display_name; a.revision += 1;
+        }
+        return c().fixtureResponse('apply_compute_save', payload);
+      };
+    });
+    await click('模型'); await click('添加模型');
+    await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'new connection entry');
+    all('button').find(item => item.textContent.includes('新建 API 接入')).click();
+    await until(() => document.querySelector('[role="dialog"] input[type="password"]'), 'key field');
+    setInput(document.querySelector('[role="dialog"] input[type="password"]'), 'synthetic-selection-key');
+    await click('检查接入');
+    await until(() => all('.model-result-row input[type="checkbox"]').length, 'model choices');
+    all('.model-result-row input[type="checkbox"]')[0].click(); await pause(40);
+    await click('保存接入');
+    await until(() => !document.querySelector('[role="dialog"]') && calls('get_compute_save_result').length, 'completed initial save');
+    await click('按接入');
+    await until(() => document.querySelector('.models-feature .detail-identity h2')?.textContent === b.display_name, 'saved connection focus');
+    all('.models-feature .master-list .list-row').find(row => row.textContent.includes('接入 A')).click(); await pause(40);
+    await click('重命名');
+    await until(() => document.querySelector('[role="dialog"] input'), 'rename field');
+    setInput(document.querySelector('[role="dialog"] input'), '接入 A 已改名');
+    const snapshots = calls('compute_management_snapshot').length;
+    await click('保存名称');
+    await until(() => calls('compute_management_snapshot').length > snapshots && !document.querySelector('[role="dialog"]'), 'rename refresh');
+    assert(document.querySelector('.models-feature .detail-identity h2')?.textContent === '接入 A 已改名', 'Refresh jumped to the previous saved connection');
+    assert(JSON.stringify(b) === beforeB, 'Another connection changed while renaming A');
+  }),
   scenario('desktop.models.connection-template-directory-layout', ['model-connections'], 'The production stylesheet renders searchable template rows and pagination', async () => {
     await fresh(); await click('模型'); await click('添加模型');
     await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'new connection entry');

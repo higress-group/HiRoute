@@ -49,6 +49,7 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.models.selection-survives-save-refresh',
   'desktop.models.connection-template-directory-layout',
   'desktop.models.connection-rename',
   'desktop.models.delete-reference-block',
