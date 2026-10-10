@@ -113,6 +113,23 @@ fn pi_options_native_fields_and_messages_remain_field_specific_rejections() {
 }
 
 #[test]
+fn pi_options_do_not_make_messages_thinking_display_a_responses_control() {
+    // thinking.display belongs to Messages. Mapping known Responses options
+    // must not admit a mixed-protocol extension through the native-only guard.
+    let original = document(json!({"store":false,"prompt_cache_key":"pi-session",
+        "thinking":{"display":"omitted"}}));
+    let request = decode_ingress_request(IngressProtocol::Responses, &original).unwrap();
+    assert!(request.native_only);
+    let native = project_candidate_request(&request, &profile(IngressProtocol::Responses)).unwrap();
+    for field in ["store", "prompt_cache_key", "thinking"] {
+        assert_eq!(native.body[field], original[field]);
+    }
+    let error = project_candidate_request(&request, &profile(IngressProtocol::ChatCompletions))
+        .unwrap_err();
+    assert_eq!(error.code(), "CLIENT_PROTOCOL_UNREPRESENTABLE");
+}
+
+#[test]
 fn pi_options_do_not_admit_invalid_types_or_server_state() {
     for options in [
         json!({"store":true}),
