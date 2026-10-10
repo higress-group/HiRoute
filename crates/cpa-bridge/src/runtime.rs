@@ -783,7 +783,7 @@ impl ManagedCpaRuntime {
                             process.shutdown(self.spec.shutdown_timeout)
                         })
                     {
-                        let _ = lease.restore_stale(&stale_record);
+                        let _ = lease.restore_stale(&stale_record, self.spec.shutdown_timeout);
                         return Err(error.into());
                     }
                     drop(auth_lease);
@@ -815,7 +815,7 @@ impl ManagedCpaRuntime {
                     ready_started.elapsed().as_millis() as u64,
                     generation,
                 );
-                let _ = lease.restore_stale(&stale_record);
+                let _ = lease.restore_stale(&stale_record, self.spec.shutdown_timeout);
                 Err(error)
             }
         }

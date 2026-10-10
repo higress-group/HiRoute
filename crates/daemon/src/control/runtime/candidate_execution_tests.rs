@@ -310,15 +310,28 @@ fn declared_claude_messages_profiles_emit_both_exact_controls() {
         assert!(reasoning_profiles(native, UpstreamProtocol::Responses).is_none());
         assert!(reasoning_profiles(native, UpstreamProtocol::ChatCompletions).is_none());
     }
-    assert_eq!(
-        bundle
-            .rating_snapshot
-            .models
-            .iter()
-            .filter(|n| n.native_render_convention.is_some())
-            .count(),
-        6
-    );
+    let declared_models: std::collections::BTreeSet<_> = bundle
+        .rating_snapshot
+        .models
+        .iter()
+        .filter(|n| n.native_render_convention.is_some())
+        .map(|n| n.model_configuration_id.as_str())
+        .collect();
+    // Existing models must keep their controls, and the current Claude additions
+    // must exercise the same renderer. Future catalog additions also run above.
+    for model in [
+        "model.anthropic.claude-fable-5-1",
+        "model.anthropic.claude-haiku-5-5",
+        "model.anthropic.claude-opus-5",
+        "model.anthropic.claude-opus-5-5",
+        "model.anthropic.claude-sonnet-5",
+        "model.anthropic.claude-sonnet-5-5",
+    ] {
+        assert!(
+            declared_models.contains(model),
+            "missing renderer coverage: {model}"
+        );
+    }
 }
 
 #[test]

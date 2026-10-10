@@ -336,6 +336,31 @@ fn access_only_file_cannot_enter_stock_unauthorized_refresh_replay() {
     assert_eq!(flat["request_retry"], 0);
 }
 
+#[test]
+fn duplicated_auth_descriptor_retains_managed_writer_exclusion_until_final_close() {
+    if isolated_lock_test(
+        "borrowed_codex::tests::duplicated_auth_descriptor_retains_managed_writer_exclusion_until_final_close",
+    ) {
+        return;
+    }
+    for kind in [CpaAccountKind::Codex, CpaAccountKind::Claude] {
+        let root = tempfile::tempdir().unwrap();
+        let auth_dir = ensure_private_dir(&root.path().join("managed-auth")).unwrap();
+        let lease = ManagedAuthLease::acquire_subscription(&auth_dir, None, None, Some(kind), None)
+            .unwrap();
+        let inherited = lease._auth_dir_lock.try_clone().unwrap();
+        drop(lease);
+        // This is the same open-file-description lifetime as a concurrently
+        // forked child before exec, even though the runtime dropped its lease.
+        assert!(matches!(
+            ManagedAuthLease::acquire_subscription(&auth_dir, None, None, Some(kind), None),
+            Err(CpaLifecycleError::BorrowedCodexAuthAlreadyLeased)
+        ));
+        drop(inherited);
+        ManagedAuthLease::acquire_subscription(&auth_dir, None, None, Some(kind), None).unwrap();
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn symlink_and_hardlink_sources_fail_but_readable_modes_are_preserved() {

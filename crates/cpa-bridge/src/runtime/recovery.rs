@@ -116,7 +116,7 @@ impl ManagedCpaRuntime {
             }
             Err(error) => {
                 lease
-                    .restore_stale(&stale)
+                    .restore_stale(&stale, self.spec.shutdown_timeout)
                     .map_err(|_| CpaLifecycleError::OwnerState)?;
                 Err(error)
             }
