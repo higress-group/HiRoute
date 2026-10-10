@@ -55,7 +55,9 @@ pub(super) fn execute(
         &runtime,
     );
     coordinator.reconcile_startup_and_open().unwrap();
-    let preview = planner.preview(change).unwrap();
+    let preview = planner
+        .preview(change)
+        .unwrap_or_else(|error| panic!("{key} preview failed: {error:?}"));
     apply_preview(
         stores,
         &planner,

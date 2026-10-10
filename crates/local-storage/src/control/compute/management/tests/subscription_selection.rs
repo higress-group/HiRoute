@@ -557,12 +557,14 @@ fn subscription_v3_mode_tracks_lifecycle_revisions_and_never_revives_after_delet
             "rename-mode",
         );
         let named = saved(&stores);
+        assert_eq!(named.display_name, "Subscription team");
         assert!(named.revision > original.revision);
         assert_eq!(named.source_id, original.source_id);
         assert_eq!(named.models, original.models);
         assert_mode(&named);
 
         // These are verified-check storage fixtures, not native OAuth or inference evidence.
+        let mut latest_validation = facts_for("first").validation;
         for (label, model_ref, upstream, disabled) in [
             ("ready-append", "model/two", "upstream-two", false),
             ("disabled-append", "model/three", "upstream-three", true),
@@ -572,11 +574,13 @@ fn subscription_v3_mode_tracks_lifecycle_revisions_and_never_revives_after_delet
                 let mut disable = edit(&stores, &before, ComputeManagementEditV1::Delete, &[]);
                 disable.edit = None;
                 disable.intent = ComputeManagementIntentV2::SaveDisabled;
+                disable.validation = latest_validation.clone();
                 disable.selected_model_refs =
                     before.models.iter().map(|m| m.model_ref.clone()).collect();
                 execute(&stores, &registry, disable, "disable-mode");
             }
             let before = saved(&stores);
+            assert_mode(&before);
             let mut facts = facts_for(label);
             facts.existing_source_id = Some(before.source_id.clone());
             let mut extra = facts.models[0].clone();
@@ -585,6 +589,7 @@ fn subscription_v3_mode_tracks_lifecycle_revisions_and_never_revives_after_delet
             facts.models.retain(|model| model.model_ref != model_ref);
             facts.models.push(extra);
             register_verified_subscription(&stores, &registry, &facts, label);
+            latest_validation = facts.validation.clone();
             let mut append = change(&stores, &facts, &[model_ref]);
             append.edit = Some(ComputeManagementEditV1::AppendModels);
             execute(&stores, &registry, append, label);
