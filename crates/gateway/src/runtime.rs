@@ -6,6 +6,8 @@
 
 mod driver;
 mod state;
+#[cfg(all(unix, debug_assertions))]
+pub mod stream_capture;
 
 pub use driver::*;
 pub use state::StateAccessError;

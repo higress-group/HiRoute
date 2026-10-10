@@ -29,7 +29,7 @@ use super::{RequestObservation, active_request};
 #[path = "provider/capture.rs"]
 mod capture;
 #[path = "provider/wire_diagnostic.rs"]
-pub(super) mod wire_diagnostic;
+pub(in crate::server::core_runtime) mod wire_diagnostic;
 
 pub(super) use capture::{CanonicalCaptureHandle, CanonicalCaptureProducer};
 
@@ -107,9 +107,15 @@ impl ProviderRuntimePort for ObservedProductionProvider {
             .starts_with("credential/none/")
             .then(|| context.credential_ref().as_str().to_owned());
         let (request, inner) = self.inner.materialize_attempt(logical, context).await?;
-        let observation = active_request().filter(RequestObservation::is_enabled);
+        let observation = active_request().filter(RequestObservation::tracks_attempts);
         if let (Some(observation), Some(credential_ref)) = (&observation, no_credential_ref) {
             observation.no_credential_materialized(&stable_binding_id, &credential_ref);
+        }
+        // The unauthenticated profile has no credential-read staging hook.
+        // Bind only after authoritative materialization and its None staging.
+        #[cfg(all(unix, debug_assertions))]
+        if let Some(observation) = &observation {
+            inner.register_private_capture(observation);
         }
         let tracker = observation.as_ref().and_then(|observation| {
             observation.begin_response_capture(
@@ -149,10 +155,7 @@ impl ProviderRuntimePort for ObservedProductionProvider {
         if let (Some(observation), PrecommitEvent::ResponseHead(head)) =
             (&state.observation, &event)
         {
-            observation.wire_diagnostic(wire_diagnostic::response(
-                head.headers(),
-                head.status().as_u16(),
-            ));
+            observation.response_head_diagnostic(head.headers(), head.status().as_u16());
         }
         let prepared = state
             .tracker

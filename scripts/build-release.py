@@ -58,7 +58,7 @@ class Candidate:
                                 "libc": platform.libc_ver()},
                        "status": "failed", "timings": []}
         self.environment = dict(os.environ, RUSTC_WRAPPER="sccache", CARGO_INCREMENTAL="0",
-                                HIROUTE_BUILD_SOURCE_SHA=self.revision)
+                                HIROUTE_BUILD_SOURCE_SHA=self.revision, LC_ALL="C")
 
     def run(self, *arguments, env=None, timeout=None):
         started = time.monotonic()
@@ -88,6 +88,12 @@ class Candidate:
         metadata = json.loads(self.run("cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"))
         if Path(metadata["target_directory"]).resolve() != REPO / "target":
             raise ValueError("Cargo config must use checkout-local target/")
+        if self.target.endswith("linux-gnu"):
+            baseline = module("linux-release-abi").baseline()
+            if (tuple(platform.libc_ver()) != ("glibc", baseline["minimum_glibc"])
+                    or os.environ.get("HIROUTE_LINUX_BASELINE_IMAGE") != baseline["build_image"]):
+                raise ValueError("Linux release must run inside the pinned glibc 2.31 build image")
+            self.result["linux_baseline"] = baseline
         self.result["version"] = self.version
         self.result["toolchain"] = {name: self.run(name, "--version") for name in ("cargo", "rustc")}
 
@@ -125,9 +131,6 @@ class Candidate:
         binaries = REPO / "target" / self.target / "release"
         for binary in (binaries / "hiroute", binaries / "hirouted", cpa):
             inspect_elf(binary, self.target)
-        self.result["linux_dependencies"] = {
-            name: self.run("readelf", "--dynamic", "--version-info", binaries / name)
-            for name in ("hiroute", "hirouted")}
         notices = self.output / "notices"
         self.script("collect-third-party-licenses", "--cargo-target", self.target,
                     "--cpa-source-repo", self.source_repo, "--output", notices)
@@ -142,6 +145,9 @@ class Candidate:
         if any(verified[key] != expected for key, expected in (
                 ("revision", self.revision), ("version", self.version), ("target", self.target))):
             raise ValueError("standalone package differs from candidate identity")
+        abi = module("linux-release-abi").archive(manifest, archive, packager, self.run)
+        (self.output / "linux-abi.json").write_text(json.dumps(abi, indent=2) + "\n")
+        self.result["linux_abi"] = abi
         self.result["cpa_source"] = provenance
         artifact = {"kind": "standalone", "platform": "Linux", "architecture": self.target.split("-")[0],
                     "target": self.target, "format": "tar.gz", "distribution": "unsigned",
@@ -162,7 +168,8 @@ class Candidate:
             assets.mkdir()
             for path in files:
                 shutil.copyfile(path, assets / path.name)
-            self.result.update(status="completed", package_integrity="green",
+            status = "awaiting_runtime" if self.target.endswith("linux-gnu") else "completed"
+            self.result.update(status=status, package_integrity="green",
                                website_artifact=artifact, assets=str(assets))
             return self.result
         except Exception as error:
@@ -179,7 +186,17 @@ def main():
     parser.add_argument("--cpa-source-repo", type=Path, required=True)
     args = parser.parse_args()
     try:
-        print(json.dumps(Candidate(args.target, args.cpa_source_repo).build(), indent=2))
+        if args.target.endswith("linux-gnu") and not os.environ.get("HIROUTE_LINUX_BASELINE_IMAGE"):
+            result = module("linux-release-container").run(args.target, args.cpa_source_repo)
+        else:
+            if args.target.endswith("linux-gnu"):
+                Path.home().mkdir(parents=True, exist_ok=True)
+            candidate = Candidate(args.target, args.cpa_source_repo)
+            result = candidate.build()
+            if args.target.endswith("linux-gnu"):
+                Path(os.environ["HIROUTE_RELEASE_RESULT"]).write_text(json.dumps({
+                    "result_path": str(candidate.output / "result.json")}))
+        print(json.dumps(result, indent=2))
         return 0
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(str(error), file=sys.stderr)

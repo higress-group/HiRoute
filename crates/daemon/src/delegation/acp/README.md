@@ -15,7 +15,7 @@ journal records prompt intent. Missing, ambiguous, rejected or unconfirmed model
 selection is `CapabilityUnavailable`. Cancellation and deadline remain their own
 errors. No approximate alias resolution or legacy RPC fallback is permitted.
 
-The supported wire behavior was inspected in `codex-acp` 1.1.5 and
+The model-selection wire behavior was inspected in `codex-acp` 1.1.5 and
 `claude-agent-acp` 0.60.0. Both expose `configOptions` with `id: "model"` and
 support `session/set_config_option`. Codex reports its base model separately from
 the reasoning-effort selector. Claude can catch a failed resume model override
@@ -29,6 +29,13 @@ extension in their initialize response before a session or prompt is sent.
 followed by `end_turn`; it cannot establish task success. The official 2.1.1
 adapter advertises terminal failure metadata. Missing capability fails closed;
 error-looking assistant prose is never parsed as a substitute terminal signal.
+The 1.1.5 model-selection observation above does not establish Worker compatibility.
+On a missing capability, this owner writes a fixed `[HiRoute]` explanation to the
+existing bounded progress capture, naming `codex-acp`, the capability and the
+update/reselect action. The lifecycle flushes it after owned-process cleanup, so
+ordinary Worker progress reads can retrieve it after reopen. It is not a model
+result and contains no adapter-supplied text. The public error remains
+`CapabilityUnavailable`; no version allowlist or dependency preflight is added.
 
 The Rust ACP dependency provides typed config options and a typed setter; its
 current v1 schema does not retain legacy `models` response fields. A legacy

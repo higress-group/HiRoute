@@ -1237,6 +1237,44 @@
         "crates/daemon/src/control/runtime/delegation_tasks.rs",
         "crates/daemon/src/control/runtime_early_cancel_tests.rs"
       ]
+    },
+    {
+      "contract": "hiroute.candidate-protocol-profile/v1",
+      "field": "0.2.0 toggle high / Boolean controls and Messages budget-only profiles",
+      "mode": "recovery_read_only",
+      "owner": "gateway/adapters/request/reasoning",
+      "reason": "Supported release d625e653 projected enabled toggles as Responses high or native Boolean fields and manual Messages thinking without a budget. Normalize protocol controls at serialization without rewriting stored profiles or their digests. Explicit discrete effort retains its value. Frozen regression input is copied from the released producer.",
+      "removal_condition": "Retire only when supported retained publications no longer include these released profiles or an explicit identity-preserving migration replaces the reader.",
+      "allowed_paths": [
+        "crates/domain/src/routing/gateway_execution.rs",
+        "crates/gateway/src/profiles/reasoning.rs",
+        "crates/gateway/src/adapters/request/reasoning.rs",
+        "crates/gateway/src/adapters/native_reasoning_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.diagnostic-event/v1",
+      "mode": "recovery_read_only",
+      "owner": "runtime-diagnostics",
+      "reason": "Read retained V1 diagnostic records without the newer optional model, reasoning, HTTP protocol, failure, model terminal result and commit facts. Missing fields remain unknown. Transport completion is separate from unknown model completion evidence; current producers emit observed facts and never rewrite historical logs.",
+      "removal_condition": "Remove when retained V1 log support no longer includes records produced before the Bailian wire diagnostic extension.",
+      "allowed_paths": [
+        "crates/diagnostics/src/event/model.rs",
+        "crates/diagnostics/src/record.rs",
+        "crates/diagnostics/src/runtime.rs"
+      ],
+      "field": "optional model, reasoning, HTTP protocol, provider error and model terminal result, target and commit facts in retained V1 logs"
+    },
+    {
+      "contract": "hiroute.diagnostic-event/v1",
+      "field": "ResponseFailure payload before detailed response reason, field and decoder position extension",
+      "mode": "frozen_fixture",
+      "owner": "diagnostics",
+      "reason": "The current diagnostic reader accepts supported v0.2.0 ResponseFailure bytes from released producer d625e653048b2306c88da07826d52027e9891675, defaulting absent optional attempt correlation, field and position. New writers emit the current closed event contract; old readers are not promised forward compatibility.",
+      "removal_condition": "Retire only when v0.2.0 diagnostic records are outside the supported source and retention policy.",
+      "allowed_paths": [
+        "crates/diagnostics/tests/response_failure_compatibility.rs"
+      ]
     }
   ]
 }

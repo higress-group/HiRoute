@@ -1248,11 +1248,16 @@ impl ProductionGatewayRuntime {
             drop(core_session);
             let runtime_state_authority_failed =
                 !response_started && runtime_state_authority.failed();
-            let observation_outcome = classify_request_observation_outcome(
-                request_observation.has_accepted_attempt(),
-                result.is_ok(),
-                request_observation.accepted_attempt_cancelled(),
-            );
+            let model_failed = result.is_ok() && request_observation.accepted_attempt_failed();
+            let observation_outcome = if model_failed {
+                "failed"
+            } else {
+                classify_request_observation_outcome(
+                    request_observation.has_accepted_attempt(),
+                    result.is_ok(),
+                    request_observation.accepted_attempt_cancelled(),
+                )
+            };
             if let Some(mut guard) = agent_turn_guard.take() {
                 request_observation.finish_agent_turn_output().await;
                 let executions = request_observation
@@ -1277,6 +1282,10 @@ impl ProductionGatewayRuntime {
                     })
                     .unwrap_or_default();
                 let status = match (request_observation.has_accepted_attempt(), result.is_ok()) {
+                    (true, true) if model_failed => AgentTurnStatus::Failed,
+                    (true, true) if request_observation.accepted_attempt_unknown() => {
+                        AgentTurnStatus::Unknown
+                    }
                     (true, true) => AgentTurnStatus::Completed,
                     (true, false) => AgentTurnStatus::Interrupted,
                     (false, _) => AgentTurnStatus::Failed,
@@ -1724,3 +1733,7 @@ mod inbound_auth_tests;
 #[cfg(test)]
 #[path = "core_runtime/acceptance_tests.rs"]
 mod acceptance_tests;
+
+#[cfg(all(test, unix, debug_assertions, feature = "e2e-test-control"))]
+#[path = "core_runtime/response_diagnostics_tests.rs"]
+mod response_diagnostics_tests;

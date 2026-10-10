@@ -55,6 +55,7 @@ export const productShellRequired = [
   'desktop.quality.evidence-return',
   'desktop.models.return-from-decisions',
   'desktop.routing.judgment-settings',
+  'desktop.routing.follow-up-preference',
   'desktop.models.branch-route-references',
   'desktop.decisions.hidden-invalid-field',
   'desktop.decisions.save-test-revision',

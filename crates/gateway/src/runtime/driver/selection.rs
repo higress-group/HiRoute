@@ -497,6 +497,7 @@ mod tests {
             }),
             transport: AttemptTransportFacts {
                 started_at: now,
+                upstream_protocol: None,
                 connect_elapsed: None,
                 request_write_elapsed: None,
                 upstream_ttfb: None,
@@ -516,6 +517,7 @@ mod tests {
         let realtime_facts = RealtimeRoutingFacts::default();
         let transport = AttemptTransportFacts {
             started_at: now,
+            upstream_protocol: None,
             connect_elapsed: None,
             request_write_elapsed: None,
             upstream_ttfb: None,
@@ -608,6 +610,7 @@ mod tests {
                     &rejected,
                     &AttemptTransportFacts {
                         started_at: now,
+                        upstream_protocol: None,
                         connect_elapsed: None,
                         request_write_elapsed: None,
                         upstream_ttfb: None,
@@ -632,6 +635,7 @@ mod tests {
                     &rejected,
                     &AttemptTransportFacts {
                         started_at: now,
+                        upstream_protocol: None,
                         connect_elapsed: None,
                         request_write_elapsed: None,
                         upstream_ttfb: None,
@@ -664,6 +668,7 @@ mod tests {
         };
         let transport = AttemptTransportFacts {
             started_at: now,
+            upstream_protocol: None,
             connect_elapsed: None,
             request_write_elapsed: None,
             upstream_ttfb: None,
@@ -770,6 +775,7 @@ mod tests {
                 }),
                 transport: AttemptTransportFacts {
                     started_at: now,
+                    upstream_protocol: None,
                     connect_elapsed: None,
                     request_write_elapsed: None,
                     upstream_ttfb: None,
@@ -1041,6 +1047,7 @@ mod tests {
             failure: None,
             transport: AttemptTransportFacts {
                 started_at: now,
+                upstream_protocol: None,
                 connect_elapsed: None,
                 request_write_elapsed: None,
                 upstream_ttfb: None,

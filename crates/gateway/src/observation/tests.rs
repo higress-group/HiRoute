@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 use hiroute_diagnostics::runtime::DiagnosticsPort;
 
-use crate::ports::{ProbeLeaseOutcome, RuntimeStateKey};
+use crate::ports::{ProbeLeaseOutcome, RuntimeStateEntry, RuntimeStateKey};
 use hiroute_gateway_core::runtime::attempt::{
     AttemptGeneration, AttemptId, Disposition, PublishedDisposition, RequestId,
 };
@@ -135,6 +135,14 @@ fn request_with_diagnostics(
     policy: OtelContentPolicy,
     diagnostics: DiagnosticsPort,
 ) -> RequestObservation {
+    request_with_capture(policy, diagnostics, true)
+}
+
+fn request_with_capture(
+    policy: OtelContentPolicy,
+    diagnostics: DiagnosticsPort,
+    enabled: bool,
+) -> RequestObservation {
     let gateway = GatewayObservation::with_sinks_and_policy(
         true,
         64 * 1024,
@@ -143,7 +151,7 @@ fn request_with_diagnostics(
     );
     RequestObservation::new(
         super::request::RequestObservationCapture {
-            enabled: true,
+            enabled,
             content: true,
         },
         gateway.key,
@@ -173,6 +181,70 @@ fn request_with_diagnostics(
         },
         diagnostics,
     )
+}
+
+#[test]
+fn info_failure_keeps_actual_reasoning_and_safe_provider_attribution_without_content_capture() {
+    use hiroute_diagnostics::{
+        DiagnosticLevel,
+        event::{ProcessRole, WireProviderError},
+        record::Component,
+        runtime::{DiagnosticRuntime, RuntimeConfig},
+    };
+    for enabled in [true, false] {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-info-wire-{}-{enabled}-{}",
+            std::process::id(),
+            super::unix_nanos()
+        ));
+        let runtime = DiagnosticRuntime::start(RuntimeConfig {
+            root: root.clone(),
+            role: ProcessRole::Daemon,
+            component: Component::Gateway,
+            parent_session_id: None,
+            level_override: Some(DiagnosticLevel::Info),
+        });
+        let request = request_with_capture(OtelContentPolicy::Disabled, runtime.port(), enabled);
+        assert_eq!(request.captures_content(), enabled);
+        assert_eq!(request.is_enabled(), enabled);
+        request.no_credential_materialized("binding:test", "credential/none/test");
+        request.prepared_request_diagnostic(&http::HeaderMap::new(), br#"{"model":"qwen3.6-flash","reasoning":{"effort":"high"},"thinking":{"type":"enabled","budget_tokens":81920},"input":"private-prompt-marker"}"#);
+        let mut headers = http::HeaderMap::new();
+        headers.insert("x-request-id", "private-provider-id".parse().unwrap());
+        request.response_head_diagnostic(&headers, 400);
+        request.provider_failure_diagnostic(Some(400), WireProviderError::ThinkingBudgetRejected);
+        request.disposition_published(&PublishedDisposition {
+            request_id: RequestId(1),
+            attempt_id: AttemptId(1),
+            generation: AttemptGeneration(1),
+            disposition: Disposition::Continue,
+        });
+        request.finish("failed");
+        runtime.shutdown();
+        let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
+        assert!(
+            log.contains("thinking_budget_rejected") && log.contains("qwen3.6-flash"),
+            "{log}"
+        );
+        assert!(
+            log.contains("\"responses_effort\":\"high\"")
+                && log.contains("\"messages_budget_tokens\":81920"),
+            "{log}"
+        );
+        assert!(
+            log.contains("upstream_request_token") && log.contains("\"outcome\":\"failed\""),
+            "{log}"
+        );
+        assert!(
+            !log.contains("private-prompt-marker") && !log.contains("private-provider-id"),
+            "{log}"
+        );
+        assert!(
+            !log.contains("\"phase\":\"request\"") && !log.contains("\"phase\":\"response\""),
+            "{log}"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 /// Drives the real observation branches that production runs: candidate staging, the
@@ -212,6 +284,16 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
     );
     request.record_plan_stage(std::time::Duration::from_millis(4));
     request.no_credential_materialized("binding:test", "credential/none/source-local-test");
+    let mut wire_headers = http::HeaderMap::new();
+    wire_headers.insert(
+        "x-request-id",
+        "provider-secret-request-id".parse().unwrap(),
+    );
+    request.prepared_request_diagnostic(
+        &wire_headers,
+        br#"{"model":"native-model","reasoning":{"effort":"low"},"input":"secret-prompt-marker"}"#,
+    );
+    request.response_head_diagnostic(&wire_headers, 200);
     use hiroute_diagnostics::event::ReasoningCleanupReason;
     request.reasoning_cleanup(ReasoningCleanupReason::ContextBreakRetry, 2, Some(3));
     request.reasoning_cleanup(ReasoningCleanupReason::SuccessfulPrefixReuse, 0, Some(3));
@@ -257,6 +339,7 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
         "request_end",
         "model_stage",
         "response_failure",
+        "upstream_wire",
     ] {
         assert!(
             log.contains(&format!("\"{kind}\":")),
@@ -264,6 +347,12 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
         );
     }
     assert!(log.contains("\"attempt_index\":1"), "{log}");
+    assert!(log.contains("\"native_model\":\"native-model\""), "{log}");
+    assert!(log.contains("\"responses_effort\":\"low\""), "{log}");
+    assert!(
+        !log.contains("provider-secret-request-id") && !log.contains("secret-prompt-marker"),
+        "{log}"
+    );
     assert!(log.contains("\"outcome\":\"completed\""), "{log}");
     assert!(log.contains("\"stage\":\"parse\""), "{log}");
     assert!(log.contains("\"state\":\"semantic_committed\""), "{log}");
@@ -375,6 +464,7 @@ fn accepted_client_cancellation_finishes_the_request_as_cancelled() {
             failure: None,
             transport: AttemptTransportFacts {
                 started_at: now,
+                upstream_protocol: Some(hiroute_gateway_core::transport::HttpProtocol::Http1),
                 connect_elapsed: None,
                 request_write_elapsed: None,
                 upstream_ttfb: None,
@@ -405,6 +495,8 @@ fn accepted_client_cancellation_finishes_the_request_as_cancelled() {
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).unwrap())
         .collect::<Vec<_>>();
+    assert!(log.contains("\"http_protocol\":\"http1\""), "{log}");
+    assert!(log.contains("\"downstream_body\":\"committed\""), "{log}");
     for kind in ["attempt_end", "request_end"] {
         assert!(
             events
@@ -1112,6 +1204,86 @@ fn mapper_and_envelope_versions_are_explicit() {
     ] {
         assert!(schema.ends_with("/v1"));
     }
+}
+
+#[test]
+fn native_alias_repeated_reads_preserve_the_staged_relay_identity() {
+    let request = request(OtelContentPolicy::Disabled);
+    let digest = hiroute_domain::CanonicalDigest::of_bytes(b"native-profile");
+    let native_alias =
+        crate::runtime::native_endpoint_state_key("binding:test", digest.as_str()).unwrap();
+    let candidate = super::request::CandidateObservation {
+        candidate_id: "candidate:test".into(),
+        stable_binding_id: "binding:test".into(),
+        declared_order: 0,
+        profile_digest: digest.to_string(),
+        provider_name: "provider:test".into(),
+        request_model: "native:test".into(),
+        upstream_protocol: "responses".into(),
+        model_configuration_id: "model:test".into(),
+        adapter_revision: "adapter:test@1".into(),
+        effective_cost_micros: None,
+        cost_class: "unknown".into(),
+        protocol_profile: None,
+        streaming: true,
+    };
+    {
+        let mut state = request.lock_state();
+        state
+            .candidates
+            .insert(native_alias.clone(), candidate.clone());
+        state
+            .candidates
+            .insert("binding:test".into(), candidate.clone());
+        state.candidates.insert(
+            "binding:other".into(),
+            super::request::CandidateObservation {
+                stable_binding_id: "binding:other".into(),
+                ..candidate
+            },
+        );
+        state.previous_attempt_id = Some("attempt:previous".into());
+        state.next_attempt_reason = Some("protocol".into());
+    }
+    let key = RuntimeStateKey::credential(native_alias.as_str(), "credential:test", "key:test", 4);
+    let active = RuntimeStateEntry::default();
+    request.runtime_state_read(&key, Some(&active), "active");
+    request.runtime_state_read(&key, Some(&active), "active");
+    // A logical-key read is the same candidate as its native state alias.
+    request.runtime_state_read(
+        &RuntimeStateKey::credential("binding:test", "credential:test", "key:test", 4),
+        Some(&active),
+        "active",
+    );
+    {
+        let state = request.lock_state();
+        let pending = state.pending_attempt.as_ref().unwrap();
+        assert_eq!(pending.stable_binding_id, "binding:test");
+        assert_eq!(
+            pending.previous_attempt_id.as_deref(),
+            Some("attempt:previous")
+        );
+        assert_eq!(pending.start_reason, "protocol");
+        assert_eq!(pending.credential_ref, "credential:test");
+        assert_eq!(pending.key_id, "key:test");
+        assert_eq!(pending.credential_generation, 4);
+        assert_eq!(state.next_attempt_ordinal, 1);
+    }
+    // Sharing a credential does not collapse a genuinely different binding.
+    request.runtime_state_read(
+        &RuntimeStateKey::credential("binding:other", "credential:test", "key:test", 4),
+        Some(&active),
+        "active",
+    );
+    assert_eq!(
+        request
+            .lock_state()
+            .pending_attempt
+            .as_ref()
+            .unwrap()
+            .stable_binding_id,
+        "binding:other"
+    );
 }
 
 #[test]

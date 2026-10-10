@@ -305,6 +305,7 @@ impl SelectionPublicationPort<Arc<str>> for ContractSelection {
 fn transport_facts() -> AttemptTransportFacts {
     AttemptTransportFacts {
         started_at: Instant::now(),
+        upstream_protocol: None,
         connect_elapsed: Some(Duration::from_millis(1)),
         request_write_elapsed: Some(Duration::from_millis(2)),
         upstream_ttfb: Some(Duration::from_millis(3)),

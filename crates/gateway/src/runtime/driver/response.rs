@@ -1,3 +1,6 @@
+#[path = "response_prefix.rs"]
+mod prefix;
+
 use super::response_diagnostics;
 use hiroute_diagnostics::event::{
     ResponseFailureReason as FailureReason, ResponseFailureStage as FailureStage,
@@ -54,6 +57,10 @@ pub(super) fn classify_precommit(
     state: &mut ProductionAttemptState,
     event: PrecommitEvent,
 ) -> Result<PrecommitClassification<ProductionReadiness, ProductionDecodedSse>, Arc<str>> {
+    #[cfg(all(unix, debug_assertions))]
+    if let Some(capture) = &state.capture {
+        capture.response(&event);
+    }
     match event {
         PrecommitEvent::ResponseHead(head) if head.status().is_informational() => {
             Ok(PrecommitClassification::pending())
@@ -92,7 +99,8 @@ pub(super) fn classify_precommit(
                         state.chat_tool_projection.take(),
                         state.budget.clone(),
                     )
-                    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
+                    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+                    .with_omitted_thinking(state.omit_thinking),
                 ));
             } else {
                 state.decoder = Some(
@@ -106,28 +114,15 @@ pub(super) fn classify_precommit(
                     .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
                 );
             }
-            if state.streaming && status.is_success() {
-                // HTTP acceptance, not the arrival of a recognized semantic event,
-                // closes the transparent retry window. Body parsing stays bounded
-                // and executes only on the accepted response path.
-                return Ok(PrecommitClassification::classified(
-                    ClassifiedAttemptResult {
-                        facts: ProviderClassificationFacts {
-                            http_status: Some(status),
-                            readiness: label("response_headers"),
-                            retryability: RetryabilityFact::NonRetryable,
-                            ..ProviderClassificationFacts::default()
-                        },
-                        readiness: take_readiness(state, status, "text/event-stream", false)?,
-                    },
-                ));
-            }
             Ok(PrecommitClassification::pending())
         }
         PrecommitEvent::Body(bytes) => {
             let status = state
                 .response_status
                 .ok_or_else(|| Arc::from("provider body arrived before final response head"))?;
+            if state.streaming && status.is_success() {
+                return prefix::classify_stream_prefix(state, bytes.bytes(), false);
+            }
             if state.native_output && status.is_success() {
                 let projected = state
                     .projector
@@ -135,7 +130,8 @@ pub(super) fn classify_precommit(
                     .ok_or_else(|| Arc::from("native response projector is unavailable"))?
                     .feed(bytes.bytes(), false);
                 drop(bytes);
-                if projected.is_err() {
+                if let Err(error) = projected {
+                    response_diagnostics::adapter(FailureStage::NativeProjection, error);
                     let raw = response_decode_failure(status, state.retry_after);
                     return classify_state_failure(
                         state,
@@ -151,7 +147,8 @@ pub(super) fn classify_precommit(
                     .ok_or_else(|| Arc::from("native response decoder is unavailable"))?
                     .feed(bytes.bytes(), false);
                 drop(bytes);
-                if decoded.is_err() {
+                if let Err(error) = decoded {
+                    response_diagnostics::adapter(FailureStage::Decode, error);
                     let raw = response_decode_failure(status, state.retry_after);
                     return classify_state_failure(
                         state,
@@ -169,6 +166,9 @@ pub(super) fn classify_precommit(
             let status = state
                 .response_status
                 .ok_or_else(|| Arc::from("provider ended before final response head"))?;
+            if state.streaming && status.is_success() {
+                return prefix::classify_stream_prefix(state, &[], true);
+            }
             if state.native_output && status.is_success() {
                 let units = match state
                     .projector
@@ -196,6 +196,13 @@ pub(super) fn classify_precommit(
                 }
                 if let Some(error) = failure {
                     return classify_model_error(state, error, status);
+                }
+                if known_terminal_failure(state.semantic_terminal) {
+                    return classify_state_failure(
+                        state,
+                        RawAttemptFailure::Protocol,
+                        StatusCode::BAD_GATEWAY,
+                    );
                 }
                 if !state.semantic_seen || state.semantic_terminal.is_none() {
                     return classify_state_failure(
@@ -239,8 +246,24 @@ pub(super) fn classify_precommit(
                     }
                 };
                 state.semantic_terminal = semantic_terminal_for_response(&decoded.response);
-                if let Some(error) = decoded.response.error.clone() {
-                    return classify_model_error(state, error, status);
+                if known_terminal_failure(state.semantic_terminal) {
+                    let mut classified = if let Some(error) = decoded.response.error.clone() {
+                        classify_model_error(state, error, status)?
+                    } else {
+                        classify_state_failure(
+                            state,
+                            RawAttemptFailure::Protocol,
+                            StatusCode::BAD_GATEWAY,
+                        )?
+                    };
+                    // Nonstream decoding consumes the decoder before rendering.
+                    // Preserve its reported usage even when no client body is built.
+                    if !decoded.response.usage.is_empty()
+                        && let Some(result) = classified.classified.as_mut()
+                    {
+                        result.facts.usage = Some(model_usage_fact(&decoded.response.usage));
+                    }
+                    return Ok(classified);
                 }
                 if !decoded
                     .events
@@ -325,6 +348,16 @@ pub(super) fn finalize_attempt_facts(
         .and_then(|readiness| readiness.semantic_terminal)
         .or(state.semantic_terminal)
     {
+        // A prebody failure keeps the classification that authorized relay.
+        // Only a failure discovered after acceptance closes retryability here.
+        if matches!(
+            outcome,
+            SemanticTerminalOutcome::Failed | SemanticTerminalOutcome::Incomplete
+        ) && state.classified_failure.is_none()
+        {
+            facts.error_class = Some(label("provider_rejected"));
+            facts.retryability = RetryabilityFact::NonRetryable;
+        }
         facts.model_event = Some(label(match outcome {
             SemanticTerminalOutcome::Complete => "response_complete",
             SemanticTerminalOutcome::Incomplete => "response_incomplete",
@@ -353,6 +386,10 @@ pub(super) fn accepted_response_head(
     readiness: &ProductionReadiness,
     published: &PublishedDisposition,
 ) -> Result<GatewayResponseHead, Arc<str>> {
+    #[cfg(all(unix, debug_assertions))]
+    if let Some(capture) = &readiness.capture {
+        capture.record_attempt_correlation();
+    }
     match published.disposition {
         Disposition::Accept | Disposition::Terminate => {
             let mut headers = HeaderMap::new();
@@ -370,6 +407,24 @@ pub(super) fn accepted_response_head(
 }
 
 pub(super) fn encode_accepted_event(
+    readiness: &mut ProductionReadiness,
+    event: ProviderAcceptedEvent<ProductionDecodedSse>,
+) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
+    #[cfg(all(unix, debug_assertions))]
+    if let (Some(capture), ProviderAcceptedEvent::Raw(raw)) = (&readiness.capture, &event) {
+        capture.response(raw);
+    }
+    let result = encode_accepted_event_inner(readiness, event);
+    #[cfg(all(unix, debug_assertions))]
+    if result.is_err()
+        && let Some(capture) = &readiness.capture
+    {
+        capture.failed();
+    }
+    result
+}
+
+fn encode_accepted_event_inner(
     readiness: &mut ProductionReadiness,
     event: ProviderAcceptedEvent<ProductionDecodedSse>,
 ) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
@@ -443,7 +498,9 @@ pub(super) fn encode_accepted_event(
                     .take()
                     .ok_or_else(|| Arc::from("accepted native decoder is unavailable"))?
                     .finish()
-                    .map_err(|_| Arc::from("accepted native stream ended without terminal"))?;
+                    .map_err(|error| {
+                        response_diagnostics::adapter(FailureStage::EndOfStream, error)
+                    })?;
                 (rendered, true)
             };
             queue_accepted_stream_output(readiness, rendered, projected_terminal)
@@ -610,6 +667,16 @@ fn sanitized_provider_kind(
         return None;
     }
     let code = error.code.as_deref()?.to_ascii_lowercase();
+    // Preserve a precise cause without guessing one for generic InvalidParameter.
+    // Relay eligibility is independent of this diagnostic classification.
+    if code == "invalidparameter"
+        && error
+            .message
+            .as_deref()
+            .is_some_and(reasoning_budget_rejected)
+    {
+        return Some(ProviderFailureKind::Protocol);
+    }
     if code == "invalid_encrypted_content" {
         return Some(ProviderFailureKind::ReasoningHistory);
     }
@@ -652,6 +719,20 @@ fn sanitized_provider_kind(
     }
 }
 
+fn reasoning_budget_rejected(message: &str) -> bool {
+    const PREFIX: &str =
+        "The thinking_budget parameter must be a positive integer and not greater than ";
+    message
+        .strip_prefix("<400> InternalError.Algo.InvalidParameter: ")
+        .unwrap_or(message)
+        .strip_prefix(PREFIX)
+        .is_some_and(|limit| {
+            !limit.is_empty()
+                && limit.len() <= 10
+                && limit.bytes().all(|byte| byte.is_ascii_digit())
+        })
+}
+
 fn sealed_connector_semantics(profile: &CandidateProtocolProfile) -> bool {
     profile.schema_version == "hiroute.candidate-protocol-profile/v1"
         && profile.capability.schema_version == "hiroute.candidate-capability/v1"
@@ -672,6 +753,7 @@ fn classify_model_error(
     error: ModelError,
     response_status: StatusCode,
 ) -> Result<PrecommitClassification<ProductionReadiness, ProductionDecodedSse>, Arc<str>> {
+    response_diagnostics::model_error(&error, Some(response_status.as_u16()));
     let kind = sanitized_provider_kind(&state.profile, &error);
     let status = error.status.unwrap_or(response_status.as_u16());
     let raw = RawAttemptFailure::Http {
@@ -691,6 +773,10 @@ fn classify_state_failure(
     raw: RawAttemptFailure,
     local_status: StatusCode,
 ) -> Result<PrecommitClassification<ProductionReadiness, ProductionDecodedSse>, Arc<str>> {
+    #[cfg(all(unix, debug_assertions))]
+    if let Some(capture) = &state.capture {
+        capture.failed();
+    }
     let failure = classify_failure(&raw, connector_error_profile(&state.profile)?);
     let facts = failure_facts(&failure);
     state.classified_failure = Some(failure);
@@ -732,6 +818,8 @@ fn take_readiness(
     prefix_eos_pending: bool,
 ) -> Result<ProductionReadiness, Arc<str>> {
     Ok(ProductionReadiness {
+        #[cfg(all(unix, debug_assertions))]
+        capture: state.capture.take(),
         response_status,
         content_type,
         prefix: state
@@ -768,7 +856,8 @@ fn project_native_chunk_readiness(
         if terminal {
             return Err(Arc::from("native stream emitted bytes after terminal"));
         }
-        if unit.failure.is_some() {
+        if let Some(error) = &unit.failure {
+            response_diagnostics::model_error(error, Some(readiness.response_status.as_u16()));
             response_diagnostics::note(
                 FailureStage::ProviderStream,
                 FailureReason::ProviderRejected,
@@ -844,14 +933,19 @@ fn decode_stream_chunk_readiness(
         .renderer
         .as_mut()
         .ok_or_else(|| Arc::from("accepted client renderer is unavailable"))?;
-    let mut status = decoder
-        .feed(bytes, end_stream)
-        .map_err(|error| response_diagnostics::adapter(FailureStage::Decode, error))?;
+    let mut status = decoder.feed(bytes, end_stream).map_err(|error| {
+        response_diagnostics::adapter_at(
+            FailureStage::Decode,
+            error,
+            Some(decoder.diagnostic_position()),
+        )
+    })?;
     let mut output = Vec::new();
     loop {
         for event in decoder.take_events() {
             observe_semantic_terminal(&mut readiness.semantic_terminal, &event.event);
-            if matches!(event.event, ModelEvent::ResponseFailed { .. }) {
+            if let ModelEvent::ResponseFailed { error } = &event.event {
+                response_diagnostics::model_error(error, Some(readiness.response_status.as_u16()));
                 response_diagnostics::note(
                     FailureStage::ProviderStream,
                     FailureReason::ProviderRejected,
@@ -872,9 +966,13 @@ fn decode_stream_chunk_readiness(
         if status != adapters::ResponseDecodeStatus::NeedDrain {
             break;
         }
-        status = decoder
-            .resume()
-            .map_err(|_| Arc::from("accepted native stream drain failed"))?;
+        status = decoder.resume().map_err(|error| {
+            response_diagnostics::adapter_at(
+                FailureStage::Decode,
+                error,
+                Some(decoder.diagnostic_position()),
+            )
+        })?;
     }
     let terminal = status == adapters::ResponseDecodeStatus::Terminal;
     if terminal && !end_stream {
@@ -889,10 +987,13 @@ fn finish_native_stream_on_terminal(
     let active = decoder
         .as_mut()
         .ok_or_else(|| Arc::from("native stream decoder is unavailable"))?;
-    if active
-        .feed(&[], true)
-        .map_err(|_| Arc::from("native stream has a malformed terminal tail"))?
-        != adapters::ResponseDecodeStatus::Terminal
+    if active.feed(&[], true).map_err(|error| {
+        response_diagnostics::adapter_at(
+            FailureStage::EndOfStream,
+            error,
+            Some(active.diagnostic_position()),
+        )
+    })? != adapters::ResponseDecodeStatus::Terminal
         || !active.take_events().is_empty()
     {
         return Err(Arc::from("native stream has events after terminal"));
@@ -901,8 +1002,15 @@ fn finish_native_stream_on_terminal(
         .take()
         .expect("terminal decoder is present")
         .finish()
-        .map_err(|_| Arc::from("native stream terminal is incomplete"))?;
+        .map_err(|error| response_diagnostics::adapter(FailureStage::EndOfStream, error))?;
     Ok(())
+}
+
+fn known_terminal_failure(terminal: Option<SemanticTerminalOutcome>) -> bool {
+    matches!(
+        terminal,
+        Some(SemanticTerminalOutcome::Failed | SemanticTerminalOutcome::Incomplete)
+    )
 }
 
 fn semantic_terminal_for_response(response: &ModelResponseIRV1) -> Option<SemanticTerminalOutcome> {

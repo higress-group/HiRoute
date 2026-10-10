@@ -160,8 +160,43 @@ const scenarios = [
     assert(calls('preview_compute_save').at(-1).payload.change.expected_revisions.target === c().management.revisions.target, 'Credential change reused the revision from before the decision save');
     await until(() => text().includes('接入凭据已保存'), 'credential save completed');
   }),
+  scenario('desktop.routing.follow-up-preference', ['routing-editor', 'decision-services'], 'New routes allow model switching; each mode retains the choice in its saved draft', async () => {
+    await fresh(); await routing(); await click('新建智能路由');
+    const fields = all('.plan-identity-fields input');
+    setInput(fields[0], 'Follow-up preference'); setInput(fields[1], 'Check new route defaults');
+    const mode = async label => {
+      all('.mode-card').find(item => item.querySelector('strong')?.textContent === label).click();
+      await pause(40);
+      const details = [...document.querySelectorAll('.plan-editor details')].find(item => item.querySelector('summary')?.textContent.includes('追问设置'));
+      assert(details, 'Follow-up settings are missing');
+      if (!details.open) { details.querySelector('summary').click(); await pause(40); }
+      assert(details.textContent.includes('模型不可用时仍会自动切换'), 'Automatic switching caveat is missing');
+      assert(!details.querySelector('select'), 'Default branch selection is mixed into follow-up settings');
+      return details.querySelector('input[type="checkbox"]');
+    };
+    const smart = await mode('智能省钱');
+    assert(smart.checked && smart.closest('label').textContent.includes('追问时允许换模型'), 'New smart route does not enable the positive switching preference');
+    smart.click(); await pause(40);
+    const branch = await mode('自定义分支');
+    assert(branch.checked, 'New custom routing does not allow model switching');
+    branch.click(); await pause(40);
+    assert(!(await mode('智能省钱')).checked, 'Changing modes lost the smart preference');
+    await mode('自定义分支'); await click('保存草稿');
+    await until(() => calls('preview_plan_editor').length > 0, 'follow-up draft request');
+    const editor = calls('preview_plan_editor').at(-1).payload.input.editor;
+    assert(editor.smart.reselect_on_user_message === false && editor.branch_routing.reselect_on_user_message === false, 'Unchecked preferences were inverted or reset when saving');
+    await until(() => !button('保存草稿').disabled, 'follow-up save finished');
+    (await mode('智能省钱')).click(); await pause(40);
+    (await mode('自定义分支')).click(); await pause(40); await click('保存草稿');
+    await until(() => calls('preview_plan_editor').length === 2, 'enabled follow-up draft request');
+    const enabled = calls('preview_plan_editor').at(-1).payload.input.editor;
+    assert(enabled.smart.reselect_on_user_message === true && enabled.branch_routing.reselect_on_user_message === true, 'Checked preferences were inverted when saving');
+  }),
   scenario('desktop.routing.judgment-settings', ['routing-editor', 'decision-services'], 'Advanced judgment starts collapsed; branch copy/reset stays independent and draft payload retains settings', async () => {
     await fresh(); await routing();
+    const followUp = [...document.querySelectorAll('.plan-editor details')].find(item => item.querySelector('summary')?.textContent.includes('追问设置'));
+    followUp.querySelector('summary').click(); await pause(40);
+    assert(!followUp.querySelector('input').checked, 'Opening a saved false preference applied the new default');
     await click('决策模型');
     const field = id => document.querySelector(`[data-decision-field="${id}"]`);
     const smartDetails = field('smart-simple-threshold').closest('details');
@@ -173,6 +208,7 @@ const scenarios = [
     await click('保存草稿');
     await until(() => calls('preview_plan_editor').length > 0 && !button('保存草稿').disabled, 'smart draft request');
     const smart = calls('preview_plan_editor').at(-1).payload.input.editor.smart;
+    assert(smart.reselect_on_user_message === false, 'Saving unrelated edits changed the saved follow-up preference');
     assert(smart.judgment.degree.simple_threshold_millis === 700 && !('branch_routing' in calls('preview_plan_editor').at(-1).payload.input.editor), 'Smart saving was serialized as task branches');
     all('.mode-card').find(item => item.querySelector('strong')?.textContent === '自定义分支').click();
     await until(() => all('.branch-routing-card').length === 2, 'custom branch editor');
@@ -265,7 +301,7 @@ const scenarios = [
     assert(saved.secret === 'synthetic-test-key', 'Built-in auth was incorrectly prefixed by UI');
     const tested = calls('test_classifier_decision').at(-1).payload.input.classifier.service;
     assert(tested.revision === 1 && tested.connection.auth_header.value_secret_ref === 'protected/r1', 'Test used the unsaved editor or old credential');
-    assert(text().includes('核对 API Key 权限') && !text().includes('CLASSIFIER_INPUT_REJECTED'), 'Failure is not actionable or exposes raw code by default');
+    assert(text().includes('协议兼容性') && !text().includes('CLASSIFIER_INPUT_REJECTED'), 'Failure is not actionable or exposes raw code by default');
     await click('修改连接'); await click('更换');
     setInput(input('credential'), 'replacement-key');
     form().querySelector('summary').click(); await pause(30);

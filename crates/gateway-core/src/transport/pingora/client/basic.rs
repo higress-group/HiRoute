@@ -90,7 +90,13 @@ impl PingoraClientSession {
             }
             ClientSession::H2(mut session) => {
                 session
-                    .write_request_header(Box::new(build_request_header(head)?), false)
+                    .write_request_header(
+                        Box::new(request::build_h2_request_header(
+                            head,
+                            connected.peer.is_tls(),
+                        )?),
+                        false,
+                    )
                     .map_err(|error| AttemptError::Transport(error.to_string().into()))?;
                 let writer = session.take_request_body_writer().ok_or_else(|| {
                     AttemptError::Transport("Pingora H2 request writer is unavailable".into())

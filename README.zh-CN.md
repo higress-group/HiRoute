@@ -25,6 +25,12 @@
   <a href="https://hiroute.ai/download/"><img alt="支持 macOS 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <a href="https://hiroute.ai/#tour">
+    <img src="apps/website/public/media/hiroute-promo-zh-readme.jpg" alt="观看 1 分钟 HiRoute 产品介绍" width="720">
+  </a>
+</p>
+
 HiRoute 是长程 Agent 的本地控制与执行层。它把模型来源、可复用路由计划、Agent 接入、有边界的
 故障接力和执行证据放在同一套系统里，同时提供 Desktop 应用以及无界面 CLI 和后台服务。
 
@@ -172,3 +178,5 @@ ARM64。最新安装包与版本说明见[官网](https://hiroute.ai/download/)�
 HiRoute 使用 [Apache License 2.0](LICENSE)。缺陷和功能建议请提交到
 [GitHub Issues](https://github.com/higress-group/HiRoute/issues)。安全问题和 crash report 请按
 [SECURITY.md](SECURITY.md)中的流程提交。
+
+友情链接：[LINUX DO](https://linux.do/)（技术交流社区）。

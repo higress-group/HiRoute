@@ -156,7 +156,7 @@ pub fn native_nonstream(protocol: IngressProtocol) -> Vec<u8> {
             "usage":{"input_tokens":10,"output_tokens":20,"total_tokens":30}
         }),
         IngressProtocol::ChatCompletions => json!({
-            "id":"chat_native","object":"chat.completion","created":1,"model":"physical-chat",
+            "id":"chat_native","object":"chat.completion","service_tier":"default","created":1,"model":"physical-chat",
             "choices":[{"index":0,"message":{"role":"assistant","reasoning_content":"careful","content":"done","tool_calls":[
                 {"id":"chat_native_a","type":"function","function":{"name":"weather","arguments":"{\"city\":\"Paris\"}"}},
                 {"id":"chat_native_b","type":"function","function":{"name":"units","arguments":"{\"unit\":\"C\"}"}}
@@ -281,7 +281,7 @@ fn chat_events() -> Vec<RenderedSseEvent> {
         ]},"finish_reason":null}],"usage":null}),
         ),
         unnamed(
-            json!({"id":"chat_native","object":"chat.completion.chunk","created":1,"model":"physical-chat","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":null}),
+            json!({"id":"chat_native","object":"chat.completion.chunk","created":1,"model":"physical-chat","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"service_tier":"default","usage":null}),
         ),
         unnamed(
             json!({"id":"chat_native","object":"chat.completion.chunk","created":1,"model":"physical-chat","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}),

@@ -443,6 +443,11 @@ impl AcceptedResponseCapture {
     /// body frame. The caller retains ownership of this sequencing rule.
     pub fn accepted_frame(&mut self, body: &Bytes, end_stream: bool) {
         if !self.request.is_enabled() {
+            if self.request.tracks_attempts() && (!body.is_empty() || end_stream) {
+                // Diagnostic acceptance has no content identity or capture.
+                // Business channels remain disabled by RequestObservation.
+                let _ = self.request.accept_current("", body.len());
+            }
             return;
         }
         if !body.is_empty() || end_stream {

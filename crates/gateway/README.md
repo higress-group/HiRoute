@@ -9,6 +9,21 @@ branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
 
+The standalone `hirouted` entry can attach the same typed diagnostics using
+`--diagnostics-root <private-root>` and an optional temporary
+`--diagnostic-level-override`. These diagnostics do not enable session content
+capture or execution-fact storage. At Info, failed attempts retain the safe
+actual model and reasoning controls, HTTP protocol/status and body commit state.
+
+Messages thinking computation is projected in
+[request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
+is resolved by [ingress.rs](src/adapters/ingress.rs) before Replay externalization.
+[Native response projection](src/adapters/response/native_passthrough.rs) preserves
+signatures and usage while enforcing omitted text. Cross-protocol Messages
+renderers omit foreign reasoning without inventing signatures. The
+[production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
+covers the listener boundary, including tool continuation.
+
 ## Decision operation
 
 [core_runtime/classification.rs](src/core_runtime/classification.rs) owns the
@@ -77,3 +92,78 @@ Use the repository [test planner](../../scripts/test-plan.py) and
 [configured validation runner](../../scripts/validation.py). An isolated Jev or
 diagnostic success does not establish product routing success. Source-text
 assertions and private helper names are not substitutes for these behaviors.
+
+## Native controls and completed responses
+
+[Reasoning serialization](src/adapters/request/reasoning.rs) owns protocol-level
+switch semantics and normalizes supported released projections without rewriting
+frozen publication identities. The daemon produces current profiles; explicit
+effort, manual budget and adaptive controls remain distinct. Shared Pingora
+transport assigns HTTP/2 authority once for model and classifier calls.
+
+[Response classification](src/runtime/driver/response.rs) classifies upstream
+failures for bounded relay within the frozen plan before the first downstream body.
+Streaming headers alone leave relay open; a later failed model terminal stays a failure in attempt,
+request and Agent turn observations even when its native bytes were delivered.
+The decision diagnostic uses closed error codes; provider text is not a public
+error message or a substitute for evidence of credential failure.
+
+## Response failure evidence
+
+`runtime/driver/response_diagnostics.rs` owns the closed, payload-free failure
+classification; `adapters/response/decoder.rs` reports SSE event ordinal and
+received-byte upper bound without per-token logs. Unix Debug-only
+`runtime/stream_capture.rs` can capture an explicitly enabled private session;
+its `stream_replay` example restores the actual attempt profile and tool mapping.
+This is offline decoder evidence, not proof of network timing or task completion.
+After successful provider materialization, private capture registers its existing
+weak handle once a pending attempt is staged, including explicitly unauthenticated
+profiles whose staging occurs after materialization rather than a credential read.
+Private capture binds that request-owned weak handle at formal attempt promotion,
+after validating the pending binding and credential. A prebody failure closes
+body capture and seals the file before `stopped`; later promotion may replace
+the sample atomically with an identical content prefix, one typed correlation
+record and a new durable seal. A private temporary copy is synced before rename,
+so termination always leaves either complete version; temporary bytes count toward
+the session quota. If that quota cannot hold both copies, the original survives. It
+rechecks the private directory, file identity/permissions/owner, expiry and
+original file/session/record budgets. Content capture never reopens, and the
+weak handle cannot retain a writer or bind another request or attempt.
+
+The helper requires Unix Python with non-reaping `os.waitid`/`os.WNOWAIT`
+(Linux, or Python 3.13+ on macOS). It checks support before creating a session.
+From a clean checkout of the exact candidate, wrap the managed Debug daemon and
+its isolated settings arguments with:
+
+```sh
+python3 scripts/private-stream-capture.py run \
+  --root /absolute/new-private-session --source-sha FULL_CANDIDATE_SHA \
+  --client isolated-client-version --seconds 300 --attempts 3 \
+  -- /absolute/managed-debug-hirouted ISOLATED_DAEMON_ARGUMENTS
+```
+
+The helper issues no requests. Disable client retries, use a separate API-key
+context, and stop on the first failure. Each private file is limited to 8 MiB,
+the session to 32 MiB and four underlying attempts, and capture expires within
+one hour. Credentials in transport headers are excluded. Never commit or upload
+the files. Run the same candidate's Debug `stream_replay` executable with the
+private `attempt-N.capture` path to check original, one-byte and 4096-byte chunks;
+it prints only safe results. Incomplete or unsealed samples are rejected.
+Replay supports successful cross-protocol decoder paths, skips informational
+HTTP heads, and rejects native projector or non-success paths as
+`unsupported_capture_path` without a decoder verdict.
+A separate, bounded retention owner stops the isolated candidate's entire process
+group, including descendants after the leader exits, and reaps the leader. It
+deletes the raw session within 24 hours, even after the CLI returns. Its PID is printed;
+SIGTERM also stops the candidate and deletes the session immediately. Keep the
+owner running until deletion. Host shutdown or SIGKILL of that owner cannot run
+cleanup; after recovery, delete the exact expired session with
+`python3 scripts/private-stream-capture.py cleanup /absolute/new-private-session`.
+Kernel locks release on candidate crashes, so stale lock files do not prevent
+recovery cleanup. No shared scheduler or daily daemon is modified.
+
+Known incomplete nonstream JSON responses follow the same prebody relay boundary
+as streaming failures, for both native and converted protocols. Reported usage
+survives fallback; partial response content is not delivered. Attempt/deadline
+limits and fixed-source authority still apply, and unknown completion remains
+separate from an explicit failure.

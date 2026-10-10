@@ -27,6 +27,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-domain", "compute"),
         ("hiroute-client-core", "transport"),
         ("hiroute-diagnostics", "files_safety"),
+        ("hiroute-diagnostics", "response_failure_compatibility"),
         ("hiroute-diagnostics", "worker_probe_progress"),
         ("hiroute-diagnostics", "writer_bounds"),
         ("hiroute-cli", "contracts"),

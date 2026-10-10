@@ -29,6 +29,8 @@ fn accepted_codex_terminal_event_crosses_transport_frames_and_keeps_eos() {
     )
     .unwrap();
     let mut readiness = ProductionReadiness {
+        #[cfg(all(unix, debug_assertions))]
+        capture: None,
         response_status: StatusCode::OK,
         content_type: "text/event-stream",
         prefix,
@@ -133,6 +135,8 @@ fn accepted_chat_terminal_closes_responses_stream_without_waiting_for_transport_
     );
     let client = ClientProtocolProfile::for_candidate(&profile).unwrap();
     let mut readiness = ProductionReadiness {
+        #[cfg(all(unix, debug_assertions))]
+        capture: None,
         response_status: StatusCode::OK,
         content_type: "text/event-stream",
         prefix,

@@ -10,6 +10,102 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 struct ActiveTask(Arc<AtomicUsize>);
 
+#[test]
+fn h2_authority_preserves_port_path_and_auth_without_duplicate_host() {
+    for authority in ["provider.test:8443", "[::1]:8080"] {
+        let head = PreparedRequestHead {
+            method: http::Method::POST,
+            path_and_query: "/compatible-mode/v1/systemone?test=1".into(),
+            headers: http::HeaderMap::from_iter([
+                (http::header::HOST, authority.parse().unwrap()),
+                (
+                    http::header::AUTHORIZATION,
+                    "Bearer test-only".parse().unwrap(),
+                ),
+            ]),
+        };
+        let h1 = build_request_header(&head).unwrap();
+        assert_eq!(h1.headers[http::header::HOST], authority);
+        for tls in [false, true] {
+            let h2 = request::build_h2_request_header(&head, tls).unwrap();
+            assert_eq!(h2.uri.authority().unwrap().as_str(), authority);
+            assert_eq!(
+                h2.uri.scheme_str(),
+                Some(if tls { "https" } else { "http" })
+            );
+            assert_eq!(
+                h2.uri.path_and_query().unwrap().as_str(),
+                head.path_and_query.as_ref()
+            );
+            assert!(!h2.headers.contains_key(http::header::HOST));
+            assert_eq!(h2.headers[http::header::AUTHORIZATION], "Bearer test-only");
+        }
+    }
+    let head = PreparedRequestHead {
+        method: http::Method::POST,
+        path_and_query: "/".into(),
+        headers: http::HeaderMap::new(),
+    };
+    assert!(request::build_h2_request_header(&head, true).is_err());
+}
+
+#[tokio::test]
+async fn real_h2_upstream_receives_one_authority_from_production_client() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut connection = h2::server::handshake(socket).await.unwrap();
+        let (request, mut respond) = connection.accept().await.unwrap().unwrap();
+        assert_eq!(
+            request.uri().authority().unwrap().as_str(),
+            "provider.test:8443"
+        );
+        assert_eq!(
+            request.uri().path_and_query().unwrap().as_str(),
+            "/systemone?test=1"
+        );
+        assert!(!request.headers().contains_key(http::header::HOST));
+        respond
+            .send_response(http::Response::new(()), true)
+            .unwrap();
+        while connection.accept().await.is_some() {}
+    });
+    let mut target = plain_target(address, 87);
+    target.alpn = Arc::from([Arc::from("h2")]);
+    target = target.with_derived_connection_fingerprint();
+    let mut client =
+        PingoraClientSession::new(Arc::new(PingoraConnectorRegistry::default()), [0; 32]);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        client.connect(&target, address).await.unwrap();
+        assert_eq!(client.protocol(), HttpProtocol::Http2);
+        client
+            .write_request_head(&PreparedRequestHead {
+                method: http::Method::POST,
+                path_and_query: "/systemone?test=1".into(),
+                headers: http::HeaderMap::from_iter([(
+                    http::header::HOST,
+                    "provider.test:8443".parse().unwrap(),
+                )]),
+            })
+            .await
+            .unwrap();
+        client.finish_request_body().await.unwrap();
+        assert!(matches!(
+            client.read_response_head().await.unwrap(),
+            TransportPrecommitEvent::ResponseHead {
+                status: http::StatusCode::OK,
+                ..
+            }
+        ));
+        client.cancel_reset().await;
+    })
+    .await
+    .unwrap();
+    server.abort();
+    let _ = server.await;
+}
+
 impl Drop for ActiveTask {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::AcqRel);

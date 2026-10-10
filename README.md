@@ -25,6 +25,12 @@
   <a href="https://hiroute.ai/download/"><img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <a href="https://hiroute.ai/en/#tour">
+    <img src="apps/website/public/media/hiroute-promo-en-readme.jpg" alt="Watch the 1-minute HiRoute product tour" width="720">
+  </a>
+</p>
+
 HiRoute is a local control and execution layer for long-horizon agents. It brings model
 sources, reusable routing plans, agent connections, bounded failover, and execution evidence
 into one system, available through a Desktop application or a headless CLI and daemon.
@@ -192,3 +198,5 @@ x86_64 and ARM64. Download the latest version and read the release notes on the
 HiRoute is licensed under the [Apache License 2.0](LICENSE). Use
 [GitHub Issues](https://github.com/higress-group/HiRoute/issues) for bugs and feature requests.
 Report security issues and crash reports through the process in [SECURITY.md](SECURITY.md).
+
+Links: [LINUX DO](https://linux.do/) — a Chinese-language tech community.
