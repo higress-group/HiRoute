@@ -989,7 +989,7 @@
       "type": "object"
     }
   },
-  "$id": "hiroute://contracts/cli/plan-draft-change.v1.schema.json",
-  "$ref": "#/$defs/draft_change",
+  "$id": "hiroute://contracts/cli/publication-checkpoint-change.v1.schema.json",
+  "$ref": "#/$defs/checkpoint_change",
   "$schema": "https://json-schema.org/draft/2020-12/schema"
 }
