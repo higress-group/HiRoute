@@ -777,8 +777,8 @@ impl SecretStorePort for LocalSecretStore {
                 .execute(
                     "INSERT INTO secret_entries (credential_id, owner_scope, kind, ciphertext,
                         nonce, aad_schema, key_version, fingerprint, generation, owner_operation_id,
-                        subject, purpose, allowed_destinations_json, updated_at)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,unixepoch())
+                        subject, purpose, allowed_destinations_json, created_at, updated_at)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,unixepoch(),unixepoch())
                      ON CONFLICT(credential_id) DO UPDATE SET
                         owner_scope=excluded.owner_scope, kind=excluded.kind,
                         ciphertext=excluded.ciphertext, nonce=excluded.nonce,
