@@ -55,6 +55,8 @@ mod cancelled_start;
 mod control_races;
 #[path = "tests/managed_recovery.rs"]
 mod managed_recovery;
+#[path = "tests/owner_rollback.rs"]
+mod owner_rollback;
 #[path = "tests/proxy_recovery.rs"]
 mod proxy_recovery;
 #[path = "tests/request_io.rs"]
