@@ -210,6 +210,77 @@ class InstallerTests(StandaloneFixture):
             installer.prepare_service_directory(self.home)
         self.assertEqual(local.stat().st_mode & 0o777, 0o775)
 
+    def test_default_state_parents_are_private_with_group_writable_umask(self):
+        manifest, archive = self.build()
+        previous = os.umask(0o002)
+        try:
+            with patch.dict(os.environ, {"HOME": str(self.home)}, clear=True), patch.object(
+                installer.subprocess, "run"
+            ), patch("builtins.print"):
+                installer.install(self.install_args(manifest, archive))
+            for relative in (".local/state", ".local/state/hiroute", ".local/state/hiroute/run"):
+                self.assertEqual((self.home / relative).stat().st_mode & 0o777, 0o700)
+        finally:
+            os.umask(previous)
+
+    def test_nested_xdg_state_parents_are_private_with_group_writable_umask(self):
+        manifest, archive = self.build()
+        previous = os.umask(0o002)
+        try:
+            environment = {"HOME": str(self.home), "XDG_STATE_HOME": str(self.home / "custom/nested/state")}
+            with patch.dict(os.environ, environment, clear=True), patch.object(
+                installer.subprocess, "run"
+            ), patch("builtins.print"):
+                installer.install(self.install_args(manifest, archive))
+            for relative in ("custom", "custom/nested", "custom/nested/state", "custom/nested/state/hiroute"):
+                self.assertEqual((self.home / relative).stat().st_mode & 0o777, 0o700)
+        finally:
+            os.umask(previous)
+
+    def test_install_rejects_symlink_state_parent(self):
+        manifest, archive = self.build()
+        local = self.home / ".local"
+        local.mkdir(mode=0o700)
+        shared = self.root / "shared-state"
+        shared.mkdir(mode=0o700)
+        state = local / "state"
+        state.symlink_to(shared)
+        with patch.dict(os.environ, {"HOME": str(self.home)}, clear=True), patch.object(
+            installer.subprocess, "run"
+        ), patch("builtins.print"):
+            with self.assertRaisesRegex(ValueError, "state parent is unsafe"):
+                installer.install(self.install_args(manifest, archive))
+        self.assertTrue(state.is_symlink())
+        self.assertEqual(list(shared.iterdir()), [])
+        self.assertFalse((local / "bin/hiroute").exists())
+
+    def test_install_rejects_group_writable_state_parent_without_chmod(self):
+        manifest, archive = self.build()
+        state = self.home / ".local/state"
+        state.parent.mkdir(mode=0o700)
+        state.mkdir(mode=0o775)
+        state.chmod(0o775)
+        with patch.dict(os.environ, {"HOME": str(self.home)}, clear=True), patch.object(
+            installer.subprocess, "run"
+        ), patch("builtins.print"):
+            with self.assertRaisesRegex(ValueError, "state parent is unsafe"):
+                installer.install(self.install_args(manifest, archive))
+        self.assertEqual(state.stat().st_mode & 0o777, 0o775)
+        self.assertFalse((self.home / ".local/bin/hiroute").exists())
+
+    def test_safe_existing_state_parent_permissions_are_preserved(self):
+        manifest, archive = self.build()
+        state = self.home / ".local/state"
+        state.parent.mkdir(mode=0o700)
+        state.mkdir(mode=0o755)
+        state.chmod(0o755)
+        with patch.dict(os.environ, {"HOME": str(self.home)}, clear=True), patch.object(
+            installer.subprocess, "run"
+        ), patch("builtins.print"):
+            installer.install(self.install_args(manifest, archive))
+        self.assertEqual(state.stat().st_mode & 0o777, 0o755)
+        self.assertEqual((state / "hiroute").stat().st_mode & 0o777, 0o700)
+
     def test_install_lock_rejects_concurrent_mutation(self):
         with self.environment():
             paths = installer.layout(self.home)
