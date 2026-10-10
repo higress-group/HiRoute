@@ -172,3 +172,5 @@ ARM64。最新安装包与版本说明见[官网](https://hiroute.ai/download/)�
 HiRoute 使用 [Apache License 2.0](LICENSE)。缺陷和功能建议请提交到
 [GitHub Issues](https://github.com/higress-group/HiRoute/issues)。安全问题和 crash report 请按
 [SECURITY.md](SECURITY.md)中的流程提交。
+
+友情链接：[LINUX DO](https://linux.do/)（技术交流社区）。
