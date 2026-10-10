@@ -49,8 +49,14 @@ fn accessible_writable_target_and_neighbor_keep_independent_effects() {
     store
         .bind_external_target("another-target", unsafe_parent.join("other-settings.json"))
         .unwrap();
+    let neighbor_operation = OperationId::parse("op_00112233445566778899aabbccddee00").unwrap();
     let effect = store
-        .stage_native_target(&operation, &intents[1], Some(b"safe neighbor"), false)
+        .stage_native_target(
+            &neighbor_operation,
+            &intents[1],
+            Some(b"safe neighbor"),
+            false,
+        )
         .unwrap();
     store.activate_artifact(&effect).unwrap();
     assert_eq!(fs::read(&paths[1]).unwrap(), b"safe neighbor");

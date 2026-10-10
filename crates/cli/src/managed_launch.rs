@@ -668,15 +668,18 @@ mod tests {
         std::os::unix::fs::symlink(&target, bin.join("hiroute")).unwrap();
         let inherited = std::env::join_paths([PathBuf::from("/usr/bin"), bin.clone()]).unwrap();
 
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o770)).unwrap();
-        assert!(validated_managed_path(&home, &target, Some(inherited.clone())).is_none());
-
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let path = validated_managed_path(&home, &target, Some(inherited)).unwrap();
-        assert_eq!(
-            std::env::split_paths(&path).collect::<Vec<_>>(),
-            [bin.clone(), PathBuf::from("/usr/bin")]
-        );
+        for mode in [0o770, 0o700] {
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(mode)).unwrap();
+            let path = validated_managed_path(&home, &target, Some(inherited.clone())).unwrap();
+            assert_eq!(
+                std::env::split_paths(&path).collect::<Vec<_>>(),
+                [bin.clone(), PathBuf::from("/usr/bin")]
+            );
+            assert_eq!(
+                std::fs::metadata(&bin).unwrap().permissions().mode() & 0o777,
+                mode
+            );
+        }
         std::fs::remove_file(bin.join("hiroute")).unwrap();
         std::os::unix::fs::symlink("/usr/bin/false", bin.join("hiroute")).unwrap();
         assert!(validated_managed_path(&home, &target, None).is_none());

@@ -317,7 +317,7 @@ fn declared_claude_messages_profiles_emit_both_exact_controls() {
             .iter()
             .filter(|n| n.native_render_convention.is_some())
             .count(),
-        2
+        6
     );
 }
 

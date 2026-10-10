@@ -27,7 +27,6 @@ const SUCCESS_TEST: &str = "control::runtime::delegation_maintenance::tests::own
 #[derive(Clone, Copy)]
 enum BlockedFixture {
     ReplacedIdentity,
-    NonPrivatePermissions,
     MarkerFinalizationInterrupted,
 }
 
@@ -46,7 +45,6 @@ fn blocked_native_deletion_remains_claimed_and_unacknowledged() {
         return;
     }
     assert_blocked_cleanup(BlockedFixture::ReplacedIdentity, "identity");
-    assert_blocked_cleanup(BlockedFixture::NonPrivatePermissions, "permissions");
     assert_blocked_cleanup(
         BlockedFixture::MarkerFinalizationInterrupted,
         "marker-interrupted",
@@ -65,11 +63,6 @@ fn assert_blocked_cleanup(fixture: BlockedFixture, suffix: &str) {
             .unwrap();
             std::fs::remove_dir(&cleanup.native_root).unwrap();
             private_directory(&cleanup.native_root);
-            true
-        }
-        BlockedFixture::NonPrivatePermissions => {
-            std::fs::set_permissions(&cleanup.native_root, std::fs::Permissions::from_mode(0o755))
-                .unwrap();
             true
         }
         BlockedFixture::MarkerFinalizationInterrupted => {
@@ -130,7 +123,14 @@ fn owned_native_deletion_commits_removed_before_exact_ack() {
     if crate::test_support::isolated_agent_home(SUCCESS_TEST) {
         return;
     }
-    let cleanup = cleanup_fixture("success");
+    for mode in [0o700, 0o755] {
+        assert_owned_cleanup(mode);
+    }
+}
+
+fn assert_owned_cleanup(mode: u32) {
+    let cleanup = cleanup_fixture(&format!("success-{mode}"));
+    std::fs::set_permissions(&cleanup.native_root, std::fs::Permissions::from_mode(mode)).unwrap();
     std::fs::write(cleanup.native_root.join("history.jsonl"), b"native history").unwrap();
     let mut remaining = DELETE_BUDGET;
     cleanup

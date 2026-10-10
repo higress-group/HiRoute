@@ -678,9 +678,9 @@ fn qoder_pending_file_tail_keeps_collaboration_preview_independent_and_retries_e
 }
 
 #[test]
-fn qoder_managed_bearer_permission_drift_revokes_live_eligibility_but_allows_restore() {
+fn qoder_managed_bearer_mode_change_preserves_live_eligibility_and_restore() {
     if crate::test_support::isolated_agent_home(
-        "control::runtime::native_model::tests::settings_entry_tests::qoder::models::qoder_managed_bearer_permission_drift_revokes_live_eligibility_but_allows_restore",
+        "control::runtime::native_model::tests::settings_entry_tests::qoder::models::qoder_managed_bearer_mode_change_preserves_live_eligibility_and_restore",
     ) {
         return;
     }
@@ -704,10 +704,19 @@ fn qoder_managed_bearer_permission_drift_revokes_live_eligibility_but_allows_res
         0o600
     );
     fs::set_permissions(&fixture.native_config, fs::Permissions::from_mode(0o644)).unwrap();
-    let drift = model_status(&fixture);
-    assert_eq!(drift["state"], "drift");
-    assert_eq!(drift["model_verified"], false);
-    assert!(drift["live_check_targets"].is_null() || drift["live_check_targets"] == json!([]));
+    let current = model_status(&fixture);
+    assert_eq!(current["state"], "configured");
+    assert_eq!(current["model_verified"], status["model_verified"]);
+    assert_eq!(current["live_check_targets"], status["live_check_targets"]);
+    assert!(!current["live_check_targets"].as_array().unwrap().is_empty());
+    assert_eq!(
+        fs::metadata(&fixture.native_config)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o644
+    );
     apply(
         &fixture.service,
         &fixture.runtime,

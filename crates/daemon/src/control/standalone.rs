@@ -15,7 +15,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Same-user credential input shared by standalone and Desktop-owned role-all processes.
+/// Local credential input shared by standalone and Desktop-owned role-all processes.
 pub(super) struct ProtectedInputServer {
     listener: UnixListener,
     path: PathBuf,
@@ -195,7 +195,6 @@ fn valid_candidate_ref(value: &str) -> bool {
 }
 
 fn validate_private_directory(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let metadata = std::fs::symlink_metadata(path)
         .map_err(|_| "protected input socket directory is unavailable")?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
@@ -205,7 +204,7 @@ fn validate_private_directory(path: &Path) -> Result<(), String> {
 }
 
 fn remove_stale_socket(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    use std::os::unix::fs::FileTypeExt;
     match std::fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(_) => Err("protected input socket state is unavailable".into()),
@@ -292,7 +291,7 @@ mod tests {
         layout.runtime_root = runtime;
         let server = ProtectedInputServer::bind(&layout).unwrap();
         let _client = UnixStream::connect(layout.protected_input_socket()).unwrap();
-        let (peer, _) = server.listener.accept().unwrap();
+        let (_peer, _) = server.listener.accept().unwrap();
         drop(server);
         assert!(!layout.protected_input_socket().exists());
     }

@@ -3,6 +3,22 @@ use hiroute_application_api::{
     ComputeManagementQueryV2, ComputeManagementSnapshotV2, ComputeSubscriptionModeV1,
 };
 
+fn connector_source(connector: &str, candidate: &str) -> hiroute_domain::ComputeManagementSourceV2 {
+    let mut source = complete_management_source();
+    source.provenance = hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
+        connector_id: connector.into(),
+        account_ref: "account/private".into(),
+    };
+    source.validation = Some(hiroute_domain::ComputeManagementValidationV2 {
+        approval_operation_id: "operation/approval".into(),
+        validation_ref: "validation/connector".into(),
+        validation_revision: 1,
+    });
+    source.last_candidate_ref = candidate.into();
+    source.validate().unwrap();
+    source
+}
+
 #[test]
 fn saved_subscription_mode_survives_unavailable_credentials_and_v2_stays_strict() {
     for provider in ["codex", "claude"] {
@@ -10,12 +26,10 @@ fn saved_subscription_mode_survives_unavailable_credentials_and_v2_stays_strict(
             ("managed/account", ComputeSubscriptionModeV1::CpaManaged),
             ("native-account", ComputeSubscriptionModeV1::NativeBorrowed),
         ] {
-            let mut source = complete_management_source();
-            source.provenance = hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
-                connector_id: format!("connector.cpa.{provider}"),
-                account_ref: "account/private".into(),
-            };
-            source.last_candidate_ref = format!("candidate/cpa/{provider}/{suffix}");
+            let source = connector_source(
+                &format!("connector.cpa.{provider}"),
+                &format!("candidate/cpa/{provider}/{suffix}"),
+            );
             // The saved selection is authoritative even without live credential or runtime facts.
             let repository = OneSourceRepository(source.clone());
             let result = query_compute_management_v3(
@@ -55,14 +69,26 @@ fn saved_subscription_mode_survives_unavailable_credentials_and_v2_stays_strict(
                 &FailingRuntimeRead,
                 &hiroute_domain::WorkspaceId::default(),
                 &ComputeManagementQueryV2 {
-                    source_id: Some("source/other".into()),
-                    ..Default::default()
+                    source_id: Some(source.source_id.clone()),
                 },
                 None,
             )
             .unwrap();
-            assert!(filtered.sources.is_empty());
-            assert!(filtered.subscription_modes.is_empty());
+            assert_eq!(filtered.sources, old.sources);
+            assert_eq!(filtered.subscription_modes.len(), 1);
+            assert_eq!(filtered.subscription_modes[0].source_id, source.source_id);
+            assert!(matches!(
+                query_compute_management_v3(
+                    &repository,
+                    &FailingRuntimeRead,
+                    &hiroute_domain::WorkspaceId::default(),
+                    &ComputeManagementQueryV2 {
+                        source_id: Some("source/other".into())
+                    },
+                    None,
+                ),
+                Err(ComputeManagementQueryErrorV2::NotFound)
+            ));
         }
     }
 }
@@ -79,12 +105,7 @@ fn mode_requires_matching_connector_and_committed_candidate_not_a_display_label(
         ("connector.cpa.codex", "candidate/cpa/codex/managed/"),
         ("connector.cpa.codex", "candidate/cpa/codex/unknown/account"),
     ] {
-        let mut source = complete_management_source();
-        source.provenance = hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
-            connector_id: connector.into(),
-            account_ref: "account/private".into(),
-        };
-        source.last_candidate_ref = candidate.into();
+        let mut source = connector_source(connector, candidate);
         source.display_name = "Independent sign-in / 独立登录".into();
         let result = query_compute_management_v3(
             &OneSourceRepository(source),

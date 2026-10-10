@@ -488,8 +488,6 @@ fn standalone_host_target() -> String {
 
 #[cfg(unix)]
 fn standalone_private_directory(path: &std::path::Path) -> Result<(), String> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
     use std::os::unix::fs::DirBuilderExt;
     std::fs::DirBuilder::new()
         .recursive(true)

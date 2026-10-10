@@ -4,8 +4,7 @@ use hiroute_application_api::ComputeCandidateFactStateV2;
 
 fn cache_fixture() -> (tempfile::TempDir, TcpListener, ProductDaemon) {
     let directory = tempfile::tempdir().unwrap();
-    // tempfile inherits umask for directories. A group-writable ancestor makes the
-    // production diagnostics writer reject this otherwise isolated fixture root.
+    // Keep fixture credentials and diagnostics private, independent of the caller's umask.
     fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
     configure_product_root(directory.path());
     let (binary, sha256) = install_subscription_fixture(directory.path());
