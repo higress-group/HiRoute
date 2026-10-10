@@ -302,3 +302,38 @@ pub(super) fn loose_error(value: &Value) -> ModelError {
             .and_then(Value::as_bool),
     }
 }
+
+/// Display is independent of computation: preserve block identity, signature,
+/// redacted state, usage and all non-thinking content, changing only text.
+pub(super) fn omit_messages_thinking_text(value: &mut Value) {
+    fn clear_text(value: &mut Value, kind: &str) {
+        if value.get("type").and_then(Value::as_str) == Some(kind)
+            && let Some(text) = value.get_mut("thinking")
+        {
+            *text = Value::String(String::new());
+        }
+    }
+    if let Some(content) = value.get_mut("content").and_then(Value::as_array_mut) {
+        for part in content {
+            clear_text(part, "thinking");
+        }
+    }
+    match value.get("type").and_then(Value::as_str) {
+        Some("message_start") => {
+            if let Some(message) = value.get_mut("message") {
+                omit_messages_thinking_text(message);
+            }
+        }
+        Some("content_block_start") => {
+            if let Some(part) = value.get_mut("content_block") {
+                clear_text(part, "thinking");
+            }
+        }
+        Some("content_block_delta") => {
+            if let Some(delta) = value.get_mut("delta") {
+                clear_text(delta, "thinking_delta");
+            }
+        }
+        _ => (),
+    }
+}

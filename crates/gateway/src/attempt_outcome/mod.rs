@@ -2,7 +2,7 @@
 //!
 //! HTTP status alone is sufficient only where the protocol contract is
 //! unambiguous. In particular, a 429 must carry the Connector-classified
-//! quota or binding-overload scope; an unclassified 429 fails closed.
+//! quota or binding-overload scope; an unclassified 429 can relay without guessing a quarantine scope.
 
 use std::time::Duration;
 
@@ -110,25 +110,11 @@ impl AttemptFailure {
     }
 
     /// Whether a failure may select another frozen target while the
-    /// downstream semantic commit fence is still clear.
+    /// downstream response body commit fence is still clear.
     pub fn is_precommit_relayable(&self) -> bool {
-        match self.class {
-            AttemptFailureClass::Credential
-            | AttemptFailureClass::Quota
-            | AttemptFailureClass::BindingOverload
-            | AttemptFailureClass::Protocol
-            | AttemptFailureClass::Transient
-            | AttemptFailureClass::Timeout(_)
-            | AttemptFailureClass::Disconnect => true,
-            AttemptFailureClass::PreOutputStream(class) => !matches!(
-                class,
-                PreOutputStreamClass::PermanentClient | PreOutputStreamClass::Unclassified
-            ),
-            AttemptFailureClass::ReasoningHistory
-            | AttemptFailureClass::PermanentClient
-            | AttemptFailureClass::PostCommit
-            | AttemptFailureClass::Unclassified => false,
-        }
+        // Cause classification controls quarantine and key rotation, not whether
+        // another already-authorized candidate can answer before body delivery.
+        !matches!(self.class, AttemptFailureClass::PostCommit)
     }
 
     /// Credential and quota failures may stay on the same frozen binding and
@@ -313,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn fallback_never_guesses_an_unclassified_429() {
+    fn unclassified_429_can_relay_without_guessing_failure_scope() {
         let failure = classify_failure(
             &RawAttemptFailure::Http {
                 status: 429,
@@ -323,11 +309,12 @@ mod tests {
             ConnectorErrorProfile::exact(),
         );
         assert_eq!(failure.class, AttemptFailureClass::Unclassified);
-        assert!(!failure.is_precommit_relayable());
+        assert!(failure.is_precommit_relayable());
+        assert_eq!(failure.state_scope(), None);
     }
 
     #[test]
-    fn permanent_client_statuses_are_never_success_or_fallback() {
+    fn upstream_client_errors_can_relay_without_quarantining() {
         for status in [400, 404, 422] {
             let failure = classify_failure(
                 &RawAttemptFailure::Http {
@@ -338,12 +325,13 @@ mod tests {
                 ConnectorErrorProfile::exact(),
             );
             assert_eq!(failure.class, AttemptFailureClass::PermanentClient);
-            assert!(!failure.is_precommit_relayable());
+            assert!(failure.is_precommit_relayable());
+            assert_eq!(failure.state_scope(), None);
         }
     }
 
     #[test]
-    fn ambiguous_client_statuses_fail_closed_while_typed_protocol_can_relay() {
+    fn ambiguous_and_typed_client_errors_can_relay() {
         let protocol = classify_failure(
             &RawAttemptFailure::Http {
                 status: 404,
@@ -364,7 +352,8 @@ mod tests {
             ConnectorErrorProfile::exact(),
         );
         assert_eq!(ambiguous.class, AttemptFailureClass::Unclassified);
-        assert!(!ambiguous.is_precommit_relayable());
+        assert!(ambiguous.is_precommit_relayable());
+        assert_eq!(ambiguous.state_scope(), None);
     }
 
     #[test]

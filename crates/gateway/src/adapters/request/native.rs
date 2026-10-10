@@ -71,6 +71,12 @@ pub(super) fn project(
     {
         // Plan controls own effort/budget, not unrelated native siblings such as
         // output formatting. Start each attempt from the immutable original tree.
+        if request.ingress_protocol != IngressProtocol::ChatCompletions {
+            object.remove("enable_thinking");
+            if let Some(thinking) = object.get_mut("thinking").and_then(Value::as_object_mut) {
+                thinking.remove("enabled");
+            }
+        }
         for (root, fields) in [
             ("reasoning", &["effort"][..]),
             ("thinking", &["type", "budget_tokens"][..]),
@@ -79,17 +85,6 @@ pub(super) fn project(
             if let Some(native) = object.get_mut(root).and_then(Value::as_object_mut) {
                 for field in fields {
                     native.remove(*field);
-                }
-            }
-            if let Some(configured) = canonical.get(root).and_then(Value::as_object) {
-                let native = object.entry(root).or_insert_with(|| json!({}));
-                let native = native
-                    .as_object_mut()
-                    .ok_or(ModelIrError::InvalidField("reasoning control"))?;
-                for field in fields {
-                    if let Some(value) = configured.get(*field) {
-                        native.insert((*field).into(), value.clone());
-                    }
                 }
             }
             if object
@@ -111,6 +106,12 @@ pub(super) fn project(
             remove_assignment(object, &field.path);
         }
         render_reasoning(object, reasoning, request.ingress_protocol)?;
+        if request.ingress_protocol == IngressProtocol::Messages {
+            normalize_messages_thinking(
+                object,
+                request.requested_reasoning.messages_omit_thinking,
+            )?;
+        }
     }
 
     // Preserve the existing Claude instruction-reminder normalization.
@@ -150,6 +151,46 @@ pub(super) fn project(
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
     Ok(body)
+}
+
+fn normalize_messages_thinking(
+    object: &mut Map<String, Value>,
+    omit_thinking: bool,
+) -> Result<(), ProtocolAdapterError> {
+    let Some(thinking) = object.get_mut("thinking").and_then(Value::as_object_mut) else {
+        return Ok(());
+    };
+    match thinking.get("type").and_then(Value::as_str) {
+        Some("enabled") => (),
+        Some("adaptive") => {
+            thinking.remove("budget_tokens");
+        }
+        None | Some("disabled") => {
+            thinking.remove("budget_tokens");
+            if thinking.contains_key("display") {
+                if !omit_thinking {
+                    return Err(ProtocolAdapterError::ClientUnrepresentable(
+                        "thinking.display cannot be preserved with the selected Plan mode".into(),
+                    ));
+                }
+                thinking.remove("display");
+            }
+        }
+        Some(_) if thinking.contains_key("display") => {
+            return Err(ProtocolAdapterError::ClientUnrepresentable(
+                "thinking.display has no mapping for the selected Plan mode".into(),
+            ));
+        }
+        Some(_) => (),
+    }
+    if thinking.is_empty() {
+        object.remove("thinking");
+    } else if omit_thinking && !thinking.contains_key("type") {
+        return Err(ProtocolAdapterError::ClientUnrepresentable(
+            "thinking extensions require a selected Plan thinking mode".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn append_instruction_blocks(

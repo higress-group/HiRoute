@@ -176,6 +176,7 @@ pub struct ProductionAttemptState {
     served_model_alias: String,
     streaming: bool,
     native_output: bool,
+    omit_thinking: bool,
     chat_tool_projection: Option<adapters::ChatToolProjection>,
     chat_tool_projection_budget: Option<Reservation>,
     decoder: Option<adapters::NativeResponseDecoder>,
@@ -191,6 +192,16 @@ pub struct ProductionAttemptState {
 }
 
 impl ProductionAttemptState {
+    #[cfg(all(unix, debug_assertions))]
+    pub(crate) fn register_private_capture(
+        &self,
+        request: &crate::server::core_runtime::observation::RequestObservation,
+    ) {
+        if let Some(capture) = &self.capture {
+            capture.register(request);
+        }
+    }
+
     pub(crate) fn chat_tool_projection_for_observation(
         &self,
     ) -> Option<&adapters::ChatToolProjection> {

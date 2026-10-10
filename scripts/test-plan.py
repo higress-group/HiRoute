@@ -44,9 +44,11 @@ PI_WORKER_BRIDGE_TEST = "crates/daemon/src/delegation/profile/pi_worker_bridge.t
 PI_SDK_CONTRACT_TEST = "crates/integrations/src/agents/pi_sdk_contract.test.mjs"
 INTEGRATION_SKILL = ".agents/skills/hiroute-integrate/SKILL.md"
 WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/release.yml"}
-RELEASE_BUILD_TESTS = ("test-build-cpa.py", "test-build-release.py", "test-package-desktop.py",
+RELEASE_BUILD_TESTS = ("test-build-cpa.py", "test-build-release.py", "test-linux-release.py", "test-package-desktop.py",
                        "test-standalone-install.py", "test-third-party-licenses.py")
-RELEASE_BUILD_TOOLING = {".github/workflows/build-release.yml", "scripts/build-release.py",
+RELEASE_BUILD_TOOLING = {"scripts/linux-release-abi.py", "scripts/linux-release-runtime.py",
+                         "scripts/linux-release-container.py", "scripts/linux-release-baseline.json",
+                         "scripts/linux-release.Dockerfile", ".github/workflows/build-release.yml", "scripts/build-release.py",
                          "scripts/build-cpa.py", "scripts/package-desktop.py",
                          "scripts/package-standalone.py", "scripts/install-standalone.py",
                          "scripts/collect-third-party-licenses.py",

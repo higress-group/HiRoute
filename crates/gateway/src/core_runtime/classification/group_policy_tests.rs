@@ -25,6 +25,7 @@ fn outcome(
     };
     let policy = branches[0].execution_policy();
     ClassificationOutcome {
+        diagnostic_failure: None,
         decision,
         facts: input.classification_facts.clone().unwrap(),
         assessment: score.map(|score| BoundAssessment {

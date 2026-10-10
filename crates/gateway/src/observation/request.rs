@@ -1,3 +1,6 @@
+#[path = "request/diagnostic.rs"]
+mod diagnostic;
+
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -79,6 +82,12 @@ pub(super) struct RequestObservationInner {
 
 #[derive(Default)]
 pub(super) struct RequestObservationState {
+    #[cfg(all(unix, debug_assertions))]
+    pub(super) private_capture: Option<(
+        String,
+        String,
+        crate::runtime::stream_capture::PendingCapture,
+    )>,
     pub(super) agent_plan_id: Option<String>,
     pub(super) candidates: BTreeMap<String, CandidateObservation>,
     pub(super) pending_attempt: Option<AttemptObservation>,
@@ -105,9 +114,14 @@ pub(super) struct RequestObservationState {
     pub(super) accepted_wire_usage_recorded: bool,
     pub(super) accepted_attempt_finished: bool,
     pub(super) accepted_attempt_cancelled: bool,
+    pub(super) accepted_attempt_failed: bool,
+    pub(super) accepted_attempt_unknown: bool,
     pub(super) response_capture: Option<CanonicalCaptureHandle>,
     pub(super) tool_id_projection: Option<ToolIdProjection>,
     pub(super) response_part_ordinal: u32,
+    pub(super) provider_error: Option<hiroute_diagnostics::event::WireProviderError>,
+    pub(super) prepared_wire: Option<hiroute_diagnostics::event::UpstreamWire>,
+    pub(super) response_wire: Option<hiroute_diagnostics::event::UpstreamWire>,
 }
 
 /// Aggregate counters for one content capture cycle. Only sizes and counts are kept, so a
@@ -229,94 +243,10 @@ impl RequestObservation {
         self.inner.context.emit(event);
     }
 
-    pub(super) fn wire_diagnostic(&self, mut event: hiroute_diagnostics::event::UpstreamWire) {
-        event.request_token = self.inner.context.token(
-            CorrelationDomain::ModelRequest,
-            &self.inner.metadata.request_id,
-        );
-        self.emit_diagnostic(DiagnosticEvent::UpstreamWire(event));
-    }
-
     fn attempt_token(&self, attempt_id: &str) -> Option<CorrelationToken> {
         self.inner
             .context
             .token(CorrelationDomain::Attempt, attempt_id)
-    }
-
-    pub(crate) fn prepared_request_diagnostic(
-        &self,
-        headers: &http::HeaderMap,
-        serialized_template: &[u8],
-    ) {
-        if self.is_enabled()
-            && self.inner.context.handle().level()
-                == Some(hiroute_diagnostics::DiagnosticLevel::Debug)
-        {
-            self.wire_diagnostic(super::provider::wire_diagnostic::request(
-                headers,
-                serialized_template,
-            ));
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn response_failure(
-        &self,
-        stage: hiroute_diagnostics::event::ResponseFailureStage,
-        reason: hiroute_diagnostics::event::ResponseFailureReason,
-    ) {
-        self.response_failure_detail(stage, reason, None, None);
-    }
-
-    #[cfg(all(unix, debug_assertions))]
-    pub(crate) fn private_capture_correlation(&self) -> serde_json::Value {
-        let state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        let attempt = state
-            .accepted_attempt
-            .as_ref()
-            .or(state.current_attempt.as_ref())
-            .or(state.pending_attempt.as_ref());
-        serde_json::json!({
-            "request_token": self.inner.request_token,
-            "request_id": self.inner.metadata.request_id,
-            "attempt_index": attempt.map(|a| a.ordinal).filter(|n| *n != 0).unwrap_or(state.next_attempt_ordinal),
-            "attempt_token": attempt.filter(|a| !a.attempt_id.is_empty()).and_then(|a| self.attempt_token(&a.attempt_id)),
-        })
-    }
-
-    pub(crate) fn response_failure_detail(
-        &self,
-        stage: hiroute_diagnostics::event::ResponseFailureStage,
-        reason: hiroute_diagnostics::event::ResponseFailureReason,
-        field: Option<hiroute_diagnostics::event::ResponseFailureField>,
-        position: Option<(u64, u64)>,
-    ) {
-        let state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        let attempt = state
-            .accepted_attempt
-            .as_ref()
-            .or(state.current_attempt.as_ref())
-            .or(state.pending_attempt.as_ref());
-        let ordinal = attempt
-            .map(|a| a.ordinal)
-            .filter(|n| *n != 0)
-            .unwrap_or(state.next_attempt_ordinal);
-        let attempt_token = attempt
-            .filter(|a| !a.attempt_id.is_empty())
-            .and_then(|a| self.attempt_token(&a.attempt_id));
-        drop(state);
-        self.emit_diagnostic(DiagnosticEvent::ResponseFailure(
-            hiroute_diagnostics::event::ResponseFailure {
-                request_token: self.inner.request_token,
-                attempt_index: u64::from(ordinal),
-                stage,
-                reason,
-                attempt_token,
-                field,
-                frame_index: position.map(|p| p.0).filter(|n| *n != 0),
-                received_bytes: position.map(|p| p.1),
-            },
-        ));
     }
 
     pub(crate) fn reasoning_cleanup(
@@ -446,6 +376,10 @@ impl RequestObservation {
         self.inner.enabled || self.inner.agent_turn_output.get().is_some()
     }
 
+    pub(in crate::server::core_runtime::observation) fn tracks_attempts(&self) -> bool {
+        self.is_enabled() || self.inner.context.handle().level().is_some()
+    }
+
     pub(crate) fn bind_agent_turn_output(
         &self,
         store: Arc<crate::agent_turn_history::AgentTurnHistoryStore>,
@@ -502,7 +436,7 @@ impl RequestObservation {
     /// observation-only identity; generation zero records that no credential
     /// authority or credential runtime state participated.
     pub(super) fn no_credential_materialized(&self, stable_binding_id: &str, credential_ref: &str) {
-        if !self.is_enabled() || !credential_ref.starts_with("credential/none/") {
+        if !self.tracks_attempts() || !credential_ref.starts_with("credential/none/") {
             return;
         }
         self.start_attempt(stable_binding_id, credential_ref, credential_ref, 0);
@@ -514,7 +448,7 @@ impl RequestObservation {
         result: Option<&RuntimeStateEntry>,
         outcome: &str,
     ) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let fields = state_key_fields(key);
@@ -651,7 +585,7 @@ impl RequestObservation {
         frame_id: &str,
         byte_count: usize,
     ) -> Option<AttemptObservation> {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return None;
         }
         let attempt = {
@@ -696,7 +630,7 @@ impl RequestObservation {
     }
 
     pub fn finish(&self, outcome: &str) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let terminal_attempt = {
@@ -765,16 +699,26 @@ impl RequestObservation {
         generation: u64,
     ) {
         let mut state = self.lock_state();
+        // Native endpoint state uses an alias of the logical binding. Repeated
+        // credential reads must retain the same staged attempt and relay link.
+        let logical_binding_id = state
+            .candidates
+            .get(stable_binding_id)
+            .map_or(stable_binding_id, |candidate| {
+                candidate.stable_binding_id.as_str()
+            });
         if state.current_attempt.is_some()
             || state.accepted_attempt.is_some()
             || state.pending_attempt.as_ref().is_some_and(|pending| {
-                pending.stable_binding_id == stable_binding_id && pending.key_id == key_id
+                pending.stable_binding_id == logical_binding_id && pending.key_id == key_id
             })
         {
             return;
         }
         state.published_disposition = None;
         state.accepted_wire_usage_recorded = false;
+        state.provider_error = None;
+        state.response_wire = None;
         let candidate =
             state
                 .candidates
@@ -849,6 +793,19 @@ impl RequestObservation {
             request_token: self.inner.request_token,
             attempt_token: self.attempt_token(&attempt.attempt_id),
             attempt_index: u64::from(attempt.ordinal),
+            binding_token: self
+                .inner
+                .context
+                .token(CorrelationDomain::Binding, &attempt.stable_binding_id),
+            native_model: hiroute_diagnostics::event::NativeModelId::new(&attempt.request_model),
+            upstream_protocol: Some(match attempt.upstream_protocol.as_str() {
+                "responses" => hiroute_diagnostics::event::IngressProtocol::OpenAiResponses,
+                "chat_completions" | "chat" => {
+                    hiroute_diagnostics::event::IngressProtocol::OpenAiChat
+                }
+                "messages" => hiroute_diagnostics::event::IngressProtocol::AnthropicMessages,
+                _ => hiroute_diagnostics::event::IngressProtocol::Unknown,
+            }),
         }));
         if attempt.previous_attempt_id.is_some() {
             // Product attempts of one request are ordinal-sequential, so the attempt that
@@ -857,6 +814,12 @@ impl RequestObservation {
                 request_token: self.inner.request_token,
                 from_attempt_index: u64::from(attempt.ordinal.saturating_sub(1)),
                 reason: fallback_reason(&attempt.start_reason),
+                next_attempt_index: Some(u64::from(attempt.ordinal)),
+                next_attempt_token: self.attempt_token(&attempt.attempt_id),
+                next_binding_token: self
+                    .inner
+                    .context
+                    .token(CorrelationDomain::Binding, &attempt.stable_binding_id),
             }));
         }
     }
@@ -891,6 +854,14 @@ impl RequestObservation {
 
     pub fn has_accepted_attempt(&self) -> bool {
         self.lock_state().accepted_attempt.is_some()
+    }
+
+    pub fn accepted_attempt_failed(&self) -> bool {
+        self.lock_state().accepted_attempt_failed
+    }
+
+    pub fn accepted_attempt_unknown(&self) -> bool {
+        self.lock_state().accepted_attempt_unknown
     }
 
     pub fn accepted_attempt_cancelled(&self) -> bool {
@@ -1097,11 +1068,24 @@ fn fallback_reason(start_reason: &str) -> FallbackReason {
         return FallbackReason::OtherStableReason;
     };
     match class {
-        "rate_limited" | "rate_limit_exceeded" | "too_many_requests" => FallbackReason::RateLimited,
+        "rate_limited"
+        | "rate_limit_exceeded"
+        | "too_many_requests"
+        | "quota"
+        | "binding_overload" => FallbackReason::RateLimited,
+        "credential" => FallbackReason::AuthenticationRejected,
+        "permanent_client" | "reasoning_history" => FallbackReason::InputRejected,
+        "timeout" => FallbackReason::Timeout,
+        "protocol" => FallbackReason::InvalidOutput,
         "connector_unavailable" | "connector_not_ready" => FallbackReason::ConnectorUnavailable,
-        "upstream_unavailable" | "upstream_error" | "provider_error" | "upstream_rejected" => {
-            FallbackReason::UpstreamFailure
-        }
+        "upstream_unavailable"
+        | "upstream_error"
+        | "provider_error"
+        | "upstream_rejected"
+        | "transient"
+        | "disconnect"
+        | "preoutput_stream"
+        | "unclassified" => FallbackReason::UpstreamFailure,
         "candidate_excluded" => FallbackReason::CandidateExcluded,
         _ => FallbackReason::OtherStableReason,
     }

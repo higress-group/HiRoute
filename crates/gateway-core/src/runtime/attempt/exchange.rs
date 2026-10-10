@@ -74,6 +74,7 @@ pub struct AttemptExchange<T: AttemptTransport> {
     semantic_upstream_calls: usize,
     connection_sub_attempts: usize,
     connected: bool,
+    negotiated_protocol: Option<HttpProtocol>,
     request_framing_reconciled: bool,
     pending_request_write: Option<Bytes>,
     writer_state: WriterState,

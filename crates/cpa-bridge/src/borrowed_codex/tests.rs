@@ -1,3 +1,27 @@
+pub(crate) fn isolated_lock_test(test_name: &str) -> bool {
+    // Other concurrently forked tests may temporarily retain a CLOEXEC descriptor.
+    // Keep the production open-file-description lifetime and isolate its assertion.
+    const CHILD: &str = "HIROUTE_ISOLATED_LOCK_TEST";
+    if std::env::var(CHILD).as_deref() == Ok(test_name) {
+        return false;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", test_name])
+        .env(CHILD, test_name)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success()
+            && stdout
+                .lines()
+                .any(|line| line == format!("test {test_name} ... ok")),
+        "isolated lease test must execute its exact case: {stdout} {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
 use serde_json::{Value, json};
 
 use super::*;
@@ -46,6 +70,12 @@ fn flat_value(auth_dir: &Path) -> Value {
 #[cfg(unix)]
 #[test]
 fn selected_engine_version_is_carried_to_cpa_and_refreshed_on_reacquire() {
+    if isolated_lock_test(
+        "borrowed_codex::tests::selected_engine_version_is_carried_to_cpa_and_refreshed_on_reacquire",
+    ) {
+        return;
+    }
+
     use std::os::unix::fs::PermissionsExt;
     let (temp, auth_dir, source) = setup();
     let executable = temp.path().join("selected-codex");
@@ -247,26 +277,9 @@ fn access_rotation_advances_generation_but_account_replacement_is_rejected() {
 
 #[test]
 fn canonical_source_and_auth_directory_are_exclusive_across_instances() {
-    // Closing one descriptor cannot release copies inherited by concurrently forked
-    // process tests. Keep this exact lifetime assertion in its own test process.
-    const CASE: &str =
-        "borrowed_codex::tests::canonical_source_and_auth_directory_are_exclusive_across_instances";
-    const CHILD: &str = "HIROUTE_ISOLATED_LOCK_TEST";
-    if std::env::var(CHILD).as_deref() != Ok(CASE) {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", CASE])
-            .env(CHILD, CASE)
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success()
-                && stdout
-                    .lines()
-                    .any(|line| line == format!("test {CASE} ... ok")),
-            "isolated lease test must execute its exact case: {stdout} {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    if isolated_lock_test(
+        "borrowed_codex::tests::canonical_source_and_auth_directory_are_exclusive_across_instances",
+    ) {
         return;
     }
     let (temp, auth_dir, source) = setup();

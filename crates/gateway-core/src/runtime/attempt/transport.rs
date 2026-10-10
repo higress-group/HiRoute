@@ -21,6 +21,8 @@ pub enum AttemptTimeoutKind {
 #[derive(Clone, Debug)]
 pub struct AttemptTransportFacts {
     pub started_at: Instant,
+    /// Captured only after a successful connection; retained after cleanup.
+    pub upstream_protocol: Option<HttpProtocol>,
     pub connect_elapsed: Option<Duration>,
     pub request_write_elapsed: Option<Duration>,
     /// Measured at the transport receipt boundary, never at downstream write.

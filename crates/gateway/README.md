@@ -9,6 +9,21 @@ branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
 
+The standalone `hirouted` entry can attach the same typed diagnostics using
+`--diagnostics-root <private-root>` and an optional temporary
+`--diagnostic-level-override`. These diagnostics do not enable session content
+capture or execution-fact storage. At Info, failed attempts retain the safe
+actual model and reasoning controls, HTTP protocol/status and body commit state.
+
+Messages thinking computation is projected in
+[request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
+is resolved by [ingress.rs](src/adapters/ingress.rs) before Replay externalization.
+[Native response projection](src/adapters/response/native_passthrough.rs) preserves
+signatures and usage while enforcing omitted text. Cross-protocol Messages
+renderers omit foreign reasoning without inventing signatures. The
+[production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
+covers the listener boundary, including tool continuation.
+
 ## Decision operation
 
 [core_runtime/classification.rs](src/core_runtime/classification.rs) owns the
@@ -70,12 +85,28 @@ provider references, observation and the future tool-selection boundary.
 | Decision diagnostics use the production transport/parser without running a business model | `classifier_diagnostic_uses_the_production_transport_and_exact_protocol` in [classification.rs](src/core_runtime/classification.rs) |
 | Accepted execution history survives client rewrite/compaction with observation disabled | [accepted_history.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/accepted_history.rs) |
 | Tool continuation survives restart with authentication | [continuation.rs](../../tools/e2e-harness/tests/p0_gateway_protocol/continuation.rs) |
+| Claude direct tool callers preserve native history and portable call/result pairing | `messages_direct_tool_caller_preserves_native_history_and_portable_tool_pairing` in [adapter tests](src/adapters/tests.rs); ingress rejects programmatic execution authority |
 | Live publication cutover pins each request and preserves the last good version | [p0_gateway_request_authority.rs](../../tools/e2e-harness/tests/p0_gateway_request_authority.rs) |
 
 Use the repository [test planner](../../scripts/test-plan.py) and
 [configured validation runner](../../scripts/validation.py). An isolated Jev or
 diagnostic success does not establish product routing success. Source-text
 assertions and private helper names are not substitutes for these behaviors.
+
+## Native controls and completed responses
+
+[Reasoning serialization](src/adapters/request/reasoning.rs) owns protocol-level
+switch semantics and normalizes supported released projections without rewriting
+frozen publication identities. The daemon produces current profiles; explicit
+effort, manual budget and adaptive controls remain distinct. Shared Pingora
+transport assigns HTTP/2 authority once for model and classifier calls.
+
+[Response classification](src/runtime/driver/response.rs) classifies upstream
+failures for bounded relay within the frozen plan before the first downstream body.
+Streaming headers alone leave relay open; a later failed model terminal stays a failure in attempt,
+request and Agent turn observations even when its native bytes were delivered.
+The decision diagnostic uses closed error codes; provider text is not a public
+error message or a substitute for evidence of credential failure.
 
 ## Response failure evidence
 
@@ -85,6 +116,16 @@ received-byte upper bound without per-token logs. Unix Debug-only
 `runtime/stream_capture.rs` can capture an explicitly enabled private session;
 its `stream_replay` example restores the actual attempt profile and tool mapping.
 This is offline decoder evidence, not proof of network timing or task completion.
+After successful provider materialization, private capture registers its existing
+weak handle once a pending attempt is staged, including explicitly unauthenticated
+profiles whose staging occurs after materialization rather than a credential read.
+Private capture binds that request-owned weak handle at formal attempt promotion,
+after validating the pending binding and credential. A prebody failure closes
+body capture and seals the file before `stopped`; later promotion may replace
+only that seal with one typed correlation record and a new durable seal. It
+rechecks the private directory, file identity/permissions/owner, expiry and
+original file/session/record budgets. Content capture never reopens, and the
+weak handle cannot retain a writer or bind another request or attempt.
 
 The helper requires Unix Python with non-reaping `os.waitid`/`os.WNOWAIT`
 (Linux, or Python 3.13+ on macOS). It checks support before creating a session.
@@ -117,3 +158,9 @@ cleanup; after recovery, delete the exact expired session with
 `python3 scripts/private-stream-capture.py cleanup /absolute/new-private-session`.
 Kernel locks release on candidate crashes, so stale lock files do not prevent
 recovery cleanup. No shared scheduler or daily daemon is modified.
+
+Known incomplete nonstream JSON responses follow the same prebody relay boundary
+as streaming failures, for both native and converted protocols. Reported usage
+survives fallback; partial response content is not delivered. Attempt/deadline
+limits and fixed-source authority still apply, and unknown completion remains
+separate from an explicit failure.

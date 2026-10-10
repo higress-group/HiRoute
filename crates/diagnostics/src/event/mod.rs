@@ -144,6 +144,11 @@ impl DiagnosticEvent {
                 _ => Warn,
             },
             DiagnosticEvent::AttemptEnd(end) => match end.outcome {
+                AttemptOutcome::Completed
+                    if end.provider_result == Some(WireModelResult::Unknown) =>
+                {
+                    Warn
+                }
                 AttemptOutcome::Completed => Info,
                 _ => Warn,
             },
@@ -151,7 +156,11 @@ impl DiagnosticEvent {
             | DiagnosticEvent::RequestCancel(_)
             | DiagnosticEvent::RequestTimeout(_) => Warn,
             DiagnosticEvent::SemanticCommit(_) => Info,
-            DiagnosticEvent::ModelStage(_) | DiagnosticEvent::UpstreamWire(_) => Debug,
+            DiagnosticEvent::ModelStage(_) => Debug,
+            DiagnosticEvent::UpstreamWire(wire) => match wire.phase {
+                UpstreamWirePhase::Failure => Warn,
+                _ => Debug,
+            },
             DiagnosticEvent::ReasoningCleanup(_) => Warn,
             DiagnosticEvent::ResponseFailure(_) => Warn,
             DiagnosticEvent::ContentCaptureEnd(end) => match end.outcome {

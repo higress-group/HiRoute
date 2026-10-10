@@ -277,6 +277,7 @@ impl<T: AttemptTransport> AttemptExchange<T> {
             semantic_upstream_calls: 0,
             connection_sub_attempts: 0,
             connected: false,
+            negotiated_protocol: None,
             request_framing_reconciled: false,
             pending_request_write: None,
             writer_state: WriterState::NotStarted,
@@ -350,6 +351,7 @@ impl<T: AttemptTransport> AttemptExchange<T> {
             .saturating_sub(self.transport_suppression_observed);
         AttemptTransportFacts {
             started_at: self.attempt_started_at,
+            upstream_protocol: self.negotiated_protocol,
             connect_elapsed: self.connect_elapsed,
             request_write_elapsed: self.request_write_elapsed,
             upstream_ttfb: self

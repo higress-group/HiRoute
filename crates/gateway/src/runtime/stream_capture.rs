@@ -2,10 +2,10 @@
 //! A session owns a private directory and an exclusive capture lock. Failed/partial
 //! capture is not replay evidence; it never changes the business result.
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hiroute_gateway_core::runtime::attempt::{AttemptError, AttemptRequestBodyReader};
@@ -49,6 +49,24 @@ struct Context {
 #[derive(Clone)]
 pub(crate) struct Capture(Arc<Mutex<Writer>>);
 
+pub(crate) struct PendingCapture(Weak<Mutex<Writer>>);
+
+#[derive(Serialize)]
+pub(crate) struct CaptureCorrelation {
+    pub(crate) request_token: Option<hiroute_diagnostics::identity::CorrelationToken>,
+    pub(crate) request_id: String,
+    pub(crate) attempt_index: u32,
+    pub(crate) attempt_token: Option<hiroute_diagnostics::identity::CorrelationToken>,
+}
+
+impl PendingCapture {
+    pub(crate) fn promoted(self, correlation: CaptureCorrelation) {
+        if let Some(writer) = self.0.upgrade() {
+            Capture(writer).correlate(&correlation, true);
+        }
+    }
+}
+
 struct Writer {
     file: File,
     path: PathBuf,
@@ -60,6 +78,8 @@ struct Writer {
     expires_at: u64,
     active: bool,
     attempt_correlated: bool,
+    failed: bool,
+    failed_seal_offset: Option<u64>,
 }
 
 fn now() -> u64 {
@@ -108,6 +128,13 @@ impl Capture {
     ) -> Option<Self> {
         let root = PathBuf::from(std::env::var_os("HIROUTE_PRIVATE_STREAM_CAPTURE")?);
         Self::open(&root, profile, chat_tools, request_bytes, streaming).ok()
+    }
+
+    pub(crate) fn register(
+        &self,
+        request: &crate::server::core_runtime::observation::RequestObservation,
+    ) {
+        request.register_private_capture(PendingCapture(Arc::downgrade(&self.0)));
     }
 
     fn open(
@@ -233,6 +260,8 @@ impl Capture {
             expires_at: context.session.expires_at,
             active: true,
             attempt_correlated: false,
+            failed: false,
+            failed_seal_offset: None,
         };
         writer.write(0, &serde_json::to_vec(&context)?)?;
         Ok(Self(Arc::new(Mutex::new(writer))))
@@ -258,38 +287,63 @@ impl Capture {
         }
     }
 
-    fn record_attempt_correlation(&self) {
+    pub(crate) fn record_attempt_correlation(&self) {
+        // Snapshot observation before taking the writer lock. Formal promotion
+        // supplies its own validated snapshot and never calls back into state.
+        if let Some(request) = crate::server::core_runtime::observation::active_request() {
+            self.correlate(&request.private_capture_correlation(), false);
+        }
+    }
+
+    fn correlate(&self, correlation: &CaptureCorrelation, allow_sealed: bool) {
         let mut writer = self.0.lock().unwrap_or_else(|p| p.into_inner());
-        if !writer.active || writer.attempt_correlated {
+        if writer.attempt_correlated || correlation.attempt_token.is_none() {
             return;
         }
-        // The response head precedes formal attempt promotion. Retain the
-        // request context there, then bind the first available formal attempt
-        // before its accepted body can fail and seal the sample.
-        let correlation = correlation();
-        if correlation
-            .get("attempt_token")
-            .is_none_or(serde_json::Value::is_null)
-        {
+        let Ok(bytes) = serde_json::to_vec(correlation) else {
             return;
-        }
-        if let Ok(bytes) = serde_json::to_vec(&correlation) {
+        };
+        if writer.active {
             writer.attempt_correlated = true;
             if writer.write(7, &bytes).is_err() {
                 writer.active = false;
+            }
+        } else if allow_sealed && let Some(offset) = writer.failed_seal_offset.take() {
+            // Failure already closed content capture and published `stopped`.
+            // Promotion may replace only that final seal with one correlation
+            // record and a new seal; active remains false throughout.
+            writer.attempt_correlated = true;
+            if writer.check_correlation_tail(offset, bytes.len()).is_err()
+                || writer.file.seek(SeekFrom::Start(offset)).is_err()
+            {
+                return;
+            }
+            writer.written = offset;
+            writer.records -= 1;
+            if writer
+                .write(7, &bytes)
+                .and_then(|_| writer.write(8, &[]))
+                .and_then(|_| writer.file.sync_all())
+                .is_err()
+            {
+                writer.invalidate_seal(offset);
             }
         }
     }
 
     pub(crate) fn failed(&self) {
         let mut writer = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if writer.failed {
+            return;
+        }
+        writer.failed = true;
         if writer.active && writer.write(6, &[]).is_err() {
             writer.active = false;
         }
         // The supervisor can terminate the process immediately after `stopped`.
         // Seal and flush this sample before publishing that signal, even while
         // the request reader or response driver still owns another Capture.
-        writer.seal();
+        writer.failed_seal_offset = writer.seal();
         let _ = private_file(&writer.root.join("stopped"));
     }
 
@@ -307,7 +361,7 @@ impl Capture {
 
 fn correlation() -> serde_json::Value {
     crate::server::core_runtime::observation::active_request()
-        .map(|r| r.private_capture_correlation())
+        .and_then(|r| serde_json::to_value(r.private_capture_correlation()).ok())
         .unwrap_or(serde_json::Value::Null)
 }
 
@@ -316,18 +370,65 @@ fn hex(value: &str, len: usize) -> bool {
 }
 
 impl Writer {
-    fn seal(&mut self) {
+    fn seal(&mut self) -> Option<u64> {
         // A missing seal is never replayable. Partial requests remain rejected
         // by the independent request-completeness check during replay.
         let seal_offset = self.written;
         let sealed = self.active && self.write(8, &[]).is_ok();
         self.active = false;
-        if self.file.sync_all().is_err() && sealed {
-            // A flush failure must not advertise newly sealed evidence.
-            if self.file.set_len(seal_offset).is_err() {
-                let _ = fs::remove_file(&self.path);
-            }
+        let flushed = self.file.sync_all().is_ok();
+        if !flushed && sealed {
+            self.invalidate_seal(seal_offset);
         }
+        if !flushed || !sealed {
+            return None;
+        }
+        Some(seal_offset)
+    }
+
+    fn invalidate_seal(&self, offset: u64) {
+        // A partial write or flush failure must not advertise sealed evidence.
+        if self.file.set_len(offset).is_err() {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+
+    fn check_correlation_tail(&self, offset: u64, bytes: usize) -> io::Result<()> {
+        let root = fs::symlink_metadata(&self.root)?;
+        let file = self.file.metadata()?;
+        let path = fs::symlink_metadata(&self.path)?;
+        let uid = rustix::process::geteuid().as_raw();
+        let new_size = offset.saturating_add(18).saturating_add(bytes as u64);
+        let mut total = 0u64;
+        for entry in fs::read_dir(&self.root)? {
+            let metadata = fs::symlink_metadata(entry?.path())?;
+            if !metadata.is_file() || metadata.uid() != uid {
+                return Err(io::Error::other("unsafe capture directory entry"));
+            }
+            total = total.saturating_add(metadata.len());
+        }
+        if !root.is_dir()
+            || root.mode() & 0o777 != 0o700
+            || root.uid() != uid
+            || fs::canonicalize(&self.root)? != self.root
+            || !file.is_file()
+            || file.mode() & 0o777 != 0o600
+            || file.uid() != uid
+            || !path.is_file()
+            || path.ino() != file.ino()
+            || path.dev() != file.dev()
+            || file.len() != self.written
+            || self.written != offset.saturating_add(9)
+            || now() >= self.expires_at
+            || new_size > self.limit
+            || total.saturating_add(new_size.saturating_sub(file.len())) > MAX_TOTAL
+            || self.records.saturating_add(1) > MAX_RECORDS
+        {
+            return Err(io::Error::other(
+                "unsafe or over-limit capture correlation tail",
+            ));
+        }
+        Ok(())
     }
 
     // Binary records: kind:u8, length:u64 LE, exact bytes. File order is read order;
@@ -351,7 +452,7 @@ impl Writer {
 }
 impl Drop for Writer {
     fn drop(&mut self) {
-        self.seal();
+        let _ = self.seal();
     }
 }
 

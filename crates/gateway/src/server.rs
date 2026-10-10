@@ -408,6 +408,17 @@ impl GatewayLauncher {
         })
     }
 
+    /// Attach safe local diagnostics before the standalone production listener starts.
+    pub fn with_diagnostics(
+        self,
+        diagnostics: hiroute_diagnostics::runtime::DiagnosticsPort,
+    ) -> Self {
+        if let GatewayMode::Production { runtime, .. } = &self.mode {
+            runtime.observation().set_diagnostics(diagnostics);
+        }
+        self
+    }
+
     /// Starts the Pingora listener. The readiness probe and every product
     /// request traverse this same `GatewayHttpApp`.
     pub fn serve(self) -> Result<(), GatewayLauncherError> {

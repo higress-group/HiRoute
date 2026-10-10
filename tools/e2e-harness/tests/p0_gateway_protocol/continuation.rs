@@ -266,6 +266,8 @@ fn production_native_tool_history_survives_restart_with_request_authentication()
             "Use the same legal namespace shape",
         ),
     );
+    // This rejection fixture deliberately authorizes only one candidate and
+    // one attempt. Namespace forwarding is independent of upstream relay.
     assert_eq!(
         rejected.status,
         400,
@@ -640,24 +642,15 @@ fn snapshot(
                 agent_plan_revision: 56,
                 protocols: vec![IngressProtocol::Responses],
                 overall_timeout_ms: 10_000,
-                max_attempts: 2,
+                max_attempts: 1,
                 routing: None,
-                candidates: vec![
-                    candidate(
-                        4,
-                        "rejecting-target",
-                        "rejecting-credential",
-                        rejecting_provider,
-                        IngressProtocol::Responses,
-                    ),
-                    candidate(
-                        5,
-                        "rejecting-forbidden-fallback",
-                        "forbidden-credential",
-                        forbidden_provider,
-                        IngressProtocol::Responses,
-                    ),
-                ],
+                candidates: vec![candidate(
+                    4,
+                    "rejecting-target",
+                    "rejecting-credential",
+                    rejecting_provider,
+                    IngressProtocol::Responses,
+                )],
             },
             AliasPlanV1 {
                 served_model_id: "other-plan".into(),

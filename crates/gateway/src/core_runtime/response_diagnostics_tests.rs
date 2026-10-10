@@ -55,6 +55,11 @@ fn production_listener_stream_diagnostics_and_private_capture() {
         "unsupported_value",
         "invalid_type",
         "invalid_json",
+        "prebody_invalid_json",
+        "prebody_capture_invalid_json",
+        "prebody_capture_relay",
+        "prebody_capture_no_credential",
+        "prebody_capture_no_credential_relay",
         "invalid_sse",
         "missing_tool",
         "invalid_arguments",
@@ -67,40 +72,81 @@ fn production_listener_stream_diagnostics_and_private_capture() {
         "capture_unknown",
         "capture_disabled",
     ] {
-        let mut random = [0u8; 16];
-        getrandom::fill(&mut random).unwrap();
-        let root = PrivateRoot(
-            fs::canonicalize(std::env::temp_dir())
-                .unwrap()
-                .join(format!(
-                    "hiroute-stream-acceptance-{:x}",
-                    u128::from_le_bytes(random)
-                )),
-        );
-        fs::DirBuilder::new().mode(0o700).create(&root.0).unwrap();
-        let mut child = Command::new(std::env::current_exe().unwrap());
-        child
-            .args(["--exact", TEST, "--nocapture"])
-            .env(CHILD_CASE, case)
-            .env(CHILD_ROOT, &root.0)
-            .env(E2E_DIAL_CONFIG_ENV, root.0.join(E2E_DIAL_CONFIG_FILE))
-            .env("HIROUTE_REPLAY_ROOT", root.0.join("replay"))
-            .env_remove("HIROUTE_PRIVATE_STREAM_CAPTURE");
-        if matches!(case, "capture_known" | "capture_unknown") {
-            child.env("HIROUTE_PRIVATE_STREAM_CAPTURE", root.0.join("capture"));
-        }
-        let output = child.output().unwrap();
-        if output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed") {
-            println!("stream injection {case}: green");
-        } else {
-            failures.push(format!(
-                "{case}: {}\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            ));
+        if let Err(failure) = run_child_case(case) {
+            failures.push(failure);
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn production_completed_prefix_capture_keeps_formal_attempt_correlation() {
+    run_child_case("capture_known").unwrap();
+}
+
+#[test]
+fn production_prebody_failed_capture_keeps_promoted_attempt_correlation() {
+    let failures: Vec<_> = ["prebody_capture_invalid_json", "prebody_capture_relay"]
+        .into_iter()
+        .filter_map(|case| run_child_case(case).err())
+        .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn production_no_credential_prebody_capture_keeps_promoted_attempt_correlation() {
+    let failures: Vec<_> = [
+        "prebody_capture_no_credential",
+        "prebody_capture_no_credential_relay",
+    ]
+    .into_iter()
+    .filter_map(|case| run_child_case(case).err())
+    .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+fn run_child_case(case: &str) -> Result<(), String> {
+    let mut random = [0u8; 16];
+    getrandom::fill(&mut random).unwrap();
+    let root = PrivateRoot(
+        fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(format!(
+                "hiroute-stream-acceptance-{:x}",
+                u128::from_le_bytes(random)
+            )),
+    );
+    fs::DirBuilder::new().mode(0o700).create(&root.0).unwrap();
+    let mut child = Command::new(std::env::current_exe().unwrap());
+    child
+        .args(["--exact", TEST, "--nocapture"])
+        .env(CHILD_CASE, case)
+        .env(CHILD_ROOT, &root.0)
+        .env(E2E_DIAL_CONFIG_ENV, root.0.join(E2E_DIAL_CONFIG_FILE))
+        .env("HIROUTE_REPLAY_ROOT", root.0.join("replay"))
+        .env_remove("HIROUTE_PRIVATE_STREAM_CAPTURE");
+    if matches!(
+        case,
+        "capture_known"
+            | "capture_unknown"
+            | "prebody_capture_invalid_json"
+            | "prebody_capture_relay"
+            | "prebody_capture_no_credential"
+            | "prebody_capture_no_credential_relay"
+    ) {
+        child.env("HIROUTE_PRIVATE_STREAM_CAPTURE", root.0.join("capture"));
+    }
+    let output = child.output().unwrap();
+    if output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed") {
+        println!("stream injection {case}: green");
+        Ok(())
+    } else {
+        Err(format!(
+            "{case}: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
 }
 
 #[derive(Clone, Default)]
@@ -166,7 +212,12 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             None,
             1,
         ),
-        "invalid_json" => (
+        "invalid_json"
+        | "prebody_invalid_json"
+        | "prebody_capture_invalid_json"
+        | "prebody_capture_relay"
+        | "prebody_capture_no_credential"
+        | "prebody_capture_no_credential_relay" => (
             b"data: {\"SENTINEL_PROVIDER_TEXT\":\n\n".to_vec(),
             Some("invalid_json"),
             None,
@@ -283,7 +334,27 @@ fn run_case(case: &str, root: &Path) {
     if capture_enabled {
         create_capture_session(&root.join("capture"));
     }
-    let (wire, reason, field, frame_index) = sample(case);
+    let (tail, reason, field, frame_index) = sample(case);
+    let prebody = case.starts_with("prebody_");
+    let relay = case.ends_with("_relay");
+    let no_credential = case.contains("no_credential");
+    let after_body = reason.is_some() && !prebody;
+    let mut wire = if after_body {
+        frame(chat(
+            json!({"content":"SENTINEL_INITIAL_BODY"}),
+            Value::Null,
+        ))
+    } else {
+        Vec::new()
+    };
+    let prefix_len = wire.len();
+    wire.extend(tail);
+    let frame_index = if after_body && frame_index != 0 {
+        frame_index + 1
+    } else {
+        frame_index
+    };
+    let (body_delivered, wait_for_body) = std::sync::mpsc::sync_channel(0);
     let listener = TestTlsListener::bind("stream-diagnostic.invalid").unwrap();
     write_dial_config(root, &[&listener]).unwrap();
     let peer = listener.try_clone().unwrap();
@@ -295,12 +366,32 @@ fn run_case(case: &str, root: &Path) {
             .unwrap();
         let request = read_request(&mut stream);
         write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", sent.len()).unwrap();
-        let _ = stream.write_all(&sent);
+        if after_body {
+            stream.write_all(&sent[..prefix_len]).unwrap();
+            stream.flush().unwrap();
+            // No error bytes exist on the wire until the client has received
+            // the first real body unit. This proves the afterbody boundary.
+            wait_for_body.recv_timeout(Duration::from_secs(3)).unwrap();
+            let _ = stream.write_all(&sent[prefix_len..]);
+        } else {
+            let _ = stream.write_all(&sent);
+        }
         let _ = stream.finish();
+        if relay {
+            let (mut stream, _) = peer.accept().unwrap();
+            let _second_request = read_request(&mut stream);
+            let mut value = chat(json!({"content":"SENTINEL_RECOVERY_BODY"}), json!("stop"));
+            value["usage"] = json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
+            let mut recovery = frame(value);
+            recovery.extend_from_slice(b"data: [DONE]\n\n");
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", recovery.len()).unwrap();
+            stream.write_all(&recovery).unwrap();
+            let _ = stream.finish();
+        }
         request
     });
     let publications = Arc::new(GatewayPublicationInstaller::open(root.join("lkg.json")).unwrap());
-    let publication = publication(&listener);
+    let publication = publication(&listener, prebody && !relay, no_credential);
     if let crate::server::publication::GatewayPrepareOutcome::Prepared(prepared) =
         publications.prepare(publication).unwrap()
     {
@@ -358,10 +449,34 @@ fn run_case(case: &str, root: &Path) {
     write!(client, "POST /v1/messages HTTP/1.1\r\nHost: {address}\r\nX-HiRoute-Token: {TOKEN}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
     client.write_all(&body).unwrap();
     let mut response = Vec::new();
+    if after_body {
+        client
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        while !response
+            .windows(b"SENTINEL_INITIAL_BODY".len())
+            .any(|w| w == b"SENTINEL_INITIAL_BODY")
+        {
+            let mut chunk = [0u8; 4096];
+            let n = client
+                .read(&mut chunk)
+                .expect("initial body was not delivered before the error");
+            assert!(n != 0, "response ended before initial body delivery");
+            response.extend_from_slice(&chunk[..n]);
+        }
+        body_delivered.send(()).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+    }
     // A failed committed stream may end with a reset. The formal execution fact is the oracle.
     let _ = client.read_to_end(&mut response);
     assert!(
-        response.starts_with(b"HTTP/1.1 200"),
+        response.starts_with(if prebody && !relay {
+            b"HTTP/1.1 502"
+        } else {
+            b"HTTP/1.1 200"
+        }),
         "{}",
         String::from_utf8_lossy(&response)
     );
@@ -372,9 +487,23 @@ fn run_case(case: &str, root: &Path) {
         assert!(response.contains("\"partial_json\":\"{}\""));
         assert!(response.contains("event: message_stop"));
     }
+    if relay {
+        assert!(
+            response
+                .windows(b"SENTINEL_RECOVERY_BODY".len())
+                .any(|w| w == b"SENTINEL_RECOVERY_BODY")
+        );
+    }
     let upstream_request = upstream.join().unwrap();
     assert!(!upstream_request.is_empty());
-    wait_finished(&facts, reason.is_some());
+    if no_credential {
+        assert!(
+            !String::from_utf8_lossy(&upstream_request)
+                .to_ascii_lowercase()
+                .contains("authorization:")
+        );
+    }
+    wait_finished(&facts, reason.is_some() && !relay);
     gateway.shutdown();
     gateway.join(Duration::from_secs(5)).unwrap();
     let status = diagnostics.status();
@@ -385,6 +514,13 @@ fn run_case(case: &str, root: &Path) {
     // Keep the collector live through Gateway shutdown; request_finished is
     // a terminal business fact, not a barrier for every observation producer.
     let facts = facts.0.lock().unwrap().clone();
+    if no_credential {
+        assert!(
+            !facts.iter().any(
+                |r| r.pointer("/fact/kind").and_then(Value::as_str) == Some("credential_lease")
+            )
+        );
+    }
     let log = fs::read_to_string(root.join("diagnostics/daemon/current.jsonl")).unwrap();
     assert!(
         !log.contains("SENTINEL"),
@@ -400,7 +536,11 @@ fn run_case(case: &str, root: &Path) {
             .any(|r| payload(r, "level_applied").is_some_and(|v| v["level"] == "debug")),
         "actual Debug level missing: {log}"
     );
-    assert_business(&facts, reason.is_some());
+    if relay {
+        assert_prebody_relay_business(&facts);
+    } else {
+        assert_business(&facts, reason.is_some(), after_body);
+    }
     if let Some(reason) = reason {
         let failures: Vec<_> = records
             .iter()
@@ -432,8 +572,15 @@ fn run_case(case: &str, root: &Path) {
             .iter()
             .find_map(|r| payload(r, "request_end"))
             .unwrap();
-        assert!(!failure["attempt_token"].is_null());
-        assert_eq!(failure["attempt_token"], begin["attempt_token"]);
+        if after_body {
+            assert!(!failure["attempt_token"].is_null());
+            assert_eq!(failure["attempt_token"], begin["attempt_token"]);
+        } else {
+            // Prebody classification precedes formal attempt promotion. The
+            // diagnostic must retain the request and ordinal, without inventing
+            // an unavailable attempt token.
+            assert!(failure["attempt_token"].is_null());
+        }
         assert!(!failure["request_token"].is_null());
         assert_eq!(failure["request_token"], end["request_token"]);
     } else {
@@ -461,7 +608,11 @@ fn run_case(case: &str, root: &Path) {
     }
 }
 
-fn publication(provider: &TestTlsListener) -> GatewayPublicationSnapshotV3 {
+fn publication(
+    provider: &TestTlsListener,
+    limit_prebody_attempts: bool,
+    no_credential: bool,
+) -> GatewayPublicationSnapshotV3 {
     let protocol = IngressProtocol::Messages;
     GatewayPublicationSnapshotV3::seal(
         "personal/default",
@@ -475,18 +626,34 @@ fn publication(provider: &TestTlsListener) -> GatewayPublicationSnapshotV3 {
             agent_plan_revision: 1,
             protocols: vec![protocol],
             overall_timeout_ms: 30_000,
-            max_attempts: 2,
+            // The initial malformed entity is tested with an explicit one-attempt
+            // budget. Other cases retain both candidates and prove no replay once
+            // the client has actually received the first body unit.
+            max_attempts: if limit_prebody_attempts { 1 } else { 2 },
             routing: None,
             candidates: (1..=2)
                 .map(|i| {
-                    sealed_native_candidate(
+                    let mut candidate = sealed_native_candidate(
                         i,
                         &format!("stream-target-{i}"),
                         &["stream-credential".into()],
                         provider.authority(),
                         "physical",
                         &[(protocol, IngressProtocol::ChatCompletions)],
-                    )
+                    );
+                    if no_credential {
+                        candidate.credential_refs = vec![format!("credential/none/stream-{i}")];
+                        for profile in &mut candidate.protocol_profiles {
+                            profile.connector.authentication =
+                                hiroute_domain::GatewayCriticalFactV1::Exact(
+                                    hiroute_domain::GatewayAuthenticationSemanticsV1::None,
+                                );
+                        }
+                        candidate.protocol_profile_digest =
+                            hiroute_domain::CanonicalDigest::of(&candidate.protocol_profiles)
+                                .unwrap();
+                    }
+                    candidate
                 })
                 .collect(),
         }],
@@ -576,7 +743,45 @@ fn wait_finished(facts: &Facts, failed: bool) {
         std::thread::sleep(Duration::from_millis(5));
     }
 }
-fn assert_business(facts: &[Value], failed: bool) {
+fn assert_prebody_relay_business(facts: &[Value]) {
+    let named = |name| {
+        facts
+            .iter()
+            .filter(|r| r.pointer("/fact/kind").and_then(Value::as_str) == Some(name))
+            .collect::<Vec<_>>()
+    };
+    let starts = named("attempt_started");
+    assert_eq!(starts.len(), 2);
+    let finished = named("attempt_finished");
+    assert_eq!(finished.len(), 2);
+    let first = finished.iter().find(|r| r["fact"]["ordinal"] == 1).unwrap();
+    let second = finished.iter().find(|r| r["fact"]["ordinal"] == 2).unwrap();
+    assert_eq!(first["fact"]["outcome"], "rejected");
+    assert_eq!(first["fact"]["disposition"], "continue");
+    assert_eq!(first["fact"]["retryable"], true);
+    assert_eq!(first["fact"]["commits"]["downstream_headers"], "clear");
+    assert_eq!(first["fact"]["commits"]["downstream_semantic"], "clear");
+    assert_eq!(second["fact"]["outcome"], "accepted");
+    assert_eq!(
+        second["fact"]["commits"]["downstream_headers"],
+        "write_confirmed"
+    );
+    let requests = named("request_finished");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0]["fact"]["outcome"], "accepted");
+    assert_eq!(requests[0]["fact"]["attempts_started"], 2);
+    assert_eq!(requests[0]["fact"]["attempts_finished"], 2);
+    assert_eq!(named("semantic_commit").len(), 1);
+    let usage = named("usage_and_cache");
+    assert_eq!(usage.len(), 2);
+    for record in usage {
+        assert_eq!(record["fact"]["ordinal"], 2);
+        assert_eq!(record["fact"]["input_tokens"], 11);
+        assert_eq!(record["fact"]["output_tokens"], 7);
+    }
+}
+
+fn assert_business(facts: &[Value], failed: bool, after_body: bool) {
     let named = |name| {
         facts
             .iter()
@@ -586,20 +791,32 @@ fn assert_business(facts: &[Value], failed: bool) {
     assert_eq!(
         named("attempt_started").len(),
         1,
-        "no transparent retry after HTTP 200"
+        "only one actual attempt may run: bounded prebody or committed afterbody"
     );
     let finished = named("attempt_finished");
     assert_eq!(finished.len(), 1);
     assert_eq!(finished[0]["fact"]["ordinal"], 1);
     assert_eq!(
         finished[0]["fact"]["outcome"],
-        if failed {
+        if after_body {
             "postcommit_transport_failed"
+        } else if failed {
+            "rejected"
         } else {
             "accepted"
         }
     );
-    if failed {
+    if failed && !after_body {
+        // Relay eligibility remains Continue; the separately frozen one-attempt
+        // budget ends the request without promoting another candidate.
+        assert_eq!(finished[0]["fact"]["disposition"], "continue");
+        assert_eq!(finished[0]["fact"]["retryable"], true);
+        assert_eq!(
+            finished[0]["fact"]["commits"]["downstream_semantic"],
+            "clear"
+        );
+    }
+    if after_body {
         let semantic_started = finished[0]["fact"]["commits"]["downstream_semantic"] != "clear";
         assert_eq!(
             finished[0]["fact"]["termination_reason"],
@@ -624,7 +841,11 @@ fn assert_business(facts: &[Value], failed: bool) {
     );
     assert_eq!(
         finished[0]["fact"]["commits"]["downstream_headers"],
-        "write_confirmed"
+        if failed && !after_body {
+            "clear"
+        } else {
+            "write_confirmed"
+        }
     );
     let requests = named("request_finished");
     assert_eq!(finished[0]["fact"]["cleanup_outcome"], "completed");
@@ -644,11 +865,7 @@ fn assert_business(facts: &[Value], failed: bool) {
     assert_eq!(requests[0]["fact"]["attempts_started"], 1);
     assert_eq!(requests[0]["fact"]["attempts_finished"], 1);
     let semantic_commits = named("semantic_commit").len();
-    if failed {
-        assert!(semantic_commits <= 1);
-    } else {
-        assert_eq!(semantic_commits, 1);
-    }
+    assert_eq!(semantic_commits, if failed && !after_body { 0 } else { 1 });
     let usage = named("usage_and_cache");
     // These failed entities report no usage: preserve absence rather than
     // synthesizing zero tokens from an incomplete response.
@@ -785,6 +1002,7 @@ fn assert_capture(
         .unwrap();
     assert_eq!(correlation["request_token"], attempt["request_token"]);
     assert_eq!(correlation["attempt_token"], attempt["attempt_token"]);
+    assert_eq!(correlation["attempt_index"], attempt["attempt_index"]);
     assert_eq!(
         correlation["request_id"],
         facts

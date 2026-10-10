@@ -271,6 +271,12 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
             "runtime.context_hold.responses_search_append"
         ]
     );
+    // This scenario exercises a failure after output delivery. A coalesced
+    // delta+failure received before any downstream body is now relayable.
+    let failure_start = RESPONSES_FAILED_AFTER_SEMANTIC
+        .windows(b"event: response.failed".len())
+        .position(|part| part == b"event: response.failed")
+        .unwrap();
     let simple = NativeProvider::start(vec![
         complete(),
         complete(),
@@ -286,9 +292,13 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
             error_kind: None,
             body: RESPONSES_INCOMPLETE,
         },
-        ProviderReply::StreamComplete {
+        ProviderReply::StreamDrip {
             status: 200,
-            body: RESPONSES_FAILED_AFTER_SEMANTIC,
+            chunks: vec![
+                RESPONSES_FAILED_AFTER_SEMANTIC[..failure_start].to_vec(),
+                RESPONSES_FAILED_AFTER_SEMANTIC[failure_start..].to_vec(),
+            ],
+            interval: std::time::Duration::from_secs(1),
         },
     ]);
     let complex = NativeProvider::start(vec![
@@ -298,7 +308,9 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
         complete(),
         complete(),
     ]);
-    let fixture = RuntimeFixture::launch_classified(&[&simple, &complex], 2);
+    // Isolate success-only context holds from prebody fallback: known incomplete
+    // JSON must fail without delivery when the sole attempt is exhausted.
+    let fixture = RuntimeFixture::launch_classified(&[&simple, &complex], 1);
 
     assert_eq!(
         send(
@@ -449,10 +461,8 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
         "incomplete-origin",
         vec![message("user", "rename the partial readme")],
     );
-    assert_eq!(incomplete.status, 200);
-    let incomplete_body: Value = serde_json::from_slice(&incomplete.body).unwrap();
-    assert_eq!(incomplete_body["status"], "incomplete");
-    assert_eq!(incomplete_body["output"][0]["status"], "incomplete");
+    assert_eq!(incomplete.status, 502);
+    assert!(!String::from_utf8_lossy(&incomplete.body).contains("partial"));
     assert_eq!((simple.calls(), complex.calls()), (6, 3));
 
     assert_eq!(
@@ -461,7 +471,6 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
             "incomplete-origin",
             vec![
                 message("user", "rename the partial readme"),
-                message("assistant", "partial"),
                 message("user", "complex-route finish the architecture"),
             ],
         )
@@ -558,7 +567,7 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
     ];
     let chat_fixture = RuntimeFixture::launch_classified_with_publication_candidates(
         &[&chat_simple, &chat_complex],
-        2,
+        1,
         &chat_candidates,
     );
 
@@ -567,17 +576,14 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
         "chat-length-origin",
         vec![message("user", "rename until the token limit")],
     );
-    assert_eq!(length.status, 200);
-    let length_body: Value = serde_json::from_slice(&length.body).unwrap();
-    assert_eq!(length_body["status"], "incomplete");
-    assert_eq!(length_body["output"][0]["status"], "incomplete");
+    assert_eq!(length.status, 502);
+    assert!(!String::from_utf8_lossy(&length.body).contains("partial"));
     assert_eq!(
         send(
             &chat_fixture,
             "chat-length-origin",
             vec![
                 message("user", "rename until the token limit"),
-                message("assistant", "partial"),
                 message("user", "complex-route continue after length"),
             ],
         )
@@ -595,17 +601,14 @@ fn real_hirouted_holds_only_inside_each_classified_branch() {
         "chat-refusal-origin",
         vec![message("user", "rename content that will be refused")],
     );
-    assert_eq!(refusal.status, 200);
-    let refusal_body: Value = serde_json::from_slice(&refusal.body).unwrap();
-    assert_eq!(refusal_body["status"], "incomplete");
-    assert_eq!(refusal_body["output"][0]["status"], "incomplete");
+    assert_eq!(refusal.status, 502);
+    assert!(!String::from_utf8_lossy(&refusal.body).contains("cannot comply"));
     assert_eq!(
         send(
             &chat_fixture,
             "chat-refusal-origin",
             vec![
                 message("user", "rename content that will be refused"),
-                message("assistant", "cannot comply"),
                 message("user", "complex-route recover after refusal"),
             ],
         )

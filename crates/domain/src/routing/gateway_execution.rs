@@ -372,10 +372,12 @@ impl GatewayNativeReasoningFieldAssignmentV1 {
         match &self.value {
             GatewayNativeReasoningValueV1::Bool(value) => *value == enabled,
             GatewayNativeReasoningValueV1::String(_) => match protocol {
-                UpstreamProtocol::Responses => string_value(
-                    ["reasoning", "effort"],
-                    if enabled { "high" } else { "none" },
-                ),
+                UpstreamProtocol::Responses => {
+                    string_value(["reasoning", "effort"], if enabled { "low" } else { "none" })
+                        // Released 0.2.0 stored toggle-on as high. Its immutable
+                        // profile remains readable; current rendering uses low.
+                        || (enabled && string_value(["reasoning", "effort"], "high"))
+                }
                 UpstreamProtocol::Messages | UpstreamProtocol::ChatCompletions => string_value(
                     ["thinking", "type"],
                     if enabled { "enabled" } else { "disabled" },
@@ -727,19 +729,21 @@ fn toggle_field_matches(
     enabled: bool,
     protocol: UpstreamProtocol,
 ) -> bool {
-    match (protocol, parameter) {
-        (UpstreamProtocol::Responses, "enable_thinking" | "deepseek_thinking")
-        | (UpstreamProtocol::Messages, "enable_thinking" | "deepseek_thinking")
-        | (UpstreamProtocol::ChatCompletions, "deepseek_thinking") => {
+    let native_bool = field.path
+        == GatewayNativeReasoningFieldAssignmentV1::parameter_path(parameter, protocol)
+        && matches!(field.value, GatewayNativeReasoningValueV1::Bool(_))
+        && field.matches_toggle_wire(protocol, enabled);
+    match protocol {
+        UpstreamProtocol::Responses | UpstreamProtocol::Messages => {
+            (matches!(field.value, GatewayNativeReasoningValueV1::String(_))
+                && field.matches_toggle_wire(protocol, enabled))
+                || native_bool
+        }
+        UpstreamProtocol::ChatCompletions if parameter == "deepseek_thinking" => {
             matches!(field.value, GatewayNativeReasoningValueV1::String(_))
                 && field.matches_toggle_wire(protocol, enabled)
         }
-        _ => {
-            field.path
-                == GatewayNativeReasoningFieldAssignmentV1::parameter_path(parameter, protocol)
-                && matches!(field.value, GatewayNativeReasoningValueV1::Bool(_))
-                && field.matches_toggle_wire(protocol, enabled)
-        }
+        _ => native_bool,
     }
 }
 

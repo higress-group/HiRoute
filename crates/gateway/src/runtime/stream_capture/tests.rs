@@ -34,6 +34,99 @@ fn profile() -> CandidateProtocolProfile {
     )
 }
 
+fn promoted_correlation(index: u32) -> CaptureCorrelation {
+    CaptureCorrelation {
+        request_token: Some(hiroute_diagnostics::identity::CorrelationToken::from_bytes(
+            [1; 32],
+        )),
+        request_id: "private-request".into(),
+        attempt_index: index,
+        attempt_token: Some(hiroute_diagnostics::identity::CorrelationToken::from_bytes(
+            [index as u8; 32],
+        )),
+    }
+}
+
+#[test]
+fn promoted_failure_appends_only_one_bounded_correlation_without_reopening_content() {
+    let root = setup();
+    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    capture.record(1, b"{}");
+    capture.record(2, &[]);
+    capture.record(3, &200u16.to_le_bytes());
+    capture.record(4, b"original response");
+    capture.failed();
+    let path = root.join("attempt-1.capture");
+    let initial = fs::read(&path).unwrap();
+    assert!(root.join("stopped").exists());
+    assert_eq!(replay::records(&initial).unwrap().last().unwrap().0, 8);
+    PendingCapture(Arc::downgrade(&capture.0)).promoted(promoted_correlation(1));
+    let bound = fs::read(&path).unwrap();
+    assert_eq!(&initial[..initial.len() - 9], &bound[..initial.len() - 9]);
+    let records = replay::records(&bound).unwrap();
+    assert_eq!(records.iter().filter(|r| r.0 == 7).count(), 1);
+    assert_eq!(records.iter().filter(|r| r.0 == 8).count(), 1);
+    assert_eq!(records.last().unwrap().0, 8);
+    let correlation: serde_json::Value =
+        serde_json::from_slice(records.iter().find(|r| r.0 == 7).unwrap().1).unwrap();
+    assert_eq!(correlation["attempt_index"], 1);
+    assert!(!capture.0.lock().unwrap().active);
+    PendingCapture(Arc::downgrade(&capture.0)).promoted(promoted_correlation(2));
+    capture.record(4, b"must not capture a later response");
+    capture.failed();
+    assert_eq!(fs::read(&path).unwrap(), bound);
+    let weak = PendingCapture(Arc::downgrade(&capture.0));
+    drop(capture);
+    weak.promoted(promoted_correlation(3));
+    assert_eq!(fs::read(&path).unwrap(), bound);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn sealed_correlation_respects_original_bounds_and_file_identity() {
+    for guard in [
+        "file_limit",
+        "session_limit",
+        "records",
+        "expiry",
+        "permissions",
+        "identity",
+    ] {
+        let root = setup();
+        let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+        capture.record(1, b"{}");
+        capture.record(2, &[]);
+        capture.failed();
+        let path = root.join("attempt-1.capture");
+        let initial = fs::read(&path).unwrap();
+        match guard {
+            "file_limit" => {
+                let mut w = capture.0.lock().unwrap();
+                w.limit = w.written;
+            }
+            "session_limit" => {
+                private_file(&root.join("other.capture"))
+                    .unwrap()
+                    .set_len(MAX_TOTAL - initial.len() as u64)
+                    .unwrap();
+            }
+            "records" => capture.0.lock().unwrap().records = MAX_RECORDS,
+            "expiry" => capture.0.lock().unwrap().expires_at = now() - 1,
+            "permissions" => fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap(),
+            "identity" => {
+                fs::rename(&path, root.join("original.capture")).unwrap();
+                private_file(&path).unwrap().write_all(&initial).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        PendingCapture(Arc::downgrade(&capture.0)).promoted(promoted_correlation(1));
+        assert_eq!(fs::read(&path).unwrap(), initial, "{guard}");
+        assert!(!capture.0.lock().unwrap().active, "{guard}");
+        drop(capture);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
 // Only after the test has dropped its previous writer. A concurrent process
 // spawn can inherit the open-file description until CLOEXEC closes it. Wait
 // for that actual kernel ownership to end; all other errors remain failures.

@@ -4,6 +4,12 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::Parser;
+use hiroute_diagnostics::{
+    DiagnosticLevel,
+    event::ProcessRole,
+    record::Component,
+    runtime::{DiagnosticRuntime, RuntimeConfig},
+};
 #[cfg(feature = "e2e-test-control")]
 use hiroute_gateway::server::test_control::E2eControlOptions;
 use hiroute_gateway::server::{GatewayLaunchIdentity, GatewayLauncher, GatewayLauncherError};
@@ -32,6 +38,12 @@ struct Cli {
     /// Optional sealed static Planner/profile input for production requests.
     #[arg(long, conflicts_with = "fixture")]
     planner: Option<PathBuf>,
+    /// Private local diagnostic root for this standalone process.
+    #[arg(long)]
+    diagnostics_root: Option<PathBuf>,
+    /// Temporary diagnostic level; never changes the saved setting.
+    #[arg(long, requires = "diagnostics_root")]
+    diagnostic_level_override: Option<DiagnosticLevel>,
     #[cfg(feature = "e2e-test-control")]
     /// Explicit, sealed real-process E2E control endpoint. Hidden so normal
     /// production discovery cannot mistake this for a supported operator API.
@@ -57,8 +69,20 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if cli.role != "gateway" {
         return Err(GatewayLauncherError::UnsupportedRole(cli.role).into());
     }
+    let diagnostics = cli.diagnostics_root.as_ref().map(|root| {
+        DiagnosticRuntime::start(RuntimeConfig {
+            root: root.clone(),
+            role: ProcessRole::Daemon,
+            component: Component::Gateway,
+            parent_session_id: None,
+            level_override: cli.diagnostic_level_override,
+        })
+    });
+    if let Some(runtime) = &diagnostics {
+        hiroute_diagnostics::panic::install_panic_hook(runtime.handle().clone());
+    }
     let launch_identity = GatewayLaunchIdentity::from_environment()?;
-    match cli.fixture {
+    let launcher = match cli.fixture {
         Some(fixture) => {
             GatewayLauncher::from_fixture_with_identity(cli.listen, &fixture, launch_identity)?
         }
@@ -91,8 +115,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 )?
             }
         }
-    }
-    .serve()?;
+    };
+    let launcher = match &diagnostics {
+        Some(runtime) => launcher.with_diagnostics(runtime.port()),
+        None => launcher,
+    };
+    launcher.serve()?;
     Ok(())
 }
 
