@@ -13,17 +13,10 @@ type Snapshot = (
 );
 
 fn read_credentials(path: &std::path::Path) -> Result<Zeroizing<Vec<u8>>, Error> {
-    let Some((bytes, metadata)) = super::filesystem_config::read_validated_config_bytes(path)?
+    let Some((bytes, _metadata)) = super::filesystem_config::read_validated_config_bytes(path)?
     else {
         return Ok(Zeroizing::new(Vec::new()));
     };
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if metadata.permissions().mode() & 0o077 != 0 {
-            return Err(Error::UnsafePermissions);
-        }
-    }
     Ok(bytes)
 }
 

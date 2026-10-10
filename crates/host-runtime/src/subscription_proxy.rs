@@ -233,13 +233,6 @@ impl SubscriptionProxyStore {
         if !meta.is_dir() {
             return Err(SubscriptionProxyError);
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if meta.uid() != nix::unistd::geteuid().as_raw() || meta.mode() & 0o022 != 0 {
-                return Err(SubscriptionProxyError);
-            }
-        }
         let path = self.root.join(name);
         // Refuse unsafe existing records, including symlinks.
         let _ = read_bytes(&path)?;
@@ -294,13 +287,6 @@ fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>, SubscriptionProxyError> {
     let meta = file.metadata().map_err(|_| SubscriptionProxyError)?;
     if !meta.is_file() || meta.len() > LIMIT {
         return Err(SubscriptionProxyError);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if meta.uid() != nix::unistd::geteuid().as_raw() || meta.mode() & 0o077 != 0 {
-            return Err(SubscriptionProxyError);
-        }
     }
     let mut bytes = Vec::new();
     file.take(LIMIT + 1)

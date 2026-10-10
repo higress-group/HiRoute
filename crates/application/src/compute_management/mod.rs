@@ -25,11 +25,13 @@ mod dispatch;
 mod mutation_support;
 mod mutations;
 mod query;
+mod query_v3;
 
 pub use candidates::TrustedComputeCandidateRegistry;
 pub use compilation::*;
 pub use mutations::*;
 pub use query::*;
+pub use query_v3::*;
 
 pub(crate) use dispatch::{dispatch_compute_management, is_compute_management_operation};
 

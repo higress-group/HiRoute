@@ -43,6 +43,8 @@ class CaptureSessionTest(unittest.TestCase):
                 with patch.object(capture.time, "time", return_value=100000):
                     with self.assertRaises(ValueError):
                         capture.cleanup(root)
+            root.chmod(0o755)
+            (root / "active.lock").chmod(0o644)
             # The stable inode remains; only live kernel ownership blocks cleanup.
             with patch.object(capture.time, "time", return_value=100000):
                 capture.cleanup(root)

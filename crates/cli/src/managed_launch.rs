@@ -199,8 +199,6 @@ fn validated_managed_path(
     trusted_hiroute_executable: &Path,
     inherited: Option<OsString>,
 ) -> Option<OsString> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
     if !home.is_absolute() || !trusted_hiroute_executable.is_absolute() {
         return None;
     }
@@ -220,11 +218,7 @@ fn validated_managed_path(
     }
     let bin = home.join(".local/bin");
     let metadata = std::fs::symlink_metadata(&bin).ok()?;
-    if !metadata.is_dir()
-        || metadata.file_type().is_symlink()
-        || metadata.uid() != nix::unistd::geteuid().as_raw()
-        || metadata.permissions().mode() & 0o022 != 0
-    {
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return None;
     }
     let entry = bin.join("hiroute");

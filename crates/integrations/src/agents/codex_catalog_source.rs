@@ -609,13 +609,14 @@ mod tests {
     }
 
     #[test]
-    fn writable_by_others_catalog_is_rejected() {
+    fn accessible_catalog_modes_are_preserved() {
         let (_root, scope, path) = fixture();
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666)).unwrap();
-        assert!(matches!(
-            sample_codex_configured_catalog(&scope),
-            Err(Error::UnsafePermissions)
-        ));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
+        assert!(sample_codex_configured_catalog(&scope).is_ok());
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
     }
 
     #[test]

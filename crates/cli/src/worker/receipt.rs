@@ -152,18 +152,20 @@ fn receipt_root() -> Option<PathBuf> {
 }
 
 fn prepare_private_directory(path: &Path) -> Result<(), ReceiptError> {
-    std::fs::create_dir_all(path).map_err(|_| ReceiptError::Unavailable)?;
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-            .map_err(|_| ReceiptError::Unavailable)?;
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder
+        .create(path)
+        .map_err(|_| ReceiptError::Unavailable)?;
+    #[cfg(unix)]
+    {
         let metadata = std::fs::symlink_metadata(path).map_err(|_| ReceiptError::Unavailable)?;
-        if !metadata.is_dir()
-            || metadata.file_type().is_symlink()
-            || metadata.uid() != nix::unistd::geteuid().as_raw()
-            || metadata.mode() & 0o777 != 0o700
-        {
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
             return Err(ReceiptError::Unavailable);
         }
     }
@@ -247,15 +249,6 @@ fn validate_private_file(path: &Path) -> Result<(), ReceiptError> {
     let metadata = std::fs::symlink_metadata(path).map_err(|_| ReceiptError::Unavailable)?;
     if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Err(ReceiptError::Unavailable);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        if metadata.uid() != nix::unistd::geteuid().as_raw()
-            || metadata.permissions().mode() & 0o777 != 0o600
-        {
-            return Err(ReceiptError::Unavailable);
-        }
     }
     Ok(())
 }

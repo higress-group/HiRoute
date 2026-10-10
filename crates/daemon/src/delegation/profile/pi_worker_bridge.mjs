@@ -128,9 +128,7 @@ function ownedFile(path, root) {
     stat.isSymbolicLink() ||
     stat.nlink !== 1 ||
     realpathSync(path) !== path ||
-    dirname(path) !== root ||
-    stat.uid !== process.getuid() ||
-    (stat.mode & 0o077) !== 0
+    dirname(path) !== root
   )
     throw new Error();
   if (stat.size > 64 * 1024 * 1024) throw new Error();

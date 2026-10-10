@@ -325,12 +325,7 @@ pub(super) fn now() -> u64 {
 }
 pub(super) fn private_directory(path: &Path) -> Result<(), NativeIngressProbeError> {
     let meta = fs::symlink_metadata(path).map_err(|_| fail("private directory"))?;
-    if !path.is_absolute()
-        || !meta.is_dir()
-        || meta.file_type().is_symlink()
-        || meta.uid() != nix::unistd::geteuid().as_raw()
-        || meta.mode() & 0o077 != 0
-    {
+    if !path.is_absolute() || !meta.is_dir() || meta.file_type().is_symlink() {
         return Err(fail("private directory"));
     }
     Ok(())

@@ -10,6 +10,7 @@ import {
   existsSync,
   rmSync,
   copyFileSync,
+  chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -338,6 +339,7 @@ for (const operation of ["prompt", "load"]) {
       if (operation === "prompt") await f.ready();
       else await f.send("initialize", { protocolVersion: 1 });
       editedHistory(f, replacement);
+      chmodSync(join(f.root, "native-pi.jsonl"), 0o644);
       const response =
         operation === "load"
           ? await f.send("session/load", {

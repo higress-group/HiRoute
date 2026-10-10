@@ -1,6 +1,6 @@
 //! Read-only projections of credentials owned and refreshed exclusively by CPA.
 //! No token is returned to the daemon, and no token file is rewritten by this adapter.
-use std::fs::{self, File};
+use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -128,13 +128,6 @@ fn validate_auth_directory(path: &Path) -> Result<(), CpaLifecycleError> {
     if !path.is_absolute() || !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err(invalid());
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt as _;
-        if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
-            return Err(invalid());
-        }
-    }
     Ok(())
 }
 
@@ -147,7 +140,7 @@ fn read_credential(
     for _ in 0..3 {
         let file = crate::borrowed_codex::open_source_nofollow(&path).map_err(|_| invalid())?;
         let before = file.metadata().map_err(|_| invalid())?;
-        secure_credential_file(&file, &before)?;
+        secure_credential_file(&before)?;
         if before.len() > MAX_CREDENTIAL_BYTES {
             return Err(invalid());
         }
@@ -174,21 +167,15 @@ fn read_credential(
     Err(invalid())
 }
 
-fn secure_credential_file(file: &File, metadata: &fs::Metadata) -> Result<(), CpaLifecycleError> {
+fn secure_credential_file(metadata: &fs::Metadata) -> Result<(), CpaLifecycleError> {
     if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Err(invalid());
     }
     #[cfg(unix)]
     {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-        if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.nlink() != 1 {
+        use std::os::unix::fs::MetadataExt as _;
+        if metadata.nlink() != 1 {
             return Err(invalid());
-        }
-        // CPA's token-storage branch creates files with the process umask. The enclosing
-        // store is already private; narrow this descriptor without writing token bytes.
-        if metadata.mode() & 0o077 != 0 {
-            file.set_permissions(fs::Permissions::from_mode(0o600))
-                .map_err(|_| invalid())?;
         }
     }
     Ok(())

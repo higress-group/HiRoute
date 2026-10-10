@@ -95,6 +95,7 @@
     "hiroute.compute-management-preview/v2",
     "hiroute.compute-management-query/v2",
     "hiroute.compute-management-snapshot/v2",
+    "hiroute.compute-management-snapshot/v3",
     "hiroute.compute-management-source/v3",
     "hiroute.compute-management-target/v2",
     "hiroute.compute-probe-lease/v1",
@@ -991,6 +992,17 @@
           ]
         }
       ]
+    },
+    {
+      "subject": "compute_management_queries",
+      "audited_prefixes": [
+        "hiroute.compute-management-snapshot"
+      ],
+      "current_contracts": [
+        "hiroute.compute-management-snapshot/v2",
+        "hiroute.compute-management-snapshot/v3"
+      ],
+      "legacy_support": []
     }
   ],
   "forbidden_contracts": [

@@ -1029,11 +1029,26 @@ fn subscription_operation_status(
     if !operation.state.is_terminal() {
         return ComputeSubscriptionCheckStatusV2::Checking;
     }
-    match operation.safe_error_code.as_deref() {
+    subscription_error_status(operation.safe_error_code.as_deref())
+}
+
+fn subscription_error_status(code: Option<&str>) -> ComputeSubscriptionCheckStatusV2 {
+    match code {
         Some("SUBSCRIPTION_SOURCE_CHANGED" | "CHANGE_PREVIEW_STALE") => {
             ComputeSubscriptionCheckStatusV2::SourceChanged
         }
-        Some("SUBSCRIPTION_NEEDS_AUTH") => ComputeSubscriptionCheckStatusV2::NeedsAuth,
+        Some(
+            "SUBSCRIPTION_NEEDS_AUTH"
+            | "SUBSCRIPTION_NATIVE_LOGIN_MISSING"
+            | "SUBSCRIPTION_NATIVE_LOGIN_INVALID"
+            | "SUBSCRIPTION_NATIVE_ACCOUNT_MISSING"
+            | "SUBSCRIPTION_NATIVE_STORE_UNSUPPORTED"
+            | "SUBSCRIPTION_NATIVE_LOGIN_UNSUPPORTED"
+            | "SUBSCRIPTION_MANAGED_LOGIN_REQUIRED",
+        ) => ComputeSubscriptionCheckStatusV2::NeedsAuth,
+        Some("SUBSCRIPTION_NATIVE_READ_FAILED" | "SUBSCRIPTION_NATIVE_CLIENT_UNAVAILABLE") => {
+            ComputeSubscriptionCheckStatusV2::Unavailable
+        }
         Some("SUBSCRIPTION_RUNTIME_UNAVAILABLE") => ComputeSubscriptionCheckStatusV2::Unavailable,
         _ => ComputeSubscriptionCheckStatusV2::Failed,
     }

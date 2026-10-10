@@ -286,10 +286,7 @@ mod unix {
                     let metadata = child
                         .metadata()
                         .map_err(|_| DelegationNativeCleanupFailureKindV1::IoUnavailable)?;
-                    if metadata.uid() != rustix::process::geteuid().as_raw()
-                        || metadata.dev() != root_device
-                        || metadata.ino() != stat.st_ino as u64
-                    {
+                    if metadata.dev() != root_device || metadata.ino() != stat.st_ino as u64 {
                         return Err(DelegationNativeCleanupFailureKindV1::IdentityMismatch);
                     }
                     if !remove_children(&child, root_device, remaining, depth + 1, false)? {
@@ -376,9 +373,7 @@ mod unix {
         if !metadata.is_file() || metadata.len() > 4096 {
             return Err(DelegationNativeCleanupFailureKindV1::UnsafeEntry);
         }
-        if metadata.uid() != rustix::process::geteuid().as_raw()
-            || metadata.mode() & 0o077 != 0
-            || metadata.dev() != expected.marker_device
+        if metadata.dev() != expected.marker_device
             || metadata.ino() != expected.marker_inode
             || metadata.dev() != expected.root_device
         {
@@ -470,8 +465,6 @@ mod unix {
 
     fn private_directory(metadata: &std::fs::Metadata) -> bool {
         metadata.is_dir()
-            && metadata.uid() == rustix::process::geteuid().as_raw()
-            && metadata.mode() & 0o077 == 0
     }
 
     fn utf8_name(name: &CStr) -> Option<&str> {

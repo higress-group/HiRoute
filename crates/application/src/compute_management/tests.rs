@@ -14,6 +14,7 @@ use super::*;
 
 mod codex_checked_account;
 mod connector_owned_availability;
+mod subscription_modes;
 
 fn unknown<T>() -> ComputeCandidateFactValueV2<T> {
     ComputeCandidateFactValueV2 {

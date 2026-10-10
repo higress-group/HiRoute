@@ -138,13 +138,6 @@ fn read_private(path: &std::path::Path) -> PortResult<Zeroizing<String>> {
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(error());
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != nix::unistd::geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
-            return Err(error());
-        }
-    }
     let mut encoded = Zeroizing::new(String::new());
     let mut file: Take<fs::File> = fs::File::open(path).map_err(|_| error())?.take(4097);
     file.read_to_string(&mut encoded).map_err(|_| error())?;

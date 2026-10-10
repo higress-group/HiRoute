@@ -194,6 +194,9 @@ impl LocalControlAdapter {
                     .flatten()
                     .and_then(|source| {
                         BorrowedCodexAuthSpec::new(source.source_path())
+                            .with_store_config(
+                                source.codex_store_config().map(std::path::Path::to_owned),
+                            )
                             .inspect()
                             .ok()
                     })?

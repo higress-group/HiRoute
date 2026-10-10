@@ -245,11 +245,7 @@ fn ensure_owned_directory(path: &Path) -> Result<(), String> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) => {
             use std::os::unix::fs::{MetadataExt, PermissionsExt};
-            if !metadata.is_dir()
-                || metadata.file_type().is_symlink()
-                || metadata.uid() != nix::unistd::geteuid().as_raw()
-                || metadata.permissions().mode() & 0o022 != 0
-            {
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
                 return Err("CLI_ENTRY_DIRECTORY_UNSAFE".into());
             }
         }

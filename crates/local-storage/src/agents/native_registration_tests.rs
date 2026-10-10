@@ -2,7 +2,7 @@
 use super::*;
 
 #[test]
-fn unused_unsafe_target_does_not_block_a_safe_neighbor_but_cannot_be_used() {
+fn accessible_writable_target_and_neighbor_keep_independent_effects() {
     let root = crate::test_tempdir().unwrap();
     let unsafe_parent = root.path().join("unsafe-native");
     let safe_parent = root.path().join("safe-native");
@@ -34,30 +34,21 @@ fn unused_unsafe_target_does_not_block_a_safe_neighbor_but_cannot_be_used() {
     )
     .unwrap();
     let operation = OperationId::parse("op_00112233445566778899aabbccddeeff").unwrap();
-    assert_eq!(
+    assert!(
         store
             .read_native_target(intents[0].target())
-            .unwrap_err()
-            .code,
-        PortErrorCode::PermissionDenied
-    );
-    assert!(
-        store
-            .stage_native_target(&operation, &intents[0], Some(b"must not write"), false)
-            .is_err()
-    );
-    assert!(
-        store
-            .load_marker(&operation, intents[0].effect_id())
             .unwrap()
             .is_none()
     );
-    assert!(!paths[0].exists());
-    // Explicit later binding remains an admission check, unlike startup enumeration.
-    assert!(matches!(
-        store.bind_external_target("another-target", unsafe_parent.join("other-settings.json")),
-        Err(LocalStorageError::Permission)
-    ));
+    let first = store
+        .stage_native_target(&operation, &intents[0], Some(b"first target"), false)
+        .unwrap();
+    assert!(!paths[0].exists(), "staging does not activate the target");
+    store.activate_artifact(&first).unwrap();
+    assert_eq!(fs::read(&paths[0]).unwrap(), b"first target");
+    store
+        .bind_external_target("another-target", unsafe_parent.join("other-settings.json"))
+        .unwrap();
     let effect = store
         .stage_native_target(&operation, &intents[1], Some(b"safe neighbor"), false)
         .unwrap();
@@ -67,11 +58,11 @@ fn unused_unsafe_target_does_not_block_a_safe_neighbor_but_cannot_be_used() {
         fs::metadata(&unsafe_parent).unwrap().permissions().mode() & 0o777,
         0o775
     );
-    assert_eq!(fs::read_dir(&unsafe_parent).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(&unsafe_parent).unwrap().count(), 1);
 }
 
 #[test]
-fn unsafe_durable_native_target_blocks_activation_restoration_and_recovery_without_changes() {
+fn existing_native_directory_modes_allow_activation_restore_and_reopen() {
     for activated in [false, true] {
         let root = crate::test_tempdir().unwrap();
         let parent = root.path().join("native");
@@ -100,20 +91,29 @@ fn unsafe_durable_native_target_blocks_activation_restoration_and_recovery_witho
             store.activate_artifact(&effect).unwrap();
         }
         fs::set_permissions(&parent, fs::Permissions::from_mode(0o775)).unwrap();
-        let target_before = fs::read(&path).ok();
-        let marker_path = store.marker_path(&operation, intent.effect_id());
-        let marker_before = fs::read(&marker_path).unwrap();
         let restore_key = root.path().join("restore/.restore-key");
         let key_before = fs::read(&restore_key).unwrap();
-        if !activated {
-            assert!(store.activate_artifact(&effect).is_err());
-        }
-        assert!(store.compensate_artifact(&effect).is_err());
-        assert!(store.read_native_target(intent.target()).is_err());
         drop(store);
-        assert!(matches!(open(), Err(LocalStorageError::Permission)));
-        assert_eq!(fs::read(&path).ok(), target_before);
-        assert_eq!(fs::read(&marker_path).unwrap(), marker_before);
+        let store = open().unwrap();
+        if !activated {
+            store.activate_artifact(&effect).unwrap();
+        }
+        assert_eq!(
+            store
+                .read_native_target(intent.target())
+                .unwrap()
+                .unwrap()
+                .as_slice(),
+            b"managed content"
+        );
+        assert_eq!(
+            store.compensate_artifact(&effect).unwrap(),
+            CompensationOutcome::Compensated
+        );
+        assert!(store.read_native_target(intent.target()).unwrap().is_none());
+        drop(store);
+        open().unwrap();
+        assert!(!path.exists());
         assert_eq!(fs::read(&restore_key).unwrap(), key_before);
         assert_eq!(
             fs::metadata(&parent).unwrap().permissions().mode() & 0o777,

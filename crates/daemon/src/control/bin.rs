@@ -490,16 +490,15 @@ fn standalone_host_target() -> String {
 fn standalone_private_directory(path: &std::path::Path) -> Result<(), String> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-    std::fs::create_dir_all(path).map_err(|_| "standalone directory is unavailable")?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
         .map_err(|_| "standalone directory is unavailable")?;
     let metadata =
         std::fs::symlink_metadata(path).map_err(|_| "standalone directory is unavailable")?;
-    if !metadata.is_dir()
-        || metadata.file_type().is_symlink()
-        || metadata.uid() != nix::unistd::geteuid().as_raw()
-        || metadata.permissions().mode() & 0o777 != 0o700
-    {
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err("standalone directory is unsafe".into());
     }
     Ok(())

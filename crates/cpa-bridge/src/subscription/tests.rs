@@ -437,6 +437,9 @@ fn artifact_auth_and_runtime_failures_have_distinct_subscription_states() {
         CpaLifecycleError::InvalidBorrowedClaudeAuth,
         CpaLifecycleError::BorrowedClaudeAuthSourceChanged,
         CpaLifecycleError::BorrowedCodexAuthSourceChanged,
+        CpaLifecycleError::BorrowedCodexStoreUnsupported,
+        CpaLifecycleError::BorrowedCodexLoginUnsupported,
+        CpaLifecycleError::BorrowedCodexAccountMissing,
     ] {
         assert_eq!(
             cpa_subscription_availability(Err(&error)),

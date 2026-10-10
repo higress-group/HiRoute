@@ -455,8 +455,14 @@ pub(crate) fn ensure_private_dir(path: &Path) -> Result<PathBuf, CpaConfigError>
     if !path.is_absolute() {
         return Err(CpaConfigError::InvalidPrivatePath);
     }
-    fs::create_dir_all(path).map_err(CpaConfigError::Io)?;
-    set_private_dir_permissions(path)?;
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path).map_err(CpaConfigError::Io)?;
     validate_private_dir(path)?;
     path.canonicalize().map_err(CpaConfigError::Io)
 }
@@ -486,25 +492,9 @@ pub(crate) fn private_atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CpaC
 }
 
 #[cfg(unix)]
-fn set_private_dir_permissions(path: &Path) -> Result<(), CpaConfigError> {
-    use std::os::unix::fs::PermissionsExt as _;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(CpaConfigError::Io)
-}
-
-#[cfg(not(unix))]
-fn set_private_dir_permissions(_path: &Path) -> Result<(), CpaConfigError> {
-    Ok(())
-}
-
-#[cfg(unix)]
 fn validate_private_dir(path: &Path) -> Result<(), CpaConfigError> {
-    use std::os::unix::fs::MetadataExt as _;
     let metadata = fs::symlink_metadata(path).map_err(CpaConfigError::Io)?;
-    if !metadata.is_dir()
-        || metadata.file_type().is_symlink()
-        || metadata.mode() & 0o077 != 0
-        || metadata.uid() != rustix::process::geteuid().as_raw()
-    {
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err(CpaConfigError::InsecurePermissions);
     }
     Ok(())
@@ -532,12 +522,7 @@ fn set_private_file_create_mode(_options: &mut OpenOptions) {}
 pub(crate) fn validate_private_file(path: &Path) -> Result<(), CpaConfigError> {
     use std::os::unix::fs::MetadataExt as _;
     let metadata = fs::symlink_metadata(path).map_err(CpaConfigError::Io)?;
-    if !metadata.is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.mode() & 0o077 != 0
-        || metadata.uid() != rustix::process::geteuid().as_raw()
-        || metadata.nlink() != 1
-    {
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.nlink() != 1 {
         return Err(CpaConfigError::InsecurePermissions);
     }
     Ok(())
@@ -562,7 +547,7 @@ pub enum CpaConfigError {
     InvalidCapability,
     #[error("CPA private path is not absolute")]
     InvalidPrivatePath,
-    #[error("CPA state/config permissions are not owner-only")]
+    #[error("CPA state/config path is not a safe regular file or directory")]
     InsecurePermissions,
     #[error("CPA state/config I/O failed: {0}")]
     Io(std::io::Error),

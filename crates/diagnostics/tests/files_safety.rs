@@ -100,15 +100,15 @@ fn hard_linked_log_file_is_refused() {
 }
 
 #[test]
-fn group_readable_file_and_directory_are_refused() {
+fn readable_file_and_directory_modes_are_preserved() {
     let (temp, root) = private_root();
     let _outside = sentinel(&temp);
     std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).expect("chmod dir");
+    PrivateDir::open_existing(&root).expect("accessible directory");
     assert_eq!(
-        PrivateDir::open_existing(&root).expect_err("dir mode must be refused"),
-        FileSafetyError::UnsafeDirectory
+        std::fs::metadata(&root).unwrap().permissions().mode() & 0o777,
+        0o755
     );
-    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).expect("chmod dir");
     let dir = PrivateDir::open_existing(&root).expect("open root");
     let mut file = dir.create_new(SETTINGS_FILE).expect("create");
     file.append(b"x").expect("append");
@@ -120,8 +120,19 @@ fn group_readable_file_and_directory_are_refused() {
     .expect("chmod file");
     assert_eq!(
         dir.open_read(SETTINGS_FILE)
-            .expect_err("file mode must be refused"),
-        FileSafetyError::UnsafeFile
+            .unwrap()
+            .unwrap()
+            .read_prefix(10)
+            .unwrap(),
+        b"x"
+    );
+    assert_eq!(
+        std::fs::metadata(root.join(SETTINGS_FILE))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o644
     );
 }
 
@@ -275,19 +286,26 @@ fn missing_parent_chain_is_created_without_touching_existing_levels() {
     assert_eq!(dir.path(), root.as_path());
 }
 
-/// A world/group writable ancestor without the sticky bit lets anyone replace the entry
-/// we are about to trust, so it is refused instead of used or repaired.
+/// Existing local directory permissions are not an admission or automatic chmod trigger.
 #[test]
-fn writable_non_sticky_ancestor_is_refused() {
+fn writable_non_sticky_ancestor_is_accepted_without_chmod() {
     let temp = support::private_tempdir();
     let loose = temp.path().join("loose-parent");
     std::fs::create_dir(&loose).expect("create loose parent");
     std::fs::set_permissions(&loose, std::fs::Permissions::from_mode(0o777)).expect("chmod");
+    PrivateDir::open_or_create(&loose.join("diagnostics")).unwrap();
     assert_eq!(
-        PrivateDir::open_or_create(&loose.join("diagnostics")).expect_err("must refuse"),
-        FileSafetyError::UnsafeDirectory
+        std::fs::metadata(&loose).unwrap().permissions().mode() & 0o777,
+        0o777
     );
-    assert!(!loose.join("diagnostics").exists());
+    assert_eq!(
+        std::fs::metadata(loose.join("diagnostics"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
 }
 
 /// An ancestor replaced by a symlink must be refused before anything is opened or created
@@ -332,8 +350,7 @@ fn ancestor_symlink_to_external_private_directory_is_refused() {
     );
 }
 
-/// An already-open handle must not keep writing after the file becomes group readable or
-/// multiply linked; the next append re-checks the open descriptor.
+/// Chmod does not block an open handle; hardlink replacement still prevents further writes.
 #[test]
 fn append_rechecks_the_open_file_after_chmod_and_hardlink() {
     let (_temp, root) = private_root();
@@ -345,20 +362,18 @@ fn append_rechecks_the_open_file_after_chmod_and_hardlink() {
         std::fs::Permissions::from_mode(0o644),
     )
     .expect("chmod");
-    assert_eq!(
-        file.append(b"second\n").expect_err("chmodded file refused"),
-        FileSafetyError::UnsafeFile
-    );
+    file.append(b"second\n")
+        .expect("chmod does not revoke access");
     std::fs::set_permissions(
         root.join(CURRENT_LOG_FILE),
         std::fs::Permissions::from_mode(0o600),
     )
     .expect("chmod back");
     file.append(b"third\n").expect("append after repair");
-    // The raw bytes show that the refused writes never reached the file.
+    // Both permission modes allow writing to the same stable file.
     assert_eq!(
         std::fs::read(root.join(CURRENT_LOG_FILE)).expect("raw read"),
-        b"first\nthird\n"
+        b"first\nsecond\nthird\n"
     );
     std::fs::hard_link(root.join(CURRENT_LOG_FILE), root.join("outside-link.jsonl"))
         .expect("hard link");
@@ -370,7 +385,7 @@ fn append_rechecks_the_open_file_after_chmod_and_hardlink() {
     drop(file);
     assert_eq!(
         std::fs::read(root.join(CURRENT_LOG_FILE)).expect("raw read"),
-        b"first\nthird\n",
+        b"first\nsecond\nthird\n",
         "the multiply linked file stayed untouched"
     );
 }

@@ -408,11 +408,12 @@ fn writer_enforces_single_record_size_limit() {
 }
 
 #[test]
-fn unsafe_role_directory_is_reported_instead_of_blocking_startup() {
+fn symlinked_role_directory_is_reported_instead_of_blocking_startup() {
     let temp = support::private_tempdir();
     let root = temp.path().join("diagnostics");
-    std::fs::create_dir(&root).expect("create root");
-    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let outside = temp.path().join("outside");
+    std::fs::create_dir(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, &root).unwrap();
     let runtime = DiagnosticRuntime::start(RuntimeConfig {
         root,
         role: ProcessRole::Desktop,
@@ -621,13 +622,12 @@ fn shutdown_drain_counts_records_it_cannot_write() {
     }
     assert!(counters.bytes_written() > 0, "the first record is written");
 
-    // Another owner breaks the open file's privacy: every later append must be refused, so
-    // the records still queued when the queue closes are the ones the drain cannot write.
-    std::fs::set_permissions(
+    // A hardlink violates stable single-file ownership even though broad modes are allowed.
+    std::fs::hard_link(
         dir.path().join(CURRENT_LOG_FILE),
-        std::fs::Permissions::from_mode(0o644),
+        dir.path().join("foreign-link"),
     )
-    .expect("chmod");
+    .unwrap();
     for sequence in 10..14 {
         let _ = sender.try_push(DiagnosticLevel::Debug, record_bytes(sequence, now_ms()));
     }

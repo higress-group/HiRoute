@@ -76,11 +76,14 @@ export type ManagedSource = {
   actions: ('edit' | 'add_key' | 'recheck' | 'reauthorize' | 'enable' | 'disable')[];
 };
 
+export type SubscriptionMode = 'native_borrowed' | 'cpa_managed';
+
 export type ManagementSnapshot = {
   schema: string;
   revisions: RevisionSet;
   runtime_state: 'complete' | 'partial';
   sources: ManagedSource[];
+  subscription_modes?: { source_id: string; source_revision: number; mode: SubscriptionMode }[];
 };
 
 export type KeyEdit =

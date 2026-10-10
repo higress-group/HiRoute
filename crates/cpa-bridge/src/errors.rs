@@ -62,6 +62,12 @@ pub enum CpaLifecycleError {
     InvalidAccountState,
     #[error("CPA account state I/O failed: {0}")]
     AccountStateIo(std::io::Error),
+    #[error("Codex login mode cannot be borrowed; use independent subscription sign-in")]
+    BorrowedCodexLoginUnsupported,
+    #[error("Codex credential store cannot be borrowed; use independent subscription sign-in")]
+    BorrowedCodexStoreUnsupported,
+    #[error("Codex account cannot be identified; sign in again and retry")]
+    BorrowedCodexAccountMissing,
     #[error("borrowed Codex authentication is invalid or unsafe")]
     InvalidBorrowedCodexAuth,
     #[error("borrowed Codex authentication source is missing")]
@@ -84,4 +90,51 @@ pub enum CpaLifecycleError {
     Config(#[from] CpaConfigError),
     #[error(transparent)]
     Process(#[from] CpaProcessError),
+}
+
+impl CpaLifecycleError {
+    /// Closed, non-secret causes shared by Check/Save and access-lease materialization.
+    pub fn subscription_failure(&self) -> Option<hiroute_domain::PortError> {
+        use hiroute_domain::{PortError, PortErrorCode};
+        let (code, context) = match self {
+            Self::BorrowedCodexStoreUnsupported => (
+                PortErrorCode::InvalidData,
+                "subscription.native.store-unsupported",
+            ),
+            Self::BorrowedCodexLoginUnsupported => (
+                PortErrorCode::InvalidData,
+                "subscription.native.login-unsupported",
+            ),
+            Self::BorrowedCodexAccountMissing => (
+                PortErrorCode::InvalidData,
+                "subscription.native.account-missing",
+            ),
+            Self::BorrowedCodexAuthMissing | Self::BorrowedClaudeAuthMissing => (
+                PortErrorCode::PermissionDenied,
+                "subscription.native.login-missing",
+            ),
+            Self::BorrowedCodexAuthIo | Self::BorrowedClaudeAuthUnavailable => (
+                PortErrorCode::Unavailable,
+                "subscription.native.read-failed",
+            ),
+            Self::InvalidBorrowedCodexAuth
+            | Self::InvalidBorrowedClaudeAuth
+            | Self::BorrowedCodexAuthUnavailable => (
+                PortErrorCode::PermissionDenied,
+                "subscription.native.login-invalid",
+            ),
+            Self::BorrowedCodexClientVersionUnavailable => (
+                PortErrorCode::Unavailable,
+                "subscription.native.client-unavailable",
+            ),
+            Self::ManagedOAuthCredentialsMissing
+            | Self::ManagedOAuthAuthenticationRequired
+            | Self::InvalidManagedOAuthCredentials => (
+                PortErrorCode::PermissionDenied,
+                "subscription.managed.login-required",
+            ),
+            _ => return None,
+        };
+        Some(PortError::new(code, context))
+    }
 }

@@ -472,3 +472,95 @@ async fn cached_checked_candidate_does_not_hide_same_source_lineage_replacement(
     );
     daemon.stop();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn saved_borrowed_mode_and_membership_survive_native_credential_failures() {
+    let (directory, _proxy, mut daemon) = cache_fixture();
+    let auth_path = directory.path().join("home/.codex/auth.json");
+    let minimal = serde_json::json!({"tokens": {"account_id": "subscription-product-account", "access_token": ACCESS_SENTINEL}});
+    let auth = serde_json::to_vec(&minimal).unwrap();
+    fs::write(&auth_path, &auth).unwrap();
+    fs::set_permissions(&auth_path, fs::Permissions::from_mode(0o644)).unwrap();
+    let checked = check_current(&mut daemon, "compatible-native").await;
+    let saved = save_checked(
+        &daemon,
+        &checked,
+        ComputeManagementIntentV2::SaveReady,
+        "compatible-save",
+    )
+    .await;
+    let source = &saved.sources[0];
+    let stored = saved_source_json(directory.path(), &source.source_id);
+    let config_path = directory.path().join("home/.codex/config.toml");
+    let config = fs::read(&config_path).unwrap_or_default();
+    for case in ["store", "account", "login"] {
+        match case {
+            "store" => {
+                let mut changed = b"cli_auth_credentials_store = \"keyring\"\n".to_vec();
+                changed.extend_from_slice(&config);
+                fs::write(&config_path, changed).unwrap();
+            }
+            "account" => fs::write(&auth_path, serde_json::to_vec(&serde_json::json!({"tokens":{"access_token":ACCESS_SENTINEL}})).unwrap()).unwrap(),
+            _ => fs::write(&auth_path, serde_json::to_vec(&serde_json::json!({"auth_mode":"apikey", "OPENAI_API_KEY":"fixture-api-sentinel"})).unwrap()).unwrap(),
+        }
+        for needs_auth in [true, false] {
+            if !needs_auth {
+                fs::write(&config_path, &config).unwrap();
+                fs::write(&auth_path, &auth).unwrap();
+            }
+            let deadline = Instant::now() + Duration::from_secs(20);
+            loop {
+                let snapshot = succeeded(
+                    daemon
+                        .client
+                        .compute_management_snapshot_v3(
+                            "saved-credential-mode",
+                            ComputeManagementQueryV2 {
+                                source_id: Some(source.source_id.clone()),
+                            },
+                        )
+                        .await
+                        .unwrap(),
+                );
+                assert_eq!(snapshot.subscription_modes.len(), 1);
+                assert_eq!(
+                    snapshot.subscription_modes[0].mode,
+                    hiroute_application_api::ComputeSubscriptionModeV1::NativeBorrowed
+                );
+                assert_eq!(
+                    snapshot.subscription_modes[0].source_revision,
+                    source.revision
+                );
+                let current = &snapshot.sources[0];
+                assert_eq!(current.revision, source.revision);
+                assert_eq!(current.models[0].binding_id, source.models[0].binding_id);
+                let expected = if needs_auth {
+                    ComputeModelAvailabilityV1::NeedsCredentials
+                } else {
+                    ComputeModelAvailabilityV1::Available
+                };
+                if current.models[0].presentation.availability == expected {
+                    if needs_auth {
+                        assert_eq!(
+                            current.models[0].presentation.reason_code,
+                            Some(ComputeModelAvailabilityReasonV1::AuthenticationRequired)
+                        );
+                    }
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{case}, needs_auth={needs_auth}: {:?}",
+                    current.models[0].presentation
+                );
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert_eq!(
+                saved_source_json(directory.path(), &source.source_id),
+                stored
+            );
+        }
+    }
+    assert_eq!(fs::read(auth_path).unwrap(), auth);
+    daemon.stop();
+}

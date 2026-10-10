@@ -20,3 +20,14 @@ Tests belong to the Desktop subscription suites and the production Pilot path; s
 contract and protected callback admission regressions belong to Application API, CLI and
 the daemon. Generated CLI schemas and Tauri permissions are finalized by the convergence
 owner with the same candidate as the backend.
+
+Independent sign-in is the recommended entry. The saved-source view joins explicit V3
+subscription-mode records by source ID and revision; unavailable credentials never change
+a saved mode. Reauthorization opens independent sign-in for a CPA-managed source and
+native discovery for a borrowed source. Changing mode still requires Check and Save.
+The published CLI management queries retain their strict V2 responses.
+
+Codex borrowing uses file credentials only. A selected non-file credential store refuses
+stale auth.json and directs the user to independent sign-in; Claude keeps its existing
+file and explicit Keychain check. Error copy separates missing login, unsupported mode or
+store, unreadable credentials, missing account identity and runtime/network unavailability.

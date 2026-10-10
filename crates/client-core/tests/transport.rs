@@ -710,17 +710,84 @@ async fn write_backpressure_uses_the_same_bounded_submission_deadline() {
     server.abort();
 }
 #[tokio::test]
-async fn writable_private_directory_or_socket_is_rejected() {
+async fn writable_directory_or_socket_keeps_handshake_and_child_pid_checks() {
     for directory in [true, false] {
-        let (root, _listener, client) = setup();
+        let (root, listener, client) = setup();
         let path = if directory {
             root.path().join("hiroute")
         } else {
             client.endpoint().path().to_owned()
         };
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o777)).unwrap();
-        let failure = client.call_wire(request()).await.unwrap_err();
-        assert_eq!(failure.code, FailureCode::PeerRejected);
-        assert_eq!(failure.submission, SubmissionState::NotSent);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o777)).unwrap();
+        let server = tokio::spawn(async move {
+            let mut stream = handshake(listener).await;
+            let request = receive(&mut stream).await;
+            write(
+                stream.get_mut(),
+                &MachineEnvelopeV2::succeeded(json!({"ok":true}), Some(request.request_id)),
+            )
+            .await;
+        });
+        assert!(client.call_wire(request()).await.is_ok());
+        server.await.unwrap();
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o777
+        );
+    }
+}
+
+#[tokio::test]
+async fn management_query_versions_use_distinct_operations_over_the_same_handshake() {
+    for (source_id, operation_v2, operation_v3) in [
+        (None, "ListCompute", "ListComputeV3"),
+        (Some("source/test".to_owned()), "GetCompute", "GetComputeV3"),
+    ] {
+        for v3 in [false, true] {
+            let (_root, listener, client) = setup();
+            let expected_operation = if v3 { operation_v3 } else { operation_v2 };
+            let expected_source = source_id.clone();
+            let server = tokio::spawn(async move {
+                let mut stream = handshake(listener).await;
+                let request = receive(&mut stream).await;
+                assert_eq!(request.operation_id, expected_operation);
+                assert_eq!(request.schema_version, LOCAL_CONTROL_SCHEMA_V2);
+                let query: ComputeManagementQueryV2 =
+                    serde_json::from_value(request.payload).unwrap();
+                assert_eq!(query.source_id, expected_source);
+                let mut response = json!({"schema": if v3 { "hiroute.compute-management-snapshot/v3" } else { "hiroute.compute-management-snapshot/v2" }, "revisions":{"target":1,"dependencies":{}}, "runtime_state":"complete", "sources":[]});
+                if v3 {
+                    response["subscription_modes"] = json!([]);
+                }
+                write(
+                    stream.get_mut(),
+                    &MachineEnvelopeV2::succeeded(response, Some(request.request_id)),
+                )
+                .await;
+            });
+            let query = ComputeManagementQueryV2 {
+                source_id: source_id.clone(),
+                ..Default::default()
+            };
+            if v3 {
+                let result = client
+                    .compute_management_snapshot_v3("v3-query", query)
+                    .await
+                    .unwrap()
+                    .data
+                    .unwrap();
+                assert_eq!(result.schema, COMPUTE_MANAGEMENT_SNAPSHOT_SCHEMA_V3);
+                assert!(result.subscription_modes.is_empty());
+            } else {
+                let result = client
+                    .compute_management_snapshot("v2-query", query)
+                    .await
+                    .unwrap()
+                    .data
+                    .unwrap();
+                assert_eq!(result.schema, COMPUTE_MANAGEMENT_SNAPSHOT_SCHEMA_V2);
+            }
+            server.await.unwrap();
+        }
     }
 }

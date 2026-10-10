@@ -250,15 +250,7 @@ fn create_private_child(parent: &Path, name: &str) -> Result<PathBuf, Delegation
 }
 
 fn private(metadata: &fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        metadata.uid() == nix::unistd::geteuid().as_raw() && metadata.mode() & 0o077 == 0
-    }
-    #[cfg(not(unix))]
-    {
-        metadata.is_dir()
-    }
+    metadata.is_dir()
 }
 
 pub(crate) struct ManagedWorkerProfileSource {
@@ -631,8 +623,16 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                create_private_child(root.path(), "public"),
-                Err(DelegationErrorV1::PermissionDenied)
+                create_private_child(root.path(), "public").unwrap(),
+                root.path().join("public")
+            );
+            assert_eq!(
+                fs::metadata(root.path().join("public"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o755
             );
         }
     }

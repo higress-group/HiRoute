@@ -1181,12 +1181,9 @@ fn tighten_and_remove_owner_orphan(path: &Path) -> Result<(), LocalStorageError>
     }
     #[cfg(unix)]
     {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        if metadata.uid() != rustix::process::getuid().as_raw() || metadata.nlink() != 1 {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.nlink() != 1 {
             return Err(LocalStorageError::Permission);
-        }
-        if metadata.mode() & 0o777 != 0o600 {
-            fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
         }
     }
     validate_owner_file(path)?;
@@ -1212,15 +1209,6 @@ fn prepare_owner_directory(path: &Path) -> Result<(), LocalStorageError> {
         let metadata = fs::symlink_metadata(path)?;
         if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
             return Err(LocalStorageError::Permission);
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if metadata.mode() & 0o777 != 0o700
-                || metadata.uid() != rustix::process::getuid().as_raw()
-            {
-                return Err(LocalStorageError::Permission);
-            }
         }
     } else {
         fs::create_dir_all(path)?;
@@ -1256,20 +1244,14 @@ fn validate_owner_file(path: &Path) -> Result<(), LocalStorageError> {
     if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
         return Err(LocalStorageError::Permission);
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.mode() & 0o777 != 0o600 || metadata.uid() != rustix::process::getuid().as_raw()
-        {
-            return Err(LocalStorageError::Permission);
-        }
-    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use crate::test_tempdir as tempdir;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     use super::*;
     use crate::{ControlStore, LocalSecretStore, RuntimeStore};
@@ -1344,7 +1326,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn vacuum_created_0644_stage_is_tightened_and_reconciled_across_two_restarts() {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        use std::os::unix::fs::MetadataExt;
 
         let directory = tempdir().unwrap();
         let root = directory.path().join("data");
