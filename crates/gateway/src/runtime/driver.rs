@@ -174,6 +174,7 @@ pub struct ProductionAttemptState {
     served_model_alias: String,
     streaming: bool,
     native_output: bool,
+    omit_thinking: bool,
     chat_tool_projection: Option<adapters::ChatToolProjection>,
     chat_tool_projection_budget: Option<Reservation>,
     decoder: Option<adapters::NativeResponseDecoder>,

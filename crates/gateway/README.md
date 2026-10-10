@@ -15,6 +15,15 @@ The standalone `hirouted` entry can attach the same typed diagnostics using
 capture or execution-fact storage. At Info, failed attempts retain the safe
 actual model and reasoning controls, HTTP protocol/status and body commit state.
 
+Messages thinking computation is projected in
+[request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
+is resolved by [ingress.rs](src/adapters/ingress.rs) before Replay externalization.
+[Native response projection](src/adapters/response/native_passthrough.rs) preserves
+signatures and usage while enforcing omitted text. Cross-protocol Messages
+renderers omit foreign reasoning without inventing signatures. The
+[production protocol matrix](../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs)
+covers the listener boundary, including tool continuation.
+
 ## Decision operation
 
 [core_runtime/classification.rs](src/core_runtime/classification.rs) owns the
