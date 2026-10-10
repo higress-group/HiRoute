@@ -432,7 +432,7 @@ fn authorized_request_freezes_exact_price_identity_and_protocol_usage_semantics(
             IngressProtocol::Messages,
             "token-beta",
             "beta",
-            InputUsageMeaningV1::UncachedOnly,
+            InputUsageMeaningV1::IncludesExclusiveCache,
         ),
     ] {
         let authorized = GatewayRequestAuthority::new(Arc::clone(&installer))
@@ -471,6 +471,52 @@ fn authorized_request_freezes_exact_price_identity_and_protocol_usage_semantics(
             OutputUsageMeaningV1::IncludesReasoning
         );
         assert!(bindings[0].usage_semantics.cache_buckets_exclusive);
+    }
+}
+
+#[test]
+fn every_upstream_protocol_freezes_complete_input_usage_semantics() {
+    use hiroute_domain::{
+        GatewayCandidatePricingIdentityV1, InputUsageMeaningV1, OutputUsageMeaningV1,
+        UsageFrameKindV1,
+    };
+
+    for protocol in [
+        IngressProtocol::Responses,
+        IngressProtocol::ChatCompletions,
+        IngressProtocol::Messages,
+    ] {
+        let mut candidate = exact_test_candidate(9, protocol, None);
+        candidate.pricing_identity = Some(GatewayCandidatePricingIdentityV1 {
+            source_id: "source-9".into(),
+            source_identity_digest: hiroute_domain::CanonicalDigest::of_bytes(b"source-9"),
+            model_configuration_id: candidate.protocol_profiles[0]
+                .capability
+                .model_configuration_id
+                .clone(),
+            actual_offer_ref: "offer-9".into(),
+        });
+        let alias = AliasPlanV1 {
+            served_model_id: "gamma".into(),
+            purpose: "gamma purpose".into(),
+            agent_plan_revision: 30,
+            protocols: vec![protocol],
+            overall_timeout_ms: 1_000,
+            max_attempts: 1,
+            routing: None,
+            candidates: vec![candidate],
+        };
+        let bindings = super::compiler::compile_pricing_bindings(&alias).unwrap();
+        assert_eq!(bindings.len(), 1);
+        let semantics = bindings[0].usage_semantics;
+        // Messages decoders normalize input to the complete input consumed by
+        // the request, so every upstream protocol must declare the cache
+        // buckets as exclusive sub-buckets of the reported input; declaring
+        // uncached-only input would bill cache tokens a second time.
+        assert_eq!(semantics.input, InputUsageMeaningV1::IncludesExclusiveCache);
+        assert_eq!(semantics.output, OutputUsageMeaningV1::IncludesReasoning);
+        assert_eq!(semantics.frame_kind, UsageFrameKindV1::Cumulative);
+        assert!(semantics.cache_buckets_exclusive);
     }
 }
 
