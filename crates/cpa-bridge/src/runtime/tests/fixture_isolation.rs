@@ -6,7 +6,8 @@ use super::*;
 fn runtime_fixture_does_not_execute_ambient_codex() {
     use std::os::unix::fs::PermissionsExt;
     const CHILD: &str = "HIROUTE_RUNTIME_FIXTURE_CODEX";
-    const CASE: &str = "runtime::tests::fixture_isolation::runtime_fixture_does_not_execute_ambient_codex";
+    const CASE: &str =
+        "runtime::tests::fixture_isolation::runtime_fixture_does_not_execute_ambient_codex";
     if let Some(executable) = std::env::var_os(CHILD) {
         let root = tempfile::tempdir().unwrap();
         let runtime = fixture_runtime(
@@ -17,7 +18,9 @@ fn runtime_fixture_does_not_execute_ambient_codex() {
         );
         let outcome = runtime.start();
         assert!(
-            !PathBuf::from(executable).with_file_name("codex.probed").exists(),
+            !PathBuf::from(executable)
+                .with_file_name("codex.probed")
+                .exists(),
             "the runtime fixture executed the host installation: {outcome:?}"
         );
         assert!(matches!(outcome, Ok(CpaHealth::Ready { .. })));
@@ -50,7 +53,9 @@ fn runtime_fixture_does_not_execute_ambient_codex() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success()
-            && stdout.lines().any(|line| line == format!("test {CASE} ... ok")),
+            && stdout
+                .lines()
+                .any(|line| line == format!("test {CASE} ... ok")),
         "isolated fixture regression must execute its exact case: {stdout} {}",
         String::from_utf8_lossy(&output.stderr)
     );

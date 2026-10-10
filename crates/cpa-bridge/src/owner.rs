@@ -172,14 +172,22 @@ impl OwnerLease {
         write_record(&self.lock_dir, record)
     }
 
-    pub(crate) fn restore_stale(&self, record: &OwnerRecord) -> Result<(), OwnerError> {
-        let parent = self.lock_dir.parent().ok_or(OwnerError::InvalidPath)?;
-        let _reclaim_guard = lock_reclaim(parent)?;
-        let current = read_record(&self.lock_dir)?;
-        if current.owner_nonce != self.nonce {
-            return Err(OwnerError::NonceMismatch);
-        }
-        write_record(&self.lock_dir, record)
+    pub(crate) fn restore_stale(
+        &self,
+        record: &OwnerRecord,
+        budget: std::time::Duration,
+    ) -> Result<(), OwnerError> {
+        // Rollback cannot grant work. Keep nonce/lock checks, but do not let the
+        // failed caller's cancellation strand the orphan under a live owner PID.
+        crate::request_context::cleanup(budget, || {
+            let parent = self.lock_dir.parent().ok_or(OwnerError::InvalidPath)?;
+            let _reclaim_guard = lock_reclaim(parent)?;
+            let current = read_record(&self.lock_dir)?;
+            if current.owner_nonce != self.nonce {
+                return Err(OwnerError::NonceMismatch);
+            }
+            write_record(&self.lock_dir, record)
+        })
     }
 
     pub(crate) fn release(&self) -> Result<(), OwnerError> {
@@ -370,11 +378,32 @@ mod tests {
             Err(OwnerError::ReclaimContended)
         ));
         assert_eq!(read_record(&lock_dir).unwrap(), replacement);
+        let cancelled = crate::CpaRequestContext::new(
+            std::time::Instant::now() + std::time::Duration::from_secs(10),
+        );
+        cancelled.cancel();
+        assert!(matches!(
+            cancelled.run(|| lease.restore_stale(&old, std::time::Duration::from_secs(2))),
+            Err(OwnerError::ReclaimContended)
+        ));
+        assert_eq!(read_record(&lock_dir).unwrap(), replacement);
         drop(held_reclaim);
         let error = OwnerLease::reclaim_stale(&lock_dir, &old, &replay, replay_nonce)
             .expect_err("the old owner record must not replace the current owner");
         assert!(matches!(error, OwnerError::StaleRecordChanged), "{error:?}");
-        lease.restore_stale(&old).unwrap();
+        let unauthorized = OwnerLease {
+            lock_dir: lock_dir.clone(),
+            nonce: "d".repeat(43),
+        };
+        assert!(matches!(
+            cancelled.run(|| unauthorized.restore_stale(&old, std::time::Duration::from_secs(2))),
+            Err(OwnerError::NonceMismatch)
+        ));
+        assert_eq!(read_record(&lock_dir).unwrap(), replacement);
+        cancelled
+            .run(|| lease.restore_stale(&old, std::time::Duration::from_secs(2)))
+            .unwrap();
+        assert!(cancelled.ensure_active().is_err());
         assert_eq!(read_record(&lock_dir).unwrap(), old);
     }
 }

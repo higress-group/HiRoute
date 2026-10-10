@@ -471,11 +471,18 @@ fn fixture_runtime(
         auth_dir: root.path().join("auth"),
         borrowed_claude_auth: None,
         managed_oauth: None,
-        borrowed_codex_auth: Some(BorrowedCodexAuthSpec::new(codex_auth_source)),
+        // Runtime fixtures use a fake control plane, not the host's Codex installation.
+        // Version-probe cases opt into their own executable explicitly.
+        borrowed_codex_auth: Some(
+            BorrowedCodexAuthSpec::new(codex_auth_source)
+                .with_executable(root.path().join("fixture-codex-not-installed")),
+        ),
         bindings: bindings(),
-        startup_timeout: Duration::from_millis(200),
-        control_timeout: Duration::from_millis(50),
-        shutdown_timeout: Duration::from_millis(50),
+        // Durable fixture writes and parallel process scheduling need a setup budget.
+        // Tests of readiness deadlines and caller cancellation set their own budgets.
+        startup_timeout: Duration::from_secs(3),
+        control_timeout: Duration::from_secs(2),
+        shutdown_timeout: Duration::from_secs(2),
         restart_policy: RestartPolicy {
             max_restarts,
             window: Duration::from_secs(1),
@@ -1234,20 +1241,6 @@ fn single_terminal(records: &[StageRecord], stage: &str) -> String {
     terminals[0].outcome.clone()
 }
 
-fn omit_fixture_codex_version(runtime: &mut ManagedCpaRuntime, root: &Path) {
-    // These cases test process and readiness stages, without checking a native
-    // installation. An absent absolute executable omits optional version metadata
-    // while preserving the native source lease and its authentication checks.
-    let executable = root.join("fixture-codex-not-installed");
-    assert!(executable.is_absolute());
-    assert!(!executable.exists());
-    runtime.spec.borrowed_codex_auth = runtime
-        .spec
-        .borrowed_codex_auth
-        .take()
-        .map(|spec| spec.with_executable(executable));
-}
-
 /// R5: a CPA start reports each step once at its own real boundary. A spawn that completed
 /// is never followed by a fabricated spawn failure when a later step fails, and adoption —
 /// which never spawns — reports no spawn step at all.
@@ -1274,7 +1267,7 @@ fn cpa_stage_terminals_are_unique_ordered_and_never_fabricated() {
     control.set_fail_probes(true);
     let mut runtime = fixture_runtime(&root, Arc::new(FakeBackend::default()), control, 2)
         .with_diagnostics(report.port());
-    omit_fixture_codex_version(&mut runtime, root.path());
+    runtime.spec.startup_timeout = Duration::from_millis(200);
     let started = std::time::Instant::now();
     let actual = runtime.start();
     assert!(
@@ -1486,7 +1479,7 @@ fn cpa_start_failures_report_their_stage_code_and_business_error() {
     control.set_fail_probes(true);
     let mut runtime = fixture_runtime(&root, Arc::new(FakeBackend::default()), control, 2)
         .with_diagnostics(report.port());
-    omit_fixture_codex_version(&mut runtime, root.path());
+    runtime.spec.startup_timeout = Duration::from_millis(200);
     let started = std::time::Instant::now();
     let actual = runtime.start();
     assert!(

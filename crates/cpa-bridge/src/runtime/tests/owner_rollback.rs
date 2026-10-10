@@ -40,11 +40,7 @@ fn runtime(
     control: Arc<FakeControl>,
     managed: bool,
 ) -> ManagedCpaRuntime {
-    let mut runtime = fixture_runtime(root, backend, control, 2);
-    omit_fixture_codex_version(&mut runtime, root.path());
-    runtime.spec.startup_timeout = Duration::from_secs(3);
-    runtime.spec.control_timeout = Duration::from_secs(2);
-    runtime.spec.shutdown_timeout = Duration::from_secs(2);
+    let runtime = fixture_runtime(root, backend, control, 2);
     if managed {
         runtime
             .fork_managed_oauth(
@@ -104,8 +100,14 @@ fn cancelled_orphan_authentication_restores_owner_before_retry() {
             original,
             "cancelled ownership rollback failed: managed={managed}, stop_only={stop_only}, outcome={outcome:?}"
         );
-        assert!(matches!(outcome, Err(CpaLifecycleError::ControlUnavailable)));
-        assert!(context.ensure_active().is_err(), "rollback revived its caller");
+        assert!(matches!(
+            outcome,
+            Err(CpaLifecycleError::ControlUnavailable)
+        ));
+        assert!(
+            context.ensure_active().is_err(),
+            "rollback revived its caller"
+        );
         assert!(backend.pid_is_running(pid).unwrap());
         assert_eq!(backend.spawn_count(), 1);
         assert_eq!(backend.attach_count(), 0);
