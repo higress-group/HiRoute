@@ -121,17 +121,18 @@ const scenarios = [
     remove.click(); await pause(50);
     assert(calls('apply_compute_save').length === 0, 'Disabled button dispatched Apply');
     assert(calls('preview_compute_save')[0].payload.change.edit.action === 'delete', 'Last model removal did not use explicit delete');
+    const deleteInDialog = () => all('[role="dialog"] button').find(item => item.textContent.trim() === '删除接入');
     c().handlers.refresh_route_references = () => { throw new Error('publication unavailable'); };
     await click('更新引用状态');
     await until(() => text().includes('引用状态暂未更新'), 'failed reference refresh');
     assert(button('更新引用状态') && !button('更新引用状态').disabled, 'Failed refresh lost its retry entry');
-    assert(button('删除接入').disabled, 'Failed refresh released a reference');
+    assert(deleteInDialog()?.disabled, 'Failed refresh released a reference');
     c().handlers.refresh_route_references = () => undefined;
     await click('更新引用状态');
     await until(() => !document.querySelector('[role="dialog"]'), 'refresh closes stale preview');
     await click('移除模型');
     await until(() => text().includes('仍被引用，请先调整引用再删除。'), 'fresh disabled reference');
-    assert(button('删除接入').disabled, 'Checkpoint bypassed a disabled route');
+    assert(deleteInDialog()?.disabled, 'Checkpoint bypassed a disabled route');
     assert(calls('preview_compute_save').length === 2, 'Reopen reused an old deletion preview');
     assert(calls('apply_compute_save').length === 0, 'Reference refresh automatically deleted configuration');
     // A separately completed publication can release historical references. Its
@@ -142,7 +143,7 @@ const scenarios = [
     await click('更新引用状态');
     await until(() => !document.querySelector('[role="dialog"]'), 'completed historical reference refresh');
     await click('移除模型');
-    await until(() => button('删除接入') && !button('删除接入').disabled, 'new unreferenced preview');
+    await until(() => deleteInDialog() && !deleteInDialog().disabled, 'new unreferenced preview');
     assert(calls('apply_compute_save').length === 0, 'Refresh was mistaken for delete consent');
   }),
   scenario('desktop.models.append-preserves-existing', ['model-connections'], 'Appending selects only new models and retains a disabled connection', async () => {
