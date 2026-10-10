@@ -298,6 +298,33 @@ hiroute operations find --request-stdin --output json < operation-find.json
 The same key and content returns the original Operation. The same key with different content
 is rejected deterministically and never writes twice.
 
+## Rename, append or remove saved connections
+
+Use the same `compute connection preview` / `apply` sequence with the optional
+`change.edit` field. Omit `edit` to keep the existing save behavior. Read current
+`compute list` revisions before preview; pass its returned request unchanged to apply.
+
+| `edit` | Subject | `selected_model_refs` |
+| --- | --- | --- |
+| `{"action":"rename","display_name":"Team API"}` | Saved source | Empty |
+| `{"action":"append_models"}` | Freshly checked candidate for the existing source | Models to add |
+| `{"action":"remove_models"}` | Saved source | Models to remove |
+| `{"action":"delete"}` | Saved source | Empty |
+
+A saved-source subject is `{"kind":"saved_source","source_id":"SOURCE_ID"}`.
+Keep `key_edits` empty for these saved-source edits and append. Names must be distinct,
+nonempty and at most 60 characters. A new candidate save can also carry the rename
+edit to name its independent connection; its normal protected key input is still required.
+Each independently created connection owns its endpoints and credentials, even when it
+starts from the same provider template or uses the same literal key.
+
+Append preserves existing model records, bindings, credentials and enabled state.
+Removing the last model requires explicit `delete`; deleting a connection also cleans
+its HiRoute-owned credentials, while preserving subscription sign-ins and usage history.
+`affected_plan_refs` lists blockers in the preview: disabled routes, saved drafts,
+and retained execution or recovery versions also prevent removal. Apply rechecks
+references, so a new reference after preview can still reject the operation.
+
 ## Discover and save a subscription source
 
 ```sh

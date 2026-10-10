@@ -635,7 +635,13 @@ fn provenance_kind(value: &ComputeManagementProvenanceV2) -> ComputeCandidatePro
 }
 
 pub(super) fn source_actions(source: &ComputeManagementSourceV2) -> Vec<ComputeManagementActionV2> {
-    let mut actions = vec![ComputeManagementActionV2::Edit];
+    let mut actions = vec![
+        ComputeManagementActionV2::Edit,
+        ComputeManagementActionV2::Rename,
+        ComputeManagementActionV2::AppendModels,
+        ComputeManagementActionV2::RemoveModels,
+        ComputeManagementActionV2::Delete,
+    ];
     if source.provenance.is_native() {
         if !matches!(
             source.authentication,

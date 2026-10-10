@@ -49,6 +49,10 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.models.connection-rename',
+  'desktop.models.delete-reference-block',
+  'desktop.models.append-preserves-existing',
+  'desktop.models.remove-only-selected',
   'desktop.home.reactivation-usage',
   'desktop.models.tool-check-selection',
   'desktop.routing.disabled-header',

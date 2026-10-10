@@ -265,6 +265,7 @@ pub fn prepare_compute_management_change(
 
     validate_model_selection(candidate, &selected_model_refs, enable)?;
     let change = ComputeManagementChangeV2 {
+        edit: None,
         schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.to_owned(),
         subject: ComputeManagementSubjectV2::Candidate {
             candidate: candidate.candidate.clone(),

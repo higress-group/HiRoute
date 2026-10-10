@@ -991,6 +991,35 @@
           ]
         }
       ]
+    },
+    {
+      "subject": "compute_management_released_lifecycle",
+      "audited_prefixes": [
+        "hiroute.compute-management-change",
+        "hiroute.compute-management-mutation",
+        "hiroute.compute-management-preview",
+        "hiroute.compute-management-source"
+      ],
+      "current_contracts": [
+        "hiroute.compute-management-change/v2",
+        "hiroute.compute-management-mutation/v2",
+        "hiroute.compute-management-preview/v2",
+        "hiroute.compute-management-source/v3"
+      ],
+      "legacy_support": [
+        {
+          "contract": "hiroute.compute-management-mutation/v2",
+          "mode": "frozen_fixture",
+          "owner": "compute-management",
+          "reason": "Freeze the public v0.2.0 d625e653048b2306c88da07826d52027e9891675 production CLI save journal: omitted edit and mandatory desired object must retain canonical bytes, source identity, secret effect binding and accepted preview digest. The fixture uses a local synthetic upstream, not provider credentials. The same v2 identifier remains the current producer and reader in the listed Domain module; only delete adds a null desired value.",
+          "removal_condition": "Remove only when v0.2.0 is no longer a supported source under the release support policy and its frozen recovery regression is explicitly retired. Never regenerate with a current serializer.",
+          "allowed_paths": [
+            "crates/local-storage/tests/fixtures/v0.2.0-compute-operation.json",
+            "crates/local-storage/src/control/compute/management/tests/released_lifecycle.rs",
+            "crates/domain/src/compute/management/mod.rs"
+          ]
+        }
+      ]
     }
   ],
   "forbidden_contracts": [

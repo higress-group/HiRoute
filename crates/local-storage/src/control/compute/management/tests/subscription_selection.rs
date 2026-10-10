@@ -47,6 +47,7 @@ fn change(
     selected: &[&str],
 ) -> ComputeManagementChangeV2 {
     ComputeManagementChangeV2 {
+        edit: None,
         schema: "hiroute.compute-management-change/v2".into(),
         subject: ComputeManagementSubjectV2::Candidate {
             candidate: facts.candidate.clone(),
@@ -404,6 +405,65 @@ fn subscription_recheck_and_background_refresh_retain_membership_when_rights_cha
     assert!(
         compile_compute_management_source(&retained)
             .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn removed_subscription_cannot_be_resurrected_by_late_maintenance_or_checked_candidate() {
+    let root = tempdir().unwrap();
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let registry = TrustedComputeCandidateRegistry::new();
+    let source = save(
+        &stores,
+        &registry,
+        &subscription("candidate/first"),
+        &["model/one"],
+        "first",
+    );
+    let mut checked = subscription("candidate/late");
+    checked.existing_source_id = Some(source.source_id.clone());
+    registry
+        .register_compute_candidate(checked.clone())
+        .unwrap();
+    let old = change(&stores, &checked, &["model/one"]);
+    // Native login files belong to the connector. Management deletion has only Control
+    // and owned Secret effects; it has no External or Runtime mutation authority.
+    let input = ProtectedInput;
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    let deletion = super::lifecycle::edit(
+        &stores,
+        &source,
+        hiroute_application_api::ComputeManagementEditV1::Delete,
+        &[],
+    );
+    let preview = planner.preview(deletion.clone()).unwrap();
+    assert!(preview.plan().secrets().is_empty());
+    assert!(preview.plan().external().is_empty());
+    assert!(preview.plan().runtime().is_empty());
+    super::lifecycle::execute(&stores, &registry, deletion, "delete-subscription");
+    let scope = ComputeSubscriptionMaintenanceScopeV1 {
+        source_id: source.source_id,
+        expected_source_revision: source.revision,
+    };
+    assert!(planner.preview(old).is_err());
+    let refreshed = change(&stores, &checked, &["model/one"]);
+    assert!(matches!(
+        planner.preview(refreshed.clone()),
+        Err(ComputeManagementPlanningErrorV2::SourceNotFound)
+    ));
+    assert!(
+        planner
+            .preview_subscription_maintenance(refreshed, &scope)
+            .is_err()
+    );
+    assert!(
+        stores
+            .control()
+            .compute_management_snapshot(&WorkspaceId::default())
+            .unwrap()
+            .sources
             .is_empty()
     );
 }

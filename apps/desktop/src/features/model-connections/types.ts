@@ -293,6 +293,7 @@ export type ChangeSpec = {
   desired_state: unknown;
 };
 export type ComputeManagementChange = {
+  edit?: import('../models/types').ManagementChange['edit'];
   schema: 'hiroute.compute-management-change/v2';
   subject: { kind: 'candidate'; candidate: ComputeCandidateRef };
   expected_revisions: RevisionSet;
@@ -379,6 +380,9 @@ export type ModelConnectionBackend = {
 };
 
 export type ModelConnectionFormProps = {
+  existingNames?: string[];
+  appendTo?: import('../models/types').ManagedSource;
+  savedSource?: import('../models/types').ManagedSource;
   language: Language;
   mutable: boolean;
   initialDraft: ModelConnectionDraft;

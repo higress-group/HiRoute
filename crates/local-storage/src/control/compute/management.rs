@@ -12,6 +12,8 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::Deserialize;
 use serde_json::Value;
 
+mod references;
+
 use super::{ControlStore, decode, encode, invalid, port, validate_storage_id};
 
 #[derive(Deserialize)]
@@ -33,14 +35,16 @@ pub(in crate::control) fn stage_control(
     mutation
         .validate_against(current.as_ref())
         .map_err(|_| conflict("compute.management.stage.cas"))?;
+    references::validate_removal(transaction, workspace, &mutation)?;
+    let identity = mutation
+        .desired()
+        .or(mutation.expected())
+        .ok_or_else(|| invalid("compute.management.identity"))?;
     let lineage_owner: Option<String> = transaction
         .query_row(
             "SELECT source_id FROM compute_management_sources
              WHERE workspace_id=?1 AND lineage_digest=?2",
-            params![
-                workspace.as_str(),
-                mutation.desired().lineage_digest.as_str()
-            ],
+            params![workspace.as_str(), identity.lineage_digest.as_str()],
             |row| row.get(0),
         )
         .optional()
@@ -72,11 +76,7 @@ pub(in crate::control) fn stage_control(
                 mutation.source_id(),
                 mutation.expected_revision(),
                 before_owner,
-                mutation
-                    .desired()
-                    .digest()
-                    .map_err(|_| invalid("compute.management.stage.digest"))?
-                    .as_str(),
+                mutation.desired_digest().as_str(),
             ],
         )
         .map_err(|_| port("compute.management.stage.effect"))?;
@@ -101,10 +101,7 @@ pub(in crate::control) fn activate(
         )
         .optional()
         .map_err(|_| port("compute.management.activate.effect"))?;
-    let desired_digest = mutation
-        .desired()
-        .digest()
-        .map_err(|_| corrupt("compute.management.activate.digest"))?;
+    let desired_digest = mutation.desired_digest();
     if staged
         .as_ref()
         .is_none_or(|(staged_workspace, source_id, expected_revision, digest)| {
@@ -120,7 +117,17 @@ pub(in crate::control) fn activate(
     mutation
         .validate_against(current.as_ref())
         .map_err(|_| conflict("compute.management.activate.cas"))?;
-    write_source(transaction, workspace, mutation.desired(), operation_id)
+    references::validate_removal(transaction, workspace, &mutation)?;
+    if let Some(desired) = mutation.desired() {
+        write_source(transaction, workspace, desired, operation_id)
+    } else {
+        let deleted = transaction.execute("DELETE FROM compute_management_sources WHERE workspace_id=?1 AND source_id=?2 AND revision=?3", params![workspace.as_str(), mutation.source_id(), mutation.expected_revision()])
+            .map_err(|_| port("compute.management.delete"))?;
+        if deleted != 1 {
+            return Err(conflict("compute.management.delete.cas"));
+        }
+        Ok(())
+    }
 }
 
 pub(in crate::control) fn current_matches(
@@ -159,8 +166,16 @@ pub(in crate::control) fn current_matches(
         )
         .optional()
         .map_err(|_| port("compute.management.observe"))?;
-    let desired = encode(mutation.desired())?;
-    Ok(current.is_some_and(|(json, owner)| json == desired && owner == operation_id.as_str()))
+    match mutation.desired() {
+        Some(desired) => {
+            let desired = encode(desired)?;
+            Ok(current
+                .is_some_and(|(json, owner)| json == desired && owner == operation_id.as_str()))
+        }
+        None => {
+            Ok(current.is_none() && deletion_owned(connection, workspace, operation_id.as_str())?)
+        }
+    }
 }
 
 pub(in crate::control) fn compensate(
@@ -192,8 +207,14 @@ pub(in crate::control) fn compensate(
         )
         .optional()
         .map_err(|_| port("compute.management.compensate.current"))?;
-    let desired = encode(mutation.desired())?;
-    if !current.is_some_and(|(json, owner)| json == desired && owner == operation_id) {
+    let owns = match mutation.desired() {
+        Some(desired) => {
+            let desired = encode(desired)?;
+            current.is_some_and(|(json, owner)| json == desired && owner == operation_id)
+        }
+        None => current.is_none() && deletion_owned(transaction, workspace, operation_id)?,
+    };
+    if !owns {
         return Ok(false);
     }
     if let Some(expected) = mutation.expected() {
@@ -223,6 +244,13 @@ pub(in crate::control) fn compensate(
 }
 
 impl ComputeManagementRepositoryPort for ControlStore {
+    fn compute_management_references(
+        &self,
+        workspace: &WorkspaceId,
+        binding_ids: &[String],
+    ) -> PortResult<Vec<String>> {
+        references::read(&self.connection.borrow(), workspace, binding_ids)
+    }
     fn compute_management_source(
         &self,
         source_id: &str,
@@ -296,6 +324,17 @@ impl ComputeManagementRepositoryPort for ControlStore {
             .map_err(|_| port("compute.management.snapshot.commit"))?;
         Ok(ComputeManagementStoredSnapshotV2 { revisions, sources })
     }
+}
+
+/// Absence alone is never a deletion ownership witness. Reuse the same durable workspace
+/// revision/digest/owner triple as the outer Control effect, including in helper-level recovery.
+fn deletion_owned(
+    connection: &rusqlite::Connection,
+    workspace: &WorkspaceId,
+    operation_id: &str,
+) -> PortResult<bool> {
+    connection.query_row("SELECT EXISTS(SELECT 1 FROM workspace_state w JOIN control_effects e ON e.workspace_id=w.workspace_id WHERE w.workspace_id=?1 AND e.operation_id=?2 AND w.owner_operation_id=e.operation_id AND w.target_revision=e.after_revision AND w.desired_digest=e.after_digest AND e.activated=1 AND e.compensated=0)", params![workspace.as_str(), operation_id], |row| row.get(0))
+        .map_err(|_| port("compute.management.delete.owner"))
 }
 
 fn mutation_from_staged(staged_json: &str) -> PortResult<Option<ComputeManagementMutationV2>> {

@@ -123,6 +123,7 @@ async fn save_checked(
             .preview_compute_save(
                 &format!("{label}-preview"),
                 ComputeManagementChangeV2 {
+                    edit: None,
                     schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
                     subject: ComputeManagementSubjectV2::Candidate {
                         candidate: candidate.candidate.clone(),
@@ -336,6 +337,7 @@ async fn unconsumed_check_expires_when_same_saved_source_revision_changes() {
             .preview_compute_save(
                 "revision-disable-preview",
                 ComputeManagementChangeV2 {
+                    edit: None,
                     schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
                     subject: ComputeManagementSubjectV2::SavedSource {
                         source_id: source.source_id.clone(),
@@ -384,6 +386,7 @@ async fn unconsumed_check_expires_when_same_saved_source_revision_changes() {
         .preview_compute_save(
             "revision-stale-save",
             ComputeManagementChangeV2 {
+                edit: None,
                 schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
                 subject: ComputeManagementSubjectV2::Candidate {
                     candidate: candidate.candidate.clone(),

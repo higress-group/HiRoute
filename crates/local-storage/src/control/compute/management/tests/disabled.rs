@@ -56,6 +56,7 @@ fn pending_credential_disabled_save_uses_only_the_current_candidate_revision() {
     .unwrap()
     .revisions;
     let change = |candidate: ComputeCandidateRefV2, intent| ComputeManagementChangeV2 {
+        edit: None,
         schema: "hiroute.compute-management-change/v2".into(),
         subject: ComputeManagementSubjectV2::Candidate { candidate },
         expected_revisions: revisions.clone(),
@@ -156,6 +157,7 @@ fn failed_connection_can_save_disabled_user_declared_models_but_not_ready() {
     .unwrap()
     .revisions;
     let change = |intent| ComputeManagementChangeV2 {
+        edit: None,
         schema: "hiroute.compute-management-change/v2".into(),
         subject: ComputeManagementSubjectV2::Candidate {
             candidate: facts.candidate.clone(),

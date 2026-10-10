@@ -258,6 +258,18 @@ pub struct ComputeManagementChangeV2 {
     pub key_edits: Vec<ComputeKeyEditV2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation: Option<ComputeValidationRefV2>,
+    /// Explicit lifecycle intent. Omitted legacy saves retain replacement semantics and bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edit: Option<ComputeManagementEditV1>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ComputeManagementEditV1 {
+    Rename { display_name: String },
+    AppendModels,
+    RemoveModels,
+    Delete,
 }
 
 impl ComputeManagementChangeV2 {
@@ -283,6 +295,30 @@ impl ComputeManagementChangeV2 {
         }
         if let Some(validation) = &self.validation {
             validation.validate_shape()?;
+        }
+        if let Some(edit) = &self.edit {
+            let saved = matches!(self.subject, ComputeManagementSubjectV2::SavedSource { .. });
+            let valid = match edit {
+                ComputeManagementEditV1::Rename { display_name } => {
+                    !display_name.trim().is_empty()
+                        && display_name.chars().count() <= 60
+                        && !display_name.chars().any(char::is_control)
+                        && (!saved || self.selected_model_refs.is_empty())
+                }
+                ComputeManagementEditV1::AppendModels => {
+                    !saved && !self.selected_model_refs.is_empty()
+                }
+                ComputeManagementEditV1::RemoveModels => {
+                    saved && !self.selected_model_refs.is_empty()
+                }
+                ComputeManagementEditV1::Delete => saved && self.selected_model_refs.is_empty(),
+            };
+            if !valid
+                || (!self.key_edits.is_empty()
+                    && (saved || !matches!(edit, ComputeManagementEditV1::Rename { .. })))
+            {
+                return Err(ComputeManagementContractErrorV2::InvalidCandidate);
+            }
         }
         Ok(())
     }
@@ -629,6 +665,7 @@ mod tests {
     #[test]
     fn management_change_remains_a_closed_versioned_shape() {
         let change = ComputeManagementChangeV2 {
+            edit: None,
             schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.to_owned(),
             subject: ComputeManagementSubjectV2::Candidate {
                 candidate: candidate(42),

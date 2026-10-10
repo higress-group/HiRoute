@@ -38,10 +38,64 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  scenario('desktop.models.connection-rename', ['model-connections'], 'Rename is scoped to one saved connection without replacing its models or keys', async () => {
+    await fresh(() => { c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')]; });
+    await click('模型'); await click('按接入'); await click('重命名');
+    await until(() => document.querySelector('[role="dialog"] input'), 'rename input');
+    setInput(document.querySelector('[role="dialog"] input'), '团队百炼'); await click('保存名称');
+    await until(() => calls('preview_compute_save').length === 1, 'rename preview');
+    const change = calls('preview_compute_save')[0].payload.change;
+    assert(change.edit.action === 'rename' && change.edit.display_name === '团队百炼', 'Rename intent missing');
+    assert(change.subject.source_id === 'source/bailian/coding' && change.selected_model_refs.length === 0 && change.key_edits.length === 0, 'Rename replaced a model or credential selection');
+  }),
+  scenario('desktop.models.delete-reference-block', ['model-connections'], 'A disabled route reference remains visible and prevents Apply', async () => {
+    await fresh(() => {
+      c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')];
+      const plan = c().desktop.catalog.plans[0]; plan.head.status = 'disabled';
+      c().handlers.preview_compute_save = payload => ({ ...c().fixtureResponse('preview_compute_save', payload), affected_plan_refs: [plan.agent_plan_id] });
+    });
+    await click('模型'); await click('移除模型');
+    await until(() => text().includes('仍被引用，请先调整引用再删除。'), 'reference blocker');
+    assert(text().includes('这是最后一个模型，将一并删除所属接入。'), 'Last-model consequence was hidden');
+    const remove = all('[role="dialog"] button').find(item => item.textContent.trim() === '删除接入');
+    assert(remove?.disabled, 'Referenced connection could be deleted');
+    remove.click(); await pause(50);
+    assert(calls('apply_compute_save').length === 0, 'Disabled button dispatched Apply');
+    assert(calls('preview_compute_save')[0].payload.change.edit.action === 'delete', 'Last model removal did not use explicit delete');
+  }),
+  scenario('desktop.models.append-preserves-existing', ['model-connections'], 'Appending selects only new models and retains a disabled connection', async () => {
+    await fresh(() => {
+      c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')];
+      c().management.sources[0].state = 'disabled';
+      c().handlers.check_saved_model_connection = payload => {
+        const checked = c().fixtureResponse('check_saved_model_connection', payload);
+        checked.candidate.models.push({ ...checked.candidate.models[0], model_ref: 'model-ref/new', upstream_model_id: 'new-model', display_name: 'New model' });
+        return checked;
+      };
+    });
+    await click('模型'); await click('向此接入添加模型');
+    await until(() => all('[role="dialog"] input[type="checkbox"]').length === 2, 'append inventory');
+    const checks = all('[role="dialog"] input[type="checkbox"]');
+    assert(checks[0].disabled && checks[0].checked, 'Existing model was editable as a removal');
+    checks[1].click(); await click('添加 1 个模型');
+    await until(() => calls('preview_compute_save').length === 1, 'append preview');
+    const change = calls('preview_compute_save')[0].payload.change;
+    assert(change.edit.action === 'append_models' && change.intent === 'save_disabled', 'Append lost explicit action or disabled state');
+    assert(JSON.stringify(change.selected_model_refs) === '["model-ref/new"]' && change.key_edits.length === 0, 'Append modified existing model/key selection');
+  }),
+  scenario('desktop.models.remove-only-selected', ['model-connections'], 'Removing one model retains the connection and sends exactly the selected saved model', async () => {
+    await fresh(() => { c().management.sources = [c().management.sources[0]]; });
+    await click('模型'); await click('移除模型');
+    await until(() => all('[role="dialog"] button').some(item => item.textContent.trim() === '移除模型' && !item.disabled), 'remove preview');
+    const change = calls('preview_compute_save')[0].payload.change;
+    assert(change.edit.action === 'remove_models' && change.selected_model_refs.length === 1 && change.key_edits.length === 0, 'Remove scope replaced connection or keys');
+    all('[role="dialog"] button').find(item => item.textContent.trim() === '移除模型').click();
+    await until(() => calls('apply_compute_save').length === 1, 'single remove apply');
+  }),
   scenario('desktop.models.tool-check-selection', ['model-connections'], 'A tool check retains the chosen model with its fresh reference without selecting new inventory', async () => {
     await fresh(); await click('模型'); await click('添加模型');
-    await until(() => all('button').some(item => item.textContent.includes('添加 API')), 'add API entry');
-    all('button').find(item => item.textContent.includes('添加 API')).click();
+    await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'add API entry');
+    all('button').find(item => item.textContent.includes('新建 API 接入')).click();
     await until(() => document.querySelector('[role="dialog"] input[type="password"]'), 'API key input');
     setInput(document.querySelector('[role="dialog"] input[type="password"]'), 'synthetic-tool-check-input');
     c().handlers.check_registered_model_connection = payload => {
@@ -254,7 +308,8 @@ const scenarios = [
     await until(() => text().includes('用于这些路由'), 'model route references');
     assert(refs().some(item => item.textContent.includes('Branch regular model use')), 'Published regular branch model reference is missing');
     assert(refs().some(item => item.textContent.includes('Branch upgrade model use')), 'Published upgrade branch model reference is missing');
-    assert(!refs().some(item => item.textContent.includes('Disabled branch model use')), 'Disabled route is presented as active model use');
+    assert(refs().some(item => item.textContent.trim() === 'Disabled branch model use（已停用）'), 'Disabled reference is missing or presented without its stopped state');
+    assert(refs().filter(item => item.textContent.includes('Disabled branch model use')).length === 1, 'Disabled reference is duplicated');
     await click('Branch regular model use');
     await until(() => document.querySelector('.plan-identity-fields input')?.value === 'Branch regular model use', 'referenced route opened');
   }),
@@ -516,8 +571,8 @@ const scenarios = [
     await until(() => text().includes('接入就绪'), 'readiness status');
     assert(text().includes('不代表上游推理或工具调用已验证'), 'Local readiness claims upstream inference verification');
     await click('添加模型');
-    await until(() => all('button').some(item => item.textContent.includes('添加 API')), 'add API entry');
-    all('button').find(item => item.textContent.includes('添加 API')).click();
+    await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'add API entry');
+    all('button').find(item => item.textContent.includes('新建 API 接入')).click();
     await until(() => document.querySelector('[role="dialog"] input[type="password"]'), 'API key input');
     const key = document.querySelector('[role="dialog"] input[type="password"]');
     setInput(key, 'synthetic-input-preserved'); await pause(40);

@@ -102,7 +102,29 @@ impl LocalControlAdapter {
                     "subscription.admission.invalid_plan",
                 )
             })?;
-        let source = envelope.compute_management_mutation.desired();
+        let Some(source) = envelope.compute_management_mutation.desired() else {
+            // Forgetting a saved connection does not require or revoke a connector login.
+            return Ok(());
+        };
+        if operation
+            .plan
+            .spec()
+            .desired_state
+            .pointer("/subject/kind")
+            .and_then(serde_json::Value::as_str)
+            == Some("saved_source")
+            && matches!(
+                operation
+                    .plan
+                    .spec()
+                    .desired_state
+                    .pointer("/edit/action")
+                    .and_then(serde_json::Value::as_str),
+                Some("rename" | "remove_models")
+            )
+        {
+            return Ok(());
+        }
         if source.state != MaterializationState::Ready {
             return Ok(());
         }
@@ -332,6 +354,7 @@ impl LocalControlAdapter {
                 .current_revisions(&WorkspaceId::default())
                 .map_err(super::error::map_port)?;
             let preview = self.preview_compute_save(ComputeManagementChangeV2 {
+                edit: None,
                 schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
                 subject: ComputeManagementSubjectV2::SavedSource {
                     source_id: source.source_id.clone(),

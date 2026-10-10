@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:febf9a04d9e2721df85c12616dd74f97e68de79191d3eae81da532bd782a7e55",
+  "descriptor_digest": "sha256:a435bc5901bbcaeaf2f41c8c4db15b0a7f967d988aeb544e8f5d2890abc64639",
   "visibility": "release",
   "commands": [
     {
@@ -845,7 +845,7 @@
       "help": {
         "purpose": "Preview a connection identity and registered endpoint change without accepting a Secret.",
         "usage": "hiroute compute connection preview --request-stdin --output json",
-        "arguments_and_options": "--request-stdin accepts exactly one registered v1 projection, compute-management v2 save, or subscription-check v2 preview request. Preview has no durable side effect and returns the exact digest and revisions required by Apply.",
+        "arguments_and_options": "--request-stdin accepts exactly one registered v1 projection, compute-management v2 save/edit, or subscription-check v2 preview request. The optional edit action is rename (display_name), append_models (checked candidate; preserves existing models), remove_models (saved source; selected refs are removals), or delete (saved source; no selected refs). Omitting edit retains released save semantics. Referenced models, including disabled routes and retained versions, cannot be deleted. Preview has no durable side effect and returns the exact digest and revisions required by Apply.",
         "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
         "network_and_model_use": "No model use and no non-fixture network access.",
         "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",

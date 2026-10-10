@@ -644,7 +644,18 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             candidate,
             validation,
             disposition,
-            source_id: source.as_ref().map(|source| source.source_id.clone()),
+            source_id: source
+                .as_ref()
+                .map(|source| source.source_id.clone())
+                .or_else(|| {
+                    (operation.state == OperationState::Succeeded
+                        && matches!(
+                            change.edit,
+                            Some(hiroute_application_api::ComputeManagementEditV1::Delete)
+                        ))
+                    .then(|| operation.plan.spec().resource_id.clone())
+                    .flatten()
+                }),
             bindings: source
                 .as_ref()
                 .map(|source| {
