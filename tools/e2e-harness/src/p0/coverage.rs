@@ -288,13 +288,14 @@ pub const RECEIPTS: &[FrozenReceipt] = &[
         ]
     ),
     receipt!(
-        "replay.owner_only_permission",
+        "replay.accessible_root",
         "p0_gateway_replay",
-        "real_hirouted_rejects_non_owner_only_replay_root",
+        "real_hirouted_accepts_accessible_replay_root_without_chmod",
         "tools/e2e-harness/tests/p0_gateway_replay.rs",
         [
-            "replay.owner_only_permission",
-            "replay.zero_provider_on_permission"
+            "replay.accessible_root",
+            "replay.existing_root_mode_preserved",
+            "replay.provider_call"
         ]
     ),
     receipt!(
@@ -558,9 +559,9 @@ pub const REQUIRED_ROWS: &[FrozenScenarioRow] = &[
     row!(
         "replay.storage_and_capacity",
         "SPEC-20006",
-        "replay uses one owner-only plaintext backing and preserves request capacity gates",
+        "replay honors OS access, uses one private plaintext backing and preserves request capacity gates",
         [
-            "replay.owner_only_permission",
+            "replay.accessible_root",
             "replay.request_capacity",
             "replay.local_plaintext"
         ]
