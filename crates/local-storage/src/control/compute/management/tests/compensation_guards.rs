@@ -35,6 +35,10 @@ pub(super) fn assert_compensation_owner_and_receipt_guards(
         .map(|key| key.credential.clone())
         .collect();
     let healthy = snapshot(stores);
+    let before_owner: String = stores.control().with_connection(|connection| {
+        connection.query_row("SELECT before_owner_operation_id FROM compute_management_effects WHERE operation_id=?1", [operation_id.as_str()], |row| row.get(0)).unwrap()
+    });
+    assert_ne!(before_owner, operation_id.as_str());
     let restore = || {
         stores.control().with_connection(|connection| {
         connection.execute("UPDATE compute_management_sources SET source_json=?1,owner_operation_id=?2,revision=?3", rusqlite::params![healthy[0][0], healthy[0][1], healthy[0][2]]).unwrap();
@@ -45,7 +49,7 @@ pub(super) fn assert_compensation_owner_and_receipt_guards(
 
     // Exact original source bytes alone cannot authorize repair after its owner changed.
     stores.control().with_connection(|connection| {
-        connection.execute("UPDATE compute_management_sources SET source_json=?1,revision=?2,owner_operation_id='foreign-owner'", rusqlite::params![super::super::encode(before).unwrap(), before.revision]).unwrap();
+        connection.execute("UPDATE compute_management_sources SET source_json=?1,revision=?2,owner_operation_id=?3", rusqlite::params![super::super::encode(before).unwrap(), before.revision, operation_id.as_str()]).unwrap();
     });
     let foreign = snapshot(stores);
     let error = stores
@@ -59,14 +63,27 @@ pub(super) fn assert_compensation_owner_and_receipt_guards(
     assert_eq!(snapshot(stores), foreign);
     restore();
 
-    for sql in [
-        "UPDATE workspace_state SET owner_operation_id='foreign-owner'",
-        "UPDATE workspace_state SET desired_digest='corrupt-receipt'",
-        "UPDATE workspace_revision_heads SET revision=revision+1",
-    ] {
-        stores
-            .control()
-            .with_connection(|connection| connection.execute(sql, []).unwrap());
+    for field in ["owner", "digest", "head"] {
+        stores.control().with_connection(|connection| match field {
+            "owner" => connection
+                .execute(
+                    "UPDATE workspace_state SET owner_operation_id=?1",
+                    [&before_owner],
+                )
+                .unwrap(),
+            "digest" => connection
+                .execute(
+                    "UPDATE workspace_state SET desired_digest='corrupt-receipt'",
+                    [],
+                )
+                .unwrap(),
+            _ => connection
+                .execute(
+                    "UPDATE workspace_revision_heads SET revision=revision+1",
+                    [],
+                )
+                .unwrap(),
+        });
         let corrupted = snapshot(stores);
         let error = stores
             .control()

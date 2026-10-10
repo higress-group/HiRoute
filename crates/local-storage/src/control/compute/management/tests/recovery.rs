@@ -242,7 +242,9 @@ fn compute_key_edit_rollback_preserves_authority_and_restores_forward_references
             .iter()
             .map(|model| model.model_ref.clone())
             .collect();
-        let key = &before.credentials[0];
+        // Removing the disabled spare key is a valid ready save; removing the only
+        // enabled key must instead be rejected by the planner before any effects.
+        let key = &before.credentials[usize::from(action == "remove")];
         match action {
             "replace" => {
                 let replacement = candidate("candidate/rollback-replace", "slot/primary");
@@ -295,7 +297,9 @@ fn compute_key_edit_rollback_preserves_authority_and_restores_forward_references
         let input = ProtectedInput;
         let planner =
             ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
-        let preview = planner.preview(change).unwrap();
+        let preview = planner
+            .preview(change)
+            .unwrap_or_else(|error| panic!("{action} preview: {error:?}"));
         let runtime = TransactionRuntime::default();
         let external = NoExternal;
         let coordinator = TransactionCoordinator::new(
