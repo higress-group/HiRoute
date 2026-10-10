@@ -8,7 +8,7 @@ fn compute_released_save_omits_edit_and_preserves_journal_control_and_accept_dig
     assert_eq!(CanonicalDigest::of_bytes(raw.as_bytes()).as_str(),
         "sha256:36a7ba3deb41a15a88cc6af76bba399b132b8cce07a4648d2168cf573426483c");
     let original: serde_json::Value = serde_json::from_str(raw).unwrap();
-    let operation: OperationV1 = serde_json::from_str(raw).unwrap();
+    let operation = crate::control::decode_operation(&Default::default(), raw).unwrap();
     assert_eq!(serde_json::to_value(&operation).unwrap(), original);
     let spec = operation.plan.spec();
     let change: ComputeManagementChangeV2 = serde_json::from_value(spec.desired_state.clone()).unwrap();

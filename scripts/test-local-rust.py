@@ -66,6 +66,51 @@ class Cleanup(unittest.TestCase):
         self.assertEqual(before, self.store.record_path(row['id']).read_bytes())
         self.assertTrue((self.repo / 'target/debug/binary').exists())
 
+    def targetless_admission(self):
+        row = self.managed()
+        m.shutil.rmtree(Path(row['checkout']) / 'target')
+        row.pop('target_identity')
+        row.pop('debug_identity')
+        row['process_exit'] = None
+        self.store.save(row)
+        return row
+
+    def test_targetless_admission_cleanup_preserves_run_evidence(self):
+        row = self.targetless_admission()
+        report = self.store.record_path(row['id']).parent / 'validation-report.json'
+        report.write_text('{"scenario":"not_executed"}')
+        candidate = self.store.preview_one(row)
+        self.assertEqual(candidate['state'], 'candidate')
+        self.assertEqual(candidate['bytes'], 0)
+        self.store.apply(row['id'], candidate['token'])
+        self.assertFalse(Path(row['checkout']).exists())
+        self.assertTrue(self.store.load(row['id'])['removed'])
+        self.assertIsNone(self.store.load(row['id'])['process_exit'])
+        self.assertEqual(json.loads(report.read_text())['scenario'], 'not_executed')
+
+    def test_targetless_admission_rejects_later_target_and_dangling_link(self):
+        row = self.targetless_admission()
+        candidate = self.store.preview_one(row)
+        target = Path(row['checkout']) / 'target'
+        for linked in (False, True):
+            if linked:
+                target.symlink_to(self.base / 'missing', target_is_directory=True)
+            else:
+                target.mkdir()
+            with self.assertRaises((ValueError, KeyError)):
+                self.store.apply(row['id'], candidate['token'])
+            if linked:
+                target.unlink()
+            else:
+                target.rmdir()
+        self.assertTrue(Path(row['checkout']).exists())
+
+    def test_missing_target_after_started_or_attested_run_stays_protected(self):
+        row = self.targetless_admission()
+        for extra in ({'command_started_at': 1}, {'process_exit': 1},
+                      {'target_identity': [1, 2]}, {'debug_identity': [1, 3]}):
+            self.assertEqual(self.store.preview_one(dict(row, **extra))['state'], 'skipped')
+
     def test_developer_cleanup_preserves_dirty_source_evidence_and_branch(self):
         row = self.developer()
         (self.repo / 'source').write_text('uncommitted')

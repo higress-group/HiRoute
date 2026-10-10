@@ -135,6 +135,16 @@ class Store:
             if any(not p.startswith("target/") for p in ignored.splitlines()):
                 raise ValueError("Ignored files outside target retained")
         target = checkout / "target"
+        # Lock admission can fail before Cargo creates a target. Only a managed,
+        # never-started run without recorded target identities may use this path.
+        # A later-created target (including a dangling link) still fails closed.
+        if (row["kind"] == "managed" and row.get("process_exit") is None
+                and not row.get("command_started_at")
+                and "target_identity" not in row and "debug_identity" not in row
+                and not os.path.lexists(target)):
+            if git(checkout, "ls-files", "target"):
+                raise ValueError("Target contains tracked files")
+            return checkout, target / "debug"
         identity(target)
         if target.resolve() != target or identity(target) != row["target_identity"]:
             raise ValueError("Target was replaced")
@@ -189,7 +199,8 @@ class Store:
                 raise ValueError("Candidate changed; preview again")
             if row["kind"] == "managed":
                 # Preserve all non-debug target artifacts before removing this disposable tree.
-                self.export_target(row)
+                if os.path.lexists(checkout / "target"):
+                    self.export_target(row)
                 remote.command(["git", "-C", row["repo"], "worktree", "remove", "--force", str(checkout)])
             else:
                 shutil.rmtree(debug)  # Never remove a developer worktree or its release/evidence.
