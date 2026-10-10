@@ -578,6 +578,14 @@ async fn saved_borrowed_mode_and_membership_survive_native_credential_failures()
                 );
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
+            assert_subscription_route_reason(
+                &daemon,
+                &source.models[0].binding_id,
+                needs_auth.then_some(
+                    hiroute_application_api::PlanCandidateUnavailableReasonV1::CredentialUnavailable,
+                ),
+            )
+            .await;
             assert_eq!(
                 saved_source_json(directory.path(), &source.source_id),
                 stored

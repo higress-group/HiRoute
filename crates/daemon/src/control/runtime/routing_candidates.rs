@@ -121,15 +121,10 @@ impl CandidateDiagnostics {
     pub(super) fn materialization_failed(
         &mut self,
         fact: &ComputeManagementCompilationFactV2,
-        runtime_unavailable: bool,
+        reason: Reason,
     ) {
-        // Only the live-source join proves runtime absence. Other preparation failures do not
-        // establish a provider/network/credential failure.
-        let reason = if runtime_unavailable {
-            Reason::RuntimeUnavailable
-        } else {
-            Reason::InvalidConfiguration
-        };
+        // The caller supplies a closed source-specific diagnosis; other preparation failures
+        // do not establish a provider/network/credential failure.
         self.insert(&fact.binding_id, &fact.display_name, reason);
     }
 
