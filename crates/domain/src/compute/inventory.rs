@@ -15,7 +15,7 @@ pub struct ObservedModelV1 {
 
 impl ObservedModelV1 {
     pub fn validate(&self) -> Result<(), ComputeContractError> {
-        validate_identifier(&self.upstream_model_id)?;
+        super::common::validate_upstream_model_id(&self.upstream_model_id)?;
         validate_inventory_metadata(&self.metadata)
     }
 }

@@ -231,6 +231,9 @@ fn candidate_model_can_be_saved(
     candidate: &super::ComputeCandidateModelFactsV2,
     intent: ComputeManagementIntentV2,
 ) -> bool {
+    if !hiroute_domain::valid_upstream_model_id(&candidate.upstream_model_id) {
+        return false;
+    }
     candidate.selectable
         // A failed or credential-blocked connection cannot become Ready, but its trusted Native
         // declaration remains valid disabled management state.

@@ -198,6 +198,7 @@ pub struct SourceBindingV1 {
 
 impl SourceBindingV1 {
     pub fn validate_shape(&self) -> Result<(), ComputeContractError> {
+        super::common::validate_upstream_model_id(&self.upstream_model_id)?;
         for id in [
             &self.binding_id,
             &self.source_id,
@@ -205,7 +206,6 @@ impl SourceBindingV1 {
             &self.capability_slice_version,
             &self.offer_ref,
             &self.model_configuration_id,
-            &self.upstream_model_id,
             &self.capability_id,
         ] {
             validate_identifier(id)?;

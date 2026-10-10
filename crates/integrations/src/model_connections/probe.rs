@@ -596,10 +596,7 @@ fn parse_page(bytes: &[u8]) -> Result<ParsedPage, ()> {
 }
 
 fn valid_model_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 512
-        && !value.chars().any(char::is_control)
-        && value.trim() == value
+    hiroute_domain::valid_upstream_model_id(value)
 }
 
 fn percent_encode_query(value: &str) -> String {

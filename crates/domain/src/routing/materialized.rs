@@ -199,8 +199,6 @@ impl AttemptOwnedCandidateV1 {
             &self.connection_option_id,
             &self.offer_ref,
             &self.model_configuration_id,
-            &self.upstream_model_id,
-            &self.native_transport_model,
             &self.capability_id,
             &self.connector_id,
             &self.endpoint_profile_id,
@@ -211,7 +209,9 @@ impl AttemptOwnedCandidateV1 {
                 return Err(CompiledPlanError::InvalidCandidate);
             }
         }
-        if self.binding_revision == 0
+        if !crate::valid_upstream_model_id(&self.upstream_model_id)
+            || !crate::valid_upstream_model_id(&self.native_transport_model)
+            || self.binding_revision == 0
             || self.source_revision == 0
             || self.offer_revision == 0
             || self.model_configuration_revision == 0
@@ -335,6 +335,14 @@ pub struct AgentPlanFactRefsV1 {
 
 impl AgentPlanFactRefsV1 {
     pub fn validate(&self) -> Result<(), CompiledPlanError> {
+        if self.inventory_revision == 0 {
+            return Err(CompiledPlanError::InvalidFactReference);
+        }
+        self.validate_snapshot()
+    }
+
+    /// An empty read-only inventory has revision zero; published facts still require a revision.
+    pub fn validate_snapshot(&self) -> Result<(), CompiledPlanError> {
         for value in [
             &self.connector_registry_version,
             &self.model_data_bundle_version,
@@ -346,17 +354,16 @@ impl AgentPlanFactRefsV1 {
                 return Err(CompiledPlanError::InvalidFactReference);
             }
         }
-        if self.inventory_revision == 0
-            || [
-                &self.connector_registry_digest,
-                &self.model_data_digest,
-                &self.capability_slice_digest,
-                &self.ratings_slice_digest,
-                &self.free_offers_slice_digest,
-                &self.inventory_digest,
-            ]
-            .into_iter()
-            .any(invalid_digest)
+        if [
+            &self.connector_registry_digest,
+            &self.model_data_digest,
+            &self.capability_slice_digest,
+            &self.ratings_slice_digest,
+            &self.free_offers_slice_digest,
+            &self.inventory_digest,
+        ]
+        .into_iter()
+        .any(invalid_digest)
         {
             Err(CompiledPlanError::InvalidFactReference)
         } else {

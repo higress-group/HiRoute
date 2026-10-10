@@ -263,8 +263,8 @@ fn validate_request(
         || !valid_reference(request.credential_ref)
         || destination.is_none()
         || !valid_reference(request.connector_id)
-        || !valid_reference(request.upstream_model_id)
-        || !valid_reference(request.native_transport_model)
+        || !hiroute_domain::valid_upstream_model_id(request.upstream_model_id)
+        || !hiroute_domain::valid_upstream_model_id(request.native_transport_model)
         || !request.request_path.starts_with('/')
         || request.request_path.len() < 2
         || request.request_path.contains(['?', '#'])

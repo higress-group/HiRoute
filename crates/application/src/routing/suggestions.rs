@@ -22,7 +22,7 @@ pub fn suggest_free(
     ratings: &ModelRatings,
     snapshot: RatingSnapshotSelectionV1,
 ) -> Result<FreeSuggestionsV1, AgentPlanCompilerError> {
-    facts.validate()?;
+    facts.validate_snapshot()?;
     requirements
         .validate()
         .map_err(|_| AgentPlanCompilerError::InvalidDesiredPlan)?;
