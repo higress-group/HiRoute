@@ -767,7 +767,6 @@ async fn management_query_versions_use_distinct_operations_over_the_same_handsha
             });
             let query = ComputeManagementQueryV2 {
                 source_id: source_id.clone(),
-                ..Default::default()
             };
             if v3 {
                 let result = client
