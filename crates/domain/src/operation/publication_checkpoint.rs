@@ -245,8 +245,8 @@ mod tests {
                 )
                 .unwrap();
                 crate::PlanHeadV1 {
+                    head_revision: version.reference.content_revision,
                     reference: version.reference,
-                    head_revision: 1,
                     model_alias: compiled.model_alias().clone(),
                     status: crate::PlanLifecycleV1::Enabled,
                 }
