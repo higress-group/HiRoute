@@ -4,7 +4,7 @@
 
 Standalone is the single-user mode that does not install Desktop. The production `hiroute`
 CLI, role-all `hirouted` daemon, Local Control, Gateway, business storage, and observation
-form one control and execution loop. It uses the same-UID local trust boundary, needs no
+form one control and execution loop. It uses the local control socket's OS access permissions, needs no
 second “CLI management token,” and exposes no second Agent-management API.
 
 Standalone and HiRoute Desktop must not manage the same user installation at the same time. It does not
@@ -415,7 +415,7 @@ hiroute agents check agent_codex_default \
   --scope native-authentication --output json
 ```
 
-`configuration`, `native-authentication`, and `collaboration` are bounded same-UID local
+`configuration`, `native-authentication`, and `collaboration` are bounded local
 checks. They use no second authorization token and make no upstream model call. `live` does
 make a real model request and still requires the command help's explicit consent and a
 protected probe grant.

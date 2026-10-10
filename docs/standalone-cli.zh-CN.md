@@ -3,8 +3,8 @@
 [English](standalone-cli.md)
 
 Standalone 是不安装 Desktop 时的单用户运行方式。正式 `hiroute` CLI、`hirouted`
-role-all daemon、Local Control、Gateway、业务存储和观测共同组成控制与运行闭环。它沿用同 UID
-本机信任边界，不需要额外的“CLI 管理 token”，也不提供第二套 Agent 管理 API。
+role-all daemon、Local Control、Gateway、业务存储和观测共同组成控制与运行闭环。本机控制入口使用
+操作系统对 socket 的访问权限，不需要额外的“CLI 管理 token”，也不提供第二套 Agent 管理 API。
 
 Standalone 与 HiRoute Desktop 不应同时管理同一用户的安装，不提供系统级多用户安装、Windows 安装、
 运行时下载或自动更新。macOS 可使用相同候选包机制，但本页验证与 Quickstart 以 Linux 为准。
@@ -389,7 +389,7 @@ hiroute agents check agent_codex_default \
   --scope native-authentication --output json
 ```
 
-`configuration`、`native-authentication` 和 `collaboration` 是同 UID 本地有界检查，不使用第二个
+`configuration`、`native-authentication` 和 `collaboration` 是本地有界检查，不使用第二个
 授权 token，也不产生上游模型调用。`live` 会产生真实模型请求，仍要求命令 help 声明的明确同意
 与受保护 probe grant。
 

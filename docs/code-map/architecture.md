@@ -26,7 +26,7 @@ module before extending it; a local feature does not require a facade-wide rewri
 
 ## Model sources and native configuration
 
-CLI secret entry uses the shared same-user [protected input socket](../../crates/daemon/src/control/standalone.rs)
+CLI secret entry uses the shared local [protected input socket](../../crates/daemon/src/control/standalone.rs)
 in both standalone and Desktop-owned `role=all` processes. The [CLI input owner](../../crates/cli/src/host_commands.rs)
 reads inherited descriptors; ordinary control requests never carry secret bytes.
 All current hosts and the CLI resolve its `hiroute/input.sock` path through host-runtime.
@@ -62,7 +62,7 @@ Scan → Prepare → Save → restart → native use, including stale-source rej
 | Boundary | Invariant | Read next |
 | --- | --- | --- |
 | Agent settings | Configure/Edit seals service state before the file tail. Ordinary Disable conditionally restores files before withdrawing grants; conflicts preserve foreign edits and require the appropriate fresh operation or exact retry. | [Transaction](../../crates/application/src/agent_connection/settings/transaction.rs), [ordering tests](../../crates/application/src/operations/tests/settings_tail.rs) |
-| Native target registration | An unused discovered target is not access authority or a global startup dependency. Actual access and accepted-operation recovery still verify paths and permissions. | [Registration tests](../../crates/local-storage/src/agents/native_registration_tests.rs), [startup journey](../../crates/daemon/tests/publication_process.rs) |
+| Native target registration | An unused discovered target is not access authority or a global startup dependency. Actual access and accepted-operation recovery retain path identity and safe-write checks; OS I/O determines accessibility. | [Registration tests](../../crates/local-storage/src/agents/native_registration_tests.rs), [startup journey](../../crates/daemon/tests/publication_process.rs) |
 | Operation journal | Domain checkpoints and stored journals agree before publication or native effects; immutable plan bytes and generation/identity guards remain authoritative. JSON member ordering is distinct from a content change. | [Checkpoint](../../crates/domain/src/operation/journal.rs), [verification](../../crates/local-storage/src/control/journal.rs), [transaction guards](../../crates/local-storage/src/control/transaction_v2_tests.rs) |
 | Profile deletion | Untouched proof binds the current store instance and exact marker; a stage directory alone cannot prove deletion never began. | [Profile lifecycle](../../crates/daemon/src/control/runtime/settings_profile_tests.rs) |
 | Worker/content lifetime | Result completion, process stop, body availability and permission to Continue are separate facts; cleanup requires exact ownership. | [Worker map](worker-context.md#state-and-lifetime), [managed-text contract](../../crates/observation/src/managed_text/README.md) |
