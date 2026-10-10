@@ -202,10 +202,14 @@ impl LocalControlAdapter {
                         "SUBSCRIPTION_SOURCE_CHANGED",
                     )));
                 }
-                Err(CpaLifecycleError::ManagedOAuthCredentialsMissing) => {
+                Err(
+                    CpaLifecycleError::ManagedOAuthCredentialsMissing
+                    | CpaLifecycleError::InvalidManagedOAuthCredentials
+                    | CpaLifecycleError::ManagedOAuthAuthenticationRequired,
+                ) => {
                     return Ok(Some((
                         ComputeSubscriptionCheckStatusV2::NeedsAuth,
-                        "SUBSCRIPTION_NEEDS_AUTH",
+                        "SUBSCRIPTION_MANAGED_LOGIN_REQUIRED",
                     )));
                 }
                 Err(_) => {

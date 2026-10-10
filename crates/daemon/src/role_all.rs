@@ -555,12 +555,18 @@ fn start_cpa(
         borrowed_claude_auth: None,
         managed_oauth: None,
         borrowed_codex_auth: selected_codex_auth().ok().map(|source| {
-            BorrowedCodexAuthSpec::new(source).with_executable(
-                config
-                    .codex_desktop_engine
-                    .clone()
-                    .unwrap_or_else(|| PathBuf::from("codex")),
-            )
+            BorrowedCodexAuthSpec::new(&source)
+                .with_store_config(
+                    std::env::var_os("HIROUTE_CODEX_AUTH_SOURCE")
+                        .is_none()
+                        .then(|| source.with_file_name("config.toml")),
+                )
+                .with_executable(
+                    config
+                        .codex_desktop_engine
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("codex")),
+                )
         }),
         bindings: vec![CpaProfileBinding {
             account_kind: CpaAccountKind::Codex,

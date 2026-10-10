@@ -144,15 +144,6 @@ fn validate_directories(home: &Path, create: bool) -> Result<bool, ServiceProxyE
                 if !metadata.is_dir() {
                     return Err(ServiceProxyError);
                 }
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::{MetadataExt, PermissionsExt};
-                    if metadata.uid() != nix::unistd::geteuid().as_raw()
-                        || metadata.permissions().mode() & 0o022 != 0
-                    {
-                        return Err(ServiceProxyError);
-                    }
-                }
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {
                 let mut builder = fs::DirBuilder::new();
@@ -186,15 +177,6 @@ fn open_private(path: &Path) -> Result<Option<File>, ServiceProxyError> {
     let metadata = file.metadata().map_err(|_| ServiceProxyError)?;
     if !metadata.is_file() {
         return Err(ServiceProxyError);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        if metadata.uid() != nix::unistd::geteuid().as_raw()
-            || metadata.permissions().mode() & 0o077 != 0
-        {
-            return Err(ServiceProxyError);
-        }
     }
     Ok(Some(file))
 }

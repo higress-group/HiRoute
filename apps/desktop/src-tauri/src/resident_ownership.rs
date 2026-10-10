@@ -64,19 +64,12 @@ pub(crate) fn validate_ancestors(path: &Path) -> Result<(), String> {
         {
             return Err("PRIVATE_PATH_INVALID".into());
         }
-        if ancestor == path && meta.uid() != nix::unistd::geteuid().as_raw() {
-            return Err("PRIVATE_PATH_INVALID".into());
-        }
     }
     Ok(())
 }
 pub(crate) fn validate_lock(file: &File) -> Result<(), String> {
     let m = file.metadata().map_err(|_| "RESIDENT_LOCK_UNAVAILABLE")?;
-    if !m.is_file()
-        || m.uid() != nix::unistd::geteuid().as_raw()
-        || m.mode() & 0o777 != 0o600
-        || m.nlink() != 1
-    {
+    if !m.is_file() || m.nlink() != 1 {
         return Err("RESIDENT_LOCK_INVALID".into());
     }
     Ok(())
@@ -95,16 +88,13 @@ fn snapshot(
     let dir = runtime.join("hiroute");
     validate_ancestors(&dir)?;
     let meta = std::fs::symlink_metadata(&dir).map_err(|_| "RESIDENT_ENDPOINT_INVALID")?;
-    if !meta.is_dir() || meta.mode() & 0o777 != 0o700 {
+    if !meta.is_dir() {
         return Err("RESIDENT_ENDPOINT_INVALID".into());
     }
     let mut sockets = Vec::new();
     for path in paths(runtime) {
         let m = std::fs::symlink_metadata(path).map_err(|_| "RESIDENT_ENDPOINT_INVALID")?;
-        if !m.file_type().is_socket()
-            || m.uid() != nix::unistd::geteuid().as_raw()
-            || m.mode() & 0o777 != 0o600
-        {
+        if !m.file_type().is_socket() {
             return Err("RESIDENT_ENDPOINT_INVALID".into());
         }
         sockets.push(Identity::of(&m));
@@ -309,13 +299,17 @@ mod tests {
         assert!(!recoverable(&mut lock, root.path()).unwrap());
     }
     #[test]
-    fn replaced_symlinked_or_insecure_endpoint_is_never_reclaimed() {
+    fn replaced_or_symlinked_endpoint_is_never_reclaimed_but_modes_are_allowed() {
         let (root, mut lock, listeners, pid) = fixture();
         record(&mut lock, root.path(), pid, None).unwrap();
         drop(listeners);
         let endpoint = paths(root.path())[0].clone();
         std::fs::set_permissions(&endpoint, std::fs::Permissions::from_mode(0o666)).unwrap();
-        assert!(!recoverable(&mut lock, root.path()).unwrap());
+        assert!(recoverable(&mut lock, root.path()).unwrap());
+        assert_eq!(
+            std::fs::metadata(&endpoint).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
         std::fs::set_permissions(&endpoint, std::fs::Permissions::from_mode(0o600)).unwrap();
         let original = root.path().join("original.sock");
         std::fs::rename(&endpoint, &original).unwrap();

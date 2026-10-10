@@ -2,8 +2,7 @@
 //!
 //! On Unix every operation goes through an already-open directory handle (`openat`,
 //! `mkdirat`, `renameat`, `unlinkat`) with `O_NOFOLLOW`, and each opened file is verified
-//! by `fstat`: regular file, exactly one hard link, owned by the current user, no group or
-//! other permission bits. Directory and file identities (`dev`, `ino`) are re-checked
+//! by `fstat`: regular file, exactly one hard link, with no owner or mode admission gate. Directory and file identities (`dev`, `ino`) are re-checked
 //! before destructive operations, so a replaced path is refused instead of followed.
 //!
 //! Platforms without equivalent private-path primitives report
@@ -114,8 +113,8 @@ mod unix {
 
     use fs2::FileExt;
     use nix::fcntl::{OFlag, open, openat, renameat};
-    use nix::sys::stat::{FileStat, Mode, SFlag, fchmod, fstat, mkdirat};
-    use nix::unistd::{Uid, UnlinkatFlags, fsync, unlinkat};
+    use nix::sys::stat::{FileStat, Mode, SFlag, fstat, mkdirat};
+    use nix::unistd::{UnlinkatFlags, fsync, unlinkat};
 
     use super::{FileSafetyError, FileSafetyError as E};
 
@@ -135,18 +134,9 @@ mod unix {
         }
     }
 
-    fn current_uid() -> u32 {
-        Uid::current().as_raw()
-    }
-
-    fn private_mode(stat: &FileStat) -> bool {
-        // Owner-private: no group or other bits at all.
-        stat.st_mode & 0o077 == 0
-    }
-
     fn verify_directory(stat: &FileStat) -> Result<(), FileSafetyError> {
-        let is_dir = SFlag::from_bits_truncate(stat.st_mode).contains(SFlag::S_IFDIR);
-        if !is_dir || stat.st_uid != current_uid() || !private_mode(stat) {
+        let is_dir = SFlag::from_bits_truncate(stat.st_mode) & SFlag::S_IFMT == SFlag::S_IFDIR;
+        if !is_dir {
             return Err(E::UnsafeDirectory);
         }
         Ok(())
@@ -154,14 +144,14 @@ mod unix {
 
     fn verify_file(stat: &FileStat) -> Result<(), FileSafetyError> {
         let kind = SFlag::from_bits_truncate(stat.st_mode);
-        let regular = kind.contains(SFlag::S_IFREG);
-        if !regular || stat.st_nlink != 1 || stat.st_uid != current_uid() || !private_mode(stat) {
+        let regular = kind & SFlag::S_IFMT == SFlag::S_IFREG;
+        if !regular || stat.st_nlink != 1 {
             return Err(E::UnsafeFile);
         }
         Ok(())
     }
 
-    /// A verified, owner-private directory handle. All file operations are relative to
+    /// A verified directory handle. All file operations are relative to
     /// this handle, so a path swapped after verification is not followed.
     #[derive(Debug)]
     pub struct PrivateDir {
@@ -176,8 +166,7 @@ mod unix {
     /// and `/var` to `/private/*`) are resolved, using the same rule as the resident
     /// ownership validator; nothing else is canonicalized.
     ///
-    /// Intermediate levels must be directories that group/other cannot write, unless they
-    /// carry the sticky bit; they are never chmodded. The final level must be owner-private.
+    /// Intermediate levels must be real directories. Every level retains its existing permissions.
     /// With `create`, missing levels below the nearest existing ancestor are created 0700,
     /// which is how a first start reaches its own root; existing levels are left as they are.
     fn open_directory(path: &Path, create: bool) -> Result<PrivateDir, FileSafetyError> {
@@ -197,9 +186,7 @@ mod unix {
             Mode::empty(),
         )
         .map_err(map_errno)?;
-        let mut created_final = false;
         for (index, name) in names.iter().enumerate() {
-            let last = index + 1 == names.len();
             let name = Path::new(name);
             let child = match openat(
                 &fd,
@@ -222,7 +209,7 @@ mod unix {
                 }
                 Err(nix::errno::Errno::ENOENT) if create => {
                     match mkdirat(&fd, name, Mode::from_bits_truncate(0o700)) {
-                        Ok(()) => created_final = last,
+                        Ok(()) => {}
                         // A creation race: the winner's directory is opened and checked.
                         Err(nix::errno::Errno::EEXIST) => {}
                         Err(errno) => return Err(map_errno(errno)),
@@ -242,19 +229,6 @@ mod unix {
                 Err(nix::errno::Errno::ENOENT) => return Err(E::NotFound),
                 Err(errno) => return Err(map_errno(errno)),
             };
-            let stat = fstat(child.as_fd()).map_err(map_errno)?;
-            if last {
-                if !private_mode(&stat) {
-                    if !created_final {
-                        // A pre-existing non-private level is refused, never chmodded.
-                        return Err(E::UnsafeDirectory);
-                    }
-                    make_private_created(&child)?;
-                }
-            } else if stat.st_mode & 0o022 != 0 && stat.st_mode & 0o1000 == 0 {
-                // Anyone who may write this level can replace the entry below it.
-                return Err(E::UnsafeDirectory);
-            }
             fd = child;
         }
         let stat = fstat(fd.as_fd()).map_err(map_errno)?;
@@ -310,37 +284,8 @@ mod unix {
         }
     }
 
-    /// A level created by this call may have lost its 0700 mode to a creation race with a
-    /// wider umask. Correct it only when it is empty and owned by us; anything else is
-    /// refused instead of repaired.
-    fn make_private_created(fd: &OwnedFd) -> Result<(), FileSafetyError> {
-        let stat = fstat(fd.as_fd()).map_err(map_errno)?;
-        if private_mode(&stat) {
-            return Ok(());
-        }
-        if stat.st_uid != current_uid() || !directory_is_empty(fd)? {
-            return Err(E::UnsafeDirectory);
-        }
-        fchmod(fd.as_fd(), Mode::from_bits_truncate(0o700)).map_err(map_errno)?;
-        let stat = fstat(fd.as_fd()).map_err(map_errno)?;
-        verify_directory(&stat)
-    }
-
-    fn directory_is_empty(fd: &OwnedFd) -> Result<bool, FileSafetyError> {
-        let duplicate = fd.try_clone().map_err(map_io)?;
-        let mut dir = nix::dir::Dir::from_fd(duplicate).map_err(map_errno)?;
-        for entry in dir.iter() {
-            let entry = entry.map_err(map_errno)?;
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name != "." && name != ".." {
-                return Ok(false);
-            }
-        }
-        Ok(true)
-    }
-
     impl PrivateDir {
-        /// Open an existing directory and require private ownership and mode.
+        /// Open an existing directory and verify its type and stable identity.
         pub fn open_existing(path: &Path) -> Result<Self, FileSafetyError> {
             open_directory(path, false)
         }
@@ -351,13 +296,6 @@ mod unix {
         /// by this call may be corrected within this call.
         pub fn open_or_create(path: &Path) -> Result<Self, FileSafetyError> {
             open_directory(path, true)
-        }
-
-        /// When another process won a creation race with a wider umask, the freshly
-        /// created directory may lack 0700. Correct it only when it is empty and owned by
-        /// us, then re-verify the handle.
-        fn make_private_if_raced(&self) -> Result<(), FileSafetyError> {
-            make_private_created(&self.fd)
         }
 
         pub fn path(&self) -> &Path {
@@ -383,11 +321,10 @@ mod unix {
             if !is_plain_component(name) {
                 return Err(E::UnsafeDirectory);
             }
-            let existed = match fstatat_child(&self.fd, name) {
-                Ok(_) => true,
+            match fstatat_child(&self.fd, name) {
+                Ok(_) => {}
                 Err(E::NotFound) => {
                     mkdirat(&self.fd, name, Mode::from_bits_truncate(0o700)).map_err(map_errno)?;
-                    false
                 }
                 Err(other) => return Err(other),
             };
@@ -406,9 +343,6 @@ mod unix {
                 fd,
                 identity,
             };
-            if !existed {
-                child.make_private_if_raced()?;
-            }
             Ok(child)
         }
 

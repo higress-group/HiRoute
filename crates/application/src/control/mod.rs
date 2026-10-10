@@ -513,6 +513,14 @@ pub trait ComputeManagementControlPort: Send + Sync {
         query: &ComputeManagementQueryV2,
     ) -> Result<ComputeManagementSnapshotV2, ComputeManagementControlError>;
 
+    fn compute_management_snapshot_v3(
+        &self,
+        _query: &ComputeManagementQueryV2,
+    ) -> Result<hiroute_application_api::ComputeManagementSnapshotV3, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+
     fn preview_compute_save(
         &self,
         change: hiroute_application_api::ComputeManagementChangeV2,

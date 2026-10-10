@@ -149,6 +149,11 @@ impl LocalControlAdapter {
             return housekeeping;
         }
 
+        let cycle_started = std::time::Instant::now();
+        self.emit_subscription_maintenance_cycle(
+            hiroute_diagnostics::event::CpaStageOutcome::Entered,
+            0,
+        );
         for source in sources {
             if shutdown_failures.contains(&source.source_id) {
                 self.set_subscription_maintenance_status(
@@ -231,14 +236,7 @@ impl LocalControlAdapter {
                     Ok(false) => continue,
                     Err(error) => {
                         self.suspend_saved_subscription_execution(&source);
-                        let status = match error {
-                            hiroute_cpa_bridge::CpaLifecycleError::ManagedOAuthAccountChanged
-                            | hiroute_cpa_bridge::CpaLifecycleError::ManagedOAuthAuthenticationRequired
-                            | hiroute_cpa_bridge::CpaLifecycleError::ManagedOAuthCredentialsMissing => {
-                                SubscriptionMaintenancePresentation::AuthenticationRequired
-                            }
-                            _ => SubscriptionMaintenancePresentation::RuntimeUnavailable,
-                        };
+                        let status = lifecycle_failure_presentation(&error);
                         self.set_subscription_maintenance_status(&source.source_id, status, None)?;
                         continue;
                     }
@@ -257,15 +255,8 @@ impl LocalControlAdapter {
                     {
                         None
                     }
-                    Ok(_)
-                    | Err(hiroute_cpa_bridge::CpaLifecycleError::ManagedOAuthAccountChanged)
-                    | Err(
-                        hiroute_cpa_bridge::CpaLifecycleError::ManagedOAuthAuthenticationRequired,
-                    )
-                    | Err(hiroute_cpa_bridge::CpaLifecycleError::ManagedOAuthCredentialsMissing) => {
-                        Some(SubscriptionMaintenancePresentation::AuthenticationRequired)
-                    }
-                    Err(_) => Some(SubscriptionMaintenancePresentation::RuntimeUnavailable),
+                    Ok(_) => Some(SubscriptionMaintenancePresentation::AuthenticationRequired),
+                    Err(error) => Some(lifecycle_failure_presentation(&error)),
                 };
                 if let Some(status) = status {
                     self.suspend_saved_subscription_execution(&source);
@@ -299,11 +290,11 @@ impl LocalControlAdapter {
                             }
                             // A newer save already won; this old scan has no lifecycle effect.
                             Ok(false) => {}
-                            Err(_) => {
+                            Err(error) => {
                                 self.suspend_saved_subscription_execution(&source);
                                 self.set_subscription_maintenance_status(
                                     &source.source_id,
-                                    SubscriptionMaintenancePresentation::RuntimeUnavailable,
+                                    lifecycle_failure_presentation(&error),
                                     None,
                                 )?;
                             }
@@ -346,7 +337,32 @@ impl LocalControlAdapter {
                 )?,
             }
         }
+        self.emit_subscription_maintenance_cycle(
+            hiroute_diagnostics::event::CpaStageOutcome::Completed,
+            cycle_started
+                .elapsed()
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+        );
         housekeeping
+    }
+
+    // A completed cycle records that saved-source maintenance ran, not that every source is ready.
+    // Closed stage data contains no source/account reference, path or credential material.
+    fn emit_subscription_maintenance_cycle(
+        &self,
+        outcome: hiroute_diagnostics::event::CpaStageOutcome,
+        elapsed_ms: u64,
+    ) {
+        use hiroute_diagnostics::event::{CpaStage, CpaStageKind};
+        if let Ok(port) = self.publication_diagnostics.lock() {
+            port.emit(hiroute_diagnostics::DiagnosticEvent::CpaStage(CpaStage {
+                stage: CpaStageKind::SubscriptionMaintenance,
+                outcome,
+                elapsed_ms,
+                restart_generation: 0,
+            }));
+        }
     }
 
     fn suspend_subscription_execution(&self) {
@@ -477,10 +493,7 @@ impl LocalControlAdapter {
                 .map_err(|_| MaintenanceFailure::RuntimeUnavailable)?
         };
         if checked.status != ComputeSubscriptionCheckStatusV2::Verified {
-            return Err(match checked.reason.as_deref() {
-                Some("SUBSCRIPTION_NEEDS_AUTH") => MaintenanceFailure::AuthenticationRequired,
-                _ => MaintenanceFailure::RuntimeUnavailable,
-            });
+            return Err(check_failure(checked.status));
         }
         let checked_candidate = checked
             .checked_candidate
@@ -748,15 +761,69 @@ fn ensure_operation_succeeded(
     if operation.state == OperationState::Succeeded {
         return Ok(());
     }
-    Err(match operation.safe_error_code.as_deref() {
-        Some("SUBSCRIPTION_NEEDS_AUTH") => MaintenanceFailure::AuthenticationRequired,
-        _ => MaintenanceFailure::RuntimeUnavailable,
-    })
+    Err(check_failure(super::subscription_operation_status(
+        operation,
+    )))
+}
+
+fn check_failure(status: ComputeSubscriptionCheckStatusV2) -> MaintenanceFailure {
+    if status == ComputeSubscriptionCheckStatusV2::NeedsAuth {
+        MaintenanceFailure::AuthenticationRequired
+    } else {
+        MaintenanceFailure::RuntimeUnavailable
+    }
+}
+
+fn lifecycle_failure_presentation(
+    error: &hiroute_cpa_bridge::CpaLifecycleError,
+) -> SubscriptionMaintenancePresentation {
+    use hiroute_cpa_bridge::{CpaSubscriptionAvailability, cpa_subscription_availability};
+    if cpa_subscription_availability(Err(error)) == CpaSubscriptionAvailability::NeedsAuthentication
+    {
+        SubscriptionMaintenancePresentation::AuthenticationRequired
+    } else {
+        SubscriptionMaintenancePresentation::RuntimeUnavailable
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_credential_causes_keep_authentication_presentation_through_maintenance() {
+        use hiroute_cpa_bridge::CpaLifecycleError as E;
+        for error in [
+            E::BorrowedCodexStoreUnsupported,
+            E::BorrowedCodexLoginUnsupported,
+            E::BorrowedCodexAccountMissing,
+            E::ManagedOAuthAuthenticationRequired,
+        ] {
+            assert_eq!(
+                lifecycle_failure_presentation(&error),
+                SubscriptionMaintenancePresentation::AuthenticationRequired
+            );
+        }
+        for code in [
+            "SUBSCRIPTION_NEEDS_AUTH",
+            "SUBSCRIPTION_NATIVE_STORE_UNSUPPORTED",
+            "SUBSCRIPTION_NATIVE_LOGIN_UNSUPPORTED",
+            "SUBSCRIPTION_NATIVE_ACCOUNT_MISSING",
+            "SUBSCRIPTION_MANAGED_LOGIN_REQUIRED",
+        ] {
+            assert_eq!(
+                check_failure(super::super::subscription_error_status(Some(code))).presentation(),
+                SubscriptionMaintenancePresentation::AuthenticationRequired
+            );
+        }
+        assert_eq!(
+            check_failure(super::super::subscription_error_status(Some(
+                "SUBSCRIPTION_NATIVE_READ_FAILED"
+            )))
+            .presentation(),
+            SubscriptionMaintenancePresentation::RuntimeUnavailable
+        );
+    }
 
     #[test]
     fn committed_evidence_restores_or_retries_without_looping_the_same_failure() {

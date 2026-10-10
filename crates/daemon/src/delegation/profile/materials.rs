@@ -178,13 +178,6 @@ impl TaskSessionRoot {
         if linked(&metadata) || !metadata.is_file() || metadata.len() > 4096 {
             return Err(DelegationErrorV1::ResumeUnavailable);
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if metadata.uid() != nix::unistd::geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
-                return Err(DelegationErrorV1::ResumeUnavailable);
-            }
-        }
         use std::io::Read;
         let mut bytes = Vec::with_capacity(metadata.len() as usize);
         file.take(4097)
@@ -266,15 +259,6 @@ impl TaskSessionRoot {
                 if linked(&metadata) || !metadata.is_file() {
                     return Err(DelegationErrorV1::PermissionDenied);
                 }
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::MetadataExt;
-                    if metadata.uid() != nix::unistd::geteuid().as_raw()
-                        || metadata.mode() & 0o077 != 0
-                    {
-                        return Err(DelegationErrorV1::PermissionDenied);
-                    }
-                }
                 let mut actual = String::new();
                 fs::File::open(path)
                     .and_then(|file| file.take(4097).read_to_string(&mut actual))
@@ -337,10 +321,7 @@ impl TaskSessionRoot {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::MetadataExt;
-                    if metadata.uid() != nix::unistd::geteuid().as_raw()
-                        || metadata.mode() & 0o077 != 0
-                        || metadata.nlink() != 1
-                    {
+                    if metadata.nlink() != 1 {
                         return Err(DelegationErrorV1::PermissionDenied);
                     }
                 }
@@ -398,13 +379,6 @@ fn legacy_native_history(
     let metadata = fs::symlink_metadata(&root).map_err(|_| DelegationErrorV1::ResumeUnavailable)?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err(DelegationErrorV1::ResumeUnavailable);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != nix::unistd::geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
-            return Err(DelegationErrorV1::ResumeUnavailable);
-        }
     }
     let durable_root = root.join(match harness {
         WorkerHarnessV1::CodexCli => "sessions",
@@ -546,13 +520,6 @@ fn checked_directory(path: &Path) -> Result<PathBuf, DelegationErrorV1> {
         fs::symlink_metadata(path).map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
     if linked(&metadata) || !metadata.is_dir() {
         return Err(DelegationErrorV1::PermissionDenied);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != nix::unistd::geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
-            return Err(DelegationErrorV1::PermissionDenied);
-        }
     }
     // As with the existing non-Unix managed directory checks, Windows roots must be supplied
     // from the already owner-controlled daemon store. This helper is not a new ACL provider.

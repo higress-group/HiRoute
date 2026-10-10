@@ -177,18 +177,10 @@ fn dependencies(executable: Option<&Path>, target: &Path) -> Result<(CanonicalDi
         }
     }
     let parent_metadata = parent_metadata.ok_or(())?;
-    let owner = nix::unistd::geteuid().as_raw();
     let replace = parent_metadata.is_dir()
         && !parent_metadata.file_type().is_symlink()
-        && parent_metadata.uid() == owner
-        && parent_metadata.mode() & 0o022 == 0
-        && parent_metadata.mode() & 0o300 == 0o300
         && file.as_ref().is_none_or(|metadata| {
-            metadata.is_file()
-                && !metadata.file_type().is_symlink()
-                && metadata.uid() == owner
-                && metadata.nlink() == 1
-                && metadata.mode() & 0o022 == 0
+            metadata.is_file() && !metadata.file_type().is_symlink() && metadata.nlink() == 1
         });
     let digest = CanonicalDigest::of(&(
         binary,

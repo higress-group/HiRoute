@@ -15,7 +15,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Same-user credential input shared by standalone and Desktop-owned role-all processes.
+/// Local credential input shared by standalone and Desktop-owned role-all processes.
 pub(super) struct ProtectedInputServer {
     listener: UnixListener,
     path: PathBuf,
@@ -92,7 +92,6 @@ fn handle_connection(
     role: &hiroute_daemon::RoleAllHandle,
     mut stream: UnixStream,
 ) -> Result<(), String> {
-    validate_peer_owner(&stream)?;
     stream
         .set_read_timeout(Some(IO_TIMEOUT))
         .map_err(|_| "protected input read timeout setup failed")?;
@@ -196,81 +195,23 @@ fn valid_candidate_ref(value: &str) -> bool {
 }
 
 fn validate_private_directory(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let metadata = std::fs::symlink_metadata(path)
         .map_err(|_| "protected input socket directory is unavailable")?;
-    if !metadata.is_dir()
-        || metadata.file_type().is_symlink()
-        || metadata.uid() != nix::unistd::geteuid().as_raw()
-        || metadata.permissions().mode() & 0o777 != 0o700
-    {
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err("protected input socket directory is unsafe".into());
     }
     Ok(())
 }
 
 fn remove_stale_socket(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    use std::os::unix::fs::FileTypeExt;
     match std::fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(_) => Err("protected input socket state is unavailable".into()),
-        Ok(metadata)
-            if metadata.file_type().is_socket()
-                && metadata.uid() == nix::unistd::geteuid().as_raw() =>
-        {
-            std::fs::remove_file(path)
-                .map_err(|_| "protected input stale socket cannot be removed".into())
-        }
+        Ok(metadata) if metadata.file_type().is_socket() => std::fs::remove_file(path)
+            .map_err(|_| "protected input stale socket cannot be removed".into()),
         Ok(_) => Err("protected input socket path conflicts with another entry".into()),
     }
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-fn validate_peer_owner(stream: &UnixStream) -> Result<(), String> {
-    let credentials =
-        nix::sys::socket::getsockopt(stream, nix::sys::socket::sockopt::PeerCredentials)
-            .map_err(|_| "protected input peer ownership unavailable")?;
-    if credentials.uid() != nix::unistd::geteuid().as_raw() {
-        return Err("protected input peer ownership mismatch".into());
-    }
-    Ok(())
-}
-
-#[cfg(any(
-    target_os = "dragonfly",
-    target_os = "freebsd",
-    target_os = "ios",
-    target_os = "macos",
-    target_os = "netbsd",
-    target_os = "openbsd",
-    target_os = "tvos",
-    target_os = "visionos",
-    target_os = "watchos"
-))]
-fn validate_peer_owner(stream: &UnixStream) -> Result<(), String> {
-    let (uid, _) = nix::unistd::getpeereid(stream)
-        .map_err(|_| "protected input peer ownership unavailable")?;
-    if uid != nix::unistd::geteuid() {
-        return Err("protected input peer ownership mismatch".into());
-    }
-    Ok(())
-}
-
-#[cfg(not(any(
-    target_os = "android",
-    target_os = "dragonfly",
-    target_os = "freebsd",
-    target_os = "ios",
-    target_os = "linux",
-    target_os = "macos",
-    target_os = "netbsd",
-    target_os = "openbsd",
-    target_os = "tvos",
-    target_os = "visionos",
-    target_os = "watchos"
-)))]
-fn validate_peer_owner(_stream: &UnixStream) -> Result<(), String> {
-    Err("protected input peer ownership unavailable".into())
 }
 
 fn shutdown_signal() -> Result<Receiver<()>, String> {
@@ -350,8 +291,7 @@ mod tests {
         layout.runtime_root = runtime;
         let server = ProtectedInputServer::bind(&layout).unwrap();
         let _client = UnixStream::connect(layout.protected_input_socket()).unwrap();
-        let (peer, _) = server.listener.accept().unwrap();
-        validate_peer_owner(&peer).unwrap();
+        let (_peer, _) = server.listener.accept().unwrap();
         drop(server);
         assert!(!layout.protected_input_socket().exists());
     }

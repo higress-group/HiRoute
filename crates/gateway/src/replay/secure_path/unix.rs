@@ -233,16 +233,8 @@ fn identity_at(parent: &File, name: &str) -> Result<(FileIdentity, bool), Replay
 
 fn validate(file: &File, directory: bool) -> Result<(), ReplayError> {
     let metadata = file.metadata()?;
-    if metadata.is_dir() != directory
-        || metadata.is_file() == directory
-        || metadata.uid() != rustix::process::geteuid().as_raw()
-        || metadata.mode() & 0o077 != 0
-    {
-        return Err(if metadata.mode() & 0o077 != 0 {
-            ReplayError::UnsafePermissions
-        } else {
-            ReplayError::UnsafePath
-        });
+    if metadata.is_dir() != directory || metadata.is_file() == directory {
+        return Err(ReplayError::UnsafePath);
     }
     Ok(())
 }

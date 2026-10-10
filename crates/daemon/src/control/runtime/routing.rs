@@ -357,6 +357,37 @@ impl LocalControlAdapter {
                     .transpose()?
                     .unwrap_or_default();
                 let cpa_targets = cpa_batch.as_ref();
+                // Batch discovery intentionally preserves healthy siblings. Diagnose each missing
+                // saved provider separately, outside the storage lock, without changing its facts.
+                let connector_failures = management
+                    .sources
+                    .iter()
+                    .filter_map(|source| {
+                        let hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
+                            connector_id,
+                            account_ref,
+                        } = &source.provenance
+                        else {
+                            return None;
+                        };
+                        (source.state == MaterializationState::Ready
+                            && cpa_targets
+                                .and_then(|batch| {
+                                    unique_live_cpa_source(
+                                        batch.sources(),
+                                        connector_id,
+                                        account_ref,
+                                    )
+                                })
+                                .is_none())
+                        .then(|| {
+                            (
+                                source.source_id.clone(),
+                                self.subscription_routing_unavailability(source),
+                            )
+                        })
+                    })
+                    .collect::<std::collections::BTreeMap<_, _>>();
                 let stores = self.stores_lock().map_err(super::map_port)?;
                 let control = stores.control();
                 let mut inventory_refs = Vec::new();
@@ -654,22 +685,13 @@ impl LocalControlAdapter {
                         if let Some(candidate) = candidate {
                             candidates.push(candidate);
                         } else {
-                            let runtime_unavailable = match &fact.provenance {
-                                hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
-                                    connector_id,
-                                    account_ref,
-                                } => cpa_targets
-                                    .and_then(|batch| {
-                                        unique_live_cpa_source(
-                                            batch.sources(),
-                                            connector_id,
-                                            account_ref,
-                                        )
-                                    })
-                                    .is_none(),
-                                _ => false,
-                            };
-                            diagnostics.materialization_failed(fact, runtime_unavailable);
+                            diagnostics.materialization_failed(
+                                fact,
+                                connector_failures
+                                    .get(&source.source_id)
+                                    .copied()
+                                    .unwrap_or(UnavailableReason::InvalidConfiguration),
+                            );
                         }
                     }
                 }

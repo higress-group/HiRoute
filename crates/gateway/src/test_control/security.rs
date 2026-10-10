@@ -86,8 +86,6 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
 
 #[cfg(unix)]
 fn read_secure_nonce(path: &Path) -> Result<Vec<u8>, E2eControlError> {
-    use std::os::unix::fs::MetadataExt;
-
     use rustix::fs::{AtFlags, Mode, OFlags};
 
     if !path.is_absolute() {
@@ -121,10 +119,7 @@ fn read_secure_nonce(path: &Path) -> Result<Vec<u8>, E2eControlError> {
         ))?);
     }
     let parent_metadata = current.metadata().map_err(E2eControlError::NonceIo)?;
-    if !parent_metadata.is_dir()
-        || parent_metadata.uid() != rustix::process::geteuid().as_raw()
-        || parent_metadata.mode() & 0o022 != 0
-    {
+    if !parent_metadata.is_dir() {
         return Err(E2eControlError::UnsafeNoncePermissions);
     }
     let mut file = File::from(os(rustix::fs::openat(
@@ -134,10 +129,7 @@ fn read_secure_nonce(path: &Path) -> Result<Vec<u8>, E2eControlError> {
         Mode::empty(),
     ))?);
     let metadata = file.metadata().map_err(E2eControlError::NonceIo)?;
-    if !metadata.is_file()
-        || metadata.uid() != rustix::process::geteuid().as_raw()
-        || metadata.mode() & 0o077 != 0
-    {
+    if !metadata.is_file() {
         return Err(E2eControlError::UnsafeNoncePermissions);
     }
     let bytes = read_bounded(&mut file)?;
@@ -205,7 +197,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn nonce_requires_owner_only_regular_file_and_exact_shape() {
+    fn nonce_accepts_accessible_modes_and_requires_regular_file_and_exact_shape() {
         let directory = temporary_directory();
         let path = directory.join("nonce");
         let mut options = std::fs::OpenOptions::new();
@@ -229,23 +221,29 @@ mod tests {
         file.write_all(b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
             .unwrap();
         drop(file);
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(matches!(
-            E2eControlConfig::load(E2eControlOptions {
+        for parent_mode in [0o700, 0o770] {
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(parent_mode))
+                .unwrap();
+            std::fs::write(
+                &path,
+                b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            )
+            .unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let config = E2eControlConfig::load(E2eControlOptions {
                 listen: "127.0.0.1:8318".parse().unwrap(),
                 nonce_file: path.clone(),
-            }),
-            Err(E2eControlError::UnsafeNoncePermissions)
-        ));
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o770)).unwrap();
-        assert!(matches!(
-            E2eControlConfig::load(E2eControlOptions {
-                listen: "127.0.0.1:8318".parse().unwrap(),
-                nonce_file: path,
-            }),
-            Err(E2eControlError::UnsafeNoncePermissions)
-        ));
+            })
+            .unwrap();
+            assert!(config.authenticates(Some(
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            )));
+            assert!(!path.exists());
+            assert_eq!(
+                std::fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+                parent_mode
+            );
+        }
         std::fs::remove_dir_all(directory).unwrap();
     }
 

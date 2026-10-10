@@ -225,12 +225,5 @@ pub(super) fn read_patch_bytes(
     path: &std::path::Path,
 ) -> Result<Zeroizing<Vec<u8>>, super::AgentFilesystemScanError> {
     let observed = super::filesystem_config::read_system_config_bytes(path)?;
-    #[cfg(unix)]
-    if let Some((_, metadata)) = &observed {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != nix::unistd::geteuid().as_raw() {
-            return Err(super::AgentFilesystemScanError::WrongOwner);
-        }
-    }
     Ok(observed.map(|(bytes, _)| bytes).unwrap_or_default())
 }

@@ -87,7 +87,6 @@ impl LocalControlClient {
         validate_protected_endpoint(&endpoint)?;
         let mut stream =
             UnixStream::connect(endpoint).map_err(|_| LocalControlClientError::Transport)?;
-        validate_peer_owner(&stream)?;
         stream
             .set_read_timeout(Some(self.timeout))
             .and_then(|_| stream.set_write_timeout(Some(self.timeout)))
@@ -174,7 +173,6 @@ impl LocalControlClient {
         validate_protected_endpoint(&endpoint)?;
         let mut stream =
             UnixStream::connect(endpoint).map_err(|_| LocalControlClientError::Transport)?;
-        validate_peer_owner(&stream)?;
         stream
             .set_read_timeout(Some(self.timeout))
             .map_err(|_| LocalControlClientError::Transport)?;
@@ -220,66 +218,6 @@ impl LocalControlClient {
     }
 }
 
-#[cfg(all(
-    unix,
-    any(
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "ios",
-        target_os = "macos",
-        target_os = "netbsd",
-        target_os = "openbsd",
-        target_os = "tvos",
-        target_os = "visionos",
-        target_os = "watchos"
-    )
-))]
-fn validate_peer_owner(
-    stream: &std::os::unix::net::UnixStream,
-) -> Result<(), LocalControlClientError> {
-    let (peer_uid, _) =
-        nix::unistd::getpeereid(stream).map_err(|_| LocalControlClientError::Protocol)?;
-    if peer_uid != nix::unistd::geteuid() {
-        return Err(LocalControlClientError::Protocol);
-    }
-    Ok(())
-}
-
-#[cfg(all(unix, any(target_os = "android", target_os = "linux")))]
-fn validate_peer_owner(
-    stream: &std::os::unix::net::UnixStream,
-) -> Result<(), LocalControlClientError> {
-    let credentials =
-        nix::sys::socket::getsockopt(stream, nix::sys::socket::sockopt::PeerCredentials)
-            .map_err(|_| LocalControlClientError::Protocol)?;
-    if credentials.uid() != nix::unistd::geteuid().as_raw() {
-        return Err(LocalControlClientError::Protocol);
-    }
-    Ok(())
-}
-
-#[cfg(all(
-    unix,
-    not(any(
-        target_os = "android",
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "ios",
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "netbsd",
-        target_os = "openbsd",
-        target_os = "tvos",
-        target_os = "visionos",
-        target_os = "watchos"
-    ))
-))]
-fn validate_peer_owner(
-    _stream: &std::os::unix::net::UnixStream,
-) -> Result<(), LocalControlClientError> {
-    Err(LocalControlClientError::Protocol)
-}
-
 pub(crate) struct AgentGrantMaterial(Vec<u8>);
 
 impl AgentGrantMaterial {
@@ -299,7 +237,7 @@ impl Drop for AgentGrantMaterial {
 
 #[cfg(unix)]
 fn validate_protected_endpoint(endpoint: &Path) -> Result<(), LocalControlClientError> {
-    use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+    use std::os::unix::fs::FileTypeExt;
 
     let parent = endpoint
         .parent()
@@ -308,14 +246,9 @@ fn validate_protected_endpoint(endpoint: &Path) -> Result<(), LocalControlClient
         .map_err(|_| LocalControlClientError::LocatorUnavailable)?;
     let socket_metadata = std::fs::symlink_metadata(endpoint)
         .map_err(|_| LocalControlClientError::LocatorUnavailable)?;
-    let effective_uid = nix::unistd::geteuid().as_raw();
     if !parent_metadata.is_dir()
         || parent_metadata.file_type().is_symlink()
-        || parent_metadata.permissions().mode() & 0o777 != 0o700
-        || parent_metadata.uid() != effective_uid
         || !socket_metadata.file_type().is_socket()
-        || socket_metadata.permissions().mode() & 0o777 != 0o600
-        || socket_metadata.uid() != effective_uid
     {
         return Err(LocalControlClientError::Protocol);
     }

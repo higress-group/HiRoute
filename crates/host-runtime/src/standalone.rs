@@ -165,17 +165,14 @@ pub fn read_standalone_install_record(
 
 #[cfg(unix)]
 fn marker_file(path: &Path) -> Result<std::fs::File, StandaloneLayoutError> {
-    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    use std::os::unix::fs::OpenOptionsExt;
     let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(nix::libc::O_NOFOLLOW)
         .open(path)
         .map_err(|_| StandaloneLayoutError)?;
     let metadata = file.metadata().map_err(|_| StandaloneLayoutError)?;
-    if !metadata.is_file()
-        || metadata.uid() != nix::unistd::geteuid().as_raw()
-        || metadata.permissions().mode() & 0o022 != 0
-    {
+    if !metadata.is_file() {
         return Err(StandaloneLayoutError);
     }
     Ok(file)

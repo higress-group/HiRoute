@@ -16,21 +16,13 @@ pub(super) fn map_preparation(error: SubscriptionPreparationError) -> PortError 
 }
 
 pub(super) fn map_cpa(error: CpaLifecycleError) -> PortError {
+    if let Some(failure) = error.subscription_failure() {
+        return failure;
+    }
     match error {
         CpaLifecycleError::BorrowedCodexAuthSourceChanged
         | CpaLifecycleError::BorrowedClaudeAuthSourceChanged
         | CpaLifecycleError::ManagedOAuthAccountChanged => conflict("subscription.source.changed"),
-        CpaLifecycleError::BorrowedClaudeAuthMissing
-        | CpaLifecycleError::ManagedOAuthCredentialsMissing
-        | CpaLifecycleError::ManagedOAuthAuthenticationRequired
-        | CpaLifecycleError::BorrowedClaudeAuthUnavailable
-        | CpaLifecycleError::InvalidBorrowedClaudeAuth
-        | CpaLifecycleError::BorrowedCodexAuthMissing
-        | CpaLifecycleError::BorrowedCodexAuthUnavailable
-        | CpaLifecycleError::InvalidBorrowedCodexAuth => PortError::new(
-            PortErrorCode::PermissionDenied,
-            "subscription.authentication",
-        ),
         _ => unavailable("subscription.cpa.unavailable"),
     }
 }

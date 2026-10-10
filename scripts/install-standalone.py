@@ -294,8 +294,7 @@ def prepare_skill_parent(home, destination):
         current = current / part
         if current.exists() or current.is_symlink():
             metadata = current.lstat()
-            if (current.is_symlink() or not current.is_dir()
-                    or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o022):
+            if current.is_symlink() or not current.is_dir():
                 raise ValueError(f"Agent Skill parent is unsafe: {current}")
             continue
         current.mkdir(mode=0o700)
@@ -337,16 +336,14 @@ def service_bytes(paths, daemon, cpa, cpa_digest):
 def prepare_service_directory(home):
     """Make the fixed proxy snapshot path safe before any recursive mkdir uses umask."""
     metadata = home.lstat()
-    if (not stat.S_ISDIR(metadata.st_mode)
-            or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o022):
+    if not stat.S_ISDIR(metadata.st_mode):
         raise ValueError("standalone service HOME is unsafe")
     current = home
     for part in (".local", "share", "hiroute", "service"):
         current = current / part
         if current.exists() or current.is_symlink():
             metadata = current.lstat()
-            if (not stat.S_ISDIR(metadata.st_mode)
-                    or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o022):
+            if not stat.S_ISDIR(metadata.st_mode):
                 raise ValueError(f"standalone service parent is unsafe: {current}")
         else:
             current.mkdir(mode=0o700)
@@ -364,10 +361,7 @@ def prepare_state_directory(paths):
         current = current / part
         if current.exists() or current.is_symlink():
             metadata = current.lstat()
-            writable = metadata.st_mode & 0o022
-            if (not stat.S_ISDIR(metadata.st_mode)
-                    or (writable and not metadata.st_mode & 0o1000)
-                    or (current == state and (metadata.st_uid != os.geteuid() or writable))):
+            if not stat.S_ISDIR(metadata.st_mode):
                 raise ValueError(f"standalone state parent is unsafe: {current}")
         else:
             current.mkdir(mode=0o700)
@@ -433,9 +427,6 @@ def read_marker(paths):
     marker_path = paths["marker"]
     if marker_path.is_symlink() or not marker_path.is_file() or marker_path.stat().st_size > MAX_MANIFEST:
         raise ValueError("standalone ownership marker is invalid")
-    marker_metadata = marker_path.stat()
-    if marker_metadata.st_uid != os.geteuid() or stat.S_IMODE(marker_metadata.st_mode) & 0o022:
-        raise ValueError("standalone ownership marker is unsafe")
     marker = load_json_bytes(marker_path.read_bytes())
     validate_marker(paths, marker)
     return marker
@@ -489,7 +480,7 @@ def installation_lock(paths):
     descriptor = os.open(lock_path, flags, 0o600)
     try:
         metadata = os.fstat(descriptor)
-        if metadata.st_uid != os.geteuid() or stat.S_IMODE(metadata.st_mode) & 0o077:
+        if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("standalone install lock is unsafe")
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -593,8 +584,6 @@ def install(args):
 
             paths["state"].mkdir(parents=True, exist_ok=True, mode=0o700)
             paths["runtime"].mkdir(parents=True, exist_ok=True, mode=0o700)
-            paths["state"].chmod(0o700)
-            paths["runtime"].chmod(0o700)
             if platform.system() == "Darwin":
                 (paths["state"] / "logs").mkdir(parents=True, exist_ok=True, mode=0o700)
 
