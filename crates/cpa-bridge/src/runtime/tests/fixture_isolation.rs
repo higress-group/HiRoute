@@ -1,4 +1,5 @@
 //! Unit runtime fixtures cannot inherit a native installation from the test host.
+#[cfg(unix)]
 use super::*;
 
 #[cfg(unix)]
