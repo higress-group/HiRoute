@@ -204,7 +204,7 @@ impl ModelDataBundleV1 {
             {
                 return Err(ComputeContractError::CrossReference);
             }
-            validate_identifier(&capability.upstream_model_id)?;
+            super::common::validate_upstream_model_id(&capability.upstream_model_id)?;
             validate_identifier(&capability.required_adapter_ref)?;
             validate_nonempty_digest(&capability.evidence_digest)?;
         }

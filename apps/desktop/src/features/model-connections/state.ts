@@ -54,7 +54,7 @@ export function buildCheckDraft(draft: ModelConnectionDraft): ModelConnectionDra
   return {
     ...wireDraft,
     configuration_revision: provenance.configuration_revision,
-    models: models.filter(model => model.upstream_model_id.trim()).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
+    models: models.filter(model => model.upstream_model_id).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
   };
 }
 
@@ -216,7 +216,7 @@ export function withRegisteredModels(
   candidates: ReadonlyArray<Pick<ModelDeclaration, 'upstream_model_id' | 'display_name'> &
     { capability_prefill?: ModelDeclaration['capabilities'] }>,
 ): ModelDeclaration[] {
-  const ids = new Set(models.map(model => model.upstream_model_id.trim()));
+  const ids = new Set(models.map(model => model.upstream_model_id));
   return [...models, ...candidates.filter(candidate => !ids.has(candidate.upstream_model_id))
     .map(candidate => candidate.capability_prefill
       ? { ...blankModel(candidate.upstream_model_id, candidate.display_name), capabilities: candidate.capability_prefill }

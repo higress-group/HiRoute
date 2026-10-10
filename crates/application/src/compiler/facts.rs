@@ -137,7 +137,7 @@ impl CandidateCompilationFactV1 {
                     self.protocol_endpoint.base_url, self.protocol_endpoint.request_path
                 ),
             )
-            || !valid_reference(&self.native_transport_model)
+            || !hiroute_domain::valid_upstream_model_id(&self.native_transport_model)
             || (self.connector_runtime == ConnectorRuntimeKind::BuiltinNative
                 && self.native_transport_model != self.binding.upstream_model_id)
             || self.protocol_profiles.is_empty()
@@ -269,7 +269,7 @@ impl CandidateCompilationFactV1 {
                     self.protocol_endpoint.base_url, self.protocol_endpoint.request_path
                 ),
             )
-            || !valid_reference(&self.native_transport_model)
+            || !hiroute_domain::valid_upstream_model_id(&self.native_transport_model)
             || self.connector_runtime != ConnectorRuntimeKind::BuiltinNative
             || self.native_transport_model != self.binding.upstream_model_id
             || self.protocol_profiles.is_empty()
@@ -326,6 +326,14 @@ pub enum CandidateFactScope {
 
 impl AgentPlanCompilationFactsV1 {
     pub fn validate(&self) -> Result<(), CompilerFactError> {
+        if self.candidates.is_empty() {
+            return Err(CompilerFactError::InvalidCandidateCount);
+        }
+        self.validate_snapshot()
+    }
+
+    /// Read-only options may describe no candidates; compilation must call `validate`.
+    pub fn validate_snapshot(&self) -> Result<(), CompilerFactError> {
         if self.schema != AGENT_PLAN_FACTS_SCHEMA_V1 {
             return Err(CompilerFactError::UnsupportedSchema);
         }
@@ -333,14 +341,16 @@ impl AgentPlanCompilationFactsV1 {
             return Err(CompilerFactError::UnsupportedCompilerRevision);
         }
         self.refs
-            .validate()
+            .validate_snapshot()
             .map_err(|_| CompilerFactError::InvalidFactReferences)?;
         if !valid_reference(&self.ordering_price_version)
             || invalid_digest(&self.ordering_price_digest)
         {
             return Err(CompilerFactError::InvalidFactReferences);
         }
-        if self.candidates.is_empty() || self.candidates.len() > 512 {
+        if self.candidates.len() > 512
+            || (!self.candidates.is_empty() && self.refs.inventory_revision == 0)
+        {
             return Err(CompilerFactError::InvalidCandidateCount);
         }
         let mut binding_ids = BTreeSet::new();

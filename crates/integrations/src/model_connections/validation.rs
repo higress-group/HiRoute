@@ -5,7 +5,7 @@ pub(super) fn validate_draft(
     credential: &NativeModelConnectionCredentialV1<'_>,
 ) -> Result<(), NativeModelConnectionErrorV1> {
     if draft.inference_model_id.as_ref().is_some_and(|id| {
-        !bounded_text(id, 512)
+        !hiroute_domain::valid_upstream_model_id(id)
             || draft.runtime_fallback_denied_model_ids.contains(id)
             || !draft
                 .models
@@ -38,7 +38,7 @@ pub(super) fn validate_draft(
         || draft
             .runtime_fallback_denied_model_ids
             .iter()
-            .any(|value| !bounded_text(value, 512) || value.trim() != value)
+            .any(|value| !hiroute_domain::valid_upstream_model_id(value))
         || draft
             .existing_source_id
             .as_ref()
@@ -107,8 +107,7 @@ pub(super) fn validate_draft(
     };
     let mut model_ids = std::collections::BTreeSet::new();
     let models_valid = draft.models.iter().all(|model| {
-        bounded_text(&model.upstream_model_id, 512)
-            && model.upstream_model_id.trim() == model.upstream_model_id
+        hiroute_domain::valid_upstream_model_id(&model.upstream_model_id)
             && bounded_text(&model.display_name, 256)
             && model
                 .catalog_configuration_id

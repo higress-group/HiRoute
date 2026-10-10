@@ -33,6 +33,7 @@ export function connectionErrorMessage(code: string, zh: boolean): string {
     ? '请完整填写模型能力；不支持的能力也需要明确选择。'
     : 'Complete every model capability, including capabilities that are not supported.';
   if (code === 'MODEL_ID_DUPLICATE') return zh ? '同一接入中的模型 ID 不能重复。' : 'Model IDs must be unique within this connection.';
+  if (code === 'MODEL_ID_INVALID') return zh ? '模型 ID 不能包含控制字符或首尾空白，且不能超过 512 字节。' : 'Model IDs cannot contain control characters or surrounding whitespace and must fit within 512 UTF-8 bytes.';
   if (code === 'MODEL_ID_REQUIRED') return zh ? '请填写服务使用的模型 ID。' : 'Enter the model ID used by the service.';
   if (code === 'MODEL_LIMITS_INVALID') return zh
     ? '上下文和输出上限需为正整数，且输出不能超过上下文。'
@@ -111,7 +112,11 @@ export function reasoningValue(
 }
 
 export function manualModelError(model: ModelDeclaration | undefined): string {
-  if (!model?.upstream_model_id.trim()) return 'MODEL_ID_REQUIRED';
+  if (!model?.upstream_model_id || /^\p{White_Space}+$/u.test(model.upstream_model_id)) return 'MODEL_ID_REQUIRED';
+  const id = model.upstream_model_id;
+  // Match Rust's Unicode White_Space/Cc rules without normalizing opaque IDs.
+  // Lone JS surrogates cannot be represented as the backend's UTF-8 strings.
+  if (/^\p{White_Space}|\p{White_Space}$/u.test(id) || new TextEncoder().encode(id).length > 512 || /[\p{Cc}\uD800-\uDFFF]/u.test(id)) return 'MODEL_ID_INVALID';
   const context = model.capabilities.context_tokens.value;
   const output = model.capabilities.max_output_tokens.value;
   if ((context !== null && (!Number.isSafeInteger(context) || context <= 0)) || (output !== null && (!Number.isSafeInteger(output) || output <= 0)) || (context !== null && output !== null && output > context)) return 'MODEL_LIMITS_INVALID';
