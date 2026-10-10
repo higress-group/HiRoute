@@ -71,6 +71,12 @@ pub(super) fn project(
     {
         // Plan controls own effort/budget, not unrelated native siblings such as
         // output formatting. Start each attempt from the immutable original tree.
+        if request.ingress_protocol != IngressProtocol::ChatCompletions {
+            object.remove("enable_thinking");
+            if let Some(thinking) = object.get_mut("thinking").and_then(Value::as_object_mut) {
+                thinking.remove("enabled");
+            }
+        }
         for (root, fields) in [
             ("reasoning", &["effort"][..]),
             ("thinking", &["type", "budget_tokens"][..]),
@@ -79,17 +85,6 @@ pub(super) fn project(
             if let Some(native) = object.get_mut(root).and_then(Value::as_object_mut) {
                 for field in fields {
                     native.remove(*field);
-                }
-            }
-            if let Some(configured) = canonical.get(root).and_then(Value::as_object) {
-                let native = object.entry(root).or_insert_with(|| json!({}));
-                let native = native
-                    .as_object_mut()
-                    .ok_or(ModelIrError::InvalidField("reasoning control"))?;
-                for field in fields {
-                    if let Some(value) = configured.get(*field) {
-                        native.insert((*field).into(), value.clone());
-                    }
                 }
             }
             if object

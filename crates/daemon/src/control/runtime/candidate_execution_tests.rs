@@ -622,7 +622,20 @@ fn unmarked_native_controls_never_infer_adaptive_from_model_name() {
             UpstreamProtocol::Responses,
             UpstreamProtocol::ChatCompletions,
         ] {
-            let profiles = reasoning_profiles(&native, protocol).unwrap();
+            let profiles = reasoning_profiles(&native, protocol);
+            if protocol == UpstreamProtocol::Responses
+                && matches!(
+                    native.capability,
+                    NativeReasoningCapabilityV1::Budget { .. }
+                )
+            {
+                assert!(
+                    profiles.is_none(),
+                    "Responses has no standard budget control"
+                );
+                continue;
+            }
+            let profiles = profiles.unwrap();
             assert!(
                 !serde_json::to_string(&profiles)
                     .unwrap()
@@ -635,7 +648,7 @@ fn unmarked_native_controls_never_infer_adaptive_from_model_name() {
                     }
                     GatewayNativeReasoningRenderV1::ExactFields { fields, .. }
                     | GatewayNativeReasoningRenderV1::ExactBudget { fields, .. } => {
-                        assert_eq!(fields.len(), 1)
+                        assert!(!fields.is_empty())
                     }
                 }
             }
@@ -662,7 +675,7 @@ fn portable_thinking_toggle_renders_the_selected_native_protocol() {
         (
             UpstreamProtocol::Responses,
             vec!["reasoning", "effort"],
-            GatewayNativeReasoningValueV1::String("high".into()),
+            GatewayNativeReasoningValueV1::String("low".into()),
             GatewayNativeReasoningValueV1::String("none".into()),
         ),
         (
@@ -677,7 +690,25 @@ fn portable_thinking_toggle_renders_the_selected_native_protocol() {
             let GatewayNativeReasoningRenderV1::ExactFields { fields, .. } = &profile.render else {
                 panic!("toggle must render an explicit wire field");
             };
-            assert_eq!(fields.len(), 1);
+            let enabled = profile.profile_id == "enabled";
+            assert_eq!(
+                fields.len(),
+                if protocol == UpstreamProtocol::Messages && enabled {
+                    2
+                } else {
+                    1
+                }
+            );
+            if protocol == UpstreamProtocol::Messages && enabled {
+                assert_eq!(
+                    fields[1],
+                    field(
+                        "thinking.budget_tokens",
+                        GatewayNativeReasoningValueV1::U64(1024),
+                        protocol
+                    )
+                );
+            }
             assert_eq!(fields[0].path, path);
             assert_eq!(fields[0].value, expected);
         }
@@ -703,7 +734,7 @@ fn deepseek_toggle_uses_each_native_protocols_documented_control() {
         (
             UpstreamProtocol::Responses,
             "reasoning.effort",
-            "high",
+            "low",
             "none",
         ),
         (
@@ -726,7 +757,25 @@ fn deepseek_toggle_uses_each_native_protocols_documented_control() {
                     protocol
                 )
             );
-            assert_eq!(fields.len(), 1);
+            let enabled = profile.profile_id == "enabled";
+            assert_eq!(
+                fields.len(),
+                if protocol == UpstreamProtocol::Messages && enabled {
+                    2
+                } else {
+                    1
+                }
+            );
+            if protocol == UpstreamProtocol::Messages && enabled {
+                assert_eq!(
+                    fields[1],
+                    field(
+                        "thinking.budget_tokens",
+                        GatewayNativeReasoningValueV1::U64(1024),
+                        protocol
+                    )
+                );
+            }
         }
     }
 }

@@ -9,7 +9,8 @@ use hiroute_gateway_core::runtime::driver::{
 };
 
 use hiroute_diagnostics::event::{
-    AttemptEnd, DiagnosticEvent, ModelStageKind, RequestCancel, RequestTimeout,
+    AttemptEnd, AttemptWireCommits, DiagnosticEvent, ModelStageKind, RequestCancel, RequestTimeout,
+    WireCommitState, WireHttpProtocol, WireModelResult, WireProviderError,
 };
 
 use super::{
@@ -67,7 +68,7 @@ impl RequestObservation {
         &self,
         disposition: &PublishedDisposition,
     ) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         {
@@ -86,7 +87,7 @@ impl RequestObservation {
         failure: &AttemptFailureFacts,
         disposition: Disposition,
     ) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let error_class = failure
@@ -108,7 +109,7 @@ impl RequestObservation {
         observation: &CompletedAttemptObservation,
         stable_binding_id: Option<&str>,
     ) {
-        if !self.is_enabled() {
+        if !self.tracks_attempts() {
             return;
         }
         let promoted = stable_binding_id.and_then(|stable_binding_id| {
@@ -165,6 +166,14 @@ impl RequestObservation {
             self.usage_fact(attempt, usage);
         }
 
+        let model_failed = provider
+            .and_then(|facts| facts.model_event.as_ref())
+            .is_some_and(|event| {
+                matches!(event.as_str(), "response_failed" | "response_incomplete")
+            });
+        let model_unknown = provider
+            .and_then(|facts| facts.model_event.as_ref())
+            .is_some_and(|event| event.as_str() == "response_unknown");
         if observation.disposition == Disposition::Accept && accepted {
             let attempt = {
                 let mut state = self.lock_state();
@@ -173,6 +182,8 @@ impl RequestObservation {
                     None
                 } else {
                     state.accepted_attempt_finished = true;
+                    state.accepted_attempt_failed = model_failed;
+                    state.accepted_attempt_unknown = model_unknown;
                     state.accepted_attempt_cancelled =
                         observation.downstream == AttemptDownstreamOutcome::Cancelled;
                     state.accepted_attempt.clone()
@@ -180,6 +191,9 @@ impl RequestObservation {
             };
             if let Some(attempt) = attempt {
                 let (outcome, error_class, retryable) = match observation.downstream {
+                    AttemptDownstreamOutcome::Completed if model_failed => {
+                        ("rejected", Some("provider_rejected"), Some(false))
+                    }
                     AttemptDownstreamOutcome::Completed => ("accepted", None, None),
                     AttemptDownstreamOutcome::Failed => (
                         "postcommit_transport_failed",
@@ -210,7 +224,13 @@ impl RequestObservation {
             let mut state = self.lock_state();
             state.published_disposition = None;
             let attempt = state.current_attempt.take();
-            if observation.disposition == Disposition::Continue
+            // A group's final failure can be Terminate even when the frozen request
+            // plan continues into another group. Cache the last real attempt here;
+            // a fallback event is emitted only if another real attempt starts.
+            if matches!(
+                observation.disposition,
+                Disposition::Continue | Disposition::Terminate
+            ) && observation.commits.downstream_semantic.is_clear()
                 && let Some(attempt) = &attempt
             {
                 state.previous_attempt_id = Some(attempt.attempt_id.clone());
@@ -449,7 +469,36 @@ impl RequestObservation {
         });
         let timed_out = transport.and_then(|facts| facts.timeout).is_some();
         let commit = commit_state(observation);
+        let (prepared_wire, provider_error, upstream_request_token) = {
+            let mut state = self.lock_state();
+            (
+                state.prepared_wire.take(),
+                state.provider_error,
+                state
+                    .response_wire
+                    .as_ref()
+                    .and_then(|wire| wire.upstream_request_token),
+            )
+        };
         if let Some(outcome) = attempt_outcome(outcome, timed_out) {
+            let provider_result = provider
+                .and_then(|facts| facts.model_event.as_ref())
+                .and_then(|event| match event.as_str() {
+                    "response_complete" => Some(WireModelResult::Complete),
+                    "response_failed" => Some(WireModelResult::Failed),
+                    "response_incomplete" => Some(WireModelResult::Incomplete),
+                    "response_unknown" => Some(WireModelResult::Unknown),
+                    _ => None,
+                });
+            let provider_error = provider_error.or(match provider_result {
+                Some(WireModelResult::Incomplete) => Some(WireProviderError::InvalidOutput),
+                Some(WireModelResult::Failed) => Some(WireProviderError::Unknown),
+                _ => None,
+            });
+            let retain_controls = outcome != hiroute_diagnostics::event::AttemptOutcome::Completed
+                || provider_result == Some(WireModelResult::Unknown)
+                || self.inner.context.handle().level()
+                    == Some(hiroute_diagnostics::DiagnosticLevel::Debug);
             self.emit_diagnostic(DiagnosticEvent::AttemptEnd(AttemptEnd {
                 reasoning_fields_removed: attempt.reasoning_fields_removed,
                 attempt_token: self.attempt_token(&attempt.attempt_id),
@@ -459,6 +508,32 @@ impl RequestObservation {
                 http_status: provider
                     .and_then(|facts| facts.http_status)
                     .map(|status| status.as_u16()),
+                http_protocol: transport.and_then(|facts| facts.upstream_protocol).map(
+                    |protocol| match protocol {
+                        hiroute_gateway_core::transport::HttpProtocol::Http1 => {
+                            WireHttpProtocol::Http1
+                        }
+                        hiroute_gateway_core::transport::HttpProtocol::Http2 => {
+                            WireHttpProtocol::Http2
+                        }
+                    },
+                ),
+                provider_error,
+                provider_result,
+                native_model: prepared_wire
+                    .as_ref()
+                    .filter(|_| retain_controls)
+                    .and_then(|wire| wire.native_model.clone()),
+                request_reasoning: prepared_wire
+                    .as_ref()
+                    .filter(|_| retain_controls)
+                    .and_then(|wire| wire.request_reasoning.clone()),
+                upstream_request_token,
+                commits: observation.map(|value| AttemptWireCommits {
+                    upstream_request: diagnostic_fence(value.commits.upstream_request),
+                    downstream_headers: diagnostic_fence(value.commits.downstream_headers),
+                    downstream_body: diagnostic_fence(value.commits.downstream_semantic),
+                }),
             }));
         }
         if let Some(facts) = transport {
@@ -491,6 +566,14 @@ impl RequestObservation {
                 phase: commit,
             }));
         }
+    }
+}
+
+fn diagnostic_fence(fence: CommitFence) -> WireCommitState {
+    match fence {
+        CommitFence::Clear => WireCommitState::Clear,
+        CommitFence::WriteConfirmed => WireCommitState::Committed,
+        CommitFence::WriteStartedMayHaveCommitted => WireCommitState::Poisoned,
     }
 }
 

@@ -17,6 +17,26 @@ pub(super) fn build_request_header(
     Ok(request)
 }
 
+pub(super) fn build_h2_request_header(
+    head: &PreparedRequestHead,
+    tls: bool,
+) -> Result<RequestHeader, AttemptError> {
+    let mut request = build_request_header(head)?;
+    let authority = request.remove_header(&http::header::HOST).ok_or_else(|| {
+        AttemptError::Transport("HTTP/2 request requires an authorized authority".into())
+    })?;
+    let uri = http::Uri::builder()
+        .scheme(if tls { "https" } else { "http" })
+        .authority(authority.as_bytes())
+        .path_and_query(head.path_and_query.as_ref())
+        .build()
+        .map_err(|_| AttemptError::Transport("invalid HTTP/2 request authority".into()))?;
+    // Pingora otherwise derives :authority from Host while retaining Host on
+    // the wire. Some upstream gateways reject that duplicate authority.
+    request.set_uri(uri);
+    Ok(request)
+}
+
 pub(super) async fn run_upstream_reader(
     mut session: ClientSession,
     sender: mpsc::Sender<Result<TransportPrecommitReceipt, AttemptError>>,

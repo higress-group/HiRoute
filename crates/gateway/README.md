@@ -9,6 +9,12 @@ branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
 
+The standalone `hirouted` entry can attach the same typed diagnostics using
+`--diagnostics-root <private-root>` and an optional temporary
+`--diagnostic-level-override`. These diagnostics do not enable session content
+capture or execution-fact storage. At Info, failed attempts retain the safe
+actual model and reasoning controls, HTTP protocol/status and body commit state.
+
 Messages thinking computation is projected in
 [request/native.rs](src/adapters/request/native.rs); request-local `thinking.display`
 is resolved by [ingress.rs](src/adapters/ingress.rs) before Replay externalization.
@@ -85,3 +91,24 @@ Use the repository [test planner](../../scripts/test-plan.py) and
 [configured validation runner](../../scripts/validation.py). An isolated Jev or
 diagnostic success does not establish product routing success. Source-text
 assertions and private helper names are not substitutes for these behaviors.
+
+## Native controls and completed responses
+
+[Reasoning serialization](src/adapters/request/reasoning.rs) owns protocol-level
+switch semantics and normalizes supported released projections without rewriting
+frozen publication identities. The daemon produces current profiles; explicit
+effort, manual budget and adaptive controls remain distinct. Shared Pingora
+transport assigns HTTP/2 authority once for model and classifier calls.
+
+[Response classification](src/runtime/driver/response.rs) classifies upstream
+failures for bounded relay within the frozen plan before the first downstream body.
+Streaming headers alone leave relay open; a later failed model terminal stays a failure in attempt,
+request and Agent turn observations even when its native bytes were delivered.
+The decision diagnostic uses closed error codes; provider text is not a public
+error message or a substitute for evidence of credential failure.
+
+Known incomplete nonstream JSON responses follow the same prebody relay boundary
+as streaming failures, for both native and converted protocols. Reported usage
+survives fallback; partial response content is not delivered. Attempt/deadline
+limits and fixed-source authority still apply, and unknown completion remains
+separate from an explicit failure.

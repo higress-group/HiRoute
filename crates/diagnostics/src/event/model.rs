@@ -46,6 +46,12 @@ pub struct AttemptBegin {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_token: Option<CorrelationToken>,
     pub attempt_index: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding_token: Option<CorrelationToken>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_model: Option<NativeModelId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_protocol: Option<IngressProtocol>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,6 +65,20 @@ pub struct AttemptEnd {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
     pub reasoning_fields_removed: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_protocol: Option<WireHttpProtocol>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_error: Option<WireProviderError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_result: Option<WireModelResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commits: Option<AttemptWireCommits>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_model: Option<NativeModelId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_reasoning: Option<WireRequestReasoning>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_request_token: Option<CorrelationToken>,
 }
 
 /// Counts only; never records history, signatures or provider error bodies.
@@ -149,6 +169,12 @@ pub struct Fallback {
     pub request_token: Option<CorrelationToken>,
     pub from_attempt_index: u64,
     pub reason: FallbackReason,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_attempt_index: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_attempt_token: Option<CorrelationToken>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_binding_token: Option<CorrelationToken>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,6 +185,10 @@ pub enum FallbackReason {
     ConnectorUnavailable,
     RateLimited,
     UpstreamFailure,
+    AuthenticationRejected,
+    InputRejected,
+    Timeout,
+    InvalidOutput,
     OtherStableReason,
 }
 
@@ -232,8 +262,8 @@ pub enum ExclusionReason {
     Other,
 }
 
-/// Wire-shape facts and closed request controls only: never header values,
-/// URLs, model names or response bodies.
+/// Wire-shape facts and bounded model/control fields: never raw header values,
+/// URLs, prompts, provider messages or response bodies.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpstreamWire {
@@ -246,6 +276,20 @@ pub struct UpstreamWire {
     pub http_status: Option<u16>,
     pub content_type: WireContentType,
     pub request_reasoning: Option<WireRequestReasoning>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_kind: Option<WireRequestKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_token: Option<CorrelationToken>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_index: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_model: Option<NativeModelId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_request_token: Option<CorrelationToken>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_protocol: Option<WireHttpProtocol>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_error: Option<WireProviderError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -254,6 +298,14 @@ pub struct WireRequestReasoning {
     pub responses_effort: Option<WireReasoningEffort>,
     pub chat_effort: Option<WireReasoningEffort>,
     pub messages_effort: Option<WireReasoningEffort>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages_thinking: Option<WireThinkingType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages_budget_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_thinking: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -275,6 +327,108 @@ pub enum WireReasoningEffort {
 pub enum UpstreamWirePhase {
     Request,
     Response,
+    Failure,
+    Completed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireRequestKind {
+    ModelInference,
+    DecisionService,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireHttpProtocol {
+    Http1,
+    Http2,
+}
+
+/// The observed model terminal is independent of successful HTTP transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireModelResult {
+    Complete,
+    Failed,
+    Incomplete,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireThinkingType {
+    Enabled,
+    Disabled,
+    Adaptive,
+    Other,
+}
+
+/// Closed attribution only. Provider error text and arbitrary codes never enter logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireProviderError {
+    ThinkingBudgetRejected,
+    AuthenticationRejected,
+    RateLimited,
+    EndpointRejected,
+    InputRejected,
+    UpstreamUnavailable,
+    InvalidOutput,
+    Timeout,
+    Cancelled,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AttemptWireCommits {
+    pub upstream_request: WireCommitState,
+    pub downstream_headers: WireCommitState,
+    /// Any response body byte, including a failure event, closes transparent replay.
+    pub downstream_body: WireCommitState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireCommitState {
+    Clear,
+    Committed,
+    Poisoned,
+}
+
+/// Only a native identifier from the selected encoder may construct this field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct NativeModelId(String);
+
+impl NativeModelId {
+    pub fn new(value: &str) -> Option<Self> {
+        (!value.is_empty()
+            && value.len() <= 256
+            && !value.contains("://")
+            && value.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
+            }))
+        .then(|| Self(value.to_owned()))
+    }
+}
+
+impl<'de> Deserialize<'de> for NativeModelId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Identifier;
+        impl<'de> serde::de::Visitor<'de> for Identifier {
+            type Value = NativeModelId;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a bounded native model identifier")
+            }
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                NativeModelId::new(value)
+                    .ok_or_else(|| E::custom("invalid native model identifier"))
+            }
+        }
+        deserializer.deserialize_str(Identifier)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -285,4 +439,45 @@ pub enum WireContentType {
     Html,
     Other,
     Missing,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn historical_wire_and_attempt_records_keep_missing_facts_unknown() {
+        let old_wire = serde_json::json!({"request_token":null,"phase":"response",
+            "bearer_present":false,"api_key_present":false,"authorization_bytes":0,
+            "body_bytes":null,"http_status":400,"content_type":"json","request_reasoning":null});
+        let wire: UpstreamWire = serde_json::from_value(old_wire).unwrap();
+        assert!(wire.native_model.is_none() && wire.provider_error.is_none());
+        assert!(wire.attempt_index.is_none() && wire.http_protocol.is_none());
+        let old_attempt = serde_json::json!({"attempt_token":null,"outcome":"failed",
+            "commit":"unknown","elapsed_ms":1,"http_status":400,"reasoning_fields_removed":0});
+        let attempt: AttemptEnd = serde_json::from_value(old_attempt).unwrap();
+        assert!(attempt.commits.is_none() && attempt.http_protocol.is_none());
+        let mut encoded = serde_json::to_value(wire).unwrap();
+        encoded["provider_error"] = "provider-secret-marker".into();
+        assert!(serde_json::from_value::<UpstreamWire>(encoded).is_err());
+    }
+
+    #[test]
+    fn native_model_field_rejects_content_urls_and_oversized_identifiers() {
+        for value in [
+            "",
+            "prompt with spaces",
+            "https://credential.invalid",
+            "model\nsecret",
+            &"x".repeat(257),
+        ] {
+            assert!(NativeModelId::new(value).is_none());
+            assert!(serde_json::from_value::<NativeModelId>(serde_json::json!(value)).is_err());
+        }
+        assert_eq!(
+            serde_json::to_value(NativeModelId::new("provider/qwen3.6-flash:revision").unwrap())
+                .unwrap(),
+            "provider/qwen3.6-flash:revision"
+        );
+    }
 }

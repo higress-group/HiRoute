@@ -59,6 +59,8 @@ impl<T: AttemptTransport> AttemptExchange<T> {
             match connect {
                 Ok(()) => {
                     self.connect_elapsed = Some(self.attempt_started_at.elapsed());
+                    self.negotiated_protocol =
+                        self.transport.as_ref().map(AttemptTransport::protocol);
                     self.connected = true;
                     return Ok(());
                 }

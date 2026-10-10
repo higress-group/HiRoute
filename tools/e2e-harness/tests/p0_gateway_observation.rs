@@ -18,6 +18,324 @@ const ACCEPTED_STREAM_TEXT: &[u8] = b"event: response.output_text.delta\ndata: {
 const ACCEPTED_STREAM_COMPLETED: &[u8] = b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"observation-stream\",\"model\":\"native-observed\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"observation-message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"accepted-stream-22008\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":13,\"output_tokens\":5,\"total_tokens\":18,\"input_tokens_details\":{\"cached_tokens\":4},\"output_tokens_details\":{\"reasoning_tokens\":3}}}}\n\n";
 
 #[test]
+fn production_info_cross_group_relay_links_only_actual_attempts() {
+    for relay_allowed in [true, false] {
+        let rejected = NativeProvider::start(vec![ProviderReply::StreamComplete {
+            status: 200,
+            body: br#"event: response.failed
+data: {"type":"response.failed","response":{"id":"cross-group-failure","model":"native-observed","status":"failed","output":[],"error":{"code":"InvalidParameter","message":"<400> InternalError.Algo.InvalidParameter: The thinking_budget parameter must be a positive integer and not greater than 81920"},"usage":{"input_tokens":7,"output_tokens":2}}}
+
+"#,
+        }]);
+        let accepted = NativeProvider::start(vec![ProviderReply::StreamComplete {
+            status: 200,
+            body: br#"event: response.completed
+data: {"type":"response.completed","response":{"id":"cross-group-success","model":"native-observed","status":"completed","output":[{"type":"message","id":"cross-group-message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"accepted-cross-group-response","annotations":[]}]}],"usage":{"input_tokens":11,"output_tokens":7}}}
+
+"#,
+        }]);
+        let fixture = RuntimeFixture::launch_classified_with_info_diagnostics(
+            &[&rejected, &accepted],
+            if relay_allowed { 2 } else { 1 },
+        );
+        assert!(fixture.observation_root.is_none());
+        let response = fixture.request_body(
+            br#"{"model":"runtime-model","input":"private-cross-group-input","stream":true}"#,
+        );
+        assert_eq!(response.status, if relay_allowed { 200 } else { 502 });
+        assert_eq!(rejected.calls(), 1);
+        assert_eq!(accepted.calls(), usize::from(relay_allowed));
+        let path = fixture
+            .diagnostics_root
+            .as_ref()
+            .unwrap()
+            .join("daemon/current.jsonl");
+        let (log, records) =
+            wait_diagnostic_terminal(&path, if relay_allowed { "completed" } else { "failed" });
+        let attempts = records
+            .iter()
+            .filter_map(|record| record.pointer("/event/attempt_begin"))
+            .collect::<Vec<_>>();
+        let ended = records
+            .iter()
+            .filter_map(|record| record.pointer("/event/attempt_end"))
+            .collect::<Vec<_>>();
+        let relays = records
+            .iter()
+            .filter_map(|record| record.pointer("/event/fallback"))
+            .collect::<Vec<_>>();
+        assert_eq!(attempts.len(), if relay_allowed { 2 } else { 1 }, "{log}");
+        assert_eq!(ended.len(), attempts.len(), "{log}");
+        assert_eq!(ended[0]["native_model"], "runtime-native-model-1", "{log}");
+        assert_eq!(
+            ended[0]["request_reasoning"]["responses_effort"], "low",
+            "{log}"
+        );
+        assert_eq!(ended[0]["http_status"], 200, "{log}");
+        assert_eq!(ended[0]["provider_result"], "failed", "{log}");
+        assert_eq!(
+            ended[0]["provider_error"], "thinking_budget_rejected",
+            "{log}"
+        );
+        assert_eq!(ended[0]["commits"]["downstream_body"], "clear", "{log}");
+        assert_eq!(relays.len(), usize::from(relay_allowed), "{log}");
+        if relay_allowed {
+            let relay = relays[0];
+            assert_eq!(relay["reason"], "invalid_output", "{log}");
+            assert_eq!(
+                relay["from_attempt_index"], attempts[0]["attempt_index"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["next_attempt_index"], attempts[1]["attempt_index"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["request_token"], attempts[0]["request_token"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["request_token"], attempts[1]["request_token"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["next_attempt_token"], attempts[1]["attempt_token"],
+                "{log}"
+            );
+            assert_eq!(
+                relay["next_binding_token"], attempts[1]["binding_token"],
+                "{log}"
+            );
+            assert_ne!(
+                attempts[0]["binding_token"], attempts[1]["binding_token"],
+                "{log}"
+            );
+            assert_eq!(ended[1]["provider_result"], "complete", "{log}");
+            assert_eq!(ended[1]["outcome"], "completed", "{log}");
+        }
+        for private in [
+            "private-cross-group-input",
+            "provider-secret-1",
+            "<400> InternalError",
+            "accepted-cross-group-response",
+        ] {
+            assert!(
+                !log.contains(private),
+                "private content reached Info diagnostics"
+            );
+        }
+    }
+}
+
+#[test]
+fn production_info_failure_logs_actual_wire_and_body_relay_without_content_capture() {
+    let rejected = NativeProvider::start(vec![ProviderReply::CompleteWithRequestId {
+        status: 400,
+        request_id: "private-upstream-request-id",
+        body: br#"{"error":{"message":"<400> InternalError.Algo.InvalidParameter: The thinking_budget parameter must be a positive integer and not greater than 81920","type":"invalid_request_error"}}"#,
+    }]);
+    let accepted = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: br#"{"id":"info-ok","model":"native-observed","status":"completed","output":[{"type":"message","id":"info-message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"accepted-info-response","annotations":[]}]}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}"#,
+    }]);
+    let fixture = RuntimeFixture::launch_with_info_diagnostics(&[&rejected, &accepted], 2);
+    assert!(fixture.observation_root.is_none());
+    let response = fixture.request_body(
+        br#"{"model":"runtime-model","input":"private-input-marker","stream":false}"#,
+    );
+    assert_eq!(response.status, 200);
+    assert_eq!((rejected.calls(), accepted.calls()), (1, 1));
+    assert!(String::from_utf8_lossy(&response.body).contains("accepted-info-response"));
+    let path = fixture
+        .diagnostics_root
+        .as_ref()
+        .unwrap()
+        .join("daemon/current.jsonl");
+    let (log, records) = wait_diagnostic_terminal(&path, "completed");
+    assert!(
+        records.iter().any(|record| {
+            record
+                .pointer("/event/level_applied/level")
+                .and_then(Value::as_str)
+                == Some("info")
+        }),
+        "{log}"
+    );
+    let failed = records
+        .iter()
+        .find_map(|record| {
+            let event = record.pointer("/event/attempt_end")?;
+            (event["outcome"] == "failed").then_some(event)
+        })
+        .expect("failed attempt must remain visible at Info");
+    assert_eq!(failed["native_model"], "runtime-native-model-1", "{log}");
+    assert_eq!(
+        failed["request_reasoning"]["responses_effort"], "low",
+        "{log}"
+    );
+    assert_eq!(failed["http_status"], 400, "{log}");
+    assert_eq!(failed["http_protocol"], "http1", "{log}");
+    assert_eq!(
+        failed["provider_error"], "thinking_budget_rejected",
+        "{log}"
+    );
+    assert_eq!(failed["provider_result"], "failed", "{log}");
+    assert!(failed["upstream_request_token"].as_str().is_some(), "{log}");
+    assert_eq!(failed["commits"]["downstream_headers"], "clear", "{log}");
+    assert_eq!(failed["commits"]["downstream_body"], "clear", "{log}");
+    let next = records
+        .iter()
+        .find_map(|record| record.pointer("/event/fallback"))
+        .expect("fallback must identify its next target");
+    assert_eq!(next["next_attempt_index"], 2, "{log}");
+    assert!(next["next_binding_token"].as_str().is_some(), "{log}");
+    assert!(
+        records.iter().any(|record| {
+            record.pointer("/event/attempt_end").is_some_and(|event| {
+                event["outcome"] == "completed"
+                    && event["provider_error"].is_null()
+                    && event["provider_result"] == "complete"
+            })
+        }),
+        "the successful fallback must not inherit the failed provider cause: {log}"
+    );
+    for private in [
+        "private-input-marker",
+        "private-upstream-request-id",
+        "provider-secret-1",
+        "<400> InternalError",
+        "accepted-info-response",
+    ] {
+        assert!(
+            !log.contains(private),
+            "private content reached Info diagnostics"
+        );
+    }
+    assert!(
+        !records.iter().any(|record| {
+            record
+                .pointer("/event/upstream_wire/phase")
+                .and_then(Value::as_str)
+                == Some("request")
+        }),
+        "Info failures must not enable successful request detail: {log}"
+    );
+}
+
+#[test]
+fn production_info_unknown_model_terminal_keeps_uncertainty_separate_from_failure() {
+    // Native forward compatibility preserves this future status, while its
+    // semantic result remains unknown despite HTTP 200.
+    let provider = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: br#"{"id":"unknown-info","model":"native-observed","status":"provider_future_status","output":[{"type":"message","id":"unknown-info-message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"private-unknown-response","annotations":[]}]}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}"#,
+    }]);
+    let fixture = RuntimeFixture::launch_with_info_diagnostics(&[&provider], 1);
+    let response = fixture.request_body(
+        br#"{"model":"runtime-model","input":"private-unknown-input","stream":false}"#,
+    );
+    assert_eq!(response.status, 200);
+    assert_eq!(provider.calls(), 1);
+    let path = fixture
+        .diagnostics_root
+        .as_ref()
+        .unwrap()
+        .join("daemon/current.jsonl");
+    let (log, records) = wait_diagnostic_terminal(&path, "completed");
+    let terminal = records
+        .iter()
+        .find(|record| record.pointer("/event/attempt_end").is_some())
+        .expect("uncertain model result must have an attempt terminal");
+    assert_eq!(terminal["level"], "warn", "{log}");
+    let attempt = &terminal["event"]["attempt_end"];
+    assert_eq!(attempt["outcome"], "completed", "{log}");
+    assert_eq!(attempt["http_status"], 200, "{log}");
+    assert_eq!(attempt["provider_result"], "unknown", "{log}");
+    assert!(attempt["provider_error"].is_null(), "{log}");
+    assert_eq!(attempt["commits"]["downstream_body"], "committed", "{log}");
+    assert_eq!(attempt["native_model"], "runtime-native-model-1", "{log}");
+    assert_eq!(
+        attempt["request_reasoning"]["responses_effort"], "low",
+        "{log}"
+    );
+    assert!(!log.contains("private-unknown-input") && !log.contains("private-unknown-response"));
+    assert!(fixture.observation_root.is_none());
+}
+
+#[test]
+fn production_unknown_completion_retains_transport_usage_and_an_unknown_agent_turn() {
+    let provider = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: br#"{"id":"unknown-turn","model":"native-observed","status":"provider_future_status","output":[{"type":"message","id":"unknown-turn-message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"unknown-turn-response","annotations":[]}]}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}"#,
+    }]);
+    let fallback = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: ACCEPTED_BODY,
+    }]);
+    let fixture = RuntimeFixture::launch_classified_with_observation(
+        &[&provider, &fallback],
+        1,
+        ObservationFaults::healthy(),
+    );
+    let response = fixture
+        .request_body(br#"{"model":"runtime-model","input":"unknown-turn-input","stream":false}"#);
+    assert_eq!(response.status, 200);
+    assert_eq!(provider.calls(), 1);
+    assert_eq!(fallback.calls(), 0);
+    let facts = wait_complete_accepted_request(fixture.observation_root.as_deref().unwrap());
+    for (kind, field, expected) in [
+        ("request_finished", "outcome", "accepted"),
+        ("attempt_finished", "outcome", "accepted"),
+        ("agent_turn_finished", "status", "unknown"),
+    ] {
+        assert!(
+            facts
+                .iter()
+                .any(|row| { row["fact"]["kind"] == kind && row["fact"][field] == expected }),
+            "{kind} must retain its transport or semantic result: {facts:?}"
+        );
+    }
+    assert!(facts.iter().any(|row| {
+        row["fact"]["kind"] == "attempt_finished"
+            && row["fact"]["provider_model_event"] == "response_unknown"
+            && row["fact"]["error_class"].is_null()
+    }));
+    assert!(facts.iter().any(|row| {
+        row["fact"]["kind"] == "usage_and_cache"
+            && row["fact"]["input_tokens"] == 11
+            && row["fact"]["output_tokens"] == 7
+    }));
+}
+
+fn wait_diagnostic_terminal(path: &Path, outcome: &str) -> (String, Vec<Value>) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let log = fs::read_to_string(path).unwrap_or_default();
+        let records = log
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        if records.iter().any(|record| {
+            record
+                .pointer("/event/request_end/outcome")
+                .and_then(Value::as_str)
+                == Some(outcome)
+        }) {
+            return (log, records);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "missing {outcome} request terminal: {log}"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
 fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_content() {
     hiroute_e2e::p0_execution_receipt!(
         "observation.accepted_content",
@@ -403,7 +721,7 @@ fn real_native_client_completion_before_http_close_keeps_response_and_observatio
     let reasoning = serde_json::json!({"type":"reasoning","id":"thought","status":null,
         "summary":[{"type":"summary_text","text":"fixture thought"}],"content":null});
     let reasoning_stream = [
-        serde_json::json!({"type":"response.reasoning_text.delta","output_index":0,"item_id":"thought","content_index":0,"delta":"fixture thought"}),
+        serde_json::json!({"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"thought","summary_index":0,"delta":"fixture thought"}),
         serde_json::json!({"type":"response.output_item.done","output_index":0,"item":reasoning}),
     ].into_iter().flat_map(|event| format!("data:{event}\n\n").into_bytes()).collect::<Vec<_>>();
     let text = String::from_utf8(ACCEPTED_STREAM_TEXT.to_vec())

@@ -7,9 +7,10 @@ use hiroute_gateway::server::core_runtime::model_ir::{
     ResponseBlockKind,
 };
 use hiroute_gateway::server::core_runtime::profiles::{
-    CandidateProtocolProfile, ClientProtocolProfile, Fidelity, NativeReasoningFieldAssignment,
-    NativeReasoningRender, NativeReasoningValue, ReasoningAccounting, ReasoningControlKind,
-    ReasoningProfileCapability, StreamingRefusalSemantics, fixed_reasoning,
+    CandidateProtocolProfile, ClientProtocolProfile, CriticalFact, Fidelity,
+    NativeReasoningFieldAssignment, NativeReasoningRender, NativeReasoningValue,
+    ReasoningAccounting, ReasoningControlKind, ReasoningProfileCapability,
+    StreamingRefusalSemantics, fixed_reasoning,
 };
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
@@ -246,7 +247,7 @@ fn protocol_reviewer_reasoning_catalog_renders_fixed_toggle_discrete_and_budget_
 
     let messages_request = decode_ingress_request(
         IngressProtocol::Messages,
-        &json!({"model":"agent/research","max_tokens":1,"messages":[{"role":"user","content":"hello"}]}),
+        &json!({"model":"agent/research","max_tokens":2048,"messages":[{"role":"user","content":"hello"}]}),
     )
     .unwrap();
     let budget = ReasoningProfileCapability {
@@ -267,17 +268,35 @@ fn protocol_reviewer_reasoning_catalog_renders_fixed_toggle_discrete_and_budget_
         accounting: ReasoningAccounting::WithinOutputCap,
         additional_reservation_tokens: 0,
     };
-    let budget_profile = CandidateProtocolProfile::exact_portable_path(
+    let mut budget_profile = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Messages,
         IngressProtocol::Messages,
         "budget-model",
         budget,
+    );
+    budget_profile.capability.context.max_output_tokens = CriticalFact::Exact(4096);
+    assert_eq!(
+        project_candidate_request(&messages_request, &budget_profile)
+            .unwrap()
+            .body["max_tokens"],
+        2048
     );
     assert_eq!(
         project_candidate_request(&messages_request, &budget_profile)
             .unwrap()
             .body["thinking"],
         json!({"type":"enabled","budget_tokens":1024})
+    );
+    let capped_request = decode_ingress_request(
+        IngressProtocol::Messages,
+        &json!({"model":"agent/research","max_tokens":1024,"messages":[{"role":"user","content":"hello"}]}),
+    )
+    .unwrap();
+    assert_eq!(
+        project_candidate_request(&capped_request, &budget_profile)
+            .unwrap_err()
+            .code(),
+        "CLIENT_PROTOCOL_UNREPRESENTABLE"
     );
     let mut invalid_budget = budget_profile;
     if let NativeReasoningRender::ExactBudget {
