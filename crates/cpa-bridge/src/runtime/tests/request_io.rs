@@ -718,11 +718,9 @@ fn cpa_auth_rejection_preserves_native_or_independent_repair_mode() {
         let fixture = active_fixture(kind);
         *fixture.control.inner.discovery_error.lock() =
             Some(AccountDiscoveryError::AuthenticationRequired);
-        let error = fixture
-            .runtime
-            .discover_materializations(None)
-            .err()
-            .expect("CPA rejects this credential");
+        let Err(error) = fixture.runtime.discover_materializations(None) else {
+            panic!("CPA rejects this credential");
+        };
         let failure = error
             .subscription_failure()
             .expect("closed credential cause");
