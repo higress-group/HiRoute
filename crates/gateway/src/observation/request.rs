@@ -82,6 +82,12 @@ pub(super) struct RequestObservationInner {
 
 #[derive(Default)]
 pub(super) struct RequestObservationState {
+    #[cfg(all(unix, debug_assertions))]
+    pub(super) private_capture: Option<(
+        String,
+        String,
+        crate::runtime::stream_capture::PendingCapture,
+    )>,
     pub(super) agent_plan_id: Option<String>,
     pub(super) candidates: BTreeMap<String, CandidateObservation>,
     pub(super) pending_attempt: Option<AttemptObservation>,
@@ -241,32 +247,6 @@ impl RequestObservation {
         self.inner
             .context
             .token(CorrelationDomain::Attempt, attempt_id)
-    }
-
-    pub(crate) fn response_failure(
-        &self,
-        stage: hiroute_diagnostics::event::ResponseFailureStage,
-        reason: hiroute_diagnostics::event::ResponseFailureReason,
-    ) {
-        let state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        let attempt = state
-            .accepted_attempt
-            .as_ref()
-            .or(state.current_attempt.as_ref())
-            .or(state.pending_attempt.as_ref());
-        let ordinal = attempt
-            .map(|a| a.ordinal)
-            .filter(|n| *n != 0)
-            .unwrap_or(state.next_attempt_ordinal);
-        drop(state);
-        self.emit_diagnostic(DiagnosticEvent::ResponseFailure(
-            hiroute_diagnostics::event::ResponseFailure {
-                request_token: self.inner.request_token,
-                attempt_index: u64::from(ordinal),
-                stage,
-                reason,
-            },
-        ));
     }
 
     pub(crate) fn reasoning_cleanup(

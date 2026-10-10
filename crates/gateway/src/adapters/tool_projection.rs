@@ -11,7 +11,7 @@ use super::ProtocolAdapterError;
 
 const MAX_CHAT_TOOL_NAME_BYTES: usize = 64;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ChatToolIdentity {
     pub(crate) emitted_name: String,
     pub(crate) kind: ToolKindV1,
@@ -19,7 +19,7 @@ pub(crate) struct ChatToolIdentity {
     pub(crate) local_name: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ChatToolProjection {
     entries: Vec<ChatToolIdentity>,
 }

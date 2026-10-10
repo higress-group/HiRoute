@@ -40,7 +40,7 @@ use super::state::{
 
 mod materialization;
 mod response;
-mod response_diagnostics;
+pub(crate) mod response_diagnostics;
 mod selection;
 
 pub(crate) use materialization::TargetResolver;
@@ -165,6 +165,8 @@ impl ProductionReplaySeedEnvelope {
 }
 
 pub struct ProductionAttemptState {
+    #[cfg(all(unix, debug_assertions))]
+    capture: Option<super::stream_capture::Capture>,
     response_status: Option<http::StatusCode>,
     resolved_target: TransportTarget,
     permits: OwnedAttemptStatePermits,
@@ -190,6 +192,16 @@ pub struct ProductionAttemptState {
 }
 
 impl ProductionAttemptState {
+    #[cfg(all(unix, debug_assertions))]
+    pub(crate) fn register_private_capture(
+        &self,
+        request: &crate::server::core_runtime::observation::RequestObservation,
+    ) {
+        if let Some(capture) = &self.capture {
+            capture.register(request);
+        }
+    }
+
     pub(crate) fn chat_tool_projection_for_observation(
         &self,
     ) -> Option<&adapters::ChatToolProjection> {
@@ -198,6 +210,8 @@ impl ProductionAttemptState {
 }
 
 pub struct ProductionReadiness {
+    #[cfg(all(unix, debug_assertions))]
+    capture: Option<super::stream_capture::Capture>,
     response_status: http::StatusCode,
     content_type: &'static str,
     prefix: ChargedBodyQueue,

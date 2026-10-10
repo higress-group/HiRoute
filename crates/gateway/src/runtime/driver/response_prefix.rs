@@ -92,9 +92,13 @@ fn decode_prefix(
         .renderer
         .as_mut()
         .ok_or_else(|| Arc::from("client stream renderer is unavailable"))?;
-    let mut status = decoder
-        .feed(bytes, end_stream)
-        .map_err(|error| response_diagnostics::adapter(FailureStage::Decode, error))?;
+    let mut status = decoder.feed(bytes, end_stream).map_err(|error| {
+        response_diagnostics::adapter_at(
+            FailureStage::Decode,
+            error,
+            Some(decoder.diagnostic_position()),
+        )
+    })?;
     let mut output = Vec::new();
     loop {
         for event in decoder.take_events() {
@@ -120,9 +124,13 @@ fn decode_prefix(
         if status != adapters::ResponseDecodeStatus::NeedDrain {
             break;
         }
-        status = decoder
-            .resume()
-            .map_err(|_| Arc::from("stream prefix drain failed"))?;
+        status = decoder.resume().map_err(|error| {
+            response_diagnostics::adapter_at(
+                FailureStage::Decode,
+                error,
+                Some(decoder.diagnostic_position()),
+            )
+        })?;
     }
     let terminal = status == adapters::ResponseDecodeStatus::Terminal;
     if terminal && !end_stream {
@@ -133,7 +141,7 @@ fn decode_prefix(
             .take()
             .expect("prefix decoder is present")
             .finish()
-            .map_err(|_| Arc::from("stream prefix ended without terminal"))?;
+            .map_err(|error| response_diagnostics::adapter(FailureStage::EndOfStream, error))?;
     }
     push_native_prefix_unit(state, output, terminal || end_stream)?;
     Ok(None)

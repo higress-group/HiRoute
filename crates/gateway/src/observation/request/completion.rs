@@ -98,6 +98,10 @@ impl RequestObservation {
             .unwrap_or_else(|| failure.termination_reason.as_str());
         let mut state = self.lock_state();
         let pending = state.pending_attempt.take();
+        #[cfg(all(unix, debug_assertions))]
+        {
+            state.private_capture = None;
+        }
         if disposition == Disposition::Continue {
             state.previous_attempt_id = pending.and_then(|attempt| attempt.previous_attempt_id);
             state.next_attempt_reason = Some(format!("precommit_fallback_after_{error_class}"));
@@ -302,6 +306,23 @@ impl RequestObservation {
             ],
         );
         state.current_attempt = Some(attempt.clone());
+        #[cfg(all(unix, debug_assertions))]
+        let capture = state
+            .private_capture
+            .take()
+            .filter(|(binding, credential, _)| {
+                *binding == attempt.stable_binding_id && *credential == attempt.credential_ref
+            });
+        drop(state);
+        #[cfg(all(unix, debug_assertions))]
+        if let Some((_, _, capture)) = capture {
+            capture.promoted(crate::runtime::stream_capture::CaptureCorrelation {
+                request_token: self.inner.request_token,
+                request_id: self.inner.metadata.request_id.clone(),
+                attempt_index: attempt.ordinal,
+                attempt_token: self.attempt_token(&attempt.attempt_id),
+            });
+        }
         Some(attempt)
     }
 

@@ -111,6 +111,12 @@ impl ProviderRuntimePort for ObservedProductionProvider {
         if let (Some(observation), Some(credential_ref)) = (&observation, no_credential_ref) {
             observation.no_credential_materialized(&stable_binding_id, &credential_ref);
         }
+        // The unauthenticated profile has no credential-read staging hook.
+        // Bind only after authoritative materialization and its None staging.
+        #[cfg(all(unix, debug_assertions))]
+        if let Some(observation) = &observation {
+            inner.register_private_capture(observation);
+        }
         let tracker = observation.as_ref().and_then(|observation| {
             observation.begin_response_capture(
                 &stable_binding_id,

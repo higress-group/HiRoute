@@ -1733,3 +1733,7 @@ mod inbound_auth_tests;
 #[cfg(test)]
 #[path = "core_runtime/acceptance_tests.rs"]
 mod acceptance_tests;
+
+#[cfg(all(test, unix, debug_assertions, feature = "e2e-test-control"))]
+#[path = "core_runtime/response_diagnostics_tests.rs"]
+mod response_diagnostics_tests;

@@ -113,6 +113,42 @@ pub struct ResponseFailure {
     pub attempt_index: u64,
     pub stage: ResponseFailureStage,
     pub reason: ResponseFailureReason,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_token: Option<CorrelationToken>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<ResponseFailureField>,
+    /// One-based SSE event visited, including the event rejected by the decoder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_index: Option<u64>,
+    /// Bytes supplied to the decoder, an upper bound rather than a token offset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub received_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseFailureField {
+    Object,
+    Choices,
+    Delta,
+    Content,
+    ToolCalls,
+    ToolId,
+    ToolName,
+    ToolArguments,
+    FinishReason,
+    Usage,
+    SystemFingerprint,
+    ServiceTier,
+    Logprobs,
+    Model,
+    Id,
+    Type,
+    Index,
+    Role,
+    Output,
+    Status,
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,6 +176,16 @@ pub enum ResponseFailureReason {
     NoSemanticOutput,
     ProviderRejected,
     OtherProtocol,
+    UnsupportedField,
+    UnsupportedValue,
+    MissingToolIdentity,
+    InvalidToolArguments,
+    ProviderStateNotPortable,
+    ToolIdBindingRequired,
+    ToolContinuationConflict,
+    Capability,
+    ContextProjection,
+    Serialization,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

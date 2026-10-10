@@ -43,6 +43,8 @@ pub struct NativeResponseDecoder {
     framer: Option<SseFramer>,
     ended: bool,
     end_stream_pending: bool,
+    received_bytes: u64,
+    frame_index: u64,
 }
 
 impl NativeResponseDecoder {
@@ -186,6 +188,8 @@ impl NativeResponseDecoder {
             framer,
             ended: false,
             end_stream_pending: false,
+            received_bytes: 0,
+            frame_index: 0,
         })
     }
 
@@ -205,6 +209,7 @@ impl NativeResponseDecoder {
         if self.events.len() >= MAX_QUEUED_EVENTS {
             return Ok(ResponseDecodeStatus::NeedDrain);
         }
+        self.received_bytes = self.received_bytes.saturating_add(bytes.len() as u64);
         let need_drain = if self.streaming {
             if end_stream {
                 self.end_stream_pending = true;
@@ -260,6 +265,7 @@ impl NativeResponseDecoder {
             &self.budget,
             &mut self.state,
             &mut self.events,
+            &mut self.frame_index,
         )?;
         if matches!(outcome, SseFeedOutcome::Complete) && self.end_stream_pending {
             self.finish_stream_eof()?;
@@ -275,6 +281,11 @@ impl NativeResponseDecoder {
 
     pub fn take_events(&mut self) -> Vec<ModelStreamEventV1> {
         self.events.drain(..).collect()
+    }
+
+    /// Safe failure position; received bytes are an upper bound for a multi-event read.
+    pub fn diagnostic_position(&self) -> (u64, u64) {
+        (self.frame_index, self.received_bytes)
     }
 
     pub fn sse_complexity(&self) -> Option<SseComplexity> {
@@ -310,13 +321,14 @@ impl NativeResponseDecoder {
     ) -> Result<SseFeedOutcome, ProtocolAdapterError> {
         let charged =
             ChargedBytes::copy_from_opaque(&self.budget, MemoryRole::TransportInflight, bytes)
-                .map_err(|error| ModelIrError::InvalidSse(error.to_string()))?;
+                .map_err(|_| ModelIrError::BufferLimit(bytes.len()))?;
         let outcome = run_sse(
             self.framer.as_mut().expect("streaming decoder has framer"),
             Some((charged, end_stream)),
             &self.budget,
             &mut self.state,
             &mut self.events,
+            &mut self.frame_index,
         )?;
         Ok(outcome)
     }
@@ -337,12 +349,14 @@ fn run_sse(
     budget: &StreamBudget,
     state: &mut ProtocolState,
     output: &mut VecDeque<ModelStreamEventV1>,
+    frame_index: &mut u64,
 ) -> Result<SseFeedOutcome, ProtocolAdapterError> {
     let mut visitor = NativeVisitor {
         budget,
         state,
         output,
         protocol_error: None,
+        frame_index,
     };
     let mut sink = DiscardOutput;
     let framed = match input {
@@ -352,7 +366,16 @@ fn run_sse(
     if let Some(error) = visitor.protocol_error {
         return Err(error);
     }
-    framed.map_err(|error| ModelIrError::InvalidSse(error.to_string()).into())
+    framed.map_err(|error| {
+        match error {
+            SseError::BudgetExceeded
+            | SseError::EventLimit
+            | SseError::PendingLimit
+            | SseError::OutputLimit => ModelIrError::BufferLimit(usize::MAX),
+            other => ModelIrError::InvalidSse(other.to_string()),
+        }
+        .into()
+    })
 }
 
 struct NativeVisitor<'a> {
@@ -360,6 +383,7 @@ struct NativeVisitor<'a> {
     state: &'a mut ProtocolState,
     output: &'a mut VecDeque<ModelStreamEventV1>,
     protocol_error: Option<ProtocolAdapterError>,
+    frame_index: &'a mut u64,
 }
 
 impl SseVisitor for NativeVisitor<'_> {
@@ -371,6 +395,7 @@ impl SseVisitor for NativeVisitor<'_> {
         if self.output.len() >= MAX_QUEUED_EVENTS {
             return Err(SseError::NeedDrain);
         }
+        *self.frame_index = self.frame_index.saturating_add(1);
         if event
             .fields()
             .any(|field| !field.comment && field.name.starts_with(b"data") && field.name != b"data")
@@ -413,5 +438,48 @@ impl BoundedOutputSink for DiscardOutput {
 
     fn emit_owned(&mut self, _bytes: ChargedBytes) -> Result<(), SseError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    use crate::server::core_runtime::profiles::fixed_reasoning;
+
+    #[test]
+    fn actual_sse_budget_rejection_is_distinct_from_malformed_sse() {
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Messages,
+            IngressProtocol::ChatCompletions,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        for fragmented in [false, true] {
+            let budget = BudgetTree::new(1024, 1024).unwrap().stream(1024).unwrap();
+            let mut decoder =
+                NativeResponseDecoder::new_for_attempt(&profile, 200, true, None, budget.clone())
+                    .unwrap();
+            let error = if fragmented {
+                (0..16)
+                    .find_map(|_| decoder.feed(&[b'x'; 256], false).err())
+                    .expect("retained frame must exhaust the owner")
+            } else {
+                decoder.feed(&[b'x'; 2048], false).unwrap_err()
+            };
+            assert!(
+                matches!(
+                    error,
+                    ProtocolAdapterError::ModelIr(ModelIrError::BufferLimit(_))
+                ),
+                "{error:?}"
+            );
+            drop(decoder);
+            assert_eq!(budget.snapshot().unwrap().live, 0);
+        }
+        let mut decoder = NativeResponseDecoder::new(&profile, 200, true).unwrap();
+        assert!(matches!(
+            decoder.feed(b"data-invalid: {}\n\n", false),
+            Err(ProtocolAdapterError::ModelIr(ModelIrError::InvalidSse(_)))
+        ));
     }
 }
