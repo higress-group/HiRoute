@@ -388,7 +388,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       return;
     }
     if (saveAfterCheck) {
-      const validation = (new Set(current.models.map(model => model.upstream_model_id.trim())).size !== current.models.length ? 'MODEL_ID_DUPLICATE' : '') || current.models.map(manualModelError).find(Boolean) || (!current.models.length ? 'MODEL_ID_REQUIRED' : '');
+      const validation = (new Set(current.models.map(model => model.upstream_model_id)).size !== current.models.length ? 'MODEL_ID_DUPLICATE' : '') || current.models.map(manualModelError).find(Boolean) || (!current.models.length ? 'MODEL_ID_REQUIRED' : '');
       if (validation) { setError(validation); return; }
     }
     const checkId = clientOperationId('check');
@@ -420,7 +420,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           })
         : await backend.checkRegisteredModelConnection({
             inference_model_id: inferenceModelId,
-            models: checkingDraft.models.filter(model => model.upstream_model_id.trim()).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
+            models: checkingDraft.models.filter(model => model.upstream_model_id).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
             connection_option_id: registeredOption!.connection_option_id,
             expected_catalog: connectionOptions!.catalog,
             candidate_ref: checkingDraft.candidate_ref,
@@ -684,7 +684,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         </form>
 
         {screen === 'manual' && <form id="mc-manual-form" onSubmit={event => { event.preventDefault(); void runCheck(true); }}>
-          {draft.models.map(model => <div key={model.client_id}><ManualModelEditor model={model} language={language} disabled={!props.mutable} catalogManaged={!custom && Object.hasOwn(registeredOption?.known_models ?? {}, model.upstream_model_id.trim())} onChange={updateManualModel} /><button className="btn btn-quiet" type="button" onClick={() => invalidate(current => ({ ...current, models: current.models.filter(value => value.client_id !== model.client_id) }), false, 'manual')}>{zh ? '移除模型' : 'Remove model'}</button></div>)}
+          {draft.models.map(model => <div key={model.client_id}><ManualModelEditor model={model} language={language} disabled={!props.mutable} catalogManaged={!custom && Object.hasOwn(registeredOption?.known_models ?? {}, model.upstream_model_id)} onChange={updateManualModel} /><button className="btn btn-quiet" type="button" onClick={() => invalidate(current => ({ ...current, models: current.models.filter(value => value.client_id !== model.client_id) }), false, 'manual')}>{zh ? '移除模型' : 'Remove model'}</button></div>)}
           <button className="btn" type="button" onClick={() => invalidate(current => ({ ...current, models: [...current.models, blankModel()] }), false, 'manual')}>{zh ? '添加模型 ID' : 'Add model ID'}</button>
         </form>}
 

@@ -7,7 +7,8 @@ use hiroute_domain::{
     CanonicalDigest, ComputeProjectionExpectationV1, CredentialRefV1, PortErrorCode, WorkspaceId,
 };
 use hiroute_integrations::{
-    CpaRegisteredSourceV1, RegisteredComputeDiscoveryFactV1, TrustedReleaseCatalog,
+    CpaAccountMaterializationV1, CpaRegisteredSourceV1, RegisteredComputeDiscoveryFactV1,
+    TrustedReleaseCatalog, register_cpa_account,
 };
 use hiroute_local_storage::LocalStorageSet;
 
@@ -297,7 +298,141 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
             &previous_model_data,
         )
         .unwrap();
-    assert_eq!(stores.control().compute_projection_rows().unwrap().len(), 3);
+    let cpa_source_id = "cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let registered = register_cpa_account(
+        &catalog,
+        &CpaAccountMaterializationV1 {
+            connector_id: "connector.cpa.codex".into(),
+            connection_option_id: super::super::subscriptions::CONNECTION_OPTION_ID.into(),
+            endpoint_profile_id: "endpoint.cpa.codex".into(),
+            source_id: cpa_source_id.into(),
+            account_subject:
+                "account/cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .into(),
+            credential_ref: CredentialRefV1::new(
+                "credential/cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                format!("source/{cpa_source_id}"),
+                "connector/connector.cpa.codex",
+                "provider-auth",
+                ["connection-option/codex.subscription.global.v1".into()],
+                1,
+            )
+            .unwrap(),
+            observed_model_ids: ["gpt-6.1-sol".into()].into_iter().collect(),
+        },
+    )
+    .unwrap();
+    let mut cpa = catalog
+        .prepare_cpa_compute_projection(
+            &registered,
+            "model.openai.gpt-6.1-sol",
+            ComputeProjectionExpectationV1 {
+                source_revision: 0,
+                source_digest: None,
+                binding_revision: 0,
+                binding_digest: None,
+                inventory_revision: 0,
+                inventory_digest: None,
+            },
+            true,
+        )
+        .unwrap()
+        .desired;
+    // Admit the binding before its pool, then provide the exact retained credential reference.
+    // A Ready binding without a pool is correctly rejected by the current store writer.
+    cpa.source.state = hiroute_domain::MaterializationState::NeedsCredential;
+    stores
+        .control()
+        .put_compute_source(0, &cpa.source, catalog.registry(), true)
+        .unwrap();
+    stores
+        .control()
+        .put_source_binding(0, &cpa.binding, catalog.registry(), catalog.model_data())
+        .unwrap();
+    stores
+        .control()
+        .put_inventory_snapshot(&cpa.inventory)
+        .unwrap();
+    let cpa_pool = cpa
+        .credential_pool_identity
+        .as_ref()
+        .unwrap()
+        .materialize_first(
+            registered.credential_ref,
+            CanonicalDigest::of_bytes(b"retained-cpa-reference"),
+        )
+        .unwrap();
+    stores
+        .control()
+        .put_credential_pool(0, &cpa_pool, catalog.registry(), catalog.model_data())
+        .unwrap();
+
+    // Inject a structurally valid retained join fault after proving that current writers reject
+    // it. This unit fixture exercises the read-only adapter; product smoke uses public saves.
+    let mut credential_stale_binding = current.binding.clone();
+    credential_stale_binding.binding_id = "binding/credential-stale".into();
+    credential_stale_binding.credential_pool_id = Some("pool/credential-stale".into());
+    stores
+        .control()
+        .put_source_binding(
+            0,
+            &credential_stale_binding,
+            catalog.registry(),
+            catalog.model_data(),
+        )
+        .unwrap();
+    let mut credential_stale_pool = pool.clone();
+    credential_stale_pool.pool_id = "pool/credential-stale".into();
+    credential_stale_pool.binding_id = credential_stale_binding.binding_id.clone();
+    credential_stale_pool.binding_digest = CanonicalDigest::of(&credential_stale_binding).unwrap();
+    stores
+        .control()
+        .put_credential_pool(
+            0,
+            &credential_stale_pool,
+            catalog.registry(),
+            catalog.model_data(),
+        )
+        .unwrap();
+    credential_stale_binding.revision = 2;
+    assert_eq!(
+        stores
+            .control()
+            .put_source_binding(
+                1,
+                &credential_stale_binding,
+                catalog.registry(),
+                catalog.model_data(),
+            )
+            .unwrap_err()
+            .code,
+        PortErrorCode::InvalidData
+    );
+    credential_stale_binding
+        .validate(&current.source, catalog.model_data())
+        .unwrap();
+    credential_stale_pool.validate().unwrap();
+    assert!(
+        credential_stale_pool
+            .validate_against_binding(&credential_stale_binding)
+            .is_err()
+    );
+    let fixture = rusqlite::Connection::open(storage_root.join("live/control.db")).unwrap();
+    assert_eq!(
+        fixture
+            .execute(
+                "UPDATE source_bindings SET revision=2, binding_json=?1
+                 WHERE binding_id=?2 AND revision=1 AND active=1",
+                rusqlite::params![
+                    serde_json::to_string(&credential_stale_binding).unwrap(),
+                    credential_stale_binding.binding_id
+                ],
+            )
+            .unwrap(),
+        1
+    );
+    drop(fixture);
+    assert_eq!(stores.control().compute_projection_rows().unwrap().len(), 5);
 
     let home = directory.path().join("home");
     let project = directory.path().join("project");
@@ -421,6 +556,26 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
     .unwrap();
 
     assert_eq!(snapshot.facts.candidates.len(), 1);
+    let reasons = snapshot
+        .unavailable_candidates
+        .iter()
+        .map(|candidate| (candidate.binding_id.as_str(), candidate.reason))
+        .collect::<BTreeMap<_, _>>();
+    use hiroute_application_api::PlanCandidateUnavailableReasonV1 as Reason;
+    assert_eq!(reasons.len(), 4);
+    assert_eq!(reasons["binding/stale"], Reason::CatalogMismatch);
+    assert_eq!(
+        reasons["binding/stale-model-revision"],
+        Reason::CatalogMismatch
+    );
+    assert_eq!(
+        reasons[cpa.binding.binding_id.as_str()],
+        Reason::RuntimeUnavailable
+    );
+    assert_eq!(
+        reasons["binding/credential-stale"],
+        Reason::CredentialUnavailable
+    );
     assert_eq!(
         snapshot.facts.candidates[0].binding.binding_id,
         current.binding.binding_id

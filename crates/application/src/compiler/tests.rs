@@ -10,6 +10,99 @@ use hiroute_domain::{
 use super::test_fixtures::*;
 use super::*;
 
+fn with_upstream_model_id(fact: &mut CandidateCompilationFactV1, id: &str) {
+    fact.binding.upstream_model_id = id.to_owned();
+    fact.capability.upstream_model_id = id.to_owned();
+    fact.native_transport_model = id.to_owned();
+    for profile in &mut fact.protocol_profiles {
+        profile.capability.native_model = id.to_owned();
+    }
+}
+
+#[test]
+fn compiler_preserves_opaque_upstream_ids_in_every_materialized_protocol() {
+    for id in [
+        "内网模型".to_owned(),
+        "vendor/模型:2026@alpha?revision#1".to_owned(),
+        "Model A".to_owned(),
+        "e\u{301}-模型".to_owned(),
+        "\u{feff}模型\u{feff}".to_owned(),
+        "\u{feff}".to_owned(),
+        "模型🧠".to_owned(),
+        "🧠".repeat(128),
+        "x".repeat(512),
+        "界".repeat(170) + "ab",
+    ] {
+        let mut facts = compilation_facts();
+        let selected = facts
+            .candidates
+            .iter_mut()
+            .find(|fact| fact.binding.binding_id == "binding/primary-b")
+            .unwrap();
+        with_upstream_model_id(selected, &id);
+        selected.model.display_name = "中文显示名称".into();
+        selected.binding.validate_shape().unwrap();
+        facts.validate().unwrap();
+        let materialized = materialize_agent_plan(&custom_desired(), &facts).unwrap();
+        let candidate = &materialized.materialized.attempt_owned.groups[0].candidates[0];
+        assert_eq!(candidate.binding_id, "binding/primary-b");
+        assert_eq!(candidate.upstream_model_id, id);
+        assert_eq!(candidate.native_transport_model, id);
+        assert!(!candidate.protocol_profiles.is_empty());
+        for profile in &candidate.protocol_profiles {
+            assert_eq!(profile.capability.native_model, id);
+        }
+        materialized.materialized.validate().unwrap();
+    }
+}
+
+#[test]
+fn compiler_rejects_unsafe_upstream_ids_without_loosening_binding_identifiers() {
+    for id in [
+        String::new(),
+        " 模型".into(),
+        "模型\u{a0}".into(),
+        "a\tb".into(),
+        "a\0b".into(),
+        "a\u{85}b".into(),
+        "\u{85}模型".into(),
+        "模型\u{85}".into(),
+        "x".repeat(513),
+        "界".repeat(171),
+        "🧠".repeat(129),
+    ] {
+        let mut facts = compilation_facts();
+        with_upstream_model_id(&mut facts.candidates[0], &id);
+        assert!(facts.validate().is_err(), "accepted unsafe ID {id:?}");
+    }
+    let mut facts = compilation_facts();
+    with_upstream_model_id(&mut facts.candidates[0], "内网模型");
+    facts.candidates[0].binding.binding_id = "binding/内网模型".into();
+    assert!(facts.validate().is_err());
+}
+
+#[test]
+fn empty_options_snapshot_cannot_become_a_published_or_digested_plan() {
+    let mut facts = compilation_facts();
+    facts.candidates.clear();
+    facts.refs.inventory_revision = 0;
+    facts.validate_snapshot().unwrap();
+    assert!(facts.refs.validate().is_err());
+    assert_eq!(
+        facts.validate(),
+        Err(CompilerFactError::InvalidCandidateCount)
+    );
+    assert!(facts.digest().is_err());
+    assert!(materialize_agent_plan(&custom_desired(), &facts).is_err());
+
+    let mut nonempty = compilation_facts();
+    nonempty.refs.inventory_revision = 0;
+    assert_eq!(
+        nonempty.validate_snapshot(),
+        Err(CompilerFactError::InvalidCandidateCount)
+    );
+}
+
 #[test]
 fn compiler_smart_saving_materializes_two_deterministic_branches() {
     let desired = smart_desired();

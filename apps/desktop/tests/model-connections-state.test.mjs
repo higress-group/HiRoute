@@ -14,6 +14,7 @@ import {
   selectedModelRefsAfterRecheck,
   blankModel,
   withCapabilityFallback,
+  withRegisteredModels,
 } from '../src/features/model-connections/state.ts';
 
 test('tool recheck keeps explicit model identities with fresh refs and drops unavailable choices', () => {
@@ -93,6 +94,35 @@ test('native user check maps UI provenance to the exact public wire draft', () =
   assert.equal('entry_kind' in wire, false);
   assert.equal('provenance' in wire, false);
   assert.equal('qualification' in wire, false);
+});
+
+test('native check keeps opaque provider IDs distinct from display text and normalization', () => {
+  const ids = ['内网模型', '外网模型', 'Vendor/Model@2026?revision#1', 'Model A',
+    'é', 'e\u0301', '\ufeff模型\ufeff', '\ufeff', '模型🧠', '🧠'.repeat(128), '界'.repeat(170) + 'ab'];
+  const draft = {
+    entry_kind: 'custom_api', provenance: { kind: 'user_configured', configuration_revision: 1 },
+    qualification: { free_access: null, evidence_ref: null },
+    models: ids.map(id => blankModel(id, '中文显示名称')),
+  };
+  const wire = buildCheckDraft(draft);
+  assert.deepEqual(wire.models.map(model => model.upstream_model_id), ids);
+  assert.ok(wire.models.every(model => model.display_name === '中文显示名称'));
+  assert.equal(new Set(wire.models.map(model => model.upstream_model_id)).size, ids.length);
+  assert.equal(new TextEncoder().encode(wire.models.at(-1).upstream_model_id).length, 512);
+});
+
+test('registered model joins deduplicate only exact IDs and retain a distinct FEFF-prefixed model', () => {
+  const prefixed = blankModel('\ufeff模型', '已编辑名称');
+  const models = withRegisteredModels([prefixed], [
+    { upstream_model_id: '\ufeff模型', display_name: '重复目录名称' },
+    { upstream_model_id: '模型', display_name: '无前缀名称' },
+    { upstream_model_id: '模型\ufeff', display_name: '有后缀名称' },
+  ]);
+  assert.deepEqual(models.map(model => model.upstream_model_id), ['\ufeff模型', '模型', '模型\ufeff']);
+  assert.equal(models[0], prefixed);
+  assert.deepEqual(models.map(model => model.display_name), ['已编辑名称', '无前缀名称', '有后缀名称']);
+  const added = withRegisteredModels([], [{ upstream_model_id: '\ufeff', display_name: '仅有格式字符的 ID' }]);
+  assert.equal(buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: added }).models[0].upstream_model_id, '\ufeff');
 });
 
 test('native check preserves every endpoint and the saved-source edit revision', () => {

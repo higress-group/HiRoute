@@ -11,6 +11,7 @@ const shellOnly = process.argv[5] === '--shell-only';
 const routeSaveOnly = process.argv[5] === '--route-save-only';
 const workerReplacementOnly = process.argv[5] === '--worker-replacement-only';
 const claudeCollaborationOnly = process.argv[5] === '--claude-collaboration-only';
+const routeOptionsOnly = process.argv[5] === '--route-options-only';
 if (!Number.isInteger(port) || !baseUrl || !process.argv[4]) {
   throw new Error('Usage: node agent-trust-active.mjs <cdp-port> <base-url> <output-directory>');
 }
@@ -20,7 +21,7 @@ try {
   const client = await connectPage(port);
   try {
     const checks = [];
-    if (!shellOnly && !routeSaveOnly && !workerReplacementOnly) {
+    if (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !routeOptionsOnly) {
       await navigate(client, new URL('agent-trust.html', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.agentTrust)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/agent-trust-scenarios.mjs').then(module => module.agentTrustScenarioCatalog)");
@@ -39,7 +40,7 @@ try {
       assertScenarioResults(selected, results);
       checks.push(...results);
     }
-    if (!shellOnly && !claudeCollaborationOnly) {
+    if (!shellOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
       await navigate(client, new URL('?page=routing&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/routing-worker-scenarios.mjs').then(module => module.routingWorkerScenarioCatalog)");
@@ -53,7 +54,7 @@ try {
         process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
     }
-    if (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly) {
+    if (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
       await navigate(client, new URL('?page=models&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
       const fromModel = await evaluate(client, "import('/model-to-route-scenarios.mjs').then(module => module.runModelToRouteScenarios())");
@@ -65,7 +66,23 @@ try {
         process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
     }
-    if (shellOnly || (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly)) {
+    if (routeOptionsOnly || (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly)) {
+      await navigate(client, new URL('plan-editor-ux.html?checks=availability', baseUrl).href, { width: 1280, height: 900 });
+      await waitFor(client, 'Boolean(document.querySelector("button")?.textContent?.includes("运行智能路由交互检查"))', { timeout: 7000 });
+      await evaluate(client, 'document.querySelector("button").click()');
+      await waitFor(client, 'Boolean(document.querySelector("[data-ux-results]")?.textContent)', { timeout: 20000 });
+      const result = await evaluate(client, 'JSON.parse(document.querySelector("[data-ux-results]").textContent)');
+      const required = ['routing.options.id-safety', 'routing.options.exclusions', 'routing.options.service-error', 'routing.options.empty'];
+      if (result.tests !== required.length || result.results?.length !== required.length
+        || result.results.some(item => !['green', 'red'].includes(item.state))
+        || new Set(result.results.map(item => item.name.split(':')[0])).size !== required.length
+        || required.some(id => !result.results.some(item => item.name.startsWith(`${id}:`)))) {
+        throw new Error('Required route-options scenarios did not execute');
+      }
+      checks.push(...result.results);
+      for (const item of result.results) process.stdout.write(`${item.state}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
+    }
+    if (shellOnly || (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly)) {
       await navigate(client, new URL('product-shell.html', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.productShell)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/product-shell-scenarios.mjs').then(module => module.productShellScenarioCatalog)");

@@ -1,5 +1,94 @@
 use super::*;
 
+fn id_validation_draft(id: &str) -> NativeModelConnectionDraftV1 {
+    NativeModelConnectionDraftV1 {
+        display_template_id: None,
+        inference_model_id: None,
+        candidate_ref: None,
+        lineage_ref: "lineage/native/id-validation".into(),
+        trusted_lineage_digest: None,
+        display_name: "中文接入名称".into(),
+        existing_source_id: None,
+        edit_revision: 1,
+        check_id: "check/id-validation".into(),
+        base_url: "http://127.0.0.1:8123/v1".into(),
+        base_kind: ModelConnectionBaseKindV1::ApiRoot,
+        request_path_override: None,
+        inventory_path_override: None,
+        protocol: UpstreamProtocol::Responses,
+        protocol_profile_id: "profile/custom/responses".into(),
+        protocol_profile_revision: 1,
+        protocol_header_semantics: GatewayHeaderSemanticsV1 {
+            content_type: "application/json".into(),
+            required_headers: Vec::new(),
+            forbidden_forward_headers: Vec::new(),
+        },
+        authentication: GatewayAuthenticationSemanticsV1::None,
+        additional_native_endpoints: Vec::new(),
+        provenance: NativeConnectionProvenanceInputV1::UserConfigured {
+            configuration_revision: 1,
+        },
+        qualification: NativeConnectionQualificationV1 {
+            free_access: None,
+            evidence_ref: None,
+        },
+        runtime_fallback_denied_model_ids: Default::default(),
+        models: vec![NativeModelDeclarationV1 {
+            upstream_model_id: id.into(),
+            display_name: "中文模型名称".into(),
+            catalog_configuration_id: None,
+            membership: ComputeModelMembershipV2::UserDeclared,
+            capabilities: NativeModelCapabilityDeclarationV1::default(),
+        }],
+    }
+}
+
+#[test]
+fn native_draft_uses_the_same_opaque_id_contract_for_models_inference_and_denials() {
+    for id in [
+        "内网模型".to_owned(),
+        "Model A/@revision?实验#1".into(),
+        "\u{feff}模型\u{feff}".into(),
+        "\u{feff}".into(),
+        "模型🧠".into(),
+        "🧠".repeat(128),
+        "x".repeat(512),
+        "界".repeat(170) + "ab",
+    ] {
+        let mut draft = id_validation_draft(&id);
+        validate_draft(&draft, &NativeModelConnectionCredentialV1::NotRequired).unwrap();
+        draft.inference_model_id = Some(id.clone());
+        validate_draft(&draft, &NativeModelConnectionCredentialV1::NotRequired).unwrap();
+        draft.inference_model_id = None;
+        draft.runtime_fallback_denied_model_ids.insert(id);
+        validate_draft(&draft, &NativeModelConnectionCredentialV1::NotRequired).unwrap();
+    }
+}
+
+#[test]
+fn native_draft_rejects_invalid_provider_ids_before_any_probe() {
+    for id in [
+        " bad".to_owned(),
+        "bad\u{a0}".into(),
+        "bad\tmodel".into(),
+        "bad\0model".into(),
+        "bad\u{85}model".into(),
+        "\u{85}bad".into(),
+        "bad\u{85}".into(),
+        "界".repeat(171),
+        "🧠".repeat(129),
+    ] {
+        let invalid = id_validation_draft(&id);
+        assert!(matches!(
+            validate_draft(&invalid, &NativeModelConnectionCredentialV1::NotRequired),
+            Err(NativeModelConnectionErrorV1::InvalidDraft)
+        ));
+        let mut denied = id_validation_draft("内网模型");
+        denied.runtime_fallback_denied_model_ids.insert(id);
+        assert!(validate_draft(&denied, &NativeModelConnectionCredentialV1::NotRequired).is_err());
+    }
+}
+
 fn known<T>(value: T) -> NativeCandidateFactValueV1<T> {
     NativeCandidateFactValueV1 {
         value: Some(value),
