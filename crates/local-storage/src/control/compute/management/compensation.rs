@@ -82,7 +82,7 @@ pub(in crate::control) fn reconcile(
         return Err(conflict("compute.compensation.writer"));
     }
     let owner: Option<String> = transaction.query_row(
-        "SELECT before_owner_operation_id FROM compute_management_effects m JOIN control_effects e USING(operation_id)
+        "SELECT m.before_owner_operation_id FROM compute_management_effects m JOIN control_effects e USING(operation_id)
          WHERE m.operation_id=?1 AND m.workspace_id=?2 AND m.source_id=?3 AND e.compensated=1",
         params![operation.operation_id.as_str(), operation.workspace_id.as_str(), expected.source_id], |row| row.get(0))
         .optional().map_err(|_| port("compute.compensation.effect"))?.flatten();
