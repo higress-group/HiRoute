@@ -475,10 +475,21 @@ fn permission_effect_hardens_only_pinned_identity_and_never_reverts_mode() {
     .unwrap();
     let mut layout = AgentFilesystemLayoutV1::from_process(&home, &project);
     layout.codex_executable = bin.join("missing-codex");
+    layout.codex_user_config = home.join(".codex/config.toml");
+    layout.codex_subscription_auth_override = None;
     layout.claude_executable = claude;
+    // The permission finding and scanner must refer to this fixture even when the
+    // caller isolates native credentials through CLAUDE_CONFIG_DIR and CODEX_HOME.
+    layout.claude_user_settings = settings.clone();
     layout.claude_launch_settings = None;
     layout.claude_project_settings.clear();
     layout.claude_managed_settings.clear();
+    layout.qoder_executable = bin.join("missing-qoder");
+    layout.qoder_config_root = home.join(".qoder");
+    layout.pi_executable = bin.join("missing-pi");
+    layout.pi_config_root = home.join(".pi/agent");
+    layout.dsh_executable = bin.join("missing-dsh");
+    layout.dsh_config_root = home.join(".dsh");
     let scanner = FilesystemAgentScannerV1::new(
         layout,
         ClaudeRegistrationIndexV1::from_verified_model_data(&registry, &model_data.data).unwrap(),
@@ -554,6 +565,7 @@ fn permission_effect_hardens_only_pinned_identity_and_never_reverts_mode() {
         cpa_runtime: None,
         subscription_sources: Mutex::new(BTreeMap::new()),
         subscription_targets: Mutex::new(BTreeMap::new()),
+        subscription_lifecycle: Mutex::new(()),
         subscription_maintenance: Mutex::new(
             crate::control::runtime::subscriptions::SubscriptionMaintenance::new().unwrap(),
         ),

@@ -37,6 +37,23 @@ pub trait CpaDownstreamCredentialPort {
         &self,
         request: ExactCpaCredentialRequest<'_>,
     ) -> Result<Option<CpaDownstreamCredentialCapability>, CpaAttemptError>;
+
+    fn lease_downstream_capability_scoped(
+        &self,
+        request: ExactCpaCredentialRequest<'_>,
+        context: &crate::CpaRequestContext,
+    ) -> Result<Option<CpaDownstreamCredentialCapability>, CpaAttemptError> {
+        context.run(|| {
+            context
+                .ensure_active()
+                .map_err(|_| CpaAttemptError::Unavailable)?;
+            let result = self.lease_downstream_capability(request);
+            context
+                .ensure_active()
+                .map_err(|_| CpaAttemptError::Unavailable)?;
+            result
+        })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -171,27 +188,72 @@ impl CpaDownstreamCredentialPort for ManagedCpaRuntime {
         &self,
         request: ExactCpaCredentialRequest<'_>,
     ) -> Result<Option<CpaDownstreamCredentialCapability>, CpaAttemptError> {
-        let mut inner = self.inner.lock();
+        let _scope = self.operation_context().enter();
         // Explicit shutdown revokes the old request before any restart logic.
         // A live managed runtime resolves the exact current target from the
         // credential/model identity instead of trusting durable address/epochs.
-        if inner.live.is_none() {
-            return Err(CpaAttemptError::RevokedCredential);
-        }
-        self.ensure_ready_locked(&mut inner, None)
-            .map_err(|_| CpaAttemptError::Unavailable)?;
         let observed = {
-            let live = inner.live.as_ref().ok_or(CpaAttemptError::Unavailable)?;
+            let accounts = self
+                .observed_accounts()
+                .ok_or(CpaAttemptError::RevokedCredential)?;
             resolve_exact_account(
                 self,
-                &live.accounts,
+                &accounts,
                 request.upstream_model_id,
                 request.protocol,
                 |credential| credential.credential_id() == request.credential_id,
             )?
         };
-        self.ensure_attempt_account_current_locked(&mut inner, &observed.account)
-            .map_err(|_| CpaAttemptError::RevokedCredential)?;
+        // Rejected requests must not restart a stopped/retiring refresh writer or
+        // touch its credentials. The cached exact binding is sufficient to deny
+        // admission; fresh authority validation below is still required to grant it.
+        if !self.account_execution_is_admitted(&observed.account) {
+            return Err(CpaAttemptError::RevokedCredential);
+        }
+        if request.connector_id != observed.connector_id
+            || request.request_path != observed.request_path
+            || request.native_transport_model != observed.native_transport_model
+        {
+            return Err(CpaAttemptError::UnregisteredTarget);
+        }
+        let prepared = if Some(observed.account.account_kind) == self.managed_kind() {
+            let preparation_generation = self.preparation_generation();
+            let source_stamp = self.native_source_stamp();
+            match self.prepare_native_subscription() {
+                Ok(prepared)
+                    if prepared.as_ref().is_none_or(|evidence| {
+                        evidence.account_ref()
+                            == format!("account/cpa/{}", observed.account.account_digest)
+                    }) =>
+                {
+                    prepared
+                }
+                _ => {
+                    if self.native_source_stamp() == source_stamp {
+                        self.reject_preparation(preparation_generation);
+                    }
+                    return Err(CpaAttemptError::RevokedCredential);
+                }
+            }
+        } else {
+            None
+        };
+        let mut inner = self
+            .lock_lifecycle()
+            .map_err(|_| CpaAttemptError::Unavailable)?;
+        if !self.account_execution_is_admitted(&observed.account) {
+            return Err(CpaAttemptError::RevokedCredential);
+        }
+        self.ensure_ready_locked(&mut inner, None)
+            .map_err(|_| CpaAttemptError::Unavailable)?;
+        self.ensure_attempt_account_current_locked(
+            &mut inner,
+            &observed.account,
+            prepared.as_ref(),
+        )
+        .map_err(|_| CpaAttemptError::RevokedCredential)?;
+        self.ensure_process_accounts_current_locked(&mut inner)
+            .map_err(|_| CpaAttemptError::Unavailable)?;
         let exact = {
             let live = inner.live.as_ref().ok_or(CpaAttemptError::Unavailable)?;
             resolve_exact_account(
@@ -202,7 +264,7 @@ impl CpaDownstreamCredentialPort for ManagedCpaRuntime {
                 |credential| credential.credential_id() == request.credential_id,
             )?
         };
-        if !inner.account_execution_is_admitted(&exact.account) {
+        if !self.account_execution_is_admitted(&exact.account) {
             return Err(CpaAttemptError::RevokedCredential);
         }
         let (runtime_epoch, target_epoch) = self.epochs.current();
@@ -222,16 +284,18 @@ impl CpaDownstreamCredentialPort for ManagedCpaRuntime {
         {
             return Ok(None);
         }
-        Ok(Some(CpaDownstreamCredentialCapability {
-            credential_ref: exact.credential_ref,
-            key_id,
-            authorization: Arc::clone(&live.secrets.downstream),
-            address: live.address,
-            request_path: exact.request_path.into(),
-            epochs: Arc::clone(&self.epochs),
-            runtime_epoch,
-            target_epoch,
-        }))
+        self.commit_admitted(&exact.account, || {
+            Some(CpaDownstreamCredentialCapability {
+                credential_ref: exact.credential_ref,
+                key_id,
+                authorization: Arc::clone(&live.secrets.downstream),
+                address: live.address,
+                request_path: exact.request_path.into(),
+                epochs: Arc::clone(&self.epochs),
+                runtime_epoch,
+                target_epoch,
+            })
+        })
     }
 }
 

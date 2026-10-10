@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::process::Command;
 
 fn private_home() -> tempfile::TempDir {
@@ -9,6 +9,14 @@ fn private_home() -> tempfile::TempDir {
         .permissions(fs::Permissions::from_mode(0o700))
         .tempdir()
         .unwrap()
+}
+
+fn private_directory(path: &std::path::Path) {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+        .unwrap();
 }
 
 fn snapshot_path(home: &std::path::Path) -> std::path::PathBuf {
@@ -34,6 +42,8 @@ fn installation(home: &std::path::Path) -> Command {
     for parent in [".local", ".local/share", ".local/share/hiroute"] {
         fs::set_permissions(home.join(parent), fs::Permissions::from_mode(0o700)).unwrap();
     }
+    // Mirror the installer's private state preparation before host commands run.
+    private_directory(&home.join(".local/state/hiroute"));
     fs::write(
         directory.join("standalone.json"),
         serde_json::to_vec(&serde_json::json!({
@@ -158,7 +168,7 @@ test "$1" = --role && test "$2" = all && test "$3" = --standalone
 fn subscription_proxy_set_persists_pending_policy_without_starting_service_or_replacing_snapshot() {
     let home = private_home();
     let _ = installation(home.path());
-    fs::create_dir_all(snapshot_path(home.path()).parent().unwrap()).unwrap();
+    private_directory(snapshot_path(home.path()).parent().unwrap());
     let snapshot = br#"{"schema":"hiroute.standalone-proxy-environment/v1","variables":{}}"#;
     fs::write(snapshot_path(home.path()), snapshot).unwrap();
     fs::set_permissions(

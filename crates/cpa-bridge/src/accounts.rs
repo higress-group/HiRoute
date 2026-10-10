@@ -240,6 +240,8 @@ pub(crate) enum AccountDiscoveryError {
     NonSubscriptionAccount,
     #[error("CPA account changed during materialization")]
     AccountDisappeared,
+    #[error("CPA subscription authorization requires login")]
+    AuthenticationRequired,
     #[error("CPA exposed an unmanaged account for a managed provider")]
     UnexpectedManagedAccount,
     #[error("CPA exact account prefix/retry pin was not applied")]

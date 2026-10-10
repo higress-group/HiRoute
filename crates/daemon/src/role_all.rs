@@ -553,6 +553,7 @@ fn start_cpa(
         state_root: config.storage_root.join("cpa/state"),
         auth_dir: config.storage_root.join("cpa/auth"),
         borrowed_claude_auth: None,
+        managed_oauth: None,
         borrowed_codex_auth: selected_codex_auth().ok().map(|source| {
             BorrowedCodexAuthSpec::new(source).with_executable(
                 config
@@ -623,11 +624,11 @@ fn start_cpa(
     let catalog = Arc::new(catalog);
     let locator = Arc::new(PinnedCpaBinaryLocator::new(artifact));
     let mut runtimes = Vec::new();
-    for spec in [codex_spec, claude_spec] {
-        // Invalid native source selection is local to that optional provider. Never fall
-        // back to another account path or prevent healthy sources and Control from starting.
+    for mut spec in [codex_spec, claude_spec] {
+        // An invalid native selection must not disable independent OAuth. This template
+        // is never started or published; it only supplies a provider-isolated login runtime.
         if spec.borrowed_codex_auth.is_none() && spec.borrowed_claude_auth.is_none() {
-            continue;
+            spec.managed_oauth = Some(spec.bindings[0].account_kind);
         }
         let runtime = ManagedCpaRuntime::new(spec, catalog.clone(), locator.clone())
             .map_err(|error| RoleAllError::Component("CPA", error.to_string()))?

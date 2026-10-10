@@ -16,7 +16,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 86); // Full staged surface including decision services.
+    assert_eq!(commands.len(), 87); // Full staged surface including decision services.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));
@@ -55,6 +55,7 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "compute.connection.preview",
             "compute.connection.apply",
             "compute.connection.authorize",
+            "compute.connection.login",
             "compute.connection.test",
             "routing.options",
             "worker.executors",

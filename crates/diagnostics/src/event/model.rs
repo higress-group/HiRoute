@@ -336,6 +336,22 @@ pub struct UpstreamWire {
     pub http_protocol: Option<WireHttpProtocol>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_error: Option<WireProviderError>,
+    /// Present only for a verified managed CPA loopback target. Missing transport
+    /// evidence is Unknown; the logical attempt is never assumed to be one send.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpa_execution: Option<CpaExecution>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CpaExecution {
+    Unknown,
+    Known {
+        inference_attempts: u8,
+        unauthorized_responses: u8,
+        auth_recovery_attempts: u8,
+        auth_recovery_successes: u8,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -499,6 +515,7 @@ mod tests {
         let wire: UpstreamWire = serde_json::from_value(old_wire).unwrap();
         assert!(wire.native_model.is_none() && wire.provider_error.is_none());
         assert!(wire.attempt_index.is_none() && wire.http_protocol.is_none());
+        assert!(wire.cpa_execution.is_none());
         let old_attempt = serde_json::json!({"attempt_token":null,"outcome":"failed",
             "commit":"unknown","elapsed_ms":1,"http_status":400,"reasoning_fields_removed":0});
         let attempt: AttemptEnd = serde_json::from_value(old_attempt).unwrap();

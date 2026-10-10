@@ -223,6 +223,142 @@ fn subscription_explicit_selection_rejects_ineligible_and_unknown_models_without
 }
 
 #[test]
+fn saved_subscription_edit_retains_handoff_owner_and_rejects_reuse() {
+    let directory = tempdir().unwrap();
+    let stores = LocalStorageSet::open_for_daemon_startup(directory.path()).unwrap();
+    let registry = TrustedComputeCandidateRegistry::new();
+    let facts = subscription("candidate/retained-edit");
+    let source = save(
+        &stores,
+        &registry,
+        &facts,
+        &["model/one"],
+        "retained-initial",
+    );
+    let approval_id = hiroute_domain::OperationId::parse(
+        &facts
+            .validation
+            .as_ref()
+            .unwrap()
+            .approval_operation
+            .operation_id,
+    )
+    .unwrap();
+    let receipt = || {
+        stores
+            .control()
+            .compute_subscription_validation(&approval_id)
+            .unwrap()
+            .unwrap()
+    };
+    let before_receipt = receipt();
+    assert_eq!(
+        before_receipt.state,
+        crate::ComputeSubscriptionValidationStateV1::Retained
+    );
+    assert!(before_receipt.save_operation_id.is_some());
+
+    let input = ProtectedInput;
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    let mut edit = change(&stores, &facts, &["model/one"]);
+    edit.subject = ComputeManagementSubjectV2::SavedSource {
+        source_id: source.source_id.clone(),
+    };
+    edit.intent = ComputeManagementIntentV2::SaveDisabled;
+    let mut foreign = facts.validation.clone().unwrap();
+    foreign.validation_ref = "validation/foreign".into();
+    for validation in [None, Some(foreign)] {
+        let mut invalid = edit.clone();
+        invalid.validation = validation;
+        assert!(matches!(
+            planner.preview(invalid),
+            Err(ComputeManagementPlanningErrorV2::ValidationConflict)
+        ));
+    }
+    let preview = planner.preview(edit).unwrap();
+    let stale = ComputeConnectionApplyRequestV1 {
+        spec: preview.result.spec.clone(),
+        accept_digest: preview.result.accept_digest.clone(),
+        expected_revisions: preview.result.expected_revisions.clone(),
+        idempotency_key: "retained-stale-edit".into(),
+    };
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    coordinator.reconcile_startup_and_open().unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &WorkspaceId::default(),
+        preview,
+        "retained-disable",
+    );
+    let disabled = stores
+        .control()
+        .compute_management_source(&source.source_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(disabled.state, MaterializationState::Disabled);
+    assert_eq!(disabled.revision, source.revision + 1);
+    assert_eq!(disabled.validation, source.validation);
+    assert_eq!(disabled.models, source.models);
+    assert!(matches!(
+        planner.prepare_apply(stale),
+        Err(ComputeManagementPlanningErrorV2::RevisionConflict)
+    ));
+
+    // Candidate handoff remains one-shot even though SavedSource can edit its retained source.
+    let reused = planner
+        .preview(change(&stores, &facts, &["model/one"]))
+        .unwrap();
+    let prepared = planner
+        .prepare_apply(ComputeConnectionApplyRequestV1 {
+            spec: reused.result.spec,
+            accept_digest: reused.result.accept_digest,
+            expected_revisions: reused.result.expected_revisions,
+            idempotency_key: "retained-double-consume".into(),
+        })
+        .unwrap();
+    let rejection = coordinator
+        .accept_prepared(
+            &WorkspaceId::default(),
+            &VerifiedPrincipal::for_local_control(),
+            prepared,
+        )
+        .err()
+        .expect("a retained Candidate receipt must not be admitted for a second save");
+    // The coordinator maps storage admission Conflict to its public stale-preview error.
+    assert!(
+        matches!(rejection, TransactionError::ChangePreviewStale),
+        "unexpected double-consumption rejection: {rejection:?}"
+    );
+    let after_receipt = receipt();
+    assert_eq!(after_receipt.state, before_receipt.state);
+    assert_eq!(
+        after_receipt.save_operation_id,
+        before_receipt.save_operation_id
+    );
+    assert_eq!(after_receipt.record_json, before_receipt.record_json);
+    assert_eq!(
+        stores
+            .control()
+            .compute_management_source(&source.source_id)
+            .unwrap()
+            .unwrap(),
+        disabled
+    );
+}
+
+#[test]
 fn subscription_recheck_and_background_refresh_retain_membership_when_rights_change() {
     let directory = tempdir().unwrap();
     let stores = LocalStorageSet::open_for_daemon_startup(directory.path()).unwrap();

@@ -3,6 +3,18 @@ use super::*;
 use std::net::TcpListener;
 use std::process::Command;
 
+fn private_root() -> tempfile::TempDir {
+    let builder = tempfile::Builder::new();
+    #[cfg(unix)]
+    let builder = {
+        use std::os::unix::fs::PermissionsExt;
+        let mut builder = builder;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+        builder
+    };
+    builder.tempdir().unwrap()
+}
+
 #[test]
 fn invalid_subscription_source_is_local_to_its_provider() {
     const TEST: &str = "role_all::subscription_startup_tests::invalid_subscription_source_is_local_to_its_provider";
@@ -16,7 +28,7 @@ fn invalid_subscription_source_is_local_to_its_provider() {
             "both",
             "proxy-invalid",
         ] {
-            let root = tempfile::tempdir().unwrap();
+            let root = private_root();
             let mut child = Command::new(std::env::current_exe().unwrap());
             child
                 .args(["--exact", TEST, "--nocapture"])

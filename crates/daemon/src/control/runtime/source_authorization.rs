@@ -172,8 +172,9 @@ impl ConnectionOptionAuthorizationPort for LocalControlAdapter {
                 explicit_materialization,
             }));
         }
-        for (registered, model_configuration_id) in
-            self.registered_cpa_candidates().map_err(map_control_read)?
+        for (registered, model_configuration_id) in self
+            .registered_cpa_candidates_for_option(connection_option_id)
+            .map_err(map_control_read)?
         {
             if registered.source.connection_option_id != connection_option_id
                 || registered.source.source_id != source_id

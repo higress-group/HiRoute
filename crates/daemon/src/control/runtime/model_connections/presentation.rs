@@ -285,7 +285,7 @@ fn connector_runtime_read(
     let Some(authority) = adapter
         .cpa_runtime
         .as_ref()
-        .and_then(|runtimes| runtimes.for_kind(kind))
+        .and_then(|runtimes| runtimes.for_connector(kind.connector_id()))
     else {
         return ConnectorRuntimeRead::RuntimeUnavailable;
     };

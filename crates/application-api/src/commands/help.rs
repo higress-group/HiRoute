@@ -13,6 +13,9 @@ pub(super) fn command_effect(command_id: &str, kind: CommandKind) -> &'static st
     }
 }
 pub(super) fn command_network(command_id: &str, kind: CommandKind) -> &'static str {
+    if command_id == "compute.connection.login" {
+        return "local_control_then_provider_oauth";
+    }
     if command_id == "agent.launch" {
         return "local_control_then_numeric_loopback_gateway";
     }
@@ -28,6 +31,9 @@ pub(super) fn command_network(command_id: &str, kind: CommandKind) -> &'static s
     }
 }
 pub(super) fn automation(command_id: &str) -> &'static str {
+    if command_id == "compute.connection.login" {
+        return "Keep the returned login_ref for status, cancel and forget. After uncertain delivery, list/status the existing session before starting again or resubmitting a one-use callback. Never persist the authorization URL or put callback material in argv, environment, logs or ordinary request JSON.";
+    }
     if command_id == "worker.executors" {
         return "Ready permits a managed launch attempt, not a promise of execution or authorization. Optional capabilities remain unknown until the actual ACP handshake; start, load and cancel report real outcomes.";
     }
@@ -79,6 +85,9 @@ pub(super) fn exit_status(command_id: &str) -> &'static str {
     }
 }
 pub(super) fn effects(command_id: &str, kind: CommandKind) -> &'static str {
+    if command_id == "compute.connection.login" {
+        return "Manages one independent provider login session and CPA-owned credentials. Login does not enable routing; use the existing subscription check and Preview/Apply save flow after choosing models. Forget targets exactly one local login.";
+    }
     if matches!(command_id, "worker.exec" | "worker.continue") {
         return "Durably admits one bounded Worker run after current Plan eligibility, exact Plan, canonical cwd, idempotency, and resource checks.";
     }
@@ -124,6 +133,9 @@ pub(super) fn effects(command_id: &str, kind: CommandKind) -> &'static str {
     }
 }
 pub(super) fn network_and_model_use(command_id: &str, kind: CommandKind) -> &'static str {
+    if command_id == "compute.connection.login" {
+        return "May open the provider authorization flow and exchange or refresh independent OAuth credentials through CPA. No model inference is performed and native-client refresh tokens are never imported.";
+    }
     if matches!(command_id, "worker.exec" | "worker.continue") {
         return "The selected Worker may send model traffic only through its run-bound numeric-loopback Gateway route; native tools follow the run-scoped permission policy.";
     }
@@ -154,6 +166,7 @@ pub(super) fn network_and_model_use(command_id: &str, kind: CommandKind) -> &'st
 }
 pub(super) fn example(command_id: &str, joined_path: &str) -> String {
     match command_id {
+        "compute.connection.login" => "printf '%s' '{\"action\":\"start\",\"provider\":\"claude\"}' | hiroute compute connection login --request-stdin --output json".to_owned(),
         "worker.executors" => "hiroute worker executors --output json".to_owned(),
         "worker.dependencies.discover" => {
             "hiroute worker dependencies discover --harness codex_cli --output json".to_owned()

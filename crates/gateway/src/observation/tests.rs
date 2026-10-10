@@ -1378,3 +1378,46 @@ fn pending_candidate_without_core_attempt_authority_finishes_with_zero_attempts(
     assert_eq!(state.next_attempt_ordinal, 1);
     assert_eq!(state.attempts_finished, 0);
 }
+
+#[test]
+fn cpa_execution_metadata_is_trusted_only_for_verified_managed_target() {
+    use hiroute_diagnostics::event::CpaExecution;
+    let observation = request(OtelContentPolicy::Disabled);
+    let mut headers = http::HeaderMap::new();
+    headers.insert("x-hiroute-cpa-execution", "v1;2;1;1;1".parse().unwrap());
+    observation.response_head_diagnostic(&headers, 200);
+    assert!(
+        observation
+            .lock_state()
+            .response_wire
+            .as_ref()
+            .unwrap()
+            .cpa_execution
+            .is_none()
+    );
+    observation.lock_state().managed_cpa = true;
+    observation.response_head_diagnostic(&headers, 200);
+    assert!(matches!(
+        observation
+            .lock_state()
+            .response_wire
+            .as_ref()
+            .unwrap()
+            .cpa_execution,
+        Some(CpaExecution::Known {
+            inference_attempts: 2,
+            auth_recovery_successes: 1,
+            ..
+        })
+    ));
+    observation.response_head_diagnostic(&http::HeaderMap::new(), 503);
+    assert_eq!(
+        observation
+            .lock_state()
+            .response_wire
+            .as_ref()
+            .unwrap()
+            .cpa_execution,
+        Some(CpaExecution::Unknown)
+    );
+}

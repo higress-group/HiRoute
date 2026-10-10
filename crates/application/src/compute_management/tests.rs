@@ -533,6 +533,32 @@ fn subscription_refresh_retains_exact_membership_and_excludes_lost_models_from_e
 }
 
 #[test]
+fn subscription_maintenance_never_retains_membership_for_another_account() {
+    let mut current = complete_management_source();
+    current.provenance = hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
+        connector_id: "connector/cpa".into(),
+        account_ref: "account/previous".into(),
+    };
+    let refreshed = cpa_verified_facts();
+    let selected = current
+        .models
+        .iter()
+        .map(|model| model.model_ref.clone())
+        .collect::<Vec<_>>();
+    // Even when a caller uses the maintenance retention policy directly, an account
+    // change cannot reuse saved selections or silently retain their execution bindings.
+    assert!(
+        super::mutation_support::retain_subscription_models(
+            &current.source_id,
+            &current,
+            &refreshed,
+            &selected,
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn resource_receipts_reject_missing_identity_or_revision() {
     assert!(ComputeSubscriptionResourceReceiptV2::new("", 1).is_err());
     assert!(ComputeSubscriptionResourceReceiptV2::new("receipt/cpa", 0).is_err());

@@ -1,9 +1,8 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::thread;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use hiroute_diagnostics::event::{
@@ -35,15 +34,18 @@ use crate::process::{
 };
 use crate::state::{load_account_state, merge_accounts, save_account_state};
 
+mod admission;
+mod oauth;
+mod recovery;
 mod routing_batch;
 mod spec;
 mod subscriptions;
+pub use oauth::{CpaOAuthLogin, CpaOAuthStatus};
 pub use routing_batch::CpaRoutingBatch;
 
 use spec::validate_spec;
 pub use spec::{CpaRuntimeSpec, RestartPolicy};
 pub use subscriptions::CpaSourceManagementState;
-use subscriptions::SourceManagementProjection;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CpaHealth {
@@ -76,7 +78,11 @@ pub struct ManagedCpaRuntime {
     locator: Arc<dyn CpaBinaryLocator>,
     backend: Arc<dyn CpaProcessBackend>,
     control: Arc<dyn CpaControlPlane>,
+    // Serializes the sole process/auth-file owner, never execution admission.
     pub(crate) inner: Mutex<RuntimeInner>,
+    admission: admission::Admission,
+    observation: Mutex<admission::Observation>,
+    health_invalidated: AtomicBool,
     pub(crate) epochs: Arc<RuntimeEpochState>,
     /// Lifecycle diagnostics; a no-op port keeps library and test hosts unchanged.
     diagnostics: DiagnosticsPort,
@@ -87,7 +93,21 @@ pub struct ManagedCpaRuntime {
 /// catalog-validated source facts and opaque credential references; OAuth material never crosses
 /// this interface.
 pub trait CpaRegisteredSourcePort: Send + Sync {
+    /// Best-effort aggregate facts. Exact selections must use provider discovery
+    /// so a failed sibling cannot turn an unavailable source into a missing one.
     fn discover_registered_sources(&self) -> Result<Vec<CpaRegisteredSourceV1>, CpaLifecycleError>;
+
+    fn discover_registered_sources_for(
+        &self,
+        kind: crate::CpaAccountKind,
+    ) -> Result<Vec<CpaRegisteredSourceV1>, CpaLifecycleError> {
+        self.discover_registered_sources().map(|sources| {
+            sources
+                .into_iter()
+                .filter(|source| source.source.connector_id == kind.connector_id())
+                .collect()
+        })
+    }
 
     fn begin_routing_batch(&self) -> Result<CpaRoutingBatch<'_>, CpaLifecycleError>;
 }
@@ -129,21 +149,11 @@ impl RuntimeEpochState {
 #[derive(Default)]
 pub(crate) struct RuntimeInner {
     pub(crate) live: Option<LiveRuntime>,
-    source_management: BTreeMap<String, SourceManagementProjection>,
-    subscription_execution_suspended: bool,
     last_exit: Option<CpaExit>,
     crashes: VecDeque<Instant>,
     restart_count: u64,
-}
-
-impl RuntimeInner {
-    pub(crate) fn account_execution_is_admitted(&self, account: &AccountSnapshotRecord) -> bool {
-        subscriptions::account_execution_is_admitted(
-            &self.source_management,
-            self.subscription_execution_suspended,
-            account,
-        )
-    }
+    oauth_state: Option<String>,
+    oauth_callback_submitted: bool,
 }
 
 pub(crate) struct LiveRuntime {
@@ -155,7 +165,15 @@ pub(crate) struct LiveRuntime {
     pub(crate) address: SocketAddr,
     pub(crate) secrets: InstanceSecrets,
     pub(crate) accounts: Vec<AccountSnapshotRecord>,
+    // Persisted account facts cannot establish that this process has finished
+    // asynchronously registering its account/model inventory.
+    accounts_validated_for_process: bool,
+    last_health: Option<Instant>,
+    published_auth_generation: Option<u64>,
     adopted: bool,
+    // A failed initial start keeps ownership solely to finish cleanup. It cannot
+    // become execution-ready until that child stops and a normal start commits.
+    cleanup_only: bool,
 }
 
 struct InstanceLayout {
@@ -169,7 +187,9 @@ struct InstanceLayout {
 
 impl ManagedCpaRuntime {
     pub fn managed_kind(&self) -> Option<crate::CpaAccountKind> {
-        if self.spec.borrowed_claude_auth.is_some() {
+        if let Some(kind) = self.spec.managed_oauth {
+            Some(kind)
+        } else if self.spec.borrowed_claude_auth.is_some() {
             Some(crate::CpaAccountKind::Claude)
         } else if self.spec.borrowed_codex_auth.is_some() {
             Some(crate::CpaAccountKind::Codex)
@@ -180,12 +200,19 @@ impl ManagedCpaRuntime {
     pub fn inspect_subscription_for_check(
         &self,
     ) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError> {
+        let _scope = self.operation_context().enter();
         if let Some(spec) = &self.spec.borrowed_claude_auth {
             return spec.inspect_for_check().map(Into::into);
         }
         self.inspect_subscription()
     }
     pub fn inspect_subscription(&self) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError> {
+        let _scope = self.operation_context().enter();
+        if let Some(source) = self.managed_oauth_source() {
+            let evidence = source.inspect()?;
+            self.inspect_managed_authentication(&evidence)?;
+            return Ok(BorrowedSubscriptionEvidence::Managed(evidence));
+        }
         if let Some(spec) = &self.spec.borrowed_claude_auth {
             return spec.inspect().map(Into::into);
         }
@@ -226,6 +253,9 @@ impl ManagedCpaRuntime {
             backend,
             control,
             inner: Mutex::new(RuntimeInner::default()),
+            admission: admission::Admission::default(),
+            observation: Mutex::new(admission::Observation::default()),
+            health_invalidated: AtomicBool::new(false),
             epochs: Arc::new(RuntimeEpochState::new()),
             diagnostics: DiagnosticsPort::default(),
             proxy_environment: crate::proxy_environment::ProxyEnvironment::capture(
@@ -282,9 +312,27 @@ impl ManagedCpaRuntime {
         &self,
         expected: Option<&BorrowedSubscriptionEvidence>,
     ) -> Result<CpaHealth, CpaLifecycleError> {
-        let mut inner = self.inner.lock();
-        if inner.live.is_some() {
-            return self.health_locked(&mut inner);
+        let _scope = self.operation_context().enter();
+        self.prepare_native_subscription()?;
+        let mut inner = self.lock_lifecycle()?;
+        self.start_expected_locked(&mut inner, expected)
+    }
+
+    fn start_expected_locked(
+        &self,
+        inner: &mut RuntimeInner,
+        expected: Option<&BorrowedSubscriptionEvidence>,
+    ) -> Result<CpaHealth, CpaLifecycleError> {
+        if inner.live.as_ref().is_some_and(|live| live.cleanup_only) {
+            let live = inner.live.as_mut().expect("retained failed start");
+            let exit = self.shutdown_live_process(live)?;
+            live.lease
+                .release()
+                .map_err(|_| CpaLifecycleError::OwnerState)?;
+            inner.live = None;
+            inner.last_exit = Some(exit);
+        } else if inner.live.is_some() {
+            return self.health_locked(inner);
         }
         let generation = inner.restart_count;
         let started = std::time::Instant::now();
@@ -363,7 +411,7 @@ impl ManagedCpaRuntime {
                 let record = fresh_record.clone();
                 // The step reports its own real terminal at its own boundary; nothing here
                 // adds a second one for a step that already ended.
-                self.start_fresh(lease, record, artifact, &layout, expected, generation)?
+                self.start_fresh(inner, lease, record, artifact, &layout, expected)?
             }
             OwnerClaim::Existing(record) => {
                 if self.backend.pid_is_running(record.owner_pid)? {
@@ -379,29 +427,44 @@ impl ManagedCpaRuntime {
                             .map_err(|_| CpaLifecycleError::OwnerState)?;
                     // Authenticate the orphan before adopting or replacing its launch policy.
                     self.adopt_orphan(
+                        inner,
                         lease,
                         record,
                         transferred,
                         artifact,
                         &layout,
                         expected,
-                        generation,
                     )?
                 } else {
                     let replacement = fresh_record;
                     let lease =
                         OwnerLease::reclaim_stale(&layout.lock_dir, &record, &replacement, nonce)
                             .map_err(|_| CpaLifecycleError::OwnerState)?;
-                    self.start_fresh(lease, replacement, artifact, &layout, expected, generation)?
+                    self.start_fresh(inner, lease, replacement, artifact, &layout, expected)?
                 }
             }
         };
         // Application may have replayed a durable disabled/removed decision before this runtime
         // existed. Apply that projection before publishing loaded account state to Attempt.
-        subscriptions::apply_management_projection(&mut live.accounts, &inner.source_management);
-        self.epochs.advance_runtime();
+        subscriptions::apply_management_projection(
+            &mut live.accounts,
+            &self.admission.snapshot().source_management,
+        );
         let health = ready_health(&live, inner.restart_count);
-        inner.live = Some(live);
+        let mut pending = Some(live);
+        if let Err(error) = self.commit_lifecycle(|| {
+            if let Some(live) = pending.as_mut() {
+                live.cleanup_only = false;
+            }
+            inner.live = pending.take();
+            self.epochs.advance_runtime();
+            self.health_invalidated.store(false, Ordering::Release);
+        }) {
+            if let Some(live) = pending {
+                self.cleanup_failed_start(inner, live);
+            }
+            return Err(error);
+        }
         self.emit(DiagnosticEvent::CpaLifecycle(CpaLifecycle {
             phase: CpaPhase::Ready,
             elapsed_ms: started.elapsed().as_millis() as u64,
@@ -412,12 +475,46 @@ impl ManagedCpaRuntime {
     }
 
     pub fn health(&self) -> Result<CpaHealth, CpaLifecycleError> {
-        self.health_locked(&mut self.inner.lock())
+        // A status read never joins a slow lifecycle operation. Reap a known
+        // process cheaply when its owner is idle; health probes belong to owner
+        // maintenance/recovery, not the observation lock.
+        if let Some(mut inner) = self.inner.try_lock() {
+            if let Some(live) = inner.live.as_mut()
+                && let Some(process) = live.process.as_mut()
+                && let Some(exit) = process.try_exit()?
+            {
+                live.process = None;
+                live.accounts_validated_for_process = false;
+                live.last_health = None;
+                inner.last_exit = Some(exit);
+            }
+            self.publish_observation(&inner);
+        }
+        let (observed, sampled_at, sampled_epochs) = {
+            let snapshot = self.observation.lock();
+            (
+                snapshot.health,
+                snapshot.health_sample,
+                snapshot.live.as_ref().map(|live| live.epochs),
+            )
+        };
+        if (self.admission.snapshot().subscription_execution_suspended
+            || self.health_invalidated.load(Ordering::Acquire)
+            || sampled_at.is_none_or(|sample| sample.elapsed() >= Duration::from_secs(5))
+            || sampled_epochs.is_none_or(|(runtime, target)| !self.epochs.matches(runtime, target)))
+            && let CpaHealth::Ready {
+                pid, restart_count, ..
+            } = observed
+        {
+            return Ok(CpaHealth::Unhealthy { pid, restart_count });
+        }
+        Ok(observed)
     }
 
     pub fn shutdown(&self) -> Result<CpaExit, CpaLifecycleError> {
         let started = std::time::Instant::now();
-        let mut inner = self.inner.lock();
+        self.suspend_subscription_execution();
+        let mut inner = self.lock_lifecycle()?;
         let live = inner.live.as_mut().ok_or(CpaLifecycleError::NotStarted)?;
         let exit = self.shutdown_live_process(live)?;
         live.lease
@@ -457,7 +554,7 @@ impl ManagedCpaRuntime {
     }
 
     pub fn last_exit(&self) -> Option<CpaExit> {
-        self.inner.lock().last_exit
+        self.observation.lock().last_exit
     }
 
     fn invalidate_live_accounts(
@@ -465,11 +562,15 @@ impl ManagedCpaRuntime {
         live: &mut LiveRuntime,
         kind: Option<crate::CpaAccountKind>,
     ) -> bool {
-        let changed = subscriptions::deactivate_accounts(&mut live.accounts, kind);
-        if changed {
-            self.epochs.advance_target();
-        }
-        changed
+        self.commit_lifecycle(|| {
+            let changed = subscriptions::deactivate_accounts(&mut live.accounts, kind);
+            if changed {
+                self.epochs.advance_target();
+            }
+            live.last_health = None;
+            changed
+        })
+        .unwrap_or(false)
     }
 
     fn invalidate_runtime_accounts(
@@ -504,19 +605,20 @@ impl ManagedCpaRuntime {
 
     fn start_fresh(
         &self,
+        inner: &mut RuntimeInner,
         lease: OwnerLease,
         record: OwnerRecord,
         artifact: VerifiedCpaBinary,
         layout: &InstanceLayout,
         expected: Option<&BorrowedSubscriptionEvidence>,
-        generation: u64,
     ) -> Result<LiveRuntime, CpaLifecycleError> {
-        let mut candidate = None;
+        let generation = inner.restart_count;
         let attempt = (|| {
             let auth_lease = ManagedAuthLease::acquire_subscription(
                 &layout.auth_dir,
                 self.spec.borrowed_codex_auth.as_ref(),
                 self.spec.borrowed_claude_auth.as_ref(),
+                self.spec.managed_oauth,
                 expected,
             )?;
             let secrets = InstanceSecrets::generate()?;
@@ -551,62 +653,89 @@ impl ManagedCpaRuntime {
                     return Err(error);
                 }
             };
-            candidate = Some(process);
-            let running_record = record
-                .running(
-                    candidate.as_ref().expect("process was stored").pid(),
-                    address,
-                )
-                .map_err(|_| CpaLifecycleError::OwnerState)?;
-            lease
-                .write(&running_record)
-                .map_err(|_| CpaLifecycleError::OwnerState)?;
-            self.wait_ready(
-                candidate.as_mut().expect("process was stored").as_mut(),
-                &artifact,
-                address,
-                &secrets,
-                generation,
-            )?;
-            validate_runtime_files(layout)?;
-            let accounts = load_account_state(&layout.accounts_path)?;
-            Ok((secrets, address, running_record, accounts, auth_lease))
+            Ok((secrets, address, process, auth_lease))
         })();
-        match attempt {
-            Ok((secrets, address, running_record, accounts, auth_lease)) => Ok(LiveRuntime {
+        let mut live = match attempt {
+            Ok((secrets, address, process, auth_lease)) => LiveRuntime {
                 lease,
                 auth_lease: Some(auth_lease),
-                owner_record: running_record,
-                process: candidate,
+                owner_record: record,
+                process: Some(process),
                 artifact,
                 address,
                 secrets,
-                accounts,
+                accounts: Vec::new(),
+                accounts_validated_for_process: false,
+                last_health: None,
+                published_auth_generation: None,
                 adopted: false,
-            }),
+                cleanup_only: true,
+            },
             Err(error) => {
-                let stopped = candidate
-                    .as_mut()
-                    .is_none_or(|process| process.shutdown(self.spec.shutdown_timeout).is_ok());
-                if stopped {
-                    let _ = lease.abandon();
-                }
-                Err(error)
+                let _ = lease.abandon();
+                return Err(error);
             }
+        };
+        // Once spawn succeeds, every fallible step retains both the process and
+        // credential lease. A failed stop must remain retryable by this owner.
+        let ready = (|| {
+            live.owner_record = live
+                .owner_record
+                .clone()
+                .running(
+                    live.process.as_ref().expect("spawned process").pid(),
+                    live.address,
+                )
+                .map_err(|_| CpaLifecycleError::OwnerState)?;
+            live.lease
+                .write(&live.owner_record)
+                .map_err(|_| CpaLifecycleError::OwnerState)?;
+            self.wait_ready(
+                live.process.as_mut().expect("spawned process").as_mut(),
+                &live.artifact,
+                live.address,
+                &live.secrets,
+                generation,
+            )?;
+            validate_runtime_files(layout)?;
+            live.accounts = load_account_state(&layout.accounts_path)?;
+            live.last_health = Some(Instant::now());
+            Ok(())
+        })();
+        if let Err(error) = ready {
+            self.cleanup_failed_start(inner, live);
+            return Err(error);
         }
+        Ok(live)
+    }
+
+    fn cleanup_failed_start(&self, inner: &mut RuntimeInner, mut live: LiveRuntime) {
+        live.cleanup_only = true;
+        crate::request_context::cleanup(self.spec.shutdown_timeout, || {
+            // Cancellation may have prevented the first owner-record write.
+            // Record the already-created child for recovery; this grants no work.
+            let _ = live.lease.write(&live.owner_record);
+            if self.shutdown_live_process(&mut live).is_ok() {
+                let _ = live.lease.release();
+            } else {
+                live.last_health = None;
+                inner.live = Some(live);
+            }
+        });
     }
 
     #[allow(clippy::too_many_arguments)]
     fn adopt_orphan(
         &self,
+        inner: &mut RuntimeInner,
         lease: OwnerLease,
         stale_record: OwnerRecord,
         transferred: OwnerRecord,
         artifact: VerifiedCpaBinary,
         layout: &InstanceLayout,
         expected: Option<&BorrowedSubscriptionEvidence>,
-        generation: u64,
     ) -> Result<LiveRuntime, CpaLifecycleError> {
+        let generation = inner.restart_count;
         let ready_started = std::time::Instant::now();
         self.emit_stage(
             CpaStageKind::ReadyWait,
@@ -625,6 +754,7 @@ impl ManagedCpaRuntime {
                 &layout.auth_dir,
                 self.spec.borrowed_codex_auth.as_ref(),
                 self.spec.borrowed_claude_auth.as_ref(),
+                self.spec.managed_oauth,
                 expected,
             )?;
             let secrets = InstanceSecrets::read(&layout.capability_path)?;
@@ -664,20 +794,17 @@ impl ManagedCpaRuntime {
                 if transferred.proxy_environment_sha256.as_deref() != Some(digest.as_str()) {
                     // The management capability has authenticated this exact orphan twice.
                     // Never serve through an old/unknown proxy policy after owner recovery.
-                    if let Err(error) = process.shutdown(self.spec.shutdown_timeout) {
+                    if let Err(error) =
+                        crate::request_context::cleanup(self.spec.shutdown_timeout, || {
+                            process.shutdown(self.spec.shutdown_timeout)
+                        })
+                    {
                         let _ = lease.restore_stale(&stale_record);
                         return Err(error.into());
                     }
                     drop(auth_lease);
                     transferred.proxy_environment_sha256 = Some(digest);
-                    return self.start_fresh(
-                        lease,
-                        transferred,
-                        artifact,
-                        layout,
-                        expected,
-                        generation,
-                    );
+                    return self.start_fresh(inner, lease, transferred, artifact, layout, expected);
                 }
                 Ok(LiveRuntime {
                     lease,
@@ -688,7 +815,11 @@ impl ManagedCpaRuntime {
                     address: transferred.address,
                     secrets,
                     accounts,
+                    accounts_validated_for_process: false,
+                    last_health: Some(Instant::now()),
+                    published_auth_generation: None,
                     adopted: true,
+                    cleanup_only: true,
                 })
             }
             Err(error) => {
@@ -713,8 +844,10 @@ impl ManagedCpaRuntime {
         address: SocketAddr,
         secrets: &InstanceSecrets,
     ) -> Result<Box<dyn CpaProcessHandle>, CpaLifecycleError> {
+        crate::request_context::check()?;
         let config = render_managed_config(address.port(), &layout.auth_dir, secrets)?;
         private_atomic_write(&layout.config_path, &config)?;
+        crate::request_context::check()?;
         self.backend
             .spawn(&CpaLaunch {
                 binary: artifact.clone(),
@@ -742,26 +875,46 @@ impl ManagedCpaRuntime {
         );
         let ready_started = Instant::now();
         let deadline = ready_started + self.spec.startup_timeout;
-        let outcome = loop {
-            match process.try_exit() {
-                Ok(Some(exit)) => break Err(CpaLifecycleError::ExitedDuringStartup(exit)),
-                Ok(None) => {}
-                Err(error) => break Err(error.into()),
-            }
-            match self.control.probe_ready(
-                address,
-                secrets,
-                &artifact.version().to_string(),
-                self.spec.control_timeout,
-            ) {
-                Ok(()) => break Ok(()),
-                Err(AccountDiscoveryError::RunningVersionMismatch)
-                | Err(AccountDiscoveryError::SecretBearingResponse) => {
-                    break Err(CpaLifecycleError::UnsafeControlResponse);
+        let outcome = {
+            let _scope = crate::CpaRequestContext::new(deadline).enter();
+            (|| loop {
+                crate::request_context::check()?;
+                match process.try_exit() {
+                    Ok(Some(exit)) => break Err(CpaLifecycleError::ExitedDuringStartup(exit)),
+                    Ok(None) => {}
+                    Err(error) => break Err(error.into()),
                 }
-                Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
-                Err(_) => break Err(CpaLifecycleError::StartupTimeout),
+                let ready = self.control.probe_ready(
+                    address,
+                    secrets,
+                    &artifact.version().to_string(),
+                    crate::request_context::remaining(self.spec.control_timeout)?,
+                );
+                crate::request_context::check()?;
+                match ready {
+                    Ok(()) => {
+                        break Ok(());
+                    }
+                    Err(AccountDiscoveryError::RunningVersionMismatch)
+                    | Err(AccountDiscoveryError::SecretBearingResponse) => {
+                        break Err(CpaLifecycleError::UnsafeControlResponse);
+                    }
+                    Err(_) if Instant::now() < deadline => {
+                        crate::request_context::sleep(Duration::from_millis(20))?
+                    }
+                    Err(_) => break Err(CpaLifecycleError::StartupTimeout),
+                }
+            })()
+        };
+        // The startup budget is a business timeout. Only the caller's enclosing
+        // lifetime can classify it as cancellation; both paths emit a terminal.
+        let outcome = match outcome {
+            Err(CpaLifecycleError::OperationCancelled)
+                if Instant::now() >= deadline && crate::request_context::check().is_ok() =>
+            {
+                Err(CpaLifecycleError::StartupTimeout)
             }
+            outcome => outcome,
         };
         let elapsed_ms = ready_started.elapsed().as_millis() as u64;
         match &outcome {
@@ -795,9 +948,16 @@ impl ManagedCpaRuntime {
                 restart_count: inner.restart_count,
             });
         };
+        if live.cleanup_only {
+            return Ok(CpaHealth::Unhealthy {
+                pid: process.pid(),
+                restart_count: inner.restart_count,
+            });
+        }
         validate_runtime_files(&self.prepare_layout()?)?;
         if let Some(exit) = process.try_exit()? {
             live.process = None;
+            live.accounts_validated_for_process = false;
             inner.last_exit = Some(exit);
             return Ok(CpaHealth::Crashed {
                 exit,
@@ -814,11 +974,14 @@ impl ManagedCpaRuntime {
             )
             .is_err()
         {
+            live.last_health = None;
             return Ok(CpaHealth::Unhealthy {
                 pid: process.pid(),
                 restart_count: inner.restart_count,
             });
         }
+        live.last_health = Some(Instant::now());
+        self.health_invalidated.store(false, Ordering::Release);
         Ok(ready_health(live, inner.restart_count))
     }
 
@@ -827,13 +990,37 @@ impl ManagedCpaRuntime {
         inner: &mut RuntimeInner,
         expected: Option<&BorrowedSubscriptionEvidence>,
     ) -> Result<(), CpaLifecycleError> {
+        crate::request_context::check()?;
+        if inner.live.as_ref().is_some_and(|live| live.cleanup_only) {
+            if expected.is_none()
+                && !self
+                    .admission
+                    .snapshot()
+                    .passive_source_is_admitted(self.is_managed_oauth())
+            {
+                return Err(CpaLifecycleError::StaleSourceManagement);
+            }
+            self.start_expected_locked(inner, expected)?;
+            return Ok(());
+        }
         let live = inner.live.as_mut().ok_or(CpaLifecycleError::NotStarted)?;
         validate_runtime_files(&self.prepare_layout()?)?;
         if let Some(process) = live.process.as_mut() {
             if let Some(exit) = process.try_exit()? {
                 live.process = None;
+                live.accounts_validated_for_process = false;
+                live.last_health = None;
+                self.health_invalidated.store(true, Ordering::Release);
                 inner.last_exit = Some(exit);
             } else {
+                if !self.health_invalidated.load(Ordering::Acquire)
+                    && live
+                        .last_health
+                        .is_some_and(|sample| sample.elapsed() < Duration::from_secs(5))
+                {
+                    return Ok(());
+                }
+                live.last_health = None;
                 self.control
                     .probe_ready(
                         live.address,
@@ -842,8 +1029,22 @@ impl ManagedCpaRuntime {
                         self.spec.control_timeout,
                     )
                     .map_err(map_control_error)?;
+                crate::request_context::check()?;
+                live.last_health = Some(Instant::now());
+                self.health_invalidated.store(false, Ordering::Release);
                 return Ok(());
             }
+        }
+        // Native initial discovery may recover without a saved projection. A
+        // managed OAuth writer needs either saved Enabled authority or explicit
+        // Check evidence; pending/passive reads never start its refresh worker.
+        if expected.is_none()
+            && !self
+                .admission
+                .snapshot()
+                .passive_source_is_admitted(self.is_managed_oauth())
+        {
+            return Err(CpaLifecycleError::StaleSourceManagement);
         }
         let exit = inner.last_exit.unwrap_or(CpaExit { code: None });
         let now = Instant::now();
@@ -867,12 +1068,13 @@ impl ManagedCpaRuntime {
             .saturating_mul(multiplier)
             .min(self.spec.restart_policy.max_backoff);
         if !backoff.is_zero() {
-            thread::sleep(backoff);
+            crate::request_context::sleep(backoff)?;
         }
         let verified = self.locator.locate()?;
         ensure_supported_artifact(&verified)?;
         let generation = inner.restart_count;
         let live = inner.live.as_mut().ok_or(CpaLifecycleError::NotStarted)?;
+        live.accounts_validated_for_process = false;
         if verified.version() != live.artifact.version()
             || verified.sha256_hex() != live.artifact.sha256_hex()
         {
@@ -890,8 +1092,7 @@ impl ManagedCpaRuntime {
             0,
             generation,
         );
-        let mut process = match self.spawn_process(&verified, &layout, live.address, &live.secrets)
-        {
+        let process = match self.spawn_process(&verified, &layout, live.address, &live.secrets) {
             Ok(process) => {
                 self.emit_stage(
                     CpaStageKind::ProcessSpawn,
@@ -918,26 +1119,44 @@ impl ManagedCpaRuntime {
             .clone()
             .running(process.pid(), live.address)
             .map_err(|_| CpaLifecycleError::OwnerState)?;
-        if live.lease.write(&running_record).is_err() {
-            let _ = process.shutdown(self.spec.shutdown_timeout);
-            return Err(CpaLifecycleError::OwnerState);
-        }
-        if let Err(error) = self.wait_ready(
-            process.as_mut(),
-            &verified,
-            live.address,
-            &live.secrets,
-            generation,
-        ) {
-            let _ = process.shutdown(self.spec.shutdown_timeout);
+        // Track the child before any further fallible I/O. Cancellation may
+        // revoke publication, but it must never lose the sole cleanup owner.
+        live.process = Some(process);
+        live.owner_record = running_record.clone();
+        let ready = (|| {
+            live.lease
+                .write(&running_record)
+                .map_err(|_| CpaLifecycleError::OwnerState)?;
+            self.wait_ready(
+                live.process
+                    .as_mut()
+                    .ok_or(CpaLifecycleError::OwnerState)?
+                    .as_mut(),
+                &verified,
+                live.address,
+                &live.secrets,
+                generation,
+            )?;
+            validate_runtime_files(&layout)?;
+            self.commit_lifecycle(|| {
+                live.artifact = verified;
+                live.adopted = false;
+                live.last_health = Some(Instant::now());
+                inner.restart_count = inner.restart_count.saturating_add(1);
+                self.health_invalidated.store(false, Ordering::Release);
+            })
+        })();
+        if let Err(error) = ready {
+            live.last_health = None;
+            crate::request_context::cleanup(self.spec.shutdown_timeout, || {
+                if let Some(process) = live.process.as_mut()
+                    && process.shutdown(self.spec.shutdown_timeout).is_ok()
+                {
+                    live.process = None;
+                }
+            });
             return Err(error);
         }
-        validate_runtime_files(&layout)?;
-        live.owner_record = running_record;
-        live.process = Some(process);
-        live.artifact = verified;
-        live.adopted = false;
-        inner.restart_count = inner.restart_count.saturating_add(1);
         Ok(())
     }
 
@@ -959,7 +1178,9 @@ impl ManagedCpaRuntime {
                 .map_err(map_control_error)?;
         }
         process
-            .shutdown(self.spec.shutdown_timeout)
+            .shutdown(crate::request_context::remaining(
+                self.spec.shutdown_timeout,
+            )?)
             .map_err(Into::into)
     }
 }
@@ -1121,6 +1342,9 @@ fn ready_health(live: &LiveRuntime, restart_count: u64) -> CpaHealth {
 
 fn map_control_error(error: AccountDiscoveryError) -> CpaLifecycleError {
     match error {
+        AccountDiscoveryError::AuthenticationRequired => {
+            CpaLifecycleError::ManagedOAuthAuthenticationRequired
+        }
         AccountDiscoveryError::AccountDisappeared => {
             CpaLifecycleError::BorrowedCodexAuthUnavailable
         }

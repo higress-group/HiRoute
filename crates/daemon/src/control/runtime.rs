@@ -36,8 +36,8 @@ use hiroute_integrations::{
     AgentDiscoveryOutcomeV1, AgentFilesystemLayoutV1, CLAUDE_INTEGRATION_PROFILE_REF_V1,
     CLAUDE_PROFILE_ID_V1, CODEX_INTEGRATION_PROFILE_REF_V1, CODEX_PROFILE_ID_V1,
     ClaudeRegistrationIndexV1, DiscoveredCredentialRefV1, FilesystemAgentDiscoveryV1,
-    FilesystemAgentScannerV1, PermissionHardeningRequiredV1, ProtectedAgentSubscriptionSourceV1,
-    QODER_INTEGRATION_PROFILE_REF_V1, QODER_PROFILE_ID_V1, TrustedReleaseCatalog,
+    FilesystemAgentScannerV1, PermissionHardeningRequiredV1, QODER_INTEGRATION_PROFILE_REF_V1,
+    QODER_PROFILE_ID_V1, TrustedReleaseCatalog,
 };
 use hiroute_local_storage::{ApplyCapabilityRegistrationV1, LocalStorageSet, ManagedArtifactStore};
 use hiroute_observation::{DigestAuthority, LocalObservationStore};
@@ -105,7 +105,7 @@ pub struct ProductionControlRuntime {
 
 #[derive(Clone)]
 struct SubscriptionContextV1 {
-    source: ProtectedAgentSubscriptionSourceV1,
+    source: subscriptions::source::SubscriptionSource,
     evidence: Option<BorrowedSubscriptionEvidence>,
     candidate_revision: u64,
 }
@@ -479,6 +479,7 @@ impl ProductionControlRuntime {
             cpa_runtime,
             subscription_sources: Mutex::new(BTreeMap::new()),
             subscription_targets: Mutex::new(BTreeMap::new()),
+            subscription_lifecycle: Mutex::new(()),
             subscription_maintenance: Mutex::new(subscriptions::SubscriptionMaintenance::new()?),
             managed_agent_runtime: Mutex::new(None),
             publication_target: Mutex::new(None),
@@ -786,6 +787,9 @@ struct LocalControlAdapter {
     cpa_runtime: Option<Arc<ManagedCpaRuntimeSet>>,
     subscription_sources: Mutex<BTreeMap<String, SubscriptionContextV1>>,
     subscription_targets: Mutex<BTreeMap<String, SubscriptionContextV1>>,
+    /// Lock order: subscription lifecycle -> transaction writer -> registry/stores. Held
+    /// through all Apply effects and projection, or Forget's snapshot/disable/withdrawal.
+    subscription_lifecycle: Mutex<()>,
     subscription_maintenance: Mutex<subscriptions::SubscriptionMaintenance>,
     managed_agent_runtime: Mutex<Option<ManagedAgentRuntimeV1>>,
     publication_target: Mutex<Option<Arc<dyn PublicationTargetPort + Send + Sync>>>,

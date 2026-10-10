@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-manage-subscription-login"
+description = "Enables the manage_subscription_login command without any pre-configured scope."
+commands.allow = ["manage_subscription_login"]
+
+[[permission]]
+identifier = "deny-manage-subscription-login"
+description = "Denies the manage_subscription_login command without any pre-configured scope."
+commands.deny = ["manage_subscription_login"]

@@ -46,6 +46,8 @@ fn main() {
             "apply_compute_save",
             "get_compute_save_result",
             "compute_subscriptions",
+            "manage_subscription_login",
+            "submit_subscription_login_callback",
             "check_subscription",
             "get_subscription_check_result",
             "recover_subscription_check",

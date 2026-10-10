@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-submit-subscription-login-callback"
+description = "Enables the submit_subscription_login_callback command without any pre-configured scope."
+commands.allow = ["submit_subscription_login_callback"]
+
+[[permission]]
+identifier = "deny-submit-subscription-login-callback"
+description = "Denies the submit_subscription_login_callback command without any pre-configured scope."
+commands.deny = ["submit_subscription_login_callback"]

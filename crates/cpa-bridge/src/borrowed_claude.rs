@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hiroute_domain::CanonicalDigest;
 use hiroute_integrations::ClaudeSubscriptionLocation;
+#[cfg(target_os = "macos")]
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -22,7 +23,8 @@ const FILE_NAME: &str = "hiroute-managed-claude.json";
 #[derive(Clone)]
 pub struct BorrowedClaudeAuthSpec {
     location: ClaudeSubscriptionLocation,
-    identity: Arc<Mutex<Option<(String, String)>>>,
+    identity: Arc<crate::claude_profile::ProfileCache>,
+    pub(crate) profile_reader: Arc<dyn ClaudeProfileReader>,
     proxy: crate::proxy_environment::ProxyEnvironment,
 }
 impl std::fmt::Debug for BorrowedClaudeAuthSpec {
@@ -34,7 +36,8 @@ impl BorrowedClaudeAuthSpec {
     pub fn new(location: ClaudeSubscriptionLocation) -> Self {
         Self {
             location,
-            identity: Arc::new(Mutex::new(None)),
+            identity: Arc::new(crate::claude_profile::ProfileCache::default()),
+            profile_reader: Arc::new(RemoteProfileReader),
             proxy: crate::proxy_environment::ProxyEnvironment::capture(std::env::vars_os()),
         }
     }
@@ -61,13 +64,28 @@ impl BorrowedClaudeAuthSpec {
         self.location.anchor()
     }
     pub fn inspect(&self) -> Result<BorrowedClaudeEvidence, CpaLifecycleError> {
+        let _scope =
+            crate::CpaRequestContext::new(std::time::Instant::now() + Duration::from_secs(10))
+                .enter();
         Ok(self.read(false)?.evidence)
     }
     /// Only an explicit user check may request system Keychain authorization.
     pub fn inspect_for_check(&self) -> Result<BorrowedClaudeEvidence, CpaLifecycleError> {
+        let _scope =
+            crate::CpaRequestContext::new(std::time::Instant::now() + Duration::from_secs(10))
+                .enter();
         Ok(self.read(true)?.evidence)
     }
-    fn read(&self, allow_interaction: bool) -> Result<AccessLease, CpaLifecycleError> {
+    #[cfg(test)]
+    fn seed_identity(&self, token: &str, account: &str) {
+        self.identity.seed(
+            &self.source_identity().unwrap(),
+            &digest(token.as_bytes()),
+            account,
+        );
+    }
+    fn read_input(&self, allow_interaction: bool) -> Result<AccessInput, CpaLifecycleError> {
+        crate::request_context::check()?;
         let bytes = match &self.location {
             ClaudeSubscriptionLocation::File(path) => read_private(path)?,
             ClaudeSubscriptionLocation::Keychain {
@@ -91,29 +109,49 @@ impl BorrowedClaudeAuthSpec {
             return Err(invalid());
         }
         let revision = digest(token.as_bytes());
+        let source = self.source_identity()?;
+        Ok(AccessInput {
+            token,
+            revision,
+            source,
+            expires_at: oauth.expires_at,
+        })
+    }
+
+    pub(crate) fn source_stamp(&self) -> Result<CanonicalDigest, CpaLifecycleError> {
+        self.read_input(false)?.stamp()
+    }
+
+    fn read(&self, allow_interaction: bool) -> Result<AccessLease, CpaLifecycleError> {
+        let input = self.read_input(allow_interaction)?;
+        let stamp = input.stamp()?;
+        let AccessInput {
+            token,
+            revision,
+            source,
+            expires_at,
+        } = input;
         // Account UUID is proved with this access token, never inferred from an unrelated
         // cached CLI profile or from token bytes. Rotation revalidates the account.
-        let mut cached = self.identity.lock();
-        let account = if let Some((previous, account)) = cached
-            .as_ref()
-            .filter(|(previous, _)| previous == &revision)
-        {
-            let _ = previous;
-            account.clone()
-        } else {
-            // This port is also called from async Gateway consumers. Construct/drop the
-            // blocking HTTP client on its own thread, outside any Tokio runtime.
-            let account = std::thread::scope(|scope| {
+        let account = self.identity.resolve(&source, &revision, || {
+            // Synchronous control callers may themselves be in an async host.
+            // Carry the budget explicitly: thread-local scopes are not inherited.
+            let contexts = crate::request_context::capture();
+            std::thread::scope(|scope| {
                 scope
-                    .spawn(|| fetch_account(&token, &self.proxy))
+                    .spawn(|| {
+                        crate::request_context::with_captured(&contexts, || {
+                            self.profile_reader.fetch(&token, &self.proxy)
+                        })
+                    })
                     .join()
                     .map_err(|_| CpaLifecycleError::BorrowedClaudeAuthUnavailable)?
-            })?;
-            *cached = Some((revision.clone(), account.clone()));
-            account
-        };
-        drop(cached);
-        let source = self.source_identity()?;
+            })
+        })?;
+        crate::request_context::check()?;
+        if self.read_input(allow_interaction)?.stamp()? != stamp {
+            return Err(CpaLifecycleError::BorrowedClaudeAuthSourceChanged);
+        }
         let account_digest =
             digest(format!("hiroute.cpa-account/v1\0claude\0{account}\0").as_bytes());
         let binding = CanonicalDigest::of(&(
@@ -126,7 +164,7 @@ impl BorrowedClaudeAuthSpec {
             "hiroute.borrowed-claude-evidence/v1",
             &binding,
             &revision,
-            oauth.expires_at,
+            expires_at,
         ))
         .map_err(|_| invalid())?;
         Ok(AccessLease {
@@ -165,6 +203,24 @@ impl BorrowedClaudeEvidence {
     }
     pub fn binding_evidence_digest(&self) -> &CanonicalDigest {
         &self.binding
+    }
+}
+
+struct AccessInput {
+    token: Zeroizing<String>,
+    source: String,
+    revision: String,
+    expires_at: u64,
+}
+impl AccessInput {
+    fn stamp(&self) -> Result<CanonicalDigest, CpaLifecycleError> {
+        CanonicalDigest::of(&(
+            "hiroute.native-claude-read/v1",
+            &self.source,
+            &self.revision,
+            self.expires_at,
+        ))
+        .map_err(|_| invalid())
     }
 }
 
@@ -338,13 +394,32 @@ fn read_private(path: &Path) -> Result<Zeroizing<Vec<u8>>, CpaLifecycleError> {
     Ok(bytes)
 }
 
+pub(crate) trait ClaudeProfileReader: Send + Sync {
+    fn fetch(
+        &self,
+        token: &str,
+        proxy: &crate::proxy_environment::ProxyEnvironment,
+    ) -> Result<String, CpaLifecycleError>;
+}
+
+struct RemoteProfileReader;
+impl ClaudeProfileReader for RemoteProfileReader {
+    fn fetch(
+        &self,
+        token: &str,
+        proxy: &crate::proxy_environment::ProxyEnvironment,
+    ) -> Result<String, CpaLifecycleError> {
+        fetch_account(token, proxy)
+    }
+}
+
 fn fetch_account(
     token: &str,
     proxy: &crate::proxy_environment::ProxyEnvironment,
 ) -> Result<String, CpaLifecycleError> {
     let client = proxy
         .configure_http_client(reqwest::blocking::Client::builder())?
-        .timeout(Duration::from_secs(10))
+        .timeout(crate::request_context::remaining(Duration::from_secs(10))?)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| CpaLifecycleError::BorrowedClaudeAuthUnavailable)?;
@@ -390,7 +465,7 @@ fn with_keychain_interaction<T>(
     // SecItem UI flags do not suppress legacy file-based Keychain prompts.
     // Serialize every local Keychain read, including explicit interactive checks,
     // until the process-wide flag has been restored.
-    let _lock = KEYCHAIN_INTERACTION.lock();
+    let _lock = crate::request_context::lock(&KEYCHAIN_INTERACTION)?;
     let unavailable = |_| CpaLifecycleError::BorrowedClaudeAuthUnavailable;
     let was_allowed = SecKeychain::user_interaction_allowed().map_err(unavailable)?;
     // This library guard restores true, so never create it when already disabled.
@@ -467,3 +542,7 @@ fn read_keychain_contents(
 #[cfg(test)]
 #[path = "borrowed_claude_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "profile_resolution_tests.rs"]
+mod profile_resolution_tests;

@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-10-09",
+  "as_of": "2026-10-10",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -134,6 +134,7 @@
       "discrete-fixed-on",
       "discrete-or-budget",
       "hybrid-effort",
+      "manual-budget",
       "model-documented",
       "toggle",
       "toggle-plus-discrete",
@@ -1897,6 +1898,51 @@
       "collected_on": "2026-10-09",
       "bytes_digest": null,
       "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-185",
+      "authority": "code.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://code.claude.com/docs/en/model-config",
+      "collected_on": "2026-10-10",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-186",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/models/haiku-4-5/overview",
+      "collected_on": "2026-10-10",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-187",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+      "collected_on": "2026-10-10",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-188",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/build-with-claude/thinking",
+      "collected_on": "2026-10-10",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-189",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/build-with-claude/effort",
+      "collected_on": "2026-10-10",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -2239,14 +2285,22 @@
       "billing": "shared-subscription-usage",
       "restriction": "Shared with Claude.ai; setting an API key changes to PAYG API usage",
       "credential": "OAuth Claude sign-in",
-      "interfaces": [],
+      "interfaces": [
+        {
+          "interface_key": "claude-code-subscription/anthropic-messages",
+          "protocol": "anthropic-messages",
+          "base_url": "https://api.anthropic.com",
+          "request_path": "/v1/messages"
+        }
+      ],
       "evidence_status": "verified-primary",
       "evidence_refs": [
         "source-072",
-        "source-073"
+        "source-073",
+        "source-185"
       ],
       "disposition": [
-        "needs-schema-or-adapter"
+        "needs-runtime-qualification"
       ]
     },
     {
@@ -3115,15 +3169,60 @@
       },
       "reasoning": {
         "kind": "adaptive-fixed-on",
-        "default": "high"
+        "default": "high",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
       },
       "identity_stability": "immutable-or-provider-stable",
       "lifecycle": "active",
       "source_stability_note": "current-highest-capability",
       "evidence_refs": [
         "source-058",
-        "source-060"
+        "source-060",
+        "source-188",
+        "source-189"
       ]
+    },
+    {
+      "model_key": "claude-haiku-4-5",
+      "publisher": "Anthropic",
+      "display_name": "Claude Haiku 4.5",
+      "canonical_identity": "claude-haiku-4-5-20251001",
+      "upstream_ids": [
+        "claude-haiku-4-5",
+        "claude-haiku-4-5-20251001"
+      ],
+      "context_tokens": 200000,
+      "max_output_tokens": 64000,
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "supported",
+        "text_output": "supported"
+      },
+      "capabilities": {
+        "tool": "supported",
+        "streaming": "supported"
+      },
+      "reasoning": {
+        "kind": "manual-budget",
+        "minimum_budget_tokens": 1024,
+        "output_constraint": "budget_tokens < max_tokens",
+        "note": "Manual extended thinking only, with minimum budget 1024 and budget_tokens < max_tokens; effort and adaptive thinking are not supported."
+      },
+      "identity_stability": "immutable-or-provider-stable",
+      "lifecycle": "active",
+      "source_stability_note": "active-legacy; dated ID and documented convenience alias are separate bindings",
+      "evidence_refs": [
+        "source-186",
+        "source-187",
+        "source-188"
+      ],
+      "data_note": "Claude subscription execution exposes an explicit toggle subset: disabled, or enabled with a fixed 1024-token thinking budget. This is not the model's native default or arbitrary-budget support; enabled requires max_tokens > 1024."
     },
     {
       "model_key": "claude-haiku-5-5",
@@ -3163,7 +3262,9 @@
       "evidence_refs": [
         "source-181",
         "source-182",
-        "source-183"
+        "source-183",
+        "source-188",
+        "source-189"
       ]
     },
     {
@@ -3201,7 +3302,9 @@
       "evidence_refs": [
         "source-059",
         "source-060",
-        "source-129"
+        "source-129",
+        "source-188",
+        "source-189"
       ]
     },
     {
@@ -3242,7 +3345,9 @@
       "evidence_refs": [
         "source-129",
         "source-130",
-        "source-131"
+        "source-131",
+        "source-188",
+        "source-189"
       ]
     },
     {
@@ -3266,14 +3371,23 @@
       },
       "reasoning": {
         "kind": "adaptive",
-        "note": "Legacy manual budget semantics removed"
+        "note": "Legacy manual budget semantics removed",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
       },
       "identity_stability": "immutable-or-provider-stable",
       "lifecycle": "active",
       "source_stability_note": "current",
       "evidence_refs": [
         "source-060",
-        "source-061"
+        "source-061",
+        "source-188",
+        "source-189"
       ]
     },
     {
@@ -3314,7 +3428,9 @@
       "evidence_refs": [
         "source-179",
         "source-180",
-        "source-183"
+        "source-183",
+        "source-188",
+        "source-189"
       ]
     },
     {
@@ -6196,6 +6312,252 @@
       ]
     },
     {
+      "binding_key": "claude-code-subscription/claude-fable-5-1/claude-fable-5-1",
+      "product_key": "claude-code-subscription",
+      "model_key": "claude-fable-5-1",
+      "upstream_model_id": "claude-fable-5-1",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "claude-code-subscription/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity."
+      },
+      "protocol_qualification": "runtime-required",
+      "reasoning_projection": {
+        "kind": "adaptive-effort",
+        "parameter": "output_config.effort",
+        "thinking_type": "adaptive"
+      },
+      "evidence_refs": [
+        "source-058",
+        "source-060",
+        "source-072",
+        "source-073",
+        "source-185",
+        "source-188",
+        "source-189"
+      ]
+    },
+    {
+      "binding_key": "claude-code-subscription/claude-haiku-4-5/claude-haiku-4-5",
+      "product_key": "claude-code-subscription",
+      "model_key": "claude-haiku-4-5",
+      "upstream_model_id": "claude-haiku-4-5",
+      "upstream_identity_role": "rolling-alias",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "claude-code-subscription/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity."
+      },
+      "protocol_qualification": "runtime-required",
+      "reasoning_projection": {
+        "kind": "toggle-minimum-budget",
+        "parameter": "enable_thinking",
+        "enabled_budget_tokens": 1024,
+        "scope": "supported-subset",
+        "note": "HiRoute exposes disabled or enabled with a fixed 1024-token budget; not the native default or arbitrary budget entry."
+      },
+      "evidence_refs": [
+        "source-072",
+        "source-073",
+        "source-185",
+        "source-186",
+        "source-187",
+        "source-188"
+      ]
+    },
+    {
+      "binding_key": "claude-code-subscription/claude-haiku-4-5/claude-haiku-4-5-20251001",
+      "product_key": "claude-code-subscription",
+      "model_key": "claude-haiku-4-5",
+      "upstream_model_id": "claude-haiku-4-5-20251001",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "claude-code-subscription/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity."
+      },
+      "protocol_qualification": "runtime-required",
+      "reasoning_projection": {
+        "kind": "toggle-minimum-budget",
+        "parameter": "enable_thinking",
+        "enabled_budget_tokens": 1024,
+        "scope": "supported-subset",
+        "note": "HiRoute exposes disabled or enabled with a fixed 1024-token budget; not the native default or arbitrary budget entry."
+      },
+      "evidence_refs": [
+        "source-072",
+        "source-073",
+        "source-185",
+        "source-186",
+        "source-187",
+        "source-188"
+      ]
+    },
+    {
+      "binding_key": "claude-code-subscription/claude-haiku-5-5/claude-haiku-5-5",
+      "product_key": "claude-code-subscription",
+      "model_key": "claude-haiku-5-5",
+      "upstream_model_id": "claude-haiku-5-5",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "claude-code-subscription/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity."
+      },
+      "protocol_qualification": "runtime-required",
+      "reasoning_projection": {
+        "kind": "adaptive-effort",
+        "parameter": "output_config.effort",
+        "thinking_type": "adaptive"
+      },
+      "evidence_refs": [
+        "source-072",
+        "source-073",
+        "source-181",
+        "source-182",
+        "source-183",
+        "source-185",
+        "source-188",
+        "source-189"
+      ]
+    },
+    {
+      "binding_key": "claude-code-subscription/claude-opus-5-5/claude-opus-5-5",
+      "product_key": "claude-code-subscription",
+      "model_key": "claude-opus-5-5",
+      "upstream_model_id": "claude-opus-5-5",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "claude-code-subscription/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity."
+      },
+      "protocol_qualification": "runtime-required",
+      "reasoning_projection": {
+        "kind": "adaptive-effort",
+        "parameter": "output_config.effort",
+        "thinking_type": "adaptive"
+      },
+      "evidence_refs": [
+        "source-072",
+        "source-073",
+        "source-129",
+        "source-130",
+        "source-131",
+        "source-185",
+        "source-188",
+        "source-189"
+      ]
+    },
+    {
+      "binding_key": "claude-code-subscription/claude-opus-5/claude-opus-5",
+      "product_key": "claude-code-subscription",
+      "model_key": "claude-opus-5",
+      "upstream_model_id": "claude-opus-5",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "claude-code-subscription/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity."
+      },
+      "protocol_qualification": "runtime-required",
+      "reasoning_projection": {
+        "kind": "adaptive-effort",
+        "parameter": "output_config.effort",
+        "thinking_type": "adaptive"
+      },
+      "evidence_refs": [
+        "source-059",
+        "source-060",
+        "source-072",
+        "source-073",
+        "source-129",
+        "source-185",
+        "source-188",
+        "source-189"
+      ]
+    },
+    {
+      "binding_key": "claude-code-subscription/claude-sonnet-5-5/claude-sonnet-5-5",
+      "product_key": "claude-code-subscription",
+      "model_key": "claude-sonnet-5-5",
+      "upstream_model_id": "claude-sonnet-5-5",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "claude-code-subscription/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity."
+      },
+      "protocol_qualification": "runtime-required",
+      "reasoning_projection": {
+        "kind": "adaptive-effort",
+        "parameter": "output_config.effort",
+        "thinking_type": "adaptive"
+      },
+      "evidence_refs": [
+        "source-072",
+        "source-073",
+        "source-179",
+        "source-180",
+        "source-183",
+        "source-185",
+        "source-188",
+        "source-189"
+      ]
+    },
+    {
+      "binding_key": "claude-code-subscription/claude-sonnet-5/claude-sonnet-5",
+      "product_key": "claude-code-subscription",
+      "model_key": "claude-sonnet-5",
+      "upstream_model_id": "claude-sonnet-5",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "claude-code-subscription/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity."
+      },
+      "protocol_qualification": "runtime-required",
+      "reasoning_projection": {
+        "kind": "adaptive-effort",
+        "parameter": "output_config.effort",
+        "thinking_type": "adaptive"
+      },
+      "evidence_refs": [
+        "source-060",
+        "source-061",
+        "source-072",
+        "source-073",
+        "source-185",
+        "source-188",
+        "source-189"
+      ]
+    },
+    {
       "binding_key": "deepseek-platform/deepseek-v4-1-flash/deepseek-flash",
       "product_key": "deepseek-platform",
       "model_key": "deepseek-v4-1-flash",
@@ -7398,6 +7760,12 @@
       "status": "runtime_required",
       "subject": "Qwen3-Coder-Next thinking support differs between Coding Plan FAQ and general model table",
       "decision": "Keep endpoint reasoning conflict until product-authenticated metadata resolves it."
+    },
+    {
+      "decision_key": "claude-subscription-static-capabilities",
+      "status": "runtime_required",
+      "subject": "Exact Claude subscription capability registrations and documented model ceilings",
+      "decision": "Register only explicitly maintained product/model/ID bindings. Current CPA inventory and explicit Check/Save remain the account gate; no family wildcard, paid API prices or full-context account acceptance is inferred. Haiku 4.5 keeps its manual-budget source fact and exposes only the documented disabled/fixed-1024 enabled execution subset."
     },
     {
       "decision_key": "client-metadata-field-completeness",

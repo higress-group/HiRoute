@@ -7,7 +7,7 @@ export function subscriptionAttentionCopy(
     case 'subscription_updating':
       return { title: zh ? '正在更新订阅授权' : 'Updating subscription access', detail: zh ? '更新完成前不会使用旧授权发起新请求。' : 'New requests will not use the previous authorization while the update is pending.' };
     case 'authentication_required':
-      return { title: zh ? '需要登录 Codex' : 'Codex sign-in required', detail: zh ? '请先在 Codex 中登录，再重新检查订阅。' : 'Sign in to Codex, then check the subscription again.' };
+      return { title: zh ? '需要更新订阅登录' : 'Subscription sign-in required', detail: zh ? '请更新对应的订阅登录，再重新检查。复用本机登录时，请在原生客户端中登录。' : 'Renew the subscription sign-in, then check again. For a reused local sign-in, sign in through the native client.' };
     case 'model_not_allowed':
       return { title: zh ? '当前订阅不再允许此模型' : 'Model unavailable for this subscription', detail: zh ? '模型和路由配置已保留；当前授权不会执行它。' : 'The model and routing configuration are retained, but current access cannot execute it.' };
     case 'runtime_unavailable':

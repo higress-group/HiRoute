@@ -28,6 +28,7 @@ impl LocalControlAdapter {
         &self,
         prepared: hiroute_application::PreparedTransactionV1,
     ) -> Result<OperationV1, TransactionError> {
+        let _lifecycle = self.lock_subscription_lifecycle()?;
         let principal = VerifiedPrincipal::for_subscription_maintenance();
         let accepted =
             self.coordinator()
@@ -44,6 +45,33 @@ impl LocalControlAdapter {
         principal: VerifiedPrincipal,
         prepared: hiroute_application::PreparedTransactionV1,
     ) -> Result<OperationV1, TransactionError> {
+        let lifecycle = self.lock_subscription_lifecycle()?;
+        self.apply_prepared_with_principal_held(principal, prepared, &lifecycle)
+    }
+
+    /// Forget's disable step must use ordinary admission/effects while retaining its lifecycle
+    /// lock. The unforgeable guard also prevents accidental unlocked calls to this helper.
+    pub(super) fn apply_local_prepared_with_subscription_guard(
+        &self,
+        prepared: hiroute_application::PreparedTransactionV1,
+        lifecycle: &super::subscriptions::login::SubscriptionLifecycleGuard<'_>,
+    ) -> Result<OperationV1, TransactionError> {
+        self.apply_prepared_with_principal_held(
+            VerifiedPrincipal::for_local_control(),
+            prepared,
+            lifecycle,
+        )
+    }
+
+    fn apply_prepared_with_principal_held(
+        &self,
+        principal: VerifiedPrincipal,
+        prepared: hiroute_application::PreparedTransactionV1,
+        lifecycle: &super::subscriptions::login::SubscriptionLifecycleGuard<'_>,
+    ) -> Result<OperationV1, TransactionError> {
+        if !lifecycle.owns(self) {
+            return Err(TransactionError::InvalidArguments);
+        }
         let diagnostics = self
             .publication_diagnostics
             .lock()
@@ -79,6 +107,9 @@ impl LocalControlAdapter {
     }
 
     pub(super) fn reconcile_startup_and_open(&self) -> Result<(), String> {
+        let _lifecycle = self
+            .lock_subscription_lifecycle()
+            .map_err(|error| error.to_string())?;
         self.coordinator()
             .reconcile_startup_and_open()
             .and_then(|_| {
@@ -178,6 +209,7 @@ impl ApplicationMutationPort for LocalControlAdapter {
         principal_kind: PrincipalKind,
         request: ApplyRequestV1,
     ) -> Result<OperationV1, TransactionError> {
+        let _lifecycle = self.lock_subscription_lifecycle()?;
         let principal = VerifiedPrincipal::from_protected_launcher(principal_kind)?;
         let accepted = self
             .coordinator()
@@ -191,6 +223,7 @@ impl ApplicationMutationPort for LocalControlAdapter {
     }
 
     fn apply_local_change(&self, request: ApplyRequestV1) -> Result<OperationV1, TransactionError> {
+        let _lifecycle = self.lock_subscription_lifecycle()?;
         let accepted = self.coordinator().accept(
             &WorkspaceId::default(),
             &VerifiedPrincipal::for_local_control(),
@@ -237,6 +270,7 @@ impl ControlRepositoryPort for LocalControlAdapter {
     }
 
     fn begin_local_operation(&self, operation: &OperationV1) -> PortResult<BeginOperationOutcome> {
+        self.guard_managed_subscription_admission(operation)?;
         self.guard_codex_pending_change(Some(&operation.operation_id))?;
         let stores = self.stores_lock()?;
         super::additional_model_budget::guard_pending_model_change(
@@ -270,6 +304,7 @@ impl ControlRepositoryPort for LocalControlAdapter {
         operation: &OperationV1,
         authorization: &VerifiedApplyAuthorizationV1,
     ) -> PortResult<BeginOperationOutcome> {
+        self.guard_managed_subscription_admission(operation)?;
         self.guard_codex_pending_change(Some(&operation.operation_id))?;
         let stores = self.stores_lock()?;
         super::additional_model_budget::guard_pending_model_change(

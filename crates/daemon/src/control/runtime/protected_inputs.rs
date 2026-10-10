@@ -6,6 +6,33 @@ impl ProductionControlRuntime {
         candidate: hiroute_application_api::ComputeCandidateRefV2,
         secret: hiroute_domain::ProtectedSecret,
     ) -> Result<(), String> {
+        if let Some(login_ref) = candidate
+            .candidate_ref
+            .strip_prefix("candidate/subscription-login/")
+        {
+            let session = self
+                .adapter
+                .cpa_runtime
+                .as_ref()
+                .and_then(|runtimes| runtimes.login_session(login_ref))
+                .ok_or_else(|| "subscription login is unavailable".to_owned())?;
+            if session.state != hiroute_cpa_bridge::CpaLoginState::Pending
+                || candidate != super::subscriptions::login::callback_candidate(login_ref)
+                || secret.expose().len() > 16_384
+            {
+                return Err("subscription callback registration is invalid".into());
+            }
+            let mut inputs = self
+                .adapter
+                .manual_protected_inputs
+                .lock()
+                .map_err(|_| "protected input registry is unavailable".to_owned())?;
+            if inputs.len() >= 256 || inputs.contains_key(&candidate.candidate_ref) {
+                return Err("protected input registration is invalid".into());
+            }
+            inputs.insert(candidate.candidate_ref, secret);
+            return Ok(());
+        }
         if candidate
             .candidate_ref
             .starts_with("candidate/native/agent-token-")

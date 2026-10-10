@@ -20,6 +20,9 @@ pub(super) struct SourceManagementProjection {
 }
 
 impl SourceManagementProjection {
+    pub(super) fn enabled(self) -> bool {
+        self.state == CpaSourceManagementState::Enabled
+    }
     fn denies_admission(self) -> bool {
         matches!(
             self.state,
@@ -29,6 +32,128 @@ impl SourceManagementProjection {
 }
 
 impl ManagedCpaRuntime {
+    /// Explicit recovery for an exact, durably enabled subscription. Login status,
+    /// callback, cancel and credential inspection never call this admission boundary.
+    pub fn ensure_saved_runtime_ready(
+        &self,
+        account_ref: &str,
+        source_revision: u64,
+    ) -> Result<super::CpaHealth, CpaLifecycleError> {
+        if self.managed_kind().is_none() || source_revision == 0 {
+            return Err(CpaLifecycleError::InvalidSourceManagement);
+        }
+        let digest = parse_account_ref(account_ref)?;
+        let _scope = self.operation_context().enter();
+        let admission = self.admission.snapshot();
+        let projection = admission
+            .source_management
+            .get(digest)
+            .ok_or(CpaLifecycleError::InvalidSourceManagement)?;
+        if projection.revision != source_revision
+            || projection.state != CpaSourceManagementState::Enabled
+            || admission.subscription_execution_suspended
+        {
+            return Err(CpaLifecycleError::StaleSourceManagement);
+        }
+        let preparation_generation = self.preparation_generation();
+        let stamp = self.native_source_stamp();
+        let expected = match self.managed_oauth_source().map_or_else(
+            || self.inspect_subscription(),
+            |source| {
+                source
+                    .inspect()
+                    .map(crate::BorrowedSubscriptionEvidence::Managed)
+            },
+        ) {
+            Ok(expected) => expected,
+            Err(error) => {
+                if self.native_source_stamp() == stamp {
+                    self.reject_preparation(preparation_generation);
+                }
+                return Err(error);
+            }
+        };
+        let mut inner = self.lock_lifecycle()?;
+        let result = (|| {
+            // Check the saved provider subject before starting its execution owner.
+            // Managed expiration belongs to CPA; native access leases still require
+            // their original owner's current credentials and never grant refresh.
+            if expected.account_ref() != account_ref {
+                return Err(if self.is_managed_oauth() {
+                    CpaLifecycleError::ManagedOAuthAccountChanged
+                } else if self.managed_kind() == Some(crate::CpaAccountKind::Claude) {
+                    CpaLifecycleError::BorrowedClaudeAuthSourceChanged
+                } else {
+                    CpaLifecycleError::BorrowedCodexAuthSourceChanged
+                });
+            }
+            if inner.live.is_none() {
+                self.start_expected_locked(&mut inner, Some(&expected))?;
+            } else {
+                // Saved-source maintenance establishes current health. Only an
+                // ordinary request lease may reuse the bounded health sample.
+                if let Some(live) = inner.live.as_mut() {
+                    live.last_health = None;
+                }
+                self.ensure_ready_locked(&mut inner, Some(&expected))?;
+            }
+            // Retained facts require this process's catalog, even when their saved
+            // active flags survived the restart. The same validation also restores
+            // snapshots revoked by a transient read/control failure. An empty pending
+            // inventory does not establish or require any routing facts.
+            let needs_account_recovery = inner.live.as_ref().is_some_and(|live| {
+                live.accounts.iter().any(|account| {
+                    account.account_digest == digest
+                        && (!account.active
+                            || !live.accounts_validated_for_process
+                            || self.admission.snapshot().needs_account_validation)
+                })
+            });
+            if needs_account_recovery {
+                self.discover_materializations_locked(&mut inner, None)?;
+                if !inner.live.as_ref().is_some_and(|live| {
+                    live.accounts
+                        .iter()
+                        .any(|account| account.account_digest == digest && account.active)
+                }) {
+                    return Err(CpaLifecycleError::ControlUnavailable);
+                }
+            }
+            let live = inner.live.as_ref().ok_or(CpaLifecycleError::NotStarted)?;
+            Ok(super::ready_health(live, inner.restart_count))
+        })();
+        if result.is_err() && crate::request_context::check().is_ok() {
+            self.invalidate_runtime_accounts(&mut inner, self.managed_kind());
+            // A retained cleanup owner is unavailable, not evidence that this
+            // saved authorization is invalid. Keep its enabled revision retryable;
+            // cleanup_only already prevents health or capability admission.
+            if !inner.live.as_ref().is_some_and(|live| live.cleanup_only) {
+                self.reject_preparation(preparation_generation);
+            }
+        }
+        result
+    }
+
+    /// Called only after exact source/request admission. Authenticated health can
+    /// precede CPA's asynchronous model registration; validate retained snapshots
+    /// once per actual process before issuing a request capability. Ordinary
+    /// discovery preserves its bounded pin wait and never forces remote refresh.
+    pub(crate) fn ensure_process_accounts_current_locked(
+        &self,
+        inner: &mut RuntimeInner,
+    ) -> Result<(), CpaLifecycleError> {
+        if self.admission.snapshot().needs_account_validation
+            || !inner
+                .live
+                .as_ref()
+                .ok_or(CpaLifecycleError::NotStarted)?
+                .accounts_validated_for_process
+        {
+            self.discover_materializations_locked(inner, None)?;
+        }
+        Ok(())
+    }
+
     /// Revalidates the authority-owned native input before a request-scoped capability is
     /// issued. Same-account rotation advances only CPA's private generation and target epoch;
     /// replacement or unreadable authentication fails closed.
@@ -36,6 +161,7 @@ impl ManagedCpaRuntime {
         &self,
         inner: &mut RuntimeInner,
         expected: &AccountSnapshotRecord,
+        prepared: Option<&crate::BorrowedSubscriptionEvidence>,
     ) -> Result<(), CpaLifecycleError> {
         if Some(expected.account_kind) != self.managed_kind() {
             return Ok(());
@@ -44,8 +170,7 @@ impl ManagedCpaRuntime {
         let previous_auth_generation = inner
             .live
             .as_ref()
-            .and_then(|live| live.auth_lease.as_ref())
-            .and_then(|lease| lease.generation());
+            .and_then(|live| live.published_auth_generation);
         let refreshed = inner
             .live
             .as_mut()
@@ -53,7 +178,8 @@ impl ManagedCpaRuntime {
             .auth_lease
             .as_mut()
             .ok_or(CpaLifecycleError::OwnerState)?
-            .refresh_subscription(None, Some(&expected.account_digest));
+            .refresh_subscription(prepared, Some(&expected.account_digest));
+        crate::request_context::check()?;
         let current = refreshed.as_ref().ok().and_then(|identities| {
             identities.iter().find(|identity| {
                 identity.account_kind == expected.account_kind
@@ -64,7 +190,7 @@ impl ManagedCpaRuntime {
             return Ok(());
         }
         if let Some(current) = current
-            && previous_auth_generation.is_some_and(|previous| current.generation > previous)
+            && previous_auth_generation.is_none_or(|previous| current.generation > previous)
             && let Some(account) = inner.live.as_mut().and_then(|live| {
                 live.accounts.iter_mut().find(|account| {
                     account.account_kind == expected.account_kind
@@ -72,12 +198,20 @@ impl ManagedCpaRuntime {
                 })
             })
         {
+            let mut admission = self.admission.state.lock();
+            crate::request_context::check()?;
+            admission.auth_generation = admission.auth_generation.wrapping_add(1);
             account.generation = account
                 .generation
                 .checked_add(1)
                 .ok_or(CpaLifecycleError::InvalidAccountState)?
                 .max(current.generation);
             self.epochs.advance_target();
+            if let Some(live) = inner.live.as_mut() {
+                live.published_auth_generation = Some(current.generation);
+                live.last_health = None;
+            }
+            drop(admission);
             if let Ok(layout) = self.prepare_layout()
                 && let Some(live) = inner.live.as_ref()
             {
@@ -86,22 +220,20 @@ impl ManagedCpaRuntime {
             return Ok(());
         }
 
-        let was_suspended = std::mem::replace(&mut inner.subscription_execution_suspended, true);
-        let accounts_changed = inner
-            .live
-            .as_mut()
-            .is_some_and(|live| deactivate_accounts(&mut live.accounts, self.managed_kind()));
-        if !was_suspended || accounts_changed {
-            self.epochs.advance_target();
+        // A source revision changed between prepare and ownership. It is not
+        // evidence against the newer native token; the next operation prepares it.
+        if matches!(
+            refreshed,
+            Err(CpaLifecycleError::BorrowedClaudeAuthSourceChanged
+                | CpaLifecycleError::BorrowedCodexAuthSourceChanged)
+        ) {
+            return refreshed.map(|_| ());
         }
-        if accounts_changed
-            && let Ok(layout) = self.prepare_layout()
-            && let Some(live) = inner.live.as_ref()
-        {
-            let _ = save_account_state(&layout.accounts_path, &live.accounts);
-        }
+        self.invalidate_runtime_accounts(inner, self.managed_kind());
+        self.reject_preparation(self.preparation_generation());
         match refreshed {
             Err(error) => Err(error),
+            Ok(_) if self.is_managed_oauth() => Err(CpaLifecycleError::ManagedOAuthAccountChanged),
             Ok(_) => Err(match self.managed_kind() {
                 Some(crate::CpaAccountKind::Claude) => {
                     CpaLifecycleError::BorrowedClaudeAuthSourceChanged
@@ -115,15 +247,22 @@ impl ManagedCpaRuntime {
     /// authorization evidence no longer matches the committed source. A later exact enabled
     /// projection is the only way to reopen admission.
     pub fn suspend_subscription_execution(&self) {
-        let mut inner = self.inner.lock();
-        if !inner.subscription_execution_suspended {
-            inner.subscription_execution_suspended = true;
+        let mut admission = self.admission.state.lock();
+        if !admission.subscription_execution_suspended {
+            admission.subscription_execution_suspended = true;
+            let accounts = admission
+                .source_management
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            admission.revoked_accounts.extend(accounts);
+            self.admission.advance();
             self.epochs.advance_target();
         }
     }
 
-    /// Applies Application's already-persisted source decision to this runtime projection.
-    /// Re-enabling only permits a future verified discovery; it never makes cached facts active.
+    /// Only the already-persisted source decision changes admission. No owner
+    /// lock or disk access is needed to revoke a capability.
     pub fn apply_account_management(
         &self,
         account_ref: &str,
@@ -134,37 +273,73 @@ impl ManagedCpaRuntime {
         if source_revision == 0 {
             return Err(CpaLifecycleError::InvalidSourceManagement);
         }
-        let mut inner = self.inner.lock();
-        let projection_changed = update_management_projection(
-            &mut inner.source_management,
+        let mut admission = self.admission.state.lock();
+        let changed = update_management_projection(
+            &mut admission.source_management,
             account_digest,
             source_revision,
             state,
         )?;
         let resumed = state == CpaSourceManagementState::Enabled
-            && std::mem::replace(&mut inner.subscription_execution_suspended, false);
-        if !projection_changed && !resumed {
-            return Ok(());
-        }
-
-        let Some(live) = inner.live.as_mut() else {
-            return Ok(());
-        };
-        let mut changed = false;
-        if state != CpaSourceManagementState::Enabled {
-            for account in &mut live.accounts {
-                if account.account_digest == account_digest && account.active {
-                    account.active = false;
-                    changed = true;
-                }
+            && std::mem::replace(&mut admission.subscription_execution_suspended, false);
+        if changed || resumed {
+            if state == CpaSourceManagementState::Enabled {
+                admission.needs_account_validation = true;
+            } else {
+                admission.revoked_accounts.insert(account_digest.to_owned());
             }
-        }
-        if changed {
+            self.admission.advance();
             self.epochs.advance_target();
-            let layout = self.prepare_layout()?;
-            save_account_state(&layout.accounts_path, &live.accounts)?;
         }
         Ok(())
+    }
+
+    pub(crate) fn preparation_generation(&self) -> u64 {
+        self.admission.state.lock().auth_generation
+    }
+
+    pub(crate) fn reject_preparation(&self, generation: u64) {
+        let mut admission = self.admission.state.lock();
+        if self.reject_preparation_locked(&mut admission, generation) {
+            drop(admission);
+            // Best-effort cached projection; revocation above never waits for
+            // the owner. A newer admitted operation must not be invalidated.
+            if let Some(mut inner) = self.inner.try_lock() {
+                let admission = self.admission.state.lock();
+                if admission.auth_generation == generation
+                    && admission.subscription_execution_suspended
+                    && let Some(live) = inner.live.as_mut()
+                {
+                    deactivate_accounts(&mut live.accounts, self.managed_kind());
+                    live.last_health = None;
+                }
+                drop(admission);
+                self.publish_observation(&inner);
+            }
+        }
+    }
+
+    pub(super) fn reject_preparation_locked(
+        &self,
+        admission: &mut super::admission::AdmissionState,
+        generation: u64,
+    ) -> bool {
+        if crate::request_context::check().is_ok()
+            && admission.auth_generation == generation
+            && !admission.subscription_execution_suspended
+        {
+            admission.subscription_execution_suspended = true;
+            let accounts = admission
+                .source_management
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            admission.revoked_accounts.extend(accounts);
+            self.admission.advance();
+            self.epochs.advance_target();
+            return true;
+        }
+        false
     }
 }
 

@@ -1,6 +1,89 @@
 use super::*;
 
 #[cfg(target_os = "macos")]
+fn assert_keychain_waiter_budget(test_name: &str, cancel_waiter: bool) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::mpsc;
+    use std::time::Instant;
+
+    const CHILD: &str = "HIROUTE_KEYCHAIN_LOCK_BUDGET_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", test_name, "--nocapture", "--test-threads=1"])
+            .env(CHILD, "1")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
+
+    // Hold only the process-policy mutex: no Keychain item or credential is read.
+    let holder = KEYCHAIN_INTERACTION.lock();
+    let reads = Arc::new(AtomicUsize::new(0));
+    let worker_reads = Arc::clone(&reads);
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (finished_tx, finished_rx) = mpsc::channel();
+    let waiter = std::thread::spawn(move || {
+        let budget = if cancel_waiter {
+            Duration::from_secs(10)
+        } else {
+            Duration::from_millis(100)
+        };
+        let request = crate::CpaRequestContext::new(Instant::now() + budget);
+        request.run(|| {
+            request.ensure_active().unwrap();
+            entered_tx.send(request.clone()).unwrap();
+            let result = with_keychain_interaction(false, || {
+                worker_reads.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            });
+            finished_tx.send(result).unwrap();
+        });
+    });
+    let request = entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    if cancel_waiter {
+        request.cancel();
+    }
+
+    let outcome = finished_rx.recv_timeout(Duration::from_secs(2));
+    let returned_before_release = outcome.is_ok();
+    let reads_before_release = reads.load(Ordering::SeqCst);
+    assert!(KEYCHAIN_INTERACTION.try_lock().is_none());
+    // Release and join even on the old blocking implementation, then assert the
+    // original outcome. A regression must fail without stranding its waiter.
+    drop(holder);
+    let result =
+        outcome.unwrap_or_else(|_| finished_rx.recv_timeout(Duration::from_secs(2)).unwrap());
+    waiter.join().unwrap();
+
+    assert!(
+        returned_before_release,
+        "an inactive waiter must return while the holder still owns the lock"
+    );
+    assert!(matches!(result, Err(CpaLifecycleError::OperationCancelled)));
+    assert_eq!(reads_before_release, 0);
+    assert_eq!(reads.load(Ordering::SeqCst), 0);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn keychain_interaction_cancelled_waiter_returns_before_holder_release() {
+    assert_keychain_waiter_budget(
+        "borrowed_claude::tests::keychain_interaction_cancelled_waiter_returns_before_holder_release",
+        true,
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn keychain_interaction_expired_waiter_returns_before_holder_release() {
+    assert_keychain_waiter_budget(
+        "borrowed_claude::tests::keychain_interaction_expired_waiter_returns_before_holder_release",
+        false,
+    );
+}
+
+#[cfg(target_os = "macos")]
 #[test]
 fn keychain_interaction_restores_process_policy() {
     const CHILD: &str = "HIROUTE_KEYCHAIN_INTERACTION_TEST_CHILD";
@@ -79,7 +162,7 @@ fn source(root: &Path, token: &str, account: &str) -> BorrowedClaudeAuthSpec {
     let path = root.join(".credentials.json");
     write_native(&path, token, u64::MAX);
     let spec = BorrowedClaudeAuthSpec::new(ClaudeSubscriptionLocation::File(path));
-    *spec.identity.lock() = Some((digest(token.as_bytes()), account.into()));
+    spec.seed_identity(token, account);
     spec
 }
 fn write_native(path: &Path, token: &str, expiry: u64) {
@@ -108,7 +191,7 @@ fn native_refresh_stays_untouched_and_rotation_preserves_account_binding() {
     assert!(!String::from_utf8_lossy(&cpa).contains("refresh"));
     assert_eq!(fs::read(spec.source_path()).unwrap(), original);
     write_native(spec.source_path(), "access-second", u64::MAX);
-    *spec.identity.lock() = Some((digest(b"access-second"), "account-one".into()));
+    spec.seed_identity("access-second", "account-one");
     let after = spec.inspect().unwrap();
     assert_eq!(before.account_ref(), after.account_ref());
     assert_eq!(
@@ -135,7 +218,7 @@ fn switched_account_is_rejected_before_replacing_cpa_credentials() {
     let mut lease = BorrowedClaudeLease::acquire(auth.path(), &spec, Some(&evidence)).unwrap();
     let previous = fs::read(auth.path().join(FILE_NAME)).unwrap();
     write_native(spec.source_path(), "other-account-token", u64::MAX);
-    *spec.identity.lock() = Some((digest(b"other-account-token"), "account-two".into()));
+    spec.seed_identity("other-account-token", "account-two");
     assert!(matches!(
         lease.refresh(None, None),
         Err(CpaLifecycleError::BorrowedClaudeAuthSourceChanged)
@@ -167,11 +250,11 @@ fn reacquired_lease_keeps_persisted_account_until_explicit_recheck() {
     drop(BorrowedClaudeLease::acquire(auth.path(), &spec, Some(&original)).unwrap());
     // Reopening after native token refresh remains valid for the same account.
     write_native(spec.source_path(), "rotated-access", u64::MAX);
-    *spec.identity.lock() = Some((digest(b"rotated-access"), "account-one".into()));
+    spec.seed_identity("rotated-access", "account-one");
     drop(BorrowedClaudeLease::acquire(auth.path(), &spec, None).unwrap());
     let previous = fs::read(auth.path().join(FILE_NAME)).unwrap();
     write_native(spec.source_path(), "new-account-access", u64::MAX);
-    *spec.identity.lock() = Some((digest(b"new-account-access"), "account-two".into()));
+    spec.seed_identity("new-account-access", "account-two");
     assert!(matches!(
         BorrowedClaudeLease::acquire(auth.path(), &spec, None),
         Err(CpaLifecycleError::BorrowedClaudeAuthSourceChanged)

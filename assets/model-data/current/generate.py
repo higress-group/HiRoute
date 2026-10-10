@@ -4,6 +4,7 @@ import argparse
 import copy
 import datetime
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -11,6 +12,11 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 CURRENT_PRODUCT_RELEASE = "mvp-current"
+
+_subscription_spec = importlib.util.spec_from_file_location(
+    "hiroute_current_subscription_projection", HERE / "subscription_projection.py")
+_subscription_projection = importlib.util.module_from_spec(_subscription_spec)
+_subscription_spec.loader.exec_module(_subscription_projection)
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
@@ -736,6 +742,8 @@ def build_runtime_projection(catalog):
         {"scope": "zhipu-general-cn", "reason": "no authenticated remote model-directory contract in the maintained facts"},
         {"scope": "cloud-auth-transports", "reason": "OAuth, ADC, AWS SDK, and workload identity require dedicated credential adapters"},
     ])
+    _subscription_projection.append_claude_subscription(
+        catalog, output_models, capabilities, offers, runtime_model_definition, digest)
     templates = catalog["connection_templates"]
     template_ids = [value["connection_option_id"] for value in templates]
     if len(set(template_ids)) != len(template_ids):

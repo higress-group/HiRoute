@@ -1,4 +1,17 @@
 use super::*;
+
+fn private_root() -> tempfile::TempDir {
+    let builder = tempfile::Builder::new();
+    #[cfg(unix)]
+    let builder = {
+        use std::os::unix::fs::PermissionsExt;
+        let mut builder = builder;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+        builder
+    };
+    builder.tempdir().unwrap()
+}
+
 fn manual(url: &str) -> SubscriptionProxyPolicy {
     SubscriptionProxyPolicy::Manual {
         url: url.into(),
@@ -72,7 +85,7 @@ fn rejects_unsupported_and_credential_urls_without_echoing_them() {
 }
 #[test]
 fn persists_desired_and_binds_applied_to_exact_launch_snapshot() {
-    let root = tempfile::tempdir().unwrap();
+    let root = private_root();
     let store = SubscriptionProxyStore::new(root.path());
     assert_eq!(
         store.load().unwrap().policy,
@@ -95,7 +108,7 @@ fn persists_desired_and_binds_applied_to_exact_launch_snapshot() {
 #[cfg(unix)]
 fn refuses_unsafe_files_and_symlinks() {
     use std::os::unix::fs::{PermissionsExt, symlink};
-    let root = tempfile::tempdir().unwrap();
+    let root = private_root();
     let store = SubscriptionProxyStore::new(root.path());
     store.configure(SubscriptionProxyPolicy::Direct).unwrap();
     let path = root.path().join("subscription-proxy.json");
@@ -114,7 +127,7 @@ fn refuses_unsafe_files_and_symlinks() {
 
 #[test]
 fn safe_corrupt_record_can_be_replaced_through_product_settings() {
-    let root = tempfile::tempdir().unwrap();
+    let root = private_root();
     let store = SubscriptionProxyStore::new(root.path());
     store.configure(SubscriptionProxyPolicy::Direct).unwrap();
     fs::write(root.path().join("subscription-proxy.json"), b"{broken").unwrap();
@@ -167,7 +180,7 @@ fn proxy_authority_is_identical_for_rust_and_cpa_consumers() {
         assert!(manual(value).validate().is_err(), "{value}");
         assert!(manual(value).resolve([]).is_err(), "{value}");
     }
-    let root = tempfile::tempdir().unwrap();
+    let root = private_root();
     let store = SubscriptionProxyStore::new(root.path());
     for (input, expected) in [
         ("http://LOCALHOST:1187/", "http://localhost:1187"),

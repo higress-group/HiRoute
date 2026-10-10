@@ -74,6 +74,10 @@ pub(crate) struct ManagedAuthLease {
     _auth_dir_lock: File,
     codex: Option<BorrowedCodexLease>,
     claude: Option<crate::borrowed_claude::BorrowedClaudeLease>,
+    managed: Option<(
+        crate::managed_oauth::ManagedOAuthCredentialSource,
+        Option<crate::CpaManagedEvidence>,
+    )>,
 }
 
 impl ManagedAuthLease {
@@ -81,6 +85,7 @@ impl ManagedAuthLease {
         auth_dir: &Path,
         codex: Option<&BorrowedCodexAuthSpec>,
         claude: Option<&crate::BorrowedClaudeAuthSpec>,
+        managed: Option<crate::CpaAccountKind>,
         expected: Option<&crate::BorrowedSubscriptionEvidence>,
     ) -> Result<Self, CpaLifecycleError> {
         let mut lease = Self::acquire_expected(auth_dir, codex, expected.and_then(|v| v.codex()))?;
@@ -93,17 +98,47 @@ impl ManagedAuthLease {
                 )
             })
             .transpose()?;
+        lease.managed = managed.map(|kind| {
+            (
+                crate::managed_oauth::ManagedOAuthCredentialSource {
+                    auth_dir: auth_dir.to_owned(),
+                    kind,
+                },
+                None,
+            )
+        });
+        if managed.is_some() && expected.is_some() {
+            lease.refresh_subscription(expected, None)?;
+        }
         Ok(lease)
     }
     pub(crate) fn generation(&self) -> Option<u64> {
         self.codex_generation()
             .or_else(|| self.claude.as_ref().and_then(|lease| lease.generation()))
+            .or_else(|| {
+                self.managed
+                    .as_ref()
+                    .and_then(|(_, evidence)| evidence.as_ref().map(|_| 1))
+            })
     }
     pub(crate) fn refresh_subscription(
         &mut self,
         expected: Option<&crate::BorrowedSubscriptionEvidence>,
         account: Option<&str>,
     ) -> Result<Vec<ManagedAccountIdentity>, CpaLifecycleError> {
+        if let Some((source, pinned)) = &mut self.managed {
+            let evidence = source.inspect()?;
+            if expected.is_some_and(|value| value.managed() != Some(&evidence))
+                || pinned.as_ref().is_some_and(|value| value != &evidence)
+                || account
+                    .is_some_and(|value| evidence.account_ref() != format!("account/cpa/{value}"))
+            {
+                return Err(CpaLifecycleError::ManagedOAuthAccountChanged);
+            }
+            let identity = evidence.identity();
+            *pinned = Some(evidence);
+            return Ok(vec![identity]);
+        }
         if let Some(claude) = &mut self.claude {
             return claude
                 .refresh(expected.and_then(|v| v.claude()), account)
@@ -144,6 +179,7 @@ impl ManagedAuthLease {
             _auth_dir_lock: auth_dir_lock,
             codex,
             claude: None,
+            managed: None,
         })
     }
 

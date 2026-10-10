@@ -1493,6 +1493,126 @@
           "upstream_protocol": "chat_completions"
         },
         {
+          "capability_id": "cap.cpa.claude.claude-fable-5-1.messages",
+          "connector_id": "connector.cpa.claude",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:f2011f7006580967f9a5670a5c51d66dc2df56ed5432cd3e3d5929cdc7dfa295",
+          "model_configuration_id": "model.anthropic.claude-fable-5-1",
+          "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "claude-fable-5-1",
+          "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.cpa.claude.claude-haiku-4-5-20251001.messages",
+          "connector_id": "connector.cpa.claude",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:12b22b07cc2be2aea273e49496d3386837159a1662c35352f0ae5d5ebd57f221",
+          "model_configuration_id": "model.anthropic.claude-haiku-4-5",
+          "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "claude-haiku-4-5-20251001",
+          "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.cpa.claude.claude-haiku-4-5.messages",
+          "connector_id": "connector.cpa.claude",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:fcd8e5b8fd9406f4e072b5d02c1613dab396a6d9e028de2f44607a744c3a29e3",
+          "model_configuration_id": "model.anthropic.claude-haiku-4-5",
+          "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "claude-haiku-4-5",
+          "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.cpa.claude.claude-haiku-5-5.messages",
+          "connector_id": "connector.cpa.claude",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:f022a25f5a514768affa8d5c28f21012d7c60d7802039e2ef9e79e529c1f7bf8",
+          "model_configuration_id": "model.anthropic.claude-haiku-5-5",
+          "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "claude-haiku-5-5",
+          "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.cpa.claude.claude-opus-5-5.messages",
+          "connector_id": "connector.cpa.claude",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:8cfd1d054c4605b0573ffa011e745f07fa6e02cf39fbc4750da21d84685546e8",
+          "model_configuration_id": "model.anthropic.claude-opus-5-5",
+          "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "claude-opus-5-5",
+          "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.cpa.claude.claude-opus-5.messages",
+          "connector_id": "connector.cpa.claude",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:92a8a93d21ddde9c641a6caffafdcf81df5b7671a7e7d7d5b126201cbcf7e858",
+          "model_configuration_id": "model.anthropic.claude-opus-5",
+          "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "claude-opus-5",
+          "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.cpa.claude.claude-sonnet-5-5.messages",
+          "connector_id": "connector.cpa.claude",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:9dd2371b23eec0b6ca39ecafb2bd28700689013d9b732d940638c83a87ff87da",
+          "model_configuration_id": "model.anthropic.claude-sonnet-5-5",
+          "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "claude-sonnet-5-5",
+          "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.cpa.claude.claude-sonnet-5.messages",
+          "connector_id": "connector.cpa.claude",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:22ecbf20278dbd772f8252155b96ea996c8ef6c730b7025fb87ec0ad0a1bc8ad",
+          "model_configuration_id": "model.anthropic.claude-sonnet-5",
+          "protocol_endpoint_id": "endpoint.cpa.claude.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "claude-sonnet-5",
+          "upstream_protocol": "messages"
+        },
+        {
           "capability_id": "cap.groq.openai-gpt-oss-20b.chat",
           "connector_id": "connector.groq.p0",
           "connector_revision": 1,
@@ -1772,6 +1892,45 @@
             "tool": true,
             "vision": true
           },
+          "display_name": "Claude Fable 5.1",
+          "model_configuration_id": "model.anthropic.claude-fable-5-1",
+          "publisher_id": "publisher.anthropic",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 200000,
+            "max_output_tokens": 64000,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
+          "display_name": "Claude Haiku 4.5",
+          "model_configuration_id": "model.anthropic.claude-haiku-4-5",
+          "publisher_id": "publisher.anthropic",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
+          "display_name": "Claude Haiku 5.5",
+          "model_configuration_id": "model.anthropic.claude-haiku-5-5",
+          "publisher_id": "publisher.anthropic",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
           "display_name": "Claude Opus 5",
           "model_configuration_id": "model.anthropic.claude-opus-5",
           "publisher_id": "publisher.anthropic",
@@ -1785,8 +1944,34 @@
             "tool": true,
             "vision": true
           },
+          "display_name": "Claude Opus 5.5",
+          "model_configuration_id": "model.anthropic.claude-opus-5-5",
+          "publisher_id": "publisher.anthropic",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
           "display_name": "Claude Sonnet 5",
           "model_configuration_id": "model.anthropic.claude-sonnet-5",
+          "publisher_id": "publisher.anthropic",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1000000,
+            "max_output_tokens": 128000,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
+          "display_name": "Claude Sonnet 5.5",
+          "model_configuration_id": "model.anthropic.claude-sonnet-5-5",
           "publisher_id": "publisher.anthropic",
           "revision": 1
         },
@@ -2067,6 +2252,27 @@
           "revision": 1,
           "service_offering_id": "model-studio",
           "usage_scope": "workspace"
+        },
+        {
+          "billing_class": "subscription",
+          "endpoint_profile_id": "endpoint.cpa.claude",
+          "endpoint_profile_revision": 1,
+          "entitlement_id": "claude-subscription",
+          "evidence_digest": "sha256:56e945383c60986c7fcdc48634fbe75b1b40ca23f7178caadd9fb9a5189b46c2",
+          "model_configuration_ids": [
+            "model.anthropic.claude-fable-5-1",
+            "model.anthropic.claude-haiku-4-5",
+            "model.anthropic.claude-haiku-5-5",
+            "model.anthropic.claude-opus-5",
+            "model.anthropic.claude-opus-5-5",
+            "model.anthropic.claude-sonnet-5",
+            "model.anthropic.claude-sonnet-5-5"
+          ],
+          "offer_id": "offer.claude.subscription",
+          "region_id": "global",
+          "revision": 1,
+          "service_offering_id": "claude-subscription",
+          "usage_scope": "account"
         },
         {
           "billing_class": "subscription",
@@ -2597,14 +2803,24 @@
           "billing": "shared-subscription-usage",
           "credential": "OAuth Claude sign-in",
           "disposition": [
-            "needs-schema-or-adapter"
+            "needs-runtime-qualification"
           ],
           "documented_upstream_model_ids": [],
           "evidence_refs": [
             "source-072",
-            "source-073"
+            "source-073",
+            "source-185"
           ],
-          "interfaces": [],
+          "interfaces": [
+            {
+              "base_url": "https://api.anthropic.com",
+              "base_url_template": null,
+              "interface_key": "claude-code-subscription/anthropic-messages",
+              "protocol": "anthropic-messages",
+              "request_path": "/v1/messages",
+              "request_path_template": null
+            }
+          ],
           "product": "Claude Code Pro/Max",
           "product_key": "claude-code-subscription",
           "product_kind": "developer-subscription",
@@ -3546,7 +3762,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-10-09",
+      "as_of": "2026-10-10",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -3563,7 +3779,9 @@
           "display_name": "Claude Fable 5.1",
           "evidence_refs": [
             "source-058",
-            "source-060"
+            "source-060",
+            "source-188",
+            "source-189"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -3585,12 +3803,65 @@
             "default": "high",
             "kind": "adaptive-fixed-on",
             "note": null,
-            "profiles": []
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
           },
           "source_stability_note": "current-highest-capability",
           "upstream_id_state": null,
           "upstream_ids": [
             "claude-fable-5-1"
+          ]
+        },
+        {
+          "canonical_identity": "claude-haiku-4-5-20251001",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 200000
+          },
+          "context_variants": [],
+          "data_note": "Claude subscription execution exposes an explicit toggle subset: disabled, or enabled with a fixed 1024-token thinking budget. This is not the model's native default or arbitrary-budget support; enabled requires max_tokens > 1024.",
+          "display_name": "Claude Haiku 4.5",
+          "evidence_refs": [
+            "source-186",
+            "source-187",
+            "source-188"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 64000
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "claude-haiku-4-5",
+          "publisher": "Anthropic",
+          "reasoning": {
+            "default": null,
+            "kind": "manual-budget",
+            "note": "Manual extended thinking only, with minimum budget 1024 and budget_tokens < max_tokens; effort and adaptive thinking are not supported.",
+            "profiles": []
+          },
+          "source_stability_note": "active-legacy; dated ID and documented convenience alias are separate bindings",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "claude-haiku-4-5",
+            "claude-haiku-4-5-20251001"
           ]
         },
         {
@@ -3609,7 +3880,9 @@
           "evidence_refs": [
             "source-181",
             "source-182",
-            "source-183"
+            "source-183",
+            "source-188",
+            "source-189"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -3661,7 +3934,9 @@
           "evidence_refs": [
             "source-059",
             "source-060",
-            "source-129"
+            "source-129",
+            "source-188",
+            "source-189"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -3713,7 +3988,9 @@
           "evidence_refs": [
             "source-129",
             "source-130",
-            "source-131"
+            "source-131",
+            "source-188",
+            "source-189"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -3764,7 +4041,9 @@
           "display_name": "Claude Sonnet 5",
           "evidence_refs": [
             "source-060",
-            "source-061"
+            "source-061",
+            "source-188",
+            "source-189"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -3786,7 +4065,13 @@
             "default": null,
             "kind": "adaptive",
             "note": "Legacy manual budget semantics removed",
-            "profiles": []
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
           },
           "source_stability_note": "current",
           "upstream_id_state": null,
@@ -3810,7 +4095,9 @@
           "evidence_refs": [
             "source-179",
             "source-180",
-            "source-183"
+            "source-183",
+            "source-188",
+            "source-189"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -7580,6 +7867,224 @@
         },
         {
           "availability": {
+            "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
+            "state": "conditional"
+          },
+          "binding_key": "claude-code-subscription/claude-fable-5-1/claude-fable-5-1",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-058",
+            "source-060",
+            "source-072",
+            "source-073",
+            "source-185",
+            "source-188",
+            "source-189"
+          ],
+          "interface_candidates": [
+            "claude-code-subscription/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-fable-5-1",
+          "product_key": "claude-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-fable-5-1"
+        },
+        {
+          "availability": {
+            "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
+            "state": "conditional"
+          },
+          "binding_key": "claude-code-subscription/claude-haiku-4-5/claude-haiku-4-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-072",
+            "source-073",
+            "source-185",
+            "source-186",
+            "source-187",
+            "source-188"
+          ],
+          "interface_candidates": [
+            "claude-code-subscription/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-haiku-4-5",
+          "product_key": "claude-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "rolling-alias",
+          "upstream_model_id": "claude-haiku-4-5"
+        },
+        {
+          "availability": {
+            "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
+            "state": "conditional"
+          },
+          "binding_key": "claude-code-subscription/claude-haiku-4-5/claude-haiku-4-5-20251001",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-072",
+            "source-073",
+            "source-185",
+            "source-186",
+            "source-187",
+            "source-188"
+          ],
+          "interface_candidates": [
+            "claude-code-subscription/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-haiku-4-5",
+          "product_key": "claude-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-haiku-4-5-20251001"
+        },
+        {
+          "availability": {
+            "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
+            "state": "conditional"
+          },
+          "binding_key": "claude-code-subscription/claude-haiku-5-5/claude-haiku-5-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-072",
+            "source-073",
+            "source-181",
+            "source-182",
+            "source-183",
+            "source-185",
+            "source-188",
+            "source-189"
+          ],
+          "interface_candidates": [
+            "claude-code-subscription/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-haiku-5-5",
+          "product_key": "claude-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-haiku-5-5"
+        },
+        {
+          "availability": {
+            "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
+            "state": "conditional"
+          },
+          "binding_key": "claude-code-subscription/claude-opus-5-5/claude-opus-5-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-072",
+            "source-073",
+            "source-129",
+            "source-130",
+            "source-131",
+            "source-185",
+            "source-188",
+            "source-189"
+          ],
+          "interface_candidates": [
+            "claude-code-subscription/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-opus-5-5",
+          "product_key": "claude-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-opus-5-5"
+        },
+        {
+          "availability": {
+            "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
+            "state": "conditional"
+          },
+          "binding_key": "claude-code-subscription/claude-opus-5/claude-opus-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-059",
+            "source-060",
+            "source-072",
+            "source-073",
+            "source-129",
+            "source-185",
+            "source-188",
+            "source-189"
+          ],
+          "interface_candidates": [
+            "claude-code-subscription/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-opus-5",
+          "product_key": "claude-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-opus-5"
+        },
+        {
+          "availability": {
+            "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
+            "state": "conditional"
+          },
+          "binding_key": "claude-code-subscription/claude-sonnet-5-5/claude-sonnet-5-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-072",
+            "source-073",
+            "source-179",
+            "source-180",
+            "source-183",
+            "source-185",
+            "source-188",
+            "source-189"
+          ],
+          "interface_candidates": [
+            "claude-code-subscription/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-sonnet-5-5",
+          "product_key": "claude-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-sonnet-5-5"
+        },
+        {
+          "availability": {
+            "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
+            "state": "conditional"
+          },
+          "binding_key": "claude-code-subscription/claude-sonnet-5/claude-sonnet-5",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-060",
+            "source-061",
+            "source-072",
+            "source-073",
+            "source-185",
+            "source-188",
+            "source-189"
+          ],
+          "interface_candidates": [
+            "claude-code-subscription/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-sonnet-5",
+          "product_key": "claude-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-sonnet-5"
+        },
+        {
+          "availability": {
             "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -10167,6 +10672,51 @@
           "digest_state": "not-captured",
           "locator": "https://platform.claude.com/docs/en/about-claude/pricing",
           "source_key": "source-184",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "code.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-10",
+          "digest_state": "not-captured",
+          "locator": "https://code.claude.com/docs/en/model-config",
+          "source_key": "source-185",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/haiku-4-5/overview",
+          "source_key": "source-186",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+          "source_key": "source-187",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/build-with-claude/thinking",
+          "source_key": "source-188",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-10-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "source_key": "source-189",
           "source_kind": "provider-documentation"
         }
       ],
@@ -100863,12 +101413,49 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:19bfce5170e59a72e65be97a61ff9d9e7b8c997c01170f133e7273db7e036c95"
+      "source_catalog_digest": "sha256:3e7296c017c14f359a918a33d833aa44586b8b22d8f84ad684772c38dc0174cf"
     },
     "rating_snapshot": {
-      "digest": "sha256:218f99f1450badaa7885ec1bdc76c94aad1720857f258c0ff25f73f437d6a467",
-      "model_catalog_digest": "sha256:14dca993490853d1f9ca10a0642f0775d0e4ac0537eae0d585062bea615bf444",
+      "digest": "sha256:5bc8011157d035ba257d8d53a1c9de69430a6be950bcfdbc380791e2bb700e24",
+      "model_catalog_digest": "sha256:9720393b04c5dd40fcedce7977853c0d03c580bb453d1cca9e5517967505e766",
       "models": [
+        {
+          "capability": {
+            "kind": "discrete",
+            "parameter": "output_config.effort",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "model_configuration_id": "model.anthropic.claude-fable-5-1",
+          "native_render_convention": "claude_adaptive_effort_messages"
+        },
+        {
+          "capability": {
+            "kind": "toggle",
+            "parameter": "enable_thinking"
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-4-5"
+        },
+        {
+          "capability": {
+            "kind": "discrete",
+            "parameter": "output_config.effort",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-5-5",
+          "native_render_convention": "claude_adaptive_effort_messages"
+        },
         {
           "capability": {
             "kind": "discrete",
@@ -100896,7 +101483,37 @@
               "max"
             ]
           },
+          "model_configuration_id": "model.anthropic.claude-opus-5-5",
+          "native_render_convention": "claude_adaptive_effort_messages"
+        },
+        {
+          "capability": {
+            "kind": "discrete",
+            "parameter": "output_config.effort",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
           "model_configuration_id": "model.anthropic.claude-sonnet-5",
+          "native_render_convention": "claude_adaptive_effort_messages"
+        },
+        {
+          "capability": {
+            "kind": "discrete",
+            "parameter": "output_config.effort",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "model_configuration_id": "model.anthropic.claude-sonnet-5-5",
           "native_render_convention": "claude_adaptive_effort_messages"
         },
         {
@@ -101113,6 +101730,234 @@
             "reason": "rating_not_collected",
             "state": "unknown"
           },
+          "model_configuration_id": "model.anthropic.claude-fable-5-1",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "high"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-fable-5-1",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "low"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-fable-5-1",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "max"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-fable-5-1",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "medium"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-fable-5-1",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "xhigh"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-4-5",
+          "native_configuration": {
+            "enabled": false,
+            "kind": "toggle"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-4-5",
+          "native_configuration": {
+            "enabled": true,
+            "kind": "toggle"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "high"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "low"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "max"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "medium"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-haiku-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "xhigh"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
           "model_configuration_id": "model.anthropic.claude-opus-5",
           "native_configuration": {
             "kind": "profile",
@@ -101208,6 +102053,101 @@
             "reason": "rating_not_collected",
             "state": "unknown"
           },
+          "model_configuration_id": "model.anthropic.claude-opus-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "high"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-opus-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "low"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-opus-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "max"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-opus-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "medium"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-opus-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "xhigh"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
           "model_configuration_id": "model.anthropic.claude-sonnet-5",
           "native_configuration": {
             "kind": "profile",
@@ -101285,6 +102225,101 @@
             "state": "unknown"
           },
           "model_configuration_id": "model.anthropic.claude-sonnet-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "xhigh"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-sonnet-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "high"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-sonnet-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "low"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-sonnet-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "max"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-sonnet-5-5",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "medium"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.anthropic.claude-sonnet-5-5",
           "native_configuration": {
             "kind": "profile",
             "profile": "xhigh"

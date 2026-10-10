@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:8c90ff220c2fbcef60423bc358642fbd743a1f8270ce92ca7bf59b276e5f560f",
+  "descriptor_digest": "sha256:febf9a04d9e2721df85c12616dd74f97e68de79191d3eae81da532bd782a7e55",
   "expected_red_reasons": [],
   "planned_commands": [
     "schema.list",
@@ -32,6 +32,7 @@
     "compute.connection.preview",
     "compute.connection.apply",
     "compute.connection.authorize",
+    "compute.connection.login",
     "compute.connection.test",
     "compute.credential.list",
     "compute.credential.add",
@@ -120,6 +121,7 @@
     "compute.connection.preview",
     "compute.connection.apply",
     "compute.connection.authorize",
+    "compute.connection.login",
     "compute.connection.test",
     "routing.options",
     "worker.executors",

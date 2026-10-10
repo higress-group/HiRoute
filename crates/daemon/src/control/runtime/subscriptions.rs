@@ -39,10 +39,15 @@ use super::{LocalControlAdapter, SubscriptionContextV1};
 mod error;
 pub(super) mod interaction;
 mod lifecycle;
+pub(super) mod login;
 pub(super) mod maintenance;
 pub(in crate::control::runtime) use maintenance::SubscriptionMaintenance;
 mod presentation;
 mod record;
+pub(in crate::control::runtime) mod source;
+use source::{SubscriptionSource, pending_candidate, subscription_candidate_ref};
+#[cfg(test)]
+mod login_admission_tests;
 #[cfg(test)]
 mod tests;
 
@@ -64,9 +69,9 @@ impl LocalControlAdapter {
     /// startup remains best-effort: a missing or unhealthy CPA blocks only connector-owned
     /// candidates and must not prevent Local Control or unrelated sources from starting.
     pub(super) fn reconcile_cpa_runtime_from_management(&self) -> Result<(), String> {
-        let Some(runtimes) = self.cpa_runtime.as_ref() else {
+        if self.cpa_runtime.is_none() {
             return Ok(());
-        };
+        }
         let sources = self
             .stores_lock()
             .map_err(|error| error.to_string())?
@@ -74,40 +79,10 @@ impl LocalControlAdapter {
             .compute_management_snapshot(&hiroute_domain::WorkspaceId::default())
             .map_err(|error| error.to_string())?
             .sources;
-        let mut should_start = std::collections::BTreeSet::new();
         for source in sources {
-            let hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
-                connector_id,
-                account_ref,
-            } = &source.provenance
-            else {
-                continue;
-            };
-            let Some(runtime) = runtimes.for_connector(connector_id) else {
-                continue;
-            };
-            let state = match source.state {
-                hiroute_domain::MaterializationState::Ready => {
-                    should_start.insert(connector_id.clone());
-                    CpaSourceManagementState::Enabled
-                }
-                hiroute_domain::MaterializationState::NeedsCredential
-                | hiroute_domain::MaterializationState::NeedsAuthorization
-                | hiroute_domain::MaterializationState::Disabled => {
-                    CpaSourceManagementState::Disabled
-                }
-            };
-            runtime
-                .apply_account_management(account_ref, source.revision, state)
-                .map_err(|error| error.to_string())?;
-        }
-        for connector in should_start {
-            let Some(runtime) = runtimes.for_connector(&connector) else {
-                continue;
-            };
-            // Discovery will surface a precise subscription failure on demand. Startup itself is
-            // deliberately non-fatal so a bad optional CPA artifact cannot take down HiRoute.
-            let _ = runtime.start();
+            // Optional runtime failure cannot take down Control. The shared projection
+            // retains the saved choice fail-closed, and maintenance can retry that revision.
+            let _ = self.project_saved_subscription_source(&source);
         }
         Ok(())
     }
@@ -124,7 +99,7 @@ impl LocalControlAdapter {
         let Some(validation) = change.validation.as_ref() else {
             return Ok(());
         };
-        let Some(kind) = CpaAccountKind::from_candidate(&candidate.candidate_ref) else {
+        let Some(_kind) = CpaAccountKind::from_candidate(&candidate.candidate_ref) else {
             return Ok(());
         };
         let approval_id = OperationId::parse(&validation.approval_operation.operation_id)
@@ -151,14 +126,45 @@ impl LocalControlAdapter {
             return Err(hiroute_application::control::ComputeManagementControlError::Conflict);
         }
         let source = self
-            .scanner
-            .subscription_source(kind)
-            .map_err(|_| hiroute_application::control::ComputeManagementControlError::Unavailable)?
+            .subscription_source_for_candidate(&candidate.candidate_ref)?
             .ok_or(hiroute_application::control::ComputeManagementControlError::NotFound)?;
         if subscription_candidate_ref(&source)? != candidate.candidate_ref
             || source_evidence != *source.evidence_digest()
         {
             return Err(hiroute_application::control::ComputeManagementControlError::Conflict);
+        }
+        let snapshot = self
+            .stores_lock()
+            .map_err(|_| hiroute_application::control::ComputeManagementControlError::Unavailable)?
+            .control()
+            .compute_management_snapshot(&hiroute_domain::WorkspaceId::default())
+            .map_err(map_port)?;
+        let mut current = snapshot.sources.iter().filter(|saved| {
+            matches!(
+                &saved.provenance,
+                hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. }
+                    if connector_id == source.kind().connector_id()
+            )
+        });
+        let current_source = current.next();
+        if current.next().is_some()
+            || !self.subscription_check_saved_source_matches(&record, &stored, current_source)?
+        {
+            return Err(hiroute_application::control::ComputeManagementControlError::Conflict);
+        }
+        if let Some(expected) = source.expected_account_ref() {
+            let runtime = self
+                .cpa_runtime
+                .as_ref()
+                .and_then(|runtimes| runtimes.runtime_for_candidate(&candidate.candidate_ref))
+                .ok_or(hiroute_application::control::ComputeManagementControlError::Unavailable)?;
+            let observed = runtime
+                .inspect_subscription()
+                .map_err(map_cpa)
+                .map_err(map_port)?;
+            if observed.kind() != source.kind() || observed.account_ref() != expected {
+                return Err(hiroute_application::control::ComputeManagementControlError::Conflict);
+            }
         }
         Ok(())
     }
@@ -171,30 +177,20 @@ impl LocalControlAdapter {
     > {
         let mut views = Vec::new();
         for kind in [CpaAccountKind::Codex, CpaAccountKind::Claude] {
-            views.extend(self.refresh_subscription_candidate(kind)?);
+            for source in self.subscription_discovery_sources(kind)? {
+                views.extend(self.refresh_subscription_candidate(source)?);
+            }
         }
         Ok(views)
     }
 
     fn refresh_subscription_candidate(
         &self,
-        kind: CpaAccountKind,
+        source: SubscriptionSource,
     ) -> Result<
         Vec<ComputeCandidateViewV2>,
         hiroute_application::control::ComputeManagementControlError,
     > {
-        let Some(_runtime) = self
-            .cpa_runtime
-            .as_ref()
-            .and_then(|runtimes| runtimes.for_kind(kind))
-        else {
-            return Ok(Vec::new());
-        };
-        // Discovery failure belongs to this optional native source. Saved-source status
-        // and explicit checks still fail closed; healthy sibling discovery remains usable.
-        let Ok(Some(source)) = self.scanner.subscription_source(kind) else {
-            return Ok(Vec::new());
-        };
         let candidate_ref = subscription_candidate_ref(&source)?;
         let existing = self
             .subscription_sources
@@ -213,7 +209,11 @@ impl LocalControlAdapter {
             let mut matching = snapshot
                 .sources
                 .into_iter()
-                .filter(|saved| saved.last_candidate_ref == candidate_ref);
+                .filter(|saved| matches!(
+                    &saved.provenance,
+                    hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. }
+                        if connector_id == source.kind().connector_id()
+                ));
             let saved = matching.next();
             if matching.next().is_some() {
                 return Err(hiroute_application::control::ComputeManagementControlError::Conflict);
@@ -227,21 +227,43 @@ impl LocalControlAdapter {
         let existing_source_id = existing_source
             .as_ref()
             .map(|saved| saved.source_id.clone());
-        // The cached view stays current only while its discovery evidence still matches and the
-        // durable saved association is the one that view was projected from. A save keeps the
-        // evidence but moves the association, so the fast path must not skip the facts below.
+        // Never advance the candidate beneath a check whose effects are still staged.
+        if latest_validation
+            .as_ref()
+            .is_some_and(|record| record.state == ComputeSubscriptionValidationStateV1::Staged)
+        {
+            return Err(hiroute_application::control::ComputeManagementControlError::Unavailable);
+        }
+        // Metadata-only pending candidates can remain stable: Preview binds the current
+        // saved revision. Checked candidates must instead pass the durable receipt checks
+        // below; source identity can stay unchanged after their validation was consumed.
         if let Some(existing) = &existing
             && existing.source.evidence_digest() == source.evidence_digest()
+            && latest_validation
+                .as_ref()
+                .is_none_or(|record| record.candidate_revision < existing.candidate_revision)
         {
             let candidate = ComputeCandidateRefV2 {
                 candidate_ref: candidate_ref.clone(),
                 candidate_revision: existing.candidate_revision,
             };
-            if let Ok(view) = self
+            if let Ok(facts) = self
                 .model_connections
                 .candidate_port()
-                .get_compute_candidate(&candidate)
-                && view.existing_source_id == existing_source_id
+                .resolve_compute_candidate(&candidate)
+                && matches!(
+                    facts.credential_binding,
+                    ComputeCredentialBindingV2::CpaPendingApproval { .. }
+                )
+                && facts.existing_source_id == existing_source_id
+                && facts.trusted_lineage_digest.as_ref()
+                    == existing_source
+                        .as_ref()
+                        .map(|source| &source.lineage_digest)
+                && let Ok(view) = self
+                    .model_connections
+                    .candidate_port()
+                    .get_compute_candidate(&candidate)
             {
                 return Ok(vec![view]);
             }
@@ -256,7 +278,13 @@ impl LocalControlAdapter {
             {
                 return Err(hiroute_application::control::ComputeManagementControlError::Corrupt);
             }
-            if self.subscription_source_evidence(record, &stored)? == *source.evidence_digest() {
+            if self.subscription_check_saved_source_matches(
+                record,
+                &stored,
+                existing_source.as_ref(),
+            )? && self.subscription_source_evidence(record, &stored)?
+                == *source.evidence_digest()
+            {
                 let checked = stored.checked_facts().map_err(map_port)?;
                 let view = self
                     .model_connections
@@ -377,12 +405,15 @@ impl LocalControlAdapter {
             return Ok(Some(context.source.evidence_digest().clone()));
         }
         for kind in [CpaAccountKind::Codex, CpaAccountKind::Claude] {
-            let Ok(Some(source)) = self.scanner.subscription_source(kind) else {
-                continue;
-            };
-            let candidate = subscription_candidate_ref(&source).map_err(control_error_to_port)?;
-            if subscription_target(&candidate)? == target {
-                return Ok(Some(source.evidence_digest().clone()));
+            for source in self
+                .subscription_discovery_sources(kind)
+                .map_err(control_error_to_port)?
+            {
+                let candidate =
+                    subscription_candidate_ref(&source).map_err(control_error_to_port)?;
+                if subscription_target(&candidate)? == target {
+                    return Ok(Some(source.evidence_digest().clone()));
+                }
             }
         }
         Ok(None)
@@ -401,10 +432,7 @@ impl LocalControlAdapter {
         let runtime = self
             .cpa_runtime
             .as_ref()
-            .and_then(|runtimes| {
-                CpaAccountKind::from_candidate(decoded.candidate_ref())
-                    .and_then(|kind| runtimes.for_kind(kind))
-            })
+            .and_then(|runtimes| runtimes.runtime_for_candidate(decoded.candidate_ref()))
             .ok_or_else(|| unavailable("subscription.runtime.unavailable"))?;
         let operation = {
             let stores = self.stores_lock()?;
@@ -428,6 +456,13 @@ impl LocalControlAdapter {
             runtime.inspect_subscription()
         }
         .map_err(map_cpa)?;
+        if context
+            .source
+            .expected_account_ref()
+            .is_some_and(|expected| expected != evidence.account_ref())
+        {
+            return Err(conflict("subscription.source.account-changed"));
+        }
         context.evidence = Some(evidence.clone());
         let approval = operation_reference(&operation);
         let pending_ref = ComputeCandidateRefV2 {
@@ -584,17 +619,7 @@ impl LocalControlAdapter {
             return Ok(Some(CompensationOutcome::AlreadyCompensated));
         }
         let stored = decode_stored(&record.record_json)?;
-        if stored.existing_source_id.is_none()
-            && let Some(runtime) = self
-                .cpa_runtime
-                .as_ref()
-                .and_then(|runtimes| runtimes.for_connector(&stored.connector_id))
-        {
-            match runtime.shutdown() {
-                Ok(_) | Err(CpaLifecycleError::NotStarted) => {}
-                Err(error) => return Err(map_cpa(error)),
-            }
-        }
+        self.shutdown_unretained_subscription_runtime(&stored.original_candidate.candidate_ref)?;
         {
             let stores = self.stores_lock()?;
             stores
@@ -761,36 +786,8 @@ impl LocalControlAdapter {
                 .ok_or(hiroute_application::control::ComputeManagementControlError::NotFound)?;
             decode_stored(&record.record_json).map_err(map_port)?
         };
-        let has_saved_source = stored
-            .existing_source_id
-            .as_deref()
-            .is_some_and(|source_id| {
-                self.stores_lock()
-                    .ok()
-                    .and_then(|stores| {
-                        stores
-                            .control()
-                            .compute_management_source(source_id)
-                            .ok()
-                            .flatten()
-                    })
-                    .is_some()
-            });
-        if !has_saved_source
-            && let Some(runtime) = self
-                .cpa_runtime
-                .as_ref()
-                .and_then(|runtimes| runtimes.for_connector(&stored.connector_id))
-        {
-            match runtime.shutdown() {
-                Ok(_) | Err(CpaLifecycleError::NotStarted) => {}
-                Err(_) => {
-                    return Err(
-                        hiroute_application::control::ComputeManagementControlError::Unavailable,
-                    );
-                }
-            }
-        }
+        self.shutdown_unretained_subscription_runtime(&stored.original_candidate.candidate_ref)
+            .map_err(map_port)?;
         {
             let stores = self.stores_lock().map_err(|_| {
                 hiroute_application::control::ComputeManagementControlError::Unavailable
@@ -843,58 +840,120 @@ impl LocalControlAdapter {
         ) else {
             return;
         };
-        let Some(validation) = change.validation else {
+        let Some(source_id) = operation.plan.spec().resource_id.as_deref() else {
             return;
         };
-        let source_id = operation.plan.spec().resource_id.as_deref();
-        let Some(source_id) = source_id else { return };
         let Ok(stores) = self.stores_lock() else {
             return;
         };
         let Ok(Some(source)) = stores.control().compute_management_source(source_id) else {
             return;
         };
-        if source.validation.as_ref().is_none_or(|saved| {
-            saved.validation_ref != validation.validation_ref
-                || saved.validation_revision != validation.validation_revision
-                || saved.approval_operation_id != validation.approval_operation.operation_id
-        }) {
-            return;
+        match &change.subject {
+            hiroute_application_api::ComputeManagementSubjectV2::Candidate { candidate } => {
+                let Some(validation) = change.validation.as_ref() else {
+                    return;
+                };
+                if source.last_candidate_ref != candidate.candidate_ref
+                    || source.validation.as_ref().is_none_or(|saved| {
+                        saved.validation_ref != validation.validation_ref
+                            || saved.validation_revision != validation.validation_revision
+                            || saved.approval_operation_id
+                                != validation.approval_operation.operation_id
+                    })
+                {
+                    return;
+                }
+            }
+            hiroute_application_api::ComputeManagementSubjectV2::SavedSource {
+                source_id: expected,
+            } if expected != source_id => return,
+            _ => {}
         }
         drop(stores);
-        if let Some(runtimes) = &self.cpa_runtime {
-            let hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
-                account_ref,
-                connector_id,
-            } = &source.provenance
-            else {
-                return;
-            };
-            let Some(runtime) = runtimes.for_connector(connector_id) else {
-                return;
-            };
-            let state = match source.state {
-                hiroute_domain::MaterializationState::Ready => CpaSourceManagementState::Enabled,
-                hiroute_domain::MaterializationState::NeedsCredential
-                | hiroute_domain::MaterializationState::NeedsAuthorization
-                | hiroute_domain::MaterializationState::Disabled => {
-                    CpaSourceManagementState::Disabled
-                }
-            };
-            let _ = runtime.apply_account_management(account_ref, source.revision, state);
+        // Selection and lifecycle changes are serialized and revision-guarded together.
+        // Never keep the storage lock while the CPA projection performs external work.
+        match self.project_saved_subscription_source(&source) {
+            Ok(()) => {
+                let _ = self.clear_subscription_maintenance_status(&source.source_id);
+            }
+            Err(CpaLifecycleError::StaleSourceManagement) => {}
+            Err(_) => {
+                let _ = self.set_subscription_maintenance_status(
+                    &source.source_id,
+                    maintenance::SubscriptionMaintenancePresentation::RuntimeUnavailable,
+                    None,
+                );
+            }
         }
+    }
+
+    fn project_saved_subscription_source(
+        &self,
+        source: &hiroute_domain::ComputeManagementSourceV2,
+    ) -> Result<(), CpaLifecycleError> {
+        let Some(runtimes) = &self.cpa_runtime else {
+            return Ok(());
+        };
+        let hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
+            account_ref,
+            connector_id,
+        } = &source.provenance
+        else {
+            return Ok(());
+        };
+        let Some(kind) = CpaAccountKind::from_connector(connector_id) else {
+            return Ok(());
+        };
+        if CpaAccountKind::from_candidate(&source.last_candidate_ref) != Some(kind) {
+            return Err(CpaLifecycleError::InvalidSourceManagement);
+        }
+        let state = if source.state == hiroute_domain::MaterializationState::Ready {
+            CpaSourceManagementState::Enabled
+        } else {
+            CpaSourceManagementState::Disabled
+        };
+        runtimes.apply_saved_source(
+            &source.source_id,
+            &source.last_candidate_ref,
+            account_ref,
+            source.revision,
+            state,
+        )
+    }
+
+    /// Releasing a check must never stop another login or the saved runtime of this provider.
+    fn shutdown_unretained_subscription_runtime(&self, candidate: &str) -> PortResult<()> {
+        let saved = self
+            .stores_lock()?
+            .control()
+            .compute_management_snapshot(&hiroute_domain::WorkspaceId::default())?
+            .sources
+            .into_iter()
+            .any(|source| source.last_candidate_ref == candidate);
+        if saved {
+            return Ok(());
+        }
+        if let Some(runtime) = self
+            .cpa_runtime
+            .as_ref()
+            .and_then(|runtimes| runtimes.runtime_for_candidate(candidate))
+        {
+            match runtime.shutdown() {
+                Ok(_) | Err(CpaLifecycleError::NotStarted) => {}
+                Err(error) => return Err(map_cpa(error)),
+            }
+        }
+        Ok(())
     }
 
     fn resolve_subscription_context(
         &self,
         intent: &hiroute_domain::SubscriptionCheckIntentV2,
     ) -> PortResult<SubscriptionContextV1> {
-        let kind = CpaAccountKind::from_candidate(intent.candidate_ref())
-            .ok_or_else(|| invalid("subscription.kind"))?;
         let source = self
-            .scanner
-            .subscription_source(kind)
-            .map_err(|_| unavailable("subscription.source.scan"))?
+            .subscription_source_for_candidate(intent.candidate_ref())
+            .map_err(control_error_to_port)?
             .ok_or_else(|| not_found("subscription.source.missing"))?;
         let candidate_ref = subscription_candidate_ref(&source).map_err(control_error_to_port)?;
         if candidate_ref != intent.candidate_ref()
@@ -962,79 +1021,6 @@ impl LocalControlAdapter {
             .ok_or(hiroute_application::control::ComputeManagementControlError::Corrupt)?;
         Ok(operation_reference(&operation))
     }
-}
-
-fn pending_candidate(
-    source: &hiroute_integrations::ProtectedAgentSubscriptionSourceV1,
-    revision: u64,
-    existing_source: Option<(String, CanonicalDigest)>,
-) -> Result<ComputeCandidateFactsV2, hiroute_application::control::ComputeManagementControlError> {
-    let candidate_ref = subscription_candidate_ref(source)?;
-    let lineage_ref = match source.descriptor() {
-        ProtectedInputSourceDescriptorV1::DiscoveredConfig { source_ref, .. } => source_ref.clone(),
-        ProtectedInputSourceDescriptorV1::ManualInput => {
-            return Err(hiroute_application::control::ComputeManagementControlError::Corrupt);
-        }
-    };
-    let candidate = ComputeCandidateRefV2 {
-        candidate_ref: candidate_ref.clone(),
-        candidate_revision: revision,
-    };
-    let (existing_source_id, trusted_lineage_digest) = existing_source
-        .map(|(source_id, lineage)| (Some(source_id), Some(lineage)))
-        .unwrap_or((None, None));
-    Ok(ComputeCandidateFactsV2 {
-        candidate: candidate.clone(),
-        correlation: ComputeCheckCorrelationV2 {
-            candidate_ref: candidate_ref.clone(),
-            edit_revision: revision,
-            check_id: format!("check/cpa/{}/{revision}", source.kind().stock_provider()),
-            input_digest: source.evidence_digest().clone(),
-        },
-        producer: ComputeCandidateProducerV2::Cpa,
-        lineage_ref,
-        trusted_lineage_digest,
-        display_name: match source.kind() {
-            CpaAccountKind::Codex => "Codex subscription",
-            CpaAccountKind::Claude => "Claude Code subscription",
-        }
-        .into(),
-        existing_source_id,
-        evidence_digest: source.evidence_digest().clone(),
-        provenance: ComputeCandidateProvenanceV2::ConnectorOwnedPendingApproval {
-            connector_id: source.kind().connector_id().into(),
-        },
-        target: None,
-        authentication: None,
-        models: Vec::new(),
-        native_recheck: None,
-        additional_native_endpoints: Vec::new(),
-        discovery_guard: None,
-        credential_binding: ComputeCredentialBindingV2::CpaPendingApproval {
-            protected_source: source.descriptor().clone(),
-        },
-        validation: None,
-    })
-}
-
-fn subscription_candidate_ref(
-    source: &hiroute_integrations::ProtectedAgentSubscriptionSourceV1,
-) -> Result<String, hiroute_application::control::ComputeManagementControlError> {
-    let ProtectedInputSourceDescriptorV1::DiscoveredConfig { source_ref, .. } = source.descriptor()
-    else {
-        return Err(hiroute_application::control::ComputeManagementControlError::Corrupt);
-    };
-    let domain = match source.kind() {
-        CpaAccountKind::Codex => "hiroute.codex-subscription-candidate/v1",
-        CpaAccountKind::Claude => "hiroute.claude-subscription-candidate/v1",
-    };
-    let digest = CanonicalDigest::of(&(domain, source_ref))
-        .map_err(|_| hiroute_application::control::ComputeManagementControlError::Corrupt)?;
-    Ok(format!(
-        "candidate/cpa/{}/{}",
-        source.kind().stock_provider(),
-        digest.as_str().trim_start_matches("sha256:")
-    ))
 }
 
 fn subscription_operation_status(
