@@ -20,8 +20,12 @@ mod agent_config_permission;
 mod agent_connection;
 mod compute;
 mod compute_management;
+mod publication_checkpoint;
 mod routing;
 mod routing_content;
+pub use publication_checkpoint::{
+    PUBLICATION_CHECKPOINT_CHANGE_SCHEMA_V1, PublicationCheckpointChangeV1, checkpoint_publication,
+};
 mod routing_draft;
 pub use routing_content::{ConsumedPlanDraftV1, PlanContentControlV2};
 mod journal;

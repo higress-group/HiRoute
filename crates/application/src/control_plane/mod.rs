@@ -4,6 +4,7 @@ mod compute;
 mod plan_content;
 mod plan_draft;
 mod plan_lifecycle;
+mod publication_checkpoint;
 pub(crate) mod subscription_login;
 
 use hiroute_application_api::{
@@ -324,6 +325,15 @@ pub(crate) fn dispatch_preview_routing(
         .get("change")
         .and_then(|c| c.get("schema"))
         .and_then(Value::as_str)
+        == Some(hiroute_application_api::PUBLICATION_CHECKPOINT_CHANGE_SCHEMA_V1)
+    {
+        return publication_checkpoint::dispatch_preview(service, request);
+    }
+    if request
+        .payload
+        .get("change")
+        .and_then(|c| c.get("schema"))
+        .and_then(Value::as_str)
         == Some(hiroute_application_api::PLAN_CONTENT_CHANGE_SCHEMA_V2)
     {
         return plan_content::dispatch_preview(service, request);
@@ -354,6 +364,15 @@ pub(crate) fn dispatch_apply_routing(
     service: &ApplicationService,
     request: LocalControlRequestV2,
 ) -> MachineEnvelopeV2<Value> {
+    if request
+        .payload
+        .get("change")
+        .and_then(|c| c.get("schema"))
+        .and_then(Value::as_str)
+        == Some(hiroute_application_api::PUBLICATION_CHECKPOINT_CHANGE_SCHEMA_V1)
+    {
+        return publication_checkpoint::dispatch_apply(service, request);
+    }
     if request
         .payload
         .get("change")

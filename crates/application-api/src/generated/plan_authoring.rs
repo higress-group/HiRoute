@@ -136,6 +136,10 @@ fn definitions() -> Value {
         &["schema", "plan_id", "expected_head_revision", "status"],
         json!({"schema":{"const":"hiroute.plan-lifecycle-change/v1"},"plan_id":{"type":"string","minLength":1},"expected_head_revision":{"type":"integer","minimum":1},"status":{"enum":["enabled","disabled","deleted"]}}),
     );
+    let checkpoint = object(
+        &["schema"],
+        json!({"schema":{"const":"hiroute.publication-checkpoint-change/v1"}}),
+    );
     let draft_change = object(
         &["schema", "workspace_id", "draft_id", "action"],
         json!({"schema":{"const":"hiroute.plan-draft-change/v1"},"workspace_id":{"type":"string","minLength":1},"draft_id":{"type":"string","minLength":1},"expected_revision":{"type":["integer","null"],"minimum":1},"action":{"oneOf":[object(&["kind","draft"],json!({"kind":{"const":"save"},"draft":reference("draft")})),object(&["kind"],json!({"kind":{"const":"discard"}}))]}}),
@@ -145,7 +149,7 @@ fn definitions() -> Value {
         json!({"limit":{"type":"integer","minimum":1,"maximum":128,"default":32},
         "cursor":{"oneOf":[{"type":"null"},object(&["snapshot_digest","offset"],json!({"snapshot_digest":{"type":"string","minLength":1},"offset":{"type":"integer","minimum":1}}))]}}),
     );
-    json!({"judgment":judgment,"catalog_query":catalog_query,"selection":selection,"candidates":candidates,"editor":editor,"draft":draft,"content_change":content,"lifecycle_change":lifecycle,"draft_change":draft_change})
+    json!({"judgment":judgment,"catalog_query":catalog_query,"selection":selection,"candidates":candidates,"editor":editor,"draft":draft,"content_change":content,"lifecycle_change":lifecycle,"checkpoint_change":checkpoint,"draft_change":draft_change})
 }
 pub(super) fn files() -> Vec<(&'static str, String)> {
     [
@@ -154,6 +158,7 @@ pub(super) fn files() -> Vec<(&'static str, String)> {
         ("plan-content-change.v2.schema.json", "content_change"),
         ("plan-lifecycle-change.v1.schema.json", "lifecycle_change"),
         ("plan-draft-change.v1.schema.json", "draft_change"),
+        ("publication-checkpoint-change.v1.schema.json", "checkpoint_change"),
     ].into_iter().map(|(path, name)| (path, pretty_json(&json!({
         "$schema":"https://json-schema.org/draft/2020-12/schema", "$id":format!("hiroute://contracts/cli/{path}"),
         "$ref":format!("#/$defs/{name}"), "$defs": definitions(),

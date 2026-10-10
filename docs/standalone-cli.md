@@ -325,6 +325,23 @@ its HiRoute-owned credentials, while preserving subscription sign-ins and usage 
 and retained execution or recovery versions also prevent removal. Apply rechecks
 references, so a new reference after preview can still reject the operation.
 
+After deleting a route or moving its models, the previous publication may still retain
+references. Refresh them through the normal routing publication transaction:
+
+```json
+{"change":{"schema":"hiroute.publication-checkpoint-change/v1"}}
+```
+
+Pass this request to `routing preview --request-stdin --output json`. Submit the same
+`change`, the returned `change_digest` as `accept_digest`, `expected_revisions`, and a
+new `idempotency_key` to `routing apply --request-stdin --output json`. Wait for its
+Operation to reach `succeeded`, then obtain a fresh connection deletion preview.
+An uncertain response requires observing or replaying that same Operation/key.
+This publishes an unchanged copy of the installed routing configuration at the next
+revision, including an empty configuration; it does not create routes or grant access.
+Disabled routes, drafts and retained execution versions still block removal.
+Desktop exposes this action as **Update references** in the blocked deletion dialog.
+
 ## Discover and save a subscription source
 
 ```sh

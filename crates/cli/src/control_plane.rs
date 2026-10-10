@@ -158,6 +158,18 @@ fn routing_request(options: &[String], apply: bool) -> Result<Value, ErrorCode> 
         .get("change")
         .and_then(|c| c.get("schema"))
         .and_then(Value::as_str)
+        == Some(hiroute_application_api::PUBLICATION_CHECKPOINT_CHANGE_SCHEMA_V1)
+    {
+        return if apply {
+            typed::<hiroute_application_api::PublicationCheckpointApplyRequestV1>(value)
+        } else {
+            typed::<hiroute_application_api::PublicationCheckpointPreviewRequestV1>(value)
+        };
+    }
+    if value
+        .get("change")
+        .and_then(|c| c.get("schema"))
+        .and_then(Value::as_str)
         == Some(hiroute_application_api::PLAN_LIFECYCLE_CHANGE_SCHEMA_V1)
     {
         return if apply {

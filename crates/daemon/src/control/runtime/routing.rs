@@ -15,6 +15,77 @@ use hiroute_domain::{
 use super::LocalControlAdapter;
 
 impl RoutingFactsPort for LocalControlAdapter {
+    fn publication_checkpoint_snapshot(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> Result<
+        (
+            hiroute_domain::PublicationRecordV1,
+            hiroute_domain::RevisionSetV1,
+        ),
+        ControlReadError,
+    > {
+        let (record, revisions) = {
+            let stores = self.stores_lock().map_err(super::map_port)?;
+            let control = stores.control();
+            control
+                .require_plan_version_recovery_ready(workspace)
+                .map_err(|_| ControlReadError::Unavailable)?;
+            if control
+                .prepared_publication(workspace)
+                .map_err(super::map_port)?
+                .is_some()
+            {
+                return Err(ControlReadError::Unavailable);
+            }
+            (
+                control
+                    .active_publication(workspace)
+                    .map_err(super::map_port)?
+                    .ok_or(ControlReadError::Unavailable)?,
+                control
+                    .current_revisions(workspace)
+                    .map_err(super::map_port)?,
+            )
+        };
+        record
+            .verify_current()
+            .map_err(|_| ControlReadError::Corrupt)?;
+        if !self
+            .publication_is_installed(&record)
+            .map_err(super::map_port)?
+        {
+            return Err(ControlReadError::Unavailable);
+        }
+        let stores = self.stores_lock().map_err(super::map_port)?;
+        stores
+            .control()
+            .require_plan_version_recovery_ready(workspace)
+            .map_err(|_| ControlReadError::Unavailable)?;
+        if stores
+            .control()
+            .prepared_publication(workspace)
+            .map_err(super::map_port)?
+            .is_some()
+        {
+            return Err(ControlReadError::SnapshotChanged);
+        }
+        if stores
+            .control()
+            .active_publication(workspace)
+            .map_err(super::map_port)?
+            .as_ref()
+            != Some(&record)
+            || stores
+                .control()
+                .current_revisions(workspace)
+                .map_err(super::map_port)?
+                != revisions
+        {
+            return Err(ControlReadError::SnapshotChanged);
+        }
+        Ok((record, revisions))
+    }
     fn plan_lifecycle_snapshot(
         &self,
         workspace: &WorkspaceId,

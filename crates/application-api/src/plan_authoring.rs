@@ -2,6 +2,32 @@
 use hiroute_domain::*;
 use serde::{Deserialize, Serialize};
 
+pub use hiroute_domain::{PUBLICATION_CHECKPOINT_CHANGE_SCHEMA_V1, PublicationCheckpointChangeV1};
+pub const PUBLICATION_CHECKPOINT_PREVIEW_SCHEMA_V1: &str =
+    "hiroute.publication-checkpoint-preview/v1";
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicationCheckpointPreviewV1 {
+    pub schema: String,
+    pub change_digest: CanonicalDigest,
+    pub expected_revisions: RevisionSetV1,
+    pub before_digest: CanonicalDigest,
+    pub publication_revision: GatewayPublicationRevision,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicationCheckpointPreviewRequestV1 {
+    pub change: PublicationCheckpointChangeV1,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicationCheckpointApplyRequestV1 {
+    pub change: PublicationCheckpointChangeV1,
+    pub accept_digest: CanonicalDigest,
+    pub expected_revisions: RevisionSetV1,
+    pub idempotency_key: String,
+}
+
 pub const PLAN_CONTENT_CHANGE_SCHEMA_V2: &str = "hiroute.plan-content-change/v2";
 pub const PLAN_CONTENT_PREVIEW_SCHEMA_V2: &str = "hiroute.plan-content-preview/v2";
 

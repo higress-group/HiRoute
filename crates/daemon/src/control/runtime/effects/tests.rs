@@ -25,6 +25,7 @@ use serde_json::json;
 
 use super::*;
 
+mod checkpoint;
 mod publication_validation;
 mod service_status;
 mod skill_activation;
@@ -45,8 +46,10 @@ fn publication_restart_reconciles_every_persisted_install_window() {
     };
     use std::sync::Arc;
 
-    for window in 0..5 {
-        eprintln!("restart-window {window}: open");
+    for scenario in 0..10 {
+        let is_checkpoint = scenario >= 5;
+        let window = scenario % 5;
+        eprintln!("restart-window {window}, checkpoint={is_checkpoint}: open");
         let directory = tempfile::tempdir().unwrap();
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let runtime = super::super::ProductionControlRuntime::open_with_release_catalog(
@@ -64,12 +67,30 @@ fn publication_restart_reconciles_every_persisted_install_window() {
                 "../../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
             ))
             .unwrap();
-        let (mut operation, intent, record) = routing_operation(
-            &runtime.adapter,
-            desired,
-            None,
-            &format!("restart-{window}"),
-        );
+        let (mut operation, intent, record) = if is_checkpoint {
+            let prepared = checkpoint::operation(
+                &runtime.adapter,
+                desired,
+                &format!("checkpoint-restart-{window}"),
+            );
+            let before = runtime
+                .adapter
+                .stores_lock()
+                .unwrap()
+                .control()
+                .active_publication(&WorkspaceId::default())
+                .unwrap()
+                .unwrap();
+            target.activate_verified(&before).unwrap();
+            prepared
+        } else {
+            routing_operation(
+                &runtime.adapter,
+                desired,
+                None,
+                &format!("restart-{window}"),
+            )
+        };
         let effect = runtime.adapter.apply_external(&operation, &intent).unwrap();
         eprintln!("restart-window {window}: initial effect");
         operation

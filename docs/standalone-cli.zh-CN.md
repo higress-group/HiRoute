@@ -741,3 +741,17 @@ saved_source 的完整形式为 `{"kind":"saved_source","source_id":"SOURCE_ID"}
 删除接入会清理其在 HiRoute 中拥有的凭据，保留订阅登录和历史记录。
 预览的 `affected_plan_refs` 返回阻止删除的引用，包括停用路由、保存的草稿以及
 仍保留的执行或恢复版本。应用阶段会重新检查，预览后新增引用也会阻止删除。
+
+删除路由或调整其模型后，上一份发布可能仍保留引用。可通过正常路由发布流程更新：
+
+```json
+{"change":{"schema":"hiroute.publication-checkpoint-change/v1"}}
+```
+
+将此请求传给 `routing preview --request-stdin --output json`，再将相同 `change`、
+返回的 `change_digest`（作为 `accept_digest`）、`expected_revisions` 和新的
+`idempotency_key` 传给 `routing apply --request-stdin --output json`。等待 Operation
+达到 `succeeded` 后，重新预览接入删除；响应不确定时应观察或重放原 Operation/key。
+此操作仅将已安装的路由配置原样发布到下一版本，支持空配置，不创建路由或新增授权。
+停用路由、草稿和仍保留的执行版本继续阻止删除。Desktop 在删除受阻窗口提供
+“更新引用状态”，完成后再次打开删除窗口检查。

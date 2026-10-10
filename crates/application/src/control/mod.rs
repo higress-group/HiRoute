@@ -528,6 +528,18 @@ pub trait ComputeManagementControlPort: Send + Sync {
 }
 
 pub trait RoutingFactsPort: Send + Sync {
+    fn publication_checkpoint_snapshot(
+        &self,
+        _workspace: &WorkspaceId,
+    ) -> Result<
+        (
+            hiroute_domain::PublicationRecordV1,
+            hiroute_domain::RevisionSetV1,
+        ),
+        ControlReadError,
+    > {
+        Err(ControlReadError::Unavailable)
+    }
     fn decision_services(
         &self,
         _workspace: &WorkspaceId,
