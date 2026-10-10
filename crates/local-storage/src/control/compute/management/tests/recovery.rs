@@ -130,6 +130,14 @@ fn compute_delete_failure_after_secret_activation_rolls_back_all_stores_and_surv
                 .unwrap();
             }
             assert_eq!(restored, expected);
+            if terminal_failure {
+                super::compensation_guards::assert_compensation_owner_and_receipt_guards(
+                    &stores,
+                    &operation_id,
+                    &before,
+                    &restored,
+                );
+            }
             assert_credentials_restored(&stores, &restored);
             for key in &before.credentials {
                 let credential = &key.credential;
