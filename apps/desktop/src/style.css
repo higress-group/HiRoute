@@ -143,3 +143,6 @@ body { background: #f5f6f9; }
 @media (prefers-reduced-motion: reduce) {
   .hr-ui * { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.subscription-proxy-control { display: flex; flex-direction: column; gap: 10px; width: min(420px, 100%); min-width: 0; }
+.subscription-proxy-control .input, .subscription-proxy-control .select { width: 100%; }

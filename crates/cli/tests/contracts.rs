@@ -134,6 +134,7 @@ fn packaged_headless_docs_distinguish_host_and_application_discovery() {
         "hiroute service --help",
         "hiroute gateway --help",
         "hiroute protected-input --help",
+        "hiroute subscription-proxy --help",
         "Application/Local Control",
         "hiroute schema list --output json",
         "hiroute schema show --command-id compute.connection.test --output json",
@@ -156,8 +157,15 @@ fn real_hiroute_help_exposes_both_public_contract_layers_without_a_daemon() {
     let root = String::from_utf8(root.stdout).unwrap();
     assert!(root.contains("Host management"));
     assert!(root.contains("Application/Local Control"));
+    assert!(root.contains("  subscription-proxy"));
+    assert!(root.contains("hiroute subscription-proxy --help"));
 
-    for family in ["service", "gateway", "protected-input"] {
+    for family in [
+        "service",
+        "gateway",
+        "protected-input",
+        "subscription-proxy",
+    ] {
         let output = Command::new(env!("CARGO_BIN_EXE_hiroute"))
             .args([family, "--help"])
             .output()
@@ -167,6 +175,10 @@ fn real_hiroute_help_exposes_both_public_contract_layers_without_a_daemon() {
         let stdout = String::from_utf8(output.stdout).unwrap();
         assert!(stdout.contains("Usage"));
         assert!(stdout.contains(family));
+        if family == "subscription-proxy" {
+            assert!(stdout.contains("--mode inherit|direct|manual"));
+            assert!(stdout.contains("hiroute service restart"));
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
+import { SubscriptionProxySettings } from '../features/SubscriptionProxySettings';
 import { DiagnosticsSettings } from '../features/diagnostics/DiagnosticsSettings';
 import { UpdatesSettings } from '../features/UpdatesSettings';
 import { safeDiagnosticCode } from '../error-code';
@@ -191,6 +192,7 @@ export function SettingsPage(props: SettingsPageProps) {
         <div className="settings-copy"><strong>{text('会话内容', 'Session content')}</strong><span>{text('在会话详情中，可以清理该会话的正文或记录。', 'Clear content or records from each session’s detail view.')}</span></div>
         <button className="btn" type="button" onClick={() => props.onOpenSessions()}>{text('查看会话', 'View sessions')}</button>
       </div></div></section>
+      <SubscriptionProxySettings active={props.active} language={props.language} />
       <DiagnosticsSettings active={props.active} language={props.language} />
       <UpdatesSettings active={props.active} language={props.language} />
       <section className="settings-group"><h2>CLI</h2><div className="settings-list"><div className="settings-row">

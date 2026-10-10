@@ -142,7 +142,7 @@ contain credentials. This does not change native Codex login or token refresh ow
 The CLI has two public-contract layers:
 
 - Host management commands are defined by root and family help. `service`, `gateway`, and
-  `protected-input` intentionally do not appear in the Application release manifest.
+  `protected-input` and `subscription-proxy` intentionally do not appear in the Application release manifest.
 - Application/Local Control commands are defined by Released descriptors from
   `schema list/show` plus complete leaf `--help`.
 
@@ -151,6 +151,7 @@ hiroute --help
 hiroute service --help
 hiroute gateway --help
 hiroute protected-input --help
+hiroute subscription-proxy --help
 hiroute schema list --output json
 hiroute schema show --command-id compute.connection.test --output json
 hiroute compute connection test --help
@@ -764,3 +765,24 @@ Custom connections use `connection.kind: "custom"` and implement HiRoute's
 vendor [System One mapping](../decision-extensions/api/system-one-design.md). See the
 [decision protocol](../decision-extensions/api/decision-design.md) for selection and
 failure rules. Tool selection has no runtime entry in this release.
+
+
+### Persist a subscription proxy
+
+Use `hiroute subscription-proxy show --output json` to inspect the saved policy and
+whether it has been applied. Save a manual HTTP(S) proxy with:
+
+```sh
+hiroute subscription-proxy set --mode manual --url http://127.0.0.1:1187 --output json
+hiroute service restart --output json
+```
+
+An optional `--no-proxy example.com,192.168.0.0/16` adds bypass entries; local
+addresses always bypass. Use `--mode direct` to clear inherited proxies, or
+`--mode inherit` to retain the existing service launch-environment policy.
+Saving does not interrupt the service; an explicit restart applies it and may
+interrupt active requests and tasks. The policy covers all managed subscriptions
+and Claude subscription checks, not Worker tools or Native API connections.
+Manual URLs cannot contain credentials. PAC and ALL_PROXY are unsupported.
+An applied policy is not proof of remote availability: check the subscription and
+complete a real inference request separately.

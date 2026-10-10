@@ -87,6 +87,8 @@
     "allow-cli-entry-remove",
     "allow-gateway-listener-status",
     "allow-gateway-listener-apply",
-    "allow-gateway-listener-recover"
+    "allow-gateway-listener-recover",
+    "allow-subscription-proxy-status",
+    "allow-subscription-proxy-apply"
   ]
 }

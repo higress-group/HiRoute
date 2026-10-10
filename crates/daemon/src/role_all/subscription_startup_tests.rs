@@ -14,6 +14,7 @@ fn invalid_subscription_source_is_local_to_its_provider() {
             "codex-relative",
             "codex-parent",
             "both",
+            "proxy-invalid",
         ] {
             let root = tempfile::tempdir().unwrap();
             let mut child = Command::new(std::env::current_exe().unwrap());
@@ -57,6 +58,15 @@ fn invalid_subscription_source_is_local_to_its_provider() {
         return;
     };
     let root = PathBuf::from(std::env::var_os("HOME").unwrap());
+    let proxy = hiroute_host_runtime::SubscriptionProxyStore::new(&root);
+    let desired = proxy
+        .configure(hiroute_host_runtime::SubscriptionProxyPolicy::Direct)
+        .unwrap();
+    if case == "proxy-invalid" {
+        // A stale applied receipt cannot make a damaged policy appear applied.
+        proxy.mark_applied(&desired).unwrap();
+        std::fs::write(root.join("subscription-proxy.json"), b"{broken").unwrap();
+    }
     let socket = TcpListener::bind("127.0.0.1:0").unwrap();
     let listen = socket.local_addr().unwrap();
     drop(socket);
@@ -76,15 +86,32 @@ fn invalid_subscription_source_is_local_to_its_provider() {
         role.phases(),
         (ManagedControlPhase::Ready, ManagedGatewayPhase::Ready)
     );
-    let runtimes = role.cpa.as_ref().unwrap();
-    assert_eq!(
-        runtimes.for_kind(CpaAccountKind::Claude).is_some(),
-        case.starts_with("codex-")
-    );
-    assert_eq!(
-        runtimes.for_kind(CpaAccountKind::Codex).is_some(),
-        case.starts_with("claude-")
-    );
+    if case == "proxy-invalid" {
+        assert!(role.cpa.is_none());
+        assert!(!root.join("subscription-proxy-applied.json").exists());
+        assert_eq!(
+            std::fs::read(root.join("subscription-proxy.json")).unwrap(),
+            b"{broken"
+        );
+    } else {
+        let runtimes = role.cpa.as_ref().unwrap();
+        assert_eq!(
+            runtimes.for_kind(CpaAccountKind::Claude).is_some(),
+            case.starts_with("codex-")
+        );
+        assert_eq!(
+            runtimes.for_kind(CpaAccountKind::Codex).is_some(),
+            case.starts_with("claude-")
+        );
+        let view = proxy.view().unwrap();
+        assert_eq!(view.config, desired);
+        assert!(view.applied);
+        assert!(root.join("subscription-proxy-applied.json").is_file());
+    }
+    assert!(root.join("subscription-proxy.json").is_file());
+    for name in ["subscription-proxy.json", "subscription-proxy-applied.json"] {
+        assert!(!root.join("storage").join(name).exists());
+    }
     assert!(!root.join(".codex/auth.json").exists());
     assert!(!root.join(".claude/.credentials.json").exists());
     role.shutdown();

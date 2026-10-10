@@ -60,6 +60,8 @@ const HOST_SETTINGS_COMMANDS: &[&str] = &[
     "cli_entry_install",
     "cli_entry_remove",
     "gateway_listener_status",
+    "subscription_proxy_status",
+    "subscription_proxy_apply",
     "gateway_listener_apply",
     "gateway_listener_recover",
 ];

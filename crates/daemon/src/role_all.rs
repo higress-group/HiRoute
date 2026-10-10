@@ -590,6 +590,36 @@ fn start_cpa(
         connection_option_id: CpaAccountKind::Claude.connection_option_id().into(),
         endpoint_profile_id: CpaAccountKind::Claude.endpoint_profile_id().into(),
     }];
+    let proxy_store = hiroute_host_runtime::SubscriptionProxyStore::new(
+        config
+            .storage_root
+            .parent()
+            .ok_or(RoleAllError::InvalidConfiguration)?,
+    );
+    proxy_store
+        .clear_applied()
+        .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?;
+    let proxy_config = proxy_store
+        .load()
+        .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?;
+    let inherited = if config.released_commands_only
+        && matches!(
+            proxy_config.policy,
+            hiroute_host_runtime::SubscriptionProxyPolicy::Inherit
+        ) {
+        let layout = hiroute_host_runtime::StandaloneLayout::from_environment()
+            .map_err(|_| RoleAllError::InvalidConfiguration)?;
+        hiroute_host_runtime::ServiceProxyEnvironment::load(&layout.home)
+            .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?
+            .map(|value| value.variables().collect::<Vec<_>>())
+            .unwrap_or_else(|| std::env::vars_os().collect())
+    } else {
+        std::env::vars_os().collect()
+    };
+    let proxy = proxy_config
+        .policy
+        .resolve(inherited)
+        .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?;
     let catalog = Arc::new(catalog);
     let locator = Arc::new(PinnedCpaBinaryLocator::new(artifact));
     let mut runtimes = Vec::new();
@@ -599,24 +629,18 @@ fn start_cpa(
         if spec.borrowed_codex_auth.is_none() && spec.borrowed_claude_auth.is_none() {
             continue;
         }
-        let mut runtime = ManagedCpaRuntime::new(spec, catalog.clone(), locator.clone())
+        let runtime = ManagedCpaRuntime::new(spec, catalog.clone(), locator.clone())
             .map_err(|error| RoleAllError::Component("CPA", error.to_string()))?
-            .with_diagnostics(config.diagnostics.clone());
-        if config.released_commands_only {
-            let layout = hiroute_host_runtime::StandaloneLayout::from_environment()
-                .map_err(|_| RoleAllError::InvalidConfiguration)?;
-            if let Some(environment) =
-                hiroute_host_runtime::ServiceProxyEnvironment::load(&layout.home)
-                    .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?
-            {
-                runtime = runtime.with_proxy_environment(environment.variables());
-            }
-        }
+            .with_diagnostics(config.diagnostics.clone())
+            .with_proxy_environment(proxy.variables());
         runtimes.push(Arc::new(runtime));
     }
-    Ok(Arc::new(ManagedCpaRuntimeSet::new(runtimes).map_err(
-        |e| RoleAllError::Component("CPA", e.to_string()),
-    )?))
+    let runtimes = ManagedCpaRuntimeSet::new(runtimes)
+        .map_err(|e| RoleAllError::Component("CPA", e.to_string()))?;
+    proxy_store
+        .mark_applied(&proxy_config)
+        .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?;
+    Ok(Arc::new(runtimes))
 }
 
 fn selected_codex_auth() -> Result<PathBuf, RoleAllError> {
