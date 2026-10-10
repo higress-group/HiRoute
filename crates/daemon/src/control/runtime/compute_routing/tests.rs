@@ -299,13 +299,12 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
         )
         .unwrap();
     let cpa_source_id = "cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    let cpa_kind = hiroute_cpa_bridge::CpaAccountKind::Codex;
     let registered = register_cpa_account(
         &catalog,
         &CpaAccountMaterializationV1 {
-            connector_id: cpa_kind.connector_id().into(),
-            connection_option_id: cpa_kind.connection_option_id().into(),
-            endpoint_profile_id: cpa_kind.endpoint_profile_id().into(),
+            connector_id: "connector.cpa.codex".into(),
+            connection_option_id: super::super::subscriptions::CONNECTION_OPTION_ID.into(),
+            endpoint_profile_id: "endpoint.cpa.codex".into(),
             source_id: cpa_source_id.into(),
             account_subject:
                 "account/cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -313,12 +312,9 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
             credential_ref: CredentialRefV1::new(
                 "credential/cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 format!("source/{cpa_source_id}"),
-                format!("connector/{}", cpa_kind.connector_id()),
+                "connector/connector.cpa.codex",
                 "provider-auth",
-                [format!(
-                    "connection-option/{}",
-                    cpa_kind.connection_option_id()
-                )],
+                ["connection-option/codex.subscription.global.v1".into()],
                 1,
             )
             .unwrap(),
