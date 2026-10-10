@@ -396,7 +396,7 @@ def gateway(product, source, png, image):
         product.outputs.append(payload)
         if response.status != 200:
             failure = {'http_status': response.status, 'error': json.loads(payload).get('error')}
-            product.capability_gateway_failure = live.evidence.gateway_projection([
+            product.gateway_failures = getattr(product, 'gateway_failures', []) + live.evidence.gateway_projection([
                 dict(failure, scenario='request', provider='claude')])
         require(response.status == 200, 'capability_provider_http_' + str(response.status))
         return dict(project_reply(json.loads(payload), image), http_status=response.status)
@@ -805,22 +805,30 @@ def self_test():
             self.assertNotIn('tool_choice', body)
             self.assertEqual(body['messages'][0]['content'][0]['type'], 'image')
 
-        def test_failed_request_has_no_retry(self):
-            calls = []
-            class Connection:
-                def __init__(self, *_args, **_kwargs):
-                    pass
-                def request(self, *args, **kwargs):
-                    calls.append(1)
-                def getresponse(self):
-                    return SimpleNamespace(status=400, read=lambda: b'{"error":{"type":"invalid_request_error"}}')
-                def close(self):
-                    pass
-            product = SimpleNamespace(port=1, outputs=[], bearer=lambda _key: 'fixture-bearer')
-            with patch.object(http.client, 'HTTPConnection', Connection), self.assertRaises(live.LiveFailure):
-                gateway(product, {'alias': 'fixture-alias', 'connection': 'fixture-connection'},
-                        b'fixture', {'left': 'red', 'right': 'blue'})
-            self.assertEqual(len(calls), 1)
+        def test_failed_request_preserves_closed_http_error_without_retry(self):
+            for status, error_type in ((400, 'invalid_request_error'), (403, 'permission_error')):
+                calls = []
+                class Connection:
+                    def __init__(self, *_args, **_kwargs):
+                        pass
+                    def request(self, *args, **kwargs):
+                        calls.append(1)
+                    def getresponse(self):
+                        return SimpleNamespace(status=status, read=lambda: live.encoded({'error': {
+                            'type': error_type, 'message': 'fixture-private-provider-detail',
+                            'account': 'fixture-private-account'}}))
+                    def close(self):
+                        pass
+                product = SimpleNamespace(port=1, outputs=[], bearer=lambda _key: 'fixture-bearer')
+                with patch.object(http.client, 'HTTPConnection', Connection), self.assertRaises(live.LiveFailure):
+                    gateway(product, {'alias': 'fixture-alias', 'connection': 'fixture-connection'},
+                            b'fixture', {'left': 'red', 'right': 'blue'})
+                self.assertEqual(len(calls), 1)
+                projected = live.evidence.failure_projection(product, 'request')
+                self.assertEqual(projected['gateway_failures'], [{
+                    'scenario': 'request', 'provider': 'claude',
+                    'http_status': status, 'error': {'type': error_type}}])
+                self.assertNotIn('fixture-private', json.dumps(projected))
 
         def test_dirty_entry_and_support_are_rejected(self):
             with patch.object(live.runtime_support, 'caller_harness_sha', return_value='a'*40), \
