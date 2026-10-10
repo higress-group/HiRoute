@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:febf9a04d9e2721df85c12616dd74f97e68de79191d3eae81da532bd782a7e55",
+  "descriptor_digest": "sha256:a435bc5901bbcaeaf2f41c8c4db15b0a7f967d988aeb544e8f5d2890abc64639",
   "expected_red_reasons": [],
   "planned_commands": [
     "schema.list",
