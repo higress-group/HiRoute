@@ -622,7 +622,7 @@ fn messages_context_management_is_native_only_when_semantics_are_unknown() {
             }]
         }),
     ] {
-        let request = decode_ingress_request(
+        let mut request = decode_ingress_request(
             IngressProtocol::Messages,
             &json!({
                 "model": "alias",
@@ -633,6 +633,9 @@ fn messages_context_management_is_native_only_when_semantics_are_unknown() {
         )
         .unwrap();
         assert!(request.native_only);
+        // Fixed bindings preserve native extensions; Plan controls are covered separately.
+        request.requested_reasoning.disposition =
+            crate::server::core_runtime::model_ir::RequestedReasoningDisposition::AppliedToFixedBinding;
         let native = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
         assert_eq!(
             project_candidate_request(&request, &native).unwrap().body["context_management"],

@@ -111,6 +111,9 @@ pub(super) fn project(
             remove_assignment(object, &field.path);
         }
         render_reasoning(object, reasoning, request.ingress_protocol)?;
+        if request.ingress_protocol == IngressProtocol::Messages {
+            normalize_messages_context_edits(object);
+        }
     }
 
     // Preserve the existing Claude instruction-reminder normalization.
@@ -150,6 +153,39 @@ pub(super) fn project(
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
     Ok(body)
+}
+
+fn normalize_messages_context_edits(object: &mut Map<String, Value>) {
+    if matches!(
+        object
+            .get("thinking")
+            .and_then(|value| value.get("type"))
+            .and_then(Value::as_str),
+        Some("enabled" | "adaptive")
+    ) {
+        return;
+    }
+    let Some(context) = object
+        .get_mut("context_management")
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+    let Some(edits) = context.get_mut("edits").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let original_len = edits.len();
+    edits
+        .retain(|edit| edit.get("type").and_then(Value::as_str) != Some("clear_thinking_20251015"));
+    if edits.len() == original_len {
+        return;
+    }
+    if edits.is_empty() {
+        context.remove("edits");
+    }
+    if context.is_empty() {
+        object.remove("context_management");
+    }
 }
 
 fn append_instruction_blocks(
