@@ -664,7 +664,7 @@ fn compile_candidate_pricing(
                 source_id: identity.source_id.clone().into(),
                 source_identity_digest: identity.source_identity_digest.clone(),
                 actual_offer_ref: identity.actual_offer_ref.clone().into(),
-                usage_semantics: usage_semantics(profile.capability.upstream_protocol),
+                usage_semantics: usage_semantics(),
                 billing_context: PriceBillingContextV1::StandardTokens,
             });
         }
@@ -693,15 +693,15 @@ fn compile_candidate_pricing(
     Ok(bindings.into())
 }
 
-fn usage_semantics(protocol: IngressProtocol) -> UsageSemanticsV1 {
+fn usage_semantics() -> UsageSemanticsV1 {
     UsageSemanticsV1 {
         frame_kind: UsageFrameKindV1::Cumulative,
-        input: match protocol {
-            IngressProtocol::Responses | IngressProtocol::ChatCompletions => {
-                InputUsageMeaningV1::IncludesExclusiveCache
-            }
-            IngressProtocol::Messages => InputUsageMeaningV1::UncachedOnly,
-        },
+        // Every upstream decoder normalizes input to the complete input
+        // consumed by the request with cache read/creation as exclusive
+        // sub-buckets (`adapters/response/wire.rs`), so the uncached share is
+        // always derived by subtraction; declaring an uncached-only input
+        // frame here would bill the cache buckets a second time.
+        input: InputUsageMeaningV1::IncludesExclusiveCache,
         output: OutputUsageMeaningV1::IncludesReasoning,
         cache_buckets_exclusive: true,
     }
