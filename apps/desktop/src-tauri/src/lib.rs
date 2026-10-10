@@ -15,7 +15,6 @@ pub mod failure;
 mod fault_tests;
 #[cfg(unix)]
 mod gateway_address;
-#[cfg(unix)]
 mod login_item;
 #[cfg(unix)]
 mod native_diagnostics;
