@@ -47,6 +47,79 @@ fn promoted_correlation(index: u32) -> CaptureCorrelation {
     }
 }
 
+pub(super) fn correlation_checkpoint(root: &Path, stage: &str) {
+    if std::env::var_os("HIROUTE_CAPTURE_INTERRUPT_ROOT").as_deref() == Some(root.as_os_str())
+        && std::env::var("HIROUTE_CAPTURE_INTERRUPT_STAGE").as_deref() == Ok(stage)
+    {
+        private_file(&root.join("checkpoint"))
+            .unwrap()
+            .write_all(stage.as_bytes())
+            .unwrap();
+        loop {
+            std::thread::park();
+        }
+    }
+}
+
+#[tokio::test]
+async fn sealed_correlation_survives_process_termination() {
+    const TEST: &str =
+        "runtime::stream_capture::tests::sealed_correlation_survives_process_termination";
+    if let Some(root) = std::env::var_os("HIROUTE_CAPTURE_INTERRUPT_ROOT") {
+        let root = PathBuf::from(root);
+        let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+        capture.record(1, b"{}");
+        capture.record(2, &[]);
+        capture.record(3, &200u16.to_le_bytes());
+        capture.record(4, b"data: {invalid\n\n");
+        capture.failed();
+        PendingCapture(Arc::downgrade(&capture.0)).promoted(promoted_correlation(1));
+        panic!("missing interruption checkpoint");
+    }
+    for stage in ["partial", "ready", "published"] {
+        let root = setup();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", TEST, "--nocapture"])
+            .env("HIROUTE_CAPTURE_INTERRUPT_ROOT", &root)
+            .env("HIROUTE_CAPTURE_INTERRUPT_STAGE", stage)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !root.join("checkpoint").exists() && Instant::now() < deadline {
+            if child.try_wait().unwrap().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let reached = root.join("checkpoint").exists();
+        let stopped = root.join("stopped").exists();
+        // SIGKILL cannot execute a destructor or finish an in-progress write.
+        let _ = child.kill();
+        let status = child.wait().unwrap();
+        assert!(
+            reached && stopped,
+            "{stage}: checkpoint not reached: {status}"
+        );
+        let path = root.join("attempt-1.capture");
+        let bytes = read_private(&path, MAX_FILE).unwrap();
+        let records = replay::records(&bytes).unwrap();
+        assert_eq!(records.last().unwrap().0, 8, "{stage}");
+        assert_eq!(records.iter().filter(|r| r.0 == 8).count(), 1, "{stage}");
+        assert_eq!(
+            records.iter().filter(|r| r.0 == 7).count(),
+            usize::from(stage == "published"),
+            "{stage}"
+        );
+        for chunk in [0, 1, 4096] {
+            let replay = replay_capture(&path, chunk).await.unwrap();
+            assert_eq!(replay["decoder"]["reason"], "invalid_json", "{stage}");
+            assert_eq!(replay["captured_gateway_failure"], true, "{stage}");
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
 #[test]
 fn promoted_failure_appends_only_one_bounded_correlation_without_reopening_content() {
     let root = setup();
@@ -87,6 +160,7 @@ fn sealed_correlation_respects_original_bounds_and_file_identity() {
     for guard in [
         "file_limit",
         "session_limit",
+        "temporary_copy_limit",
         "records",
         "expiry",
         "permissions",
@@ -108,6 +182,18 @@ fn sealed_correlation_respects_original_bounds_and_file_identity() {
                 private_file(&root.join("other.capture"))
                     .unwrap()
                     .set_len(MAX_TOTAL - initial.len() as u64)
+                    .unwrap();
+            }
+            "temporary_copy_limit" => {
+                // The final delta fits, but both complete copies cannot coexist.
+                let correlation_bytes = serde_json::to_vec(&promoted_correlation(1)).unwrap().len();
+                let existing_bytes: u64 = fs::read_dir(&root)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().metadata().unwrap().len())
+                    .sum();
+                private_file(&root.join("other.capture"))
+                    .unwrap()
+                    .set_len(MAX_TOTAL - existing_bytes - correlation_bytes as u64 - 9)
                     .unwrap();
             }
             "records" => capture.0.lock().unwrap().records = MAX_RECORDS,

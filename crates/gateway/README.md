@@ -122,7 +122,10 @@ profiles whose staging occurs after materialization rather than a credential rea
 Private capture binds that request-owned weak handle at formal attempt promotion,
 after validating the pending binding and credential. A prebody failure closes
 body capture and seals the file before `stopped`; later promotion may replace
-only that seal with one typed correlation record and a new durable seal. It
+the sample atomically with an identical content prefix, one typed correlation
+record and a new durable seal. A private temporary copy is synced before rename,
+so termination always leaves either complete version; temporary bytes count toward
+the session quota. If that quota cannot hold both copies, the original survives. It
 rechecks the private directory, file identity/permissions/owner, expiry and
 original file/session/record budgets. Content capture never reopens, and the
 weak handle cannot retain a writer or bind another request or attempt.

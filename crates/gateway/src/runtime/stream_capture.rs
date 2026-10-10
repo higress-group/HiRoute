@@ -2,7 +2,7 @@
 //! A session owns a private directory and an exclusive capture lock. Failed/partial
 //! capture is not replay evidence; it never changes the business result.
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
@@ -309,25 +309,10 @@ impl Capture {
                 writer.active = false;
             }
         } else if allow_sealed && let Some(offset) = writer.failed_seal_offset.take() {
-            // Failure already closed content capture and published `stopped`.
-            // Promotion may replace only that final seal with one correlation
-            // record and a new seal; active remains false throughout.
+            // Never overwrite the sample after publishing `stopped`: its owner
+            // may terminate us at any instruction. Publish a complete replacement.
             writer.attempt_correlated = true;
-            if writer.check_correlation_tail(offset, bytes.len()).is_err()
-                || writer.file.seek(SeekFrom::Start(offset)).is_err()
-            {
-                return;
-            }
-            writer.written = offset;
-            writer.records -= 1;
-            if writer
-                .write(7, &bytes)
-                .and_then(|_| writer.write(8, &[]))
-                .and_then(|_| writer.file.sync_all())
-                .is_err()
-            {
-                writer.invalidate_seal(offset);
-            }
+            let _ = writer.correlate_sealed(offset, &bytes);
         }
     }
 
@@ -393,7 +378,49 @@ impl Writer {
         }
     }
 
-    fn check_correlation_tail(&self, offset: u64, bytes: usize) -> io::Result<()> {
+    fn correlate_sealed(&mut self, offset: u64, bytes: &[u8]) -> io::Result<()> {
+        self.check_correlation_tail(offset, bytes.len(), true)?;
+        let replacement = CorrelationReplacement {
+            file: private_file(&self.path.with_extension("correlation"))?,
+            path: self.path.with_extension("correlation"),
+        };
+        let mut file = &replacement.file;
+        let source = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&self.path)?;
+        if io::copy(&mut source.take(offset), &mut file)? != offset {
+            return Err(io::Error::other("incomplete capture replacement"));
+        }
+        file.write_all(&[7])?;
+        #[cfg(test)]
+        tests::correlation_checkpoint(&self.root, "partial");
+        file.write_all(&(bytes.len() as u64).to_le_bytes())?;
+        file.write_all(bytes)?;
+        file.write_all(&[8])?;
+        file.write_all(&0u64.to_le_bytes())?;
+        file.sync_all()?;
+        // Recheck original identity and the now-present temporary copy's total.
+        self.check_correlation_tail(offset, bytes.len(), false)?;
+        let next_file = file.try_clone()?;
+        #[cfg(test)]
+        tests::correlation_checkpoint(&self.root, "ready");
+        fs::rename(&replacement.path, &self.path)?;
+        self.file = next_file;
+        self.written = offset + 18 + bytes.len() as u64;
+        self.records += 1;
+        #[cfg(test)]
+        tests::correlation_checkpoint(&self.root, "published");
+        File::open(&self.root)?.sync_all()?;
+        Ok(())
+    }
+
+    fn check_correlation_tail(
+        &self,
+        offset: u64,
+        bytes: usize,
+        reserve_copy: bool,
+    ) -> io::Result<()> {
         let root = fs::symlink_metadata(&self.root)?;
         let file = self.file.metadata()?;
         let path = fs::symlink_metadata(&self.path)?;
@@ -421,7 +448,7 @@ impl Writer {
             || self.written != offset.saturating_add(9)
             || now() >= self.expires_at
             || new_size > self.limit
-            || total.saturating_add(new_size.saturating_sub(file.len())) > MAX_TOTAL
+            || total.saturating_add(if reserve_copy { new_size } else { 0 }) > MAX_TOTAL
             || self.records.saturating_add(1) > MAX_RECORDS
         {
             return Err(io::Error::other(
@@ -450,6 +477,18 @@ impl Writer {
         Ok(())
     }
 }
+// A killed process can leave a bounded private temporary file. The existing
+// session retention owner removes it together with the rest of the session.
+struct CorrelationReplacement {
+    file: File,
+    path: PathBuf,
+}
+impl Drop for CorrelationReplacement {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 impl Drop for Writer {
     fn drop(&mut self) {
         let _ = self.seal();
