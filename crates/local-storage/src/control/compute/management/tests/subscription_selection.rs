@@ -64,13 +64,12 @@ fn change(
     }
 }
 
-fn save(
+fn register_verified_subscription(
     stores: &LocalStorageSet,
     registry: &TrustedComputeCandidateRegistry,
     facts: &ComputeCandidateFactsV2,
-    selected: &[&str],
     key: &str,
-) -> hiroute_domain::ComputeManagementSourceV2 {
+) {
     // This storage test starts at verified subscription facts. Admission still uses
     // the real durable handoff and transaction; the daemon tests cover the check.
     let validation = facts.validation.as_ref().unwrap();
@@ -101,6 +100,16 @@ fn save(
             .unwrap();
     });
     registry.register_compute_candidate(facts.clone()).unwrap();
+}
+
+fn save(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    facts: &ComputeCandidateFactsV2,
+    selected: &[&str],
+    key: &str,
+) -> hiroute_domain::ComputeManagementSourceV2 {
+    register_verified_subscription(stores, registry, facts, key);
     let input = ProtectedInput;
     let planner =
         ComputeManagementPlanner::new(registry, stores.control(), stores.secrets(), &input);
@@ -466,4 +475,180 @@ fn removed_subscription_cannot_be_resurrected_by_late_maintenance_or_checked_can
             .sources
             .is_empty()
     );
+}
+
+#[test]
+fn subscription_v3_mode_tracks_lifecycle_revisions_and_never_revives_after_delete() {
+    use super::lifecycle::{edit, execute, saved};
+    use hiroute_application::compute_management::{
+        query_compute_management, query_compute_management_v3,
+    };
+    use hiroute_application_api::{
+        ComputeManagementEditV1, ComputeManagementQueryV2, ComputeSubscriptionModeV1,
+    };
+
+    for managed in [false, true] {
+        let root = tempdir().unwrap();
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let registry = TrustedComputeCandidateRegistry::new();
+        let expected = if managed {
+            ComputeSubscriptionModeV1::CpaManaged
+        } else {
+            ComputeSubscriptionModeV1::NativeBorrowed
+        };
+        let facts_for = |label: &str| {
+            let mode = if managed { "managed/" } else { "" };
+            let mut facts = subscription(&format!("candidate/cpa/codex/{mode}{label}"));
+            facts.provenance = ComputeCandidateProvenanceV2::ConnectorOwned {
+                connector_id: "connector.cpa.codex".into(),
+                account_ref: "account/subscription".into(),
+            };
+            facts
+        };
+        let assert_mode = |source: &hiroute_domain::ComputeManagementSourceV2| {
+            let query = ComputeManagementQueryV2::default();
+            let v3 = query_compute_management_v3(
+                stores.control(),
+                stores.runtime(),
+                &WorkspaceId::default(),
+                &query,
+                None,
+            )
+            .unwrap();
+            assert_eq!(v3.subscription_modes.len(), 1);
+            let mode = &v3.subscription_modes[0];
+            assert_eq!(mode.source_id, source.source_id);
+            assert_eq!(mode.source_revision, source.revision);
+            assert_eq!(mode.mode, expected);
+            let v2 = query_compute_management(
+                stores.control(),
+                stores.runtime(),
+                &WorkspaceId::default(),
+                &query,
+            )
+            .unwrap();
+            assert_eq!(v3.into_v2(), v2);
+            assert!(
+                serde_json::to_value(v2)
+                    .unwrap()
+                    .get("subscription_modes")
+                    .is_none()
+            );
+        };
+        let original = save(
+            &stores,
+            &registry,
+            &facts_for("first"),
+            &["model/one"],
+            "first-mode",
+        );
+        assert_mode(&original);
+        execute(
+            &stores,
+            &registry,
+            edit(
+                &stores,
+                &original,
+                ComputeManagementEditV1::Rename {
+                    display_name: "Subscription team".into(),
+                },
+                &[],
+            ),
+            "rename-mode",
+        );
+        let named = saved(&stores);
+        assert!(named.revision > original.revision);
+        assert_eq!(named.source_id, original.source_id);
+        assert_eq!(named.models, original.models);
+        assert_mode(&named);
+
+        // These are verified-check storage fixtures, not native OAuth or inference evidence.
+        for (label, model_ref, upstream, disabled) in [
+            ("ready-append", "model/two", "upstream-two", false),
+            ("disabled-append", "model/three", "upstream-three", true),
+        ] {
+            let before = saved(&stores);
+            if disabled {
+                let mut disable = edit(&stores, &before, ComputeManagementEditV1::Delete, &[]);
+                disable.edit = None;
+                disable.intent = ComputeManagementIntentV2::SaveDisabled;
+                disable.selected_model_refs =
+                    before.models.iter().map(|m| m.model_ref.clone()).collect();
+                execute(&stores, &registry, disable, "disable-mode");
+            }
+            let before = saved(&stores);
+            let mut facts = facts_for(label);
+            facts.existing_source_id = Some(before.source_id.clone());
+            let mut extra = facts.models[0].clone();
+            extra.model_ref = model_ref.into();
+            extra.upstream_model_id = upstream.into();
+            facts.models.retain(|model| model.model_ref != model_ref);
+            facts.models.push(extra);
+            register_verified_subscription(&stores, &registry, &facts, label);
+            let mut append = change(&stores, &facts, &[model_ref]);
+            append.edit = Some(ComputeManagementEditV1::AppendModels);
+            execute(&stores, &registry, append, label);
+            let after = saved(&stores);
+            assert_eq!(after.source_id, before.source_id);
+            assert_eq!(after.display_name, named.display_name);
+            assert_eq!(after.state, before.state);
+            assert_eq!(after.credentials, before.credentials);
+            assert_eq!(&after.models[..before.models.len()], &before.models);
+            assert_eq!(after.models.len(), before.models.len() + 1);
+            assert_mode(&after);
+        }
+        let disabled = saved(&stores);
+        assert_eq!(disabled.state, MaterializationState::Disabled);
+        let mut late = facts_for("late-maintenance");
+        late.existing_source_id = Some(disabled.source_id.clone());
+        register_verified_subscription(&stores, &registry, &late, "late-mode");
+        let scope = ComputeSubscriptionMaintenanceScopeV1 {
+            source_id: disabled.source_id.clone(),
+            expected_source_revision: disabled.revision,
+        };
+        let input = ProtectedInput;
+        let planner =
+            ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+        assert!(matches!(
+            planner
+                .preview_subscription_maintenance(change(&stores, &late, &["model/one"]), &scope),
+            Err(ComputeManagementPlanningErrorV2::RevisionConflict)
+        ));
+        assert_eq!(saved(&stores), disabled);
+        let captured = change(&stores, &late, &["model/one"]);
+        execute(
+            &stores,
+            &registry,
+            edit(&stores, &disabled, ComputeManagementEditV1::Delete, &[]),
+            "delete-mode",
+        );
+        assert!(planner.preview(captured).is_err());
+        assert!(matches!(
+            planner
+                .preview_subscription_maintenance(change(&stores, &late, &["model/one"]), &scope),
+            Err(ComputeManagementPlanningErrorV2::SourceNotFound)
+        ));
+        let v3 = query_compute_management_v3(
+            stores.control(),
+            stores.runtime(),
+            &WorkspaceId::default(),
+            &ComputeManagementQueryV2::default(),
+            None,
+        )
+        .unwrap();
+        assert!(v3.sources.is_empty());
+        assert!(v3.subscription_modes.is_empty());
+        drop(stores);
+        let reopened = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let v3 = query_compute_management_v3(
+            reopened.control(),
+            reopened.runtime(),
+            &WorkspaceId::default(),
+            &ComputeManagementQueryV2::default(),
+            None,
+        )
+        .unwrap();
+        assert!(v3.sources.is_empty());
+        assert!(v3.subscription_modes.is_empty());
+    }
 }
