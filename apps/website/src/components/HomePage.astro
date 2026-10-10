@@ -28,7 +28,7 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
       <h1>{en ? <><span>Intelligent routing</span><span>for long-horizon agents.</span></> : <><span>为长程 Agent 而生的</span><span>智能路由引擎。</span></>}</h1>
       <p class="intro">{t('一段长任务，不必始终依赖同一个模型。按任务选择 Agent，再根据执行表现与后续工作的需要，决定继续使用还是切换模型。', 'A long task need not rely on one model from start to finish. Match the agent to the task, then choose the right model for each stage—guided by past performance and the work ahead.')}</p>
       <a class="jev-callout" href="#how"><strong>{t('决策模型', 'Decision models')}</strong><span>{t('内置接入 · 判断任务，回看表现', 'Built-in connections · Judge the task, assess prior work')}</span><span aria-hidden="true">↗</span></a>
-      <div class="actions"><a class="button" href={en ? '/en/download/' : '/download/'}>{t('下载 HiRoute', 'Download HiRoute')} <span>↗</span></a><a class="button outline" href="#boundaries">{t('了解路由机制', 'Explore routing')} <span>↓</span></a></div>
+      <div class="actions"><a class="button" href={en ? '/en/download/' : '/download/'}>{t('下载 HiRoute', 'Download HiRoute')} <span>↗</span></a><a class="button outline" href="#boundaries">{t('了解路由机制', 'Explore routing')} <span>↓</span></a><a class="button outline" href="#tour">{t('观看介绍', 'Watch the tour')} <span>▶</span></a></div>
       <p class="small-note">{t('开发、研究、分析与自动化。保留惯用工作流，按需投入算力。', 'Code, research, analysis, and automation. Keep your workflow and spend compute where it counts.')}</p>
     </div>
     <div class="journey-art" aria-label={t('一个长任务中的模型路由示意', 'Model routing across one long task')}>
@@ -40,6 +40,12 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
     </div>
   </section>
   <div class="trust-line wrap"><span><b>{t('更省', 'Efficient')}</b> · {t('按需投入算力', 'Compute where it counts')}</span><span><b>{t('更稳', 'Reliable')}</b> · {t('有边界地接力', 'Bounded failover')}</span><span><b>{t('更懂', 'Adaptive')}</b> · {t('用执行事实改进选择', 'Decisions grounded in execution')}</span></div>
+
+  <section class="section wrap tour-section" id="tour">
+    <div class="section-title"><div><div class="eyebrow section-label">{t('产品介绍', 'Product tour')}</div><h2>{t('一分钟了解 HiRoute', 'HiRoute in one minute')}</h2></div><p>{t('从接入模型与 Agent，到按阶段选择模型、守住质量和查看执行证据。', 'From connecting models and agents to stage-based model choice, quality guards, and execution evidence.')}</p></div>
+    <figure class="product-shot tour-video"><video controls playsinline preload="none" poster={`/media/hiroute-promo-${en ? 'en' : 'zh'}-poster.jpg`} aria-label={t('HiRoute 一分钟产品介绍视频', 'HiRoute one-minute product tour video')}><source src={`/media/hiroute-promo-${en ? 'en' : 'zh'}.mp4`} type="video/mp4"></video></figure>
+    <p class="caption">{t('真实桌面端界面 · 演示数据，非模型评测。', 'Real desktop UI · Demo data, not a model benchmark.')}</p>
+  </section>
 
   <section class="section wrap lifecycle-section" id="boundaries">
     <div class="section-title"><div><div class="eyebrow section-label">{t('长任务持续推进，判断有明确边界', 'Keep long tasks moving with clear decision boundaries')}</div><h2>{t('阶段内保持稳定，', 'Stay stable within a stage.')}<br>{t('新一轮重新判断。', 'Judge each new turn.')}</h2></div><p>{t('新用户请求重新判断任务与模型组，同轮工具续接沿用冻结决策。模型可以持续完成工具往返，再根据新的工作需要和适用的阶段评分选择。', 'A new user turn gets a fresh task and model-group decision. Tool continuations inherit that turn’s frozen decision, letting the model work through tool round-trips before judging new work and applicable stage evidence.')}</p></div>
@@ -81,7 +87,7 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
 
   <section class="section wrap ecosystem-section" id="ecosystem">
     <div class="section-title"><div><div class="eyebrow section-label">{t('Agent 生态', 'Agent ecosystem')}</div><h2>{t('不绑定一种 Agent，', 'Not tied to one agent.')}<br>{t('也不局限于编程。', 'Not limited to coding.')}</h2></div><p>{t('集成状态按真实支持范围开放；当前可用与规划方向明确分开。', 'Integration status follows real support; available and planned paths stay visibly separate.')}</p></div>
-    <div class="ecosystem-groups"><article><h3>{t('当前适配', 'Available now')}</h3><div class="agent-names"><span>Codex</span><span>Claude Code</span></div></article><article class="ecosystem-planned"><h3>{t('后续方向', 'Planned')}</h3><div class="agent-names"><span>Qoder</span><span>Pi</span><span>DeepSeek Harness</span><span>OpenCode</span><span>Hermes Agent</span><span>OpenClaw</span></div><p>{t('具体顺序按真实适配和验证推进。', 'Order depends on real integration and validation.')}</p></article></div>
+    <div class="ecosystem-groups"><article><h3>{t('当前适配', 'Available now')}</h3><div class="agent-names"><span>Codex</span><span>Claude Code</span><span>Qoder</span><span>Pi</span><span>DeepSeek Harness</span></div></article><article class="ecosystem-planned"><h3>{t('后续方向', 'Planned')}</h3><div class="agent-names"><span>OpenCode</span><span>Hermes Agent</span><span>OpenClaw</span></div><p>{t('具体顺序按真实适配和验证推进。', 'Order depends on real integration and validation.')}</p></article></div>
   </section>
 
   <section class="section wrap extension-section" id="extensions">
