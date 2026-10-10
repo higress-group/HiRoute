@@ -533,6 +533,17 @@ hiroute worker executors --output json
 hiroute worker plans --output json
 ```
 
+Codex Workers require the selected `codex-acp` adapter to advertise AIR
+`sessionFailure` during initialization. The inspected 1.1.5 adapter lacks this
+capability; 2.1.1 advertises it. HiRoute checks the capability, not a version
+allowlist. If a task fails with `CapabilityUnavailable`, use
+`hiroute worker read --run RUN_ID` to inspect its saved progress. A `[HiRoute]`
+message identifies this missing capability and explains how to recover: update
+the selected adapter, select its paths again in Worker dependencies, then submit
+the task again. Use a new submission key for a new run; replaying the previous
+key returns the existing failed run. Discovery/selection is not a compatibility
+preflight and does not install or update the adapter.
+
 Set routing-editor `delegation_enabled` to `true`, add
 `"work":{"harness":"codex_cli","protocol":"responses"}`, and publish again. Then submit,
 locate, wait for, and read the task:

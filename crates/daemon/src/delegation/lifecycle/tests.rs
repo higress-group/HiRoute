@@ -9,6 +9,8 @@ use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
+#[cfg(unix)]
+mod codex_capability;
 mod startup;
 
 #[derive(Default)]
@@ -16,6 +18,7 @@ struct Journal(
     Mutex<Vec<&'static str>>,
     Option<Arc<crate::delegation::finalization::DelegationFinalization>>,
     std::sync::atomic::AtomicBool,
+    Option<WorkerProgressWriter>,
 );
 impl AcpRunJournal for Journal {
     fn session_bound(&self, _: &AcpSessionBinding) -> Result<(), DelegationErrorV1> {
@@ -34,6 +37,10 @@ impl AcpRunJournal for Journal {
     }
 }
 impl WorkerRunJournal for Journal {
+    fn progress_writer(&self) -> Option<WorkerProgressWriter> {
+        self.3.clone()
+    }
+
     fn begin_finalization(
         &self,
     ) -> Option<crate::delegation::finalization::DelegationFinalizationLease> {
@@ -428,6 +435,7 @@ async fn terminal_publication_lease_survives_until_the_executor_receives_the_res
         Mutex::default(),
         Some(Arc::clone(&finalization)),
         Default::default(),
+        None,
     ));
     let backend = Fixture {
         journal: Arc::clone(&journal),
