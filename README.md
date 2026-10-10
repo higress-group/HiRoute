@@ -25,6 +25,12 @@
   <a href="https://hiroute.ai/download/"><img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <a href="https://hiroute.ai/en/#tour">
+    <img src="apps/website/public/media/hiroute-promo-en-readme.jpg" alt="Watch the 1-minute HiRoute product tour" width="720">
+  </a>
+</p>
+
 HiRoute is a local control and execution layer for long-horizon agents. It brings model
 sources, reusable routing plans, agent connections, bounded failover, and execution evidence
 into one system, available through a Desktop application or a headless CLI and daemon.
