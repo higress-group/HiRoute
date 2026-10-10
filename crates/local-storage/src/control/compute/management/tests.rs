@@ -32,9 +32,9 @@ use super::super::super::ControlStore;
 use crate::{LocalSecretStore, LocalStorageSet, RuntimeStore};
 
 mod lifecycle;
-mod removal_guards;
 mod recovery;
 mod released_lifecycle;
+mod removal_guards;
 mod runtime_leases;
 mod subscription_selection;
 

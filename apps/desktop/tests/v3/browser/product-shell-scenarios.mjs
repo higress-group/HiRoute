@@ -38,6 +38,24 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  scenario('desktop.models.connection-template-directory-layout', ['model-connections'], 'The production stylesheet renders searchable template rows and pagination', async () => {
+    await fresh(); await click('模型'); await click('添加模型');
+    await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'new connection entry');
+    all('button').find(item => item.textContent.includes('新建 API 接入')).click();
+    await until(() => all('.mc-template-row').length > 0, 'template directory');
+    assert(getComputedStyle(document.querySelector('.mc-template-directory')).display === 'grid', 'Production directory layout missing');
+    for (const row of all('.mc-template-row')) {
+      assert(getComputedStyle(row).display === 'flex' && getComputedStyle(row).alignItems === 'center', 'Template row is not aligned');
+      assert(getComputedStyle(row.querySelector('.field-help')).display === 'block', 'Template protocol is not on its own line');
+    }
+    const selected = document.querySelector('.mc-template-row input:checked');
+    assert(selected?.closest('.mc-template-row').classList.contains('selected'), 'Selection styling missing');
+    setInput(document.querySelector('.mc-template-directory input[type="search"]'), '百炼');
+    await until(() => all('.mc-template-row').every(row => row.textContent.includes('百炼')), 'filtered templates');
+    assert(all('.mc-template-row').length > 0, 'Search removed matching templates');
+    assert(getComputedStyle(document.querySelector('.mc-template-pagination')).display === 'flex', 'Pagination layout missing');
+    await click('取消');
+  }),
   scenario('desktop.models.connection-rename', ['model-connections'], 'Rename is scoped to one saved connection without replacing its models or keys', async () => {
     await fresh(() => { c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')]; });
     await click('模型'); await click('按接入'); await click('重命名');

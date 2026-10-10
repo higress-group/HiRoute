@@ -97,6 +97,7 @@ export function Models(props: Props) {
   const [view, setView] = useState<'models' | 'connections'>('models');
   const [lifecycle, setLifecycle] = useState<{ source: ManagedSource; model?: ManagedModel; action: 'rename' | 'remove' | 'delete' } | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(props.initialSourceId ?? props.snapshot.sources[0]?.source_id ?? null);
+  const appliedInitialSource = useRef<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [draft, setDraft] = useState<ModelDraft | null>(null);
@@ -148,9 +149,13 @@ export function Models(props: Props) {
   useDiscardGuard('models', dirty, props.language, confirmCredentialReplacement);
 
   useEffect(() => {
+    if (!props.initialSourceId) { appliedInitialSource.current = null; return; }
+    if (appliedInitialSource.current === props.initialSourceId) return;
     if (!props.initialSourceId || !props.snapshot.sources.some(item => item.source_id === props.initialSourceId)) return;
+    appliedInitialSource.current = props.initialSourceId;
     setFilter('all');
     setQuery('');
+    setSelectedModelId(null);
     setSelectedSourceId(props.initialSourceId);
   }, [props.initialSourceId, props.snapshot.sources]);
 

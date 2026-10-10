@@ -169,6 +169,22 @@ impl LocalControlAdapter {
                 draft.models.push(declaration);
             }
         }
+        // Offer current same-product declarations for explicit append. These are not
+        // account inventory or verified inference, and never replace saved members.
+        for declaration in super::saved_prefill::registered_product_candidates(
+            catalog.model_metadata(),
+            &base_url,
+            &request_path,
+            draft.protocol,
+        ) {
+            if !draft
+                .models
+                .iter()
+                .any(|model| model.upstream_model_id == declaration.upstream_model_id)
+            {
+                draft.models.push(declaration);
+            }
+        }
         draft.trusted_lineage_digest = Some(source.lineage_digest.clone());
         Ok(draft)
     }
@@ -933,6 +949,13 @@ mod tests {
             .unwrap();
         assert_eq!(draft.additional_native_endpoints, original_endpoints);
         assert_eq!(source.credentials, original_credentials);
+        assert!(
+            draft.models.iter().any(|model| !source
+                .models
+                .iter()
+                .any(|saved| saved.upstream_model_id == model.upstream_model_id)),
+            "saved-source check must retain unselected product candidates for append"
+        );
         for (id, vision) in [("deepseek-v4-flash", false), ("deepseek-v4.1-flash", true)] {
             let model = draft
                 .models

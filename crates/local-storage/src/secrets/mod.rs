@@ -1216,6 +1216,14 @@ fn migrate_legacy_secret_aad(
                 ));
             }
         }
+        // Delete producers retain format metadata, but never a staged secret.
+        // The before image above still needs authentication for compensation.
+        if !record.after_exists {
+            if record.staged_ciphertext.is_some() || record.staged_nonce.is_some() {
+                return Err(LocalStorageError::Locked);
+            }
+            continue;
+        }
         let staged_present = record.staged_ciphertext.is_some()
             || record.staged_nonce.is_some()
             || record.staged_aad_schema.is_some()
@@ -1888,6 +1896,9 @@ fn hex_bytes(bytes: &[u8]) -> String {
 fn port(code: PortErrorCode, context: &'static str) -> PortError {
     PortError::new(code, context)
 }
+
+#[cfg(test)]
+mod delete_recovery_tests;
 
 #[cfg(test)]
 mod tests {

@@ -144,10 +144,17 @@ fn deleted_source_compensation_restores_exact_bytes_but_cannot_win_after_later_c
                 candidate: candidate("candidate/new-owner", "slot/primary").candidate,
             },
             expected_revisions: stores.control().current_revisions(&workspace).unwrap(),
-            selected_model_refs: recreated.models.iter().map(|model| model.model_ref.clone()).collect(),
+            selected_model_refs: recreated
+                .models
+                .iter()
+                .map(|model| model.model_ref.clone())
+                .collect(),
             intent: ComputeManagementIntentV2::SaveReady,
-            key_edits: Vec::new(), validation: None, edit: None,
-        }).unwrap(),
+            key_edits: Vec::new(),
+            validation: None,
+            edit: None,
+        })
+        .unwrap(),
     };
     let creation = TransactionPlanV1::from_compute_management_change(
         spec,
