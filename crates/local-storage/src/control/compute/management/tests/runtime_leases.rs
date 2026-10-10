@@ -53,7 +53,7 @@ fn save(
         .remove(0)
 }
 
-fn frozen_request(
+pub(super) fn frozen_request(
     source: &ComputeManagementSourceV2,
     model: usize,
     credential: usize,

@@ -65,6 +65,31 @@ fn compute_delete_secret_journal_reopens_when_staged_activated_or_compensated() 
                 .is_some(),
             phase != 1
         );
+        if phase == 2 {
+            let restored = reopened
+                .compensated_secret_reference(&operation('2'), &delete)
+                .unwrap()
+                .unwrap();
+            assert_eq!(restored, reference(3));
+            let replacement = SecretMutationV1::upsert(
+                restored,
+                3,
+                "input",
+                Some(reopened.fingerprint(&secret).unwrap()),
+            )
+            .unwrap();
+            let newer = reopened
+                .apply_secret(&operation('4'), &replacement, Some(&secret))
+                .unwrap();
+            reopened.activate_secret(&newer).unwrap();
+            assert!(
+                reopened
+                    .compensated_secret_reference(&operation('2'), &delete)
+                    .is_err(),
+                "same value under a newer owner must not prove old compensation"
+            );
+            assert_eq!(reopened.generation(&reference(4)).unwrap(), 4);
+        }
     }
 }
 

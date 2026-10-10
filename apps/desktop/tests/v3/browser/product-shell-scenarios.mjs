@@ -92,7 +92,10 @@ const scenarios = [
     await until(() => all('.mc-template-row').every(row => row.textContent.includes('百炼')), 'filtered templates');
     assert(all('.mc-template-row').length > 0, 'Search removed matching templates');
     assert(getComputedStyle(document.querySelector('.mc-template-pagination')).display === 'flex', 'Pagination layout missing');
-    await click('取消');
+    const close = all('[role="dialog"] button[aria-label="取消添加"]')[0];
+    assert(close, 'Template dialog close control missing');
+    close.click();
+    await until(() => !document.querySelector('[role="dialog"]'), 'closed template dialog');
   }),
   scenario('desktop.models.connection-rename', ['model-connections'], 'Rename is scoped to one saved connection without replacing its models or keys', async () => {
     await fresh(() => { c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')]; });

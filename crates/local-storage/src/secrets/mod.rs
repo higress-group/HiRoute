@@ -29,6 +29,7 @@ use crate::{DaemonStorageAuthority, LocalStorageError};
 mod collaboration_bootstrap;
 #[path = "../agents/collaboration_credentials.rs"]
 mod collaboration_credentials;
+mod compensation;
 mod grant;
 pub(crate) use grant::integrity::validate as validate_stable_grants;
 #[cfg(test)]
@@ -312,6 +313,13 @@ fn has_backup_evidence(
 }
 
 impl SecretStorePort for LocalSecretStore {
+    fn compensated_secret_reference(
+        &self,
+        operation_id: &OperationId,
+        mutation: &SecretMutationV1,
+    ) -> PortResult<Option<CredentialRefV1>> {
+        compensation::restored_reference(self, operation_id, mutation)
+    }
     fn generation(&self, credential: &CredentialRefV1) -> PortResult<u64> {
         let connection = self.connection.borrow();
         if let Some(row) = read_entry(&connection, credential.credential_id())? {
@@ -767,11 +775,18 @@ impl SecretStorePort for LocalSecretStore {
                 self.encrypt(&credential, &before.kind, restored_generation, &plaintext)?;
             transaction
                 .execute(
-                    "UPDATE secret_entries SET owner_scope = ?2, kind = ?3, ciphertext = ?4,
-                        nonce = ?5, aad_schema = ?6, key_version = ?7, fingerprint = ?8,
-                        generation = ?9, owner_operation_id = ?10, subject = ?11,
-                        purpose = ?12, allowed_destinations_json = ?13, updated_at = unixepoch()
-                     WHERE credential_id = ?1",
+                    "INSERT INTO secret_entries (credential_id, owner_scope, kind, ciphertext,
+                        nonce, aad_schema, key_version, fingerprint, generation, owner_operation_id,
+                        subject, purpose, allowed_destinations_json, updated_at)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,unixepoch())
+                     ON CONFLICT(credential_id) DO UPDATE SET
+                        owner_scope=excluded.owner_scope, kind=excluded.kind,
+                        ciphertext=excluded.ciphertext, nonce=excluded.nonce,
+                        aad_schema=excluded.aad_schema, key_version=excluded.key_version,
+                        fingerprint=excluded.fingerprint, generation=excluded.generation,
+                        owner_operation_id=excluded.owner_operation_id, subject=excluded.subject,
+                        purpose=excluded.purpose, allowed_destinations_json=excluded.allowed_destinations_json,
+                        updated_at=excluded.updated_at",
                     params![
                         credential_id,
                         &before.owner_scope,

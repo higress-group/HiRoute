@@ -1667,6 +1667,18 @@ pub trait ControlRepositoryPort {
     ) -> PortResult<EffectReconciliation>;
     fn activate_control(&self, effect: &OwnedEffectV1) -> PortResult<OwnedEffectV1>;
     fn compensate_control(&self, effect: &OwnedEffectV1) -> PortResult<CompensationOutcome>;
+    /// Converges exact managed-source references after authenticated Secret compensation,
+    /// while this operation still owns the writer. Must be CAS-protected and idempotent.
+    fn reconcile_compute_compensation(
+        &self,
+        _operation: &OperationV1,
+        _references: &[CredentialRefV1],
+    ) -> PortResult<()> {
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "control.compute_compensation.unsupported",
+        ))
+    }
     /// Persists a terminal state and releases the durable single-writer claim when safe.
     fn finish_operation(&self, operation: &mut OperationV1) -> PortResult<u64>;
     /// Persists a non-terminal settings tail and atomically releases this operation's writer
@@ -1739,6 +1751,18 @@ pub trait SecretStorePort {
     ) -> PortResult<EffectReconciliation>;
     fn activate_secret(&self, effect: &OwnedEffectV1) -> PortResult<OwnedEffectV1>;
     fn compensate_secret(&self, effect: &OwnedEffectV1) -> PortResult<CompensationOutcome>;
+    /// Proves the currently restored reference using this exact compensated effect.
+    /// Missing/unactivated effects may retain the original generation; a newer owner fails.
+    fn compensated_secret_reference(
+        &self,
+        _operation_id: &OperationId,
+        _mutation: &SecretMutationV1,
+    ) -> PortResult<Option<CredentialRefV1>> {
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "secret.compensation_reference.unsupported",
+        ))
+    }
 
     /// Reads only non-secret metadata for one exact canonical connection. Adapters that have not
     /// implemented the dedicated grant store fail closed instead of treating it as a Provider

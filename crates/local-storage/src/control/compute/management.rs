@@ -12,7 +12,10 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::Deserialize;
 use serde_json::Value;
 
+mod compensation;
 mod references;
+
+pub(in crate::control) use compensation::reconcile as reconcile_compensation;
 
 use super::{ControlStore, decode, encode, invalid, port, validate_storage_id};
 
