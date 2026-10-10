@@ -404,6 +404,10 @@ pub enum RequestedReasoningDisposition {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RequestedReasoningControl {
+    /// Messages return-text policy, fixed before Replay externalizes controls.
+    /// It never changes computation, accounting, or persisted IR contracts.
+    #[serde(skip)]
+    pub(crate) messages_omit_thinking: bool,
     pub native_value: Option<Value>,
     pub disposition: RequestedReasoningDisposition,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -416,6 +420,7 @@ pub struct RequestedReasoningControl {
 impl RequestedReasoningControl {
     pub fn absent() -> Self {
         Self {
+            messages_omit_thinking: false,
             native_value: None,
             disposition: RequestedReasoningDisposition::Absent,
             fixed_profile_digest: None,
@@ -425,6 +430,7 @@ impl RequestedReasoningControl {
 
     pub fn overridden(native_value: Value) -> Self {
         Self {
+            messages_omit_thinking: false,
             native_value: Some(native_value),
             disposition: RequestedReasoningDisposition::OverriddenByAgentPlan,
             fixed_profile_digest: None,

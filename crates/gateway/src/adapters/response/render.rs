@@ -942,11 +942,9 @@ fn validate_projection(
                 "client protocol cannot represent cache-write usage".into(),
             ));
         }
-        IngressProtocol::Messages if response.usage.reasoning_tokens.is_some() => {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "Messages cannot represent reasoning-token usage".into(),
-            ));
-        }
+        // Messages has no separate reasoning-token counter. As in the
+        // incremental renderer, retain the billable output total; the canonical
+        // usage still records its reasoning breakdown for observation.
         _ => {}
     }
     if protocol == IngressProtocol::ChatCompletions {

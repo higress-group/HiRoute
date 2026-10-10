@@ -58,6 +58,11 @@ pub(crate) struct NativeResponseProjector {
 }
 
 impl NativeResponseProjector {
+    pub(crate) fn with_omitted_thinking(mut self, omitted: bool) -> Self {
+        self.state.omit_thinking = omitted && self.state.protocol == IngressProtocol::Messages;
+        self
+    }
+
     pub(crate) fn new_for_attempt(
         profile: &CandidateProtocolProfile,
         streaming: bool,
@@ -161,6 +166,7 @@ impl NativeResponseProjector {
             budget: budget.clone(),
             framer,
             state: ProjectionState {
+                omit_thinking: false,
                 protocol: profile.capability.upstream_protocol,
                 alias: served_model_alias,
                 owner: profile.exact_provider_path()?,
@@ -293,6 +299,7 @@ struct ResponseItemEvidence {
 }
 
 pub(super) struct ProjectionState {
+    omit_thinking: bool,
     pub(super) protocol: IngressProtocol,
     alias: String,
     owner: ExactProviderPathV1,
@@ -333,11 +340,15 @@ impl ProjectionState {
         value: &mut Value,
     ) -> Result<ProjectionMetadata, ProtocolAdapterError> {
         let object = value.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
-        match self.protocol {
+        let metadata = match self.protocol {
             IngressProtocol::Responses => self.project_responses_nonstream(object),
             IngressProtocol::ChatCompletions => self.project_chat_nonstream(object),
             IngressProtocol::Messages => self.project_messages_nonstream(object),
+        }?;
+        if self.omit_thinking {
+            omit_messages_thinking_text(value);
         }
+        Ok(metadata)
     }
 
     pub(super) fn project_sse(
@@ -404,6 +415,9 @@ impl ProjectionState {
             self.terminal = Some(NativeTerminalOutcome::Unknown);
             metadata.terminal = None;
             metadata.failure = None;
+        }
+        if self.omit_thinking {
+            omit_messages_thinking_text(&mut value);
         }
         let changed = value
             != serde_json::from_slice::<Value>(data)

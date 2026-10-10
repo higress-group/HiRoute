@@ -509,12 +509,18 @@ fn decode_messages(
     validate_messages_metadata(context, object.get("metadata"))?;
     validate_messages_context_management(context, object.get("context_management"))?;
     for (key, fields) in [
-        ("thinking", &["type", "budget_tokens"][..]),
+        ("thinking", &["type", "budget_tokens", "display"][..]),
         ("output_config", &["effort", "format"][..]),
     ] {
         if let Some(value) = object.get(key) {
             checked_object(context, value, fields, "messages reasoning control")?;
         }
+    }
+    let omit_thinking =
+        body.pointer("/thinking/display").and_then(Value::as_str) == Some("omitted");
+    if body.pointer("/thinking/display").is_some() && !omit_thinking {
+        // Only omitted has a defined cross-protocol return-content mapping.
+        context.native_only.set(true);
     }
     if body.pointer("/output_config/format").is_some()
         && super::structured_output::messages_schema_format(body).is_none()
@@ -549,13 +555,14 @@ fn decode_messages(
             MessageRole::User | MessageRole::Assistant => messages.push(message),
         }
     }
-    let requested_reasoning = match (object.get("thinking"), object.get("output_config")) {
+    let mut requested_reasoning = match (object.get("thinking"), object.get("output_config")) {
         (None, None) => RequestedReasoningControl::absent(),
         (thinking, output_config) => RequestedReasoningControl::overridden(serde_json::json!({
             "thinking": thinking.cloned(),
             "output_config": output_config.cloned(),
         })),
     };
+    requested_reasoning.messages_omit_thinking = omit_thinking;
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
@@ -663,9 +670,20 @@ fn decode_messages_content(
             ensure_keys(
                 context,
                 object,
-                &["type", "id", "name", "input", "cache_control"],
+                &["type", "id", "name", "input", "cache_control", "caller"],
                 "messages tool_use",
             )?;
+            if let Some(caller) = object.get("caller") {
+                let caller =
+                    checked_object(context, caller, &["type"], "messages tool_use caller")?;
+                // Direct calls retain ordinary tool semantics. Programmatic callers carry
+                // execution authority that cannot be silently dropped during projection.
+                if required_string(caller, "type")? != "direct" {
+                    return Err(ModelIrError::UnsupportedValue(
+                        "messages tool_use caller type".into(),
+                    ));
+                }
+            }
             validate_messages_cache_control(context, object.get("cache_control"))?;
             Ok(ContentPart::ToolCall {
                 logical_id: required_string(object, "id")?,
