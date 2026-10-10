@@ -646,6 +646,14 @@ fn serialize_chat(
         ));
     }
     let mut body = Map::new();
+    if let Some(options) = &request.responses_options {
+        if let Some(store) = options.store {
+            body.insert("store".into(), Value::Bool(store));
+        }
+        if let Some(key) = &options.prompt_cache_key {
+            body.insert("prompt_cache_key".into(), Value::String(key.clone()));
+        }
+    }
     body.insert(
         "model".into(),
         Value::String(profile.capability.native_model.clone()),
@@ -812,15 +820,52 @@ fn portable_completed_response_item(request: &ModelRequestIRV1, index: usize) ->
         })
 }
 
+fn validate_responses_options(
+    options: Option<&ResponsesRequestOptionsV1>,
+    target: IngressProtocol,
+) -> Result<(), ProtocolAdapterError> {
+    let Some(options) = options else {
+        return Ok(());
+    };
+    if target == IngressProtocol::Responses {
+        return Ok(());
+    }
+    // These controls share an explicit Chat wire representation. All other
+    // Responses options remain native; do not treat an empty value as absent.
+    for (field, unsupported) in [
+        (
+            "store",
+            options
+                .store
+                .is_some_and(|store| store || target != IngressProtocol::ChatCompletions),
+        ),
+        (
+            "prompt_cache_key",
+            options.prompt_cache_key.is_some() && target != IngressProtocol::ChatCompletions,
+        ),
+        ("include", options.include.is_some()),
+        ("client_metadata", options.client_metadata.is_some()),
+        ("reasoning.summary", options.reasoning_summary.is_some()),
+        ("reasoning.context", options.reasoning_context.is_some()),
+    ] {
+        if unsupported {
+            return Err(ProtocolAdapterError::ClientUnrepresentable(format!(
+                "Responses option {field} has no equivalent on this upstream protocol"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_message_shapes(
     request: &ModelRequestIRV1,
     target: IngressProtocol,
 ) -> Result<(), ProtocolAdapterError> {
+    validate_responses_options(request.responses_options.as_ref(), target)?;
     let mut projected = std::collections::BTreeMap::new();
     if (!request.responses_annotations.is_empty()
         || !request.responses_search_history.is_empty()
         || request.web_search.is_some()
-        || request.responses_options.is_some()
         || request.responses_item_ids.keys().any(|index| {
             !request.responses_reasoning_history.contains_key(index)
                 && !portable_completed_response_item(request, *index)
