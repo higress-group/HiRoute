@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { subscriptionAttentionCopy, subscriptionFailureCopy } from '../src/features/models/subscription-copy.ts';
+import { managementLoadFailureCopy, subscriptionAttentionCopy, subscriptionFailureCopy } from '../src/features/models/subscription-copy.ts';
+import { safeDiagnosticCode } from '../src/error-code.ts';
+
+test('unsupported management query gives update guidance through the real error-code boundary', () => {
+  const error = { source: 'backend', envelope: { status: 'failed', error: { code: 'UNKNOWN_COMMAND', message_key: 'cli.error.unknown_command' } } };
+  const code = safeDiagnosticCode(error, 'CLIENT_ERROR');
+  assert.match(managementLoadFailureCopy(code, 'zh').detail, /更新.*重新连接/);
+  assert.equal(managementLoadFailureCopy(code, 'zh').retry, '更新后重试');
+  assert.match(managementLoadFailureCopy('UNKNOWN_COMMAND', 'en').detail, /Update that service, then reconnect/);
+  for (const unrelated of ['RESOURCE_NOT_FOUND', 'TRANSPORT_UNAVAILABLE', 'UNKNOWN_COMMAND_EXTRA', 'FRAME_INVALID']) {
+    assert.equal(managementLoadFailureCopy(unrelated, 'en').retry, 'Retry');
+    assert.doesNotMatch(managementLoadFailureCopy(unrelated, 'en').detail, /Update/);
+  }
+});
 
 test('subscription failures use distinct recovery copy and never request an API key', () => {
   const updating = subscriptionAttentionCopy('subscription_updating', 'zh');

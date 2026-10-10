@@ -1,4 +1,4 @@
-import { subscriptionFailureCopy } from '../features/models/subscription-copy';
+import { managementLoadFailureCopy, subscriptionFailureCopy } from '../features/models/subscription-copy';
 import { requestEditorReplacement } from '../ui/discard-guard';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -1106,7 +1106,7 @@ export function ModelManagementPage({
     </Dialog>
     {(notice || modelNotice) && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{notice || modelNotice}</span></div></div>}
     {loading && <div className="empty-state" role="status"><div><span className="oc-spinner" /><p>{text.loading}</p></div></div>}
-    {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{language === 'zh' ? '暂时无法读取模型，请重试。' : 'Models could not be loaded. Try again.'}</span><button className="btn" type="button" onClick={() => void refreshManagement()}>{language === 'zh' ? '重试' : 'Retry'}</button></div>}
+    {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{managementLoadFailureCopy(error, language).detail}</span><button className="btn" type="button" onClick={() => void refreshManagement()}>{managementLoadFailureCopy(error, language).retry}</button></div>}
     {management && !management.sources.length && !loading && !error && <div className="empty-state v3-empty"><div>
       <span className="empty-icon"><UiIcon name="models" /></span>
       <h3>{language === 'zh' ? '先连接一个模型' : 'Connect your first model'}</h3>

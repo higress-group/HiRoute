@@ -1,5 +1,18 @@
 import type { SubscriptionMode } from './types';
 
+export function managementLoadFailureCopy(code: string, language: 'zh' | 'en') {
+  const zh = language === 'zh';
+  const unsupported = ['unknown_command', 'cli.error.unknown_command'].includes(code.toLowerCase());
+  return {
+    detail: unsupported
+      ? zh ? '当前连接的 HiRoute 服务不支持此页面。请更新所连接的服务，然后重新连接。' : 'The connected HiRoute service does not support this page. Update that service, then reconnect.'
+      : zh ? '暂时无法读取模型，请重试。' : 'Models could not be loaded. Try again.',
+    retry: unsupported
+      ? zh ? '更新后重试' : 'Retry after updating'
+      : zh ? '重试' : 'Retry',
+  };
+}
+
 export function subscriptionAttentionCopy(
   reason: string | null | undefined,
   language: 'zh' | 'en',
