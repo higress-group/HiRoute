@@ -217,17 +217,17 @@ const scenarios = [
   ['scan empty, runtime unavailable and failed remain distinct', async () => {
     await fresh(control => { control.subscriptions = []; control.handlers.compute_scan = () => ({ items: [] }); });
     await scan();
-    assert(text().includes('没有发现可复用的 Codex 订阅'), 'Successful empty scan missing');
+    assert(text().includes('没有发现可复用的 Codex / Claude Code 订阅'), 'Successful empty scan missing');
     await click('完成');
     c().handlers.compute_subscriptions = () => ({ discovery_state: 'runtime_unavailable', reason_code: 'subscription_runtime_unavailable', candidates: [] });
     await scan();
-    assert(text().includes('当前环境暂时无法读取') && !text().includes('没有发现可复用的 Codex 订阅'), 'Runtime absence treated as empty');
+    assert(text().includes('当前环境暂时无法读取') && !text().includes('没有发现可复用的 Codex / Claude Code 订阅'), 'Runtime absence treated as empty');
     c().handlers.compute_subscriptions = () => { throw { code: 'DAEMON_UNAVAILABLE' }; };
     await click('重新扫描');
-    await until(() => text().includes('暂时无法读取本机 Codex 订阅'), 'scan failure');
+    await until(() => text().includes('暂时无法读取本机订阅'), 'scan failure');
     delete c().handlers.compute_subscriptions;
     await click('重新扫描');
-    await until(() => text().includes('没有发现可复用的 Codex 订阅'), 'empty after retry');
+    await until(() => text().includes('没有发现可复用的 Codex / Claude Code 订阅'), 'empty after retry');
   }],
   ['Prepare duplicate and close discard late candidate without cancellation API', async () => {
     const late = deferred();
