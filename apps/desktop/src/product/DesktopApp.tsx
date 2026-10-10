@@ -652,6 +652,7 @@ export function DesktopApp() {
             language={language}
             active={page === 'models' && modelTab === 'general'}
             tabs={modelTabs}
+            onOpenNetworkSettings={() => void navigate('settings')}
             trustedAuthority={Boolean(home.desktopSnapshot?.trusted_authority && home.desktopSnapshot.service.mutation_available)}
             refreshVersion={refreshVersion}
             initialSourceId={modelIntent.sourceId}

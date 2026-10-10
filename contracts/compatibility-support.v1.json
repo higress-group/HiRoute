@@ -350,6 +350,7 @@
     "hiroute.stored-plan/v1",
     "hiroute.stored-publication/v1",
     "hiroute.subscription-maintenance/v2",
+    "hiroute.subscription-proxy/v1",
     "hiroute.system-status/v1",
     "hiroute.upgrade-installer-started/v1",
     "hiroute.upgrade-source-backup/v1",

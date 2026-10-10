@@ -379,7 +379,47 @@ fn read_keychain(_: &str, _: &Path, _: bool) -> Result<Zeroizing<Vec<u8>>, CpaLi
     Err(CpaLifecycleError::BorrowedClaudeAuthUnavailable)
 }
 #[cfg(target_os = "macos")]
+static KEYCHAIN_INTERACTION: Mutex<()> = Mutex::new(());
+
+#[cfg(target_os = "macos")]
+fn with_keychain_interaction<T>(
+    allow_interaction: bool,
+    read: impl FnOnce() -> Result<T, CpaLifecycleError>,
+) -> Result<T, CpaLifecycleError> {
+    use security_framework::os::macos::keychain::SecKeychain;
+    // SecItem UI flags do not suppress legacy file-based Keychain prompts.
+    // Serialize every local Keychain read, including explicit interactive checks,
+    // until the process-wide flag has been restored.
+    let _lock = KEYCHAIN_INTERACTION.lock();
+    let unavailable = |_| CpaLifecycleError::BorrowedClaudeAuthUnavailable;
+    let was_allowed = SecKeychain::user_interaction_allowed().map_err(unavailable)?;
+    // This library guard restores true, so never create it when already disabled.
+    let suppression = if !allow_interaction && was_allowed {
+        Some(SecKeychain::disable_user_interaction().map_err(unavailable)?)
+    } else {
+        None
+    };
+    let result = read();
+    drop(suppression);
+    if SecKeychain::user_interaction_allowed().map_err(unavailable)? != was_allowed {
+        return Err(CpaLifecycleError::BorrowedClaudeAuthUnavailable);
+    }
+    result
+}
+
+#[cfg(target_os = "macos")]
 fn read_keychain(
+    service: &str,
+    config: &Path,
+    allow_interaction: bool,
+) -> Result<Zeroizing<Vec<u8>>, CpaLifecycleError> {
+    with_keychain_interaction(allow_interaction, || {
+        read_keychain_contents(service, config, allow_interaction)
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn read_keychain_contents(
     service: &str,
     config: &Path,
     allow_interaction: bool,

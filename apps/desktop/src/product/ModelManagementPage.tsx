@@ -150,6 +150,7 @@ export function ModelManagementPage({
   agents = [],
   onOpenPlan,
   onCreatePlan,
+  onOpenNetworkSettings,
   tabs,
 }: {
   language: 'zh' | 'en';
@@ -166,6 +167,7 @@ export function ModelManagementPage({
   agents?: Agent[];
   onOpenPlan?(planId: string): void;
   onCreatePlan?(bindingId: string): void;
+  onOpenNetworkSettings?(): void;
   tabs?: import('react').ReactNode;
 }) {
   const [management, setManagement] = useState<ManagementSnapshot | null>(null);
@@ -1034,6 +1036,7 @@ export function ModelManagementPage({
       {addNotice && <div className="callout" role="status">{addNotice}</div>}
     </Dialog>
     <Dialog open={adding && addStage === 'scan'} title={language === 'zh' ? '扫描本机' : 'Scan this device'} closeLabel={subscriptionSaving || discoverySaving ? (language === 'zh' ? '正在保存' : 'Saving') : (language === 'zh' ? '关闭扫描' : 'Close scan')} closeDisabled={subscriptionSaving || discoverySaving} onClose={closeScan} footer={scanFooter}>
+      {onOpenNetworkSettings && <p className="oc-meta">{language === 'zh' ? '订阅连接需要代理？' : 'Need a proxy for subscriptions?'} <button className="btn" type="button" disabled={scanWorking || subscriptionSaving || discoverySaving} onClick={() => { closeScan(); onOpenNetworkSettings(); }}>{language === 'zh' ? '设置订阅连接代理' : 'Configure subscription proxy'}</button></p>}
       {scanWorking ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{discoveryAction === 'preparing'
         ? (language === 'zh' ? '正在读取配置' : 'Reading configuration')
         : discoveryAction === 'saving' || subscriptionAction === 'saving'

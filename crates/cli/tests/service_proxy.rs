@@ -53,6 +53,7 @@ fn installation(home: &std::path::Path) -> Command {
         &home.join("bin/systemctl"),
         r#"#!/bin/sh
 if [ "$2" = is-active ]; then test "$TEST_SERVICE_ACTIVE" = 1; exit $?; fi
+if [ "$2" = is-enabled ]; then exit 1; fi
 printf '%s\n' "$@" > "$HOME/manager-call"
 test -f "$HOME/.local/share/hiroute/service/proxy-environment.json" || exit 89
 # The fixture deliberately refuses startup. Readiness must not be fabricated.
@@ -151,4 +152,140 @@ test "$1" = --role && test "$2" = all && test "$3" = --standalone
     );
     assert!(command.args(["service", "run"]).status().unwrap().success());
     assert_eq!(variables(home.path()).len(), 2);
+}
+
+#[test]
+fn subscription_proxy_set_persists_pending_policy_without_starting_service_or_replacing_snapshot() {
+    let home = private_home();
+    let _ = installation(home.path());
+    fs::create_dir_all(snapshot_path(home.path()).parent().unwrap()).unwrap();
+    let snapshot = br#"{"schema":"hiroute.standalone-proxy-environment/v1","variables":{}}"#;
+    fs::write(snapshot_path(home.path()), snapshot).unwrap();
+    fs::set_permissions(
+        snapshot_path(home.path()),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+
+    let cases: &[(&[&str], serde_json::Value)] = &[
+        (
+            &[
+                "--mode",
+                "manual",
+                "--url",
+                "http://127.0.0.1:1187",
+                "--no-proxy",
+                "example.com",
+            ],
+            serde_json::json!({"mode":"manual","url":"http://127.0.0.1:1187","no_proxy":"example.com"}),
+        ),
+        (&["--mode", "direct"], serde_json::json!({"mode":"direct"})),
+        (
+            &["--mode", "inherit"],
+            serde_json::json!({"mode":"inherit"}),
+        ),
+    ];
+    for (arguments, expected_policy) in cases {
+        let result = installation(home.path())
+            .args(["subscription-proxy", "set"])
+            .args(*arguments)
+            .args(["--output", "json"])
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(0));
+        assert!(result.stderr.is_empty());
+        let envelope: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(envelope["data"]["config"]["policy"], *expected_policy);
+        assert_eq!(envelope["data"]["applied"], false);
+        assert_eq!(envelope["data"]["action"], "service_restart_required");
+
+        let shown = installation(home.path())
+            .args(["subscription-proxy", "show", "--output", "json"])
+            .output()
+            .unwrap();
+        assert_eq!(shown.status.code(), Some(0));
+        let shown: serde_json::Value = serde_json::from_slice(&shown.stdout).unwrap();
+        assert_eq!(shown["data"]["config"], envelope["data"]["config"]);
+        assert_eq!(shown["data"]["applied"], false);
+        assert_eq!(fs::read(snapshot_path(home.path())).unwrap(), snapshot);
+        assert!(!home.path().join("manager-call").exists());
+        assert!(!String::from_utf8_lossy(&result.stdout).contains("private-proxy"));
+    }
+}
+
+#[test]
+fn subscription_proxy_rejects_invalid_arguments_without_changing_saved_policy() {
+    let home = private_home();
+    let initial = installation(home.path())
+        .args([
+            "subscription-proxy",
+            "set",
+            "--mode",
+            "manual",
+            "--url",
+            "http://127.0.0.1:1187",
+            "--output",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(initial.status.code(), Some(0));
+    let policy_path = home
+        .path()
+        .join(".local/state/hiroute/subscription-proxy.json");
+    let saved = fs::read(&policy_path).unwrap();
+    let invalid: &[&[&str]] = &[
+        &[],
+        &["--mode"],
+        &["--mode", "unknown"],
+        &["--mode", "manual"],
+        &["--mode", "direct", "--url", "http://127.0.0.1:1187"],
+        &["--mode", "inherit", "--no-proxy", "example.com"],
+        &["--mode", "direct", "--mode", "inherit"],
+        &["--mode", "direct", "--unknown", "value"],
+        &["--mode", "manual", "--url", "socks5://127.0.0.1:1186"],
+        &[
+            "--mode",
+            "manual",
+            "--url",
+            "http://user:secret@127.0.0.1:1187",
+        ],
+        &[
+            "--mode",
+            "manual",
+            "--url",
+            "http://127.0.0.1:1187",
+            "--url",
+            "http://127.0.0.1:1188",
+        ],
+        &[
+            "--mode",
+            "manual",
+            "--url",
+            "http://127.0.0.1:1187",
+            "--no-proxy",
+            "a",
+            "--no-proxy",
+            "b",
+        ],
+    ];
+    for arguments in invalid {
+        let result = installation(home.path())
+            .args(["subscription-proxy", "set"])
+            .args(*arguments)
+            .args(["--output", "json"])
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(2), "{arguments:?}");
+        let envelope: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(envelope["status"], "usage_error", "{arguments:?}");
+        assert_eq!(fs::read(&policy_path).unwrap(), saved, "{arguments:?}");
+        assert!(!home.path().join("manager-call").exists());
+        assert!(!snapshot_path(home.path()).exists());
+        for bytes in [&result.stdout, &result.stderr] {
+            let text = String::from_utf8_lossy(bytes);
+            assert!(!text.contains("private-proxy"));
+            assert!(!text.contains("user:secret"));
+        }
+    }
 }

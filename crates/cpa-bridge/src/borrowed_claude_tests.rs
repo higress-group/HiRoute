@@ -1,5 +1,79 @@
 use super::*;
 
+#[cfg(target_os = "macos")]
+#[test]
+fn keychain_interaction_restores_process_policy() {
+    const CHILD: &str = "HIROUTE_KEYCHAIN_INTERACTION_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "borrowed_claude::tests::keychain_interaction_restores_process_policy",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
+    use security_framework::os::macos::keychain::SecKeychain;
+    let allowed = || SecKeychain::user_interaction_allowed().unwrap();
+    assert!(allowed(), "isolated test process starts with UI permitted");
+    for fail in [false, true] {
+        let result = with_keychain_interaction(false, || {
+            assert!(!allowed());
+            if fail {
+                Err(CpaLifecycleError::BorrowedClaudeAuthUnavailable)
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result.is_err(), fail);
+        assert!(
+            allowed(),
+            "both success and error restore the original flag"
+        );
+    }
+    let disabled = SecKeychain::disable_user_interaction().unwrap();
+    for explicit_check in [false, true] {
+        with_keychain_interaction(explicit_check, || {
+            assert!(!allowed());
+            Ok(())
+        })
+        .unwrap();
+        assert!(!allowed(), "never enable an externally disabled UI policy");
+    }
+    drop(disabled);
+    assert!(allowed());
+
+    // An interactive caller cannot observe the temporary suppression of another read.
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let first = std::thread::spawn(move || {
+        with_keychain_interaction(false, || {
+            assert!(!SecKeychain::user_interaction_allowed().unwrap());
+            entered_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            Ok(())
+        })
+        .unwrap();
+    });
+    entered_rx.recv().unwrap();
+    assert!(KEYCHAIN_INTERACTION.try_lock().is_none());
+    let second = std::thread::spawn(|| {
+        with_keychain_interaction(true, || {
+            assert!(SecKeychain::user_interaction_allowed().unwrap());
+            Ok(())
+        })
+        .unwrap();
+    });
+    release_tx.send(()).unwrap();
+    first.join().unwrap();
+    second.join().unwrap();
+    assert!(allowed());
+}
+
 fn source(root: &Path, token: &str, account: &str) -> BorrowedClaudeAuthSpec {
     ensure_private_dir(root).unwrap();
     let path = root.join(".credentials.json");
