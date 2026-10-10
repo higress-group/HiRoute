@@ -56,7 +56,10 @@ fn publication_checkpoint_wire_is_installed_cas_bound_replayable_and_recovery_ga
         "A stored publication without verified installation is insufficient"
     );
     let target = Arc::new(GatewayPublicationAdapter::new(Arc::new(
-        GatewayPublicationInstaller::open(directory.path().join("gateway-lkg.json")).unwrap(),
+        GatewayPublicationInstaller::open_for_product_authority(
+            directory.path().join("gateway-lkg.json"),
+        )
+        .unwrap(),
     )));
     runtime
         .configure_managed_agent_runtime(

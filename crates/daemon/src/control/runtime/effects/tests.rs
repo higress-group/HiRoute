@@ -59,7 +59,7 @@ fn publication_restart_reconciles_every_persisted_install_window() {
         .unwrap();
         let lkg = directory.path().join("gateway-lkg.json");
         let target = Arc::new(GatewayPublicationAdapter::new(Arc::new(
-            GatewayPublicationInstaller::open(&lkg).unwrap(),
+            GatewayPublicationInstaller::open_for_product_authority(&lkg).unwrap(),
         )));
         *runtime.adapter.publication_target.lock().unwrap() = Some(target.clone());
         let desired =
@@ -175,8 +175,11 @@ fn publication_restart_reconciles_every_persisted_install_window() {
         )
         .unwrap();
         let target = Arc::new(GatewayPublicationAdapter::new(Arc::new(
-            GatewayPublicationInstaller::open(&lkg).unwrap(),
+            GatewayPublicationInstaller::open_for_product_authority(&lkg).unwrap(),
         )));
+        // The production role=all entry reconstructs authority from Control, never
+        // from the Gateway cache left by an interrupted installation.
+        assert!(target.is_empty().unwrap());
         assert!(RuntimePublicationFeed::pin(target.as_ref()).is_none());
         *recovered.adapter.publication_target.lock().unwrap() = Some(target.clone());
         recovered.adapter.restore_active_publication().unwrap();
