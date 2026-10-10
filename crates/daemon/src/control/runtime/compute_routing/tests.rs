@@ -381,6 +381,7 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
         cpa_runtime: None,
         subscription_sources: Mutex::new(BTreeMap::new()),
         subscription_targets: Mutex::new(BTreeMap::new()),
+        subscription_lifecycle: Mutex::new(()),
         subscription_maintenance: Mutex::new(
             crate::control::runtime::subscriptions::SubscriptionMaintenance::new().unwrap(),
         ),

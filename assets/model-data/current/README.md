@@ -22,5 +22,12 @@ separately marked conservative runtime fallback; that does not create canonical 
 price, free eligibility, or cross-Provider facts. Known image-only and internal-agent records stay
 outside the native text execution slice.
 
+Claude subscription capabilities use explicit product/model/upstream-ID bindings in the same
+source catalog. `subscription_projection.py` translates their `reasoning_projection` into existing
+runtime contracts; it does not infer family members or account access. Check must still observe
+the exact ID in the selected account's inventory before these static facts can qualify a saved
+binding. Haiku 4.5 retains its manual-budget source fact and exposes only the explicit toggle
+subset: disabled, or enabled with 1024 thinking tokens and an output budget greater than 1024.
+
 Ratings are an independent slice. Existing measured/estimated records retain their exact evidence;
 missing ratings stay unknown rather than being filled from metadata inference.

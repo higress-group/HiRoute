@@ -17,7 +17,10 @@ use thiserror::Error;
 use crate::{PreparedTransactionV1, ProtectedInputPort, TransactionError};
 
 use super::mutation_support::*;
-use super::{ComputeCandidateFactsV2, ComputeCandidatePort, ComputeCredentialBindingV2};
+use super::{
+    ComputeCandidateFactsV2, ComputeCandidatePort, ComputeCandidateProvenanceV2,
+    ComputeCredentialBindingV2,
+};
 
 /// A public preview paired with its sealed, non-wire transaction plan.
 pub struct ComputeManagementPreparedPreviewV2 {
@@ -136,9 +139,14 @@ where
         }
         let selection_policy = match (policy, current.as_ref(), resolved.candidate.as_ref()) {
             (ModelSelectionPolicy::Strict, Some(source), Some(candidate))
-                if source.provenance.is_connector_owned()
-                    && candidate.producer
-                        == hiroute_application_api::ComputeCandidateProducerV2::Cpa
+                if matches!(
+                    (&source.provenance, &candidate.provenance),
+                    (
+                        hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, account_ref },
+                        ComputeCandidateProvenanceV2::ConnectorOwned { connector_id: checked_connector, account_ref: checked_account },
+                    ) if connector_id == checked_connector && account_ref == checked_account
+                ) && candidate.producer
+                    == hiroute_application_api::ComputeCandidateProducerV2::Cpa
                     && candidate.existing_source_id.as_deref()
                         == Some(source.source_id.as_str())
                     && change

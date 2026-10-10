@@ -22,3 +22,6 @@ pub use upgrade::*;
 
 mod storage_progress;
 pub use storage_progress::StorageUpgradePhase;
+
+mod subscription_proxy;
+pub use subscription_proxy::*;

@@ -63,42 +63,7 @@ impl ManagedAccountIdentity {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CpaAccountKind {
-    Codex,
-    Claude,
-}
-
-impl CpaAccountKind {
-    pub(crate) const fn stock_provider(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::Claude => "claude",
-        }
-    }
-
-    pub(crate) const fn required_protocol(self) -> hiroute_domain::UpstreamProtocol {
-        match self {
-            Self::Codex => hiroute_domain::UpstreamProtocol::Responses,
-            Self::Claude => hiroute_domain::UpstreamProtocol::Messages,
-        }
-    }
-
-    pub(crate) fn supports_protocol(self, protocol: hiroute_domain::UpstreamProtocol) -> bool {
-        match self {
-            // The managed CPA Codex account exposes all three OpenAI/Anthropic-compatible
-            // request faces over the same pinned account and model authority.
-            Self::Codex => matches!(
-                protocol,
-                hiroute_domain::UpstreamProtocol::Responses
-                    | hiroute_domain::UpstreamProtocol::ChatCompletions
-                    | hiroute_domain::UpstreamProtocol::Messages
-            ),
-            Self::Claude => protocol == hiroute_domain::UpstreamProtocol::Messages,
-        }
-    }
-}
+pub use hiroute_integrations::AgentSubscriptionKind as CpaAccountKind;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CpaProfileBinding {
@@ -275,6 +240,8 @@ pub(crate) enum AccountDiscoveryError {
     NonSubscriptionAccount,
     #[error("CPA account changed during materialization")]
     AccountDisappeared,
+    #[error("CPA subscription authorization requires login")]
+    AuthenticationRequired,
     #[error("CPA exposed an unmanaged account for a managed provider")]
     UnexpectedManagedAccount,
     #[error("CPA exact account prefix/retry pin was not applied")]

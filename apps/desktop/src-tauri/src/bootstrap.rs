@@ -584,6 +584,35 @@ impl Resident {
     ) -> Result<ComputeCandidateRefV2, String> {
         self.register_protected_input(secret, "candidate/native/")
     }
+    pub fn register_subscription_callback_input(
+        &mut self,
+        candidate: &ComputeCandidateRefV2,
+        secret: Zeroizing<String>,
+    ) -> Result<(), String> {
+        if candidate.validate_shape().is_err()
+            || candidate.candidate_revision != 1
+            || !candidate
+                .candidate_ref
+                .starts_with("candidate/subscription-login/")
+            || secret.is_empty()
+            || secret.len() > 32 * 1024
+            || !self.has_authority()
+        {
+            return Err("PROTECTED_INPUT_INVALID".into());
+        }
+        if let Err(error) = self.register_model_input_once(candidate, &secret) {
+            if let Some(owned) = &mut self.owned {
+                owned.authority_healthy = false;
+            }
+            return Err(error);
+        }
+        self.owned
+            .as_mut()
+            .ok_or("TRUSTED_AUTHORITY_UNAVAILABLE")?
+            .manual_input_candidates
+            .insert(candidate.candidate_ref.clone());
+        Ok(())
+    }
     pub fn register_agent_token_input(
         &mut self,
         secret: Zeroizing<String>,

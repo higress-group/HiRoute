@@ -1,5 +1,8 @@
 #![cfg(unix)]
 
+#[path = "../../../crates/daemon/tests/support/isolated_agent_environment.rs"]
+mod child_environment;
+
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
@@ -89,6 +92,7 @@ fn production_subprocess_uses_embedded_catalog_and_ignores_storage_tampering() {
     std::fs::create_dir(&home).unwrap();
     std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut command = Command::new(&binaries.hirouted);
+    child_environment::configure(&mut command, &home);
     command
         .args([
             "--role",
@@ -98,13 +102,6 @@ fn production_subprocess_uses_embedded_catalog_and_ignores_storage_tampering() {
             "--runtime-root",
             runtime_root.to_str().unwrap(),
         ])
-        .env("HOME", &home)
-        .env_remove("CODEX_HOME")
-        .env_remove("CLAUDE_CONFIG_DIR")
-        .env_remove("ANTHROPIC_AUTH_TOKEN")
-        .env_remove("ANTHROPIC_BASE_URL")
-        .env_remove("ANTHROPIC_MODEL")
-        .env_remove("ANTHROPIC_DEFAULT_OPUS_MODEL")
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
     let endpoint = runtime_root.join("hiroute/control.sock");

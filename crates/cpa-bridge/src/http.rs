@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
@@ -34,7 +34,7 @@ impl LoopbackResponse {
 }
 
 pub(crate) fn request(input: LoopbackRequest<'_>) -> Result<LoopbackResponse, LoopbackHttpError> {
-    if !matches!(input.method, "GET" | "HEAD" | "PATCH" | "POST")
+    if !matches!(input.method, "GET" | "HEAD" | "PATCH" | "POST" | "DELETE")
         || !input.path.starts_with('/')
         || input.path.contains(['\r', '\n', '\0'])
         || input.body.len() > MAX_RESPONSE_BYTES
@@ -44,13 +44,8 @@ pub(crate) fn request(input: LoopbackRequest<'_>) -> Result<LoopbackResponse, Lo
     if !input.address.ip().is_loopback() {
         return Err(LoopbackHttpError::NonLoopback);
     }
-    let mut stream =
-        TcpStream::connect_timeout(&input.address, input.timeout).map_err(LoopbackHttpError::Io)?;
-    stream
-        .set_read_timeout(Some(input.timeout))
-        .map_err(LoopbackHttpError::Io)?;
-    stream
-        .set_write_timeout(Some(input.timeout))
+    let deadline = Instant::now() + input.timeout;
+    let mut stream = TcpStream::connect_timeout(&input.address, remaining_budget(deadline)?)
         .map_err(LoopbackHttpError::Io)?;
 
     let mut head = format!(
@@ -66,23 +61,60 @@ pub(crate) fn request(input: LoopbackRequest<'_>) -> Result<LoopbackResponse, Lo
         head.push_str("Content-Type: application/json\r\n");
     }
     head.push_str(&format!("Content-Length: {}\r\n\r\n", input.body.len()));
-    stream
-        .write_all(head.as_bytes())
-        .map_err(LoopbackHttpError::Io)?;
-    stream
-        .write_all(input.body)
-        .map_err(LoopbackHttpError::Io)?;
-    stream.flush().map_err(LoopbackHttpError::Io)?;
+    for mut bytes in [head.as_bytes(), input.body] {
+        while !bytes.is_empty() {
+            stream
+                .set_write_timeout(Some(io_budget(deadline)?))
+                .map_err(LoopbackHttpError::Io)?;
+            match stream.write(bytes) {
+                Ok(0) => return Err(LoopbackHttpError::Io(std::io::ErrorKind::WriteZero.into())),
+                Ok(written) => bytes = &bytes[written..],
+                Err(error) if retryable_io(&error) => continue,
+                Err(error) => return Err(LoopbackHttpError::Io(error)),
+            }
+        }
+    }
 
     let mut raw = Vec::new();
-    stream
-        .take(u64::try_from(MAX_RESPONSE_BYTES + 1).expect("response bound fits u64"))
-        .read_to_end(&mut raw)
-        .map_err(LoopbackHttpError::Io)?;
+    let mut chunk = [0; 8192];
+    while raw.len() <= MAX_RESPONSE_BYTES {
+        stream
+            .set_read_timeout(Some(io_budget(deadline)?))
+            .map_err(LoopbackHttpError::Io)?;
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => raw.extend_from_slice(&chunk[..read]),
+            Err(error) if retryable_io(&error) => continue,
+            Err(error) => return Err(LoopbackHttpError::Io(error)),
+        }
+    }
     if raw.len() > MAX_RESPONSE_BYTES {
         return Err(LoopbackHttpError::ResponseTooLarge);
     }
     parse_response(&raw)
+}
+
+fn retryable_io(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::Interrupted
+            | std::io::ErrorKind::TimedOut
+            | std::io::ErrorKind::WouldBlock
+    )
+}
+
+fn io_budget(deadline: Instant) -> Result<Duration, LoopbackHttpError> {
+    Ok(remaining_budget(deadline)?.min(Duration::from_millis(50)))
+}
+
+fn remaining_budget(deadline: Instant) -> Result<Duration, LoopbackHttpError> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let remaining = crate::request_context::remaining(remaining)
+        .map_err(|_| LoopbackHttpError::Io(std::io::ErrorKind::TimedOut.into()))?;
+    if remaining.is_zero() {
+        return Err(LoopbackHttpError::Io(std::io::ErrorKind::TimedOut.into()));
+    }
+    Ok(remaining)
 }
 
 fn parse_response(raw: &[u8]) -> Result<LoopbackResponse, LoopbackHttpError> {
@@ -256,3 +288,7 @@ mod tests {
         assert_eq!(percent_encode_query("a&name=b.json"), "a%26name%3Db.json");
     }
 }
+
+#[cfg(test)]
+#[path = "http/deadline_tests.rs"]
+mod deadline_tests;

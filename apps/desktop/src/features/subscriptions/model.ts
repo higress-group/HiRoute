@@ -95,7 +95,7 @@ export function checkStatusText(check: SubscriptionCheckResult, language: 'zh' |
     case 'checking': return zh ? '正在检查订阅模型' : 'Checking subscription models';
     case 'verified': return zh ? '检查完成，选择模型后仍需保存' : 'Check complete; select models and save';
     case 'source_changed': return zh ? '登录来源已变化，请重新检查' : 'Login source changed; check again';
-    case 'needs_auth': return zh ? '需要先在 Codex 中重新登录' : 'Sign in to Codex again first';
+    case 'needs_auth': return zh ? '需要先在对应的 Agent 中重新登录' : 'Sign in again in the original agent first';
     case 'unavailable': return zh ? '订阅运行暂不可用，可稍后重试' : 'Subscription runtime unavailable; retry later';
     case 'failed': return zh ? '订阅检查失败，可重试' : 'Subscription check failed; retry available';
     case 'released': return zh ? '本次检查资源已释放' : 'Resources for this check were released';

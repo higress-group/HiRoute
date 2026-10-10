@@ -13,19 +13,18 @@ use hiroute_application_api::{
     ComputeConnectionAccessKindV1, ComputeConnectionIdentityV1, ComputePriceContextV1,
 };
 use hiroute_cpa_bridge::{
-    BorrowedCodexAuthSpec, CpaSubscriptionAvailability, cpa_subscription_availability,
+    CpaAccountKind, CpaSubscriptionAvailability, cpa_subscription_availability,
 };
 use hiroute_domain::{
     AuthenticationKind, BillingClass, CanonicalDigest, ComputeManagedModelV2,
     ComputeManagementFactBasisV2, ComputeManagementMembershipV2, ComputeManagementProvenanceV2,
     ComputeManagementRepositoryPort, ComputeManagementSourceV2, ConnectionOrigin,
     ConnectorRuntimeKind, InventoryDisposition, MaterializationState, PriceBillingContextV1,
-    PriceModelIdentityV1, TokenRateV1, UpstreamProtocol, WorkspaceId,
+    PriceModelIdentityV1, TokenRateV1, WorkspaceId,
 };
 use hiroute_integrations::{CpaRegisteredSourceV1, TrustedReleaseCatalog};
 
 use crate::control::runtime::subscriptions::maintenance::SubscriptionMaintenancePresentation;
-use crate::control::runtime::subscriptions::{CONNECTION_OPTION_ID, CONNECTOR_ID};
 
 enum ConnectorRuntimeRead {
     Sources(Vec<CpaRegisteredSourceV1>),
@@ -60,14 +59,18 @@ impl LocalControlAdapter {
             .compute_management_snapshot(&WorkspaceId::default())
             .map_err(super::map_port)?;
         let complete = management.revisions == prices.revisions;
-        let connector_runtime = management
-            .sources
-            .iter()
-            .any(|source| {
-                source.provenance.is_connector_owned()
-                    && source.state == MaterializationState::Ready
-            })
-            .then(|| connector_runtime_read(self));
+        let mut connector_runtime = std::collections::BTreeMap::new();
+        for source in &management.sources {
+            if source.state == MaterializationState::Ready
+                && let ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } =
+                    &source.provenance
+                && let Some(kind) = CpaAccountKind::from_connector(connector_id)
+            {
+                connector_runtime
+                    .entry(kind)
+                    .or_insert_with(|| connector_runtime_read(self, kind));
+            }
+        }
         for source in &management.sources {
             let resolved = match &source.provenance {
                 ComputeManagementProvenanceV2::Registered {
@@ -98,26 +101,36 @@ impl LocalControlAdapter {
                     },
                     BillingClass::Unknown,
                 )),
-                // Connector ownership alone is insufficient. A saved Codex subscription may be
+                // Connector ownership alone is insufficient. A saved native subscription may be
                 // presented before publication only when its retained validation, successful
                 // save and current client-bundled catalog still agree exactly.
-                ComputeManagementProvenanceV2::ConnectorOwned { .. } => self
-                    .retained_subscription_candidate_for_source(source)?
-                    .filter(|checked| {
-                        self.subscription_logical_target().is_ok_and(|target| {
-                            trusted_codex_subscription(catalog, source, checked, &target)
-                        })
-                    })
-                    .map(|_| {
-                        let resolved = catalog
-                            .registry()
-                            .resolve_option(CONNECTION_OPTION_ID)
-                            .expect("trusted subscription already resolved its option");
-                        (
-                            identity_from_option(CONNECTION_OPTION_ID, &resolved.option),
-                            resolved.option.billing_class,
-                        )
-                    }),
+                ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } => {
+                    if let Some(kind) = CpaAccountKind::from_connector(connector_id) {
+                        self.retained_subscription_candidate_for_source(source)?
+                            .filter(|checked| {
+                                self.subscription_logical_target(kind).is_ok_and(|target| {
+                                    trusted_subscription(catalog, source, checked, &target, kind)
+                                })
+                            })
+                            .and_then(|_| {
+                                catalog
+                                    .registry()
+                                    .resolve_option(kind.connection_option_id())
+                                    .ok()
+                            })
+                            .map(|resolved| {
+                                (
+                                    identity_from_option(
+                                        kind.connection_option_id(),
+                                        &resolved.option,
+                                    ),
+                                    resolved.option.billing_class,
+                                )
+                            })
+                    } else {
+                        None
+                    }
+                }
             };
             let Some((identity, billing_class)) = resolved else {
                 continue;
@@ -141,7 +154,8 @@ impl LocalControlAdapter {
                             catalog,
                             source,
                             model,
-                            connector_runtime.as_ref(),
+                            CpaAccountKind::from_candidate(&source.last_candidate_ref)
+                                .and_then(|kind| connector_runtime.get(&kind)),
                             maintenance,
                         ),
                     },
@@ -226,7 +240,10 @@ impl LocalControlAdapter {
                                     catalog,
                                     management_source,
                                     model,
-                                    connector_runtime.as_ref(),
+                                    CpaAccountKind::from_candidate(
+                                        &management_source.last_candidate_ref,
+                                    )
+                                    .and_then(|kind| connector_runtime.get(&kind)),
                                     self.subscription_maintenance_presentation(
                                         &management_source.source_id,
                                     ),
@@ -261,18 +278,18 @@ fn identity_from_option(
     }
 }
 
-fn connector_runtime_read(adapter: &LocalControlAdapter) -> ConnectorRuntimeRead {
-    let Some(authority) = adapter.cpa_sources.as_ref() else {
+fn connector_runtime_read(
+    adapter: &LocalControlAdapter,
+    kind: CpaAccountKind,
+) -> ConnectorRuntimeRead {
+    let Some(authority) = adapter
+        .cpa_runtime
+        .as_ref()
+        .and_then(|runtimes| runtimes.for_connector(kind.connector_id()))
+    else {
         return ConnectorRuntimeRead::RuntimeUnavailable;
     };
-    let source = match adapter.scanner.codex_subscription_source() {
-        Ok(Some(source)) => source,
-        Ok(None) | Err(_) => return ConnectorRuntimeRead::AuthenticationRequired,
-    };
-    if BorrowedCodexAuthSpec::new(source.source_path())
-        .inspect()
-        .is_err()
-    {
+    if authority.inspect_subscription().is_err() {
         return ConnectorRuntimeRead::AuthenticationRequired;
     }
     match authority.discover_registered_sources() {
@@ -328,7 +345,9 @@ fn connector_model_runtime_availability(
         Some(ConnectorRuntimeRead::Sources(sources)) => {
             let available = sources.iter().any(|registered| {
                 let exact_source = registered.source.connector_id == *connector_id
-                    && registered.source.connection_option_id == CONNECTION_OPTION_ID
+                    && CpaAccountKind::from_connector(connector_id).is_some_and(|kind| {
+                        registered.source.connection_option_id == kind.connection_option_id()
+                    })
                     && registered.source.identity.account_subject_ref == *account_ref;
                 exact_source
                     && if let Some(model_configuration_id) =
@@ -357,7 +376,9 @@ fn connector_model_runtime_availability(
                 ComputeManagementModelRuntimeAvailabilityFactV1::Available
             } else if !sources.iter().any(|registered| {
                 registered.source.connector_id == *connector_id
-                    && registered.source.connection_option_id == CONNECTION_OPTION_ID
+                    && CpaAccountKind::from_connector(connector_id).is_some_and(|kind| {
+                        registered.source.connection_option_id == kind.connection_option_id()
+                    })
                     && registered.source.identity.account_subject_ref == *account_ref
             }) {
                 ComputeManagementModelRuntimeAvailabilityFactV1::AuthenticationRequired
@@ -371,18 +392,19 @@ fn connector_model_runtime_availability(
     }
 }
 
-fn trusted_codex_subscription(
+fn trusted_subscription(
     catalog: &TrustedReleaseCatalog,
     source: &ComputeManagementSourceV2,
     checked: &ComputeCandidateFactsV2,
     logical_target: &hiroute_application_api::ComputeCandidateTargetV2,
+    kind: CpaAccountKind,
 ) -> bool {
-    let Ok(resolved) = catalog.resolve_connection_option(CONNECTION_OPTION_ID) else {
+    let Ok(resolved) = catalog.resolve_connection_option(kind.connection_option_id()) else {
         return false;
     };
     if resolved.option.origin != ConnectionOrigin::AgentSubscription
         || resolved.option.billing_class != BillingClass::Subscription
-        || resolved.connector.connector_id != CONNECTOR_ID
+        || resolved.connector.connector_id != kind.connector_id()
         || resolved.connector.runtime_kind != ConnectorRuntimeKind::CpaBridge
         || resolved.connector.authentication != AuthenticationKind::ConnectorOwnedOpaque
         || checked.target.as_ref() != Some(logical_target)
@@ -402,7 +424,7 @@ fn trusted_codex_subscription(
     else {
         return false;
     };
-    if connector_id != CONNECTOR_ID
+    if connector_id != kind.connector_id()
         || account_ref != binding_account
         || checked.validation.as_ref() != Some(validation)
     {
@@ -414,16 +436,15 @@ fn trusted_codex_subscription(
             .iter()
             .find(|candidate| candidate.model_ref == saved.model_ref);
         if saved.execution_eligible {
-            checked.is_some_and(|candidate| {
-                trusted_codex_subscription_model(catalog, &resolved, candidate)
-            })
+            checked
+                .is_some_and(|candidate| trusted_subscription_model(catalog, &resolved, candidate))
         } else {
             checked.is_none_or(|candidate| !candidate.selectable || candidate.reason.is_some())
         }
     })
 }
 
-fn trusted_codex_subscription_model(
+fn trusted_subscription_model(
     catalog: &TrustedReleaseCatalog,
     resolved: &hiroute_domain::ResolvedConnectionOptionV1,
     candidate: &ComputeCandidateModelFactsV2,
@@ -448,7 +469,11 @@ fn trusted_codex_subscription_model(
                 && capability.connector_revision == resolved.connector.revision
                 && capability.endpoint_profile_id == resolved.endpoint_profile.endpoint_profile_id
                 && capability.endpoint_profile_revision == resolved.endpoint_profile.revision
-                && capability.upstream_protocol == UpstreamProtocol::Responses
+                && resolved
+                    .endpoint_profile
+                    .protocol_endpoints
+                    .iter()
+                    .any(|endpoint| endpoint.protocol == capability.upstream_protocol)
                 && capability.upstream_model_id == candidate.upstream_model_id
         })
         .collect::<Vec<_>>();

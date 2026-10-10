@@ -39,6 +39,8 @@ class InstalledProduct:
         self.runtime = self.root / 'runtime'
         self.codex_home = self.home / '.codex'
         self.codex_home.mkdir(mode=0o700)
+        self.claude_home = self.home / '.claude'
+        self.claude_home.mkdir(mode=0o700)
         self.fixture_bin = self.root / 'fixture-bin'
         self.fixture_bin.mkdir(mode=0o700)
         self.project = self.root / 'project'
@@ -52,16 +54,18 @@ class InstalledProduct:
             'headless-access-token',
             'headless-id-token',
             'headless-refresh-token',
+            'headless-oauth-callback-must-not-be-echoed',
         }
         self.env = {
             key: value for key, value in os.environ.items()
-            if not key.startswith(('HIROUTE_', 'OPENAI_', 'ANTHROPIC_'))
+            if not key.startswith(('HIROUTE_', 'OPENAI_', 'ANTHROPIC_', 'CODEX_', 'CLAUDE_'))
         }
         self.env.update({
             'HOME': str(self.home),
             'XDG_STATE_HOME': str(self.state),
             'XDG_RUNTIME_DIR': str(self.runtime),
             'CODEX_HOME': str(self.codex_home),
+            'CLAUDE_CONFIG_DIR': str(self.claude_home),
             'PATH': str(self.fixture_bin) + ':/usr/bin:/bin',
         })
         self.cli_path = self.home / '.local/bin/hiroute'
@@ -123,7 +127,7 @@ finally:
 ''')
         claude.chmod(0o700)
         claude_settings = self.home / '.claude/settings.json'
-        claude_settings.parent.mkdir(mode=0o700)
+        claude_settings.parent.mkdir(mode=0o700, exist_ok=True)
         claude_settings.write_text(json.dumps({
             'theme': 'dark',
             'env': {
@@ -365,7 +369,7 @@ for line in sys.stdin:
             '--version', '0.1.0-headless-product', '--revision', self.sha,
             '--hiroute', str(candidate_hiroute),
             '--hirouted', str(candidate_hirouted),
-            '--cpa-binary', str(cpa), '--cpa-version', '8.0.4-hiroute.2',
+            '--cpa-binary', str(cpa), '--cpa-version', '8.0.4-hiroute.4',
             '--cpa-license', str(license_path),
             '--notices', str(package_source / 'notices'), '--output', str(self.package),
         ], cwd=self.repo, env=self.env, capture_output=True, timeout=90)
@@ -636,7 +640,7 @@ def run(repository):
         required = {
             'operations.find', 'operations.get', 'compute.list', 'compute.show',
             'compute.connection.options', 'compute.connection.preview',
-            'compute.connection.apply', 'compute.connection.authorize',
+            'compute.connection.apply', 'compute.connection.authorize', 'compute.connection.login',
             'compute.connection.test', 'routing.options', 'routing.list', 'routing.show',
             'routing.preview', 'routing.apply', 'models.show', 'agents.scan', 'agents.check',
             'agents.connect.preview', 'agents.connect.apply', 'agents.connect.status',
@@ -649,6 +653,35 @@ def run(repository):
         invalid = product.cli('compute', 'connection', 'test', '--request-stdin',
                               payload={'kind': 'native', 'request': {}, 'unknown': True}, expected=2)
         assert invalid['error']['code'] == 'INVALID_ARGUMENTS', invalid
+
+        stage = 'public-subscription-login-admission'
+        login_lists = {}
+        for provider in ('codex', 'claude'):
+            listed = product.cli('compute', 'connection', 'login', '--request-stdin',
+                                 payload={'action': 'list', 'provider': provider})
+            assert listed['status'] == 'succeeded', listed
+            result = listed['data']
+            assert result['schema'] == 'hiroute.subscription-login-result/v1', result
+            assert result['sessions'] == [], result
+            assert not any(field in wire(result) for field in (
+                b'authorization_url', b'access_token', b'refresh_token', b'auth_dir')), result
+            login_lists[provider] = 'green'
+        raw_callback = product.cli('compute', 'connection', 'login', '--request-stdin', payload={
+            'action': 'callback', 'login_ref': 'login-unknown',
+            'input_candidate': {'candidate_ref': 'candidate/subscription-login/login-unknown',
+                                'candidate_revision': 1},
+            'code': 'headless-oauth-callback-must-not-be-echoed',
+        }, expected=2)
+        assert raw_callback['error']['code'] == 'INVALID_ARGUMENTS', raw_callback
+        invalid_ref = product.cli('compute', 'connection', 'login', '--request-stdin',
+                                  payload={'action': 'status', 'login_ref': ' '}, expected=2)
+        assert invalid_ref['error']['code'] == 'INVALID_ARGUMENTS', invalid_ref
+        login_admission_cases = {
+            'p0.compute.connection.login.positive': {'state': 'green', 'providers': login_lists},
+            'p0.compute.connection.login.negative': {
+                'state': 'green', 'raw_callback_rejected': True, 'invalid_ref_rejected': True,
+            },
+        }
 
         stage = 'native-source-check-save-recovery'
         candidate_ref = 'candidate/native/headless-product'
@@ -978,6 +1011,7 @@ def run(repository):
             'state': 'green', 'candidate': product.sha,
             'installed_cli': str(product.cli_path),
             'released_command_count': len(released),
+            'public_subscription_login_cases': login_admission_cases,
             'native_source': native_source['source_id'],
             'subscription_source': subscription_source['source_id'],
             'plan_id': plan_id, 'model_alias': alias,

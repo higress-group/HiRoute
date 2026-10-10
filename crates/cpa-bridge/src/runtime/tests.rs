@@ -49,10 +49,20 @@ const VERSION: &str = crate::MANAGED_CPA_ARTIFACT_VERSION;
 
 #[path = "tests/borrowed_stock.rs"]
 mod borrowed_stock;
+#[path = "tests/cancelled_start.rs"]
+mod cancelled_start;
+#[path = "tests/control_races.rs"]
+mod control_races;
+#[path = "tests/managed_recovery.rs"]
+mod managed_recovery;
 #[path = "tests/proxy_recovery.rs"]
 mod proxy_recovery;
+#[path = "tests/request_io.rs"]
+mod request_io;
 #[path = "tests/routing_batch.rs"]
 mod routing_batch;
+#[path = "tests/runtime_set_discovery.rs"]
+mod runtime_set_discovery;
 
 #[derive(Clone)]
 struct FixtureLocator(VerifiedCpaBinary);
@@ -275,6 +285,16 @@ fn fixture_catalog() -> Arc<TrustedReleaseCatalog> {
         "../../../../assets/release-facts/current/bundle/connector-registry.json"
     ))
     .unwrap();
+    // Replace the production Claude contract with this fixture's controlled endpoint.
+    registry
+        .connectors
+        .retain(|item| item.connector_id != "connector.cpa.claude");
+    registry
+        .endpoint_profiles
+        .retain(|item| item.endpoint_profile_id != "endpoint.cpa.claude");
+    registry
+        .connection_options
+        .retain(|item| item.connector_id != "connector.cpa.claude");
     registry.connectors.push(
         serde_json::from_value(connector_json(
             "connector.cpa.claude",
@@ -306,6 +326,16 @@ fn fixture_catalog() -> Arc<TrustedReleaseCatalog> {
         "../../../../assets/release-facts/current/bundle/model-data.json"
     ))
     .unwrap();
+    // The controlled profile above replaces its protocol adapter and offering.
+    // Its current catalog references must be replaced at the same boundary.
+    models
+        .data
+        .model_endpoint_capabilities
+        .retain(|capability| capability.connector_id != "connector.cpa.claude");
+    models
+        .data
+        .offers
+        .retain(|offer| offer.endpoint_profile_id != "endpoint.cpa.claude");
     models.data.model_endpoint_capabilities.push(
         serde_json::from_value(capability_json(
             "claude",
@@ -435,6 +465,8 @@ fn fixture_runtime(
         instance_id: "fixture-cpa".into(),
         state_root: root.path().join("state"),
         auth_dir: root.path().join("auth"),
+        borrowed_claude_auth: None,
+        managed_oauth: None,
         borrowed_codex_auth: Some(BorrowedCodexAuthSpec::new(codex_auth_source)),
         bindings: bindings(),
         startup_timeout: Duration::from_millis(200),
@@ -946,6 +978,9 @@ fn removed_account_revokes_old_reference_and_readdition_rotates_generation() {
     let old = runtime
         .materialize_account("connector.cpa.claude", "endpoint.cpa.claude")
         .unwrap();
+    runtime
+        .apply_account_management(&old.account_subject, 1, CpaSourceManagementState::Enabled)
+        .unwrap();
     let old_target = prepare_target(
         &runtime,
         ExactCpaAttemptRequest {
@@ -1195,6 +1230,20 @@ fn single_terminal(records: &[StageRecord], stage: &str) -> String {
     terminals[0].outcome.clone()
 }
 
+fn omit_fixture_codex_version(runtime: &mut ManagedCpaRuntime, root: &Path) {
+    // These cases test process and readiness stages, without checking a native
+    // installation. An absent absolute executable omits optional version metadata
+    // while preserving the native source lease and its authentication checks.
+    let executable = root.join("fixture-codex-not-installed");
+    assert!(executable.is_absolute());
+    assert!(!executable.exists());
+    runtime.spec.borrowed_codex_auth = runtime
+        .spec
+        .borrowed_codex_auth
+        .take()
+        .map(|spec| spec.with_executable(executable));
+}
+
 /// R5: a CPA start reports each step once at its own real boundary. A spawn that completed
 /// is never followed by a fabricated spawn failure when a later step fails, and adoption —
 /// which never spawns — reports no spawn step at all.
@@ -1219,12 +1268,16 @@ fn cpa_stage_terminals_are_unique_ordered_and_never_fabricated() {
     });
     let control = Arc::new(FakeControl::default());
     control.set_fail_probes(true);
-    let runtime = fixture_runtime(&root, Arc::new(FakeBackend::default()), control, 2)
+    let mut runtime = fixture_runtime(&root, Arc::new(FakeBackend::default()), control, 2)
         .with_diagnostics(report.port());
-    assert!(matches!(
-        runtime.start(),
-        Err(CpaLifecycleError::StartupTimeout)
-    ));
+    omit_fixture_codex_version(&mut runtime, root.path());
+    let started = std::time::Instant::now();
+    let actual = runtime.start();
+    assert!(
+        matches!(&actual, Err(CpaLifecycleError::StartupTimeout)),
+        "startup result: {actual:?}; elapsed: {:?}",
+        started.elapsed()
+    );
     report.shutdown();
     let log =
         std::fs::read_to_string(diagnostics_root.join("daemon").join("current.jsonl")).unwrap();
@@ -1427,13 +1480,16 @@ fn cpa_start_failures_report_their_stage_code_and_business_error() {
     });
     let control = Arc::new(FakeControl::default());
     control.set_fail_probes(true);
-    let runtime = fixture_runtime(&root, Arc::new(FakeBackend::default()), control, 2)
+    let mut runtime = fixture_runtime(&root, Arc::new(FakeBackend::default()), control, 2)
         .with_diagnostics(report.port());
+    omit_fixture_codex_version(&mut runtime, root.path());
     let started = std::time::Instant::now();
-    assert!(matches!(
-        runtime.start(),
-        Err(CpaLifecycleError::StartupTimeout)
-    ));
+    let actual = runtime.start();
+    assert!(
+        matches!(&actual, Err(CpaLifecycleError::StartupTimeout)),
+        "startup result: {actual:?}; elapsed: {:?}",
+        started.elapsed()
+    );
     assert!(
         started.elapsed() >= Duration::from_millis(200),
         "the existing bounded ready wait is unchanged"

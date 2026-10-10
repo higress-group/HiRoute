@@ -19,7 +19,9 @@ use hiroute_application_api::{
     AgentPlanId, CanonicalDigest, PrepareDiscoveredModelConnectionRequestV1, PrincipalKind,
     RevisionSetV1,
 };
-use hiroute_cpa_bridge::{BorrowedCodexEvidence, CpaRegisteredSourcePort, ManagedCpaRuntime};
+use hiroute_cpa_bridge::{
+    BorrowedSubscriptionEvidence, CpaRegisteredSourcePort, ManagedCpaRuntime, ManagedCpaRuntimeSet,
+};
 use hiroute_diagnostics::runtime::DiagnosticsPort;
 use hiroute_domain::{
     AgentConnectionEffectRoleV1, AgentConnectionTransactionSubjectV1, AgentKindV1,
@@ -34,8 +36,8 @@ use hiroute_integrations::{
     AgentDiscoveryOutcomeV1, AgentFilesystemLayoutV1, CLAUDE_INTEGRATION_PROFILE_REF_V1,
     CLAUDE_PROFILE_ID_V1, CODEX_INTEGRATION_PROFILE_REF_V1, CODEX_PROFILE_ID_V1,
     ClaudeRegistrationIndexV1, DiscoveredCredentialRefV1, FilesystemAgentDiscoveryV1,
-    FilesystemAgentScannerV1, PermissionHardeningRequiredV1, ProtectedAgentSubscriptionSourceV1,
-    QODER_INTEGRATION_PROFILE_REF_V1, QODER_PROFILE_ID_V1, TrustedReleaseCatalog,
+    FilesystemAgentScannerV1, PermissionHardeningRequiredV1, QODER_INTEGRATION_PROFILE_REF_V1,
+    QODER_PROFILE_ID_V1, TrustedReleaseCatalog,
 };
 use hiroute_local_storage::{ApplyCapabilityRegistrationV1, LocalStorageSet, ManagedArtifactStore};
 use hiroute_observation::{DigestAuthority, LocalObservationStore};
@@ -102,9 +104,9 @@ pub struct ProductionControlRuntime {
 }
 
 #[derive(Clone)]
-struct CodexSubscriptionContextV1 {
-    source: ProtectedAgentSubscriptionSourceV1,
-    evidence: Option<BorrowedCodexEvidence>,
+struct SubscriptionContextV1 {
+    source: subscriptions::source::SubscriptionSource,
+    evidence: Option<BorrowedSubscriptionEvidence>,
     candidate_revision: u64,
 }
 
@@ -182,6 +184,7 @@ impl ProductionControlRuntime {
         release_catalog: TrustedReleaseCatalog,
         cpa: Arc<ManagedCpaRuntime>,
     ) -> Result<Self, String> {
+        let cpa = Arc::new(ManagedCpaRuntimeSet::from(cpa));
         let cpa_sources: Arc<dyn CpaRegisteredSourcePort + Send + Sync> = cpa.clone();
         Self::open_inner_with_cpa(
             storage_root.as_ref(),
@@ -201,7 +204,7 @@ impl ProductionControlRuntime {
         Self::prepare_for_role_all_with_codex_desktop_engine(
             storage_root,
             catalog,
-            cpa,
+            cpa.map(|runtime| Arc::new(ManagedCpaRuntimeSet::from(runtime))),
             None,
             Default::default(),
         )
@@ -210,7 +213,7 @@ impl ProductionControlRuntime {
     pub(crate) fn prepare_for_role_all_with_codex_desktop_engine(
         storage_root: &Path,
         catalog: TrustedReleaseCatalog,
-        cpa: Option<Arc<ManagedCpaRuntime>>,
+        cpa: Option<Arc<ManagedCpaRuntimeSet>>,
         codex_desktop_engine: Option<PathBuf>,
         storage_startup: hiroute_local_storage::StorageStartupOptions,
     ) -> Result<Self, String> {
@@ -235,7 +238,7 @@ impl ProductionControlRuntime {
         storage_root: &Path,
         release_catalog: TrustedReleaseCatalog,
         cpa_sources: Option<Arc<dyn CpaRegisteredSourcePort + Send + Sync>>,
-        cpa_runtime: Option<Arc<ManagedCpaRuntime>>,
+        cpa_runtime: Option<Arc<ManagedCpaRuntimeSet>>,
         recover: bool,
     ) -> Result<Self, String> {
         Self::open_inner_with_cpa_and_overrides(
@@ -255,6 +258,7 @@ impl ProductionControlRuntime {
         cpa: Option<Arc<ManagedCpaRuntime>>,
         scanner: FilesystemAgentScannerV1,
     ) -> Result<Self, String> {
+        let cpa = cpa.map(|runtime| Arc::new(ManagedCpaRuntimeSet::from(runtime)));
         let sources = cpa
             .as_ref()
             .map(|cpa| cpa.clone() as Arc<dyn CpaRegisteredSourcePort + Send + Sync>);
@@ -275,7 +279,7 @@ impl ProductionControlRuntime {
         storage_root: &Path,
         release_catalog: TrustedReleaseCatalog,
         cpa_sources: Option<Arc<dyn CpaRegisteredSourcePort + Send + Sync>>,
-        cpa_runtime: Option<Arc<ManagedCpaRuntime>>,
+        cpa_runtime: Option<Arc<ManagedCpaRuntimeSet>>,
         recover: bool,
         overrides: RuntimeOpenOverrides,
     ) -> Result<Self, String> {
@@ -475,6 +479,7 @@ impl ProductionControlRuntime {
             cpa_runtime,
             subscription_sources: Mutex::new(BTreeMap::new()),
             subscription_targets: Mutex::new(BTreeMap::new()),
+            subscription_lifecycle: Mutex::new(()),
             subscription_maintenance: Mutex::new(subscriptions::SubscriptionMaintenance::new()?),
             managed_agent_runtime: Mutex::new(None),
             publication_target: Mutex::new(None),
@@ -779,9 +784,12 @@ struct LocalControlAdapter {
     plan_admission: Arc<hiroute_application::publication::admission::SharedAdmissionGate>,
     observation_activity_path: PathBuf,
     cpa_sources: Option<Arc<dyn CpaRegisteredSourcePort + Send + Sync>>,
-    cpa_runtime: Option<Arc<ManagedCpaRuntime>>,
-    subscription_sources: Mutex<BTreeMap<String, CodexSubscriptionContextV1>>,
-    subscription_targets: Mutex<BTreeMap<String, CodexSubscriptionContextV1>>,
+    cpa_runtime: Option<Arc<ManagedCpaRuntimeSet>>,
+    subscription_sources: Mutex<BTreeMap<String, SubscriptionContextV1>>,
+    subscription_targets: Mutex<BTreeMap<String, SubscriptionContextV1>>,
+    /// Lock order: subscription lifecycle -> transaction writer -> registry/stores. Held
+    /// through all Apply effects and projection, or Forget's snapshot/disable/withdrawal.
+    subscription_lifecycle: Mutex<()>,
     subscription_maintenance: Mutex<subscriptions::SubscriptionMaintenance>,
     managed_agent_runtime: Mutex<Option<ManagedAgentRuntimeV1>>,
     publication_target: Mutex<Option<Arc<dyn PublicationTargetPort + Send + Sync>>>,

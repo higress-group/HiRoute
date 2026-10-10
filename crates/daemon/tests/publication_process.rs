@@ -1,5 +1,8 @@
 #![cfg(all(unix, feature = "integration-test-hooks"))]
 
+#[path = "support/claude_catalog_product_regression.rs"]
+mod claude_catalog_product_regression;
+
 /// Decision services use released CLI codecs, the real journal and immutable Plan snapshots.
 #[test]
 fn real_process_decision_services_and_branch_publication() {

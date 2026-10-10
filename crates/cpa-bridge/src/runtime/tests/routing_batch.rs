@@ -33,7 +33,7 @@ fn explicit_subscription_recheck_refreshes_version_before_forced_catalog_discove
         .take()
         .map(|spec| spec.with_executable(executable.clone()));
     let spec = runtime.spec.borrowed_codex_auth.as_ref().unwrap();
-    let expected = spec.inspect().unwrap();
+    let expected: crate::BorrowedSubscriptionEvidence = spec.inspect().unwrap().into();
     let source_path = spec.source_path().to_owned();
     let source_before = std::fs::read(&source_path).unwrap();
     runtime.start().unwrap();
@@ -48,18 +48,51 @@ fn explicit_subscription_recheck_refreshes_version_before_forced_catalog_discove
         "missing local version must not wait for a remote pin timeout"
     );
     std::fs::write(&executable, "#!/bin/sh\nprintf 'codex-cli 0.162.0\\n'\n").unwrap();
-    assert!(
-        !runtime
-            .discover_materializations(Some(&expected))
-            .unwrap()
-            .is_empty()
-    );
+    let checked = runtime.discover_materializations(Some(&expected)).unwrap();
+    assert_eq!(checked.len(), 1);
     assert_eq!(
         control.last_client_version.lock().as_deref(),
         Some("0.162.0")
     );
     assert!(control.refresh_requested.load(Ordering::SeqCst));
     assert_eq!(std::fs::read(source_path).unwrap(), source_before);
+    runtime
+        .apply_account_management(
+            &checked[0].account_subject,
+            2,
+            CpaSourceManagementState::Disabled,
+        )
+        .unwrap();
+    let checked_disabled = runtime.discover_materializations(Some(&expected)).unwrap();
+    assert_eq!(
+        checked_disabled.len(),
+        1,
+        "recheck must observe disabled account facts"
+    );
+    assert_eq!(
+        checked_disabled[0].account_subject,
+        checked[0].account_subject
+    );
+    assert!(runtime.discover_materializations(None).unwrap().is_empty());
+    let disabled = runtime.begin_routing_batch().unwrap();
+    assert_eq!(
+        disabled.prepare_target(ExactCpaAttemptRequest {
+            credential_ref: &checked_disabled[0].credential_ref,
+            upstream_model_id: "gpt-5.5",
+            protocol: UpstreamProtocol::Responses,
+        }),
+        Err(CpaAttemptError::RevokedCredential),
+        "recheck must not grant execution before SaveReady"
+    );
+    assert!(disabled.finish().unwrap());
+    runtime
+        .apply_account_management(
+            &checked[0].account_subject,
+            3,
+            CpaSourceManagementState::Enabled,
+        )
+        .unwrap();
+    assert_eq!(runtime.discover_materializations(None).unwrap().len(), 1);
     runtime.shutdown().unwrap();
     report.shutdown();
     let log = std::fs::read_to_string(diagnostics_root.join("daemon/current.jsonl")).unwrap();

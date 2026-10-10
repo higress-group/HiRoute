@@ -1,5 +1,8 @@
 #![cfg(unix)]
 
+#[path = "support/isolated_agent_environment.rs"]
+mod child_environment;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -136,7 +139,9 @@ fn configured_but_stopped_cpa(root: &Path, auth_source: PathBuf) -> Arc<ManagedC
                 instance_id: "subscription-discovery-test".into(),
                 state_root: root.join("cpa/state"),
                 auth_dir: root.join("cpa/auth"),
+                borrowed_claude_auth: None,
                 borrowed_codex_auth: Some(BorrowedCodexAuthSpec::new(auth_source)),
+                managed_oauth: None,
                 bindings: vec![CpaProfileBinding {
                     account_kind: CpaAccountKind::Codex,
                     connector_id: "connector.cpa.codex".into(),
@@ -1013,17 +1018,12 @@ fn production_compute_control_plane_is_transactional_and_routing_facts_fail_clos
     }
     let directory = tempfile::tempdir().unwrap();
     configure_child(directory.path());
-    let output = Command::new(std::env::current_exe().unwrap())
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    child_environment::configure(&mut command, &directory.path().join("home"));
+    let output = command
         .args(["--exact", TEST_NAME, "--nocapture"])
         .env(CHILD_ROOT, directory.path())
-        .env("HOME", directory.path().join("home"))
-        .env_remove("CODEX_HOME")
-        .env_remove("CLAUDE_CONFIG_DIR")
         .env("PATH", directory.path().join("bin"))
-        .env_remove("ANTHROPIC_BASE_URL")
-        .env_remove("ANTHROPIC_MODEL")
-        .env_remove("ANTHROPIC_DEFAULT_OPUS_MODEL")
-        .env_remove("ANTHROPIC_AUTH_TOKEN")
         .current_dir(directory.path().join("workspace"))
         .output()
         .unwrap();
@@ -1046,17 +1046,12 @@ fn registered_claude_configuration_prepares_from_group_writable_install() {
     }
     let directory = tempfile::tempdir().unwrap();
     configure_discovered_prepare_child(directory.path());
-    let output = Command::new(std::env::current_exe().unwrap())
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    child_environment::configure(&mut command, &directory.path().join("home"));
+    let output = command
         .args(["--exact", DISCOVERED_PREPARE_TEST_NAME, "--nocapture"])
         .env(DISCOVERED_PREPARE_CHILD_ROOT, directory.path())
-        .env("HOME", directory.path().join("home"))
-        .env_remove("CODEX_HOME")
-        .env_remove("CLAUDE_CONFIG_DIR")
         .env("PATH", directory.path().join("bin"))
-        .env_remove("ANTHROPIC_BASE_URL")
-        .env_remove("ANTHROPIC_MODEL")
-        .env_remove("ANTHROPIC_DEFAULT_OPUS_MODEL")
-        .env_remove("ANTHROPIC_AUTH_TOKEN")
         .current_dir(directory.path().join("workspace"))
         .output()
         .unwrap();
