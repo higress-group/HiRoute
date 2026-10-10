@@ -158,6 +158,10 @@ impl LocalObservationStore {
         file.write_all(bytes)
             .and_then(|()| file.sync_all())
             .map_err(|_| ManagedTextError::Storage)?;
+        // Windows refuses to open a directory handle for fsync (access denied),
+        // while NTFS journals directory metadata itself. The chunk file above is
+        // still fsynced, so only the directory barrier is Unix-specific.
+        #[cfg(unix)]
         fs::File::open(&self.blob_root)
             .and_then(|dir| dir.sync_all())
             .map_err(|_| ManagedTextError::Storage)?;
