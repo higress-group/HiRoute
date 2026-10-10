@@ -54,6 +54,55 @@ function finishCheck() {
 }
 
 const scenarios = [
+  ['managed sign-in repair requires the current source revision and preserves saved membership', async () => {
+    let saved;
+    await fresh(control => {
+      const source = control.management.sources[0];
+      source.display_name = 'Team subscription';
+      source.connection_identity.access_kind = 'subscription';
+      saved = structuredClone(source);
+      control.management.schema = 'hiroute.compute-management-snapshot/v3';
+      control.management.subscription_modes = [{ source_id: source.source_id, source_revision: source.revision - 1, mode: 'cpa_managed' }];
+      const pending = { ...control.pending, existing_source_id: source.source_id, display_name: 'New login account label' };
+      const checked = { ...control.checked, existing_source_id: source.source_id, display_name: pending.display_name, models: [
+        { ...control.checked.models[0], model_ref: source.models[0].model_ref },
+        { ...control.checked.models[0], model_ref: 'model/new-from-login', display_name: 'New login model' },
+      ] };
+      control.subscriptions = [pending];
+      control.handlers.manage_subscription_login = ({ request }) => {
+        assert(request.action === 'list', 'Repair unexpectedly changed a login');
+        return { schema: 'hiroute.subscription-login-result/v1', sessions: request.provider === 'codex'
+          ? [{ provider: 'codex', login_ref: 'login/component-repair', status: 'authorized', candidate: pending.candidate }]
+          : [] };
+      };
+      control.handlers.check_subscription = () => {
+        control.subscriptions = [checked];
+        control.result = { ...control.verified, checked_candidate: checked };
+        return control.result;
+      };
+    });
+    assert(button('重新检查订阅') && !button('重新独立登录'), 'Stale mode revision selected the managed repair flow');
+    c().management.subscription_modes[0].source_revision = saved.revision;
+    c().refresh();
+    await until(() => button('重新独立登录'), 'current managed mode');
+    await click('重新独立登录');
+    await until(() => button('检查并选择模型') && !button('检查并选择模型').disabled, 'authorized managed login');
+    await click('检查并选择模型');
+    await click('检查订阅');
+    await until(() => button('更新订阅'), 'existing connection repair');
+    assert(text().includes('将保留原有模型、绑定和路由'), 'Matching existing_source_id lost repair context');
+    assert(!document.querySelector('.v3-catalog input[type="checkbox"]'), 'Repair exposed model selection changes');
+    await click('更新订阅');
+    await until(() => text().includes('订阅授权已更新'), 'repair saved');
+    const previews = calls('preview_compute_save');
+    assert(previews.length === 1 && calls('apply_compute_save').length === 1, 'Repair was not submitted exactly once');
+    const change = previews[0].payload.change;
+    assert(JSON.stringify(change.selected_model_refs) === JSON.stringify(saved.models.map(model => model.model_ref)), 'Repair replaced saved membership with the new login inventory');
+    assert(change.subject.kind === 'candidate' && JSON.stringify(change.subject.candidate) === JSON.stringify(c().checked.candidate), 'Repair submitted a different candidate or revision');
+    assert(!change.edit && change.key_edits.length === 0, 'Repair submitted a rename or manual credential edit');
+    assert(text().includes(saved.display_name), 'Saved connection name disappeared after repair refresh');
+    // This verifies actual page intent over mock IPC; backend persistence has separate storage/native evidence.
+  }],
   ['normal inventory, empty selection and duplicate check/save', async () => {
     await fresh();
     await scan();
