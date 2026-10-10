@@ -112,7 +112,10 @@ fn cancelled_orphan_authentication_restores_owner_before_retry() {
         assert_eq!(backend.spawn_count(), 1);
         assert_eq!(backend.attach_count(), 0);
         assert_eq!(control.discoveries.load(Ordering::SeqCst), 0);
-        assert_eq!(second.epochs.current(), (0, 0));
+        assert_eq!(second.epochs.current().0, 0, "rollback published a runtime");
+        if stop_only {
+            assert!(second.admission.snapshot().subscription_execution_suspended);
+        }
         assert!(!matches!(second.health().unwrap(), CpaHealth::Ready { .. }));
 
         // A new authorized attempt can authenticate the same live orphan. Failed
