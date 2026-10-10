@@ -193,4 +193,4 @@ HiRoute is licensed under the [Apache License 2.0](LICENSE). Use
 [GitHub Issues](https://github.com/higress-group/HiRoute/issues) for bugs and feature requests.
 Report security issues and crash reports through the process in [SECURITY.md](SECURITY.md).
 
-Community links: [LINUX DO](https://linux.do/).
+Links: [LINUX DO](https://linux.do/) — a Chinese-language tech community.
