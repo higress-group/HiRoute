@@ -322,12 +322,13 @@ fn accessible_modes_work_while_symlinks_and_path_escape_fail_closed() {
     let reference = writer.seal().expect("seal");
     let path = store.stream_path(&reference).expect("disk path");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("loosen file mode");
-    assert_eq!(
-        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-        0o644
-    );
+    let original_spill = fs::File::open(&path).expect("retain spill metadata handle");
     store.prevalidate(std::slice::from_ref(&reference)).unwrap();
     assert_eq!(read_all(&store, &reference), vec![7_u8; 256]);
+    assert_eq!(
+        original_spill.metadata().unwrap().permissions().mode() & 0o777,
+        0o644
+    );
     assert!(
         !path.exists(),
         "prevalidation retains a handle and unlinks the spill"
