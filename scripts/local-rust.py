@@ -107,14 +107,14 @@ class Store:
         remote.save(path, row)
 
     @contextlib.contextmanager
-    def locked(self, checkout):
-        # The runner and cleanup use the same lock; cleanup never waits on an active build.
+    def locked(self, checkout, *, wait=False):
+        # Only an explicitly queued run waits; cleanup always uses the default fast failure.
         key = hashlib.sha256(str(checkout).encode()).hexdigest()
         with contextlib.ExitStack() as stack:
             handles = []
             for path in (self.global_lock, self.root / "locks" / (key + ".lock")):
                 handle = stack.enter_context(path.open("a"))
-                remote.fcntl.flock(handle, remote.fcntl.LOCK_EX | remote.fcntl.LOCK_NB)
+                remote.fcntl.flock(handle, remote.fcntl.LOCK_EX | (0 if wait else remote.fcntl.LOCK_NB))
                 handles.append(handle)
             yield handles
 
@@ -294,7 +294,8 @@ def run(store, args, prepare=None, on_record=None):
     row = dict(id=key, kind="managed", repo=str(repo), checkout=str(checkout), sha=args.sha,
                command=cargo, status="preparing", keep=args.keep, evidence_saved=False,
                process_exit=None, scenario="unassessed", candidate_source=source,
-               build_jobs=jobs, platform=sys.platform, architecture=platform.machine(),
+               build_jobs=jobs, wait_for_lock=getattr(args, "wait_for_lock", False),
+               platform=sys.platform, architecture=platform.machine(),
                submitted_at=time.time(), **feedback)
     row["executor_sha256"] = {
         name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
@@ -335,8 +336,11 @@ def run(store, args, prepare=None, on_record=None):
         }
         before = remote.stats(store.record_path(key).parent, "cache-before", server_env)
         row["queued_at"] = time.time()
-        with store.locked(checkout) as handles:
+        store.save(row)
+        with store.locked(checkout, wait=row["wait_for_lock"]) as handles:
             row["capacity_acquired_at"] = time.time()
+            if row["wait_for_lock"] and shutil.disk_usage(store.root).free < 30 * GIB:
+                raise ValueError("Less than 30 GiB free after waiting; build not started")
             info = private_temp()
             row["temporary_directory"] = info
             env["TMPDIR"] = info["path"]
@@ -396,6 +400,8 @@ def main():
     p.add_argument("--sha", required=True)
     p.add_argument("--source", choices=("origin", "local"), default="origin")
     p.add_argument("--jobs", type=int, default=2)
+    p.add_argument("--wait-for-lock", action="store_true",
+                   help="Wait on the existing exclusive host/checkout locks before starting Cargo")
     p.add_argument("--keep", action="store_true")
     p.add_argument("--cargo-only", action="store_true", help="Assert pure Cargo check: no external scenario verdict or unique debug artifacts")
     p.add_argument("--timeout", type=int, default=3600)

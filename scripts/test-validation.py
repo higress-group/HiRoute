@@ -226,6 +226,44 @@ pilot.record('build:' + sys.argv[1])
         self.assertEqual(argv[argv.index('--source') + 1], 'local')
         self.assertEqual(argv[argv.index('--jobs') + 1], '3')
 
+    def test_real_validation_cli_forwards_wait_policy_before_cargo_boundary(self):
+        scripts = self.root / 'scripts'
+        scripts.mkdir()
+        (scripts / 'local-rust.py').write_text('import json,sys\nprint(json.dumps(sys.argv[1:]))\n')
+        self.write({'backend': {'transport': 'local', 'repo': str(self.root), 'jobs': 3}})
+        for enabled in (False, True):
+            arguments = ['run', '--ref', 'refs/heads/test', '--sha', 'a' * 40]
+            if enabled:
+                arguments.append('--wait-for-lock')
+            arguments += ['--', 'cargo', 'test', '--locked']
+            with self.subTest(wait=enabled):
+                result = subprocess.run([sys.executable, str(Path(m.__file__)),
+                                         '--config', str(self.config), 'backend', *arguments],
+                                        capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                forwarded = json.loads(result.stdout)
+                boundary = forwarded.index('--')
+                self.assertEqual(forwarded.count('--wait-for-lock'), int(enabled))
+                self.assertEqual('--wait-for-lock' in forwarded[:boundary], enabled)
+                self.assertEqual(forwarded[boundary + 1:], ['cargo', 'test', '--locked'])
+                self.assertEqual(forwarded[forwarded.index('--source') + 1], 'local')
+                self.assertEqual(forwarded[forwarded.index('--jobs') + 1], '3')
+                self.assertIn('--cargo-only', forwarded[:boundary])
+
+    def test_mac_desktop_forwards_wait_policy_without_backend_defaults(self):
+        arguments = ['run', '--ref', 'refs/heads/test', '--sha', 'a' * 40,
+                     '--wait-for-lock', '--', 'cargo', 'check']
+        payload = self.payload('desktop', arguments)
+        payload.update(name='desktop', target={'transport': 'ssh'})
+        with patch.object(host.sys, 'platform', 'darwin'), \
+                patch.object(host.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as call:
+            self.assertEqual(host.execute(payload), 0)
+        forwarded = call.call_args.args[0]
+        self.assertEqual(forwarded.count('--wait-for-lock'), 1)
+        self.assertLess(forwarded.index('--wait-for-lock'), forwarded.index('--'))
+        self.assertNotIn('--cargo-only', forwarded)
+        self.assertNotIn('--source', forwarded)
+
     def test_mac_desktop_keeps_original_runner_options_and_unassessed_exit(self):
         p = self.payload('desktop')
         p.update(name='desktop', target={'transport': 'ssh'})
