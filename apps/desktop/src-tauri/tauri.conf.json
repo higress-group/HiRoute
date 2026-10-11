@@ -1,15 +1,34 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "HiRoute",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "ai.hiroute.desktop",
-  "build": {"frontendDist": "../dist"},
+  "build": {
+    "frontendDist": "../dist"
+  },
   "app": {
-    "windows": [{"label": "main", "title": "HiRoute", "width": 1200, "height": 813, "minWidth": 755, "minHeight": 600, "visible": false, "decorations": true, "titleBarStyle": "Overlay", "hiddenTitle": true}],
+    "windows": [
+      {
+        "label": "main",
+        "title": "HiRoute",
+        "width": 1200,
+        "height": 813,
+        "minWidth": 755,
+        "minHeight": 600,
+        "visible": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
     "security": {
-      "capabilities": ["main"],
+      "capabilities": [
+        "main"
+      ],
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
     }
   },
-  "bundle": {"active": false}
+  "bundle": {
+    "active": false
+  }
 }

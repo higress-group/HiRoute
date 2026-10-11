@@ -2211,7 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-application-api"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "hiroute-domain",
  "serde",
@@ -2222,7 +2222,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "getrandom 0.3.4",
  "hiroute-application",
@@ -2284,7 +2284,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-daemon"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "agent-client-protocol",
  "arc-swap",
@@ -2321,7 +2321,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-desktop"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "command-fds",
  "fs2",
@@ -2358,7 +2358,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-diagnostics"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "fs2",
  "getrandom 0.3.4",
