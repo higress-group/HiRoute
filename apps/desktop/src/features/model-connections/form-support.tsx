@@ -33,6 +33,7 @@ export function connectionErrorMessage(code: string, zh: boolean): string {
     ? '请完整填写模型能力；不支持的能力也需要明确选择。'
     : 'Complete every model capability, including capabilities that are not supported.';
   if (code === 'MODEL_ID_DUPLICATE') return zh ? '同一接入中的模型 ID 不能重复。' : 'Model IDs must be unique within this connection.';
+  if (code === 'MODEL_ID_ASCII_REQUIRED') return zh ? '手工填写的模型 ID 只能使用 ASCII 字符（英文字母、数字和符号）。中文名称请填写在“模型名称”中；已有或目录提供的模型 ID 可原样保留。' : 'Manually entered model IDs must use ASCII letters, numbers and symbols. Put a localized name in Model name; existing or catalog-provided IDs can be kept unchanged.';
   if (code === 'MODEL_ID_INVALID') return zh ? '模型 ID 不能包含控制字符或首尾空白，且不能超过 512 字节。' : 'Model IDs cannot contain control characters or surrounding whitespace and must fit within 512 UTF-8 bytes.';
   if (code === 'MODEL_ID_REQUIRED') return zh ? '请填写服务使用的模型 ID。' : 'Enter the model ID used by the service.';
   if (code === 'MODEL_LIMITS_INVALID') return zh
@@ -111,12 +112,18 @@ export function reasoningValue(
   };
 }
 
-export function manualModelError(model: ModelDeclaration | undefined): string {
-  if (!model?.upstream_model_id || /^\p{White_Space}+$/u.test(model.upstream_model_id)) return 'MODEL_ID_REQUIRED';
-  const id = model.upstream_model_id;
-  // Match Rust's Unicode White_Space/Cc rules without normalizing opaque IDs.
-  // Lone JS surrogates cannot be represented as the backend's UTF-8 strings.
+export function manualModelIdError(id: string, preservedIds: ReadonlySet<string> = new Set()): string {
+  if (!id || /^\p{White_Space}+$/u.test(id)) return 'MODEL_ID_REQUIRED';
+  // Keep the backend's byte/control bounds, even for preserved opaque IDs.
   if (/^\p{White_Space}|\p{White_Space}$/u.test(id) || new TextEncoder().encode(id).length > 512 || /[\p{Cc}\uD800-\uDFFF]/u.test(id)) return 'MODEL_ID_INVALID';
+  // Temporary Desktop entry policy. This does not narrow the backend contract.
+  if (/[^\x00-\x7f]/.test(id) && !preservedIds.has(id)) return 'MODEL_ID_ASCII_REQUIRED';
+  return '';
+}
+
+export function manualModelError(model: ModelDeclaration | undefined, preservedIds: ReadonlySet<string> = new Set()): string {
+  const idError = manualModelIdError(model?.upstream_model_id ?? '', preservedIds);
+  if (idError || !model) return idError;
   const context = model.capabilities.context_tokens.value;
   const output = model.capabilities.max_output_tokens.value;
   if ((context !== null && (!Number.isSafeInteger(context) || context <= 0)) || (output !== null && (!Number.isSafeInteger(output) || output <= 0)) || (context !== null && output !== null && output > context)) return 'MODEL_LIMITS_INVALID';
@@ -161,8 +168,8 @@ export function ManualModelEditor({ model, language, disabled, catalogManaged = 
 
   return <fieldset className="connection-fields manual-capability-fields" disabled={disabled}>
     <p className="v3-select-intro">{zh
-      ? '填写模型 ID 即可接入基础文字。缺少能力资料时采用表单中的可编辑兜底值。'
-      : 'A model ID is enough for basic text. Missing capability facts use the editable defaults shown below.'}</p>
+      ? '手工填写的模型 ID 请使用 ASCII 字符；中文名称可填写在“模型名称”中。已有或目录提供的 ID 可原样保留。'
+      : 'Use ASCII characters for manually entered model IDs and Model name for localized names. Existing or catalog-provided IDs can be kept unchanged.'}</p>
     <label className="field"><span className="field-label">{zh ? '模型 ID' : 'Model ID'}</span><input className="input" data-autofocus value={model.upstream_model_id} placeholder="my-model" onChange={event => onChange({ ...model, upstream_model_id: event.target.value, display_name: model.display_name === model.upstream_model_id ? event.target.value : model.display_name })} /></label>
     {catalogManaged ? <p className="field-help">{zh
       ? '此模型采用内置目录的名称和能力。如需修改，请返回连接信息，选择“自定义此模板的连接配置”。'
