@@ -29,6 +29,7 @@ use crate::server::test_control::{
     write_dial_config,
 };
 
+#[path = "response_diagnostics_tests/capture.rs"]
 mod capture;
 use capture::{assert_capture, create_capture_session, wait_for_captured_request_eof};
 
