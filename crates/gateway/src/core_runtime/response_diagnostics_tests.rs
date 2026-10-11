@@ -359,12 +359,18 @@ fn run_case(case: &str, root: &Path) {
     write_dial_config(root, &[&listener]).unwrap();
     let peer = listener.try_clone().unwrap();
     let sent = wire.clone();
+    let capture_root = capture_enabled.then(|| root.join("capture"));
     let upstream = std::thread::spawn(move || {
         let (mut stream, _) = peer.accept().unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
         let request = read_request(&mut stream);
+        if let Some(root) = &capture_root {
+            // Receiving Content-Length bytes does not prove the request reader
+            // has verified EOF. This fixture promises a replayable capture.
+            wait_for_captured_request_eof(root);
+        }
         write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", sent.len()).unwrap();
         if after_body {
             stream.write_all(&sent[..prefix_len]).unwrap();
@@ -911,6 +917,39 @@ fn wait_replay_clean(root: &Path) {
         std::thread::sleep(Duration::from_millis(5));
     }
 }
+fn wait_for_captured_request_eof(root: &Path) {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let mut kinds = Vec::new();
+        for entry in fs::read_dir(root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|ext| ext != "capture") {
+                continue;
+            }
+            let bytes = fs::read(path).unwrap();
+            let mut remaining = bytes.as_slice();
+            // A concurrent writer may leave an incomplete trailing record.
+            while remaining.len() >= 9 {
+                let size = u64::from_le_bytes(remaining[1..9].try_into().unwrap());
+                if size > (remaining.len() - 9) as u64 {
+                    break;
+                }
+                kinds.push(remaining[0]);
+                if remaining[0] == 2 {
+                    assert_eq!(size, 0);
+                    return;
+                }
+                remaining = &remaining[9 + size as usize..];
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "request EOF was not captured: {kinds:?}"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
 fn create_capture_session(root: &Path) {
     fs::DirBuilder::new().mode(0o700).create(root).unwrap();
     let now = SystemTime::now()
