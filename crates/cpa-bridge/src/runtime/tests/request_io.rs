@@ -18,11 +18,14 @@ struct IoGate {
 
 impl IoGate {
     fn block(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
         state.0 += 1;
         self.changed.notify_all();
         while !state.2 {
-            state = self.changed.wait(state).unwrap();
+            state = self
+                .changed
+                .wait(state)
+                .unwrap_or_else(|error| error.into_inner());
         }
         state.1 += 1;
         self.changed.notify_all();
@@ -36,13 +39,21 @@ impl IoGate {
         let mut state = self.state.lock().unwrap();
         while state.0 == 0 {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            assert!(!remaining.is_zero(), "the controlled I/O was never reached");
+            if remaining.is_zero() {
+                // Preserve the original assertion without poisoning cleanup's gate.
+                drop(state);
+                panic!("the controlled I/O was never reached");
+            }
             state = self.changed.wait_timeout(state, remaining).unwrap().0;
         }
     }
 
     fn release(&self) {
-        self.state.lock().unwrap().2 = true;
+        // Cleanup must release waiters even when an assertion poisoned this mutex.
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .2 = true;
         self.changed.notify_all();
     }
 }
@@ -686,18 +697,30 @@ fn request_deadline_rejects_late_profile_completion_without_auth_commit() {
     write_claude_source(&fixture.source_path, "deadline-access");
     let auth_before = std::fs::read(&fixture.auth_path).unwrap();
     let epochs = fixture.runtime.epochs.current();
-    let context = CpaRequestContext::new(Instant::now() + Duration::from_millis(150));
+    let generation = fixture.runtime.admission.state.lock().auth_generation;
+    let (started, context_ready) = mpsc::channel();
     let (worker, done) = spawn_lease_with_context(&fixture, move || {
-        // Deterministically model a worker queued longer than the old 150 ms budget.
+        // Queue/setup is not the late-I/O scenario. Start this fixture's request
+        // budget in the worker after a delay that reliably breaks the old test.
         thread::sleep(Duration::from_millis(200));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let context = CpaRequestContext::new(deadline);
+        started.send((context.clone(), deadline)).unwrap();
         context
     });
+    let (context, deadline) = context_ready.recv_timeout(Duration::from_secs(3)).unwrap();
     gate.wait_entered();
     assert!(
-        matches!(
-            done.recv_timeout(Duration::from_millis(200)),
-            Err(mpsc::RecvTimeoutError::Timeout)
-        ),
+        context.ensure_active().is_ok(),
+        "the request expired before entering controlled profile I/O"
+    );
+    thread::sleep(deadline.saturating_duration_since(Instant::now()));
+    assert!(matches!(
+        context.ensure_active(),
+        Err(CpaLifecycleError::OperationCancelled)
+    ));
+    assert!(
+        matches!(done.try_recv(), Err(mpsc::TryRecvError::Empty)),
         "the synchronous owner detached unfinished profile I/O"
     );
     assert_eq!(
@@ -710,6 +733,10 @@ fn request_deadline_rejects_late_profile_completion_without_auth_commit() {
     worker.join().unwrap();
     assert_eq!(std::fs::read(&fixture.auth_path).unwrap(), auth_before);
     assert_eq!(fixture.runtime.epochs.current(), epochs);
+    assert_eq!(
+        fixture.runtime.admission.state.lock().auth_generation,
+        generation
+    );
     assert!(
         !fixture
             .runtime
@@ -735,10 +762,29 @@ fn controlled_io_cleanup_preserves_a_timeout_or_poisoning_panic() {
             }
             gate.wait_entered_until(Instant::now());
         }));
-        assert!(outcome.is_err(), "the original fixture failure was lost");
+        let failure = outcome.expect_err("the original fixture failure was lost");
+        let message = failure.downcast_ref::<&str>().copied();
+        assert_eq!(
+            message,
+            Some(if poison {
+                "controlled assertion failure while holding the I/O gate"
+            } else {
+                "the controlled I/O was never reached"
+            })
+        );
         assert!(
-            gate.state.lock().unwrap_or_else(|error| error.into_inner()).2,
+            gate.state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .2,
             "unwinding did not release the controlled I/O"
         );
+        let (send, receive) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            gate.block();
+            send.send(()).unwrap();
+        });
+        receive.recv_timeout(Duration::from_secs(3)).unwrap();
+        worker.join().unwrap();
     }
 }
