@@ -4,6 +4,21 @@ use thiserror::Error;
 
 use crate::CanonicalDigest;
 
+/// Provider model values are opaque UTF-8, not HiRoute's internal reference identifiers.
+/// Keep the original bytes for saved intent, authorization and protocol serialization.
+pub fn valid_upstream_model_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 512
+        && value.trim() == value
+        && !value.chars().any(char::is_control)
+}
+
+pub(super) fn validate_upstream_model_id(value: &str) -> Result<(), ComputeContractError> {
+    valid_upstream_model_id(value)
+        .then_some(())
+        .ok_or(ComputeContractError::InvalidIdentifier)
+}
+
 pub(super) fn validate_identifier(value: &str) -> Result<(), ComputeContractError> {
     let valid = !value.is_empty()
         && value.len() <= 256

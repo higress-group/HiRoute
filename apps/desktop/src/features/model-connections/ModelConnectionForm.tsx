@@ -42,6 +42,7 @@ import {
   connectionErrorMessage,
   ManualModelEditor,
   manualModelError,
+  manualModelIdError,
   registeredConnectionLabel,
   safeConnectionErrorCode,
   validEndpoint,
@@ -78,6 +79,10 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const password = useRef<HTMLInputElement>(null);
   const errorFeedback = useRef<HTMLDivElement>(null);
   const draftRef = useRef(draft);
+  // Only saved, catalog-prefilled or backend-observed IDs bypass the temporary
+  // manual ASCII policy. Editing a draft never adds its input to this set.
+  const preservedModelIds = useRef(new Set(props.initialDraft.existing_source_id
+    ? props.initialDraft.models.map(model => model.upstream_model_id) : []));
   const protectedInputRef = useRef<ComputeCandidateRef | null>(null);
   const activeCheckRef = useRef<string | null>(null);
   const applyDispatchedRef = useRef(false);
@@ -146,6 +151,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const protocol = endpoint?.protocol ?? (provider.protocol_candidates.includes(draftRef.current.protocol)
       ? draftRef.current.protocol : provider.protocol_candidates[0]);
     const candidates = catalog ? metadataProviderCandidates(provider, catalog, registeredOptions) : [];
+    for (const candidate of candidates) preservedModelIds.current.add(candidate.upstream_model_id);
     const records = new Map(catalog?.model_records.filter(model =>
       model.provider_record_key === provider.provider_record_key
       && model.usable_for.includes('custom-api-model-prefill')
@@ -189,6 +195,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const endpoint = [...(option.endpoints ?? [])].sort((a, b) => a.stable_preference - b.stable_preference)[0];
     if (!endpoint) return;
     const candidates = registeredModelCandidates(option, connectionOptions?.metadata_catalog);
+    for (const candidate of candidates) preservedModelIds.current.add(candidate.upstream_model_id);
     const otherProtocols = new Set<UpstreamProtocol>();
     const additional_endpoints = [...(option.endpoints ?? [])]
       .sort((a, b) => a.stable_preference - b.stable_preference)
@@ -374,6 +381,13 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       ? [...base.models, blankModel(inferenceModelId)] : base.models;
     const current = { ...base, inference_model_id: inferenceModelId,
       models: selectedModels.map(withCapabilityFallback) };
+    const allowedIds = new Set([...preservedModelIds.current,
+      ...(!custom ? registeredCandidates.map(model => model.upstream_model_id) : [])]);
+    // Check every route to the backend, including returning to connection check
+    // from the manual editor, before registering credentials or sending inference.
+    const idError = current.models.filter(model => model.upstream_model_id !== '')
+      .map(model => manualModelIdError(model.upstream_model_id, allowedIds)).find(Boolean);
+    if (idError) { setError(idError); return; }
     const passwordElement = password.current;
     const enteredSecret = passwordElement?.value ?? '';
     const connectionReady = custom
@@ -388,7 +402,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       return;
     }
     if (saveAfterCheck) {
-      const validation = (new Set(current.models.map(model => model.upstream_model_id.trim())).size !== current.models.length ? 'MODEL_ID_DUPLICATE' : '') || current.models.map(manualModelError).find(Boolean) || (!current.models.length ? 'MODEL_ID_REQUIRED' : '');
+      const validation = (new Set(current.models.map(model => model.upstream_model_id)).size !== current.models.length ? 'MODEL_ID_DUPLICATE' : '') || current.models.map(model => manualModelError(model, allowedIds)).find(Boolean) || (!current.models.length ? 'MODEL_ID_REQUIRED' : '');
       if (validation) { setError(validation); return; }
     }
     const checkId = clientOperationId('check');
@@ -420,7 +434,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           })
         : await backend.checkRegisteredModelConnection({
             inference_model_id: inferenceModelId,
-            models: checkingDraft.models.filter(model => model.upstream_model_id.trim()).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
+            models: checkingDraft.models.filter(model => model.upstream_model_id).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
             connection_option_id: registeredOption!.connection_option_id,
             expected_catalog: connectionOptions!.catalog,
             candidate_ref: checkingDraft.candidate_ref,
@@ -450,6 +464,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         setPhase('editing');
         return;
       }
+      for (const model of checked.candidate.models) preservedModelIds.current.add(model.upstream_model_id);
       const selectable = checked.candidate.models.filter(model => model.selectable);
       if (saveAfterCheck) {
         await saveChecked(checked, selectable.filter(model => checkingDraft.models.some(declared => declared.upstream_model_id === model.upstream_model_id)).map(model => model.model_ref));
@@ -684,7 +699,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         </form>
 
         {screen === 'manual' && <form id="mc-manual-form" onSubmit={event => { event.preventDefault(); void runCheck(true); }}>
-          {draft.models.map(model => <div key={model.client_id}><ManualModelEditor model={model} language={language} disabled={!props.mutable} catalogManaged={!custom && Object.hasOwn(registeredOption?.known_models ?? {}, model.upstream_model_id.trim())} onChange={updateManualModel} /><button className="btn btn-quiet" type="button" onClick={() => invalidate(current => ({ ...current, models: current.models.filter(value => value.client_id !== model.client_id) }), false, 'manual')}>{zh ? '移除模型' : 'Remove model'}</button></div>)}
+          {draft.models.map(model => <div key={model.client_id}><ManualModelEditor model={model} language={language} disabled={!props.mutable} catalogManaged={!custom && Object.hasOwn(registeredOption?.known_models ?? {}, model.upstream_model_id)} onChange={updateManualModel} /><button className="btn btn-quiet" type="button" onClick={() => invalidate(current => ({ ...current, models: current.models.filter(value => value.client_id !== model.client_id) }), false, 'manual')}>{zh ? '移除模型' : 'Remove model'}</button></div>)}
           <button className="btn" type="button" onClick={() => invalidate(current => ({ ...current, models: [...current.models, blankModel()] }), false, 'manual')}>{zh ? '添加模型 ID' : 'Add model ID'}</button>
         </form>}
 

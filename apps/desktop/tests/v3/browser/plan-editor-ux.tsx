@@ -6,10 +6,16 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import type { Draft, Editor } from '../../../src/plan-editor';
 import { RoutingPage } from '../../../src/product/RoutingPage';
 import { PresentationRoot } from '../../../src/ui';
+import { manualModelError } from '../../../src/features/model-connections/form-support';
+import { blankModel } from '../../../src/features/model-connections/state';
 import { dailyPlan, fixtureTrace, mockProductInvoke, readyDesktop, resetFixtureTrace } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
 const workerChecks = new URLSearchParams(location.search).get('checks') === 'workers';
+const availabilityChecks = new URLSearchParams(location.search).get('checks') === 'availability';
+let availabilityFailure = false;
+let availabilityEmpty = false;
+let unavailableRequested = false;
 const plan = structuredClone(dailyPlan);
 if (!workerChecks) { plan.desired.delegation_enabled = false; plan.desired.work = undefined; }
 const submitted: { action: string; editor: Editor }[] = [];
@@ -22,6 +28,19 @@ mockIPC((command, payload) => {
   if (command === 'desktop_snapshot') {
     fixtureTrace.commands.push(command);
     return structuredClone(savedSnapshot);
+  }
+  if (command === 'plan_editor_options' && availabilityChecks) {
+    unavailableRequested = (payload as { input?: { include_unavailable?: boolean } }).input?.include_unavailable === true;
+    if (availabilityFailure) throw { source: 'backend', envelope: { error: { code: 'DAEMON_UNAVAILABLE', private: 'provider-secret-debug' } } };
+    const current = mockProductInvoke(command, payload as Record<string, unknown>, 'ready') as Record<string, unknown>;
+    return { ...current,
+      ...(availabilityEmpty ? { candidates: [] } : {}),
+      unavailable_candidates: availabilityEmpty ? [] : [
+        { binding_id: 'binding/invalid-retained', display_name: '错误模型', reason: 'invalid_model_id' },
+        { binding_id: 'binding/disabled-retained', display_name: '停用模型', reason: 'source_not_ready' },
+      ],
+      ...(availabilityEmpty ? {} : { unavailable_candidate_count: 257 }),
+    };
   }
   if (command === 'preview_plan_editor') {
     fixtureTrace.commands.push(command);
@@ -175,6 +194,63 @@ const checks: [string, () => Promise<void>][] = [
   }],
 ];
 
+const availabilityCases: [string, () => Promise<void>][] = [
+  ['routing.options.id-safety: ASCII manual entry preserves exact existing and observed Unicode IDs', async () => {
+    for (const id of ['gpt-6.1-sol', 'Vendor/Model@2026?revision#1', 'Model A', 'x'.repeat(512)]) {
+      assert(manualModelError(blankModel(id, '中文名称')) === '', `ASCII ID was rejected: ${JSON.stringify(id)}`);
+    }
+    for (const id of ['内网模型', 'e\u0301', '\ufeff模型\ufeff', '\ufeff', '\u202emodel', '模型🧠', '🧠'.repeat(128), '界'.repeat(170) + 'ab']) {
+      assert(manualModelError(blankModel(id, '中文名称')) === 'MODEL_ID_ASCII_REQUIRED', `New non-ASCII input was accepted: ${JSON.stringify(id)}`);
+      const preserved = new Set([id]);
+      assert(manualModelError(blankModel(id, '修改名称'), preserved) === '', `Existing ID was rejected: ${JSON.stringify(id)}`);
+      assert(manualModelError(blankModel(`${id}改`, '名称'), preserved) !== '', 'A modified non-ASCII ID inherited the exception');
+    }
+    for (const id of [' bad', 'bad\u00a0', 'bad\u3000', 'bad\tmodel', 'bad\0model', 'bad\u0085model', '\u0085bad', 'bad\u0085', 'bad\ud800model', '\udfffbad', 'x'.repeat(513), '界'.repeat(171), '🧠'.repeat(129)]) {
+      assert(manualModelError(blankModel(id, '中文名称'), new Set([id])) === 'MODEL_ID_INVALID', `Preservation bypassed safety bounds: ${JSON.stringify(id)}`);
+    }
+  }],
+  ['routing.options.exclusions: rejected models remain visible with disabled selection and safe reasons', async () => {
+    await until(() => Boolean(document.querySelector('.route-unavailable-models')), 'unavailable model explanations');
+    assert(unavailableRequested, 'Route editor did not opt in to explanations');
+    element<HTMLDetailsElement>('.route-unavailable-models').querySelector('summary')!.click();
+    assert(element('.route-unavailable-models').textContent?.includes('共 257 个不可用模型'), 'Truncated explanations concealed their actual count');
+    element<HTMLButtonElement>('.add-candidate').click();
+    await until(() => Boolean(document.querySelector('.catalog-picker')), 'model picker');
+    const rows = [...document.querySelectorAll<HTMLElement>('.catalog-picker .list-row')];
+    const rejected = rows.filter(row => row.textContent?.includes('错误模型') || row.textContent?.includes('停用模型'));
+    assert(rejected.length === 2, 'Unavailable candidate identities were silently omitted');
+    const selected = document.querySelectorAll('.route-candidate').length;
+    for (const row of rejected) {
+      const add = row.querySelector<HTMLButtonElement>('button')!;
+      assert(add.disabled, 'Unavailable candidate could be selected');
+      assert(row.textContent?.includes('模型页面'), 'Unavailable candidate lost its actionable reason');
+      add.click();
+    }
+    await tick();
+    assert(document.querySelectorAll('.route-candidate').length === selected, 'Rejected selection changed the route');
+    element<HTMLButtonElement>('button[aria-label="关闭候选模型"]').click();
+  }],
+  ['routing.options.service-error: visible retry preserves input and recovers after real error mapping', async () => {
+    availabilityFailure = true;
+    setInput('.plan-identity-fields input', '保留用户输入');
+    await until(() => Boolean(document.querySelector('[data-error-code="DAEMON_UNAVAILABLE"]')), 'visible service failure');
+    const alert = element('[data-error-code="DAEMON_UNAVAILABLE"]');
+    assert(alert.textContent?.includes('本机服务'), 'Service error did not identify the unavailable service');
+    assert(!alert.textContent?.includes('provider-secret-debug'), 'Backend error payload leaked into copy');
+    assert(element<HTMLInputElement>('.plan-identity-fields input').value === '保留用户输入', 'Service error discarded user input');
+    availabilityFailure = false;
+    alert.querySelector<HTMLButtonElement>('button')!.click();
+    await until(() => !document.querySelector('[data-error-code="DAEMON_UNAVAILABLE"]'), 'options retry recovery');
+  }],
+  ['routing.options.empty: no sources is readable and distinct from service failure', async () => {
+    availabilityEmpty = true;
+    setInput('.plan-identity-fields input', '无候选模型');
+    await until(() => [...document.querySelectorAll('[role="status"]')].some(row => row.textContent?.includes('还没有可用于路由的模型')), 'empty source guidance');
+    assert(!document.querySelector('.route-local-error'), 'Empty options were shown as a service error');
+    assert(!document.querySelector('.route-unavailable-models'), 'Empty source list invented exclusions');
+  }],
+];
+
 function Harness() {
   const [snapshot, setSnapshot] = useState(() => structuredClone(savedSnapshot));
   const [running, setRunning] = useState(false);
@@ -190,7 +266,7 @@ function Harness() {
       return;
     }
     const next = [];
-    for (const [name, check] of checks) {
+    for (const [name, check] of availabilityChecks ? availabilityCases : checks) {
       try { await check(); next.push({ name, state: 'green' }); }
       catch (error) { next.push({ name, state: 'red', error: error instanceof Error ? error.message : String(error) }); }
     }

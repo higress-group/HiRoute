@@ -60,6 +60,11 @@ fn real_process_native_model_save_publishes_and_reaches_gateway() {
     run_script("model_connections_product.py");
 }
 
+#[test]
+fn real_process_route_options_preserve_opaque_ids_and_isolate_unavailable_models() {
+    run_script("route_options_product.py");
+}
+
 /// A blank Linux HOME installs the candidate package, starts the installed daemon, and drives
 /// the released CLI through compute, routing, Agent, observation, and Worker entry points.
 #[test]

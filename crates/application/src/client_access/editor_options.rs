@@ -124,7 +124,20 @@ pub(super) fn dispatch(
                     .collect(),
             })
             .collect();
+        let unavailable_candidate_count = (payload.include_unavailable
+            && state.unavailable_candidates.len() > MAX_RATING_QUERY_ITEMS)
+            .then_some(state.unavailable_candidates.len());
         Ok(PlanEditorOptionsV1 {
+            unavailable_candidate_count,
+            unavailable_candidates: if payload.include_unavailable {
+                state
+                    .unavailable_candidates
+                    .into_iter()
+                    .take(MAX_RATING_QUERY_ITEMS)
+                    .collect()
+            } else {
+                Vec::new()
+            },
             claude_capabilities,
             context_window,
             suggested_alias,
@@ -419,5 +432,18 @@ mod tests {
             })
         );
         assert_eq!(port.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn missing_routing_service_still_reports_daemon_unavailable() {
+        let response = crate::ApplicationService::default().dispatch(LocalControlRequestV2 {
+            schema_version: LOCAL_CONTROL_SCHEMA_V2,
+            request_id: "options-missing-service".into(),
+            principal: PrincipalV1::interactive_user(),
+            operation_id: "GetPlanEditorOptions".into(),
+            protected_grant: None,
+            payload: serde_json::json!({"include_unavailable": true}),
+        });
+        assert_eq!(response.error.unwrap().code, ErrorCode::DaemonUnavailable);
     }
 }

@@ -155,7 +155,9 @@ def declared(value):
 
 def save_native_source(product, upstream, token=None, unknown=False,
                        protocol='responses', upstream_model_id=MODEL, variant='',
-                       context_tokens=32768, cli_input=False):
+                       context_tokens=32768, cli_input=False,
+                       source_display_name='Product Native API',
+                       model_display_name='Manual Native Model'):
     status = control(product, 'GetClientServiceStatus', {})['data']
     suffix = ('-unknown' if unknown else '') + ('-' + variant if variant else '')
     candidate_ref = 'candidate/native/product' + suffix
@@ -178,7 +180,7 @@ def save_native_source(product, upstream, token=None, unknown=False,
         'inference_model_id': None,
         'candidate_ref': candidate_ref if token is not None else None,
         'lineage_ref': 'lineage/native/product' + suffix,
-        'display_name': 'Product Native API',
+        'display_name': source_display_name,
         'existing_source_id': None,
         'expected_source_revision': None,
         'edit_revision': 1,
@@ -195,7 +197,7 @@ def save_native_source(product, upstream, token=None, unknown=False,
         'configuration_revision': 1,
         'models': [{
             'upstream_model_id': upstream_model_id,
-            'display_name': 'Manual Native Model',
+            'display_name': model_display_name,
             'catalog_configuration_id': None,
             'membership': 'user_declared',
             'capabilities': {
@@ -412,7 +414,8 @@ def assert_saved_recheck_fences_before_network(product, upstream, saved):
         assert len(upstream.requests) == before, upstream.requests
 
 
-def publish_plan_and_agent(product, binding_id):
+def publish_plan_and_agent(product, binding_id, native_model_mode='preserve_available'):
+    assert native_model_mode in ('preserve_available', 'hiroute_only')
     product.editor = {
         'schema': 'hiroute.plan-editor/v2',
         'display_name': 'Native API Product Plan',
@@ -449,9 +452,9 @@ def publish_plan_and_agent(product, binding_id):
     product.model_alias = preview['plan_head']['model_alias']
     configure_model_settings_v2(
         product, [product.plan_id], 'native-product-agent',
-        agent_id='agent_codex_default', native_model_mode='preserve_available')
+        agent_id='agent_codex_default', native_model_mode=native_model_mode)
     catalog, _ = product.catalog()
-    expected_models = [MODEL, product.model_alias]
+    expected_models = ([MODEL] if native_model_mode == 'preserve_available' else []) + [product.model_alias]
     assert [model['id'] for model in catalog['data']] == expected_models, catalog
 
 

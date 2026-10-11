@@ -1,3 +1,4 @@
+import { candidateUnavailableMessage, type UnavailableCandidate } from './plan-candidate-availability';
 import type { OpenDecisionConnection } from './features/decision-services/presentation';
 import { BranchRoutingEditor, FollowUpPreference } from './features/decision-services/BranchRoutingEditor';
 import { branchRouting, branchSelections, classifierIssue, judgmentIssue, defaultJudgment, emptyService, routingIssue, type Judgment, type BranchRouting, type Classifier, type DecisionService } from './features/decision-services/types';
@@ -37,7 +38,7 @@ type CodexCapabilityIssue = { kind: 'plan_compilation' | 'invalid_compiled_plan'
 type CodexCapabilities = { state: 'available'; context_window: number; input_modalities: ('text' | 'image')[]; reasoning: 'route_configuration'; limitations: CodexCapabilityLimit[]; fixed_limits: ('parallel_tool_calls_disabled')[] }
   | { state: 'unavailable'; issues: CodexCapabilityIssue[] };
 export type ClaudeCapabilities = { state: 'available'; context_window: number; plan_window: number } | { state: 'unavailable'; reason: string };
-export type Options = { claude_capabilities?: ClaudeCapabilities | null; context_window: ContextWindowBounds | null; suggested_alias: string | null; candidates: Candidate[]; free_suggestions: { candidates: { selection: Selection }[]; unavailable: Record<string, string> } | null; codex_capabilities: CodexCapabilities | null };
+export type Options = { unavailable_candidate_count?: number; unavailable_candidates?: UnavailableCandidate[]; claude_capabilities?: ClaudeCapabilities | null; context_window: ContextWindowBounds | null; suggested_alias: string | null; candidates: Candidate[]; free_suggestions: { candidates: { selection: Selection }[]; unavailable: Record<string, string> } | null; codex_capabilities: CodexCapabilities | null };
 type ValidationIssue = { selector?: string; message: string; group?: string; bindingId?: string; field?: 'alias' | 'context_window' | 'request_timeout' };
 export type PlanEditorHandle = {
   saveDraft(): Promise<boolean>;
@@ -125,9 +126,12 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
   const memory = useRef(editingMemory ?? {}).current;
   const [moreSettingsOpen, setMoreSettingsOpen] = useState(editor.delegation_enabled);
   const [optionsError, setOptionsError] = useState('');
+  const [optionsErrorCode, setOptionsErrorCode] = useState('');
   const [optionsRetry, setOptionsRetry] = useState(0);
   const [effort, setEffort] = useState<{ name: string; native: Native; value: Selection['reasoning']; apply: (value: Selection['reasoning']) => void } | null>(null);
   const [picker, setPicker] = useState<{ title: string; values: Selection[]; replace: (values: Selection[]) => void; free: boolean; preferred?: 'low' | 'high' } | null>(null);
+  const unavailable = options?.unavailable_candidates ?? [];
+  const candidateIssue = (id: string) => unavailable.find(item => item.binding_id === id);
   const [sources, setSources] = useState<Record<string, string>>({});
   const [sourceOptions, setSourceOptions] = useState<Record<string, string | null>>({});
   const dirty = JSON.stringify(editor) !== baseline;
@@ -166,20 +170,13 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
     let current = true;
     const timer = setTimeout(async () => {
       try {
-        const value = await invoke<Options>('plan_editor_options', { input: { display_name: editor.display_name, requirements: editor.requirements, editor } });
-        if (current) { setOptions(value); setOptionsError(''); }
-      } catch {
-        try {
-          const management = await invoke<{ sources: { models: unknown[] }[] }>('compute_management_snapshot');
-          if (!current) return;
-          if (!management.sources.some(source => source.models.length > 0)) {
-            setOptions({ context_window: null, suggested_alias: null, candidates: [], free_suggestions: null, codex_capabilities: null });
-            setOptionsError('');
-          } else {
-            setOptionsError(text('暂时无法读取可用于路由的模型，当前编辑已保留。', 'Unable to read routable models. Your edits are preserved.'));
-          }
-        } catch {
-          if (current) setOptionsError(text('暂时无法读取可用于路由的模型，当前编辑已保留。', 'Unable to read routable models. Your edits are preserved.'));
+        const value = await invoke<Options>('plan_editor_options', { input: { display_name: editor.display_name, requirements: editor.requirements, editor, include_unavailable: true } });
+        if (current) { setOptions(value); setOptionsError(''); setOptionsErrorCode(''); }
+      } catch (cause) {
+        if (current) {
+          setOptions(null);
+          setOptionsError(planErrorMessage(cause, language));
+          setOptionsErrorCode(planErrorCode(cause));
         }
       }
     }, 200);
@@ -226,7 +223,7 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
       if (!group.values.length) return { group: group.id, message: text('请为每个启用的模型组合添加模型。', 'Add a model to each enabled group.') };
       for (const selection of group.values) {
         const candidate = options.candidates.find(item => item.binding_id === selection.binding_id);
-        if (!candidate || !candidate.routable) return { group: group.id, bindingId: selection.binding_id, message: text('所选模型当前不可用于路由，请更换模型。', 'A selected model is not currently routable. Choose another model.') };
+        if (!candidate || !candidate.routable) return { group: group.id, bindingId: selection.binding_id, message: candidateIssue(selection.binding_id) ? candidateUnavailableMessage(candidateIssue(selection.binding_id)!.reason, language) : text('所选模型当前不可用于路由，请更换模型。', 'A selected model is not currently routable. Choose another model.') };
         if (group.free && candidate.billing_class !== 'free') return { group: group.id, bindingId: selection.binding_id, message: text('免费组合只能使用明确免费的模型。', 'The free group accepts only verified free models.') };
         if (editor.delegation_enabled && editor.work && !candidate.ingress_protocols.includes(editor.work.protocol)) return { group: group.id, bindingId: selection.binding_id, message: text(`“${candidate.display_name}”不支持所选执行 Agent 的协议，请更换模型或执行 Agent。`, `“${candidate.display_name}” does not support the selected execution agent protocol. Choose another model or agent.`) };
         const native = candidate.reasoning;
@@ -380,12 +377,13 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
     return <section className={`route-lane${primary ? ' primary' : ''}${validationIssue?.group === groupId ? ' invalid' : ''}`} data-route-group={groupId}><div className="lane-head"><div><strong>{title}</strong><span>{subtitle}</span></div><span className="badge no-dot">{values.length}</span></div><div className="candidate-list">{values.map((s, index) => {
       const c = candidates.find(c => c.binding_id === s.binding_id);
       const put = (reasoning: Selection['reasoning']) => replace(values.map((v, i) => i === index ? { ...v, reasoning } : v));
-      const displayName = c?.display_name ?? (options ? text('不可用模型', 'Unavailable model') : text('正在读取模型…', 'Loading model…'));
+      const issue = candidateIssue(s.binding_id);
+      const displayName = c?.display_name ?? issue?.display_name ?? (options ? text('不可用模型', 'Unavailable model') : text('正在读取模型…', 'Loading model…'));
       return <div className={`candidate-row route-candidate${validationIssue?.bindingId === s.binding_id ? ' invalid' : ''}`} data-binding-id={s.binding_id} key={s.binding_id}>
         <span className="drag-handle" aria-hidden="true"><UiIcon name="grip" /></span>
         <span className="candidate-index">{index + 1}</span>
         <ProviderIcon optionId={sourceOptions[s.binding_id]} language={language} />
-        <div className="candidate-main"><strong>{displayName}</strong><span>{billing(c?.billing_class)} · {sources[s.binding_id] ?? text('来源暂不可得', 'Source unavailable')}{c && !c.routable ? text(' · 当前不可用', ' · Unavailable') : ''}</span></div>
+        <div className="candidate-main"><strong>{displayName}</strong><span>{billing(c?.billing_class)} · {sources[s.binding_id] ?? text('来源暂不可得', 'Source unavailable')}{c && !c.routable ? text(' · 当前不可用', ' · Unavailable') : ''}</span>{issue && <span className="oc-inline-error">{candidateUnavailableMessage(issue.reason, language)}</span>}</div>
         {reasoningControl(s, c, put)}
         <div className="candidate-controls"><button type="button" className="icon-btn" disabled={index === 0} aria-label={text('上移', 'Move up')} onClick={() => move(index, -1)}><UiIcon name="arrowUp" /></button><button type="button" className="icon-btn" disabled={index === values.length - 1} aria-label={text('下移', 'Move down')} onClick={() => move(index, 1)}><UiIcon name="arrowDown" /></button><button type="button" className="icon-btn" aria-label={text('删除', 'Remove')} onClick={() => replace(values.filter((_, i) => i !== index))}><UiIcon name="trash" /></button></div>
       </div>;
@@ -402,7 +400,7 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
     </div>}
     <fieldset disabled={busy}><div hidden={!!plan && view !== 'configuration'}><section className="editor-section"><div className="editor-section-heading"><div><h3>{text('这份智能路由用来做什么', 'What this routing is for')}</h3><p>{text('Agent 根据用途选择适合任务的路由。', 'Your Agent uses this description to choose a route.')}</p></div></div><div className="plan-identity-fields"><label><span className="sr-only">{text('名称', 'Name')}</span><input className="input" autoFocus={creating} required placeholder={text('名称，例如：代码实现', 'Name, e.g. Code implementation')} aria-invalid={invalidFields && !editor.display_name.trim()} aria-describedby={invalidFields && !editor.display_name.trim() ? "route-name-error" : undefined} value={editor.display_name} maxLength={128} onChange={e => update({ display_name: e.target.value })} />{invalidFields && !editor.display_name.trim() && <span id="route-name-error" className="oc-inline-error">{text('请填写路由名称', 'Enter a route name')}</span>}</label><label><span className="sr-only">{text('使用场景', 'Purpose')}</span><input className="input" required placeholder={text('使用场景：适合做什么，期望交付什么', 'Purpose: tasks and expected results')} maxLength={512} aria-invalid={invalidFields && !editor.purpose.trim()} aria-describedby={invalidFields && !editor.purpose.trim() ? "route-purpose-error" : undefined} value={editor.purpose} onChange={e => update({ purpose: e.target.value })} />{invalidFields && !editor.purpose.trim() && <span id="route-purpose-error" className="oc-inline-error">{text('请填写使用场景', 'Enter a purpose')}</span>}</label>
     </div><div className="field plan-alias"><label><span className="field-label">{text('接入模型名', 'Connection model name')}</span><input className="input plan-alias-field" readOnly={!!plan} value={editor.custom_alias ?? options?.suggested_alias ?? ''} placeholder="hiroute-…" maxLength={64} aria-invalid={validationIssue?.field === 'alias'} onChange={e => update({ custom_alias: e.target.value })} /></label><span className="field-help">{text('在 Agent 中使用此名称调用这条智能路由。创建后保持稳定。', 'Use this name in an Agent to call the smart route. It remains stable after creation.')}</span>{validationIssue?.field === 'alias' && <span className="oc-inline-error">{validationIssue.message}</span>}{!plan && editor.custom_alias !== undefined && <button className="btn" type="button" onClick={() => update({ custom_alias: undefined })}>{text('恢复自动名称', 'Use automatic name')}</button>}</div></section>
-    <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('怎样使用模型', 'How to use models')}</h3></div></div>{optionsError && <div className="callout warn route-local-error" role="alert"><UiIcon name="warning" /><span>{optionsError}</span><button className="btn" type="button" onClick={() => setOptionsRetry(value => value + 1)}>{text('重试', 'Retry')}</button></div>}<div className="mode-switcher plan-mode-switcher">{(['fixed_model', 'smart_saving', 'custom_branches', 'free_first'] as Mode[]).map((m, i) => <button className={`mode-card${editor.mode === m ? ' active' : ''}`} type="button" aria-pressed={editor.mode === m} key={m} onClick={() => changeMode(m)}><strong>{text(['固定模型', '智能省钱', '自定义分支', '免费优先'][i], ['Fixed model', 'Smart saving', 'Custom branches', 'Free first'][i])}</strong><span>{text(['按固定顺序依次尝试候选模型', '简单任务用省钱组合，复杂任务用主力组合', '按自己的任务条件选择分支和模型', '先用免费模型，可选择主力兜底'][i], ['Try candidate models in a fixed order', 'Economy for simple tasks; primary for complex work', 'Choose branches and models by your task conditions', 'Use free models first, with optional primary fallback'][i])}</span></button>)}</div></section>
+    <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('怎样使用模型', 'How to use models')}</h3></div></div>{optionsError && <div className="callout warn route-local-error" role="alert" data-error-code={optionsErrorCode}><UiIcon name="warning" /><span>{optionsError}</span><button className="btn" type="button" onClick={() => setOptionsRetry(value => value + 1)}>{text('重试', 'Retry')}</button></div>}{!optionsError && options && !options.candidates.some(candidate => candidate.routable) && <p className="field-help" role="status">{unavailable.length ? text('已接入的模型当前不可用于路由，请查看下方原因并在模型页面处理。', 'Connected models are currently unavailable for routing. Review the reasons below and update them on the Models page.') : text('还没有可用于路由的模型，请先在模型页面接入模型。', 'No routable models yet. Connect a model on the Models page.')}</p>}{!optionsError && unavailable.length > 0 && <Disclosure className="route-unavailable-models" language={language} label={text(`不可用模型（${unavailable.length}）`, `Unavailable models (${unavailable.length})`)}>{options?.unavailable_candidate_count && <p>{text(`共 ${options.unavailable_candidate_count} 个不可用模型，此处显示前 ${unavailable.length} 个。可在模型页面查看并处理全部接入。`, `${options.unavailable_candidate_count} models are unavailable; showing the first ${unavailable.length}. Review all connections on the Models page.`)}</p>}<ul>{unavailable.map(item => <li key={item.binding_id}><strong>{item.display_name}</strong> — {candidateUnavailableMessage(item.reason, language)}</li>)}</ul></Disclosure>}<div className="mode-switcher plan-mode-switcher">{(['fixed_model', 'smart_saving', 'custom_branches', 'free_first'] as Mode[]).map((m, i) => <button className={`mode-card${editor.mode === m ? ' active' : ''}`} type="button" aria-pressed={editor.mode === m} key={m} onClick={() => changeMode(m)}><strong>{text(['固定模型', '智能省钱', '自定义分支', '免费优先'][i], ['Fixed model', 'Smart saving', 'Custom branches', 'Free first'][i])}</strong><span>{text(['按固定顺序依次尝试候选模型', '简单任务用省钱组合，复杂任务用主力组合', '按自己的任务条件选择分支和模型', '先用免费模型，可选择主力兜底'][i], ['Try candidate models in a fixed order', 'Economy for simple tasks; primary for complex work', 'Choose branches and models by your task conditions', 'Use free models first, with optional primary fallback'][i])}</span></button>)}</div></section>
     {editor.mode === 'fixed_model' && <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('固定模型顺序', 'Fixed model order')}</h3><p>{text('HiRoute 按此顺序尝试；不满足能力或暂时不可用的模型会被跳过。', 'HiRoute tries this order, skipping models that cannot satisfy the request or are temporarily unavailable.')}</p></div></div>{group(text('候选模型', 'Candidate models'), text('发布后保持此顺序', 'Keep this order after publication'), editor.candidates, candidates => update({ candidates }), { groupId: 'fixed' })}</section>}
     {editor.mode === 'smart_saving' && <>
       <DecisionSelector classifier={editor.smart.classifier} smart services={services} language={language} onChange={classifier => update({ smart: { ...editor.smart, classifier } })} onOpenServices={onOpenServices} error={validationIssue?.group === 'classifier' ? validationIssue.message : undefined} />
@@ -451,20 +449,26 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
       description={editor.display_name}
       language={language}
       single={false}
+      showUnavailable
       value={picker.values.map(value => value.binding_id)}
-      items={(options?.candidates ?? []).map(candidate => ({
+      items={[...(options?.candidates ?? []).map(candidate => ({
         id: candidate.binding_id,
         optionId: sourceOptions[candidate.binding_id],
         name: candidate.display_name,
         source: `${billing(candidate.billing_class)} · ${sources[candidate.binding_id] ?? text('来源暂不可得', 'Source unavailable')}`,
         unavailable: !candidate.routable
-          ? text('当前模型不可用', 'Model unavailable')
+          ? candidateUnavailableMessage(candidateIssue(candidate.binding_id)?.reason ?? 'invalid_configuration', language)
           : picker.free && candidate.billing_class !== 'free'
             ? text('不符合免费组条件', 'Not eligible for the free group')
             : editor.delegation_enabled && editor.work && !candidate.ingress_protocols.includes(editor.work.protocol)
               ? text('不支持所选执行 Agent', 'Incompatible with selected execution agent')
               : undefined,
-      }))}
+      })), ...unavailable.filter(item => !options?.candidates.some(candidate => candidate.binding_id === item.binding_id)).map(item => ({
+        id: item.binding_id, name: item.display_name,
+        optionId: sourceOptions[item.binding_id],
+        source: sources[item.binding_id] ?? text('来源暂不可得', 'Source unavailable'),
+        unavailable: candidateUnavailableMessage(item.reason, language),
+      }))]}
       onClose={() => setPicker(null)}
       onApply={ids => {
         const selections = ids.map<Selection>(id => {

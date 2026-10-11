@@ -171,6 +171,28 @@ pub struct PlanCandidateOptionV1 {
     pub native_ingress_protocols: Vec<UpstreamProtocol>,
 }
 
+/// Safe local reasons; never carry provider payloads, endpoints or credentials.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanCandidateUnavailableReasonV1 {
+    InvalidModelId,
+    SourceNotReady,
+    ModelNotEligible,
+    CatalogMismatch,
+    CredentialUnavailable,
+    RuntimeUnavailable,
+    CapabilityUnavailable,
+    InvalidConfiguration,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanUnavailableCandidateV1 {
+    pub binding_id: String,
+    pub display_name: String,
+    pub reason: PlanCandidateUnavailableReasonV1,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CodexInputModalityV1 {
@@ -245,6 +267,9 @@ pub enum CodexClientCapabilityPreviewV1 {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanEditorOptionsRequestV1 {
+    /// Opt in so released strict response readers keep their original field set.
+    #[serde(default)]
+    pub include_unavailable: bool,
     #[serde(default)]
     pub published_plan: Option<PublishedPlanCapabilityRequestV1>,
     #[serde(default)]
@@ -263,6 +288,11 @@ pub struct PlanEditorOptionsRequestV1 {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanEditorOptionsV1 {
+    /// Present only when opted-in explanations are bounded to the first page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_candidate_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unavailable_candidates: Vec<PlanUnavailableCandidateV1>,
     pub claude_capabilities: Option<ClaudeClientCapabilityPreviewV1>,
     pub context_window: Option<PlanContextWindowPreviewV1>,
     pub suggested_alias: Option<ModelAlias>,

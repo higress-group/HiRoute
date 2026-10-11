@@ -384,6 +384,8 @@ pub trait AgentConnectionControlPort: Send + Sync {
 
 #[derive(Clone)]
 pub struct RoutingCompilationSnapshotV1 {
+    /// Read-only diagnostics, excluded from executable facts and their canonical digest.
+    pub unavailable_candidates: Vec<hiroute_application_api::PlanUnavailableCandidateV1>,
     pub facts: crate::compiler::AgentPlanCompilationFactsV1,
     pub expected_revisions: RevisionSetV1,
     /// Exact active aggregate used only by Apply to preserve immutable aliases, existing Plans,
