@@ -177,6 +177,9 @@ pub fn routing_publication_record(
     if intent.effect_id != EFFECT_ID {
         return Ok(None);
     }
+    if super::publication_checkpoint::is_effect(&intent.desired) {
+        return super::publication_checkpoint::record(intent).map(Some);
+    }
     if super::routing_content::is_effect(&intent.desired) {
         return super::routing_content::record(intent).map(Some);
     }
@@ -209,6 +212,11 @@ pub(super) fn validate_plan(
     runtime: &[RuntimeMutationV1],
     external: &[ExternalEffectIntentV1],
 ) -> Result<(), OperationValidationError> {
+    if super::publication_checkpoint::is_control(control) {
+        return super::publication_checkpoint::validate_plan(
+            spec, control, secrets, runtime, external,
+        );
+    }
     if super::routing_draft::is_control(control) {
         return super::routing_draft::validate_plan(spec, control, secrets, runtime, external);
     }
@@ -266,6 +274,16 @@ pub(super) fn validate_external_components(
     desired_mode: u32,
     sensitive: bool,
 ) -> Result<(), OperationValidationError> {
+    if super::publication_checkpoint::is_effect(desired) {
+        return super::publication_checkpoint::validate_external(
+            effect_id,
+            kind,
+            target,
+            desired,
+            desired_mode,
+            sensitive,
+        );
+    }
     if super::routing_content::is_effect(desired) {
         return super::routing_content::validate_external(
             effect_id,

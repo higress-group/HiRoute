@@ -10,6 +10,7 @@ import type { PriceDisplay } from '../model-reference/types';
 import { clientOperationId } from '../model-connections/state';
 import { addDraftKey, clearSecrets, createDraft, moveDraftKey, type ModelDraft } from './model-draft';
 import { subscriptionAttentionCopy } from './subscription-copy';
+import { ConnectionLifecycleDialog } from './ConnectionLifecycleDialog';
 import type {
   CandidateRef,
   KeyEdit,
@@ -41,6 +42,7 @@ type Props = {
   onRecheck?(source: ManagedSource, checkId: string, editRevision: number): Promise<'saved' | 'uncertain'>;
   onCancelRecheck?(checkId: string): Promise<void>;
   onReconnect?(source: ManagedSource): void;
+  onAppend?(source: ManagedSource): void;
   onSourceStateSaved?(enabled: boolean): void;
   mutable: boolean;
 };
@@ -59,7 +61,13 @@ function modelMatchesFilter(source: ManagedSource, model: ManagedModel | undefin
   return sourceAccess(source) === filter;
 }
 
-function modelAvailability(_source: ManagedSource, model: ManagedModel | undefined) {
+function modelAvailability(source: ManagedSource, model: ManagedModel | undefined): NonNullable<ManagedModel['presentation']>['availability'] {
+  if (!model) {
+    if (source.state === 'disabled') return 'disabled';
+    if (source.state === 'needs_credential' || source.state === 'needs_authorization') return 'needs_credentials';
+    if (source.models.some(member => member.presentation?.availability === 'available')) return 'available';
+    if (source.models.length && source.models.every(member => member.presentation?.availability === 'unavailable')) return 'unavailable';
+  }
   if (model?.presentation?.availability) return model.presentation.availability;
   // Source health is not a per-binding readiness proof. Older or partial
   // snapshots keep their saved rows visible, but fail closed until the model
@@ -86,7 +94,10 @@ export function Models(props: Props) {
   const text = (cn: string, en: string) => zh ? cn : en;
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [view, setView] = useState<'models' | 'connections'>('models');
+  const [lifecycle, setLifecycle] = useState<{ source: ManagedSource; model?: ManagedModel; action: 'rename' | 'remove' | 'delete' } | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(props.initialSourceId ?? props.snapshot.sources[0]?.source_id ?? null);
+  const appliedInitialSource = useRef<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [draft, setDraft] = useState<ModelDraft | null>(null);
@@ -104,20 +115,22 @@ export function Models(props: Props) {
 
   const needle = query.trim().toLocaleLowerCase();
   const entries = useMemo(() => props.snapshot.sources.flatMap<{ source: ManagedSource; model: ManagedModel | undefined }>(source => {
-    const models = source.models.length ? source.models : [undefined];
+    const models = view === 'connections' ? [undefined] : source.models.length ? source.models : [undefined];
     return models
-      .filter(model => modelMatchesFilter(source, model, filter))
-      .filter(model => !needle || `${model?.display_name ?? ''} ${source.display_name} ${source.connection_identity?.product_label ?? ''}`.toLocaleLowerCase().includes(needle))
+      .filter(model => view === 'connections' && filter === 'free' ? source.models.some(member => modelMatchesFilter(source, member, filter)) : modelMatchesFilter(source, model, filter))
+      .filter(model => !needle || `${model?.display_name ?? source.models.map(member => member.display_name).join(' ')} ${source.display_name} ${source.connection_identity?.product_label ?? ''}`.toLocaleLowerCase().includes(needle))
       .map(model => ({ source, model }));
-  }), [filter, needle, props.snapshot.sources]);
+  }), [filter, needle, props.snapshot.sources, view]);
 
   const selectedEntry = entries.find(item => item.source.source_id === selectedSourceId
-    && (!selectedModelId || item.model?.model_ref === selectedModelId));
+    && (view === 'connections' || !selectedModelId || item.model?.model_ref === selectedModelId));
   const activeEntry = selectedEntry ?? entries[0];
   const source = activeEntry?.source;
   const model = activeEntry?.model;
   const access = source ? sourceAccess(source) : 'unknown';
-  const sourceLabel = source ? connectionLabel(source, props.language) : '';
+  const duplicateName = (item: ManagedSource) => props.snapshot.sources.filter(other => other.display_name === item.display_name).length > 1;
+  const nameLabel = (item: ManagedSource) => duplicateName(item) ? `${item.display_name} · ${item.source_id.slice(-8)}` : item.display_name;
+  const sourceLabel = source ? `${connectionLabel(source, props.language)}${duplicateName(source) ? ` · ${source.source_id.slice(-8)}` : ''}` : '';
   const subscriptionMode = props.snapshot.subscription_modes?.find(item => item.source_id === source?.source_id && item.source_revision === source?.revision)?.mode;
   const connectorManaged = source?.provenance === 'connector_owned';
   const canManageCredentials = Boolean(props.mutable && source && !connectorManaged && access !== 'subscription'
@@ -125,7 +138,7 @@ export function Models(props: Props) {
     && source.actions.some(action => action === 'edit' || action === 'add_key' || action === 'enable' || action === 'disable'));
   const canReauthorize = Boolean(props.mutable && source?.actions.includes('reauthorize') && props.onReauthorize);
   const usedPlans = useMemo(() => !model ? [] : (props.plans ?? []).filter(plan => {
-    if (plan.head.status !== 'enabled') return false;
+    if (plan.head.status === 'deleted') return false;
     const strategy = plan.desired.strategy;
     const selections = strategy.routing ? branchSelections(strategy.routing)
       : [...(strategy.candidates ?? []), ...(strategy.economy ?? []), ...(strategy.primary ?? [])];
@@ -137,9 +150,13 @@ export function Models(props: Props) {
   useDiscardGuard('models', dirty, props.language, confirmCredentialReplacement);
 
   useEffect(() => {
+    if (!props.initialSourceId) { appliedInitialSource.current = null; return; }
+    if (appliedInitialSource.current === props.initialSourceId) return;
     if (!props.initialSourceId || !props.snapshot.sources.some(item => item.source_id === props.initialSourceId)) return;
+    appliedInitialSource.current = props.initialSourceId;
     setFilter('all');
     setQuery('');
+    setSelectedModelId(null);
     setSelectedSourceId(props.initialSourceId);
   }, [props.initialSourceId, props.snapshot.sources]);
 
@@ -363,12 +380,16 @@ export function Models(props: Props) {
           </div>
         </div>
         <nav className="master-list native-list" aria-label={text('模型', 'Models')}>
+          <div className="filter-row" role="group" aria-label={text('查看方式', 'View')}>
+            <button className="filter-chip" type="button" aria-pressed={view === 'models'} onClick={() => setView('models')}>{text('按模型', 'Models')}</button>
+            <button className="filter-chip" type="button" aria-pressed={view === 'connections'} onClick={() => setView('connections')}>{text('按接入', 'Connections')}</button>
+          </div>
           {entries.map(item => {
             const active = source?.source_id === item.source.source_id && model?.model_ref === item.model?.model_ref;
             const itemStatus = modelAvailability(item.source, item.model);
             return <button ref={active ? activeRow : undefined} className={`list-row${active ? ' active' : ''}`} key={item.model?.binding_id ?? item.source.source_id} aria-current={active ? 'page' : undefined} onClick={() => selectEntry(item.source, item.model)}>
               <ProviderIcon optionId={item.source.display_template_id ?? item.source.connection_identity?.connection_option_id} language={props.language} />
-              <span className="row-main"><span className="row-title">{item.model?.display_name || item.source.display_name}</span><span className="row-meta">{connectionLabel(item.source, props.language)}</span></span>
+              <span className="row-main"><span className="row-title">{item.model?.display_name || nameLabel(item.source)}</span><span className="row-meta">{view === 'connections' ? `${connectionName(item.source.connection_identity?.connection_option_id, props.language, item.source.connection_identity?.product_label ?? '')} · ${item.source.models.length} ${text('个模型', 'models')}` : `${connectionLabel(item.source, props.language)}${duplicateName(item.source) ? ` · ${item.source.source_id.slice(-8)}` : ''}`}</span></span>
               <StatusBadge value={itemStatus} reason={item.model?.presentation?.reason_code} subscription={sourceAccess(item.source) === 'subscription'} compact language={props.language} />
             </button>;
           })}
@@ -400,6 +421,10 @@ export function Models(props: Props) {
 
           <section className="detail-section">
             <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>
+            <strong>{source.display_name}</strong>
+            <p className="field-help">{connectionName(source.connection_identity?.connection_option_id, props.language, source.connection_identity?.product_label ?? '')}</p>
+            <div className="actions"><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting} onClick={() => setLifecycle({ source, action: 'rename' })}>{text('重命名', 'Rename')}</button>{props.onAppend && <button className="btn" type="button" disabled={!props.mutable || submitting} onClick={() => props.onAppend?.(source)}>{text('向此接入添加模型', 'Add models to this connection')}</button>}</div>
+            <p className="field-help">{text(`此接入包含 ${source.models.length} 个模型。端点、Key 和启停操作作用于这份接入。`, `This connection has ${source.models.length} models. Endpoints, keys and enabled state belong to this connection.`)}</p>
             <p className="muted">{access === 'subscription'
               ? subscriptionMode === 'cpa_managed'
                 ? text('独立登录 · 由 HiRoute 自动续期，不依赖原生客户端。', 'Independent sign-in · HiRoute renews access without the native client.')
@@ -415,6 +440,8 @@ export function Models(props: Props) {
             {source.provenance === 'user_configured' && props.onReconnect && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting} onClick={() => props.onReconnect?.(source)}>{text('编辑端点', 'Edit endpoints')}</button><span className="field-help">{text('一个来源的端点共用已保存的 API Key。', 'Endpoints in one connection share the saved API key.')}</span></div>}
             {source.provenance !== 'connector_owned' && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting || !source.actions.includes(source.state === 'disabled' ? 'enable' : 'disable')} onClick={() => void changeSourceState(source.state === 'disabled')}>{submitting ? text('正在保存…', 'Saving…') : source.state === 'disabled' ? text('启用接入', 'Enable connection') : text('停用接入', 'Disable connection')}</button></div>}
             {stateChangeError && <div className="callout bad" role="alert" data-error-code={stateChangeError}><UiIcon name="warning" /><span>{text('接入状态未修改；请刷新后重试。', 'The connection state was not changed. Refresh and try again.')}</span></div>}
+            {view === 'connections' && <div>{source.models.map(member => <button key={member.binding_id} className="list-row" type="button" onClick={() => { setView('models'); selectEntry(source, member); }}><span className="row-main">{member.display_name}</span><UiIcon name="chevronRight" /></button>)}</div>}
+            <button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting} onClick={() => setLifecycle({ source, action: 'delete' })}>{text('删除接入', 'Delete connection')}</button>
           </section>
 
           {model && <section className="detail-section">
@@ -424,13 +451,16 @@ export function Models(props: Props) {
 
           {model && <section className="detail-section">
             <div className="detail-section-head"><h3>{text('用于这些路由', 'Used in these routes')}</h3></div>
-            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && model && <button className="btn" type="button" onClick={() => props.onCreatePlan?.(model.binding_id)}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
+            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}{plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && model && <button className="btn" type="button" onClick={() => props.onCreatePlan?.(model.binding_id)}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
           </section>}
+
+          {model && <section className="detail-section"><div className="detail-section-head"><h3>{text('移除模型', 'Remove model')}</h3><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting} onClick={() => setLifecycle({ source, model, action: 'remove' })}>{text('移除模型', 'Remove model')}</button></div><p className="muted">{text('仅从所属接入移除这个模型。', 'Remove this model from its connection.')}</p></section>}
 
         </div> : <div className="empty-state"><div><div className="empty-icon"><UiIcon name="models" /></div><h3>{text('选择一个模型', 'Select a model')}</h3></div></div>}
       </section>
     </div>
 
+    {lifecycle && <ConnectionLifecycleDialog {...lifecycle} language={props.language} snapshot={props.snapshot} mutable={props.mutable} planNames={Object.fromEntries((props.plans ?? []).map(plan => [plan.agent_plan_id, `${plan.desired.display_name}${plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}`]))} onPreview={props.onPreview} onApply={props.onApply} onRefresh={props.onRefresh} onOpenPlan={props.onOpenPlan} onClose={() => setLifecycle(null)} />}
     <Dialog
       open={Boolean(draft && source)}
       title={text('管理接入凭据', 'Manage connection credentials')}
@@ -449,9 +479,10 @@ function connectionLabel(source: ManagedSource, language: 'zh' | 'en') {
   const product = connectionName(source.connection_identity?.connection_option_id, language, source.connection_identity?.product_label ?? '');
   const access = sourceAccess(source);
   if (product) {
-    if (access === 'subscription') return `${product} · OAuth`;
-    if (access === 'api') return `${product} · API`;
-    return product;
+    if (source.display_name && source.display_name !== product) return `${source.display_name} · ${product}`;
+    if (access === 'subscription') return `${source.display_name || product} · OAuth`;
+    if (access === 'api') return `${source.display_name || product} · API`;
+    return source.display_name || product;
   }
   return source.display_name || (language === 'zh' ? '已保存接入' : 'Saved connection');
 }

@@ -41,11 +41,11 @@ mod reasoning;
 #[path = "p0_gateway_runtime/accepted_history.rs"]
 mod accepted_history;
 
-#[path = "p0_gateway_runtime/nonstream_terminal.rs"]
-mod nonstream_terminal;
-
 #[path = "p0_gateway_runtime/responses_options.rs"]
 mod responses_options;
+
+#[path = "p0_gateway_runtime/nonstream_terminal.rs"]
+mod nonstream_terminal;
 
 #[test]
 fn fixed_requests_retry_only_same_source_keys_and_never_enter_an_allowed_plan() {

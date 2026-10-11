@@ -298,6 +298,50 @@ hiroute operations find --request-stdin --output json < operation-find.json
 The same key and content returns the original Operation. The same key with different content
 is rejected deterministically and never writes twice.
 
+## Rename, append or remove saved connections
+
+Use the same `compute connection preview` / `apply` sequence with the optional
+`change.edit` field. Omit `edit` to keep the existing save behavior. Read current
+`compute list` revisions before preview; pass its returned request unchanged to apply.
+
+| `edit` | Subject | `selected_model_refs` |
+| --- | --- | --- |
+| `{"action":"rename","display_name":"Team API"}` | Saved source | Empty |
+| `{"action":"append_models"}` | Freshly checked candidate for the existing source | Models to add |
+| `{"action":"remove_models"}` | Saved source | Models to remove |
+| `{"action":"delete"}` | Saved source | Empty |
+
+A saved-source subject is `{"kind":"saved_source","source_id":"SOURCE_ID"}`.
+Keep `key_edits` empty for these saved-source edits and append. Names must be distinct,
+nonempty and at most 60 characters. A new candidate save can also carry the rename
+edit to name its independent connection; its normal protected key input is still required.
+Each independently created connection owns its endpoints and credentials, even when it
+starts from the same provider template or uses the same literal key.
+
+Append preserves existing model records, bindings, credentials and enabled state.
+Removing the last model requires explicit `delete`; deleting a connection also cleans
+its HiRoute-owned credentials, while preserving subscription sign-ins and usage history.
+`affected_plan_refs` lists blockers in the preview: disabled routes, saved drafts,
+and retained execution or recovery versions also prevent removal. Apply rechecks
+references, so a new reference after preview can still reject the operation.
+
+After deleting a route or moving its models, the previous publication may still retain
+references. Refresh them through the normal routing publication transaction:
+
+```json
+{"change":{"schema":"hiroute.publication-checkpoint-change/v1"}}
+```
+
+Pass this request to `routing preview --request-stdin --output json`. Submit the same
+`change`, the returned `change_digest` as `accept_digest`, `expected_revisions`, and a
+new `idempotency_key` to `routing apply --request-stdin --output json`. Wait for its
+Operation to reach `succeeded`, then obtain a fresh connection deletion preview.
+An uncertain response requires observing or replaying that same Operation/key.
+This publishes an unchanged copy of the installed routing configuration at the next
+revision, including an empty configuration; it does not create routes or grant access.
+Disabled routes, drafts and retained execution versions still block removal.
+Desktop exposes this action as **Update references** in the blocked deletion dialog.
+
 ## Discover and save a subscription source
 
 ```sh

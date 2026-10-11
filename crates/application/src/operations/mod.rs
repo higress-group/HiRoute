@@ -20,6 +20,7 @@ use crate::change::{
 };
 
 mod agent_access_grants;
+mod compute_compensation;
 mod execution;
 mod prepared;
 
@@ -667,6 +668,7 @@ where
                     .observe_runtime(&operation.operation_id, mutation)?,
             )?;
         }
+        self.reconcile_compute_compensation(operation)?;
         Ok(())
     }
 

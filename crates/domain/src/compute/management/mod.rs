@@ -560,7 +560,7 @@ pub struct ComputeManagementMutationV2 {
     desired_revision: u64,
     desired_digest: CanonicalDigest,
     change_spec_digest: CanonicalDigest,
-    desired: ComputeManagementSourceV2,
+    desired: Option<ComputeManagementSourceV2>,
 }
 
 impl ComputeManagementMutationV2 {
@@ -569,15 +569,35 @@ impl ComputeManagementMutationV2 {
         current: Option<&ComputeManagementSourceV2>,
         desired: ComputeManagementSourceV2,
     ) -> Result<Self, ComputeManagementErrorV2> {
+        Self::from_optional_planner(spec, current, Some(desired))
+    }
+
+    pub fn from_optional_planner(
+        spec: &ChangeSpecV1,
+        current: Option<&ComputeManagementSourceV2>,
+        desired: Option<ComputeManagementSourceV2>,
+    ) -> Result<Self, ComputeManagementErrorV2> {
+        let identity = desired
+            .as_ref()
+            .or(current)
+            .ok_or(ComputeManagementErrorV2::InvalidMutation)?;
         let mutation = Self {
             schema: COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V2.to_owned(),
-            transaction: "compare_and_swap".to_owned(),
-            source_id: desired.source_id.clone(),
+            transaction: if desired.is_some() {
+                "compare_and_swap"
+            } else {
+                "delete"
+            }
+            .to_owned(),
+            source_id: identity.source_id.clone(),
             expected_revision: current.map_or(0, |source| source.revision),
             expected_digest: current.map(ComputeManagementSourceV2::digest).transpose()?,
             expected: current.cloned(),
-            desired_revision: desired.revision,
-            desired_digest: desired.digest()?,
+            desired_revision: desired.as_ref().map_or_else(
+                || identity.revision.checked_add(1).unwrap_or(0),
+                |source| source.revision,
+            ),
+            desired_digest: Self::optional_digest(desired.as_ref())?,
             change_spec_digest: CanonicalDigest::of(spec)
                 .map_err(|_| ComputeManagementErrorV2::InvalidDigest)?,
             desired,
@@ -588,13 +608,27 @@ impl ComputeManagementMutationV2 {
     }
 
     pub fn validate_shape(&self, spec: &ChangeSpecV1) -> Result<(), ComputeManagementErrorV2> {
-        self.desired.validate()?;
+        if let Some(desired) = &self.desired {
+            desired.validate()?;
+            if self.transaction != "compare_and_swap"
+                || self.source_id != desired.source_id
+                || self.desired_revision != desired.revision
+            {
+                return Err(ComputeManagementErrorV2::InvalidMutation);
+            }
+        } else if self.transaction != "delete"
+            || self.expected.is_none()
+            || spec
+                .desired_state
+                .pointer("/edit/action")
+                .and_then(serde_json::Value::as_str)
+                != Some("delete")
+        {
+            return Err(ComputeManagementErrorV2::InvalidMutation);
+        }
         if self.schema != COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V2
-            || self.transaction != "compare_and_swap"
-            || self.source_id != self.desired.source_id
-            || self.desired_revision != self.desired.revision
             || self.desired_revision != self.expected_revision.checked_add(1).unwrap_or(0)
-            || self.desired_digest != self.desired.digest()?
+            || self.desired_digest != Self::optional_digest(self.desired.as_ref())?
             || self.change_spec_digest
                 != CanonicalDigest::of(spec).map_err(|_| ComputeManagementErrorV2::InvalidDigest)?
             || spec.command_id != "compute.connection.apply"
@@ -646,8 +680,22 @@ impl ComputeManagementMutationV2 {
         self.expected.as_ref()
     }
 
-    pub fn desired(&self) -> &ComputeManagementSourceV2 {
-        &self.desired
+    pub fn desired(&self) -> Option<&ComputeManagementSourceV2> {
+        self.desired.as_ref()
+    }
+
+    pub fn desired_digest(&self) -> &CanonicalDigest {
+        &self.desired_digest
+    }
+
+    fn optional_digest(
+        source: Option<&ComputeManagementSourceV2>,
+    ) -> Result<CanonicalDigest, ComputeManagementErrorV2> {
+        match source {
+            Some(source) => source.digest(),
+            None => CanonicalDigest::of(&serde_json::Value::Null)
+                .map_err(|_| ComputeManagementErrorV2::InvalidDigest),
+        }
     }
 }
 
@@ -674,6 +722,20 @@ pub trait ComputeManagementRepositoryPort {
         &self,
         workspace: &WorkspaceId,
     ) -> PortResult<ComputeManagementStoredSnapshotV2>;
+
+    /// Exact binding references, including disabled plans and retained execution versions.
+    /// An adapter without this read cannot authorize removal.
+    fn compute_management_references(
+        &self,
+        workspace: &WorkspaceId,
+        binding_ids: &[String],
+    ) -> PortResult<Vec<String>> {
+        let _ = (workspace, binding_ids);
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "compute.management.references.unavailable",
+        ))
+    }
 }
 
 pub fn validate_authentication(

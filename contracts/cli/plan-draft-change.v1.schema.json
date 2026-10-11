@@ -45,6 +45,18 @@
       "required": [],
       "type": "object"
     },
+    "checkpoint_change": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "hiroute.publication-checkpoint-change/v1"
+        }
+      },
+      "required": [
+        "schema"
+      ],
+      "type": "object"
+    },
     "content_change": {
       "additionalProperties": false,
       "properties": {

@@ -15,6 +15,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import time
 
 GROUP_STOP_GRACE_SECONDS = 5
@@ -46,15 +47,63 @@ def create_session(root, source_sha, binary, client, seconds):
     return session
 
 
-def stop(child):
+def darwin_group_contains_only_leader(pid):
+    if sys.platform != "darwin":
+        return False
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.sysctl.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_uint, ctypes.c_void_p,
+                           ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p, ctypes.c_size_t]
+    libc.sysctl.restype = ctypes.c_int
+
+    def snapshot(selector):
+        # Darwin sys/sysctl.h: CTL_KERN=1, KERN_PROC=14, PID=1, PGRP=2.
+        # Compare the opaque records instead of depending on kinfo_proc layout.
+        mib = (ctypes.c_int * 4)(1, 14, selector, pid)
+        size = ctypes.c_size_t()
+        if libc.sysctl(mib, 4, None, ctypes.byref(size), None, 0) != 0:
+            return None
+        if not 0 < size.value <= 16 * 1024 * 1024:
+            return None
+        buffer = ctypes.create_string_buffer(size.value)
+        if libc.sysctl(mib, 4, buffer, ctypes.byref(size), None, 0) != 0:
+            return None
+        return buffer.raw[:size.value]
+
+    leader = snapshot(1)
+    return bool(leader) and snapshot(2) == leader
+
+
+def signal_owned_group(child, sig, created_isolated_session):
+    try:
+        os.killpg(child.pid, sig)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        # Darwin returns EPERM for a group containing only an unsignalable
+        # zombie. Any additional member or unavailable kernel proof fails closed.
+        if not (created_isolated_session and candidate_exited(child)
+                and darwin_group_contains_only_leader(child.pid)):
+            raise
+
+
+def stop(child, *, created_isolated_session=False):
     if child.returncode is not None:
         raise ValueError("candidate leader was reaped before process-group cleanup")
-    if os.getpgid(child.pid) != child.pid or os.getsid(child.pid) != child.pid:
-        raise ValueError("candidate does not own its isolated session/process group")
+    try:
+        if os.getpgid(child.pid) != child.pid or os.getsid(child.pid) != child.pid:
+            raise ValueError("candidate does not own its isolated session/process group")
+    except ProcessLookupError:
+        # macOS may hide a zombie's PGID/SID before waitpid reaps it. Popen's
+        # successful start_new_session establishes this ID; WNOWAIT proves the
+        # leader still anchors it against reuse. Never infer ownership from a
+        # missing process alone.
+        if not created_isolated_session or not candidate_exited(child):
+            raise
     # The waitable leader anchors this group ID even when it has already
     # exited. A descendant may still own capture files or ignore SIGTERM.
     try:
-        os.killpg(child.pid, signal.SIGTERM)
+        signal_owned_group(child, signal.SIGTERM, created_isolated_session)
         deadline = time.monotonic() + GROUP_STOP_GRACE_SECONDS
         while time.monotonic() < deadline:
             time.sleep(min(0.02, max(0, deadline - time.monotonic())))
@@ -62,9 +111,7 @@ def stop(child):
         # Graceful termination of the retention owner can interrupt the grace
         # wait. It must still stop descendants before attempting raw cleanup.
         try:
-            os.killpg(child.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+            signal_owned_group(child, signal.SIGKILL, created_isolated_session)
         finally:
             child.wait(timeout=5)
 
@@ -186,7 +233,7 @@ def supervise_candidate(args, root, binary, command, source, report):
                 time.sleep(0.02)
     finally:
         if child is not None:
-            stop(child)
+            stop(child, created_isolated_session=True)
         report({"stop_reason": reason, "process_exit": child.returncode if child else None,
                 "scenario": "unassessed", "retention_seconds": 86400})
 

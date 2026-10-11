@@ -23,6 +23,7 @@ fn save(
         ComputeManagementPlanner::new(registry, stores.control(), stores.secrets(), &input);
     let preview = planner
         .preview(ComputeManagementChangeV2 {
+            edit: None,
             schema: "hiroute.compute-management-change/v2".into(),
             subject,
             expected_revisions: snapshot.revisions,
@@ -52,7 +53,7 @@ fn save(
         .remove(0)
 }
 
-fn frozen_request(
+pub(super) fn frozen_request(
     source: &ComputeManagementSourceV2,
     model: usize,
     credential: usize,

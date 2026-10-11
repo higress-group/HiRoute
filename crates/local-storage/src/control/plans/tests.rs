@@ -246,3 +246,134 @@ fn crash_reservation_without_runtime_acceptance_is_reclaimed_only_after_expiry_a
         .reclaim_plan_version(&version.reference)
         .unwrap();
 }
+
+#[test]
+fn compute_removal_references_include_disabled_heads_and_continuations_but_not_unheld_history() {
+    let root = tempdir().unwrap();
+    let stores = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let store = stores.control();
+    let version = version();
+    let workspace = WorkspaceId::default();
+    let bindings = vec![
+        version.compiled.body.materialized.attempt_owned.groups[0].candidates[0]
+            .binding_id
+            .clone(),
+    ];
+    seed(store, &version);
+    assert!(
+        store
+            .compute_management_references(&workspace, &bindings)
+            .is_err(),
+        "unreconciled recovery fails closed"
+    );
+    store.reconcile_plan_versions(&workspace, &[], 1).unwrap();
+    assert!(
+        store
+            .compute_management_references(&workspace, &bindings)
+            .unwrap()
+            .is_empty()
+    );
+    let mut head = PlanHeadV1 {
+        reference: version.reference.clone(),
+        head_revision: version.reference.content_revision,
+        model_alias: version.compiled.model_alias().clone(),
+        status: PlanLifecycleV1::Disabled,
+    };
+    let save_head = |head: &PlanHeadV1| {
+        store.connection.borrow().execute(
+        "INSERT OR REPLACE INTO plan_heads(workspace_id,plan_id,head_revision,head_json) VALUES(?1,?2,?3,?4)",
+        params![workspace.as_str(), version.reference.plan_id.as_str(), head.head_revision, encode(head).unwrap()]).unwrap()
+    };
+    save_head(&head);
+    assert_eq!(
+        store
+            .compute_management_references(&workspace, &bindings)
+            .unwrap(),
+        vec![version.reference.plan_id.as_str()]
+    );
+    head.status = PlanLifecycleV1::Deleted;
+    save_head(&head);
+    assert!(
+        store
+            .compute_management_references(&workspace, &bindings)
+            .unwrap()
+            .is_empty()
+    );
+    let mut hold = reservation(&version, "task/continuation");
+    hold.owner.kind = VersionOwnerKindV1::Task;
+    hold.owner.purpose = VersionOwnerPurposeV1::Continuation;
+    store.acquire_exact_plan_version(&hold).unwrap();
+    assert_eq!(
+        store
+            .compute_management_references(&workspace, &bindings)
+            .unwrap(),
+        vec![version.reference.plan_id.as_str()]
+    );
+    store.release_plan_version(&workspace, &hold.owner).unwrap();
+    assert!(
+        store
+            .compute_management_references(&workspace, &bindings)
+            .unwrap()
+            .is_empty()
+    );
+    store
+        .connection
+        .borrow()
+        .execute("UPDATE plan_versions SET state='prepared'", [])
+        .unwrap();
+    assert_eq!(
+        store
+            .compute_management_references(&workspace, &bindings)
+            .unwrap(),
+        vec![version.reference.plan_id.as_str()]
+    );
+}
+
+#[test]
+fn compute_references_decode_production_publication_bytes_and_protect_recovery_lkg() {
+    let root = tempdir().unwrap();
+    let stores = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let store = stores.control();
+    let workspace = WorkspaceId::default();
+    let publication: GatewayPublicationV1 = serde_json::from_str(include_str!(
+        "../../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap();
+    let plan = publication
+        .plans
+        .iter()
+        .find(|plan| plan.agent_plan_id().as_str() == "plan/custom")
+        .unwrap();
+    let bindings = vec![
+        plan.body.materialized.attempt_owned.groups[0].candidates[0]
+            .binding_id
+            .clone(),
+    ];
+    let bytes = publication.canonical_bytes().unwrap();
+    store.connection.borrow().execute("INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,1,?2,?3,'active',1,1)", params![workspace.as_str(),CanonicalDigest::of_bytes(&bytes).as_str(),bytes]).unwrap();
+    for state in ["active", "prepared", "lkg"] {
+        store
+            .connection
+            .borrow()
+            .execute("UPDATE gateway_publications SET state=?1", [state])
+            .unwrap();
+        assert!(
+            store
+                .compute_management_references(&workspace, &bindings)
+                .unwrap()
+                .contains(&"plan/custom".to_owned()),
+            "{state}"
+        );
+    }
+    store
+        .connection
+        .borrow()
+        .execute("UPDATE gateway_publications SET state='historical'", [])
+        .unwrap();
+    assert!(
+        store
+            .compute_management_references(&workspace, &bindings)
+            .unwrap()
+            .is_empty()
+    );
+}

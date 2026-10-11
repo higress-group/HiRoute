@@ -14,8 +14,18 @@ impl TransactionPlanV1 {
         desired: crate::ComputeManagementSourceV2,
         secrets: Vec<SecretMutationV1>,
     ) -> Result<Self, OperationValidationError> {
-        let mutation = crate::ComputeManagementMutationV2::from_planner(&spec, current, desired)
-            .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+        Self::from_compute_management_change(spec, current, Some(desired), secrets)
+    }
+
+    pub fn from_compute_management_change(
+        spec: ChangeSpecV1,
+        current: Option<&crate::ComputeManagementSourceV2>,
+        desired: Option<crate::ComputeManagementSourceV2>,
+        secrets: Vec<SecretMutationV1>,
+    ) -> Result<Self, OperationValidationError> {
+        let mutation =
+            crate::ComputeManagementMutationV2::from_optional_planner(&spec, current, desired)
+                .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
         let control = json!({"compute_management_mutation": &mutation});
         validate_management_plan(&spec, &control, &secrets, &[], &[])?;
         Ok(Self {
@@ -69,14 +79,20 @@ pub(super) fn validate_management_plan(
         .unwrap_or_default();
     let desired = mutation
         .desired()
-        .credentials
-        .iter()
-        .map(|credential| (credential.key_id.as_str(), credential))
-        .collect::<BTreeMap<_, _>>();
+        .map(|source| {
+            source
+                .credentials
+                .iter()
+                .map(|credential| (credential.key_id.as_str(), credential))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
     let destinations = mutation
         .desired()
-        .native_destinations()
-        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+        .map(|source| source.native_destinations())
+        .transpose()
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?
+        .unwrap_or_default();
 
     let mut secret_by_id = BTreeMap::new();
     for secret in secrets {

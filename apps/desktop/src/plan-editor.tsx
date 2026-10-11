@@ -8,7 +8,6 @@ import { AgentProtocolChoice, type ProtocolAdvice } from './features/AgentProtoc
 import { contextWindowError, type ContextWindowBounds } from './plan-context-window';
 import { DEFAULT_REQUEST_TIMEOUT_MS, requestTimeoutError } from './plan-request-timeout';
 import { ProviderIcon } from './ui/ProviderIcon';
-import { connectionName } from './ui/provider-identity';
 import { planErrorCode, planErrorMessage } from './plan-editor-errors';
 import { ReasoningDialog, type NativeReasoning } from './ui/ReasoningDialog';
 import { ModelPicker } from './ui/ModelPicker';
@@ -158,9 +157,9 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
   useEffect(() => {
     if (!active) return;
     let current = true;
-    void invoke<{ sources: { display_name: string; display_template_id?: string | null; connection_identity?: { connection_option_id: string | null }; models: { binding_id: string }[] }[] }>('compute_management_snapshot').then(v => {
+    void invoke<{ sources: { source_id: string; display_name: string; display_template_id?: string | null; connection_identity?: { connection_option_id: string | null }; models: { binding_id: string }[] }[] }>('compute_management_snapshot').then(v => {
       if (!current) return;
-      setSources(Object.fromEntries(v.sources.flatMap(source => source.models.map(m => [m.binding_id, connectionName(source.connection_identity?.connection_option_id, language, source.display_name)]))));
+      setSources(Object.fromEntries(v.sources.flatMap(source => source.models.map(m => [m.binding_id, v.sources.filter(other => other.display_name === source.display_name).length > 1 ? `${source.display_name} · ${source.source_id.slice(-8)}` : source.display_name]))));
       setSourceOptions(Object.fromEntries(v.sources.flatMap(source => source.models.map(m => [m.binding_id, source.display_template_id ?? source.connection_identity?.connection_option_id ?? null]))));
     }).catch(() => {});
     return () => { current = false; };

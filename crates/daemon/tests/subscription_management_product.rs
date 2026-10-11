@@ -433,6 +433,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
             .preview_compute_save(
                 "subscription-save-preview",
                 ComputeManagementChangeV2 {
+                    edit: None,
                     schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
                     subject: ComputeManagementSubjectV2::Candidate {
                         candidate: checked_candidate.candidate.clone(),
@@ -516,6 +517,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
         .preview_compute_save(
             "subscription-save-reuse",
             ComputeManagementChangeV2 {
+                edit: None,
                 schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
                 subject: ComputeManagementSubjectV2::Candidate {
                     candidate: checked_candidate.candidate.clone(),

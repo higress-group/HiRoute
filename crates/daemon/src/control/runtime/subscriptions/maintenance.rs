@@ -523,6 +523,7 @@ impl LocalControlAdapter {
                 return Err(MaintenanceFailure::RuntimeUnavailable);
             }
             let change = ComputeManagementChangeV2 {
+                edit: None,
                 schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.to_owned(),
                 subject: ComputeManagementSubjectV2::Candidate {
                     candidate: checked_candidate.candidate.clone(),

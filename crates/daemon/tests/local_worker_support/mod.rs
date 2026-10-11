@@ -13,6 +13,8 @@ use std::{
 use tokio::io::{AsyncBufReadExt, BufReader};
 use zeroize::Zeroizing;
 
+pub mod materialized_launcher;
+
 pub fn request(root: &Path, cwd: &Path, nonce: &str, mode: &str) -> WorkerLaunchRequest {
     let binary = std::env::current_exe().unwrap();
     let execution = WorkerExecutionIntentV1 {

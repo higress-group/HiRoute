@@ -18,7 +18,7 @@ try {
   }
   await mkdir(outputRoot, { recursive: true });
   await writeFile(path.join(outputRoot, 'subscription-repair-report.json'), `${JSON.stringify(report, null, 2)}\n`);
-  if (report.tests !== 15 || report.failed > 0) process.exitCode = 1;
+  if (report.tests !== 16 || report.failed > 0) process.exitCode = 1;
 } finally {
   client.close();
 }

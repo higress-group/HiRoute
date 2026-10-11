@@ -247,6 +247,35 @@ pub async fn desktop_snapshot(
     session.snapshot().await
 }
 #[tauri::command]
+pub async fn refresh_route_references(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    language: String,
+) -> Result<MutationOutcome, DesktopFailure> {
+    main_window(&window)?;
+    let epoch = state.2.load(Ordering::SeqCst);
+    let action = ActionDiagnostics::begin(&state.3, ActionOperation::PlanEditor);
+    action.preview(PreviewPhase::Begin, None);
+    let context = state
+        .0
+        .lock()
+        .await
+        .as_mut()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .preview_reference_refresh(language)
+        .await?;
+    action.preview(PreviewPhase::End, Some(context.revision()));
+    confirm(
+        &window,
+        &state,
+        ActionOperation::PlanEditor,
+        NativeConfirmation::Rename(Box::new(context)),
+        epoch,
+    )
+    .await?
+    .mutation()
+}
+#[tauri::command]
 pub async fn preview_plan_editor(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
@@ -991,6 +1020,7 @@ pub fn run() {
             desktop_snapshot,
             preview_rename,
             preview_plan_editor,
+            refresh_route_references,
             plan_editor_options,
             preview_restore_name,
             preview_price_change,

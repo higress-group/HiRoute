@@ -43,6 +43,7 @@
     "allow-web-confirmation-snapshot",
     "allow-resolve-web-confirmation",
     "allow-preview-plan-editor",
+    "allow-refresh-route-references",
     "allow-plan-editor-options",
     "allow-observation-read",
     "allow-observation-delete",

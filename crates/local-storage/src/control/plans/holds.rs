@@ -3,6 +3,12 @@ use hiroute_domain::{VersionOwnerRefV1, VersionReservationV1};
 use std::collections::BTreeSet;
 
 impl ControlStore {
+    pub fn require_plan_version_recovery_ready(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> Result<(), PlanVersionError> {
+        require_ready(&self.connection.borrow(), workspace)
+    }
     /// Lifecycle deletion considers every revision, including old continuation holds and
     /// prepared content. An unfinished recovery cannot prove that no owner remains.
     pub fn plan_has_retained_versions(

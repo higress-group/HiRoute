@@ -446,10 +446,12 @@ async fn local_worker_materials_and_sessions_never_share_ownership() {
         0o700
     );
     let literal = "a path with spaces; $(not-a-command)";
-    let output = std::process::Command::new(root.join("native-launcher"))
-        .arg(literal)
-        .output()
-        .unwrap();
+    let output = local_worker_support::materialized_launcher::output_with_file_busy_retry(|| {
+        std::process::Command::new(root.join("native-launcher"))
+            .arg(literal)
+            .output()
+    })
+    .unwrap();
     assert!(output.status.success());
     assert_eq!(output.stdout, literal.as_bytes());
     assert!(

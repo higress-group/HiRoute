@@ -62,6 +62,7 @@ fn change(
     revisions: RevisionSetV1,
 ) -> ComputeManagementChangeV2 {
     ComputeManagementChangeV2 {
+        edit: None,
         schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
         subject: ComputeManagementSubjectV2::Candidate {
             candidate: candidate.candidate.clone(),

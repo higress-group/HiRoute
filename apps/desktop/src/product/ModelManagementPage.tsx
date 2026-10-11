@@ -16,6 +16,7 @@ import type {
   ProtectedInputRegistration,
 } from '../features/model-connections/types';
 import { SubscriptionSignIn } from '../features/subscriptions/SubscriptionSignIn';
+import { AppendConnectionModels } from '../features/models/AppendConnectionModels';
 import { Models } from '../features/models/Models';
 import {
   DeviceScanList,
@@ -196,7 +197,9 @@ export function ModelManagementPage({
   const [discoveryError, setDiscoveryError] = useState('');
   const [adding, setAdding] = useState(startAdding && trustedAuthority);
   const [reconnectingFrom, setReconnectingFrom] = useState<string | null>(null);
-  const [addStage, setAddStage] = useState<'choose' | 'api' | 'scan' | 'subscription-login'>('choose');
+  const [addStage, setAddStage] = useState<'choose' | 'api' | 'scan' | 'subscription-login' | 'existing'>('choose');
+  const [appendingSource, setAppendingSource] = useState<ManagedSource | null>(null);
+  const [appendManual, setAppendManual] = useState(false);
   const [addNotice, setAddNotice] = useState('');
   const [modelNotice, setModelNotice] = useState('');
   const [priceTarget, setPriceTarget] = useState<{
@@ -417,6 +420,13 @@ export function ModelManagementPage({
         key_edits: [],
         validation: selection.validation,
       };
+      if (appendingSource) {
+        if (selectedSubscription?.existing_source_id !== appendingSource.source_id) throw { code: 'SOURCE_CHANGED' };
+        change.edit = { action: 'append_models' };
+        change.intent = appendingSource.state === 'disabled' ? 'save_disabled' : 'save_ready';
+        change.selected_model_refs = change.selected_model_refs.filter(ref => !appendingSource.models.some(model => model.model_ref === ref));
+        if (!change.selected_model_refs.length) throw { code: 'MODEL_SELECTION_REQUIRED' };
+      }
       const preview = await invoke<SavePreview>('preview_compute_save', { change });
       if (!alive.current || subscriptionView.current !== view) return;
       handedOffValidations.current.add(validationKey);
@@ -779,10 +789,13 @@ export function ModelManagementPage({
         language={language}
         mutable={trustedAuthority}
         initialDraft={initialDraft.current}
+        existingNames={management.sources.filter(source => source.source_id !== initialDraft.current.existing_source_id).map(source => source.display_name)}
+        savedSource={management.sources.find(source => source.source_id === initialDraft.current.existing_source_id)}
+        appendTo={appendManual ? appendingSource ?? undefined : undefined}
         expectedRevisions={management.revisions}
         backend={backend}
         onBack={() => { setAddStage('choose'); setAddNotice(''); setReconnectingFrom(null); }}
-        onCancel={() => { setAdding(false); setReconnectingFrom(null); }}
+        onCancel={() => { setAdding(false); setReconnectingFrom(null); setAppendingSource(null); }}
         onSaveAccepted={onOperation}
         onSaveResult={(result: ComputeSaveResult) => {
           if (modelSaveCompleted(result)) {
@@ -790,9 +803,11 @@ export function ModelManagementPage({
             setAdding(false);
             setAddStage('choose');
             if (reconnectingFrom) setModelNotice(language === 'zh'
-              ? '新接入已保存；旧接入和已有路由未改变。请在路由中改选新模型，再停用旧接入。'
-              : 'The new connection is saved. The old connection and routes are unchanged. Select the new model in routes, then disable the old connection.');
+              ? '接入配置已保存，原有模型绑定保持不变。'
+              : 'Connection settings saved. Existing model bindings are retained.');
             setReconnectingFrom(null);
+            setAppendingSource(null);
+            setAppendManual(false);
             requestAnimationFrame(() => addButton.current?.focus());
           }
           void refreshManagement();
@@ -817,6 +832,8 @@ export function ModelManagementPage({
     void requestEditorReplacement('models').then(allowed => {
       if (!allowed) return;
       setAddNotice('');
+      setAppendingSource(null);
+      setAppendManual(false);
       setAddStage('choose');
       setAdding(true);
     });
@@ -825,9 +842,38 @@ export function ModelManagementPage({
   function openConnection(kind: 'known' | 'custom' | 'free') {
     if (!trustedAuthority) return;
     setReconnectingFrom(null);
+    setAppendingSource(null);
+    setAppendManual(false);
     initialDraft.current = newModelConnectionDraft(kind);
     setAddNotice('');
     setAddStage('api');
+  }
+
+  async function appendModels(source: ManagedSource) {
+    if (!trustedAuthority || !await requestEditorReplacement('models')) return;
+    setAppendingSource(source); setAppendManual(false); setAdding(false);
+    if (source.provenance === 'connector_owned') {
+      setRepairingSubscriptionSource(null); setSelectedSubscriptionRef(null);
+      setAddStage('scan'); setAdding(true);
+      try {
+        const result = await invoke<SubscriptionScanResult>('compute_subscriptions');
+        setSubscriptions(result.candidates);
+        const candidate = result.candidates.find(item => item.existing_source_id === source.source_id);
+        if (!candidate) throw { code: 'SUBSCRIPTION_NOT_FOUND' };
+        openSubscription(candidate);
+      } catch (cause) { setSubscriptionError({ code: failureCode(cause), phase: 'scan' }); }
+    }
+  }
+
+  async function loadAppendModels(source: ManagedSource) {
+    const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
+    if (!current.sources.some(item => item.source_id === source.source_id && item.revision === source.revision)) throw { code: 'SOURCE_CHANGED' };
+    const checkId = `append/${crypto.randomUUID()}`;
+    const checked = await invoke<ModelConnectionCheckView>('check_saved_model_connection', { request: {
+      source_id: source.source_id, expected_source_revision: source.revision, edit_revision: 1, check_id: checkId,
+    } });
+    if (!checkMatches(checked, { candidateRef: null, editRevision: 1, checkId }) || checked.reachability === 'transport_failed' || checked.authentication === 'rejected') throw { code: 'MODEL_CONNECTION_FAILED' };
+    return { checked, revisions: current.revisions };
   }
 
   function reconnectSource(source: ManagedSource) {
@@ -906,7 +952,7 @@ export function ModelManagementPage({
     && discoverySelections.length);
 
   function toggleSubscriptionModel(modelRef: string) {
-    if (!effectiveSubscription || repairingSelectedSubscription) return;
+    if (!effectiveSubscription || repairingSelectedSubscription || appendingSource?.models.some(model => model.model_ref === modelRef)) return;
     const next = new Set(selectedSubscriptionModels);
     if (next.has(modelRef)) next.delete(modelRef); else next.add(modelRef);
     setSubscriptionSelections(current => ({
@@ -950,6 +996,8 @@ export function ModelManagementPage({
   }
 
   function closeScan() {
+    setAppendingSource(null);
+    setAppendManual(false);
     setAdding(false);
     closeSubscriptionView();
     requestAnimationFrame(() => addButton.current?.focus());
@@ -1003,7 +1051,7 @@ export function ModelManagementPage({
     {connectionForm}
     {priceTarget && <PriceEditor
       modelName={priceTarget.model.display_name}
-      sourceName={priceTarget.source.connection_identity?.product_label || priceTarget.source.display_name}
+      sourceName={priceTarget.source.display_name}
       contexts={priceTarget.contexts}
       language={language}
       writable={priceTarget.writable && trustedAuthority}
@@ -1020,9 +1068,10 @@ export function ModelManagementPage({
       onClose={() => { setAdding(false); setAddNotice(''); }}
     >
       <div className="v3-add-choices">
+        {hasSources && <button className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => setAddStage('existing')}><span className="choice-icon"><UiIcon name="plus" /></span><div><strong>{language === 'zh' ? '向已有接入添加模型' : 'Add models to an existing connection'}</strong><span>{language === 'zh' ? '复用已保存的端点和凭据' : 'Reuse saved endpoints and credentials'}</span></div><UiIcon name="chevronRight" /></button>}
         <button data-autofocus className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => openConnection('known')}>
           <span className="choice-icon"><UiIcon name="plug" /></span>
-          <div><strong>{language === 'zh' ? '添加 API' : 'Add API'}</strong><span>{language === 'zh' ? '选择已支持的服务，填写 Key 后选择模型' : 'Choose a supported service and connect with an API key'}</span></div>
+          <div><strong>{language === 'zh' ? '新建 API 接入' : 'New API connection'}</strong><span>{language === 'zh' ? '从模板开始，使用独立的名称、端点和凭据' : 'Start from a template with a separate name, endpoints and credentials'}</span></div>
           <UiIcon name="chevronRight" />
         </button>
         <button className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => setAddStage('subscription-login')}>
@@ -1042,6 +1091,10 @@ export function ModelManagementPage({
       <Disclosure className="oc-advanced" label={language === 'zh' ? '高级接入' : 'Advanced connection'} language={language}><p className="oc-meta">{language === 'zh' ? '使用自己的兼容服务；未知模型需要补充能力信息。' : 'Use a compatible endpoint. Unknown models require capability details.'}</p><button className="btn" type="button" disabled={!trustedAuthority} onClick={() => openConnection('custom')}>{language === 'zh' ? '自定义 API' : 'Custom API'}</button></Disclosure>
       {addNotice && <div className="callout" role="status">{addNotice}</div>}
     </Dialog>
+    <Dialog open={adding && addStage === 'existing'} title={language === 'zh' ? '选择已有接入' : 'Choose a connection'} closeLabel={language === 'zh' ? '关闭' : 'Close'} onClose={() => setAdding(false)}>
+      <div className="v3-add-choices">{management?.sources.map(source => <button className="add-choice" type="button" key={source.source_id} onClick={() => void appendModels(source)}><div><strong>{source.display_name}</strong><span>{source.connection_identity?.product_label ?? source.provenance} · {source.models.length} {language === 'zh' ? '个模型' : 'models'}</span></div><UiIcon name="chevronRight" /></button>)}</div>
+    </Dialog>
+    {appendingSource && appendingSource.provenance !== 'connector_owned' && !appendManual && <AppendConnectionModels source={appendingSource} language={language} mutable={trustedAuthority} onLoad={loadAppendModels} onPreview={change => invoke<SavePreview>('preview_compute_save', { change })} onApply={applyExisting} onRefresh={refreshManagement} onClose={() => setAppendingSource(null)} onManual={appendingSource.provenance === 'user_configured' ? () => { reconnectSource(appendingSource); setAppendManual(true); } : undefined} />}
     <Dialog open={adding && addStage === 'subscription-login'} title={language === 'zh' ? '连接订阅' : 'Connect subscription'} closeLabel={language === 'zh' ? '关闭订阅登录' : 'Close subscription sign-in'} onClose={() => setAdding(false)}>
       {adding && addStage === 'subscription-login' && <SubscriptionSignIn language={language} trustedAuthority={trustedAuthority}
         onReuseNative={() => { setAddStage('scan'); returnToScanList(); void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]); }}
@@ -1079,7 +1132,7 @@ export function ModelManagementPage({
         {subscriptionReady && repairingSelectedSubscription
           ? <p className="oc-meta">{language === 'zh' ? '将保留原有模型、绑定和路由，仅更新当前订阅授权与可执行资格。' : 'Existing models, bindings, and routes will be retained; only current subscription access and execution eligibility will be updated.'}</p>
           : subscriptionReady ? subscriptionModels.length
-            ? <><p className="oc-meta">{language === 'zh' ? '已读取此账号可见的模型。选择资料完整、可接入路由的模型。' : 'Models visible to this account were loaded. Select models with complete routing data.'}</p><div className="v3-catalog">{subscriptionModels.map(model => <label className="check-row" key={model.model_ref}><input type="checkbox" disabled={!trustedAuthority || (!model.selectable && !selectedSubscriptionModels.has(model.model_ref))} checked={selectedSubscriptionModels.has(model.model_ref)} onChange={() => toggleSubscriptionModel(model.model_ref)} /><div><strong>{model.display_name}</strong>{!model.selectable && <span>{model.missing
+            ? <><p className="oc-meta">{language === 'zh' ? '已读取此账号可见的模型。选择资料完整、可接入路由的模型。' : 'Models visible to this account were loaded. Select models with complete routing data.'}</p><div className="v3-catalog">{subscriptionModels.map(model => <label className="check-row" key={model.model_ref}><input type="checkbox" disabled={!trustedAuthority || Boolean(appendingSource?.models.some(saved => saved.model_ref === model.model_ref)) || (!model.selectable && !selectedSubscriptionModels.has(model.model_ref))} checked={selectedSubscriptionModels.has(model.model_ref)} onChange={() => toggleSubscriptionModel(model.model_ref)} /><div><strong>{model.display_name}</strong>{!model.selectable && <span>{model.missing
               ? (language === 'zh' ? '已不在当前订阅目录，可取消选择' : 'No longer in the subscription directory; uncheck to remove')
               : selectedSubscriptionModels.has(model.model_ref)
                 ? (language === 'zh' ? '当前不可用，可取消选择' : 'Currently unavailable; uncheck to remove')
@@ -1134,6 +1187,7 @@ export function ModelManagementPage({
       onRecheck={recheckSavedSource}
       onCancelRecheck={checkId => invoke<void>('cancel_model_connection_check', { checkId })}
       onReconnect={reconnectSource}
+      onAppend={source => { void appendModels(source); }}
       onSourceStateSaved={enabled => setModelNotice(enabled
         ? language === 'zh' ? '接入已启用。' : 'Connection enabled.'
         : language === 'zh' ? '接入已停用。' : 'Connection disabled.')}

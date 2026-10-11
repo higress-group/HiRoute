@@ -38,10 +38,147 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  scenario('desktop.models.selection-survives-save-refresh', ['model-connections'], 'Renaming a selected connection does not jump back to the previous save result', async () => {
+    let a; let b; let beforeB; let latestChange;
+    await fresh(() => {
+      b = c().management.sources.find(source => source.source_id === 'source/bailian/coding');
+      a = structuredClone(b); a.source_id = 'source/selection-a'; a.display_name = '接入 A';
+      a.models = a.models.map(model => ({ ...model, model_ref: `${model.model_ref}/a`, binding_id: `${model.binding_id}/a` }));
+      c().management.sources = [a, b]; beforeB = JSON.stringify(b);
+      c().handlers.get_compute_save_result = payload => ({ ...c().fixtureResponse('get_compute_save_result', payload), source_id: b.source_id });
+      c().handlers.preview_compute_save = payload => { latestChange = payload.change; return c().fixtureResponse('preview_compute_save', payload); };
+      c().handlers.apply_compute_save = payload => {
+        if (latestChange?.subject.kind === 'saved_source' && latestChange.subject.source_id === a.source_id && latestChange.edit?.action === 'rename') {
+          a.display_name = latestChange.edit.display_name; a.revision += 1;
+        }
+        return c().fixtureResponse('apply_compute_save', payload);
+      };
+    });
+    await click('模型'); await click('添加模型');
+    await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'new connection entry');
+    all('button').find(item => item.textContent.includes('新建 API 接入')).click();
+    await until(() => document.querySelector('[role="dialog"] input[type="password"]'), 'key field');
+    setInput(document.querySelector('[role="dialog"] input[type="password"]'), 'synthetic-selection-key');
+    await click('检查接入');
+    await until(() => all('.model-result-row input[type="checkbox"]').length, 'model choices');
+    all('.model-result-row input[type="checkbox"]')[0].click(); await pause(40);
+    await click('保存接入');
+    await until(() => !document.querySelector('[role="dialog"]') && calls('get_compute_save_result').length, 'completed initial save');
+    await click('按接入');
+    await until(() => document.querySelector('.models-feature .detail-identity h2')?.textContent === b.display_name, 'saved connection focus');
+    all('.models-feature .master-list .list-row').find(row => row.textContent.includes('接入 A')).click(); await pause(40);
+    await click('重命名');
+    await until(() => document.querySelector('[role="dialog"] input'), 'rename field');
+    setInput(document.querySelector('[role="dialog"] input'), '接入 A 已改名');
+    const snapshots = calls('compute_management_snapshot').length;
+    await click('保存名称');
+    await until(() => calls('compute_management_snapshot').length > snapshots && !document.querySelector('[role="dialog"]'), 'rename refresh');
+    assert(document.querySelector('.models-feature .detail-identity h2')?.textContent === '接入 A 已改名', 'Refresh jumped to the previous saved connection');
+    assert(JSON.stringify(b) === beforeB, 'Another connection changed while renaming A');
+  }),
+  scenario('desktop.models.connection-template-directory-layout', ['model-connections'], 'The production stylesheet renders searchable template rows and pagination', async () => {
+    await fresh(); await click('模型'); await click('添加模型');
+    await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'new connection entry');
+    all('button').find(item => item.textContent.includes('新建 API 接入')).click();
+    await until(() => all('.mc-template-row').length > 0, 'template directory');
+    assert(getComputedStyle(document.querySelector('.mc-template-directory')).display === 'grid', 'Production directory layout missing');
+    for (const row of all('.mc-template-row')) {
+      assert(getComputedStyle(row).display === 'flex' && getComputedStyle(row).alignItems === 'center', 'Template row is not aligned');
+      assert(getComputedStyle(row.querySelector('.field-help')).display === 'block', 'Template protocol is not on its own line');
+    }
+    const selected = document.querySelector('.mc-template-row input:checked');
+    assert(selected?.closest('.mc-template-row').classList.contains('selected'), 'Selection styling missing');
+    setInput(document.querySelector('.mc-template-directory input[type="search"]'), '百炼');
+    await until(() => all('.mc-template-row').every(row => row.textContent.includes('百炼')), 'filtered templates');
+    assert(all('.mc-template-row').length > 0, 'Search removed matching templates');
+    assert(getComputedStyle(document.querySelector('.mc-template-pagination')).display === 'flex', 'Pagination layout missing');
+    const close = all('[role="dialog"] button[aria-label="取消添加"]')[0];
+    assert(close, 'Template dialog close control missing');
+    close.click();
+    await until(() => !document.querySelector('[role="dialog"]'), 'closed template dialog');
+  }),
+  scenario('desktop.models.connection-rename', ['model-connections'], 'Rename is scoped to one saved connection without replacing its models or keys', async () => {
+    await fresh(() => { c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')]; });
+    await click('模型'); await click('按接入'); await click('重命名');
+    await until(() => document.querySelector('[role="dialog"] input'), 'rename input');
+    setInput(document.querySelector('[role="dialog"] input'), '团队百炼'); await click('保存名称');
+    await until(() => calls('preview_compute_save').length === 1, 'rename preview');
+    const change = calls('preview_compute_save')[0].payload.change;
+    assert(change.edit.action === 'rename' && change.edit.display_name === '团队百炼', 'Rename intent missing');
+    assert(change.subject.source_id === 'source/bailian/coding' && change.selected_model_refs.length === 0 && change.key_edits.length === 0, 'Rename replaced a model or credential selection');
+  }),
+  scenario('desktop.models.delete-reference-block', ['model-connections'], 'A disabled route reference remains visible and prevents Apply', async () => {
+    await fresh(() => {
+      c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')];
+      const plan = c().desktop.catalog.plans[0]; plan.head.status = 'disabled';
+      c().handlers.preview_compute_save = payload => ({ ...c().fixtureResponse('preview_compute_save', payload), affected_plan_refs: [plan.agent_plan_id] });
+    });
+    await click('模型'); await click('移除模型');
+    await until(() => text().includes('仍被引用，请先调整引用再删除。'), 'reference blocker');
+    assert(text().includes('这是最后一个模型，将一并删除所属接入。'), 'Last-model consequence was hidden');
+    const remove = all('[role="dialog"] button').find(item => item.textContent.trim() === '删除接入');
+    assert(remove?.disabled, 'Referenced connection could be deleted');
+    remove.click(); await pause(50);
+    assert(calls('apply_compute_save').length === 0, 'Disabled button dispatched Apply');
+    assert(calls('preview_compute_save')[0].payload.change.edit.action === 'delete', 'Last model removal did not use explicit delete');
+    const deleteInDialog = () => all('[role="dialog"] button').find(item => item.textContent.trim() === '删除接入');
+    c().handlers.refresh_route_references = () => { throw new Error('publication unavailable'); };
+    await click('更新引用状态');
+    await until(() => text().includes('引用状态暂未更新'), 'failed reference refresh');
+    assert(button('更新引用状态') && !button('更新引用状态').disabled, 'Failed refresh lost its retry entry');
+    assert(deleteInDialog()?.disabled, 'Failed refresh released a reference');
+    c().handlers.refresh_route_references = () => undefined;
+    await click('更新引用状态');
+    await until(() => !document.querySelector('[role="dialog"]'), 'refresh closes stale preview');
+    await click('移除模型');
+    await until(() => text().includes('仍被引用，请先调整引用再删除。'), 'fresh disabled reference');
+    assert(deleteInDialog()?.disabled, 'Checkpoint bypassed a disabled route');
+    assert(calls('preview_compute_save').length === 2, 'Reopen reused an old deletion preview');
+    assert(calls('apply_compute_save').length === 0, 'Reference refresh automatically deleted configuration');
+    // A separately completed publication can release historical references. Its
+    // new deletion preview is still required before the user explicitly deletes.
+    c().handlers.refresh_route_references = () => {
+      c().handlers.preview_compute_save = payload => ({ ...c().fixtureResponse('preview_compute_save', payload), affected_plan_refs: [] });
+    };
+    await click('更新引用状态');
+    await until(() => !document.querySelector('[role="dialog"]'), 'completed historical reference refresh');
+    await click('移除模型');
+    await until(() => deleteInDialog() && !deleteInDialog().disabled, 'new unreferenced preview');
+    assert(calls('apply_compute_save').length === 0, 'Refresh was mistaken for delete consent');
+  }),
+  scenario('desktop.models.append-preserves-existing', ['model-connections'], 'Appending selects only new models and retains a disabled connection', async () => {
+    await fresh(() => {
+      c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')];
+      c().management.sources[0].state = 'disabled';
+      c().handlers.check_saved_model_connection = payload => {
+        const checked = c().fixtureResponse('check_saved_model_connection', payload);
+        checked.candidate.models.push({ ...checked.candidate.models[0], model_ref: 'model-ref/new', upstream_model_id: 'new-model', display_name: 'New model' });
+        return checked;
+      };
+    });
+    await click('模型'); await click('向此接入添加模型');
+    await until(() => all('[role="dialog"] input[type="checkbox"]').length === 2, 'append inventory');
+    const checks = all('[role="dialog"] input[type="checkbox"]');
+    assert(checks[0].disabled && checks[0].checked, 'Existing model was editable as a removal');
+    checks[1].click(); await click('添加 1 个模型');
+    await until(() => calls('preview_compute_save').length === 1, 'append preview');
+    const change = calls('preview_compute_save')[0].payload.change;
+    assert(change.edit.action === 'append_models' && change.intent === 'save_disabled', 'Append lost explicit action or disabled state');
+    assert(JSON.stringify(change.selected_model_refs) === '["model-ref/new"]' && change.key_edits.length === 0, 'Append modified existing model/key selection');
+  }),
+  scenario('desktop.models.remove-only-selected', ['model-connections'], 'Removing one model retains the connection and sends exactly the selected saved model', async () => {
+    await fresh(() => { c().management.sources = [c().management.sources[0]]; });
+    await click('模型'); await click('移除模型');
+    await until(() => all('[role="dialog"] button').some(item => item.textContent.trim() === '移除模型' && !item.disabled), 'remove preview');
+    const change = calls('preview_compute_save')[0].payload.change;
+    assert(change.edit.action === 'remove_models' && change.selected_model_refs.length === 1 && change.key_edits.length === 0, 'Remove scope replaced connection or keys');
+    all('[role="dialog"] button').find(item => item.textContent.trim() === '移除模型').click();
+    await until(() => calls('apply_compute_save').length === 1, 'single remove apply');
+  }),
   scenario('desktop.models.tool-check-selection', ['model-connections'], 'A tool check retains the chosen model with its fresh reference without selecting new inventory', async () => {
     await fresh(); await click('模型'); await click('添加模型');
-    await until(() => all('button').some(item => item.textContent.includes('添加 API')), 'add API entry');
-    all('button').find(item => item.textContent.includes('添加 API')).click();
+    await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'add API entry');
+    all('button').find(item => item.textContent.includes('新建 API 接入')).click();
     await until(() => document.querySelector('[role="dialog"] input[type="password"]'), 'API key input');
     setInput(document.querySelector('[role="dialog"] input[type="password"]'), 'synthetic-tool-check-input');
     c().handlers.check_registered_model_connection = payload => {
@@ -254,7 +391,8 @@ const scenarios = [
     await until(() => text().includes('用于这些路由'), 'model route references');
     assert(refs().some(item => item.textContent.includes('Branch regular model use')), 'Published regular branch model reference is missing');
     assert(refs().some(item => item.textContent.includes('Branch upgrade model use')), 'Published upgrade branch model reference is missing');
-    assert(!refs().some(item => item.textContent.includes('Disabled branch model use')), 'Disabled route is presented as active model use');
+    assert(refs().some(item => item.textContent.trim() === 'Disabled branch model use（已停用）'), 'Disabled reference is missing or presented without its stopped state');
+    assert(refs().filter(item => item.textContent.includes('Disabled branch model use')).length === 1, 'Disabled reference is duplicated');
     await click('Branch regular model use');
     await until(() => document.querySelector('.plan-identity-fields input')?.value === 'Branch regular model use', 'referenced route opened');
   }),
@@ -516,8 +654,8 @@ const scenarios = [
     await until(() => text().includes('接入就绪'), 'readiness status');
     assert(text().includes('不代表上游推理或工具调用已验证'), 'Local readiness claims upstream inference verification');
     await click('添加模型');
-    await until(() => all('button').some(item => item.textContent.includes('添加 API')), 'add API entry');
-    all('button').find(item => item.textContent.includes('添加 API')).click();
+    await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'add API entry');
+    all('button').find(item => item.textContent.includes('新建 API 接入')).click();
     await until(() => document.querySelector('[role="dialog"] input[type="password"]'), 'API key input');
     const key = document.querySelector('[role="dialog"] input[type="password"]');
     setInput(key, 'synthetic-input-preserved'); await pause(40);

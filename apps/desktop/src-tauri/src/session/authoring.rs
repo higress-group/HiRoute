@@ -34,6 +34,64 @@ impl EditorAction {
     }
 }
 impl Session {
+    pub async fn preview_reference_refresh(
+        &mut self,
+        language: String,
+    ) -> Result<Confirmation, DesktopFailure> {
+        if self.confirmation.is_open() {
+            return Err("CONFIRMATION_ALREADY_OPEN".into());
+        }
+        if !matches!(language.as_str(), "zh" | "en") {
+            return Err("INVALID_LANGUAGE".into());
+        }
+        let snapshot = self.snapshot().await?;
+        if !snapshot.trusted_authority || !snapshot.service.mutation_available {
+            return Err("TRUSTED_AUTHORITY_UNAVAILABLE".into());
+        }
+        let change = serde_json::to_value(PublicationCheckpointChangeV1 {
+            schema: PUBLICATION_CHECKPOINT_CHANGE_SCHEMA_V1.into(),
+        })
+        .map_err(|_| "REQUEST_INVALID")?;
+        let intent = IntentEvidence {
+            schema: "hiroute.desktop-plan-intent/v1".into(),
+            digest: CanonicalDigest::of(&change).map_err(|_| "REQUEST_INVALID")?,
+        };
+        let retry = self.retry_key(&intent).await?;
+        let preview: PublicationCheckpointPreviewV1 = query(
+            &self.client,
+            "PreviewAgentPlanChange",
+            &serde_json::json!({"change":change}),
+        )
+        .await?;
+        if preview.schema != PUBLICATION_CHECKPOINT_PREVIEW_SCHEMA_V1 {
+            return Err("PREVIEW_INVALID".into());
+        }
+        let label = if language == "en" {
+            "Update references"
+        } else {
+            "更新引用状态"
+        }
+        .to_owned();
+        Ok(Confirmation {
+            requires_confirmation: false,
+            action_label: label.clone(),
+            permit: self.confirmation.begin()?,
+            intent,
+            previous_name: String::new(),
+            input: RenameInput {
+                plan_id: "publication/current".into(),
+                display_name: label.clone(),
+                language,
+            },
+            message_override: Some(label),
+            request: NativePlanApply {
+                change,
+                accept_digest: preview.change_digest,
+                expected_revisions: preview.expected_revisions,
+                idempotency_key: retry.unwrap_or(crate::random_id()?),
+            },
+        })
+    }
     pub async fn preview_editor(
         &mut self,
         input: EditorInput,

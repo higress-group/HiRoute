@@ -1,0 +1,995 @@
+{
+  "$defs": {
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/selection"
+      },
+      "maxItems": 128,
+      "type": "array"
+    },
+    "catalog_query": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "offset": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "snapshot_digest": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "snapshot_digest",
+                "offset"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "limit": {
+          "default": 32,
+          "maximum": 128,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "checkpoint_change": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "hiroute.publication-checkpoint-change/v1"
+        }
+      },
+      "required": [
+        "schema"
+      ],
+      "type": "object"
+    },
+    "content_change": {
+      "additionalProperties": false,
+      "properties": {
+        "consumed_draft": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "draft_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "draft_id",
+                "revision"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "editor": {
+          "$ref": "#/$defs/editor"
+        },
+        "schema": {
+          "const": "hiroute.plan-content-change/v2"
+        },
+        "target": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "creation_key": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "intent": {
+                  "const": "create"
+                }
+              },
+              "required": [
+                "intent",
+                "creation_key"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "expected_head_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "intent": {
+                  "const": "update"
+                },
+                "plan_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "intent",
+                "plan_id",
+                "expected_head_revision"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "target",
+        "editor"
+      ],
+      "type": "object"
+    },
+    "draft": {
+      "additionalProperties": false,
+      "properties": {
+        "base_head_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "draft_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "editor": {
+          "$ref": "#/$defs/editor"
+        },
+        "plan_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "schema": {
+          "const": "hiroute.plan-draft/v1"
+        },
+        "workspace_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "workspace_id",
+        "draft_id",
+        "revision",
+        "editor"
+      ],
+      "type": "object"
+    },
+    "draft_change": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "draft": {
+                  "$ref": "#/$defs/draft"
+                },
+                "kind": {
+                  "const": "save"
+                }
+              },
+              "required": [
+                "kind",
+                "draft"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "discard"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "draft_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "schema": {
+          "const": "hiroute.plan-draft-change/v1"
+        },
+        "workspace_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "workspace_id",
+        "draft_id",
+        "action"
+      ],
+      "type": "object"
+    },
+    "editor": {
+      "additionalProperties": false,
+      "properties": {
+        "branch_routing": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "branches": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "candidates": {
+                        "$ref": "#/$defs/candidates"
+                      },
+                      "condition": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "not": {
+                          "const": "smart_saving"
+                        },
+                        "type": "string"
+                      },
+                      "judgment": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "$ref": "#/$defs/judgment"
+                          }
+                        ]
+                      },
+                      "name": {
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      "primary_candidates": {
+                        "$ref": "#/$defs/candidates"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "condition",
+                      "candidates",
+                      "primary_candidates"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
+                },
+                "classifier": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "local_rules"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "decision_service"
+                        },
+                        "service": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "connection": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "auth_header": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "name": {
+                                          "maxLength": 128,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "value_secret_ref": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "value_secret_ref"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "endpoint": {
+                                      "maxLength": 2048,
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "system_one"
+                                    },
+                                    "model": {
+                                      "maxLength": 256,
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "maxLength": 128,
+                                      "type": "string"
+                                    },
+                                    "timeout_ms": {
+                                      "maximum": 3600000,
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "provider",
+                                    "model",
+                                    "endpoint",
+                                    "timeout_ms",
+                                    "auth_header"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "auth_header": {
+                                      "oneOf": [
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "name": {
+                                              "maxLength": 128,
+                                              "minLength": 1,
+                                              "type": "string"
+                                            },
+                                            "value_secret_ref": {
+                                              "maxLength": 256,
+                                              "minLength": 1,
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "name",
+                                            "value_secret_ref"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "endpoint": {
+                                      "maxLength": 2048,
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "custom"
+                                    },
+                                    "timeout_ms": {
+                                      "maximum": 3600000,
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "endpoint",
+                                    "timeout_ms"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "id": {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            "name": {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            "revision": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "revision",
+                            "name",
+                            "connection"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "service"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "default_branch_id": {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                "judgment": {
+                  "$ref": "#/$defs/judgment"
+                },
+                "reselect_on_user_message": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "classifier",
+                "branches",
+                "default_branch_id",
+                "judgment",
+                "reselect_on_user_message"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "candidates": {
+          "$ref": "#/$defs/candidates"
+        },
+        "custom_alias": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "delegation_enabled": {
+          "type": "boolean"
+        },
+        "display_name": {
+          "maxLength": 128,
+          "type": "string"
+        },
+        "free": {
+          "additionalProperties": false,
+          "properties": {
+            "candidates": {
+              "$ref": "#/$defs/candidates"
+            },
+            "primary": {
+              "$ref": "#/$defs/candidates"
+            },
+            "primary_fallback": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "candidates",
+            "primary",
+            "primary_fallback"
+          ],
+          "type": "object"
+        },
+        "limits": {
+          "additionalProperties": false,
+          "properties": {
+            "attempt_timeout_ms": {
+              "maximum": 3600000,
+              "minimum": 1000,
+              "type": "integer"
+            },
+            "context_window_tokens": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maximum_attempts": {
+              "maximum": 64,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "request_timeout_ms": {
+              "maximum": 3600000,
+              "minimum": 1000,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "maximum_attempts",
+            "request_timeout_ms",
+            "attempt_timeout_ms"
+          ],
+          "type": "object"
+        },
+        "mode": {
+          "enum": [
+            "fixed_model",
+            "smart_saving",
+            "custom_branches",
+            "free_first"
+          ]
+        },
+        "purpose": {
+          "maxLength": 512,
+          "type": "string"
+        },
+        "requirements": {
+          "additionalProperties": false,
+          "properties": {
+            "minimum_context_tokens": {
+              "maximum": 10000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "minimum_output_tokens": {
+              "maximum": 10000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "streaming": {
+              "type": "boolean"
+            },
+            "tool": {
+              "type": "boolean"
+            },
+            "vision": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "schema": {
+          "const": "hiroute.plan-editor/v2"
+        },
+        "smart": {
+          "additionalProperties": false,
+          "properties": {
+            "classifier": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "local_rules"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "decision_service"
+                    },
+                    "service": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "connection": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "auth_header": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "name": {
+                                      "maxLength": 128,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "value_secret_ref": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "value_secret_ref"
+                                  ],
+                                  "type": "object"
+                                },
+                                "endpoint": {
+                                  "maxLength": 2048,
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "system_one"
+                                },
+                                "model": {
+                                  "maxLength": 256,
+                                  "type": "string"
+                                },
+                                "provider": {
+                                  "maxLength": 128,
+                                  "type": "string"
+                                },
+                                "timeout_ms": {
+                                  "maximum": 3600000,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "provider",
+                                "model",
+                                "endpoint",
+                                "timeout_ms",
+                                "auth_header"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "auth_header": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "name": {
+                                          "maxLength": 128,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "value_secret_ref": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "value_secret_ref"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  ]
+                                },
+                                "endpoint": {
+                                  "maxLength": 2048,
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "custom"
+                                },
+                                "timeout_ms": {
+                                  "maximum": 3600000,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "endpoint",
+                                "timeout_ms"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "id": {
+                          "maxLength": 128,
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 128,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "revision",
+                        "name",
+                        "connection"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "service"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "complex_keywords": {
+              "items": {
+                "maxLength": 64,
+                "type": "string"
+              },
+              "maxItems": 64,
+              "type": "array"
+            },
+            "economy": {
+              "$ref": "#/$defs/candidates"
+            },
+            "judgment": {
+              "$ref": "#/$defs/judgment"
+            },
+            "primary": {
+              "$ref": "#/$defs/candidates"
+            },
+            "reselect_on_user_message": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "economy",
+            "primary",
+            "judgment",
+            "reselect_on_user_message",
+            "classifier",
+            "complex_keywords"
+          ],
+          "type": "object"
+        },
+        "work": {
+          "additionalProperties": false,
+          "properties": {
+            "harness": {
+              "enum": [
+                "codex_cli",
+                "claude_code",
+                "qoder_cli",
+                "pi",
+                "deepseek_harness"
+              ]
+            },
+            "protocol": {
+              "enum": [
+                "responses",
+                "messages"
+              ]
+            }
+          },
+          "required": [
+            "harness",
+            "protocol"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema",
+        "display_name",
+        "purpose",
+        "mode",
+        "candidates",
+        "smart",
+        "free",
+        "delegation_enabled",
+        "requirements",
+        "limits"
+      ],
+      "type": "object"
+    },
+    "judgment": {
+      "additionalProperties": false,
+      "properties": {
+        "competence": {
+          "additionalProperties": false,
+          "properties": {
+            "criteria": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "floor_millis": {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "instructions": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "floor_millis",
+            "instructions",
+            "criteria"
+          ],
+          "type": "object"
+        },
+        "degree": {
+          "additionalProperties": false,
+          "properties": {
+            "complex": {
+              "type": "string"
+            },
+            "instructions": {
+              "type": "string"
+            },
+            "simple": {
+              "type": "string"
+            },
+            "simple_threshold_millis": {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "simple_threshold_millis",
+            "instructions",
+            "simple",
+            "complex"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "degree",
+        "competence"
+      ],
+      "type": "object"
+    },
+    "lifecycle_change": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_head_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "plan_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "schema": {
+          "const": "hiroute.plan-lifecycle-change/v1"
+        },
+        "status": {
+          "enum": [
+            "enabled",
+            "disabled",
+            "deleted"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "plan_id",
+        "expected_head_revision",
+        "status"
+      ],
+      "type": "object"
+    },
+    "selection": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reasoning": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "profile"
+                },
+                "profile": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "profile"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "const": "toggle"
+                }
+              },
+              "required": [
+                "kind",
+                "enabled"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "budget"
+                },
+                "tokens": {
+                  "maximum": 4294967295,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "tokens"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "binding_id"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "hiroute://contracts/cli/publication-checkpoint-change.v1.schema.json",
+  "$ref": "#/$defs/checkpoint_change",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

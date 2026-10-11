@@ -29,6 +29,10 @@ use crate::server::test_control::{
     write_dial_config,
 };
 
+#[path = "response_diagnostics_tests/capture.rs"]
+mod capture;
+use capture::{assert_capture, create_capture_session, wait_for_captured_request_eof};
+
 const CHILD_CASE: &str = "HIROUTE_STREAM_DIAGNOSTIC_CASE";
 const CHILD_ROOT: &str = "HIROUTE_STREAM_DIAGNOSTIC_ROOT";
 const TOKEN: &str = "SENTINEL_CLIENT_CREDENTIAL";
@@ -85,6 +89,11 @@ fn production_completed_prefix_capture_keeps_formal_attempt_correlation() {
 }
 
 #[test]
+fn production_completed_prefix_capture_accepts_usage_before_provider_completion() {
+    run_child_case("capture_known_usage_first").unwrap();
+}
+
+#[test]
 fn production_prebody_failed_capture_keeps_promoted_attempt_correlation() {
     let failures: Vec<_> = ["prebody_capture_invalid_json", "prebody_capture_relay"]
         .into_iter()
@@ -128,6 +137,7 @@ fn run_child_case(case: &str) -> Result<(), String> {
     if matches!(
         case,
         "capture_known"
+            | "capture_known_usage_first"
             | "capture_unknown"
             | "prebody_capture_invalid_json"
             | "prebody_capture_relay"
@@ -304,7 +314,7 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             None,
             1,
         ),
-        "capture_known" => {
+        "capture_known" | "capture_known_usage_first" => {
             let mut value = chat(tool(Some(TOOL), "{}"), json!("tool_calls"));
             value["usage"] = json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
             (frame(value), None, None, 2)
@@ -321,6 +331,7 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
         "invalid_arguments"
             | "unknown_metadata"
             | "capture_known"
+            | "capture_known_usage_first"
             | "capture_unknown"
             | "capture_disabled"
     ) {
@@ -330,6 +341,7 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
 }
 
 fn run_case(case: &str, root: &Path) {
+    let facts = Facts::default();
     let capture_enabled = std::env::var_os("HIROUTE_PRIVATE_STREAM_CAPTURE").is_some();
     if capture_enabled {
         create_capture_session(&root.join("capture"));
@@ -359,12 +371,20 @@ fn run_case(case: &str, root: &Path) {
     write_dial_config(root, &[&listener]).unwrap();
     let peer = listener.try_clone().unwrap();
     let sent = wire.clone();
+    let capture_root = capture_enabled.then(|| root.join("capture"));
+    let usage_first = case == "capture_known_usage_first";
+    let upstream_facts = facts.clone();
     let upstream = std::thread::spawn(move || {
         let (mut stream, _) = peer.accept().unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
         let request = read_request(&mut stream);
+        if let Some(root) = &capture_root {
+            // Receiving Content-Length bytes does not prove the request reader
+            // has verified EOF. This fixture promises a replayable capture.
+            wait_for_captured_request_eof(root);
+        }
         write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", sent.len()).unwrap();
         if after_body {
             stream.write_all(&sent[..prefix_len]).unwrap();
@@ -373,6 +393,16 @@ fn run_case(case: &str, root: &Path) {
             // the first real body unit. This proves the afterbody boundary.
             wait_for_body.recv_timeout(Duration::from_secs(3)).unwrap();
             let _ = stream.write_all(&sent[prefix_len..]);
+        } else if usage_first {
+            let terminal = b"data: [DONE]\n\n";
+            assert!(sent.ends_with(terminal));
+            let split = sent.len() - terminal.len();
+            stream.write_all(&sent[..split]).unwrap();
+            stream.flush().unwrap();
+            // Deliver the accepted canonical usage before the provider can
+            // complete. This deterministically exercises production deduplication.
+            wait_canonical_usage(&upstream_facts);
+            stream.write_all(&sent[split..]).unwrap();
         } else {
             let _ = stream.write_all(&sent);
         }
@@ -421,7 +451,6 @@ fn run_case(case: &str, root: &Path) {
         parent_session_id: None,
         level_override: Some(DiagnosticLevel::Debug),
     });
-    let facts = Facts::default();
     let mut sinks = GatewayObservationSinks::discard();
     sinks.execution_fact = Arc::new(facts.clone());
     let observation =
@@ -480,7 +509,7 @@ fn run_case(case: &str, root: &Path) {
         "{}",
         String::from_utf8_lossy(&response)
     );
-    if case == "capture_known" {
+    if matches!(case, "capture_known" | "capture_known_usage_first") {
         let response = String::from_utf8_lossy(&response);
         assert!(response.contains("\"type\":\"tool_use\""));
         assert!(response.contains(&format!("\"name\":\"{TOOL}\"")));
@@ -514,6 +543,14 @@ fn run_case(case: &str, root: &Path) {
     // Keep the collector live through Gateway shutdown; request_finished is
     // a terminal business fact, not a barrier for every observation producer.
     let facts = facts.0.lock().unwrap().clone();
+    if usage_first {
+        assert!(
+            facts.iter().all(|r| {
+                r.pointer("/fact/source").and_then(Value::as_str) != Some("provider_completion")
+            }),
+            "canonical usage must suppress the later duplicate provider completion"
+        );
+    }
     if no_credential {
         assert!(
             !facts.iter().any(
@@ -740,6 +777,25 @@ fn wait_finished(facts: &Facts, failed: bool) {
         std::thread::sleep(Duration::from_millis(5));
     }
 }
+
+fn wait_canonical_usage(facts: &Facts) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let records = facts.0.lock().unwrap().clone();
+        if records.iter().any(|r| {
+            r.pointer("/fact/kind").and_then(Value::as_str) == Some("usage_and_cache")
+                && r.pointer("/fact/source").and_then(Value::as_str)
+                    == Some("accepted_canonical_model_event")
+        }) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "canonical usage was not delivered"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
 fn assert_prebody_relay_business(facts: &[Value]) {
     let named = |name| {
         facts
@@ -909,135 +965,5 @@ fn wait_replay_clean(root: &Path) {
             "Replay resources survived request cleanup"
         );
         std::thread::sleep(Duration::from_millis(5));
-    }
-}
-fn create_capture_session(root: &Path) {
-    fs::DirBuilder::new().mode(0o700).create(root).unwrap();
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let mut file = fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .open(root.join("session.json"))
-        .unwrap();
-    file.write_all(serde_json::to_string(&json!({"source_sha":"a".repeat(40),"binary_sha256":"b".repeat(64),
-        "client":"deterministic-production-listener-fixture","expires_at":now+60,"delete_after":now+120})).unwrap().as_bytes()).unwrap();
-}
-
-fn assert_capture(
-    root: &Path,
-    upstream: &[u8],
-    entity: &[u8],
-    reason: Option<&str>,
-    diagnostics: &[Value],
-    facts: &[Value],
-) {
-    let lock = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(root.join("active.lock"))
-        .unwrap();
-    // The stable inode survives both clean exit and crashes; kernel ownership
-    // must be released before cleanup can use this same lock.
-    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-        .expect("writer ownership was not released");
-    let files: Vec<_> = fs::read_dir(root)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|e| e == "capture"))
-        .collect();
-    assert_eq!(files.len(), 1);
-    let path = &files[0];
-    assert_eq!(
-        fs::metadata(path).unwrap().permissions().mode() & 0o777,
-        0o600
-    );
-    let bytes = fs::read(path).unwrap();
-    assert!(
-        !bytes
-            .windows(b"SENTINEL_UPSTREAM_CREDENTIAL".len())
-            .any(|w| w == b"SENTINEL_UPSTREAM_CREDENTIAL")
-    );
-    let mut remaining = bytes.as_slice();
-    let mut records = Vec::new();
-    while !remaining.is_empty() {
-        assert!(remaining.len() >= 9);
-        let size = u64::from_le_bytes(remaining[1..9].try_into().unwrap()) as usize;
-        assert!(size <= remaining.len() - 9);
-        records.push((remaining[0], &remaining[9..9 + size]));
-        remaining = &remaining[9 + size..];
-    }
-    assert_eq!(records.last().unwrap().0, 8);
-    assert!(records.iter().any(|r| r.0 == 2));
-    let captured = |kind| {
-        records
-            .iter()
-            .filter(|r| r.0 == kind)
-            .flat_map(|r| r.1.iter().copied())
-            .collect::<Vec<_>>()
-    };
-    let body_offset = upstream.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
-    assert_eq!(
-        captured(1),
-        upstream[body_offset..],
-        "capture must use actual prepared request reader"
-    );
-    assert_eq!(
-        captured(4),
-        entity,
-        "ordered read blocks must reproduce the exact entity"
-    );
-    let context: Value = serde_json::from_slice(records[0].1).unwrap();
-    assert_eq!(
-        context["request_bytes"],
-        (upstream.len() - body_offset) as u64
-    );
-    assert_eq!(context["profile"]["ingress_protocol"], "messages");
-    assert_eq!(
-        context["profile"]["capability"]["upstream_protocol"],
-        "chat_completions"
-    );
-    assert!(!context["chat_tools"].is_null());
-    assert_eq!(records.iter().filter(|r| r.0 == 7).count(), 1);
-    let correlation: Value =
-        serde_json::from_slice(records.iter().find(|r| r.0 == 7).unwrap().1).unwrap();
-    let attempt = diagnostics
-        .iter()
-        .find_map(|r| payload(r, "attempt_begin"))
-        .unwrap();
-    assert_eq!(correlation["request_token"], attempt["request_token"]);
-    assert_eq!(correlation["attempt_token"], attempt["attempt_token"]);
-    assert_eq!(correlation["attempt_index"], attempt["attempt_index"]);
-    assert_eq!(
-        correlation["request_id"],
-        facts
-            .iter()
-            .find_map(|r| r.pointer("/correlation/request_id"))
-            .unwrap()
-            .clone()
-    );
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    for chunks in [0, 1, 4096] {
-        let replay = rt
-            .block_on(crate::runtime::stream_capture::replay_capture(path, chunks))
-            .unwrap();
-        assert_eq!(
-            replay["decoder"]["result"],
-            if reason.is_some() {
-                "rejected"
-            } else {
-                "accepted"
-            }
-        );
-        if let Some(reason) = reason {
-            assert_eq!(replay["decoder"]["reason"], reason);
-        } else {
-            assert_eq!(replay["decoder"]["tool_calls"], 1);
-        }
-        assert!(!replay.to_string().contains("SENTINEL"));
     }
 }

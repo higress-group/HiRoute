@@ -107,14 +107,14 @@ class Store:
         remote.save(path, row)
 
     @contextlib.contextmanager
-    def locked(self, checkout):
-        # The runner and cleanup use the same lock; cleanup never waits on an active build.
+    def locked(self, checkout, *, wait=False):
+        # Only an explicitly queued run waits; cleanup always uses the default fast failure.
         key = hashlib.sha256(str(checkout).encode()).hexdigest()
         with contextlib.ExitStack() as stack:
             handles = []
             for path in (self.global_lock, self.root / "locks" / (key + ".lock")):
                 handle = stack.enter_context(path.open("a"))
-                remote.fcntl.flock(handle, remote.fcntl.LOCK_EX | remote.fcntl.LOCK_NB)
+                remote.fcntl.flock(handle, remote.fcntl.LOCK_EX | (0 if wait else remote.fcntl.LOCK_NB))
                 handles.append(handle)
             yield handles
 
@@ -135,6 +135,16 @@ class Store:
             if any(not p.startswith("target/") for p in ignored.splitlines()):
                 raise ValueError("Ignored files outside target retained")
         target = checkout / "target"
+        # Lock admission can fail before Cargo creates a target. Only a managed,
+        # never-started run without recorded target identities may use this path.
+        # A later-created target (including a dangling link) still fails closed.
+        if (row["kind"] == "managed" and row.get("process_exit") is None
+                and not row.get("command_started_at")
+                and "target_identity" not in row and "debug_identity" not in row
+                and not os.path.lexists(target)):
+            if git(checkout, "ls-files", "target"):
+                raise ValueError("Target contains tracked files")
+            return checkout, target / "debug"
         identity(target)
         if target.resolve() != target or identity(target) != row["target_identity"]:
             raise ValueError("Target was replaced")
@@ -189,7 +199,8 @@ class Store:
                 raise ValueError("Candidate changed; preview again")
             if row["kind"] == "managed":
                 # Preserve all non-debug target artifacts before removing this disposable tree.
-                self.export_target(row)
+                if os.path.lexists(checkout / "target"):
+                    self.export_target(row)
                 remote.command(["git", "-C", row["repo"], "worktree", "remove", "--force", str(checkout)])
             else:
                 shutil.rmtree(debug)  # Never remove a developer worktree or its release/evidence.
@@ -283,7 +294,8 @@ def run(store, args, prepare=None, on_record=None):
     row = dict(id=key, kind="managed", repo=str(repo), checkout=str(checkout), sha=args.sha,
                command=cargo, status="preparing", keep=args.keep, evidence_saved=False,
                process_exit=None, scenario="unassessed", candidate_source=source,
-               build_jobs=jobs, platform=sys.platform, architecture=platform.machine(),
+               build_jobs=jobs, wait_for_lock=getattr(args, "wait_for_lock", False),
+               platform=sys.platform, architecture=platform.machine(),
                submitted_at=time.time(), **feedback)
     row["executor_sha256"] = {
         name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
@@ -324,8 +336,11 @@ def run(store, args, prepare=None, on_record=None):
         }
         before = remote.stats(store.record_path(key).parent, "cache-before", server_env)
         row["queued_at"] = time.time()
-        with store.locked(checkout) as handles:
+        store.save(row)
+        with store.locked(checkout, wait=row["wait_for_lock"]) as handles:
             row["capacity_acquired_at"] = time.time()
+            if row["wait_for_lock"] and shutil.disk_usage(store.root).free < 30 * GIB:
+                raise ValueError("Less than 30 GiB free after waiting; build not started")
             info = private_temp()
             row["temporary_directory"] = info
             env["TMPDIR"] = info["path"]
@@ -385,6 +400,8 @@ def main():
     p.add_argument("--sha", required=True)
     p.add_argument("--source", choices=("origin", "local"), default="origin")
     p.add_argument("--jobs", type=int, default=2)
+    p.add_argument("--wait-for-lock", action="store_true",
+                   help="Wait on the existing exclusive host/checkout locks before starting Cargo")
     p.add_argument("--keep", action="store_true")
     p.add_argument("--cargo-only", action="store_true", help="Assert pure Cargo check: no external scenario verdict or unique debug artifacts")
     p.add_argument("--timeout", type=int, default=3600)

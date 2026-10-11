@@ -31,6 +31,11 @@ use hiroute_domain::{
 use super::super::super::ControlStore;
 use crate::{LocalSecretStore, LocalStorageSet, RuntimeStore};
 
+mod compensation_guards;
+mod lifecycle;
+mod recovery;
+mod released_lifecycle;
+mod removal_guards;
 mod runtime_leases;
 mod subscription_selection;
 
@@ -321,6 +326,7 @@ fn discovery_change(
     revisions: hiroute_domain::RevisionSetV1,
 ) -> ComputeManagementChangeV2 {
     ComputeManagementChangeV2 {
+        edit: None,
         schema: "hiroute.compute-management-change/v2".into(),
         subject: ComputeManagementSubjectV2::Candidate {
             candidate: facts.candidate.clone(),
@@ -387,6 +393,7 @@ fn populate_saved_source(
     .revisions;
     let preview = planner
         .preview(ComputeManagementChangeV2 {
+            edit: None,
             schema: "hiroute.compute-management-change/v2".into(),
             subject: ComputeManagementSubjectV2::Candidate {
                 candidate: facts.candidate.clone(),
@@ -440,6 +447,7 @@ fn populate_saved_source(
     registry.register_compute_candidate(second.clone()).unwrap();
     let second_preview = planner
         .preview(ComputeManagementChangeV2 {
+            edit: None,
             schema: "hiroute.compute-management-change/v2".into(),
             subject: ComputeManagementSubjectV2::SavedSource {
                 source_id: source.source_id.clone(),
@@ -478,6 +486,7 @@ fn populate_saved_source(
         .unwrap();
     let combination_preview = planner
         .preview(ComputeManagementChangeV2 {
+            edit: None,
             schema: "hiroute.compute-management-change/v2".into(),
             subject: ComputeManagementSubjectV2::SavedSource {
                 source_id: second_source.source_id.clone(),
@@ -603,6 +612,7 @@ fn editing_source_adds_endpoint_without_reentering_or_copying_the_saved_key() {
     .unwrap();
     let preview = planner
         .preview(ComputeManagementChangeV2 {
+            edit: None,
             schema: "hiroute.compute-management-change/v2".into(),
             subject: ComputeManagementSubjectV2::Candidate {
                 candidate: first.candidate,
@@ -663,6 +673,7 @@ fn editing_source_adds_endpoint_without_reentering_or_copying_the_saved_key() {
     registry.register_compute_candidate(edited.clone()).unwrap();
     let preview = planner
         .preview(ComputeManagementChangeV2 {
+            edit: None,
             schema: "hiroute.compute-management-change/v2".into(),
             subject: ComputeManagementSubjectV2::Candidate {
                 candidate: edited.candidate,
@@ -910,6 +921,106 @@ fn reimport_of_saved_native_source_still_rejects_changed_discovery_without_key_e
     );
     let before = snapshot();
     let change = discovery_change(&facts, before.revisions.clone());
+    let preview = planner.preview(change.clone()).unwrap();
+    let request = ComputeConnectionApplyRequestV1 {
+        spec: preview.result.spec,
+        accept_digest: preview.result.accept_digest,
+        expected_revisions: preview.result.expected_revisions,
+        idempotency_key: "native-source-reimport".into(),
+    };
+    let prepared = planner.prepare_apply(request.clone()).unwrap();
+    input.evidence_valid.store(false, Ordering::Release);
+    assert!(matches!(
+        planner.preview(change),
+        Err(ComputeManagementPlanningErrorV2::PreviewStale)
+    ));
+    assert!(matches!(
+        planner.prepare_apply(request),
+        Err(ComputeManagementPlanningErrorV2::PreviewStale)
+    ));
+    assert!(matches!(
+        coordinator.accept_prepared(
+            &workspace,
+            &VerifiedPrincipal::for_local_control(),
+            prepared
+        ),
+        Err(TransactionError::ChangePreviewStale)
+    ));
+    assert_eq!(snapshot().sources, before.sources);
+    assert_eq!(snapshot().revisions, before.revisions);
+}
+
+#[test]
+fn append_of_saved_native_source_revalidates_discovery_at_preview_and_admission() {
+    let directory = tempdir().unwrap();
+    let stores = LocalStorageSet::open_for_daemon_startup(directory.path()).unwrap();
+    let workspace = WorkspaceId::default();
+    let registry = TrustedComputeCandidateRegistry::new();
+    let evidence = CanonicalDigest::of_bytes(b"static-native-source/v1");
+    let mut facts = discovered_candidate(evidence.clone());
+    facts.provenance = ComputeCandidateProvenanceV2::UserConfigured {
+        configuration_revision: 1,
+        evidence_digest: facts.evidence_digest.clone(),
+    };
+    registry.register_compute_candidate(facts.clone()).unwrap();
+    let input = DiscoveryProtectedInput::new(evidence);
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    coordinator.reconcile_startup_and_open().unwrap();
+    let snapshot = || {
+        hiroute_domain::ComputeManagementRepositoryPort::compute_management_snapshot(
+            stores.control(),
+            &workspace,
+        )
+        .unwrap()
+    };
+    let first = planner
+        .preview(discovery_change(&facts, snapshot().revisions))
+        .unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &workspace,
+        first,
+        "native-source-first-save",
+    );
+    let before = snapshot();
+    // A no-key-edit reimport with the same evidence remains a valid product save.
+    let repeat = planner
+        .preview(discovery_change(&facts, before.revisions))
+        .unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &workspace,
+        repeat,
+        "native-source-unchanged-reimport",
+    );
+    assert_eq!(
+        snapshot().sources[0].credentials,
+        before.sources[0].credentials
+    );
+    let before = snapshot();
+    let mut refreshed_facts = facts.clone();
+    refreshed_facts.existing_source_id = Some(before.sources[0].source_id.clone());
+    refreshed_facts.candidate.candidate_revision += 1;
+    registry
+        .register_compute_candidate(refreshed_facts.clone())
+        .unwrap();
+    let mut change = discovery_change(&refreshed_facts, before.revisions.clone());
+    change.edit = Some(hiroute_application_api::ComputeManagementEditV1::AppendModels);
     let preview = planner.preview(change.clone()).unwrap();
     let request = ComputeConnectionApplyRequestV1 {
         spec: preview.result.spec,

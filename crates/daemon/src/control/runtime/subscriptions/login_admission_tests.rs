@@ -265,6 +265,7 @@ impl Fixture {
         let candidate = checked.checked_candidate.as_ref().unwrap();
         self.save_request(
             ComputeManagementChangeV2 {
+                edit: None,
                 schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
                 subject: ComputeManagementSubjectV2::Candidate {
                     candidate: candidate.candidate.clone(),
@@ -294,6 +295,7 @@ impl Fixture {
         let source = &snapshot.sources[0];
         self.save_request(
             ComputeManagementChangeV2 {
+                edit: None,
                 schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
                 subject: ComputeManagementSubjectV2::SavedSource {
                     source_id: source.source_id.clone(),
@@ -634,4 +636,48 @@ fn succeeded_replay_after_forget_preserves_disabled_source_without_restart() {
     assert_eq!(before.sources[0].state, MaterializationState::Disabled);
     assert_eq!(fixture.spawns(), spawns);
     assert!(!fixture.credential_path(&login.login_ref).exists());
+}
+
+#[test]
+fn deleting_saved_connection_keeps_managed_login_and_does_not_restart_provider() {
+    if isolated("deleting_saved_connection_keeps_managed_login_and_does_not_restart_provider") {
+        return;
+    }
+    for provider in [
+        SubscriptionLoginProviderV1::Codex,
+        SubscriptionLoginProviderV1::Claude,
+    ] {
+        let fixture = Fixture::new();
+        let login = fixture.authorize(provider);
+        let checked = fixture.check(&login);
+        fixture.save(fixture.candidate_request(&checked, "first-save"));
+        let snapshot = fixture.snapshot();
+        let source = &snapshot.sources[0];
+        let path = fixture.credential_path(&login.login_ref);
+        let before = fs::read(&path).unwrap();
+        let spawns = fixture.spawns();
+        let request = fixture.save_request(
+            ComputeManagementChangeV2 {
+                schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
+                subject: ComputeManagementSubjectV2::SavedSource {
+                    source_id: source.source_id.clone(),
+                },
+                expected_revisions: snapshot.revisions,
+                selected_model_refs: Vec::new(),
+                intent: ComputeManagementIntentV2::SaveReady,
+                key_edits: Vec::new(),
+                validation: None,
+                edit: Some(hiroute_application_api::ComputeManagementEditV1::Delete),
+            },
+            "delete-connection",
+        );
+        fixture.save(request);
+        assert!(fixture.snapshot().sources.is_empty());
+        assert_eq!(
+            fs::read(path).unwrap(),
+            before,
+            "connection deletion must preserve the independent login"
+        );
+        assert_eq!(fixture.spawns(), spawns);
+    }
 }

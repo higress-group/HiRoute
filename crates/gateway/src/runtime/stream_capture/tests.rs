@@ -386,21 +386,25 @@ fn capture_redacts_transport_headers_and_enforces_expiry() {
 
 #[tokio::test]
 async fn capture_limits_and_partial_request_cannot_produce_replay_evidence() {
-    let root = setup();
-    assert!(Capture::open(&root, &profile(), None, MAX_FILE as usize, true).is_err());
-    assert!(root.join("active.lock").exists());
-    let capture = open_after_capture_release(&root, || {});
-    capture.record(1, b"{");
-    capture.record(3, &200u16.to_le_bytes());
-    capture.failed();
-    drop(capture);
-    assert_eq!(
-        replay_capture(&root.join("attempt-1.capture"), 0)
-            .await
-            .unwrap_err(),
-        "request body capture incomplete"
-    );
-    fs::remove_dir_all(root).unwrap();
+    // Even all expected bytes are insufficient without the reader's verified
+    // EOF: an early upstream error is allowed to seal an incomplete capture.
+    for request in [b"{".as_slice(), b"{}".as_slice()] {
+        let root = setup();
+        assert!(Capture::open(&root, &profile(), None, MAX_FILE as usize, true).is_err());
+        assert!(root.join("active.lock").exists());
+        let capture = open_after_capture_release(&root, || {});
+        capture.record(1, request);
+        capture.record(3, &200u16.to_le_bytes());
+        capture.failed();
+        drop(capture);
+        assert_eq!(
+            replay_capture(&root.join("attempt-1.capture"), 0)
+                .await
+                .unwrap_err(),
+            "request body capture incomplete"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 
     let root = setup();
     for _ in 0..MAX_ATTEMPTS {

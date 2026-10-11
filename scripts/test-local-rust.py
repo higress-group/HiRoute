@@ -4,6 +4,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import select
+import signal
 import subprocess
 import tempfile
 import time
@@ -66,6 +68,51 @@ class Cleanup(unittest.TestCase):
         self.assertEqual(before, self.store.record_path(row['id']).read_bytes())
         self.assertTrue((self.repo / 'target/debug/binary').exists())
 
+    def targetless_admission(self):
+        row = self.managed()
+        m.shutil.rmtree(Path(row['checkout']) / 'target')
+        row.pop('target_identity')
+        row.pop('debug_identity')
+        row['process_exit'] = None
+        self.store.save(row)
+        return row
+
+    def test_targetless_admission_cleanup_preserves_run_evidence(self):
+        row = self.targetless_admission()
+        report = self.store.record_path(row['id']).parent / 'validation-report.json'
+        report.write_text('{"scenario":"not_executed"}')
+        candidate = self.store.preview_one(row)
+        self.assertEqual(candidate['state'], 'candidate')
+        self.assertEqual(candidate['bytes'], 0)
+        self.store.apply(row['id'], candidate['token'])
+        self.assertFalse(Path(row['checkout']).exists())
+        self.assertTrue(self.store.load(row['id'])['removed'])
+        self.assertIsNone(self.store.load(row['id'])['process_exit'])
+        self.assertEqual(json.loads(report.read_text())['scenario'], 'not_executed')
+
+    def test_targetless_admission_rejects_later_target_and_dangling_link(self):
+        row = self.targetless_admission()
+        candidate = self.store.preview_one(row)
+        target = Path(row['checkout']) / 'target'
+        for linked in (False, True):
+            if linked:
+                target.symlink_to(self.base / 'missing', target_is_directory=True)
+            else:
+                target.mkdir()
+            with self.assertRaises((ValueError, KeyError)):
+                self.store.apply(row['id'], candidate['token'])
+            if linked:
+                target.unlink()
+            else:
+                target.rmdir()
+        self.assertTrue(Path(row['checkout']).exists())
+
+    def test_missing_target_after_started_or_attested_run_stays_protected(self):
+        row = self.targetless_admission()
+        for extra in ({'command_started_at': 1}, {'process_exit': 1},
+                      {'target_identity': [1, 2]}, {'debug_identity': [1, 3]}):
+            self.assertEqual(self.store.preview_one(dict(row, **extra))['state'], 'skipped')
+
     def test_developer_cleanup_preserves_dirty_source_evidence_and_branch(self):
         row = self.developer()
         (self.repo / 'source').write_text('uncommitted')
@@ -95,6 +142,275 @@ class Cleanup(unittest.TestCase):
             self.assertEqual(self.store.preview_one(row)['state'], 'skipped')
             child.communicate('done')
             self.assertEqual(child.returncode, 0)
+
+    def child(self, code, *arguments, env=None):
+        process = subprocess.Popen([m.sys.executable, '-c', code, *map(str, arguments)],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, env=env)
+        def reap():
+            if process.poll() is None:
+                process.kill()
+            process.communicate(timeout=5)
+        self.addCleanup(reap)
+        return process
+
+    def ready(self, process):
+        self.assertTrue(select.select([process.stdout], [], [], 5)[0], 'child readiness timed out')
+        # Read only the readiness line; TextIO.readline could prefetch the final
+        # JSON that communicate() must later read from a fast nonblocking child.
+        line = b''
+        while not line.endswith(b'\n'):
+            value = os.read(process.stdout.fileno(), 1)
+            self.assertTrue(value, 'child exited before readiness')
+            line += value
+        self.assertEqual(line, b'ready\n')
+
+    def hold_lock(self, path):
+        child = self.child('import fcntl,sys; f=open(sys.argv[1],"a"); '
+                           'fcntl.flock(f,fcntl.LOCK_EX); print("ready",flush=True); sys.stdin.read()', path)
+        self.ready(child)
+        return child
+
+    def queued_run(self, wait_for_lock=None, available_bytes=60 * m.GIB):
+        # Only Git, child processes and flock are real; these private compiler tools
+        # record invocations instead of compiling Rust or touching the host's locks.
+        binary = self.base / 'queued-bin'
+        binary.mkdir()
+        calls = self.base / 'compiler-calls.jsonl'
+        cargo = binary / 'cargo'
+        cargo.write_text('#!' + m.sys.executable + '\n'
+                         'import json,pathlib,sys\n'
+                         f'with pathlib.Path({str(calls)!r}).open("a") as out:\n'
+                         ' out.write(json.dumps(sys.argv[1:])+"\\n")\n'
+                         'target=pathlib.Path.cwd()/"target"\n'
+                         'if sys.argv[1]=="metadata":\n'
+                         ' print(json.dumps({"target_directory":str(target)}))\n'
+                         'elif sys.argv[1]=="--version":\n'
+                         ' print("cargo fixture")\n'
+                         'else:\n'
+                         ' (target/"debug").mkdir(parents=True)\n'
+                         ' print("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out")\n')
+        cargo.chmod(0o700)
+        for name in ('rustc', 'sccache'):
+            tool = binary / name
+            tool.write_text('#!/bin/sh\nexit 0\n')
+            tool.chmod(0o700)
+        space = self.base / 'available-bytes'
+        space.write_text(str(available_bytes))
+        args = dict(repo=str(self.repo), ref=m.git(self.repo, 'symbolic-ref', 'HEAD'),
+                    sha=m.git(self.repo, 'rev-parse', 'HEAD'), command=['cargo', 'test'],
+                    keep=True, cargo_only=True, timeout=5, source='local', jobs=2)
+        if wait_for_lock is not None:
+            args['wait_for_lock'] = wait_for_lock
+        code = '''import importlib.util,json,sys,types
+from pathlib import Path
+sys.dont_write_bytecode=True
+spec=importlib.util.spec_from_file_location('queued_local',sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+store=module.Store(sys.argv[2],sys.argv[3])
+store.ensure_space=lambda: None
+store.gc=lambda *a,**k: (_ for _ in ()).throw(AssertionError('GC must not run inside the acquired lock'))
+module.remote.stats=lambda *a,**k: {'cache_hits':1}
+module.shutil.disk_usage=lambda path: types.SimpleNamespace(free=int(Path(sys.argv[4]).read_text()))
+flock=module.remote.fcntl.flock
+first=True
+def observed_flock(handle,flags):
+ global first
+ if first:
+  first=False
+  print('ready',flush=True)
+ return flock(handle,flags)
+module.remote.fcntl.flock=observed_flock
+result=module.run(store,types.SimpleNamespace(**json.loads(sys.argv[5])))
+print(json.dumps(result),flush=True)
+'''
+        env = dict(os.environ, PATH=str(binary) + os.pathsep + os.environ['PATH'])
+        child = self.child(code, m.__file__, self.store.root, self.store.global_lock,
+                           space, json.dumps(args), env=env)
+        self.ready(child)
+        return child, calls, space
+
+    def run_result(self, child):
+        output, error = child.communicate(timeout=5)
+        self.assertEqual(child.returncode, 0, error)
+        row = json.loads(output)
+        if row.get('temporary_directory'):
+            self.addCleanup(m.remote.cleanup_temp_directory, row['temporary_directory'])
+        return row
+
+    def waiting_record(self, child, calls, require_queue=True):
+        with self.assertRaises(subprocess.TimeoutExpired):
+            child.wait(timeout=0.15)
+        self.assertFalse(calls.exists(), 'compiler tools entered before capacity was acquired')
+        records = list((self.store.root / 'runs').glob('*/result.json'))
+        self.assertEqual(len(records), 1)
+        row = json.loads(records[0].read_text())
+        self.assertTrue(row['wait_for_lock'])
+        if require_queue:
+            self.assertIn('queued_at', row)
+            self.assertLessEqual(row['checkout_finished_at'], row['queued_at'])
+        self.assertNotIn('capacity_acquired_at', row)
+        self.assertNotIn('command_started_at', row)
+        return row
+
+    def test_waiting_run_executes_once_after_child_releases_lock(self):
+        holder = self.hold_lock(self.store.global_lock)
+        child, calls, _ = self.queued_run(wait_for_lock=True, available_bytes=30 * m.GIB)
+        queued = self.waiting_record(child, calls)
+        released_at = time.time()
+        holder.communicate('release', timeout=5)
+        row = self.run_result(child)
+        self.assertEqual(row['scenario'], 'green', row)
+        self.assertEqual(row['process_exit'], 0)
+        self.assertEqual(row['queued_at'], queued['queued_at'])
+        self.assertGreaterEqual(row['capacity_acquired_at'], released_at)
+        self.assertLessEqual(row['capacity_acquired_at'], row['command_started_at'])
+        self.assertLessEqual(row['command_started_at'], row['command_finished_at'])
+        self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()].count(['test']), 1)
+        saved = self.store.load(row['id'])
+        self.assertTrue(saved['wait_for_lock'])
+        self.assertEqual(saved['queued_at'], row['queued_at'])
+        with self.store.locked(row['checkout']):
+            pass
+
+    def test_default_run_refuses_busy_lock_without_execution(self):
+        holder = self.hold_lock(self.store.global_lock)
+        child, calls, _ = self.queued_run()
+        row = self.run_result(child)
+        self.assertFalse(row['wait_for_lock'])
+        self.assertEqual(row['scenario'], 'red')
+        self.assertIsNone(row['process_exit'])
+        self.assertIn('temporarily unavailable', row['error'])
+        self.assertNotIn('capacity_acquired_at', row)
+        self.assertFalse(calls.exists())
+        self.assertIsNone(holder.poll(), 'the test must leave the competing owner active')
+
+    def test_interrupted_waiting_run_has_no_execution_or_lock_leak(self):
+        holder = self.hold_lock(self.store.global_lock)
+        child, calls, _ = self.queued_run(wait_for_lock=True)
+        self.waiting_record(child, calls, require_queue=False)
+        child.send_signal(signal.SIGINT)
+        row = self.run_result(child)
+        self.assertEqual(row['scenario'], 'red')
+        self.assertIsNone(row['process_exit'])
+        self.assertNotIn('capacity_acquired_at', row)
+        self.assertFalse(calls.exists())
+        holder.communicate('release', timeout=5)
+        with self.store.locked(row['checkout']):
+            pass
+
+    def waiting_store(self):
+        checkout_lock = self.store.root / 'locks' / (m.hashlib.sha256(str(self.repo).encode()).hexdigest() + '.lock')
+        holder = self.hold_lock(checkout_lock)
+        code = '''import importlib.util,sys
+spec=importlib.util.spec_from_file_location('waiting_local',sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+store=module.Store(sys.argv[2],sys.argv[3])
+flock=module.remote.fcntl.flock
+count=0
+def observed_flock(handle,flags):
+ global count
+ count+=1
+ if count==2: print('ready',flush=True)
+ return flock(handle,flags)
+module.remote.fcntl.flock=observed_flock
+with store.locked(sys.argv[4],wait=True): print('entered',flush=True)
+'''
+        child = self.child(code, m.__file__, self.store.root, self.store.global_lock, self.repo)
+        self.ready(child)
+        return holder, child
+
+    def test_waiting_store_enters_once_after_checkout_child_releases_lock(self):
+        holder, child = self.waiting_store()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            child.wait(timeout=0.15)
+        holder.communicate('release', timeout=5)
+        output, error = child.communicate(timeout=5)
+        self.assertEqual(child.returncode, 0, error)
+        self.assertEqual(output.splitlines(), ['entered'])
+        with self.store.locked(self.repo):
+            pass
+
+    def test_waiting_store_holds_global_until_checkout_and_releases_on_termination(self):
+        holder, child = self.waiting_store()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            child.wait(timeout=0.15)
+        with self.assertRaises(BlockingIOError):
+            with self.store.locked(self.base / 'other-checkout'):
+                self.fail('global lock was released while waiting on the checkout lock')
+        child.terminate()
+        output, _ = child.communicate(timeout=5)
+        self.assertEqual(child.returncode, -signal.SIGTERM)
+        self.assertNotIn('entered', output)
+        with self.store.locked(self.base / 'other-checkout'):
+            pass
+        holder.communicate('release', timeout=5)
+        with self.store.locked(self.repo):
+            pass
+
+    def test_cleanup_still_refuses_busy_child_lock_without_waiting(self):
+        row = self.developer()
+        token = self.store.preview_one(row)['token']
+        holder = self.hold_lock(self.store.global_lock)
+        code = '''import importlib.util,json,sys
+spec=importlib.util.spec_from_file_location('cleanup_local',sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+store=module.Store(sys.argv[2],sys.argv[3])
+row=store.load(sys.argv[4])
+preview=store.preview_one(row)
+try: store.apply(row['id'],sys.argv[5])
+except BlockingIOError: rejected=True
+else: rejected=False
+print(json.dumps({'preview':preview['state'],'apply_rejected':rejected}))
+'''
+        child = self.child(code, m.__file__, self.store.root, self.store.global_lock, row['id'], token)
+        output, error = child.communicate(timeout=2)
+        self.assertEqual(child.returncode, 0, error)
+        self.assertEqual(json.loads(output), {'preview': 'skipped', 'apply_rejected': True})
+        self.assertIsNone(holder.poll())
+        self.assertTrue((self.repo / 'target/debug/binary').exists())
+
+    def test_waiting_run_rechecks_capacity_without_gc_before_compiler(self):
+        holder = self.hold_lock(self.store.global_lock)
+        child, calls, space = self.queued_run(wait_for_lock=True)
+        self.waiting_record(child, calls, require_queue=False)
+        space.write_text(str(30 * m.GIB - 1))
+        holder.communicate('release', timeout=5)
+        row = self.run_result(child)
+        self.assertEqual(row['scenario'], 'red')
+        self.assertIn('Less than 30 GiB free after waiting', row['error'])
+        self.assertIsNone(row['process_exit'])
+        self.assertIn('capacity_acquired_at', row)
+        self.assertNotIn('command_started_at', row)
+        self.assertNotIn('temporary_directory', row)
+        self.assertFalse(calls.exists())
+        with self.store.locked(row['checkout']):
+            pass
+
+    def test_default_run_does_not_add_a_second_capacity_check(self):
+        # Preflight is stubbed in this compiler fixture. Only wait mode adds the
+        # new capacity check after flock; the original default stays compatible.
+        child, calls, _ = self.queued_run(available_bytes=0)
+        row = self.run_result(child)
+        self.assertFalse(row['wait_for_lock'])
+        self.assertEqual(row['scenario'], 'green', row)
+        self.assertTrue(calls.exists())
+
+    def test_local_cli_parses_explicit_wait_and_preserves_default(self):
+        for enabled in (False, True):
+            argv = ['local-rust.py', 'run', '--ref', 'refs/heads/test', '--sha', 'a' * 40]
+            if enabled:
+                argv.append('--wait-for-lock')
+            argv += ['--', 'cargo', 'test']
+            with self.subTest(wait=enabled), patch.object(m.sys, 'argv', argv), \
+                    patch.object(m, 'Store', return_value=self.store), \
+                    patch.object(m, 'run', return_value={'scenario': 'green'}) as run, \
+                    patch('builtins.print'):
+                self.assertEqual(m.main(), 0)
+                self.assertEqual(run.call_args.args[1].wait_for_lock, enabled)
 
     def test_keep_and_missing_evidence_are_protected(self):
         row = self.managed()

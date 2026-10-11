@@ -120,6 +120,9 @@ class CaptureSessionTest(unittest.TestCase):
                 try:
                     self.assertTrue((root / "raw.capture").exists())
                     if early_stop:
+                        time.sleep(0.2)
+                        self.assertTrue((root / "raw.capture").exists(),
+                                        "normal candidate exit must retain the sealed sample")
                         os.kill(owner, signal.SIGTERM)
                     deadline = time.monotonic() + 5
                     while root.exists() and time.monotonic() < deadline:
@@ -322,6 +325,51 @@ while True:
         finally:
             child.kill()
             child.wait(timeout=5)
+
+    @unittest.skipUnless(hasattr(os, "WNOWAIT"), "requires non-reaping waitid")
+    def test_exited_owned_leader_can_be_stopped_when_macos_hides_group_identity(self):
+        child = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+        try:
+            deadline = time.monotonic() + 5
+            while not capture.candidate_exited(child) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(capture.candidate_exited(child))
+            with patch.object(capture.os, "getpgid", side_effect=ProcessLookupError), \
+                    patch.object(capture, "GROUP_STOP_GRACE_SECONDS", 0):
+                capture.stop(child, created_isolated_session=True)
+            self.assertEqual(child.returncode, 0)
+        finally:
+            if child.returncode is None:
+                child.kill()
+                child.wait(timeout=5)
+
+    @unittest.skipUnless(hasattr(os, "WNOWAIT"), "requires non-reaping waitid")
+    def test_missing_group_identity_does_not_authorize_signalling_a_live_child(self):
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                                 start_new_session=True)
+        try:
+            with patch.object(capture.os, "getpgid", side_effect=ProcessLookupError), \
+                    patch.object(capture.os, "killpg") as kill_group:
+                with self.assertRaises(ProcessLookupError):
+                    capture.stop(child, created_isolated_session=True)
+                kill_group.assert_not_called()
+            self.assertIsNone(child.poll())
+        finally:
+            child.kill()
+            child.wait(timeout=5)
+
+    def test_group_permission_error_requires_kernel_proof_of_only_waitable_leader(self):
+        child = SimpleNamespace(pid=123, returncode=None)
+        with patch.object(capture.os, "killpg", side_effect=PermissionError), \
+                patch.object(capture, "candidate_exited", return_value=True), \
+                patch.object(capture, "darwin_group_contains_only_leader", return_value=False):
+            with self.assertRaises(PermissionError):
+                capture.signal_owned_group(child, signal.SIGKILL, True)
+        with patch.object(capture.os, "killpg", side_effect=PermissionError), \
+                patch.object(capture, "candidate_exited", return_value=True), \
+                patch.object(capture, "darwin_group_contains_only_leader", return_value=True):
+            with self.assertRaises(PermissionError):
+                capture.signal_owned_group(child, signal.SIGKILL, False)
 
     def test_private_writer_does_not_follow_or_overwrite(self):
         with tempfile.TemporaryDirectory() as parent:

@@ -231,6 +231,8 @@ pub(super) struct WebComputeManagementChangeV2 {
     key_edits: Vec<ComputeKeyEditV2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     validation: Option<WebValidationRefV2>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    edit: Option<hiroute_application_api::ComputeManagementEditV1>,
 }
 
 impl From<ComputeManagementChangeV2> for WebComputeManagementChangeV2 {
@@ -243,6 +245,7 @@ impl From<ComputeManagementChangeV2> for WebComputeManagementChangeV2 {
             intent: value.intent,
             key_edits: value.key_edits,
             validation: value.validation.map(Into::into),
+            edit: value.edit,
         }
     }
 }
@@ -259,6 +262,7 @@ impl TryFrom<WebComputeManagementChangeV2> for ComputeManagementChangeV2 {
             intent: value.intent,
             key_edits: value.key_edits,
             validation: value.validation.map(TryInto::try_into).transpose()?,
+            edit: value.edit,
         })
     }
 }
@@ -531,6 +535,7 @@ mod tests {
             dependencies: BTreeMap::new(),
         };
         let change = ComputeManagementChangeV2 {
+            edit: None,
             schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
             subject: ComputeManagementSubjectV2::Candidate {
                 candidate: ComputeCandidateRefV2 {

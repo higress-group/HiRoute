@@ -42,6 +42,7 @@ export function connectionErrorMessage(code: string, zh: boolean): string {
   if (code === 'MODEL_REASONING_INVALID') return zh
     ? '请填写有效的思考档位或预算范围。'
     : 'Enter valid reasoning levels or a valid budget range.';
+  if (code === 'CONNECTION_NAME_CONFLICT') return zh ? '请输入 1–60 个字符的名称，并与其他接入区分。' : 'Use a distinct connection name with 1–60 characters.';
   if (code === 'MODEL_SELECTION_REQUIRED') return zh ? '至少选择一个模型。' : 'Select at least one model.';
   if (code === 'MODEL_DIRECTORY_EMPTY') return zh
     ? '没有读取到可接入的模型。请检查服务地址，或使用自定义 API 补充未知模型。'

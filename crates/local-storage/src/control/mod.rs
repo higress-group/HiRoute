@@ -1456,6 +1456,14 @@ impl ControlRepositoryPort for ControlStore {
         Ok(CompensationOutcome::Compensated)
     }
 
+    fn reconcile_compute_compensation(
+        &self,
+        operation: &OperationV1,
+        references: &[hiroute_domain::CredentialRefV1],
+    ) -> PortResult<()> {
+        compute::management::reconcile_compensation(self, operation, references)
+    }
+
     fn finish_operation(&self, operation: &mut OperationV1) -> PortResult<u64> {
         if !operation.state.is_terminal() {
             return Err(port(
