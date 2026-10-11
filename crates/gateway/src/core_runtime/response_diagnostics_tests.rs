@@ -533,6 +533,14 @@ fn run_case(case: &str, root: &Path) {
     // Keep the collector live through Gateway shutdown; request_finished is
     // a terminal business fact, not a barrier for every observation producer.
     let facts = facts.0.lock().unwrap().clone();
+    if usage_first {
+        assert!(
+            facts.iter().all(|r| {
+                r.pointer("/fact/source").and_then(Value::as_str) != Some("provider_completion")
+            }),
+            "canonical usage must suppress the later duplicate provider completion"
+        );
+    }
     if no_credential {
         assert!(
             !facts.iter().any(
@@ -771,7 +779,10 @@ fn wait_canonical_usage(facts: &Facts) {
         }) {
             return;
         }
-        assert!(Instant::now() < deadline, "canonical usage was not delivered");
+        assert!(
+            Instant::now() < deadline,
+            "canonical usage was not delivered"
+        );
         std::thread::sleep(Duration::from_millis(5));
     }
 }
