@@ -30,8 +30,8 @@ function input(index: number, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value);
   element.dispatchEvent(new Event('input', { bubbles: true }));
 }
-const digest = `sha256:${'a'.repeat(64)}`;
-const operation = { operation_id: 'operation/test', state: 'succeeded', sequence: 1, cancellable: false };
+const digest: `sha256:${string}` = `sha256:${'a'.repeat(64)}`;
+const operation = { operation_id: 'operation/test', state: 'succeeded' as const, sequence: 1, cancellable: false };
 
 async function mounted(existingId: string | null, observedId: string | null, run: (trace: { checks: ModelConnectionCheckRequest[]; protectedInputs: number; saves: number }) => Promise<void>) {
   const trace = { checks: [] as ModelConnectionCheckRequest[], protectedInputs: 0, saves: 0 };
