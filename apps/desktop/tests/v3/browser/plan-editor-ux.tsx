@@ -195,12 +195,18 @@ const checks: [string, () => Promise<void>][] = [
 ];
 
 const availabilityCases: [string, () => Promise<void>][] = [
-  ['routing.options.id-safety: manual input follows the shared provider ID byte and character bounds', async () => {
-    for (const id of ['内网模型', 'Vendor/Model@2026?revision#1', 'Model A', 'e\u0301', '\ufeff模型\ufeff', '\ufeff', '模型🧠', '🧠'.repeat(128), 'x'.repeat(512), '界'.repeat(170) + 'ab']) {
-      assert(manualModelError(blankModel(id, '中文名称')) === '', `Safe opaque ID was rejected: ${JSON.stringify(id)}`);
+  ['routing.options.id-safety: ASCII manual entry preserves exact existing and observed Unicode IDs', async () => {
+    for (const id of ['gpt-6.1-sol', 'Vendor/Model@2026?revision#1', 'Model A', 'x'.repeat(512)]) {
+      assert(manualModelError(blankModel(id, '中文名称')) === '', `ASCII ID was rejected: ${JSON.stringify(id)}`);
+    }
+    for (const id of ['内网模型', 'e\u0301', '\ufeff模型\ufeff', '\ufeff', '\u202emodel', '模型🧠', '🧠'.repeat(128), '界'.repeat(170) + 'ab']) {
+      assert(manualModelError(blankModel(id, '中文名称')) === 'MODEL_ID_ASCII_REQUIRED', `New non-ASCII input was accepted: ${JSON.stringify(id)}`);
+      const preserved = new Set([id]);
+      assert(manualModelError(blankModel(id, '修改名称'), preserved) === '', `Existing ID was rejected: ${JSON.stringify(id)}`);
+      assert(manualModelError(blankModel(`${id}改`, '名称'), preserved) !== '', 'A modified non-ASCII ID inherited the exception');
     }
     for (const id of [' bad', 'bad\u00a0', 'bad\u3000', 'bad\tmodel', 'bad\0model', 'bad\u0085model', '\u0085bad', 'bad\u0085', 'bad\ud800model', '\udfffbad', 'x'.repeat(513), '界'.repeat(171), '🧠'.repeat(129)]) {
-      assert(manualModelError(blankModel(id, '中文名称')) === 'MODEL_ID_INVALID', `Unsafe ID was accepted: ${JSON.stringify(id)}`);
+      assert(manualModelError(blankModel(id, '中文名称'), new Set([id])) === 'MODEL_ID_INVALID', `Preservation bypassed safety bounds: ${JSON.stringify(id)}`);
     }
   }],
   ['routing.options.exclusions: rejected models remain visible with disabled selection and safe reasons', async () => {
