@@ -106,7 +106,7 @@ fn persists_desired_and_binds_applied_to_exact_launch_snapshot() {
 }
 #[test]
 #[cfg(unix)]
-fn refuses_unsafe_files_and_symlinks() {
+fn accepts_accessible_modes_but_refuses_symlinks() {
     use std::os::unix::fs::{PermissionsExt, symlink};
     let root = private_root();
     let store = SubscriptionProxyStore::new(root.path());
@@ -117,8 +117,15 @@ fn refuses_unsafe_files_and_symlinks() {
         0o600
     );
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(store.load().is_err());
-    assert!(store.configure(SubscriptionProxyPolicy::Inherit).is_err());
+    assert_eq!(
+        store.load().unwrap().policy,
+        SubscriptionProxyPolicy::Direct
+    );
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+    store.configure(SubscriptionProxyPolicy::Inherit).unwrap();
     fs::remove_file(&path).unwrap();
     symlink("missing", &path).unwrap();
     assert!(store.load().is_err());

@@ -78,8 +78,7 @@ pub fn discovery(root: &Path, secret: &str) -> Result<(PathBuf, PathBuf)> {
     let bin = root.join("agent-bin");
     fs::create_dir_all(home.join(".claude"))?;
     fs::create_dir_all(&bin)?;
-    // These are synthetic homes; native artifact registration rejects writable
-    // parents. Do not inherit the caller's umask for this fixture contract.
+    // Keep synthetic homes private without depending on the caller's umask.
     for directory in [&home, &home.join(".claude"), &bin] {
         fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
     }

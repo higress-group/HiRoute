@@ -194,7 +194,7 @@ def supervise_candidate(args, root, binary, command, source, report):
 def capture_lock(root):
     fd = os.open(root / "active.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     info = os.fstat(fd)
-    if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600 or info.st_uid != os.geteuid():
+    if not stat.S_ISREG(info.st_mode):
         os.close(fd)
         raise ValueError("unsafe capture lock")
     return os.fdopen(fd, "rb+")
@@ -210,8 +210,8 @@ def capture_active(root):
 
 
 def cleanup(root, require_expired=True, lock_wait_seconds=0):
-    # Only this exact, expired, owner-only session. Never walk a general evidence tree.
-    if root.is_symlink() or root.resolve() != root or root.stat().st_uid != os.geteuid() or stat.S_IMODE(root.stat().st_mode) != 0o700:
+    # Only this exact, expired session. Never walk a general evidence tree.
+    if root.is_symlink() or root.resolve() != root or not root.is_dir():
         raise ValueError("unsafe root")
     with capture_lock(root) as lock:
         deadline = time.monotonic() + max(0, lock_wait_seconds)

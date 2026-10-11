@@ -1,9 +1,11 @@
 # Local configuration saves
 
-HiRoute's owner-only Local Control socket admits processes running as the same OS user as
-`hirouted`. Desktop and CLI use this one local-user scope for configuration saves and Operation
-recovery. They do not need a Desktop/CLI-specific Apply capability or a second authorization
-confirmation. A Save, Publish, or Use this installation click is the ordinary user intent.
+HiRoute's Local Control socket uses the operating system's local access permissions.
+HiRoute adds no file-owner, permission-bit or peer-UID admission check. New private files and
+directories still default to 0600/0700. Desktop and CLI use this local scope for configuration
+saves and Operation recovery. They do not need a Desktop/CLI-specific Apply capability or a
+second authorization confirmation. A Save, Publish, or Use this installation click is the
+ordinary user intent.
 
 The daemon still validates the exact normalized change, digest, resource revisions, idempotency
 key, and durable writer admission. On a conflict, refresh the current state and submit the
@@ -22,7 +24,7 @@ configuration is being edited; only a successful lifecycle change enables calls.
 ## Codex CLI profile
 
 For an isolated instance, set `HOME` and `CODEX_HOME` to its private directories.
-`HIROUTE_CODEX_AUTH_SOURCE` may independently select an absolute, owner-only Codex
+`HIROUTE_CODEX_AUTH_SOURCE` may independently select an absolute, readable Codex
 `auth.json` for subscription discovery and CPA's access-only lease. Set it on the
 process that starts the daemon. Without this override, the source remains
 `CODEX_HOME/auth.json` (or `HOME/.codex/auth.json`). An explicit invalid or missing
@@ -30,6 +32,13 @@ source never falls back to another account. Discovery and CPA use the same sourc
 the override does not select the native Agent configuration or Worker history root.
 CPA never receives the source's refresh token and never refreshes or rewrites the
 source. The original Codex retains refresh ownership.
+
+Independent sign-in through HiRoute is the recommended Codex and Claude subscription entry;
+CPA then owns that authorization and refresh. When reusing Codex's native login without an
+explicit auth-file override, HiRoute accepts file storage only. A non-file
+`cli_auth_credentials_store` selection is reported as unsupported even if an old `auth.json`
+remains. Use independent sign-in in that case. Borrowing requires a current access token and
+an identifiable account; an ID token or refresh timestamp is not required.
 
 An isolated acceptance process must also clear inherited provider credentials,
 model-routing variables and Claude context overrides. A private `HOME` alone does
@@ -64,7 +73,7 @@ including formatting, must be undone before retry; after cleanup you can reapply
 edits. HiRoute never force-overwrites a conflict. A newly created profile containing user-added
 settings is retained after the managed fields are removed.
 
-Same-user CLI callers can resume that same operation through `agents connect apply` with:
+Local CLI callers can resume that same operation through `agents connect apply` with:
 
 ```json
 {"schema":"hiroute.agent-settings-retry/v1","context_id":"<discovered context>","operation_id":"<pending Operation>"}

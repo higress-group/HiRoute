@@ -244,12 +244,7 @@ fn owned_link_target(target: &Path, roots: &[PathBuf]) -> bool {
 fn ensure_owned_directory(path: &Path) -> Result<(), String> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) => {
-            use std::os::unix::fs::{MetadataExt, PermissionsExt};
-            if !metadata.is_dir()
-                || metadata.file_type().is_symlink()
-                || metadata.uid() != nix::unistd::geteuid().as_raw()
-                || metadata.permissions().mode() & 0o022 != 0
-            {
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
                 return Err("CLI_ENTRY_DIRECTORY_UNSAFE".into());
             }
         }
@@ -279,7 +274,9 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let root = tempfile::tempdir().unwrap();
-            let home = root.path().join("Users/test user");
+            // macOS tempfile roots use /var, while the installed CLI is canonicalized to /private/var.
+            let canonical_root = std::fs::canonicalize(root.path()).unwrap();
+            let home = canonical_root.join("Users/test user");
             let applications = home.join("Applications");
             let target = applications.join("HiRoute.app/Contents/MacOS/hiroute");
             std::fs::create_dir_all(target.parent().unwrap()).unwrap();

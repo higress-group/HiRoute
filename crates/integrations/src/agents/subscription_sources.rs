@@ -163,7 +163,7 @@ fn claude_subscription_location(
 }
 
 /// Shared source selection for discovery and CPA. This only selects a path; CPA owns
-/// no-follow, ownership, mode and access-only credential validation.
+/// no-follow, stable file identity and access-only credential validation.
 pub fn codex_subscription_auth_from_environment(
     home: &Path,
 ) -> Result<PathBuf, AgentFilesystemScanError> {
@@ -171,6 +171,22 @@ pub fn codex_subscription_auth_from_environment(
         super::filesystem::codex_config_path(home, std::env::var_os("CODEX_HOME").as_deref());
     let selected = std::env::var_os("HIROUTE_CODEX_AUTH_SOURCE").map(PathBuf::from);
     subscription_auth_path(&config, selected.as_deref())
+}
+
+/// Inspect only the selected user config. No Keychain access, CLI invocation or fallback.
+/// Explicit HiRoute auth-file overrides bypass this policy at source selection.
+pub fn codex_subscription_uses_file_store(config: &Path) -> Result<bool, AgentFilesystemScanError> {
+    let Some((bytes, _)) = super::filesystem_config::read_validated_config_bytes(config)? else {
+        return Ok(true); // Codex's default on every platform is `file`.
+    };
+    let text = std::str::from_utf8(&bytes).map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
+    let value: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
+    Ok(match value.get("cli_auth_credentials_store") {
+        None => true,
+        Some(mode) => mode.as_str() == Some("file"),
+    })
 }
 
 fn subscription_auth_path(
@@ -201,9 +217,13 @@ pub struct ProtectedAgentSubscriptionSourceV1 {
     source_path: PathBuf,
     kind: AgentSubscriptionKind,
     claude_location: Option<ClaudeSubscriptionLocation>,
+    codex_store_config: Option<PathBuf>,
 }
 
 impl ProtectedAgentSubscriptionSourceV1 {
+    pub fn codex_store_config(&self) -> Option<&Path> {
+        self.codex_store_config.as_deref()
+    }
     pub fn kind(&self) -> AgentSubscriptionKind {
         self.kind
     }
@@ -228,7 +248,7 @@ impl ProtectedAgentSubscriptionSourceV1 {
 
 impl FilesystemAgentScannerV1 {
     /// Resolves the selected subscription source without reading the file.
-    /// The CPA bridge performs the authoritative no-follow/owner/mode/content validation later.
+    /// The CPA bridge performs the authoritative no-follow/content validation later.
     pub fn codex_subscription_source(
         &self,
     ) -> Result<Option<ProtectedAgentSubscriptionSourceV1>, AgentFilesystemScanError> {
@@ -272,6 +292,11 @@ impl FilesystemAgentScannerV1 {
             source_path: canonical,
             kind: AgentSubscriptionKind::Codex,
             claude_location: None,
+            codex_store_config: self
+                .layout
+                .codex_subscription_auth_override
+                .is_none()
+                .then(|| self.layout.codex_user_config.clone()),
         }))
     }
 }
@@ -341,6 +366,7 @@ impl FilesystemAgentScannerV1 {
             source_path: canonical,
             kind,
             claude_location: Some(location),
+            codex_store_config: None,
         }))
     }
 }

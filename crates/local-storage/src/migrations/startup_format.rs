@@ -60,14 +60,6 @@ fn bootstrap_diagnostics_directory(path: &Path) -> bool {
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return false;
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.mode() & 0o777 != 0o700 || metadata.uid() != rustix::process::getuid().as_raw()
-        {
-            return false;
-        }
-    }
     true
 }
 

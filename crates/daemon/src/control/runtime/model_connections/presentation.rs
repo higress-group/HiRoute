@@ -33,6 +33,52 @@ enum ConnectorRuntimeRead {
 }
 
 impl LocalControlAdapter {
+    /// Diagnose only a missing saved subscription join, before taking the storage lock.
+    /// Reuse management's exact provider read and source maintenance projection.
+    pub(in crate::control::runtime) fn subscription_routing_unavailability(
+        &self,
+        source: &ComputeManagementSourceV2,
+    ) -> hiroute_application_api::PlanCandidateUnavailableReasonV1 {
+        use hiroute_application_api::PlanCandidateUnavailableReasonV1 as Reason;
+        if let Some(maintenance) = self.subscription_maintenance_presentation(&source.source_id) {
+            return match maintenance {
+                SubscriptionMaintenancePresentation::AuthenticationRequired => {
+                    Reason::CredentialUnavailable
+                }
+                SubscriptionMaintenancePresentation::Updating
+                | SubscriptionMaintenancePresentation::RuntimeUnavailable => {
+                    Reason::RuntimeUnavailable
+                }
+            };
+        }
+        let ComputeManagementProvenanceV2::ConnectorOwned {
+            connector_id,
+            account_ref,
+        } = &source.provenance
+        else {
+            return Reason::InvalidConfiguration;
+        };
+        let Some(kind) = CpaAccountKind::from_connector(connector_id) else {
+            return Reason::InvalidConfiguration;
+        };
+        match connector_runtime_read(self, kind) {
+            ConnectorRuntimeRead::AuthenticationRequired => Reason::CredentialUnavailable,
+            ConnectorRuntimeRead::Sources(sources)
+                if !sources.iter().any(|registered| {
+                    registered.source.connector_id == *connector_id
+                        && registered.source.connection_option_id == kind.connection_option_id()
+                        && registered.source.identity.account_subject_ref == *account_ref
+                }) =>
+            {
+                Reason::CredentialUnavailable
+            }
+            // A later successful read cannot grant execution to the earlier failed batch.
+            ConnectorRuntimeRead::Sources(_) | ConnectorRuntimeRead::RuntimeUnavailable => {
+                Reason::RuntimeUnavailable
+            }
+        }
+    }
+
     pub(super) fn compute_management_presentation_facts(
         &self,
     ) -> Result<ComputeManagementPresentationFactsV1, ComputeManagementControlError> {

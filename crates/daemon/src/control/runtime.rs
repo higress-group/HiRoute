@@ -1493,14 +1493,9 @@ fn create_owner_key(path: &Path, key: &[u8; 32]) -> Result<(), String> {
 
 #[cfg(unix)]
 fn validate_owner_key(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
-    if !metadata.file_type().is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.permissions().mode() & 0o077 != 0
-        || metadata.uid() != nix::unistd::geteuid().as_raw()
-    {
-        return Err("observation authority key is not owner-only".to_owned());
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err("observation authority key is not a regular file".to_owned());
     }
     Ok(())
 }

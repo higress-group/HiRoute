@@ -291,17 +291,18 @@ fn equal_length_plaintext_changes_are_inside_the_owner_trust_boundary() {
 
 #[cfg(unix)]
 #[test]
-fn permissions_symlinks_and_path_escape_fail_closed() {
+fn accessible_modes_work_while_symlinks_and_path_escape_fail_closed() {
     use std::os::unix::fs::{PermissionsExt, symlink};
 
     let unsafe_root = TestRoot::new("permissions-root");
     fs::create_dir(&unsafe_root.0).expect("create unsafe root");
     fs::set_permissions(&unsafe_root.0, fs::Permissions::from_mode(0o755))
         .expect("set unsafe root mode");
-    assert!(matches!(
-        ReplayManager::open(config(&unsafe_root.0, 64, 16)),
-        Err(ReplayError::UnsafePermissions)
-    ));
+    assert!(ReplayManager::open(config(&unsafe_root.0, 64, 16)).is_ok());
+    assert_eq!(
+        fs::metadata(&unsafe_root.0).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
 
     let target = TestRoot::new("symlink-target");
     fs::create_dir(&target.0).expect("create target");
@@ -321,10 +322,17 @@ fn permissions_symlinks_and_path_escape_fail_closed() {
     let reference = writer.seal().expect("seal");
     let path = store.stream_path(&reference).expect("disk path");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("loosen file mode");
-    assert!(matches!(
-        store.prevalidate(std::slice::from_ref(&reference)),
-        Err(ReplayError::UnsafePermissions)
-    ));
+    let original_spill = fs::File::open(&path).expect("retain spill metadata handle");
+    store.prevalidate(std::slice::from_ref(&reference)).unwrap();
+    assert_eq!(read_all(&store, &reference), vec![7_u8; 256]);
+    assert_eq!(
+        original_spill.metadata().unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+    assert!(
+        !path.exists(),
+        "prevalidation retains a handle and unlinks the spill"
+    );
 
     let escaped = root.0.join("child").join("..").join("other");
     assert!(matches!(

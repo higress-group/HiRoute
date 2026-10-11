@@ -4,8 +4,7 @@ use hiroute_application_api::ComputeCandidateFactStateV2;
 
 fn cache_fixture() -> (tempfile::TempDir, TcpListener, ProductDaemon) {
     let directory = tempfile::tempdir().unwrap();
-    // tempfile inherits umask for directories. A group-writable ancestor makes the
-    // production diagnostics writer reject this otherwise isolated fixture root.
+    // Keep fixture credentials and diagnostics private, independent of the caller's umask.
     fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
     configure_product_root(directory.path());
     let (binary, sha256) = install_subscription_fixture(directory.path());
@@ -470,5 +469,129 @@ async fn cached_checked_candidate_does_not_hide_same_source_lineage_replacement(
                 .candidate
                 .candidate_revision
     );
+    daemon.stop();
+}
+
+fn maintenance_cycle_count(root: &Path) -> usize {
+    fs::read_to_string(root.join("storage/diagnostics/daemon/current.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|record| {
+            record["event"]["cpa_stage"]["stage"] == "subscription_maintenance"
+                && record["event"]["cpa_stage"]["outcome"] == "completed"
+        })
+        .count()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn saved_borrowed_mode_and_membership_survive_native_credential_failures() {
+    let (directory, _proxy, mut daemon) = cache_fixture();
+    let auth_path = directory.path().join("home/.codex/auth.json");
+    let minimal = serde_json::json!({"tokens": {"account_id": "subscription-product-account", "access_token": ACCESS_SENTINEL}});
+    let auth = serde_json::to_vec(&minimal).unwrap();
+    fs::write(&auth_path, &auth).unwrap();
+    fs::set_permissions(&auth_path, fs::Permissions::from_mode(0o644)).unwrap();
+    let checked = check_current(&mut daemon, "compatible-native").await;
+    let saved = save_checked(
+        &daemon,
+        &checked,
+        ComputeManagementIntentV2::SaveReady,
+        "compatible-save",
+    )
+    .await;
+    let source = &saved.sources[0];
+    let stored = saved_source_json(directory.path(), &source.source_id);
+    let config_path = directory.path().join("home/.codex/config.toml");
+    let config = fs::read(&config_path).unwrap_or_default();
+    for case in ["store", "account", "login"] {
+        let mut cycles_before_change = maintenance_cycle_count(directory.path());
+        match case {
+            "store" => {
+                let mut changed = b"cli_auth_credentials_store = \"keyring\"\n".to_vec();
+                changed.extend_from_slice(&config);
+                fs::write(&config_path, changed).unwrap();
+            }
+            "account" => fs::write(&auth_path, serde_json::to_vec(&serde_json::json!({"tokens":{"access_token":ACCESS_SENTINEL}})).unwrap()).unwrap(),
+            _ => fs::write(&auth_path, serde_json::to_vec(&serde_json::json!({"auth_mode":"apikey", "OPENAI_API_KEY":"fixture-api-sentinel"})).unwrap()).unwrap(),
+        }
+        for needs_auth in [true, false] {
+            if !needs_auth {
+                cycles_before_change = maintenance_cycle_count(directory.path());
+                fs::write(&config_path, &config).unwrap();
+                fs::write(&auth_path, &auth).unwrap();
+            }
+            // Two completed cycles cover a cycle already in progress when the source changed.
+            // Do not query first: direct inspection can hide an incorrect maintenance projection.
+            let maintenance_deadline = Instant::now() + Duration::from_secs(25);
+            while maintenance_cycle_count(directory.path()) < cycles_before_change + 2 {
+                assert!(
+                    Instant::now() < maintenance_deadline,
+                    "saved-source maintenance did not execute for {case}"
+                );
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let snapshot = succeeded(
+                    daemon
+                        .client
+                        .compute_management_snapshot_v3(
+                            "saved-credential-mode",
+                            ComputeManagementQueryV2 {
+                                source_id: Some(source.source_id.clone()),
+                            },
+                        )
+                        .await
+                        .unwrap(),
+                );
+                assert_eq!(snapshot.subscription_modes.len(), 1);
+                assert_eq!(
+                    snapshot.subscription_modes[0].mode,
+                    hiroute_application_api::ComputeSubscriptionModeV1::NativeBorrowed
+                );
+                assert_eq!(
+                    snapshot.subscription_modes[0].source_revision,
+                    source.revision
+                );
+                let current = &snapshot.sources[0];
+                assert_eq!(current.revision, source.revision);
+                assert_eq!(current.models[0].binding_id, source.models[0].binding_id);
+                let expected = if needs_auth {
+                    ComputeModelAvailabilityV1::NeedsCredentials
+                } else {
+                    ComputeModelAvailabilityV1::Available
+                };
+                if current.models[0].presentation.availability == expected {
+                    if needs_auth {
+                        assert_eq!(
+                            current.models[0].presentation.reason_code,
+                            Some(ComputeModelAvailabilityReasonV1::AuthenticationRequired)
+                        );
+                    }
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{case}, needs_auth={needs_auth}: {:?}",
+                    current.models[0].presentation
+                );
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert_subscription_route_reason(
+                &daemon,
+                &source.models[0].binding_id,
+                needs_auth.then_some(
+                    hiroute_application_api::PlanCandidateUnavailableReasonV1::CredentialUnavailable,
+                ),
+            )
+            .await;
+            assert_eq!(
+                saved_source_json(directory.path(), &source.source_id),
+                stored
+            );
+        }
+    }
+    assert_eq!(fs::read(auth_path).unwrap(), auth);
     daemon.stop();
 }

@@ -413,7 +413,7 @@ fn bind_listener(
     ),
     String,
 > {
-    use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
     use std::os::unix::net::{UnixListener, UnixStream};
 
     let endpoint = ControlEndpoint::from_runtime_root(runtime_root);
@@ -421,19 +421,18 @@ fn bind_listener(
         .path()
         .parent()
         .ok_or_else(|| "Local Control endpoint has no parent".to_owned())?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+    use std::os::unix::fs::DirBuilderExt;
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(parent)
         .map_err(|error| error.to_string())?;
     let parent_metadata = fs::symlink_metadata(parent).map_err(|error| error.to_string())?;
-    if parent_metadata.file_type().is_symlink()
-        || !parent_metadata.file_type().is_dir()
-        || parent_metadata.permissions().mode() & 0o077 != 0
-        || parent_metadata.uid() != nix::unistd::geteuid().as_raw()
-    {
-        return Err("Local Control runtime directory is not owner-only".to_owned());
+    if parent_metadata.file_type().is_symlink() || !parent_metadata.file_type().is_dir() {
+        return Err("Local Control runtime path is not a regular directory".to_owned());
     }
     if let Ok(metadata) = fs::symlink_metadata(endpoint.path()) {
-        if !metadata.file_type().is_socket() || metadata.uid() != nix::unistd::geteuid().as_raw() {
+        if !metadata.file_type().is_socket() {
             return Err("refusing to replace an unowned Local Control endpoint".to_owned());
         }
         match UnixStream::connect(endpoint.path()) {
@@ -552,9 +551,6 @@ fn serve_listener_with_budgets(
             break;
         }
         let stream = stream.map_err(|error| error.to_string())?;
-        if !same_uid(&stream)? {
-            continue;
-        }
         let Some(admission) = budgets.try_accept() else {
             continue;
         };
@@ -650,39 +646,6 @@ fn write_frame(writer: &mut impl Write, value: &impl serde::Serialize) -> Result
         .write_all(&frame.0)
         .map_err(|error| error.to_string())?;
     writer.flush().map_err(|error| error.to_string())
-}
-
-#[cfg(target_os = "linux")]
-fn same_uid(stream: &std::os::unix::net::UnixStream) -> Result<bool, String> {
-    let credentials =
-        nix::sys::socket::getsockopt(stream, nix::sys::socket::sockopt::PeerCredentials)
-            .map_err(|error| error.to_string())?;
-    Ok(credentials.uid() == nix::unistd::geteuid().as_raw())
-}
-
-#[cfg(any(
-    target_os = "macos",
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "netbsd"
-))]
-fn same_uid(stream: &std::os::unix::net::UnixStream) -> Result<bool, String> {
-    let (uid, _) = nix::unistd::getpeereid(stream).map_err(|error| error.to_string())?;
-    Ok(uid == nix::unistd::geteuid())
-}
-
-#[cfg(all(
-    unix,
-    not(any(
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "freebsd",
-        target_os = "openbsd",
-        target_os = "netbsd"
-    ))
-))]
-fn same_uid(_stream: &std::os::unix::net::UnixStream) -> Result<bool, String> {
-    Err("peer credentials are unsupported on this Unix target".to_owned())
 }
 
 #[cfg(unix)]

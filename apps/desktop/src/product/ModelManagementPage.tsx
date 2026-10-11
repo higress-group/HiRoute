@@ -1,3 +1,4 @@
+import { managementLoadFailureCopy, subscriptionFailureCopy } from '../features/models/subscription-copy';
 import { requestEditorReplacement } from '../ui/discard-guard';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -39,7 +40,7 @@ import type {
   SubscriptionCandidate,
   SubscriptionCheckResult,
 } from '../features/subscriptions/types';
-import { canSave as canSaveSubscription, saveFailureDefinitelyPreAdmission, saveIntent, selectionRows, validatedSubscriptionCandidate } from '../features/subscriptions/model';
+import { canSave as canSaveSubscription, canSaveRepair, repairSourceAfterLogin, saveFailureDefinitelyPreAdmission, saveIntent, selectionRows, validatedSubscriptionCandidate } from '../features/subscriptions/model';
 import { safeDiagnosticCode } from '../error-code';
 
 type SubscriptionSaveSelection = {
@@ -69,6 +70,8 @@ function failureCode(error: unknown): string {
 function subscriptionFailureMessage(failure: SubscriptionFailure, language: 'zh' | 'en'): string {
   const zh = language === 'zh';
   const code = failure.code.toLocaleUpperCase();
+  const detail = subscriptionFailureCopy(code, language);
+  if (detail) return detail;
   if (code.includes('AUTH') || code.includes('LOGIN') || code.includes('CREDENTIAL') || code.includes('UNAUTHORIZED')) {
     return zh ? '无法使用当前订阅登录。请更新对应的登录，再重新检查。' : 'The current subscription sign-in could not be used. Renew the corresponding sign-in, then check again.';
   }
@@ -79,7 +82,7 @@ function subscriptionFailureMessage(failure: SubscriptionFailure, language: 'zh'
     return zh ? '暂时无法扫描本机订阅，请确认本机服务正在运行后重试。' : 'Local subscriptions could not be scanned. Confirm the local service is running, then try again.';
   }
   if (failure.phase === 'check') {
-    return zh ? '订阅检查未完成。请确认对应订阅已登录后重试。' : 'The subscription check did not complete. Confirm the subscription is signed in and try again.';
+    return zh ? '订阅检查未完成。请检查本机服务和网络后重试，也可在设置中开启调试日志帮助排查。' : 'The subscription check did not complete. Check the local service and network, then retry. Debug logs in Settings can help diagnose the failure.';
   }
   return zh ? '订阅接入未保存。请重新检查当前状态后再试，当前选择已保留。' : 'The subscription connection was not saved. Check the current state and try again; your selection is retained.';
 }
@@ -933,7 +936,9 @@ export function ModelManagementPage({
     setRepairingSubscriptionSource(sourceId);
     setSubscriptionError(null);
     setSubscriptionNotice('');
-    setAddStage('scan');
+    const source = management?.sources.find(item => item.source_id === sourceId);
+    const mode = management?.subscription_modes?.find(item => item.source_id === sourceId && item.source_revision === source?.revision)?.mode;
+    setAddStage(mode === 'cpa_managed' ? 'subscription-login' : 'scan');
     setAdding(true);
     void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]);
   }
@@ -957,11 +962,7 @@ export function ModelManagementPage({
     .includes(discoveryError.toLocaleLowerCase());
   const discoveryFailureCanRetry = Boolean(discoveryError
     && !['compute.discovery_not_importable', 'registered_option_unavailable'].includes(discoveryError.toLocaleLowerCase()));
-  const repairSelectionValid = Boolean(repairingSelectedSubscription
-    && effectiveSubscription?.validation
-    && repairingSource
-    && selectedSubscriptionModels.size === repairingSource.models.length
-    && repairingSource.models.every(model => selectedSubscriptionModels.has(model.model_ref)));
+  const repairSelectionValid = repairingSelectedSubscription && canSaveRepair(effectiveSubscription, repairingSource, selectedSubscriptionModels);
   const scanFooter = scanWorking
     ? <button type="button" className="btn" disabled={subscriptionSaving || discoverySaving} onClick={closeScan}>{subscriptionSaving || discoverySaving
       ? (language === 'zh' ? '正在保存…' : 'Saving…')
@@ -1051,7 +1052,7 @@ export function ModelManagementPage({
           setSubscriptions(result.candidates);
           setSubscriptionDiscoveryState(result.discovery_state);
           setSubscriptionLoading(false);
-          setRepairingSubscriptionSource(null);
+          setRepairingSubscriptionSource(current => repairSourceAfterLogin(current, candidate));
           openSubscription(candidate);
           setAddStage('scan');
         }} />}
@@ -1105,7 +1106,7 @@ export function ModelManagementPage({
     </Dialog>
     {(notice || modelNotice) && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{notice || modelNotice}</span></div></div>}
     {loading && <div className="empty-state" role="status"><div><span className="oc-spinner" /><p>{text.loading}</p></div></div>}
-    {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{language === 'zh' ? '暂时无法读取模型，请重试。' : 'Models could not be loaded. Try again.'}</span><button className="btn" type="button" onClick={() => void refreshManagement()}>{language === 'zh' ? '重试' : 'Retry'}</button></div>}
+    {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{managementLoadFailureCopy(error, language).detail}</span><button className="btn" type="button" onClick={() => void refreshManagement()}>{managementLoadFailureCopy(error, language).retry}</button></div>}
     {management && !management.sources.length && !loading && !error && <div className="empty-state v3-empty"><div>
       <span className="empty-icon"><UiIcon name="models" /></span>
       <h3>{language === 'zh' ? '先连接一个模型' : 'Connect your first model'}</h3>

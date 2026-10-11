@@ -306,7 +306,7 @@ impl ManagedCpaRuntime {
                 };
                 self.invalidate_live_accounts(live, affected_kind);
                 let _ = save_account_state(&layout.accounts_path, &live.accounts);
-                return Err(map_control_error(error));
+                return Err(self.map_control_error(error));
             }
         };
         crate::request_context::check()?;

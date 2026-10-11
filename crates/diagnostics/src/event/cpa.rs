@@ -54,6 +54,9 @@ pub struct CpaStage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CpaStageKind {
+    SubscriptionMaintenance,
+    NativeCredentialRead,
+    ManagedCredentialRead,
     ArtifactLocate,
     ArtifactValidate,
     ProcessSpawn,
@@ -79,6 +82,13 @@ pub enum CpaStageOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CpaFailureCode {
+    CredentialSourceMissing,
+    CredentialReadFailed,
+    CredentialStoreUnsupported,
+    CredentialLoginUnsupported,
+    CredentialAccountMissing,
+    CredentialInvalid,
+    ManagedLoginRequired,
     /// The trusted artifact could not be located or verified.
     ArtifactUnavailable,
     /// The artifact was found but refused by the bridge contract.

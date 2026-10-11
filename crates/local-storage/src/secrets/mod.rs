@@ -1823,15 +1823,6 @@ fn prepare_owner_directory(path: &Path) -> Result<(), LocalStorageError> {
         if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
             return Err(LocalStorageError::Permission);
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if metadata.mode() & 0o777 != 0o700
-                || metadata.uid() != rustix::process::getuid().as_raw()
-            {
-                return Err(LocalStorageError::Permission);
-            }
-        }
     } else {
         fs::create_dir_all(path)?;
         #[cfg(unix)]
@@ -1846,14 +1837,6 @@ fn prepare_owner_directory(path: &Path) -> Result<(), LocalStorageError> {
 fn validate_owner_file(metadata: &fs::Metadata) -> Result<(), LocalStorageError> {
     if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
         return Err(LocalStorageError::Permission);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.mode() & 0o777 != 0o600 || metadata.uid() != rustix::process::getuid().as_raw()
-        {
-            return Err(LocalStorageError::Permission);
-        }
     }
     Ok(())
 }

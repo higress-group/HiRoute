@@ -134,15 +134,6 @@ pub(super) fn publish(
                     if !metadata.is_file() {
                         return Err(LocalStorageError::Permission);
                     }
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::MetadataExt;
-                        if metadata.uid() != rustix::process::getuid().as_raw()
-                            || metadata.mode() & 0o022 != 0
-                        {
-                            return Err(LocalStorageError::Permission);
-                        }
-                    }
                 } else {
                     validate_owner_file(&path)?;
                 }

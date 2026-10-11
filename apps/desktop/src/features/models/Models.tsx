@@ -118,6 +118,7 @@ export function Models(props: Props) {
   const model = activeEntry?.model;
   const access = source ? sourceAccess(source) : 'unknown';
   const sourceLabel = source ? connectionLabel(source, props.language) : '';
+  const subscriptionMode = props.snapshot.subscription_modes?.find(item => item.source_id === source?.source_id && item.source_revision === source?.revision)?.mode;
   const connectorManaged = source?.provenance === 'connector_owned';
   const canManageCredentials = Boolean(props.mutable && source && !connectorManaged && access !== 'subscription'
     && source.authentication.kind !== 'none'
@@ -340,7 +341,7 @@ export function Models(props: Props) {
   const sourceRechecking = Boolean(source && rechecking?.sourceId === source.source_id);
   const reason = model?.presentation?.reason_code ?? null;
   const subscriptionAttention = access === 'subscription'
-    ? subscriptionAttentionCopy(reason, props.language)
+    ? subscriptionAttentionCopy(reason, props.language, subscriptionMode)
     : null;
 
   return <section className="models-feature" aria-label={text('我的模型', 'My models')}>
@@ -390,7 +391,7 @@ export function Models(props: Props) {
           {status !== 'available' && <div className="callout warn"><UiIcon name="warning" /><div><strong>{subscriptionAttention?.title ?? (status === 'needs_credentials' ? text('添加 API Key 后即可使用', 'Add an API key to use this model') : text('这个接入需要处理', 'This connection needs attention'))}</strong><p>{sourceRechecking ? text('正在使用已保存的接入信息重新检查。', 'Checking again with the saved connection details.') : subscriptionAttention?.detail ?? text('其他已连接模型不受影响。', 'Other connected models are unaffected.')}</p></div>{sourceRechecking
             ? <button className="btn" type="button" onClick={cancelRecheck}>{text('取消检查', 'Cancel check')}</button>
             : canReauthorize
-              ? <button className="btn" type="button" onClick={() => props.onReauthorize?.(source.source_id)}>{access === 'subscription' ? text('重新检查订阅', 'Check subscription again') : text('重新检查接入', 'Check connection again')}</button>
+              ? <button className="btn" type="button" onClick={() => props.onReauthorize?.(source.source_id)}>{access === 'subscription' ? subscriptionMode === 'cpa_managed' ? text('重新独立登录', 'Sign in independently again') : text('重新检查订阅', 'Check subscription again') : text('重新检查接入', 'Check connection again')}</button>
               : status !== 'needs_credentials' && canRecheck
                 ? <button className="btn" type="button" onClick={() => void recheckSource()}>{text('检查接入', 'Check connection')}</button>
                 : canManageCredentials && <button className="btn" type="button" onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>}
@@ -400,13 +401,17 @@ export function Models(props: Props) {
           <section className="detail-section">
             <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>
             <p className="muted">{access === 'subscription'
-              ? text('使用订阅连接，无需重复填写 API Key。', 'Uses a subscription; no additional API key is needed.')
+              ? subscriptionMode === 'cpa_managed'
+                ? text('独立登录 · 由 HiRoute 自动续期，不依赖原生客户端。', 'Independent sign-in · HiRoute renews access without the native client.')
+                : subscriptionMode === 'native_borrowed'
+                  ? text('复用本机登录 · 仅同步当前访问凭据，续期依赖原生客户端。', 'Local sign-in reuse · Syncs current access; renewal depends on the native client.')
+                  : text('使用订阅连接，无需重复填写 API Key。', 'Uses a subscription; no additional API key is needed.')
               : connectorManaged
                 ? text('凭据由本机连接器管理，无需在 HiRoute 中填写 API Key。', 'Credentials are managed by the local connector; no API key is entered in HiRoute.')
               : source.authentication.kind === 'none'
                 ? text('此接入不需要用户提供 API Key。', 'No user-provided API key is required.')
                 : sourceLabel}</p>
-            {access === 'subscription' && props.onManageSubscriptionLogin && <div className="actions"><button className="btn" type="button" disabled={!props.mutable} onClick={props.onManageSubscriptionLogin}>{text('管理订阅登录', 'Manage subscription sign-ins')}</button></div>}
+            {access === 'subscription' && props.onManageSubscriptionLogin && <div className="actions"><button className="btn" type="button" disabled={!props.mutable} onClick={props.onManageSubscriptionLogin}>{subscriptionMode === 'native_borrowed' ? text('改用独立登录', 'Use independent sign-in') : text('管理订阅登录', 'Manage subscription sign-ins')}</button></div>}
             {source.provenance === 'user_configured' && props.onReconnect && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting} onClick={() => props.onReconnect?.(source)}>{text('编辑端点', 'Edit endpoints')}</button><span className="field-help">{text('一个来源的端点共用已保存的 API Key。', 'Endpoints in one connection share the saved API key.')}</span></div>}
             {source.provenance !== 'connector_owned' && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting || !source.actions.includes(source.state === 'disabled' ? 'enable' : 'disable')} onClick={() => void changeSourceState(source.state === 'disabled')}>{submitting ? text('正在保存…', 'Saving…') : source.state === 'disabled' ? text('启用接入', 'Enable connection') : text('停用接入', 'Disable connection')}</button></div>}
             {stateChangeError && <div className="callout bad" role="alert" data-error-code={stateChangeError}><UiIcon name="warning" /><span>{text('接入状态未修改；请刷新后重试。', 'The connection state was not changed. Refresh and try again.')}</span></div>}

@@ -6,14 +6,14 @@ use hiroute_application_api::{
     ComputeConnectionApplyRequestV1, ComputeManagementQueryV2, ComputeSavePreviewRequestV2,
     ComputeSaveResultQueryV2, ComputeSubscriptionCheckPreviewRequestV2,
     ComputeSubscriptionCheckResultQueryV2, ComputeValidationRefV2, ErrorCode, ErrorV1,
-    GET_COMPUTE_CANDIDATE_OPERATION_V2, GET_COMPUTE_SAVE_RESULT_OPERATION_V2,
-    GET_SUBSCRIPTION_CHECK_RESULT_OPERATION_V2, LIST_COMPUTE_SUBSCRIPTIONS_OPERATION_V2,
-    LocalControlRequestV2, MachineEnvelopeV2, NativeModelConnectionCancelRequestV1,
-    NativeModelConnectionCheckRequestV1, PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1,
-    PREVIEW_COMPUTE_SAVE_OPERATION_V2, PREVIEW_SUBSCRIPTION_CHECK_OPERATION_V2,
-    PrepareDiscoveredModelConnectionRequestV1, PrincipalKind,
-    RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2, RegisteredModelConnectionCheckRequestV1,
-    SavedModelConnectionCheckRequestV1,
+    GET_COMPUTE_CANDIDATE_OPERATION_V2, GET_COMPUTE_OPERATION_V3,
+    GET_COMPUTE_SAVE_RESULT_OPERATION_V2, GET_SUBSCRIPTION_CHECK_RESULT_OPERATION_V2,
+    LIST_COMPUTE_OPERATION_V3, LIST_COMPUTE_SUBSCRIPTIONS_OPERATION_V2, LocalControlRequestV2,
+    MachineEnvelopeV2, NativeModelConnectionCancelRequestV1, NativeModelConnectionCheckRequestV1,
+    PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1, PREVIEW_COMPUTE_SAVE_OPERATION_V2,
+    PREVIEW_SUBSCRIPTION_CHECK_OPERATION_V2, PrepareDiscoveredModelConnectionRequestV1,
+    PrincipalKind, RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2,
+    RegisteredModelConnectionCheckRequestV1, SavedModelConnectionCheckRequestV1,
 };
 use hiroute_domain::WorkspaceId;
 use serde_json::Value;
@@ -26,6 +26,8 @@ pub(crate) fn is_compute_management_operation(operation: &str) -> bool {
         operation,
         "ListCompute"
             | "GetCompute"
+            | LIST_COMPUTE_OPERATION_V3
+            | GET_COMPUTE_OPERATION_V3
             | GET_COMPUTE_CANDIDATE_OPERATION_V2
             | PREVIEW_COMPUTE_SAVE_OPERATION_V2
             | APPLY_COMPUTE_SAVE_OPERATION_V2
@@ -169,6 +171,19 @@ pub(crate) fn dispatch_compute_management(
             }
             result(
                 management.release_subscription_check(&validation),
+                request_id,
+            )
+        }
+        LIST_COMPUTE_OPERATION_V3 | GET_COMPUTE_OPERATION_V3 => {
+            if request.protected_grant.is_some() {
+                return failed(ErrorCode::CapabilityDenied, request_id);
+            }
+            let Ok(query) = serde_json::from_value::<ComputeManagementQueryV2>(request.payload)
+            else {
+                return failed(ErrorCode::InvalidArguments, request_id);
+            };
+            result(
+                management.compute_management_snapshot_v3(&query),
                 request_id,
             )
         }

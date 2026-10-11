@@ -412,7 +412,7 @@ fn artifact_intent(before: Option<CanonicalDigest>) -> ExternalEffectIntentV1 {
 fn artifact_stage_is_invisible_and_mode_is_owned_and_conditionally_restored() {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-    for before_mode in [0o644, 0o640] {
+    for before_mode in [0o644, 0o640, 0o666, 0o1666] {
         let directory = tempdir().unwrap();
         let root = directory.path().join("artifacts");
         let restore = directory.path().join("restore");
@@ -429,13 +429,13 @@ fn artifact_stage_is_invisible_and_mode_is_owned_and_conditionally_restored() {
         let operation = OperationId::parse("op_11111111111111111111111111111111").unwrap();
         let effect = store.apply_artifact(&operation, &intent).unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"before");
-        assert_eq!(fs::metadata(&target).unwrap().mode() & 0o777, before_mode);
+        assert_eq!(fs::metadata(&target).unwrap().mode() & 0o7777, before_mode);
         assert!(matches!(
             store.observe_artifact(&operation, &intent).unwrap(),
             EffectReconciliation::Staged(_)
         ));
         store.activate_artifact(&effect).unwrap();
-        assert_eq!(fs::metadata(&target).unwrap().mode() & 0o777, 0o640);
+        assert_eq!(fs::metadata(&target).unwrap().mode() & 0o7777, 0o640);
         fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
         assert!(matches!(
             store.observe_artifact(&operation, &intent).unwrap(),
@@ -447,7 +447,7 @@ fn artifact_stage_is_invisible_and_mode_is_owned_and_conditionally_restored() {
             CompensationOutcome::Compensated
         );
         assert_eq!(fs::read(&target).unwrap(), b"before");
-        assert_eq!(fs::metadata(&target).unwrap().mode() & 0o777, before_mode);
+        assert_eq!(fs::metadata(&target).unwrap().mode() & 0o7777, before_mode);
     }
 }
 

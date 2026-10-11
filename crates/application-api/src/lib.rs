@@ -26,6 +26,7 @@ pub use classifier_diagnostic::*;
 pub use client_access::*;
 mod compute_control;
 mod compute_management;
+mod compute_management_v3;
 mod compute_management_view;
 mod generated;
 mod model_catalog;
@@ -51,6 +52,7 @@ pub use commands::{
 };
 pub use compute_control::*;
 pub use compute_management::*;
+pub use compute_management_v3::*;
 pub use compute_management_view::*;
 pub use generated::{GeneratedContractFile, generated_contract_files};
 pub use hiroute_domain::delegation::{

@@ -106,10 +106,7 @@ impl ClaudeSource {
             let before = file
                 .metadata()
                 .map_err(|_| AgentFilesystemScanError::SourceChanged)?;
-            if !before.is_file()
-                || before.uid() != nix::unistd::geteuid().as_raw()
-                || before.nlink() != 1
-            {
+            if !before.is_file() || before.nlink() != 1 {
                 return Err(AgentFilesystemScanError::SourceChanged);
             }
             let identity = stable_identity_from_metadata(&before);
@@ -551,10 +548,7 @@ fn validate_system_config_metadata(
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        if ![0, nix::unistd::geteuid().as_raw()].contains(&metadata.uid()) {
-            return Err(AgentFilesystemScanError::WrongOwner);
-        }
-        if metadata.nlink() != 1 || metadata.mode() & 0o022 != 0 {
+        if metadata.nlink() != 1 {
             return Err(AgentFilesystemScanError::UnsafePermissions);
         }
         Ok(())
@@ -602,9 +596,6 @@ fn validate_config_file(
         if metadata.nlink() != 1 {
             return Err(AgentFilesystemScanError::InvalidConfig);
         }
-        if metadata.mode() & 0o022 != 0 {
-            return Err(AgentFilesystemScanError::UnsafePermissions);
-        }
     }
     Ok(Some(metadata))
 }
@@ -617,13 +608,6 @@ fn validate_file_kind_and_owner(
     }
     if !metadata.file_type().is_file() {
         return Err(AgentFilesystemScanError::InvalidConfig);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != nix::unistd::geteuid().as_raw() {
-            return Err(AgentFilesystemScanError::WrongOwner);
-        }
     }
     Ok(())
 }

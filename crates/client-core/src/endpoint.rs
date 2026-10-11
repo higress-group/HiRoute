@@ -29,20 +29,13 @@ impl LocalEndpoint {
 
     #[cfg(unix)]
     pub(crate) fn validate_path(&self) -> Result<(), FailureCode> {
-        use std::os::unix::fs::{FileTypeExt, MetadataExt};
+        use std::os::unix::fs::FileTypeExt;
         let parent = self.path.parent().ok_or(FailureCode::LocatorUnavailable)?;
         let directory =
             std::fs::symlink_metadata(parent).map_err(|_| FailureCode::LocatorUnavailable)?;
         let socket =
             std::fs::symlink_metadata(&self.path).map_err(|_| FailureCode::LocatorUnavailable)?;
-        let uid = nix::unistd::geteuid().as_raw();
-        if !directory.is_dir()
-            || directory.uid() != uid
-            || directory.mode() & 0o777 != 0o700
-            || !socket.file_type().is_socket()
-            || socket.uid() != uid
-            || socket.mode() & 0o777 != 0o600
-        {
+        if !directory.is_dir() || !socket.file_type().is_socket() {
             return Err(FailureCode::PeerRejected);
         }
         let absolute = std::path::absolute(parent).map_err(|_| FailureCode::LocatorUnavailable)?;
@@ -69,16 +62,16 @@ impl LocalEndpoint {
 
     #[cfg(unix)]
     pub(crate) fn validate_peer(&self, stream: &tokio::net::UnixStream) -> Result<(), FailureCode> {
-        let credentials = stream.peer_cred().map_err(|_| FailureCode::PeerRejected)?;
-        if credentials.uid() != nix::unistd::geteuid().as_raw() {
-            return Err(FailureCode::PeerRejected);
-        }
         if let Some(expected) = self.expected_pid {
             #[cfg(target_os = "macos")]
             let pid = nix::sys::socket::getsockopt(stream, nix::sys::socket::sockopt::LocalPeerPid)
                 .map_err(|_| FailureCode::PeerRejected)? as u32;
             #[cfg(any(target_os = "linux", target_os = "android"))]
-            let pid = credentials.pid().ok_or(FailureCode::PeerRejected)? as u32;
+            let pid = stream
+                .peer_cred()
+                .map_err(|_| FailureCode::PeerRejected)?
+                .pid()
+                .ok_or(FailureCode::PeerRejected)? as u32;
             #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "android")))]
             let pid = {
                 return Err(FailureCode::PeerRejected);

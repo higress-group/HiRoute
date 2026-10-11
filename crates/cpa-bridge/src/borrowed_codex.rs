@@ -31,12 +31,13 @@ pub use evidence::BorrowedCodexEvidence;
 
 /// A Codex CLI auth file borrowed by the managed CPA runtime.
 ///
-/// The source must be an absolute, owner-only regular file. Only its current access lease is
+/// The source must be an absolute regular file. Only its current access lease is
 /// materialized for CPA; the source remains responsible for OAuth refresh.
 #[derive(Clone, Eq, PartialEq)]
 pub struct BorrowedCodexAuthSpec {
     source_path: PathBuf,
     executable: PathBuf,
+    store_config: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for BorrowedCodexAuthSpec {
@@ -50,7 +51,14 @@ impl BorrowedCodexAuthSpec {
         Self {
             source_path: source_path.into(),
             executable: PathBuf::from("codex"),
+            store_config: None,
         }
+    }
+
+    /// The native config is re-read before every lease refresh; an explicit auth file omits it.
+    pub fn with_store_config(mut self, config: Option<PathBuf>) -> Self {
+        self.store_config = config;
+        self
     }
 
     pub fn with_executable(mut self, executable: PathBuf) -> Self {
@@ -64,8 +72,10 @@ impl BorrowedCodexAuthSpec {
 
     /// Reads stable, non-secret evidence without creating a lease, directory, or managed file.
     pub fn inspect(&self) -> Result<BorrowedCodexEvidence, CpaLifecycleError> {
+        validate_store(self.store_config.as_deref())?;
         let canonical_source = canonical_private_source(self.source_path())?;
         let source = read_nested_source(&canonical_source)?;
+        validate_store(self.store_config.as_deref())?;
         BorrowedCodexEvidence::from_source(&canonical_source, &source)
     }
 }
@@ -203,6 +213,7 @@ impl ManagedAuthLease {
 
 struct BorrowedCodexLease {
     canonical_source: PathBuf,
+    store_config: Option<PathBuf>,
     executable: PathBuf,
     client_version: Option<String>,
     source_path_digest: String,
@@ -218,6 +229,7 @@ impl BorrowedCodexLease {
         source: &BorrowedCodexAuthSpec,
         expected: Option<&BorrowedCodexEvidence>,
     ) -> Result<Self, CpaLifecycleError> {
+        validate_store(source.store_config.as_deref())?;
         let canonical_source = canonical_private_source(source.source_path())?;
         let source_path_digest = path_digest(&canonical_source);
         if expected.is_some_and(|value| value.source_path_digest() != source_path_digest) {
@@ -228,6 +240,7 @@ impl BorrowedCodexLease {
         let source_lock = acquire_lock(&lease_root.join(format!("{source_path_digest}.lock")))?;
         let mut lease = Self {
             canonical_source,
+            store_config: source.store_config.clone(),
             executable: source.executable.clone(),
             client_version: if expected.is_none() {
                 hiroute_integrations::codex_subscription_client_version(&source.executable)
@@ -249,6 +262,7 @@ impl BorrowedCodexLease {
         expected: Option<&BorrowedCodexEvidence>,
         expected_account_digest: Option<&str>,
     ) -> Result<ManagedAccountIdentity, CpaLifecycleError> {
+        validate_store(self.store_config.as_deref())?;
         let source = read_nested_source(&self.canonical_source)?;
         let observed = BorrowedCodexEvidence::from_source(&self.canonical_source, &source)?;
         if expected.is_some_and(|value| !value.matches(&observed)) {
@@ -280,6 +294,8 @@ impl BorrowedCodexLease {
         }
         let prefix = "hiroute-codex-current".to_owned();
         let rendered = render_access_only_auth(&source, &prefix, self.client_version.as_deref())?;
+        // A client-version probe may outlive a native store switch. Recheck before materializing.
+        validate_store(self.store_config.as_deref())?;
         let revision_digest = revision_digest(&source);
 
         let changed = previous.as_ref().is_none_or(|state| {
@@ -354,23 +370,29 @@ struct SourceStamp {
 #[derive(Deserialize)]
 struct NestedAuth<'a> {
     #[serde(borrow)]
-    auth_mode: &'a str,
+    auth_mode: Option<&'a str>,
     #[serde(rename = "OPENAI_API_KEY", default)]
     api_key: Option<&'a str>,
-    #[serde(borrow)]
-    last_refresh: &'a str,
-    #[serde(borrow)]
+    #[serde(default, borrow)]
+    last_refresh: Option<&'a str>,
+    #[serde(default)]
+    personal_access_token: Option<serde::de::IgnoredAny>,
+    #[serde(default)]
+    bedrock_api_key: Option<serde::de::IgnoredAny>,
+    #[serde(default)]
+    bedrock_access_keys: Option<serde::de::IgnoredAny>,
+    #[serde(default, borrow)]
     tokens: NestedTokens<'a>,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct NestedTokens<'a> {
-    #[serde(borrow)]
+    #[serde(default, borrow)]
     access_token: &'a str,
     #[serde(borrow)]
-    id_token: &'a str,
+    id_token: Option<&'a str>,
     #[serde(borrow)]
-    account_id: &'a str,
+    account_id: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -434,6 +456,17 @@ struct BorrowedState {
     refresh_token_present: bool,
 }
 
+fn validate_store(config: Option<&Path>) -> Result<(), CpaLifecycleError> {
+    if let Some(config) = config {
+        match hiroute_integrations::agents::codex_subscription_uses_file_store(config) {
+            Ok(true) => {}
+            Ok(false) => return Err(CpaLifecycleError::BorrowedCodexStoreUnsupported),
+            Err(_) => return Err(CpaLifecycleError::BorrowedCodexAuthIo),
+        }
+    }
+    Ok(())
+}
+
 fn read_nested_source(path: &Path) -> Result<OwnedNestedSource, CpaLifecycleError> {
     read_nested_source_after_read(path, || {})
 }
@@ -463,15 +496,15 @@ fn read_nested_source_after_read(
         let stamp = source_stamp(&after)?;
         let parsed: NestedAuth<'_> = serde_json::from_slice(bytes.as_slice())
             .map_err(|_| CpaLifecycleError::InvalidBorrowedCodexAuth)?;
-        validate_nested(&parsed)?;
+        let account_id = validate_nested(&parsed)?;
 
         // The returned references must not outlive the zeroized input. Consume the parsed fields
         // immediately into a second zeroizing buffer in the caller-facing representation.
         return Ok(OwnedNestedSource {
             access_token: Zeroizing::new(parsed.tokens.access_token.to_owned()),
-            id_token: Zeroizing::new(parsed.tokens.id_token.to_owned()),
-            account_id: Zeroizing::new(parsed.tokens.account_id.to_owned()),
-            last_refresh: Zeroizing::new(parsed.last_refresh.to_owned()),
+            id_token: Zeroizing::new(parsed.tokens.id_token.unwrap_or_default().to_owned()),
+            account_id: Zeroizing::new(account_id),
+            last_refresh: Zeroizing::new(parsed.last_refresh.unwrap_or_default().to_owned()),
             stamp,
         });
     }
@@ -486,17 +519,74 @@ struct OwnedNestedSource {
     stamp: SourceStamp,
 }
 
-fn validate_nested(value: &NestedAuth<'_>) -> Result<(), CpaLifecycleError> {
-    if value.auth_mode != "chatgpt"
-        || value.api_key.is_some()
-        || !valid_secret(value.tokens.access_token, MAX_TOKEN_BYTES)
-        || !valid_secret(value.tokens.id_token, MAX_TOKEN_BYTES)
-        || !valid_text(value.tokens.account_id, MAX_ACCOUNT_ID_BYTES)
-        || !valid_text(value.last_refresh, MAX_LAST_REFRESH_BYTES)
+fn validate_nested(value: &NestedAuth<'_>) -> Result<String, CpaLifecycleError> {
+    // Match Codex's resolved_mode: an explicit mode wins over supplementary API keys.
+    let chatgpt = match value.auth_mode {
+        Some(mode) => mode == "chatgpt",
+        None => {
+            value.api_key.is_none()
+                && value.personal_access_token.is_none()
+                && value.bedrock_api_key.is_none()
+                && value.bedrock_access_keys.is_none()
+        }
+    };
+    if !chatgpt {
+        return Err(CpaLifecycleError::BorrowedCodexLoginUnsupported);
+    }
+    if !valid_secret(value.tokens.access_token, MAX_TOKEN_BYTES)
+        || value
+            .tokens
+            .id_token
+            .is_some_and(|v| !v.is_empty() && !valid_secret(v, MAX_TOKEN_BYTES))
+        || value
+            .last_refresh
+            .is_some_and(|v| !v.is_empty() && !valid_text(v, MAX_LAST_REFRESH_BYTES))
     {
         return Err(CpaLifecycleError::InvalidBorrowedCodexAuth);
     }
-    Ok(())
+    if let Some(account) = value.tokens.account_id.filter(|v| !v.is_empty()) {
+        return if valid_text(account, MAX_ACCOUNT_ID_BYTES) {
+            Ok(account.to_owned())
+        } else {
+            Err(CpaLifecycleError::InvalidBorrowedCodexAuth)
+        };
+    }
+    value
+        .tokens
+        .id_token
+        .and_then(account_claim)
+        .or_else(|| account_claim(value.tokens.access_token))
+        .ok_or(CpaLifecycleError::BorrowedCodexAccountMissing)
+}
+
+// A claim is an identity hint from a local credential, not signature or authorization proof.
+// CPA still authenticates the current access token with the provider.
+fn account_claim(token: &str) -> Option<String> {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    #[derive(Deserialize)]
+    struct Claims<'a> {
+        #[serde(rename = "https://api.openai.com/auth", borrow)]
+        auth: Option<AccountClaim<'a>>,
+    }
+    #[derive(Deserialize)]
+    struct AccountClaim<'a> {
+        #[serde(borrow)]
+        chatgpt_account_id: Option<&'a str>,
+    }
+    if token.len() > MAX_TOKEN_BYTES {
+        return None;
+    }
+    let mut parts = token.split('.');
+    parts.next()?;
+    let payload = parts.next()?;
+    parts.next()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    let decoded = Zeroizing::new(URL_SAFE_NO_PAD.decode(payload).ok()?);
+    let claims: Claims<'_> = serde_json::from_slice(&decoded).ok()?;
+    let account = claims.auth?.chatgpt_account_id?;
+    valid_text(account, MAX_ACCOUNT_ID_BYTES).then(|| account.to_owned())
 }
 
 fn valid_secret(value: &str, max: usize) -> bool {
@@ -600,12 +690,7 @@ fn canonical_private_source(path: &Path) -> Result<PathBuf, CpaLifecycleError> {
 #[cfg(unix)]
 pub(super) fn validate_source_metadata(metadata: &fs::Metadata) -> Result<(), CpaLifecycleError> {
     use std::os::unix::fs::MetadataExt as _;
-    if !metadata.is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.mode() & 0o077 != 0
-        || metadata.uid() != rustix::process::geteuid().as_raw()
-        || metadata.nlink() != 1
-    {
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.nlink() != 1 {
         return Err(CpaLifecycleError::InvalidBorrowedCodexAuth);
     }
     Ok(())

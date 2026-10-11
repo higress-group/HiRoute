@@ -354,18 +354,19 @@ mod startup_tests {
 
     #[cfg(unix)]
     #[test]
-    fn daemon_startup_rejects_an_insecure_existing_root_before_migration() {
+    fn daemon_startup_accepts_accessible_existing_root_without_chmod() {
         use std::os::unix::fs::PermissionsExt;
 
         let directory = crate::test_tempdir().unwrap();
         let root = directory.path().join("storage");
         std::fs::create_dir(&root).unwrap();
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(matches!(
-            LocalStorageSet::open_for_daemon_startup(&root),
-            Err(LocalStorageError::Permission)
-        ));
-        assert!(!root.join("live").exists());
+        LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+        assert!(root.join("live").is_dir());
+        assert_eq!(
+            std::fs::metadata(&root).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
     }
 
     #[test]

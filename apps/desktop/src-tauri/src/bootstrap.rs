@@ -9,7 +9,7 @@ use hiroute_diagnostics::event::{
 };
 use hiroute_diagnostics::runtime::DiagnosticsPort;
 use serde::Deserialize;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     collections::BTreeSet,
     fs::{File, OpenOptions},
@@ -936,8 +936,11 @@ pub(crate) fn private_dir(path: &Path) -> Result<(), String> {
     {
         return Err("PRIVATE_PATH_INVALID".into());
     }
-    std::fs::create_dir_all(path).map_err(|_| "PRIVATE_PATH_UNAVAILABLE")?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
         .map_err(|_| "PRIVATE_PATH_UNAVAILABLE".into())
 }
 

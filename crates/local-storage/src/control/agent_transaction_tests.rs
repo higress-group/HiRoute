@@ -151,8 +151,8 @@ fn native_read_rejects_links_and_oversized_files_without_following() {
 
 #[test]
 #[cfg(unix)]
-fn private_native_read_requires_0600_while_import_can_read_0644_without_chmod() {
-    use hiroute_domain::{NativeAgentArtifactPort, PortErrorCode};
+fn native_and_private_reads_accept_accessible_modes_without_chmod() {
+    use hiroute_domain::NativeAgentArtifactPort;
     use std::os::unix::fs::PermissionsExt;
     let directory = tempdir().unwrap();
     let path = directory.path().join("settings.json");
@@ -185,9 +185,10 @@ fn private_native_read_requires_0600_while_import_can_read_0644_without_chmod() 
     assert_eq!(
         store
             .read_private_native_target("native-settings")
-            .unwrap_err()
-            .code,
-        PortErrorCode::PermissionDenied
+            .unwrap()
+            .unwrap()
+            .as_slice(),
+        bytes
     );
     assert_eq!(
         store

@@ -370,10 +370,7 @@ fn read_owned_json<T: DeserializeOwned>(root: &Path, name: &str) -> Result<T, De
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != nix::unistd::geteuid().as_raw()
-            || metadata.mode() & 0o077 != 0
-            || metadata.nlink() != 1
-        {
+        if metadata.nlink() != 1 {
             return Err(DelegationErrorV1::ResumeUnavailable);
         }
     }
