@@ -29,7 +29,10 @@ impl IoGate {
     }
 
     fn wait_entered(&self) {
-        let deadline = Instant::now() + Duration::from_secs(3);
+        self.wait_entered_until(Instant::now() + Duration::from_secs(3));
+    }
+
+    fn wait_entered_until(&self, deadline: Instant) {
         let mut state = self.state.lock().unwrap();
         while state.0 == 0 {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -353,10 +356,18 @@ fn spawn_lease(
     fixture: &ActiveFixture,
     context: CpaRequestContext,
 ) -> (thread::JoinHandle<()>, mpsc::Receiver<LeaseOutcome>) {
+    spawn_lease_with_context(fixture, move || context)
+}
+
+fn spawn_lease_with_context(
+    fixture: &ActiveFixture,
+    context: impl FnOnce() -> CpaRequestContext + Send + 'static,
+) -> (thread::JoinHandle<()>, mpsc::Receiver<LeaseOutcome>) {
     let runtime = Arc::clone(&fixture.runtime);
     let target = fixture.target.clone();
     let (send, receive) = mpsc::channel();
     let worker = thread::spawn(move || {
+        let context = context();
         let outcome = match lease(&runtime, &target, &context) {
             Ok(Some(_)) => LeaseOutcome::Issued,
             Ok(None) => LeaseOutcome::Empty,
@@ -676,7 +687,11 @@ fn request_deadline_rejects_late_profile_completion_without_auth_commit() {
     let auth_before = std::fs::read(&fixture.auth_path).unwrap();
     let epochs = fixture.runtime.epochs.current();
     let context = CpaRequestContext::new(Instant::now() + Duration::from_millis(150));
-    let (worker, done) = spawn_lease(&fixture, context);
+    let (worker, done) = spawn_lease_with_context(&fixture, move || {
+        // Deterministically model a worker queued longer than the old 150 ms budget.
+        thread::sleep(Duration::from_millis(200));
+        context
+    });
     gate.wait_entered();
     assert!(
         matches!(
@@ -706,4 +721,24 @@ fn request_deadline_rejects_late_profile_completion_without_auth_commit() {
     write_claude_source(&fixture.source_path, "post-deadline-access");
     assert_fresh_lease(&fixture);
     fixture.runtime.shutdown().unwrap();
+}
+
+#[test]
+fn controlled_io_cleanup_preserves_a_timeout_or_poisoning_panic() {
+    for poison in [false, true] {
+        let gate = Arc::new(IoGate::default());
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _release = ReleaseOnDrop(Arc::clone(&gate));
+            if poison {
+                let _state = gate.state.lock().unwrap();
+                panic!("controlled assertion failure while holding the I/O gate");
+            }
+            gate.wait_entered_until(Instant::now());
+        }));
+        assert!(outcome.is_err(), "the original fixture failure was lost");
+        assert!(
+            gate.state.lock().unwrap_or_else(|error| error.into_inner()).2,
+            "unwinding did not release the controlled I/O"
+        );
+    }
 }
