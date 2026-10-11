@@ -22,7 +22,7 @@ pub(crate) struct ServiceStatus {
     schema: &'static str,
     manager: &'static str,
     manager_active: bool,
-    local_control_ready: bool,
+    pub(crate) local_control_ready: bool,
     autostart_enabled: bool,
     runtime_root: PathBuf,
 }

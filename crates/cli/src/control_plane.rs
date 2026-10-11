@@ -88,6 +88,9 @@ pub(crate) fn command_payload(
         "compute.connection.authorize" => {
             Some(stdin::<ComputeConnectionAuthorizationRequestV1>(options))
         }
+        "compute.connection.login" => Some(stdin::<
+            hiroute_application_api::ComputeSubscriptionLoginRequestV1,
+        >(options)),
         "compute.connection.test" => Some(stdin::<ComputeConnectionTestRequestV1>(options)),
         "compute.credential.add" => Some(preview_or_apply(options)),
         "routing.list" if !options.is_empty() => Some(stdin::<
@@ -390,6 +393,7 @@ mod tests {
 
     #[test]
     fn local_configuration_apply_needs_no_capability_channel() {
+        assert!(!accepts_capability("compute.connection.login"));
         assert!(!accepts_capability("compute.connection.apply"));
         assert!(!accepts_capability("compute.credential.add"));
         assert!(!accepts_capability("routing.apply"));
@@ -403,6 +407,34 @@ mod tests {
         assert!(!accepts_capability("prices.effective"));
         assert!(!accepts_capability("models.show"));
         assert!(accepts_capability("sessions.list"));
+    }
+
+    #[test]
+    fn subscription_login_codec_rejects_callback_secrets_but_preserves_protected_references() {
+        use hiroute_application_api::ComputeSubscriptionLoginRequestV1;
+        let value = serde_json::json!({"action":"callback","login_ref":"login/one",
+            "input_candidate":{"candidate_ref":"candidate/subscription-login/one","candidate_revision":1}});
+        let encoded = serde_json::to_vec(&value).unwrap();
+        assert_eq!(
+            typed_request::<ComputeSubscriptionLoginRequestV1>(encoded.as_slice()).unwrap(),
+            value
+        );
+        let mut with_secret = value;
+        with_secret["callback_url"] = serde_json::json!("callback-secret-must-not-be-forwarded");
+        let encoded = serde_json::to_vec(&with_secret).unwrap();
+        assert_eq!(
+            typed_request::<ComputeSubscriptionLoginRequestV1>(encoded.as_slice()).unwrap_err(),
+            ErrorCode::InvalidArguments
+        );
+        assert_eq!(
+            command_payload(
+                "compute.connection.login",
+                &["--code".into(), "forbidden".into()]
+            )
+            .unwrap()
+            .unwrap_err(),
+            ErrorCode::InvalidArguments
+        );
     }
 }
 

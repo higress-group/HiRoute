@@ -9,7 +9,7 @@ test('subscription failures use distinct recovery copy and never request an API 
   const runtime = subscriptionAttentionCopy('runtime_unavailable', 'en');
 
   assert.equal(updating.title, '正在更新订阅授权');
-  assert.equal(authentication.title, '需要登录 Codex');
+  assert.equal(authentication.title, '需要更新订阅登录');
   assert.match(notAllowed.detail, /retained/);
   assert.equal(runtime.title, 'Subscription service unavailable');
   assert.doesNotMatch(

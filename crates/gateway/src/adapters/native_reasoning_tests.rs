@@ -16,6 +16,82 @@ fn display_request() -> serde_json::Value {
 }
 
 #[test]
+fn clear_thinking_strategy_follows_selected_plan_mode() {
+    let mut body = display_request();
+    body["context_management"] = json!({"edits":[{"type":"clear_thinking_20251015","keep":"all"}]});
+    let mut request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
+    request.requested_reasoning.disposition = RequestedReasoningDisposition::OverriddenByAgentPlan;
+    for mode in ["default", "disabled", "enabled", "adaptive"] {
+        let profile = if mode == "default" {
+            CandidateProtocolProfile::exact_portable_path(
+                IngressProtocol::Messages,
+                IngressProtocol::Messages,
+                "physical",
+                fixed_reasoning("default"),
+            )
+        } else {
+            display_profile(mode)
+        };
+        let native = project_candidate_request(&request, &profile).unwrap();
+        if matches!(mode, "enabled" | "adaptive") {
+            assert_eq!(
+                native.body["context_management"],
+                body["context_management"]
+            );
+        } else {
+            assert!(
+                native.body.get("context_management").is_none(),
+                "{mode}: {}",
+                native.body
+            );
+        }
+        assert_eq!(
+            native.body["output_config"]["format"],
+            body["output_config"]["format"]
+        );
+    }
+    // Every candidate starts from the same immutable caller payload.
+    assert_eq!(
+        request.native_body.as_ref().unwrap()["context_management"],
+        body["context_management"]
+    );
+}
+
+#[test]
+fn clear_thinking_removal_preserves_other_context_controls_and_fixed_payload() {
+    let strategy = json!({"type":"clear_thinking_20251015","keep":"all"});
+    let other = json!({"type":"clear_tool_uses_20250919","keep":{"type":"tool_uses","value":3}});
+    for (context, expected) in [
+        (
+            json!({"edits":[strategy.clone(),other.clone()],"future_control":true}),
+            json!({"edits":[other],"future_control":true}),
+        ),
+        (
+            json!({"edits":[strategy],"future_control":true}),
+            json!({"future_control":true}),
+        ),
+        (
+            json!({"edits":[{"type":"future_strategy"}]}),
+            json!({"edits":[{"type":"future_strategy"}]}),
+        ),
+        (json!({"edits":[]}), json!({"edits":[]})),
+    ] {
+        let mut body = display_request();
+        body["context_management"] = context.clone();
+        let mut request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
+        request.requested_reasoning.disposition =
+            RequestedReasoningDisposition::OverriddenByAgentPlan;
+        let native = project_candidate_request(&request, &display_profile("disabled")).unwrap();
+        assert_eq!(native.body["context_management"], expected);
+        request.requested_reasoning.disposition =
+            RequestedReasoningDisposition::AppliedToFixedBinding;
+        let fixed = project_candidate_request(&request, &display_profile("disabled")).unwrap();
+        assert_eq!(fixed.body["context_management"], context);
+        assert_eq!(fixed.body["thinking"], body["thinking"]);
+    }
+}
+
+#[test]
 fn thinking_display_plan_default_never_emits_display_only_object() {
     let body = display_request();
     let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();

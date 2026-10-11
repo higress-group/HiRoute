@@ -860,6 +860,7 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         "compute.connection.preview" => "hiroute.compute-connection-preview-request/union",
         "compute.connection.apply" => "hiroute.compute-connection-apply-request/v1",
         "compute.connection.authorize" => "hiroute.compute-connection-authorization-request/v1",
+        "compute.connection.login" => "hiroute.subscription-login-request/v1",
         "compute.connection.test" => "hiroute.compute-connection-test-request/v1",
         "models.show" => "hiroute.model-catalog-query/v1",
         "sessions.list" => "hiroute.session-list-query/v1",
@@ -924,6 +925,7 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "compute.connection.preview" => "hiroute.compute-connection-preview/union",
         "compute.connection.apply" => "hiroute.operation-view/v1",
         "compute.connection.authorize" => "hiroute.compute-subscription-check-result/v2",
+        "compute.connection.login" => "hiroute.subscription-login-result/v1",
         "compute.connection.test" => "hiroute.model-connection-check/union",
         "models.show" => "hiroute.model-catalog-view/v1",
         "sessions.list" => "hiroute.session-list/v1",
@@ -969,6 +971,7 @@ pub(crate) fn command_stdin_channels(command_id: &str) -> &'static [&'static str
         | "compute.connection.preview"
         | "compute.connection.apply"
         | "compute.connection.authorize"
+        | "compute.connection.login"
         | "compute.connection.test"
         | "decision.services.test"
         | "routing.options"
@@ -1065,7 +1068,7 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
         "models.show" => "hiroute models show --request-stdin --output json".to_owned(),
         "compute.list" => "hiroute compute list --output json".to_owned(),
         "compute.show" => "hiroute compute show <SOURCE_ID> --output json".to_owned(),
-        "compute.connection.preview" | "compute.connection.apply" | "compute.connection.authorize" | "compute.connection.test" => {
+        "compute.connection.preview" | "compute.connection.apply" | "compute.connection.authorize" | "compute.connection.login" | "compute.connection.test" => {
             format!("hiroute {joined_path} --request-stdin --output json")
         }
         "routing.options" | "routing.preview" | "routing.apply" | "decision.services.apply" | "decision.services.test" => {
@@ -1128,6 +1131,7 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "compute.connection.preview" => "--request-stdin accepts exactly one registered v1 projection, compute-management v2 save, or subscription-check v2 preview request. Preview has no durable side effect and returns the exact digest and revisions required by Apply.".to_owned(),
         "compute.connection.apply" => "--request-stdin accepts only the exact preview spec, digest, revisions, and a non-empty idempotency key. Same-UID Local Control reproduces the plan; replay uses the original key and changed payloads are rejected.".to_owned(),
         "compute.connection.test" => "--request-stdin selects native, registered, discovered, or saved with its strict nested request. Credentials are referenced only through a protected-input candidate; plaintext credential fields are rejected. The explicit probe may contact the configured provider and may consume quota when an inference model is selected.".to_owned(),
+        "compute.connection.login" => "--request-stdin accepts list/start with provider codex or claude; status/cancel/forget with an exact login_ref; callback with login_ref and input_candidate. Register callback text first with protected-input register --candidate <callback_input_candidate.candidate_ref> --secret-fd <FD>. OAuth codes, tokens, callback URLs and credential paths are rejected in ordinary request JSON. Start returns a browser URL; successful login still requires subscription check, model selection and save.".to_owned(),
         "compute.connection.authorize" => "--request-stdin reads one exact subscription result operation or releases one exact validation. Starting authorization still uses connection Preview/Apply, including revision, digest, and idempotency checks.".to_owned(),
         "decision.services.list" => "No request body or secret material. Returns the latest saved version of each service; published plans retain their exact immutable version.".to_owned(),
         "decision.services.apply" => "--request-stdin accepts a ChangeSpec preview request first, then the exact ApplyRequest with accept_digest, expected_revisions and idempotency_key. spec.desired_state contains id, expected_revision, service (null to delete), and optional protected input_slot. Replacing a credential requires a new reference. A referenced service cannot be deleted.".to_owned(),

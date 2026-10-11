@@ -1,0 +1,91 @@
+{
+  "$id": "hiroute://contracts/cli/subscription-login-request.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "list",
+            "start"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "codex",
+            "claude"
+          ]
+        }
+      },
+      "required": [
+        "action",
+        "provider"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "status",
+            "cancel",
+            "forget"
+          ]
+        },
+        "login_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[^\\s\\x00-\\x1f\\x7f]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "login_ref"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "callback"
+        },
+        "input_candidate": {
+          "additionalProperties": false,
+          "properties": {
+            "candidate_ref": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[^\\s\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            "candidate_revision": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "candidate_ref",
+            "candidate_revision"
+          ],
+          "type": "object"
+        },
+        "login_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[^\\s\\x00-\\x1f\\x7f]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "login_ref",
+        "input_candidate"
+      ],
+      "type": "object"
+    }
+  ]
+}

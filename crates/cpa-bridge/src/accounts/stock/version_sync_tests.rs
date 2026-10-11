@@ -116,7 +116,7 @@ fn check_stale_manager(old: Option<&str>) {
             } else {
                 panic!("unexpected control request");
             };
-            write!(stream, "HTTP/1.1 200 OK\r\nX-CPA-Version: 8.0.4-hiroute.2\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+            write!(stream, "HTTP/1.1 200 OK\r\nX-CPA-Version: 8.0.4-hiroute.4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
         }
         (manager, patches)
     });
@@ -125,7 +125,7 @@ fn check_stale_manager(old: Option<&str>) {
         &auth_dir,
         &identities,
         &InstanceSecrets::generate().unwrap(),
-        "8.0.4-hiroute.2",
+        "8.0.4-hiroute.4",
         Duration::from_secs(2),
         true,
     );

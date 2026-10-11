@@ -1,5 +1,8 @@
 #![cfg(unix)]
 
+#[path = "../../../crates/daemon/tests/support/isolated_agent_environment.rs"]
+mod child_environment;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -87,7 +90,9 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
     assert!(rejected_role_all.stdout.is_empty());
     assert!(!endpoint.exists());
 
-    let daemon = Command::new(&binaries.hirouted)
+    let mut command = Command::new(&binaries.hirouted);
+    child_environment::configure(&mut command, &agent_home);
+    let daemon = command
         .args([
             "--role",
             "control",
@@ -96,15 +101,7 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             "--runtime-root",
             runtime_root.to_str().unwrap(),
         ])
-        .env("HOME", &agent_home)
-        .env_remove("CODEX_HOME")
-        .env_remove("CLAUDE_CONFIG_DIR")
-        .env_remove("QODER_CONFIG_DIR")
         .env("PATH", agent_path)
-        .env_remove("ANTHROPIC_BASE_URL")
-        .env_remove("ANTHROPIC_MODEL")
-        .env_remove("ANTHROPIC_DEFAULT_OPUS_MODEL")
-        .env_remove("ANTHROPIC_AUTH_TOKEN")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

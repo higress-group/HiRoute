@@ -644,7 +644,12 @@ pub fn root_help() -> String {
         .into_iter()
         .map(|descriptor| descriptor.path[0].clone())
         .collect::<Vec<_>>();
-    families.extend(["gateway".into(), "protected-input".into(), "service".into()]);
+    families.extend([
+        "gateway".into(),
+        "protected-input".into(),
+        "service".into(),
+        "subscription-proxy".into(),
+    ]);
     families.sort();
     families.dedup();
     let commands = families
@@ -653,7 +658,7 @@ pub fn root_help() -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "HiRoute headless product CLI\n\nUsage\n  hiroute <command> [options]\n\nPublic command families\n{commands}\n\nHost management: run 'hiroute service --help', 'hiroute gateway --help', or 'hiroute protected-input --help'.\nApplication/Local Control: run 'hiroute schema list --output json' and 'hiroute schema show --command-id <ID> --output json', then append '--help' to a complete command path, for example 'hiroute worker dependencies discover --help'.\n"
+        "HiRoute headless product CLI\n\nUsage\n  hiroute <command> [options]\n\nPublic command families\n{commands}\n\nHost management: run 'hiroute service --help', 'hiroute gateway --help', 'hiroute protected-input --help', or 'hiroute subscription-proxy --help'.\nApplication/Local Control: run 'hiroute schema list --output json' and 'hiroute schema show --command-id <ID> --output json', then append '--help' to a complete command path, for example 'hiroute worker dependencies discover --help'.\n"
     )
 }
 
@@ -713,11 +718,13 @@ mod tests {
         assert!(!help.contains("setup"));
         assert!(help.contains("  gateway"));
         assert!(help.contains("  service"));
+        assert!(help.contains("  subscription-proxy"));
         assert!(!help.contains(HIDDEN_AGENT_GRANT_HELPER_VERB_V1));
         assert!(help.contains("Host management"));
         assert!(help.contains("hiroute service --help"));
         assert!(help.contains("hiroute gateway --help"));
         assert!(help.contains("hiroute protected-input --help"));
+        assert!(help.contains("hiroute subscription-proxy --help"));
         assert!(help.contains("Application/Local Control"));
         assert!(help.contains("complete command path"));
         assert!(help.contains("hiroute worker dependencies discover --help"));
@@ -744,7 +751,7 @@ mod tests {
         assert_eq!(execution.exit_code, 0);
         assert_eq!(execution.stdout.lines().count(), 1);
         let value: Value = serde_json::from_str(&execution.stdout).unwrap();
-        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 50);
+        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 51);
         assert!(!execution.stdout.contains(HIDDEN_AGENT_GRANT_HELPER_VERB_V1));
     }
 

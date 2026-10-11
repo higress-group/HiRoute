@@ -43,6 +43,7 @@ fn shape(headers: &HeaderMap, phase: UpstreamWirePhase, status: Option<u16>) -> 
         upstream_request_token: None,
         http_protocol: None,
         provider_error: status.and_then(status_error),
+        cpa_execution: None,
     }
 }
 

@@ -2269,7 +2269,9 @@ dependencies = [
  "hiroute-integrations",
  "http",
  "parking_lot",
+ "reqwest",
  "rustix",
+ "security-framework 3.6.0",
  "semver",
  "serde",
  "serde_json",
@@ -2475,6 +2477,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.20",
+ "url",
 ]
 
 [[package]]
@@ -2493,9 +2496,11 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "tempfile",
  "thiserror 2.0.20",
  "toml_edit 0.25.13+spec-1.1.0",
+ "unicode-normalization",
  "zeroize",
 ]
 

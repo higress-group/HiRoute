@@ -128,12 +128,12 @@ impl Session {
         }
         let message = if language == "en" {
             format!(
-                "Check {}\n\nAllow HiRoute to use this local Codex login to connect and read the available models? The refresh token will not be copied.",
+                "Check {}\n\nAllow HiRoute to use this subscription sign-in to connect and read the available models? Models are added only after you select and save them.",
                 preview.display_scope
             )
         } else {
             format!(
-                "检查 {}\n\n允许 HiRoute 使用这个本机 Codex 登录连接服务并读取可用模型？不会复制刷新令牌。",
+                "检查 {}\n\n允许 HiRoute 使用这项订阅登录连接服务并读取可用模型？选择并保存后才会接入模型。",
                 preview.display_scope
             )
         };

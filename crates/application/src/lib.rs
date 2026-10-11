@@ -180,6 +180,7 @@ impl ApplicationService {
             "AuthorizeComputeConnection" => {
                 control_plane::dispatch_authorize_compute(self, request)
             }
+            "ManageSubscriptionLogin" => control_plane::subscription_login::dispatch(self, request),
             "TestComputeConnection" => control_plane::dispatch_test_compute(self, request),
             "ApplyCredentialAdd" if request.payload.get("accept_digest").is_some() => {
                 self.apply_change(request, "compute.credential.add")

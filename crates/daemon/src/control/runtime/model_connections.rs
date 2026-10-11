@@ -155,6 +155,16 @@ pub(super) fn registered_endpoint_matches_source(
 }
 
 impl ComputeManagementControlPort for LocalControlAdapter {
+    fn manage_subscription_login(
+        &self,
+        request: hiroute_application_api::ComputeSubscriptionLoginRequestV1,
+    ) -> Result<
+        hiroute_application_api::ComputeSubscriptionLoginResultV1,
+        ComputeManagementControlError,
+    > {
+        self.subscription_login(request)
+    }
+
     fn compute_subscriptions(
         &self,
     ) -> Result<ComputeSubscriptionCandidatesV2, ComputeManagementControlError> {

@@ -119,7 +119,11 @@ impl RequestObservation {
         headers: &http::HeaderMap,
         status: u16,
     ) {
-        let event = wire_diagnostic::response(headers, status, &self.inner.context);
+        let mut event = wire_diagnostic::response(headers, status, &self.inner.context);
+        if self.lock_state().managed_cpa {
+            event.cpa_execution =
+                Some(super::super::provider::cpa_execution::from_headers(headers));
+        }
         if let Some(error) = event.provider_error {
             self.lock_state().provider_error = Some(error);
         }
@@ -146,6 +150,15 @@ impl RequestObservation {
         if let Some(prepared) = &state.prepared_wire {
             event.native_model = prepared.native_model.clone();
             event.request_reasoning = prepared.request_reasoning.clone();
+        }
+        if state.managed_cpa {
+            event.cpa_execution = Some(
+                state
+                    .response_wire
+                    .as_ref()
+                    .and_then(|wire| wire.cpa_execution.clone())
+                    .unwrap_or(hiroute_diagnostics::event::CpaExecution::Unknown),
+            );
         }
         event.upstream_request_token = state
             .response_wire

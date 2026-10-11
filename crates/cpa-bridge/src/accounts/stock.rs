@@ -34,13 +34,14 @@ impl CpaControlPlane for StockCpaControlPlane {
         expected_version: &str,
         timeout: Duration,
     ) -> Result<(), AccountDiscoveryError> {
+        let deadline = Instant::now() + timeout;
         let health = request(LoopbackRequest {
             address,
             method: "GET",
             path: "/healthz",
             authorization: None,
             body: &[],
-            timeout,
+            timeout: remaining_timeout(deadline)?,
         })?;
         if health.status != 200 {
             return Err(AccountDiscoveryError::NotReady);
@@ -51,7 +52,7 @@ impl CpaControlPlane for StockCpaControlPlane {
             path: "/v0/management/auth-files?name=.__hiroute_ready_probe__",
             authorization: Some(&secrets.management),
             body: &[],
-            timeout,
+            timeout: remaining_timeout(deadline)?,
         })?;
         validate_management_response(&management, expected_version)?;
         let downstream = request(LoopbackRequest {
@@ -60,7 +61,7 @@ impl CpaControlPlane for StockCpaControlPlane {
             path: "/v1/models",
             authorization: Some(&secrets.downstream),
             body: &[],
-            timeout,
+            timeout: remaining_timeout(deadline)?,
         })?;
         if downstream.status != 200 {
             return Err(AccountDiscoveryError::DownstreamAuthentication);
@@ -99,9 +100,7 @@ impl CpaControlPlane for StockCpaControlPlane {
         let mut managed_names = BTreeSet::new();
         for identity in managed_identities {
             identity.validate()?;
-            if identity.account_kind != CpaAccountKind::Codex
-                || !managed_names.insert(identity.stock_file_name.as_str())
-            {
+            if !managed_names.insert(identity.stock_file_name.as_str()) {
                 return Err(AccountDiscoveryError::InvalidAccount);
             }
         }
@@ -333,6 +332,13 @@ fn parse_auth_file_response(
     {
         return Err(AccountDiscoveryError::NonSubscriptionAccount);
     }
+    if entry
+        .get("status_message")
+        .and_then(Value::as_str)
+        .is_some_and(crate::managed_oauth::authentication_required)
+    {
+        return Err(AccountDiscoveryError::AuthenticationRequired);
+    }
     if entry.get("disabled").and_then(Value::as_bool) == Some(true)
         || entry.get("unavailable").and_then(Value::as_bool) == Some(true)
         || !entry
@@ -394,7 +400,9 @@ fn account_controls_body(
         "request_retry": 0,
         "disable_cooling": true
     });
-    if let Some(identity) = managed {
+    if let Some(identity) =
+        managed.filter(|identity| identity.account_kind == CpaAccountKind::Codex)
+    {
         identity.validate()?;
         // CPA merges this PATCH into its loaded Auth, persists it, then invokes
         // synchronous discovery. Its watcher may still hold the previous file.
@@ -544,6 +552,26 @@ mod tests {
         assert_eq!(account.auth_index, "idx-a");
         let digest = account_digest(account.kind, &account.auth_index);
         assert!(!digest.contains("person"));
+    }
+
+    #[test]
+    fn terminal_authentication_failure_is_not_lost_as_missing_account() {
+        for status in [
+            "unauthorized",
+            "invalid grant (retrying)",
+            "disabled (invalid grant)",
+        ] {
+            let mut value: Value = serde_json::from_slice(&oauth_response("")).unwrap();
+            value["files"][0]["status"] = "error".into();
+            value["files"][0]["unavailable"] = true.into();
+            value["files"][0]["status_message"] = status.into();
+            let result =
+                parse_auth_file_response(&serde_json::to_vec(&value).unwrap(), "codex-a.json");
+            assert!(matches!(
+                result,
+                Err(AccountDiscoveryError::AuthenticationRequired)
+            ));
+        }
     }
 
     #[test]

@@ -34,3 +34,22 @@ export type SubscriptionCheckResult = {
   reason?: string;
 };
 export type SubscriptionSaveIntent = 'save_ready' | 'save_disabled';
+
+export type SubscriptionLoginProvider = 'codex' | 'claude';
+export type SubscriptionLoginSession = {
+  provider: SubscriptionLoginProvider;
+  login_ref: string;
+  status: 'pending' | 'authorized' | 'cancelled' | 'failed' | 'expired' | 'forgotten';
+  authorization_url?: string;
+  callback_input_candidate?: CandidateRef;
+  account_ref?: string;
+  candidate?: CandidateRef;
+  reason_code?: string;
+};
+export type SubscriptionLoginResult = {
+  schema: 'hiroute.subscription-login-result/v1';
+  sessions: SubscriptionLoginSession[];
+};
+export type SubscriptionLoginRequest =
+  | { action: 'list' | 'start'; provider: SubscriptionLoginProvider }
+  | { action: 'status' | 'cancel' | 'forget'; login_ref: string };

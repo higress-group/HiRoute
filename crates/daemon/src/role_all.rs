@@ -15,7 +15,8 @@ use hiroute_application_api::{
 use hiroute_cpa_bridge::{
     BorrowedCodexAuthSpec, CpaAccountKind, CpaAttemptError, CpaDownstreamCredentialPort,
     CpaProfileBinding, CpaRuntimeSpec, ExactCpaCredentialRequest, MANAGED_CPA_ARTIFACT_VERSION,
-    ManagedCpaRuntime, PinnedCpaArtifact, PinnedCpaBinaryLocator, RestartPolicy,
+    ManagedCpaRuntime, ManagedCpaRuntimeSet, PinnedCpaArtifact, PinnedCpaBinaryLocator,
+    RestartPolicy,
 };
 use hiroute_diagnostics::event::{StageOutcome, StartupFailureCode, StartupStage};
 use hiroute_diagnostics::runtime::DiagnosticsPort;
@@ -39,6 +40,10 @@ use crate::gateway_ports::{
     GatewayLifecycleTelemetrySink, GatewayPublicationAdapter, GatewayRequestPriceSource,
     GatewayRunRelationSink, GatewayRuntimeStateStore,
 };
+
+#[cfg(test)]
+#[path = "role_all/subscription_startup_tests.rs"]
+mod subscription_startup_tests;
 
 // A 272k-context agent sends its history in a burst, not at token generation
 // speed. Two such requests can exceed 4 MiB after per-part envelope overhead.
@@ -116,7 +121,7 @@ impl RoleAllConfig {
 pub struct RoleAllHandle {
     control: ManagedControlHandle,
     gateway: ManagedGatewayHandle,
-    cpa: Option<Arc<ManagedCpaRuntime>>,
+    cpa: Option<Arc<ManagedCpaRuntimeSet>>,
     _runtime: ProductionControlRuntime,
     upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
 }
@@ -350,7 +355,7 @@ pub fn start_role_all(config: RoleAllConfig) -> Result<RoleAllHandle, RoleAllErr
 fn start_role_all_with_runtime(
     config: RoleAllConfig,
     runtime: ProductionControlRuntime,
-    cpa: Option<Arc<ManagedCpaRuntime>>,
+    cpa: Option<Arc<ManagedCpaRuntimeSet>>,
 ) -> Result<RoleAllHandle, RoleAllError> {
     let installer = Arc::new(
         GatewayPublicationInstaller::open_for_product_authority(&config.gateway_lkg)
@@ -520,7 +525,7 @@ fn start_cpa(
     config: &RoleAllConfig,
     cpa: &RoleAllCpaConfig,
     catalog: hiroute_integrations::TrustedReleaseCatalog,
-) -> Result<Arc<ManagedCpaRuntime>, RoleAllError> {
+) -> Result<Arc<ManagedCpaRuntimeSet>, RoleAllError> {
     if !config.storage_root.is_absolute()
         || !cpa.binary.is_absolute()
         || cpa.expected_sha256_hex.len() != 64
@@ -543,18 +548,20 @@ fn start_cpa(
             .map_err(|_| RoleAllError::InvalidConfiguration)?,
         &cpa.expected_sha256_hex,
     );
-    let spec = CpaRuntimeSpec {
+    let codex_spec = CpaRuntimeSpec {
         instance_id: "hiroute-codex".into(),
         state_root: config.storage_root.join("cpa/state"),
         auth_dir: config.storage_root.join("cpa/auth"),
-        borrowed_codex_auth: Some(
-            BorrowedCodexAuthSpec::new(selected_codex_auth()?).with_executable(
+        borrowed_claude_auth: None,
+        managed_oauth: None,
+        borrowed_codex_auth: selected_codex_auth().ok().map(|source| {
+            BorrowedCodexAuthSpec::new(source).with_executable(
                 config
                     .codex_desktop_engine
                     .clone()
                     .unwrap_or_else(|| PathBuf::from("codex")),
-            ),
-        ),
+            )
+        }),
         bindings: vec![CpaProfileBinding {
             account_kind: CpaAccountKind::Codex,
             connector_id: "connector.cpa.codex".into(),
@@ -566,23 +573,75 @@ fn start_cpa(
         shutdown_timeout: Duration::from_secs(5),
         restart_policy: RestartPolicy::default(),
     };
-    let mut runtime = ManagedCpaRuntime::new(
-        spec,
-        Arc::new(catalog),
-        Arc::new(PinnedCpaBinaryLocator::new(artifact)),
-    )
-    .map_err(|error| RoleAllError::Component("CPA", error.to_string()))?
-    .with_diagnostics(config.diagnostics.clone());
-    if config.released_commands_only {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or(RoleAllError::InvalidConfiguration)?;
+    let mut claude_spec = codex_spec.clone();
+    claude_spec.instance_id = "hiroute-claude".into();
+    claude_spec.state_root = config.storage_root.join("cpa-claude/state");
+    claude_spec.auth_dir = config.storage_root.join("cpa-claude/auth");
+    claude_spec.borrowed_codex_auth = None;
+    claude_spec.borrowed_claude_auth =
+        hiroute_integrations::claude_subscription_auth_from_environment(&home)
+            .ok()
+            .map(hiroute_cpa_bridge::BorrowedClaudeAuthSpec::new);
+    claude_spec.bindings = vec![CpaProfileBinding {
+        account_kind: CpaAccountKind::Claude,
+        connector_id: CpaAccountKind::Claude.connector_id().into(),
+        connection_option_id: CpaAccountKind::Claude.connection_option_id().into(),
+        endpoint_profile_id: CpaAccountKind::Claude.endpoint_profile_id().into(),
+    }];
+    let proxy_store = hiroute_host_runtime::SubscriptionProxyStore::new(
+        config
+            .storage_root
+            .parent()
+            .ok_or(RoleAllError::InvalidConfiguration)?,
+    );
+    proxy_store
+        .clear_applied()
+        .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?;
+    let proxy_config = proxy_store
+        .load()
+        .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?;
+    let inherited = if config.released_commands_only
+        && matches!(
+            proxy_config.policy,
+            hiroute_host_runtime::SubscriptionProxyPolicy::Inherit
+        ) {
         let layout = hiroute_host_runtime::StandaloneLayout::from_environment()
             .map_err(|_| RoleAllError::InvalidConfiguration)?;
-        if let Some(environment) = hiroute_host_runtime::ServiceProxyEnvironment::load(&layout.home)
+        hiroute_host_runtime::ServiceProxyEnvironment::load(&layout.home)
             .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?
-        {
-            runtime = runtime.with_proxy_environment(environment.variables());
+            .map(|value| value.variables().collect::<Vec<_>>())
+            .unwrap_or_else(|| std::env::vars_os().collect())
+    } else {
+        std::env::vars_os().collect()
+    };
+    let proxy = proxy_config
+        .policy
+        .resolve(inherited)
+        .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?;
+    let catalog = Arc::new(catalog);
+    let locator = Arc::new(PinnedCpaBinaryLocator::new(artifact));
+    let mut runtimes = Vec::new();
+    for mut spec in [codex_spec, claude_spec] {
+        // An invalid native selection must not disable independent OAuth. This template
+        // is never started or published; it only supplies a provider-isolated login runtime.
+        if spec.borrowed_codex_auth.is_none() && spec.borrowed_claude_auth.is_none() {
+            spec.managed_oauth = Some(spec.bindings[0].account_kind);
         }
+        let runtime = ManagedCpaRuntime::new(spec, catalog.clone(), locator.clone())
+            .map_err(|error| RoleAllError::Component("CPA", error.to_string()))?
+            .with_diagnostics(config.diagnostics.clone())
+            .with_proxy_environment(proxy.variables());
+        runtimes.push(Arc::new(runtime));
     }
-    Ok(Arc::new(runtime))
+    let runtimes = ManagedCpaRuntimeSet::new(runtimes)
+        .map_err(|e| RoleAllError::Component("CPA", e.to_string()))?;
+    proxy_store
+        .mark_applied(&proxy_config)
+        .map_err(|_| RoleAllError::StandaloneProxyUnavailable)?;
+    Ok(Arc::new(runtimes))
 }
 
 fn selected_codex_auth() -> Result<PathBuf, RoleAllError> {
@@ -620,7 +679,7 @@ fn remaining(deadline: Instant, component: &'static str) -> Result<Duration, Rol
         .ok_or(RoleAllError::JoinTimeout(component))
 }
 
-struct RoleAllCpaCredentials(Option<Arc<ManagedCpaRuntime>>);
+struct RoleAllCpaCredentials(Option<Arc<ManagedCpaRuntimeSet>>);
 
 impl CpaDownstreamCredentialPort for RoleAllCpaCredentials {
     fn lease_downstream_capability(

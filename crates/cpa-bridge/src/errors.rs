@@ -4,6 +4,28 @@ use crate::{CpaArtifactError, CpaConfigError, CpaExit, CpaProcessError};
 
 #[derive(Debug, Error)]
 pub enum CpaLifecycleError {
+    #[error("CPA operation was cancelled or exceeded its absolute deadline")]
+    OperationCancelled,
+    #[error("CPA independent login has no saved credential")]
+    ManagedOAuthCredentialsMissing,
+    #[error("CPA independent login credential is invalid or unavailable")]
+    InvalidManagedOAuthCredentials,
+    #[error("CPA independent authorization has expired or been revoked; sign in again")]
+    ManagedOAuthAuthenticationRequired,
+    #[error("CPA independent login account changed")]
+    ManagedOAuthAccountChanged,
+    #[error("CPA independent login session is missing, stale or already used")]
+    InvalidOAuthSession,
+    #[error("Claude native authentication is missing")]
+    BorrowedClaudeAuthMissing,
+    #[error(
+        "Claude native authentication is unavailable; unlock or authorize its credential store and retry"
+    )]
+    BorrowedClaudeAuthUnavailable,
+    #[error("Claude native authentication is expired or invalid")]
+    InvalidBorrowedClaudeAuth,
+    #[error("Claude native account or authentication changed")]
+    BorrowedClaudeAuthSourceChanged,
     #[error("CPA runtime specification is invalid")]
     InvalidSpec,
     #[error("CPA Release binding is invalid")]

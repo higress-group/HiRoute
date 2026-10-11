@@ -1,0 +1,107 @@
+{
+  "$id": "hiroute://contracts/cli/subscription-login-result.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "hiroute.subscription-login-result/v1"
+    },
+    "sessions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "account_ref": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[^\\s\\x00-\\x1f\\x7f]+$",
+            "type": "string"
+          },
+          "authorization_url": {
+            "description": "Start only; browser navigation, never client logging or persistence.",
+            "maxLength": 8192,
+            "type": "string"
+          },
+          "callback_input_candidate": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_ref": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[^\\s\\x00-\\x1f\\x7f]+$",
+                "type": "string"
+              },
+              "candidate_revision": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "candidate_ref",
+              "candidate_revision"
+            ],
+            "type": "object"
+          },
+          "candidate": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_ref": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[^\\s\\x00-\\x1f\\x7f]+$",
+                "type": "string"
+              },
+              "candidate_revision": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "candidate_ref",
+              "candidate_revision"
+            ],
+            "type": "object"
+          },
+          "login_ref": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[^\\s\\x00-\\x1f\\x7f]+$",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "codex",
+              "claude"
+            ]
+          },
+          "reason_code": {
+            "maxLength": 128,
+            "pattern": "^[a-z0-9_]+$",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "authorized",
+              "cancelled",
+              "failed",
+              "expired",
+              "forgotten"
+            ]
+          }
+        },
+        "required": [
+          "provider",
+          "login_ref",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "sessions"
+  ],
+  "type": "object"
+}

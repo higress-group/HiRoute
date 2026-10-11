@@ -250,10 +250,14 @@ wait"#,
     fn exit_observation_keeps_the_child_owned_until_group_cleanup() {
         use std::os::unix::process::CommandExt;
 
-        let root = tempfile::tempdir().unwrap();
-        let binary = executable(root.path(), "exit 0");
+        // Ownership observation needs only a child process, not a freshly written executable
+        // (which can be ETXTBSY while concurrent forked fixtures still hold its write fd).
         let mut child = VersionChild {
-            child: Command::new(binary).process_group(0).spawn().unwrap(),
+            child: Command::new("/bin/sh")
+                .args(["-c", "exit 0"])
+                .process_group(0)
+                .spawn()
+                .unwrap(),
             signals_closed: false,
         };
         let started = Instant::now();

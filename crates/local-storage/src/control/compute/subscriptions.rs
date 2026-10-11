@@ -124,10 +124,10 @@ fn save_handoff_binding(
         return Ok(None);
     };
     let HandoffSubjectV2::Candidate { candidate } = change.subject else {
-        return Err(error(
-            PortErrorCode::Corrupt,
-            "subscription.handoff.subject",
-        ));
+        // The sealed management planner has already matched this SavedSource's retained
+        // validation and current revisions. Editing it preserves the original receipt's
+        // save owner; only a Candidate save initiates a new check-to-save handoff.
+        return Ok(None);
     };
     Ok(Some((candidate, validation)))
 }

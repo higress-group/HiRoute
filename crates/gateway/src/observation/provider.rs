@@ -28,6 +28,8 @@ use super::{RequestObservation, active_request};
 
 #[path = "provider/capture.rs"]
 mod capture;
+#[path = "provider/cpa_execution.rs"]
+pub(super) mod cpa_execution;
 #[path = "provider/wire_diagnostic.rs"]
 pub(in crate::server::core_runtime) mod wire_diagnostic;
 
@@ -108,6 +110,9 @@ impl ProviderRuntimePort for ObservedProductionProvider {
             .then(|| context.credential_ref().as_str().to_owned());
         let (request, inner) = self.inner.materialize_attempt(logical, context).await?;
         let observation = active_request().filter(RequestObservation::tracks_attempts);
+        if let Some(observation) = &observation {
+            observation.lock_state().managed_cpa = inner.trusts_cpa_execution_metadata();
+        }
         if let (Some(observation), Some(credential_ref)) = (&observation, no_credential_ref) {
             observation.no_credential_materialized(&stable_binding_id, &credential_ref);
         }

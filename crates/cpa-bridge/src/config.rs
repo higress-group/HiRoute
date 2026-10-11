@@ -462,6 +462,7 @@ pub(crate) fn ensure_private_dir(path: &Path) -> Result<PathBuf, CpaConfigError>
 }
 
 pub(crate) fn private_atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CpaConfigError> {
+    crate::request_context::io_check().map_err(CpaConfigError::Io)?;
     let parent = path.parent().ok_or(CpaConfigError::InvalidPrivatePath)?;
     validate_private_dir(parent)?;
     let suffix = SecretText::generate()?;
@@ -474,6 +475,7 @@ pub(crate) fn private_atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CpaC
         file.write_all(bytes).map_err(CpaConfigError::Io)?;
         file.sync_all().map_err(CpaConfigError::Io)?;
         validate_private_file(&temp_path)?;
+        crate::request_context::io_check().map_err(CpaConfigError::Io)?;
         fs::rename(&temp_path, path).map_err(CpaConfigError::Io)?;
         validate_private_file(path)
     })();

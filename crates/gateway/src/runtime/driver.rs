@@ -165,6 +165,7 @@ impl ProductionReplaySeedEnvelope {
 }
 
 pub struct ProductionAttemptState {
+    managed_cpa: bool,
     #[cfg(all(unix, debug_assertions))]
     capture: Option<super::stream_capture::Capture>,
     response_status: Option<http::StatusCode>,
@@ -192,6 +193,10 @@ pub struct ProductionAttemptState {
 }
 
 impl ProductionAttemptState {
+    pub(crate) fn trusts_cpa_execution_metadata(&self) -> bool {
+        self.managed_cpa
+    }
+
     #[cfg(all(unix, debug_assertions))]
     pub(crate) fn register_private_capture(
         &self,

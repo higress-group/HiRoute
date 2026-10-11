@@ -1,12 +1,14 @@
 """Opt-in real Codex subscription -> pinned CPA -> Gateway -> Observation sample.
 
-The supplied Codex auth file is read once into a private temporary CODEX_HOME. The
+Only access/identity fields are copied into a private temporary CODEX_HOME. Refresh
+authority remains exclusively in the original Codex credential store. The
 original file and the user's normal Agent configuration are never modified. Output
 contains only numerical usage and safe resource identities, never credentials.
 """
 
 from publication_process import judgment_fixture
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import http.client
 import json
@@ -51,6 +53,17 @@ def copy_private_codex_auth(source, destination):
     auth = json.loads(body)
     if auth.get('auth_mode') != 'chatgpt' or not isinstance(auth.get('tokens'), dict):
         raise ValueError('Codex auth source is not a ChatGPT subscription')
+    isolated = {
+        'auth_mode': 'chatgpt',
+        # Required native-format metadata, generated for this isolated snapshot.
+        # This is not refresh authority and is never copied from the native store.
+        'last_refresh': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        'tokens': {key: auth['tokens'][key] for key in ('access_token', 'id_token', 'account_id')
+                   if isinstance(auth['tokens'].get(key), str)},
+    }
+    if not isolated['tokens'].get('access_token'):
+        raise ValueError('Codex auth source has no access token')
+    body = json.dumps(isolated).encode('utf-8')
     out = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     try:
         with os.fdopen(out, 'wb', closefd=False) as handle:
@@ -59,7 +72,7 @@ def copy_private_codex_auth(source, destination):
             os.fsync(out)
     finally:
         os.close(out)
-    return [value for value in auth['tokens'].values() if isinstance(value, str) and value]
+    return [value for value in isolated['tokens'].values() if value]
 
 
 def configure_isolated_codex(product, auth_source, codex_cli):

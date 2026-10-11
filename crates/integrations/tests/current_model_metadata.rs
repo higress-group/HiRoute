@@ -93,8 +93,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
     ))
     .unwrap();
     data.validate_against(&registry).unwrap();
-    assert_eq!(data.data.models.len(), 22);
-    assert_eq!(data.rating_snapshot.records.len(), 63);
+    assert_eq!(data.data.models.len(), 27);
+    assert_eq!(data.rating_snapshot.records.len(), 85);
     assert!(
         data.data
             .model_endpoint_capabilities
@@ -202,12 +202,22 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
                 )
             );
         } else {
+            let configuration_id = "model.anthropic.claude-opus-5-5";
             assert!(
                 data.data
                     .models
                     .iter()
-                    .all(|model| !model.model_configuration_id.ends_with(model_key))
+                    .any(|model| model.model_configuration_id == configuration_id)
             );
+            let capabilities: Vec<_> = data
+                .data
+                .model_endpoint_capabilities
+                .iter()
+                .filter(|capability| capability.model_configuration_id == configuration_id)
+                .collect();
+            assert_eq!(capabilities.len(), 1);
+            assert_eq!(capabilities[0].endpoint_profile_id, "endpoint.cpa.claude");
+            assert_eq!(capabilities[0].connector_id, "connector.cpa.claude");
         }
     }
     // The dataset is a closed, determinate snapshot: no provider-scoped record may keep an

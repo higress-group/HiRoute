@@ -18,8 +18,11 @@ pub struct CpaRuntimeSpec {
     pub auth_dir: PathBuf,
     /// Owner-controlled Codex CLI token source borrowed as an access-only lease.
     ///
-    /// A Codex binding requires this source. The runtime never imports its refresh token.
+    /// Native Codex bindings require this source. Its refresh token is never imported.
     pub borrowed_codex_auth: Option<BorrowedCodexAuthSpec>,
+    pub borrowed_claude_auth: Option<crate::BorrowedClaudeAuthSpec>,
+    /// A dedicated CPA-owned OAuth store; mutually exclusive with native borrowed sources.
+    pub managed_oauth: Option<crate::CpaAccountKind>,
     pub bindings: Vec<CpaProfileBinding>,
     pub startup_timeout: Duration,
     pub control_timeout: Duration,
@@ -76,6 +79,16 @@ pub(super) fn validate_spec(
     {
         return Err(CpaLifecycleError::InvalidSpec);
     }
+    if spec
+        .borrowed_claude_auth
+        .as_ref()
+        .is_some_and(|source| !source.source_path().is_absolute())
+        || (spec.borrowed_codex_auth.is_some() && spec.borrowed_claude_auth.is_some())
+        || (spec.managed_oauth.is_some()
+            && (spec.borrowed_codex_auth.is_some() || spec.borrowed_claude_auth.is_some()))
+    {
+        return Err(CpaLifecycleError::InvalidSpec);
+    }
     let mut kinds = BTreeSet::new();
     for binding in &spec.bindings {
         if !kinds.insert(binding.account_kind) {
@@ -99,7 +112,15 @@ pub(super) fn validate_spec(
             return Err(CpaLifecycleError::InvalidBinding);
         }
     }
-    if kinds.contains(&crate::CpaAccountKind::Codex) != spec.borrowed_codex_auth.is_some() {
+    if (spec.borrowed_claude_auth.is_some() && !kinds.contains(&crate::CpaAccountKind::Claude))
+        || (kinds.contains(&crate::CpaAccountKind::Codex)
+            && spec.borrowed_codex_auth.is_none()
+            && spec.managed_oauth != Some(crate::CpaAccountKind::Codex))
+        || (spec.borrowed_codex_auth.is_some() && !kinds.contains(&crate::CpaAccountKind::Codex))
+        || spec
+            .managed_oauth
+            .is_some_and(|kind| kinds.len() != 1 || !kinds.contains(&kind))
+    {
         return Err(CpaLifecycleError::InvalidSpec);
     }
     Ok(())
