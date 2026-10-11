@@ -722,17 +722,14 @@ fn wait_finished(facts: &Facts, failed: bool) {
         let finished = records
             .iter()
             .any(|r| r.pointer("/fact/kind").and_then(Value::as_str) == Some("request_finished"));
-        // The native completion producer can deliver its usage after the
-        // request's terminal fact. Successful fixtures require both known
-        // usage sources; assert_business still checks the exact count/content.
+        // Canonical usage can arrive after the terminal fact. Provider usage
+        // is omitted when canonical usage was already recorded, so it is not
+        // a completion barrier. The business oracle checks each source below.
         let usage_complete = failed
-            || records
-                .iter()
-                .filter(|r| {
-                    r.pointer("/fact/kind").and_then(Value::as_str) == Some("usage_and_cache")
-                })
-                .count()
-                >= 2;
+            || records.iter().any(|r| {
+                r.pointer("/fact/kind").and_then(Value::as_str) == Some("usage_and_cache")
+                    && r["fact"]["source"] == "accepted_canonical_model_event"
+            });
         if finished && usage_complete {
             return;
         }
@@ -772,13 +769,7 @@ fn assert_prebody_relay_business(facts: &[Value]) {
     assert_eq!(requests[0]["fact"]["attempts_started"], 2);
     assert_eq!(requests[0]["fact"]["attempts_finished"], 2);
     assert_eq!(named("semantic_commit").len(), 1);
-    let usage = named("usage_and_cache");
-    assert_eq!(usage.len(), 2);
-    for record in usage {
-        assert_eq!(record["fact"]["ordinal"], 2);
-        assert_eq!(record["fact"]["input_tokens"], 11);
-        assert_eq!(record["fact"]["output_tokens"], 7);
-    }
+    assert_success_usage(facts, 2);
 }
 
 fn assert_business(facts: &[Value], failed: bool, after_body: bool) {
@@ -866,21 +857,38 @@ fn assert_business(facts: &[Value], failed: bool, after_body: bool) {
     assert_eq!(requests[0]["fact"]["attempts_finished"], 1);
     let semantic_commits = named("semantic_commit").len();
     assert_eq!(semantic_commits, if failed && !after_body { 0 } else { 1 });
-    let usage = named("usage_and_cache");
-    // These failed entities report no usage: preserve absence rather than
-    // synthesizing zero tokens from an incomplete response.
-    assert_eq!(usage.len(), if failed { 0 } else { 2 });
-    if !failed {
-        assert_eq!(
-            usage
-                .iter()
-                .filter(|r| r["fact"]["source"] == "provider_completion")
-                .count(),
-            1
-        );
+    if failed {
+        // Failed entities report no usage; never synthesize zero tokens.
+        assert!(named("usage_and_cache").is_empty());
+    } else {
+        assert_success_usage(facts, 1);
     }
+}
+
+pub(super) fn assert_success_usage(facts: &[Value], ordinal: u64) {
+    let usage: Vec<_> = facts
+        .iter()
+        .filter(|r| r["fact"]["kind"] == "usage_and_cache")
+        .collect();
+    let count = |source: &str| {
+        usage
+            .iter()
+            .filter(|r| r["fact"]["source"] == source)
+            .count()
+    };
+    assert_eq!(count("accepted_canonical_model_event"), 1);
+    // completed_attempt suppresses provider usage if canonical usage arrived
+    // first. Both callback orders must retain exactly one canonical record.
+    assert!(count("provider_completion") <= 1);
+    let attempt = facts
+        .iter()
+        .find(|r| r["fact"]["kind"] == "attempt_started" && r["fact"]["ordinal"] == ordinal)
+        .unwrap();
+    assert!(attempt["attempt_id"].is_string());
     for record in usage {
-        assert_eq!(record["fact"]["ordinal"], 1);
+        assert_eq!(record["fact"]["ordinal"], ordinal);
+        assert_eq!(record["attempt_id"], attempt["attempt_id"]);
+        assert_eq!(record["correlation"], attempt["correlation"]);
         assert!(matches!(
             record["fact"]["source"].as_str(),
             Some("provider_completion" | "accepted_canonical_model_event")
@@ -889,6 +897,7 @@ fn assert_business(facts: &[Value], failed: bool, after_body: bool) {
         assert_eq!(record["fact"]["output_tokens"], 7);
     }
 }
+
 fn wait_replay_clean(root: &Path) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {

@@ -1,3 +1,7 @@
+#[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
+#[path = "tests/usage_order.rs"]
+mod usage_order;
+
 use serde_json::{Value, json};
 
 use hiroute_diagnostics::runtime::DiagnosticsPort;
@@ -143,12 +147,21 @@ fn request_with_capture(
     diagnostics: DiagnosticsPort,
     enabled: bool,
 ) -> RequestObservation {
-    let gateway = GatewayObservation::with_sinks_and_policy(
-        true,
-        64 * 1024,
-        GatewayObservationSinks::discard(),
+    request_with_sinks(
         policy,
-    );
+        diagnostics,
+        enabled,
+        GatewayObservationSinks::discard(),
+    )
+}
+
+fn request_with_sinks(
+    policy: OtelContentPolicy,
+    diagnostics: DiagnosticsPort,
+    enabled: bool,
+    sinks: GatewayObservationSinks,
+) -> RequestObservation {
+    let gateway = GatewayObservation::with_sinks_and_policy(true, 64 * 1024, sinks, policy);
     RequestObservation::new(
         super::request::RequestObservationCapture {
             enabled,
