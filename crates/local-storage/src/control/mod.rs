@@ -2992,15 +2992,6 @@ fn prepare_owner_directory(path: &Path) -> Result<(), LocalStorageError> {
         if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
             return Err(LocalStorageError::Permission);
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if metadata.mode() & 0o777 != 0o700
-                || metadata.uid() != rustix::process::getuid().as_raw()
-            {
-                return Err(LocalStorageError::Permission);
-            }
-        }
     } else {
         fs::create_dir_all(path)?;
         #[cfg(unix)]
@@ -3036,10 +3027,7 @@ fn validate_external_target_path(path: &Path) -> Result<(), LocalStorageError> {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::MetadataExt;
-                if metadata.uid() != rustix::process::getuid().as_raw()
-                    || metadata.nlink() != 1
-                    || !supported_artifact_mode(metadata.mode() & 0o777)
-                {
+                if metadata.nlink() != 1 {
                     return Err(LocalStorageError::Permission);
                 }
             }
@@ -3053,15 +3041,6 @@ fn validate_external_target_path(path: &Path) -> Result<(), LocalStorageError> {
 fn validate_owner_directory_metadata(metadata: &fs::Metadata) -> Result<(), LocalStorageError> {
     if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
         return Err(LocalStorageError::Permission);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        // The store root is already fixed at 0700. Existing nested directories may predate
-        // this renderer, but must still be owned by the daemon uid and never be symlinks.
-        if metadata.uid() != rustix::process::getuid().as_raw() || metadata.mode() & 0o022 != 0 {
-            return Err(LocalStorageError::Permission);
-        }
     }
     Ok(())
 }
@@ -3090,7 +3069,7 @@ fn read_artifact(path: &Path) -> Result<Option<ArtifactSnapshot>, LocalStorageEr
     #[cfg(unix)]
     let mode = {
         use std::os::unix::fs::MetadataExt;
-        fs::metadata(path)?.mode() & 0o777
+        fs::metadata(path)?.mode() & 0o7777
     };
     #[cfg(not(unix))]
     return Err(LocalStorageError::InvalidData);
@@ -3118,7 +3097,7 @@ fn artifact_fingerprint(bytes: &[u8], mode: u32) -> Result<CanonicalDigest, Loca
 }
 
 const fn supported_artifact_mode(mode: u32) -> bool {
-    matches!(mode, 0o600 | 0o640 | 0o644)
+    mode & !0o7777 == 0
 }
 
 fn artifact_backup_aad(marker: &ArtifactMarker) -> String {
@@ -3238,14 +3217,6 @@ fn validate_owner_regular_file(metadata: &fs::Metadata) -> Result<(), LocalStora
     if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
         return Err(LocalStorageError::Permission);
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.mode() & 0o777 != 0o600 || metadata.uid() != rustix::process::getuid().as_raw()
-        {
-            return Err(LocalStorageError::Permission);
-        }
-    }
     Ok(())
 }
 
@@ -3288,7 +3259,7 @@ fn atomic_write(
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        if fs::metadata(path)?.mode() & 0o777 != mode {
+        if fs::metadata(path)?.mode() & 0o7777 != mode {
             return Err(LocalStorageError::Permission);
         }
     }

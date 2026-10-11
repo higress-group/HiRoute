@@ -576,7 +576,7 @@ fn assert_boundary(golden: &BoundaryGolden) {
     assert_eq!(golden.schema, "hiroute.control-shell-boundary/v1");
     assert_eq!(golden.process, "PROCESS-25016");
     assert_eq!(golden.daemon_role, "control_only");
-    assert_eq!(golden.transport, "owner_only_uds_peer_uid_v1");
+    assert_eq!(golden.transport, "local_uds_os_access_v1");
     assert_eq!(golden.application_entrypoints, 1);
     assert!(golden.cli_direct_adapter_dependencies.is_empty());
     assert_eq!(golden.preview_writes, 0);

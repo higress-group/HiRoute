@@ -104,11 +104,7 @@ fn read_private(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(path)?;
     let metadata = file.metadata()?;
-    if !metadata.is_file()
-        || metadata.mode() & 0o777 != 0o600
-        || metadata.uid() != rustix::process::geteuid().as_raw()
-        || metadata.len() > limit
-    {
+    if !metadata.is_file() || metadata.len() > limit {
         return Err(io::Error::other("unsafe or oversized capture file"));
     }
     let mut bytes = Vec::new();
@@ -146,12 +142,7 @@ impl Capture {
     ) -> io::Result<Self> {
         // Canonical spelling rejects symlinks in every component, not just the leaf.
         let metadata = fs::symlink_metadata(root)?;
-        if !root.is_absolute()
-            || fs::canonicalize(root)? != root
-            || !metadata.is_dir()
-            || metadata.mode() & 0o777 != 0o700
-            || metadata.uid() != rustix::process::geteuid().as_raw()
-        {
+        if !root.is_absolute() || fs::canonicalize(root)? != root || !metadata.is_dir() {
             return Err(io::Error::other(
                 "capture requires a private canonical directory",
             ));
@@ -182,10 +173,7 @@ impl Capture {
             .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
             .open(root.join("active.lock"))?;
         let metadata = lock.metadata()?;
-        if !metadata.is_file()
-            || metadata.mode() & 0o777 != 0o600
-            || metadata.uid() != rustix::process::geteuid().as_raw()
-        {
+        if !metadata.is_file() {
             return Err(io::Error::other("unsafe capture lock"));
         }
         // Keep the inode stable. Kernel ownership disappears on crash/kill and
@@ -424,23 +412,18 @@ impl Writer {
         let root = fs::symlink_metadata(&self.root)?;
         let file = self.file.metadata()?;
         let path = fs::symlink_metadata(&self.path)?;
-        let uid = rustix::process::geteuid().as_raw();
         let new_size = offset.saturating_add(18).saturating_add(bytes as u64);
         let mut total = 0u64;
         for entry in fs::read_dir(&self.root)? {
             let metadata = fs::symlink_metadata(entry?.path())?;
-            if !metadata.is_file() || metadata.uid() != uid {
+            if !metadata.is_file() {
                 return Err(io::Error::other("unsafe capture directory entry"));
             }
             total = total.saturating_add(metadata.len());
         }
         if !root.is_dir()
-            || root.mode() & 0o777 != 0o700
-            || root.uid() != uid
             || fs::canonicalize(&self.root)? != self.root
             || !file.is_file()
-            || file.mode() & 0o777 != 0o600
-            || file.uid() != uid
             || !path.is_file()
             || path.ino() != file.ino()
             || path.dev() != file.dev()

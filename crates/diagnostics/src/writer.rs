@@ -598,7 +598,6 @@ mod tests {
     use crate::queue::bounded_queue;
     use crate::record::Component;
     use crate::shared::Shared;
-    use std::os::unix::fs::PermissionsExt;
 
     fn record_bytes() -> Vec<u8> {
         DiagnosticRecordV1 {
@@ -698,7 +697,7 @@ mod tests {
         assert!(counters.bytes_written() > 0);
 
         let log_path = root.join(CURRENT_LOG_FILE);
-        std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+        std::fs::hard_link(&log_path, root.join("foreign-link")).expect("hardlink");
         assert!(
             sender
                 .try_push(DiagnosticLevel::Debug, record_bytes())
@@ -714,8 +713,7 @@ mod tests {
 
         // The environment is repaired; the writer reopens and its exit record becomes
         // writable again.
-        std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o600))
-            .expect("restore");
+        std::fs::remove_file(root.join("foreign-link")).expect("restore single link");
         let deadline = Instant::now() + Duration::from_secs(10);
         while health.snapshot().is_some() && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(25));

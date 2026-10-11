@@ -291,13 +291,20 @@ fn expired_or_deleted_native_auth_does_not_reuse_cached_access() {
 
 #[cfg(unix)]
 #[test]
-fn symlinks_and_shared_read_permissions_are_rejected() {
+fn shared_read_permissions_are_preserved_and_symlinks_are_rejected() {
     use std::os::unix::fs::{PermissionsExt, symlink};
     let root = tempfile::tempdir().unwrap();
     let spec = source(root.path(), "access-first", "account-one");
     fs::set_permissions(spec.source_path(), fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(spec.inspect().is_err());
-    fs::set_permissions(spec.source_path(), fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(spec.inspect().is_ok());
+    assert_eq!(
+        fs::metadata(spec.source_path())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o644
+    );
     let alias = root.path().join("alias");
     symlink(spec.source_path(), &alias).unwrap();
     assert!(read_private(&alias).is_err());

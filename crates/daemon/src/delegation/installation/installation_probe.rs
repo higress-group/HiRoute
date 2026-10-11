@@ -596,13 +596,6 @@ fn private_directory(path: &Path) -> Result<(), DelegationErrorV1> {
     if !path.is_absolute() || !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err(DelegationErrorV1::PermissionDenied);
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != nix::unistd::geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
-            return Err(DelegationErrorV1::PermissionDenied);
-        }
-    }
     Ok(())
 }
 

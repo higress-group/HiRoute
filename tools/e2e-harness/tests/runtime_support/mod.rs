@@ -533,7 +533,7 @@ impl ObservationFaults {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ReplayRootMode {
     Normal,
-    UnsafePermissions,
+    PermissivePermissions,
     SeedOrphan,
 }
 
@@ -1055,7 +1055,7 @@ impl RuntimeFixture {
     }
 
     #[cfg(unix)]
-    pub fn launch_with_unsafe_replay_root(
+    pub fn launch_with_permissive_replay_root(
         providers: &[&NativeProvider],
         max_attempts: u32,
     ) -> Self {
@@ -1066,7 +1066,7 @@ impl RuntimeFixture {
             None,
             None,
             RuntimeLaunchOptions {
-                replay_root_mode: ReplayRootMode::UnsafePermissions,
+                replay_root_mode: ReplayRootMode::PermissivePermissions,
                 ..RuntimeLaunchOptions::default()
             },
         )
@@ -1572,13 +1572,13 @@ fn reserve_address() -> SocketAddr {
 fn prepare_replay_root(path: &Path, mode: ReplayRootMode) {
     match mode {
         ReplayRootMode::Normal => {}
-        ReplayRootMode::UnsafePermissions => {
-            std::fs::create_dir(path).expect("create unsafe replay root");
+        ReplayRootMode::PermissivePermissions => {
+            std::fs::create_dir(path).expect("create permissive replay root");
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
-                    .expect("set unsafe replay permissions");
+                    .expect("set permissive replay permissions");
             }
         }
         ReplayRootMode::SeedOrphan => {

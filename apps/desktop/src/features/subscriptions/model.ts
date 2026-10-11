@@ -1,3 +1,4 @@
+import { subscriptionFailureCopy } from '../models/subscription-copy.ts';
 import type { SubscriptionCandidate, SubscriptionCheckResult, SubscriptionSaveIntent } from './types';
 
 export function saveIntent(enable: boolean): SubscriptionSaveIntent {
@@ -49,6 +50,17 @@ export function canSave(candidate: SubscriptionCandidate, enable: boolean, selec
   return selected.size > 0;
 }
 
+export function repairSourceAfterLogin(sourceId: string | null, candidate: SubscriptionCandidate): string | null {
+  return sourceId !== null && candidate.existing_source_id === sourceId ? sourceId : null;
+}
+
+export function canSaveRepair(candidate: SubscriptionCandidate | null | undefined, saved: { source_id: string; models: readonly { model_ref: string }[] } | null | undefined, selected: ReadonlySet<string>): boolean {
+  return Boolean(candidate?.validation && candidate.fact_state !== 'pending_approval' && saved
+    && candidate.existing_source_id === saved.source_id
+    && selected.size === saved.models.length
+    && saved.models.every(model => selected.has(model.model_ref)));
+}
+
 export function selectionRows(candidate: SubscriptionCandidate, selected: ReadonlySet<string>, saved: readonly { model_ref: string; display_name: string }[] = []) {
   const rows = candidate.models.map(model => ({
     model_ref: model.model_ref, display_name: model.display_name, selectable: model.selectable, missing: false,
@@ -91,11 +103,13 @@ export function statusText(candidate: SubscriptionCandidate, language: 'zh' | 'e
 
 export function checkStatusText(check: SubscriptionCheckResult, language: 'zh' | 'en'): string {
   const zh = language === 'zh';
+  const detail = subscriptionFailureCopy(check.reason ?? '', language);
+  if (detail && ['needs_auth', 'unavailable', 'failed'].includes(check.status)) return detail;
   switch (check.status) {
     case 'checking': return zh ? '正在检查订阅模型' : 'Checking subscription models';
     case 'verified': return zh ? '检查完成，选择模型后仍需保存' : 'Check complete; select models and save';
     case 'source_changed': return zh ? '登录来源已变化，请重新检查' : 'Login source changed; check again';
-    case 'needs_auth': return zh ? '需要先在对应的 Agent 中重新登录' : 'Sign in again in the original agent first';
+    case 'needs_auth': return zh ? '请更新对应的订阅登录后重新检查' : 'Renew the corresponding subscription sign-in and check again';
     case 'unavailable': return zh ? '订阅运行暂不可用，可稍后重试' : 'Subscription runtime unavailable; retry later';
     case 'failed': return zh ? '订阅检查失败，可重试' : 'Subscription check failed; retry available';
     case 'released': return zh ? '本次检查资源已释放' : 'Resources for this check were released';

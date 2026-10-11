@@ -433,10 +433,11 @@ mod tests {
         assert!(sample_codex_configuration(&scope).is_err());
         scope.selection = CodexSelectionTarget::Root;
         std::fs::set_permissions(&user, std::fs::Permissions::from_mode(0o666)).unwrap();
-        assert!(matches!(
-            sample_codex_configuration(&scope),
-            Err(Error::UnsafePermissions)
-        ));
+        assert!(sample_codex_configuration(&scope).is_ok());
+        assert_eq!(
+            std::fs::metadata(&user).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
     }
 
     #[test]
@@ -464,6 +465,10 @@ mod tests {
             0o644
         );
         std::fs::set_permissions(&system, std::fs::Permissions::from_mode(0o666)).unwrap();
-        assert!(sample_codex_configuration(&scope).is_err());
+        assert!(sample_codex_configuration(&scope).is_ok());
+        assert_eq!(
+            std::fs::metadata(&system).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
     }
 }

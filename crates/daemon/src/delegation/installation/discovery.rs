@@ -667,7 +667,7 @@ fn inspect(path: &Path, require_executable: bool) -> MetadataFact {
             reason: Some("worker.dependencies.not_executable"),
         };
     }
-    if !require_executable && !readable(&metadata) {
+    if !require_executable && fs::File::open(&canonical).is_err() {
         return MetadataFact {
             canonical: Some(canonical),
             state: WorkerDependencyCandidateStateV1::Invalid,
@@ -765,18 +765,6 @@ fn executable(metadata: &fs::Metadata) -> bool {
     {
         use std::os::unix::fs::PermissionsExt;
         metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        metadata.is_file()
-    }
-}
-
-fn readable(metadata: &fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o444 != 0
     }
     #[cfg(not(unix))]
     {

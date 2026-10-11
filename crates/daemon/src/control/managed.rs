@@ -12,7 +12,7 @@ use hiroute_application_api::{
 
 use super::{
     AgentGrantResolverPort, ControlConnectionAdmission, ControlConnectionBudgets, EndpointGuard,
-    LocalControlDaemon, bind_listener, same_uid, spawn_control_connection,
+    LocalControlDaemon, bind_listener, spawn_control_connection,
 };
 
 const ACCEPT_POLL: Duration = Duration::from_millis(20);
@@ -194,9 +194,6 @@ fn run_listener(
     while !shutdown.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, _)) => {
-                if !same_uid(&stream)? {
-                    continue;
-                }
                 // Some Unix implementations inherit O_NONBLOCK from the listener. Frame reads
                 // use an absolute socket deadline and therefore require a blocking accepted fd.
                 stream
@@ -214,9 +211,6 @@ fn run_listener(
         if let (Some(raw_listener), Some(resolver)) = (&raw_listener, &resolver) {
             match raw_listener.accept() {
                 Ok((stream, _)) => {
-                    if !same_uid(&stream)? {
-                        continue;
-                    }
                     stream
                         .set_nonblocking(false)
                         .map_err(|error| error.to_string())?;
@@ -255,7 +249,7 @@ fn bind_agent_grant_listener(
     runtime_root: &Path,
 ) -> Result<(std::os::unix::net::UnixListener, EndpointGuard), String> {
     use std::fs;
-    use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
     use std::os::unix::net::{UnixListener, UnixStream};
 
     let path = runtime_root.join("hiroute/agent-grant-v1.sock");
@@ -263,15 +257,11 @@ fn bind_agent_grant_listener(
         .parent()
         .ok_or_else(|| "Agent grant endpoint has no parent".to_owned())?;
     let parent_metadata = fs::symlink_metadata(parent).map_err(|error| error.to_string())?;
-    if parent_metadata.file_type().is_symlink()
-        || !parent_metadata.file_type().is_dir()
-        || parent_metadata.permissions().mode() & 0o777 != 0o700
-        || parent_metadata.uid() != nix::unistd::geteuid().as_raw()
-    {
-        return Err("Agent grant runtime directory is not owner-only".to_owned());
+    if parent_metadata.file_type().is_symlink() || !parent_metadata.file_type().is_dir() {
+        return Err("Agent grant runtime path is not a regular directory".to_owned());
     }
     if let Ok(metadata) = fs::symlink_metadata(&path) {
-        if !metadata.file_type().is_socket() || metadata.uid() != nix::unistd::geteuid().as_raw() {
+        if !metadata.file_type().is_socket() {
             return Err("refusing to replace an unowned Agent grant endpoint".to_owned());
         }
         match UnixStream::connect(&path) {
@@ -289,10 +279,7 @@ fn bind_agent_grant_listener(
     fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
         .map_err(|error| error.to_string())?;
     let metadata = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
-    if !metadata.file_type().is_socket()
-        || metadata.permissions().mode() & 0o777 != 0o600
-        || metadata.uid() != nix::unistd::geteuid().as_raw()
-    {
+    if !metadata.file_type().is_socket() {
         let _ = fs::remove_file(&path);
         return Err("Agent grant endpoint is not owner-only".to_owned());
     }

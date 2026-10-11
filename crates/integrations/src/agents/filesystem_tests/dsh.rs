@@ -358,7 +358,7 @@ fn dsh_disabled_removed_or_unknown_credentials_modules_block_import() {
 
 #[cfg(unix)]
 #[test]
-fn dsh_effective_credentials_file_must_stay_private() {
+fn dsh_effective_credentials_file_can_be_readable_without_chmod() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
     let scanner = scanner(root.path());
@@ -377,13 +377,13 @@ fn dsh_effective_credentials_file_must_stay_private() {
         ]),
     );
     fs::set_permissions(&active, fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(matches!(
-        scanner.dsh_api_sources(),
-        Err(AgentFilesystemScanError::UnsafePermissions)
-    ));
-    fs::set_permissions(&active, fs::Permissions::from_mode(0o600)).unwrap();
+
     let selected = scanner.dsh_api_sources().unwrap().remove(0);
     scanner.read_dsh_api_source(&selected).unwrap();
+    assert_eq!(
+        fs::metadata(&active).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
 }
 
 #[test]

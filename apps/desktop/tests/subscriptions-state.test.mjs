@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   canSave,
+  canSaveRepair,
+  repairSourceAfterLogin,
   checkStatusText,
   closeAction,
   isCurrentResult,
@@ -105,7 +107,7 @@ test('close follows A ownership until B exists, then only observes B', () => {
 test('backend failure classes remain distinct in user-facing status', () => {
   const base = { candidate: candidate().candidate, approval_operation: operationA };
   assert.match(checkStatusText({ ...base, status: 'source_changed' }, 'en'), /changed/i);
-  assert.match(checkStatusText({ ...base, status: 'needs_auth' }, 'en'), /sign in/i);
+  assert.match(checkStatusText({ ...base, status: 'needs_auth' }, 'en'), /sign[- ]in/i);
   assert.match(checkStatusText({ ...base, status: 'unavailable' }, 'en'), /unavailable/i);
   assert.match(checkStatusText({ ...base, status: 'retained', save_operation: operationB }, 'en'), /retained/i);
 });
@@ -184,4 +186,19 @@ test('a disappeared unsaved selection is also removable without granting eligibi
   assert.equal(canSave(checked, true, selected), false);
   selected.delete(missing.model_ref);
   assert.equal(canSave(checked, true, selected), true);
+});
+
+
+test('independent re-login retains repair membership when an old model leaves the catalog', () => {
+  const saved = { source_id: 'source/managed-codex', models: [{ model_ref: 'model/retired', display_name: 'Retired model' }] };
+  const selected = new Set(saved.models.map(model => model.model_ref));
+  const checked = candidate({ existing_source_id: saved.source_id, models: [], validation });
+  const repairing = repairSourceAfterLogin(saved.source_id, checked);
+  assert.equal(repairing, saved.source_id);
+  assert.equal(canSave(checked, true, selected), false, 'ordinary addition cannot select a missing model');
+  assert.equal(canSaveRepair(checked, saved, selected), true, 'repair retains the exact saved membership');
+  assert.equal(selectionRows(checked, selected, saved.models)[0].missing, true);
+  assert.equal(repairSourceAfterLogin(saved.source_id, { ...checked, existing_source_id: 'source/other' }), null);
+  assert.equal(canSaveRepair({ ...checked, validation: null }, saved, selected), false);
+  assert.equal(canSaveRepair(checked, saved, new Set()), false, 'repair cannot silently drop models');
 });

@@ -2,7 +2,7 @@
   "schema": "hiroute.control-shell-boundary/v1",
   "process": "PROCESS-25016",
   "daemon_role": "control_only",
-  "transport": "owner_only_uds_peer_uid_v1",
+  "transport": "local_uds_os_access_v1",
   "application_entrypoints": 1,
   "cli_direct_adapter_dependencies": [],
   "preview_writes": 0,

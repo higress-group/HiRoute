@@ -82,6 +82,15 @@ where
     T: ComputeRuntimeStateStoreV1,
 {
     let snapshot = repository.compute_management_snapshot(workspace)?;
+    project_snapshot(snapshot, runtime, query, presentation)
+}
+
+pub(super) fn project_snapshot<T: ComputeRuntimeStateStoreV1>(
+    snapshot: hiroute_domain::ComputeManagementStoredSnapshotV2,
+    runtime: &T,
+    query: &ComputeManagementQueryV2,
+    presentation: Option<&ComputeManagementPresentationFactsV1>,
+) -> Result<ComputeManagementSnapshotV2, ComputeManagementQueryErrorV2> {
     let presentation_complete = presentation.is_none_or(|facts| {
         facts.complete && facts.revisions.as_ref() == Some(&snapshot.revisions)
     });

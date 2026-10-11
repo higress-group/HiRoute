@@ -202,13 +202,14 @@
     {
       "assertion_binding": "declaration",
       "assertion_ids": [
-        "replay.owner_only_permission",
-        "replay.zero_provider_on_permission"
+        "replay.accessible_root",
+        "replay.existing_root_mode_preserved",
+        "replay.provider_call"
       ],
       "execution": "real_hirouted_native_provider",
-      "id": "replay.owner_only_permission",
+      "id": "replay.accessible_root",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "symbol": "real_hirouted_rejects_non_owner_only_replay_root",
+      "symbol": "real_hirouted_accepts_accessible_replay_root_without_chmod",
       "test_target": "p0_gateway_replay"
     },
     {
@@ -301,7 +302,7 @@
       "test_target": "p0_gateway_privacy"
     }
   ],
-  "registry_digest": "sha256:32438a229a8518a05a1f02ad0ebfa8ed031a6ddc1410120bbc3b6ed5668dad8a",
+  "registry_digest": "sha256:740c86272080c8c807a88cc6322056a3eb579138645d17ef07596d4f5f9cc0e0",
   "rows": [
     {
       "id": "publication.incompatible_or_gap",
@@ -554,11 +555,11 @@
     {
       "id": "replay.storage_and_capacity",
       "receipt_ids": [
-        "replay.owner_only_permission",
+        "replay.accessible_root",
         "replay.request_capacity",
         "replay.local_plaintext"
       ],
-      "scenario": "replay uses one owner-only plaintext backing and preserves request capacity gates",
+      "scenario": "replay honors OS access, uses one private plaintext backing and preserves request capacity gates",
       "spec_id": "SPEC-20006"
     },
     {

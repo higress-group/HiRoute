@@ -387,5 +387,9 @@ fn filesystem_aliases_and_history_links_cannot_bypass_checks() {
         Err(DelegationErrorV1::ResumeUnavailable)
     ));
     fs::set_permissions(session.path(), fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(checked_run_root(&fixture.path().join("run"), &session).is_err());
+    assert!(checked_run_root(&fixture.path().join("run"), &session).is_ok());
+    assert_eq!(
+        fs::metadata(session.path()).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
 }

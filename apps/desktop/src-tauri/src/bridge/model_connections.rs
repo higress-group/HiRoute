@@ -186,7 +186,7 @@ pub async fn release_subscription_check(
 pub async fn compute_management_snapshot(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
-) -> Result<ComputeManagementSnapshotV2, DesktopFailure> {
+) -> Result<ComputeManagementSnapshotV3, DesktopFailure> {
     main_window(&window)?;
     let client = state
         .0
@@ -198,7 +198,10 @@ pub async fn compute_management_snapshot(
         .clone();
     envelope_data(
         client
-            .compute_management_snapshot(&crate::random_id()?, ComputeManagementQueryV2::default())
+            .compute_management_snapshot_v3(
+                &crate::random_id()?,
+                ComputeManagementQueryV2::default(),
+            )
             .await?,
     )
 }

@@ -473,19 +473,42 @@ fn real_hirouted_cleans_exhaustion_deadline_disconnect_and_restart_orphan() {
 
 #[cfg(unix)]
 #[test]
-fn real_hirouted_rejects_non_owner_only_replay_root() {
+fn real_hirouted_accepts_accessible_replay_root_without_chmod() {
+    use std::os::unix::fs::PermissionsExt;
+
     hiroute_e2e::p0_execution_receipt!(
-        "replay.owner_only_permission",
+        "replay.accessible_root",
         [
-            "replay.owner_only_permission",
-            "replay.zero_provider_on_permission"
+            "replay.accessible_root",
+            "replay.existing_root_mode_preserved",
+            "replay.provider_call"
         ]
     );
-    let forbidden = NativeProvider::start(vec![success()]);
-    let fixture = RuntimeFixture::launch_with_unsafe_replay_root(&[&forbidden], 1);
-    let response = fixture.request();
-    assert_eq!(response.status, 503);
-    assert_eq!(forbidden.calls(), 0);
+    let provider = NativeProvider::start(vec![success()]);
+    let fixture = RuntimeFixture::launch_with_permissive_replay_root(&[&provider], 1);
+    assert_eq!(
+        fs::metadata(&fixture.replay_root)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755,
+        "startup must preserve existing replay root permissions"
+    );
+    let body = request_document("permissive replay ".repeat(8_192));
+    let response = fixture.request_body(&body);
+    assert_eq!(response.status, 200);
+    assert_eq!(provider.calls(), 1);
+    wait_replay_empty(&fixture.replay_root);
+    assert_eq!(
+        fs::metadata(&fixture.replay_root)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755,
+        "request admission and cleanup must preserve existing replay root permissions"
+    );
 }
 
 #[test]

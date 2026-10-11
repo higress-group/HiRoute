@@ -53,6 +53,8 @@ mod borrowed_stock;
 mod cancelled_start;
 #[path = "tests/control_races.rs"]
 mod control_races;
+#[path = "tests/credential_diagnostics.rs"]
+mod credential_diagnostics;
 #[path = "tests/fixture_isolation.rs"]
 mod fixture_isolation;
 #[path = "tests/managed_recovery.rs"]

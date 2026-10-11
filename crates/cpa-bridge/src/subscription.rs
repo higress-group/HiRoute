@@ -433,6 +433,9 @@ fn invalid_materialization() -> PortError {
 }
 
 fn map_lifecycle_error(error: CpaLifecycleError) -> PortError {
+    if let Some(failure) = error.subscription_failure() {
+        return failure;
+    }
     let (code, context) = match error {
         CpaLifecycleError::BorrowedCodexAuthSourceChanged
         | CpaLifecycleError::BorrowedClaudeAuthSourceChanged
@@ -442,18 +445,6 @@ fn map_lifecycle_error(error: CpaLifecycleError) -> PortError {
         CpaLifecycleError::StaleSourceManagement => {
             (PortErrorCode::Conflict, "cpa-subscription-management-stale")
         }
-        CpaLifecycleError::BorrowedClaudeAuthMissing
-        | CpaLifecycleError::ManagedOAuthCredentialsMissing
-        | CpaLifecycleError::InvalidManagedOAuthCredentials
-        | CpaLifecycleError::ManagedOAuthAuthenticationRequired
-        | CpaLifecycleError::BorrowedClaudeAuthUnavailable
-        | CpaLifecycleError::InvalidBorrowedClaudeAuth
-        | CpaLifecycleError::BorrowedCodexAuthMissing
-        | CpaLifecycleError::BorrowedCodexAuthUnavailable
-        | CpaLifecycleError::InvalidBorrowedCodexAuth => (
-            PortErrorCode::PermissionDenied,
-            "cpa-subscription-needs-auth",
-        ),
         CpaLifecycleError::InvalidMaterialization | CpaLifecycleError::InvalidSpec => (
             PortErrorCode::InvalidData,
             "cpa-subscription-materialization",
@@ -496,6 +487,9 @@ pub fn cpa_subscription_availability(
             | CpaLifecycleError::InvalidBorrowedClaudeAuth
             | CpaLifecycleError::BorrowedClaudeAuthSourceChanged
             | CpaLifecycleError::BorrowedCodexAuthMissing
+            | CpaLifecycleError::BorrowedCodexStoreUnsupported
+            | CpaLifecycleError::BorrowedCodexLoginUnsupported
+            | CpaLifecycleError::BorrowedCodexAccountMissing
             | CpaLifecycleError::BorrowedCodexAuthUnavailable
             | CpaLifecycleError::InvalidBorrowedCodexAuth
             | CpaLifecycleError::BorrowedCodexAuthSourceChanged,

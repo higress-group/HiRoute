@@ -185,6 +185,8 @@ struct InstanceLayout {
     auth_dir: PathBuf,
 }
 
+mod credential_diagnostics;
+
 impl ManagedCpaRuntime {
     pub fn managed_kind(&self) -> Option<crate::CpaAccountKind> {
         if let Some(kind) = self.spec.managed_oauth {
@@ -200,28 +202,10 @@ impl ManagedCpaRuntime {
     pub fn inspect_subscription_for_check(
         &self,
     ) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError> {
-        let _scope = self.operation_context().enter();
-        if let Some(spec) = &self.spec.borrowed_claude_auth {
-            return spec.inspect_for_check().map(Into::into);
-        }
-        self.inspect_subscription()
+        self.inspect_subscription_with_diagnostics(true)
     }
     pub fn inspect_subscription(&self) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError> {
-        let _scope = self.operation_context().enter();
-        if let Some(source) = self.managed_oauth_source() {
-            let evidence = source.inspect()?;
-            self.inspect_managed_authentication(&evidence)?;
-            return Ok(BorrowedSubscriptionEvidence::Managed(evidence));
-        }
-        if let Some(spec) = &self.spec.borrowed_claude_auth {
-            return spec.inspect().map(Into::into);
-        }
-        self.spec
-            .borrowed_codex_auth
-            .as_ref()
-            .ok_or(CpaLifecycleError::InvalidSpec)?
-            .inspect()
-            .map(Into::into)
+        self.inspect_subscription_with_diagnostics(false)
     }
 
     pub fn new(
@@ -766,7 +750,7 @@ impl ManagedCpaRuntime {
                     &transferred.binary_version,
                     self.spec.control_timeout,
                 )
-                .map_err(map_control_error)?;
+                .map_err(|error| self.map_control_error(error))?;
             let mut process = self.backend.attach_authenticated(transferred.cpa_pid)?;
             self.control
                 .probe_ready(
@@ -775,7 +759,7 @@ impl ManagedCpaRuntime {
                     &transferred.binary_version,
                     self.spec.control_timeout,
                 )
-                .map_err(map_control_error)?;
+                .map_err(|error| self.map_control_error(error))?;
             if process.pid() != transferred.cpa_pid || process.try_exit()?.is_some() {
                 return Err(CpaLifecycleError::UntrustedOrphan);
             }
@@ -1028,7 +1012,7 @@ impl ManagedCpaRuntime {
                         &live.artifact.version().to_string(),
                         self.spec.control_timeout,
                     )
-                    .map_err(map_control_error)?;
+                    .map_err(|error| self.map_control_error(error))?;
                 crate::request_context::check()?;
                 live.last_health = Some(Instant::now());
                 self.health_invalidated.store(false, Ordering::Release);
@@ -1175,7 +1159,7 @@ impl ManagedCpaRuntime {
                     &live.artifact.version().to_string(),
                     self.spec.control_timeout,
                 )
-                .map_err(map_control_error)?;
+                .map_err(|error| self.map_control_error(error))?;
         }
         process
             .shutdown(crate::request_context::remaining(
@@ -1340,18 +1324,26 @@ fn ready_health(live: &LiveRuntime, restart_count: u64) -> CpaHealth {
     }
 }
 
-fn map_control_error(error: AccountDiscoveryError) -> CpaLifecycleError {
-    match error {
-        AccountDiscoveryError::AuthenticationRequired => {
-            CpaLifecycleError::ManagedOAuthAuthenticationRequired
+impl ManagedCpaRuntime {
+    fn map_control_error(&self, error: AccountDiscoveryError) -> CpaLifecycleError {
+        match error {
+            AccountDiscoveryError::AuthenticationRequired
+            | AccountDiscoveryError::AccountDisappeared => {
+                if self.is_managed_oauth() {
+                    CpaLifecycleError::ManagedOAuthAuthenticationRequired
+                } else if self.spec.borrowed_claude_auth.is_some() {
+                    CpaLifecycleError::InvalidBorrowedClaudeAuth
+                } else {
+                    CpaLifecycleError::BorrowedCodexAuthUnavailable
+                }
+            }
+            AccountDiscoveryError::SecretBearingResponse
+            | AccountDiscoveryError::NonSubscriptionAccount
+            | AccountDiscoveryError::RunningVersionMismatch => {
+                CpaLifecycleError::UnsafeControlResponse
+            }
+            _ => CpaLifecycleError::ControlUnavailable,
         }
-        AccountDiscoveryError::AccountDisappeared => {
-            CpaLifecycleError::BorrowedCodexAuthUnavailable
-        }
-        AccountDiscoveryError::SecretBearingResponse
-        | AccountDiscoveryError::NonSubscriptionAccount
-        | AccountDiscoveryError::RunningVersionMismatch => CpaLifecycleError::UnsafeControlResponse,
-        _ => CpaLifecycleError::ControlUnavailable,
     }
 }
 

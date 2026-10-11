@@ -196,7 +196,7 @@ fn normalize_required_path(
     let metadata = fs::metadata(&canonical).map_err(|_| "WORKER_DEPENDENCIES_UNAVAILABLE")?;
     if !metadata.is_file()
         || (require_executable && !path_is_executable(&metadata))
-        || (!require_executable && !path_is_readable(&metadata))
+        || (!require_executable && fs::File::open(&canonical).is_err())
     {
         return Err("WORKER_DEPENDENCIES_INVALID".into());
     }
@@ -221,18 +221,6 @@ fn path_is_executable(metadata: &fs::Metadata) -> bool {
     {
         use std::os::unix::fs::PermissionsExt;
         metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        metadata.is_file()
-    }
-}
-
-fn path_is_readable(metadata: &fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o444 != 0
     }
     #[cfg(not(unix))]
     {

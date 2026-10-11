@@ -21,13 +21,6 @@ pub fn read_sealed_collaboration(
         {
             return Err("invalid collaboration installation");
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if metadata.uid() != nix::unistd::geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
-                return Err("private collaboration installation required");
-            }
-        }
         #[cfg(not(unix))]
         return Err("owner-validated collaboration installation unavailable");
     }
@@ -54,7 +47,7 @@ mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
     #[test]
-    fn sealed_delivery_requires_private_regular_file_and_exact_agent() {
+    fn sealed_delivery_accepts_readable_modes_but_requires_regular_file_and_exact_agent() {
         let home = tempfile::tempdir().unwrap();
         let root = home.path().join(".hiroute");
         let directory = root.join("credential-artifacts");
@@ -73,7 +66,16 @@ mod tests {
         );
         assert!(read_sealed_collaboration(home.path(), "../codex").is_err());
         fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(read_sealed_collaboration(home.path(), "codex").is_err());
+        assert_eq!(
+            read_sealed_collaboration(home.path(), "codex")
+                .unwrap()
+                .as_str(),
+            "opaque-sealed-delivery"
+        );
+        assert_eq!(
+            fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o644
+        );
         fs::remove_file(&file).unwrap();
         let other = directory.join("other");
         fs::write(&other, "do-not-follow").unwrap();

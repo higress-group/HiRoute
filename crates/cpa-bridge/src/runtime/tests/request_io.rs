@@ -788,3 +788,35 @@ fn controlled_io_cleanup_preserves_a_timeout_or_poisoning_panic() {
         worker.join().unwrap();
     }
 }
+
+#[test]
+fn cpa_auth_rejection_preserves_native_or_independent_repair_mode() {
+    for kind in [
+        SourceKind::NativeCodex,
+        SourceKind::NativeClaude,
+        SourceKind::ManagedCodex,
+    ] {
+        let fixture = active_fixture(kind);
+        *fixture.control.inner.discovery_error.lock() =
+            Some(AccountDiscoveryError::AuthenticationRequired);
+        let Err(error) = fixture.runtime.discover_materializations(None) else {
+            panic!("CPA rejects this credential");
+        };
+        let failure = error
+            .subscription_failure()
+            .expect("closed credential cause");
+        assert_eq!(
+            failure.context,
+            match kind {
+                SourceKind::ManagedCodex => "subscription.managed.login-required",
+                SourceKind::NativeCodex | SourceKind::NativeClaude =>
+                    "subscription.native.login-invalid",
+            }
+        );
+        assert_eq!(
+            crate::cpa_subscription_availability(Err(&error)),
+            crate::CpaSubscriptionAvailability::NeedsAuthentication
+        );
+        fixture.runtime.shutdown().unwrap();
+    }
+}

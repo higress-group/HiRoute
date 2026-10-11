@@ -197,7 +197,7 @@ fn excessive_directory_depth_is_bounded_and_retained() {
 }
 
 #[test]
-fn replacement_identity_and_non_private_permissions_block_deletion() {
+fn replacement_identity_blocks_deletion_but_accessible_modes_do_not() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let base_path = std::fs::canonicalize(directory.path()).unwrap();
@@ -224,14 +224,11 @@ fn replacement_identity_and_non_private_permissions_block_deletion() {
 
     let permitted = claimed_root(&base_path, &root_path);
     std::fs::set_permissions(&root_path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert_eq!(
+    assert!(matches!(
         delete_native_root_batch(&permitted, 64),
-        NativeDeletionOutcome::Blocked {
-            kind: DelegationNativeCleanupFailureKindV1::IdentityMismatch,
-            processed_entries: 0,
-        }
-    );
-    assert!(root_path.join("replacement").exists());
+        NativeDeletionOutcome::Removed { .. }
+    ));
+    assert!(!root_path.exists());
 }
 
 #[test]

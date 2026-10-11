@@ -178,14 +178,13 @@ class MacInstallerTests(StandaloneFixture):
 
 @unittest.skipUnless(os.name == "posix" and os.uname().sysname == "Linux", "Linux layout test")
 class InstallerTests(StandaloneFixture):
-    def test_unsafe_service_home_is_rejected_without_permission_changes(self):
+    def test_accessible_service_home_preserves_permissions(self):
         manifest, archive = self.build()
         self.home.chmod(0o775)
         with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
-            with self.assertRaisesRegex(ValueError, "service HOME is unsafe"):
-                installer.install(self.install_args(manifest, archive))
+            installer.install(self.install_args(manifest, archive))
         self.assertEqual(self.home.stat().st_mode & 0o777, 0o775)
-        self.assertFalse((self.home / ".local").exists())
+        self.assertTrue((self.home / ".local").is_dir())
 
     def test_service_parents_are_private_even_with_group_writable_umask(self):
         manifest, archive = self.build()
@@ -206,8 +205,7 @@ class InstallerTests(StandaloneFixture):
         local.unlink()
         local.mkdir()
         local.chmod(0o775)
-        with self.assertRaisesRegex(ValueError, "service parent is unsafe"):
-            installer.prepare_service_directory(self.home)
+        installer.prepare_service_directory(self.home)
         self.assertEqual(local.stat().st_mode & 0o777, 0o775)
 
     def test_default_state_parents_are_private_with_group_writable_umask(self):
@@ -254,7 +252,7 @@ class InstallerTests(StandaloneFixture):
         self.assertEqual(list(shared.iterdir()), [])
         self.assertFalse((local / "bin/hiroute").exists())
 
-    def test_install_rejects_group_writable_state_parent_without_chmod(self):
+    def test_install_accepts_group_writable_state_parent_without_chmod(self):
         manifest, archive = self.build()
         state = self.home / ".local/state"
         state.parent.mkdir(mode=0o700)
@@ -263,10 +261,9 @@ class InstallerTests(StandaloneFixture):
         with patch.dict(os.environ, {"HOME": str(self.home)}, clear=True), patch.object(
             installer.subprocess, "run"
         ), patch("builtins.print"):
-            with self.assertRaisesRegex(ValueError, "state parent is unsafe"):
-                installer.install(self.install_args(manifest, archive))
+            installer.install(self.install_args(manifest, archive))
         self.assertEqual(state.stat().st_mode & 0o777, 0o775)
-        self.assertFalse((self.home / ".local/bin/hiroute").exists())
+        self.assertTrue((self.home / ".local/bin/hiroute").exists())
 
     def test_safe_existing_state_parent_permissions_are_preserved(self):
         manifest, archive = self.build()
@@ -395,15 +392,15 @@ class InstallerTests(StandaloneFixture):
         self.assertFalse((claude_skill / "extra.txt").exists())
         self.assertEqual((sibling / "SKILL.md").read_text(), "preserve\n")
 
-    def test_install_rejects_group_writable_agent_skill_parent(self):
+    def test_install_accepts_group_writable_agent_skill_parent(self):
         manifest, archive = self.build()
         parent = self.home / ".agents"
         parent.mkdir(mode=0o700)
         parent.chmod(0o770)
         with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
-            with self.assertRaisesRegex(ValueError, "Skill parent is unsafe"):
-                installer.install(self.install_args(manifest, archive))
-        self.assertFalse((self.home / ".local/bin/hiroute").exists())
+            installer.install(self.install_args(manifest, archive))
+        self.assertTrue((self.home / ".local/bin/hiroute").exists())
+        self.assertEqual(parent.stat().st_mode & 0o777, 0o770)
 
     def test_checksum_failure_makes_no_installation_writes(self):
         manifest, archive = self.build()

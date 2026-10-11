@@ -82,7 +82,7 @@ fn unknown_malformed_and_oversized_snapshots_fail_without_exposing_values() {
 
 #[cfg(unix)]
 #[test]
-fn refuses_symlink_parents_files_and_nonprivate_files() {
+fn accepts_accessible_modes_but_refuses_symlink_parents_and_files() {
     use std::os::unix::fs::{PermissionsExt, symlink};
     let home = private_home();
     let other = private_home();
@@ -93,8 +93,16 @@ fn refuses_symlink_parents_files_and_nonprivate_files() {
     snapshot(&[]).store(home.path()).unwrap();
     let path = ServiceProxyEnvironment::path(home.path());
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(ServiceProxyEnvironment::load(home.path()).is_err());
-    assert!(snapshot(&[]).store(home.path()).is_err());
+    assert!(
+        ServiceProxyEnvironment::load(home.path())
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+    snapshot(&[]).store(home.path()).unwrap();
     fs::remove_file(&path).unwrap();
     let target = other.path().join("untouched");
     symlink(&target, &path).unwrap();
