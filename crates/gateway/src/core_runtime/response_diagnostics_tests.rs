@@ -85,6 +85,11 @@ fn production_completed_prefix_capture_keeps_formal_attempt_correlation() {
 }
 
 #[test]
+fn production_completed_prefix_capture_accepts_usage_before_provider_completion() {
+    run_child_case("capture_known_usage_first").unwrap();
+}
+
+#[test]
 fn production_prebody_failed_capture_keeps_promoted_attempt_correlation() {
     let failures: Vec<_> = ["prebody_capture_invalid_json", "prebody_capture_relay"]
         .into_iter()
@@ -128,6 +133,7 @@ fn run_child_case(case: &str) -> Result<(), String> {
     if matches!(
         case,
         "capture_known"
+            | "capture_known_usage_first"
             | "capture_unknown"
             | "prebody_capture_invalid_json"
             | "prebody_capture_relay"
@@ -304,7 +310,7 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             None,
             1,
         ),
-        "capture_known" => {
+        "capture_known" | "capture_known_usage_first" => {
             let mut value = chat(tool(Some(TOOL), "{}"), json!("tool_calls"));
             value["usage"] = json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
             (frame(value), None, None, 2)
@@ -321,6 +327,7 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
         "invalid_arguments"
             | "unknown_metadata"
             | "capture_known"
+            | "capture_known_usage_first"
             | "capture_unknown"
             | "capture_disabled"
     ) {
@@ -330,6 +337,7 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
 }
 
 fn run_case(case: &str, root: &Path) {
+    let facts = Facts::default();
     let capture_enabled = std::env::var_os("HIROUTE_PRIVATE_STREAM_CAPTURE").is_some();
     if capture_enabled {
         create_capture_session(&root.join("capture"));
@@ -359,6 +367,8 @@ fn run_case(case: &str, root: &Path) {
     write_dial_config(root, &[&listener]).unwrap();
     let peer = listener.try_clone().unwrap();
     let sent = wire.clone();
+    let usage_first = case == "capture_known_usage_first";
+    let upstream_facts = facts.clone();
     let upstream = std::thread::spawn(move || {
         let (mut stream, _) = peer.accept().unwrap();
         stream
@@ -373,6 +383,16 @@ fn run_case(case: &str, root: &Path) {
             // the first real body unit. This proves the afterbody boundary.
             wait_for_body.recv_timeout(Duration::from_secs(3)).unwrap();
             let _ = stream.write_all(&sent[prefix_len..]);
+        } else if usage_first {
+            let terminal = b"data: [DONE]\n\n";
+            assert!(sent.ends_with(terminal));
+            let split = sent.len() - terminal.len();
+            stream.write_all(&sent[..split]).unwrap();
+            stream.flush().unwrap();
+            // Deliver the accepted canonical usage before the provider can
+            // complete. This deterministically exercises production deduplication.
+            wait_canonical_usage(&upstream_facts);
+            stream.write_all(&sent[split..]).unwrap();
         } else {
             let _ = stream.write_all(&sent);
         }
@@ -421,7 +441,6 @@ fn run_case(case: &str, root: &Path) {
         parent_session_id: None,
         level_override: Some(DiagnosticLevel::Debug),
     });
-    let facts = Facts::default();
     let mut sinks = GatewayObservationSinks::discard();
     sinks.execution_fact = Arc::new(facts.clone());
     let observation =
@@ -480,7 +499,7 @@ fn run_case(case: &str, root: &Path) {
         "{}",
         String::from_utf8_lossy(&response)
     );
-    if case == "capture_known" {
+    if matches!(case, "capture_known" | "capture_known_usage_first") {
         let response = String::from_utf8_lossy(&response);
         assert!(response.contains("\"type\":\"tool_use\""));
         assert!(response.contains(&format!("\"name\":\"{TOOL}\"")));
@@ -514,6 +533,14 @@ fn run_case(case: &str, root: &Path) {
     // Keep the collector live through Gateway shutdown; request_finished is
     // a terminal business fact, not a barrier for every observation producer.
     let facts = facts.0.lock().unwrap().clone();
+    if usage_first {
+        assert!(
+            facts.iter().all(|r| {
+                r.pointer("/fact/source").and_then(Value::as_str) != Some("provider_completion")
+            }),
+            "canonical usage must suppress the later duplicate provider completion"
+        );
+    }
     if no_credential {
         assert!(
             !facts.iter().any(
@@ -736,6 +763,25 @@ fn wait_finished(facts: &Facts, failed: bool) {
         assert!(
             Instant::now() < deadline,
             "incomplete terminal/usage facts: {records:?}"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn wait_canonical_usage(facts: &Facts) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let records = facts.0.lock().unwrap().clone();
+        if records.iter().any(|r| {
+            r.pointer("/fact/kind").and_then(Value::as_str) == Some("usage_and_cache")
+                && r.pointer("/fact/source").and_then(Value::as_str)
+                    == Some("accepted_canonical_model_event")
+        }) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "canonical usage was not delivered"
         );
         std::thread::sleep(Duration::from_millis(5));
     }
