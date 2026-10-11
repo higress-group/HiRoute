@@ -43,6 +43,8 @@
     "hiroute.agent-settings-preview/v2",
     "hiroute.agent-settings-retry/v1",
     "hiroute.agent-surface-check/v1",
+    "hiroute.borrowed-claude-binding/v1",
+    "hiroute.borrowed-claude-evidence/v1",
     "hiroute.borrowed-codex-access-lease/v1",
     "hiroute.borrowed-codex-binding-evidence/v1",
     "hiroute.borrowed-codex-evidence/v1",
@@ -58,6 +60,9 @@
     "hiroute.classifier-decision-test/v1",
     "hiroute.claude-native-layers/v1",
     "hiroute.claude-native-messages/v1",
+    "hiroute.claude-subscription-candidate/v1",
+    "hiroute.claude-subscription-discovery-evidence/v1",
+    "hiroute.claude-subscription-source/v1",
     "hiroute.client-protocol-profile/v1",
     "hiroute.client-service-status/v1",
     "hiroute.codex-catalog-artifact/v1",
@@ -123,6 +128,9 @@
     "hiroute.cpa-account-attestation/v1",
     "hiroute.cpa-account-state/v1",
     "hiroute.cpa-account/v1",
+    "hiroute.cpa-managed-login/v1",
+    "hiroute.cpa-managed-oauth-binding/v1",
+    "hiroute.cpa-managed-subscription-discovery/v1",
     "hiroute.cpa-owner/v1",
     "hiroute.cpa-source-binding-identity/v1",
     "hiroute.cpa-subscription-catalog-capability/v1",
@@ -222,6 +230,7 @@
     "hiroute.model-metadata-catalog/v1",
     "hiroute.model-request-ir/v1",
     "hiroute.model-stream-event/v1",
+    "hiroute.native-claude-read/v1",
     "hiroute.native-credential-lease-request/v1",
     "hiroute.native-field-restore/v1",
     "hiroute.native-files/v1",
@@ -344,7 +353,10 @@
     "hiroute.standalone-service-status/v1",
     "hiroute.stored-plan/v1",
     "hiroute.stored-publication/v1",
+    "hiroute.subscription-login-request/v1",
+    "hiroute.subscription-login-result/v1",
     "hiroute.subscription-maintenance/v2",
+    "hiroute.subscription-proxy/v1",
     "hiroute.system-status/v1",
     "hiroute.upgrade-installer-started/v1",
     "hiroute.upgrade-source-backup/v1",
@@ -998,6 +1010,19 @@
     "tools/e2e-harness/tests/p0_gateway_request_authority.rs"
   ],
   "field_compatibility_support": [
+    {
+      "contract": "hiroute.cpa-managed-login-live/v1",
+      "field": "source_snapshots, scenario_end and native source_identity_sha256 absent from retained acceptance reports",
+      "mode": "frozen_fixture",
+      "owner": "cpa-subscription-product-acceptance",
+      "reason": "The isolated acceptance harness may reuse completed calls from its retained c157 producer without repeating paid inference. A private, digest-bound manifest links immutable original reports and the diagnosed pre-apply or helper-rebind boundary; current public source, plan and connection facts and observation totals must still agree. Reconstructed metadata is written only to the new continuation record. Historical rows and failures remain unchanged, and this reader grants no product routing or credential authority.",
+      "removal_condition": "Remove the bounded reconstruction reader and its regression fixtures when the retained pre-fingerprint acceptance run no longer needs continuation or evidence reuse; current reports must emit source identity and scenario boundaries directly.",
+      "allowed_paths": [
+        "scripts/cpa-managed-login-runtime.py",
+        "scripts/cpa-managed-login-live.py",
+        "scripts/test-cpa-managed-login-live-safety.py"
+      ]
+    },
     {
       "contract": "hiroute.delegation-native-root/v1",
       "field": "task-owned native home without borrowed-native-context.json",

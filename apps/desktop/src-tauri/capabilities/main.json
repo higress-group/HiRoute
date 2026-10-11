@@ -33,6 +33,8 @@
     "allow-apply-compute-save",
     "allow-get-compute-save-result",
     "allow-compute-subscriptions",
+    "allow-manage-subscription-login",
+    "allow-submit-subscription-login-callback",
     "allow-check-subscription",
     "allow-get-subscription-check-result",
     "allow-recover-subscription-check",
@@ -87,6 +89,8 @@
     "allow-cli-entry-remove",
     "allow-gateway-listener-status",
     "allow-gateway-listener-apply",
-    "allow-gateway-listener-recover"
+    "allow-gateway-listener-recover",
+    "allow-subscription-proxy-status",
+    "allow-subscription-proxy-apply"
   ]
 }

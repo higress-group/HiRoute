@@ -490,6 +490,15 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Start or resume typed authorization for a registered connection option."
     ),
     command!(
+        "compute.connection.login",
+        ["compute", "connection", "login"],
+        "ManageSubscriptionLogin",
+        [],
+        Released,
+        Action,
+        "Manage an independent Codex or Claude subscription sign-in without enabling routing."
+    ),
+    command!(
         "compute.connection.test",
         ["compute", "connection", "test"],
         "TestComputeConnection",

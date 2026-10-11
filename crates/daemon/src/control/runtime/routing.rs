@@ -705,9 +705,10 @@ fn unique_live_cpa_source<'a>(
     connector_id: &str,
     account_ref: &str,
 ) -> Option<&'a hiroute_integrations::CpaRegisteredSourceV1> {
+    let kind = hiroute_cpa_bridge::CpaAccountKind::from_connector(connector_id)?;
     let mut matching = sources.iter().filter(|registered| {
         registered.source.connector_id == connector_id
-            && registered.source.connection_option_id == super::subscriptions::CONNECTION_OPTION_ID
+            && registered.source.connection_option_id == kind.connection_option_id()
             && registered.source.identity.account_subject_ref == account_ref
     });
     let source = matching.next()?;
@@ -738,45 +739,56 @@ mod tests {
         let source_id = "cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         let account_ref =
             "account/cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        let materialization = CpaAccountMaterializationV1 {
-            connector_id: "connector.cpa.codex".into(),
-            connection_option_id: super::super::subscriptions::CONNECTION_OPTION_ID.into(),
-            endpoint_profile_id: "endpoint.cpa.codex".into(),
+        for (kind, model) in [
+            (
+                hiroute_cpa_bridge::CpaAccountKind::Codex,
+                "gpt-6-future-text",
+            ),
+            (
+                hiroute_cpa_bridge::CpaAccountKind::Claude,
+                "claude-future-text",
+            ),
+        ] {
+            let materialization = CpaAccountMaterializationV1 {
+            connector_id: kind.connector_id().into(),
+            connection_option_id: kind.connection_option_id().into(),
+            endpoint_profile_id: kind.endpoint_profile_id().into(),
             source_id: source_id.into(),
             account_subject: account_ref.into(),
             credential_ref: CredentialRefV1::new(
                 "credential/cpa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 format!("source/{source_id}"),
-                "connector/connector.cpa.codex",
+                format!("connector/{}", kind.connector_id()),
                 "provider-auth",
-                ["connection-option/codex.subscription.global.v1".into()],
+                [format!("connection-option/{}", kind.connection_option_id())],
                 1,
             )
             .unwrap(),
-            observed_model_ids: ["gpt-6-future-text".into()].into_iter().collect(),
+            observed_model_ids: [model.into()].into_iter().collect(),
         };
-        let registered = register_cpa_account(&catalog, &materialization).unwrap();
-        assert_eq!(registered.inventory.len(), 1);
-        assert_eq!(
-            registered.inventory[0].disposition,
-            InventoryDisposition::InventoryOnly
-        );
-        assert!(registered.inventory[0].model_configuration_id.is_none());
-        assert_eq!(
-            unique_live_cpa_source(
-                std::slice::from_ref(&registered),
-                "connector.cpa.codex",
-                account_ref
-            ),
-            Some(&registered),
-        );
-        assert!(
-            unique_live_cpa_source(
-                &[registered.clone(), registered],
-                "connector.cpa.codex",
-                account_ref
-            )
-            .is_none()
-        );
+            let registered = register_cpa_account(&catalog, &materialization).unwrap();
+            assert_eq!(registered.inventory.len(), 1);
+            assert_eq!(
+                registered.inventory[0].disposition,
+                InventoryDisposition::InventoryOnly
+            );
+            assert!(registered.inventory[0].model_configuration_id.is_none());
+            assert_eq!(
+                unique_live_cpa_source(
+                    std::slice::from_ref(&registered),
+                    kind.connector_id(),
+                    account_ref
+                ),
+                Some(&registered),
+            );
+            assert!(
+                unique_live_cpa_source(
+                    &[registered.clone(), registered],
+                    kind.connector_id(),
+                    account_ref
+                )
+                .is_none()
+            );
+        }
     }
 }

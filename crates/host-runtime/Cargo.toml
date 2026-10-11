@@ -13,6 +13,7 @@ serde_json.workspace = true
 semver.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+url = "=2.5.8"
 
 [dev-dependencies]
 tempfile.workspace = true

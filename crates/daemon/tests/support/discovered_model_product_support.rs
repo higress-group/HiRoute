@@ -20,6 +20,9 @@ use hiroute_domain::{CanonicalDigest, RevisionSetV1, WorkspaceId};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+#[path = "isolated_agent_environment.rs"]
+mod child_environment;
+
 pub const SECRET_SENTINEL: &str = "zhipu-product-secret-must-stay-protected";
 pub const CORRECT_PROJECT_SETTINGS: &str = r#"{"env":{"ANTHROPIC_BASE_URL":"https://open.bigmodel.cn/api/anthropic","ANTHROPIC_MODEL":"glm-5.3"}}"#;
 pub const CHANGED_PROJECT_SETTINGS: &str = r#"{"env":{"ANTHROPIC_BASE_URL":"https://changed.invalid/api/anthropic","ANTHROPIC_MODEL":"glm-5.3"}}"#;
@@ -80,6 +83,7 @@ impl ProductDaemon {
             PathBuf::from(env!("CARGO_BIN_EXE_hirouted"))
         };
         let mut command = Command::new(binary);
+        child_environment::configure(&mut command, &root.join("home"));
         command
             .args(["--role", "all", "--storage-root"])
             .arg(&storage)
@@ -98,8 +102,6 @@ impl ProductDaemon {
                 "5",
             ])
             .current_dir(root.join("workspace"))
-            .env("HOME", root.join("home"))
-            .env("PI_CODING_AGENT_DIR", root.join("home/.pi/agent"))
             .env("PATH", root.join("bin"))
             .env("HTTP_PROXY", format!("http://{proxy}"))
             .env("HTTPS_PROXY", format!("http://{proxy}"))
@@ -107,16 +109,8 @@ impl ProductDaemon {
             .env("http_proxy", format!("http://{proxy}"))
             .env("https_proxy", format!("http://{proxy}"))
             .env("all_proxy", format!("http://{proxy}"))
-            .env_remove("CODEX_HOME")
             .env_remove("NO_PROXY")
             .env_remove("no_proxy")
-            .env_remove("ANTHROPIC_BASE_URL")
-            .env_remove("ANTHROPIC_MODEL")
-            .env_remove("ANTHROPIC_DEFAULT_OPUS_MODEL")
-            .env_remove("ANTHROPIC_DEFAULT_SONNET_MODEL")
-            .env_remove("ANTHROPIC_DEFAULT_HAIKU_MODEL")
-            .env_remove("ANTHROPIC_SMALL_FAST_MODEL")
-            .env_remove("ANTHROPIC_AUTH_TOKEN")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

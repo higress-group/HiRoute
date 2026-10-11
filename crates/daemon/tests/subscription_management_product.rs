@@ -22,6 +22,8 @@ use hiroute_local_storage::LocalStorageSet;
 use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 
+#[path = "support/subscription_cache_regression.rs"]
+mod cache_regression;
 #[path = "support/discovered_model_product_support.rs"]
 mod product_support;
 use product_support::{ProductDaemon, configure_product_root};
@@ -35,7 +37,7 @@ import re
 import sys
 import urllib.parse
 
-VERSION = "8.0.4-hiroute.2"
+VERSION = "8.0.4-hiroute.4"
 MANAGED_NAME = "hiroute-managed-codex.json"
 MODEL_ID = "gpt-5.3-codex-spark"
 ADDED_MODEL_ID = "gpt-5.5"
@@ -293,6 +295,8 @@ fn corrupt_saved_display_name(root: &Path, source_id: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed() {
     let directory = tempfile::tempdir().unwrap();
+    // The installation root also owns persisted subscription proxy state.
+    fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
     configure_product_root(directory.path());
     let (binary, sha256) = install_subscription_fixture(directory.path());
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();

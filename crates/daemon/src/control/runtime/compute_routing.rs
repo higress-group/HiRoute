@@ -103,6 +103,7 @@ impl LocalControlAdapter {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn registered_cpa_candidates(
         &self,
     ) -> Result<Vec<(CpaRegisteredSourceV1, String)>, ControlReadError> {
@@ -111,6 +112,33 @@ impl LocalControlAdapter {
         };
         let sources = authority
             .discover_registered_sources()
+            .map_err(|_| ControlReadError::Unavailable)?;
+        self.cpa_candidates_from_sources(sources)
+    }
+
+    pub(super) fn registered_cpa_candidates_for_option(
+        &self,
+        connection_option_id: &str,
+    ) -> Result<Vec<(CpaRegisteredSourceV1, String)>, ControlReadError> {
+        let catalog = self
+            .release_catalog
+            .as_ref()
+            .ok_or(ControlReadError::Unavailable)?;
+        let kind = catalog
+            .resolve_connection_option(connection_option_id)
+            .ok()
+            .and_then(|resolved| {
+                hiroute_cpa_bridge::CpaAccountKind::from_connector(&resolved.connector.connector_id)
+            });
+        let Some(kind) = kind else {
+            return Ok(Vec::new());
+        };
+        let authority = self
+            .cpa_sources
+            .as_ref()
+            .ok_or(ControlReadError::Unavailable)?;
+        let sources = authority
+            .discover_registered_sources_for(kind)
             .map_err(|_| ControlReadError::Unavailable)?;
         self.cpa_candidates_from_sources(sources)
     }
@@ -169,7 +197,7 @@ impl LocalControlAdapter {
                     && candidate.fact.model_configuration_id == change.model_configuration_id
             });
         let cpa_candidate = if filesystem_candidate.is_none() {
-            self.registered_cpa_candidates()
+            self.registered_cpa_candidates_for_option(&change.connection_option_id)
                 .map_err(ComputeProjectionReadError::Control)?
                 .into_iter()
                 .find(|(source, model_id)| {

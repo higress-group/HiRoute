@@ -54,6 +54,7 @@
     {
       "authority_key": "anthropic",
       "allowed_https_prefixes": [
+        "https://code.claude.com/docs/en/",
         "https://docs.anthropic.com/",
         "https://platform.claude.com/",
         "https://support.claude.com/"

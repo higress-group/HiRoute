@@ -33,6 +33,34 @@ impl ProxyEnvironment {
         self.0.iter()
     }
 
+    pub(crate) fn configure_http_client(
+        &self,
+        mut builder: reqwest::blocking::ClientBuilder,
+    ) -> Result<reqwest::blocking::ClientBuilder, crate::CpaLifecycleError> {
+        // Match the HTTPS route used by Go's CPA transport, including explicit no-proxy.
+        // Never mutate the daemon's process environment.
+        let get = |upper: &str, lower: &str| {
+            self.0
+                .get(std::ffi::OsStr::new(upper))
+                .filter(|v| !v.is_empty())
+                .or_else(|| {
+                    self.0
+                        .get(std::ffi::OsStr::new(lower))
+                        .filter(|v| !v.is_empty())
+                })
+                .and_then(|v| v.to_str())
+        };
+        builder = builder.no_proxy();
+        if let Some(url) = get("HTTPS_PROXY", "https_proxy") {
+            let mut proxy = reqwest::Proxy::https(url)
+                .map_err(|_| crate::CpaLifecycleError::BorrowedClaudeAuthUnavailable)?;
+            proxy =
+                proxy.no_proxy(get("NO_PROXY", "no_proxy").and_then(reqwest::NoProxy::from_string));
+            builder = builder.proxy(proxy);
+        }
+        Ok(builder)
+    }
+
     pub(crate) fn digest(&self) -> String {
         let mut digest = Sha256::new();
         for (key, value) in &self.0 {

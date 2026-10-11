@@ -139,8 +139,13 @@ jobs:
         run: |
           python3 tools/model-metadata/close_model_metadata.py --check
           python3 tools/model-metadata/validate_catalog.py
+          python3 -m unittest discover -s tools/model-metadata -p 'test_*.py'
           python3 assets/model-data/current/generate.py
           python3 assets/model-data/current/generate.py --check
           python3 assets/release-facts/current/prepare-bundle.py
           python3 assets/release-facts/current/prepare-bundle.py --check
           git diff --exit-code
+      - name: Subscription acceptance harness safety
+        run: |
+          python3 scripts/test-cpa-live-credentials.py
+          python3 scripts/test-cpa-real-subscriptions-safety.py

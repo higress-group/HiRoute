@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-subscription-proxy-status"
+description = "Enables the subscription_proxy_status command without any pre-configured scope."
+commands.allow = ["subscription_proxy_status"]
+
+[[permission]]
+identifier = "deny-subscription-proxy-status"
+description = "Denies the subscription_proxy_status command without any pre-configured scope."
+commands.deny = ["subscription_proxy_status"]

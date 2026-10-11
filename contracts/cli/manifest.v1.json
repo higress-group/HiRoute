@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:8c90ff220c2fbcef60423bc358642fbd743a1f8270ce92ca7bf59b276e5f560f",
+  "descriptor_digest": "sha256:febf9a04d9e2721df85c12616dd74f97e68de79191d3eae81da532bd782a7e55",
   "visibility": "release",
   "commands": [
     {
@@ -965,6 +965,54 @@
       },
       "negative": {
         "scenario_id": "p0.compute.connection.authorize.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.connection.login",
+      "path": [
+        "compute",
+        "connection",
+        "login"
+      ],
+      "operation_id": "ManageSubscriptionLogin",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "action",
+      "request_schema": "hiroute.subscription-login-request/v1",
+      "response_schema": "hiroute.subscription-login-result/v1",
+      "effect": "typed_action",
+      "network": "local_control_then_provider_oauth",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Manage an independent Codex or Claude subscription sign-in without enabling routing.",
+        "usage": "hiroute compute connection login --request-stdin --output json",
+        "arguments_and_options": "--request-stdin accepts list/start with provider codex or claude; status/cancel/forget with an exact login_ref; callback with login_ref and input_candidate. Register callback text first with protected-input register --candidate <callback_input_candidate.candidate_ref> --secret-fd <FD>. OAuth codes, tokens, callback URLs and credential paths are rejected in ordinary request JSON. Start returns a browser URL; successful login still requires subscription check, model selection and save.",
+        "effects": "Manages one independent provider login session and CPA-owned credentials. Login does not enable routing; use the existing subscription check and Preview/Apply save flow after choosing models. Forget targets exactly one local login.",
+        "network_and_model_use": "May open the provider authorization flow and exchange or refresh independent OAuth credentials through CPA. No model inference is performed and native-client refresh tokens are never imported.",
+        "automation": "Keep the returned login_ref for status, cancel and forget. After uncertain delivery, list/status the existing session before starting again or resubmitting a one-use callback. Never persist the authorization URL or put callback material in argv, environment, logs or ordinary request JSON.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "printf '%s' '{\"action\":\"start\",\"provider\":\"claude\"}' | hiroute compute connection login --request-stdin --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.connection.login"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.connection.login.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.connection.login.negative",
         "polarity": "negative",
         "state": "executable"
       }

@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
-  "as_of": "2026-10-08",
-  "catalog_digest_compared": "sha256:f31468632d49c44e05b5592fd1bdcc5eac1cedc3eaa31f700282a3db9ce4ff1f",
+  "as_of": "2026-10-10",
+  "catalog_digest_compared": "sha256:3e7296c017c14f359a918a33d833aa44586b8b22d8f84ad684772c38dc0174cf",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -79,6 +79,12 @@
     }
   ],
   "resolved_catalog_changes": [
+    {
+      "change_key": "claude-subscription-registered-capabilities",
+      "client_signal": "All Claude CPA models were missing executable endpoint capability joins and used the conservative text-only runtime fallback.",
+      "provider_resolution": "Reviewed the official Claude model configuration, thinking, effort and Haiku 4.5 specifications on 2026-10-10. Existing exact client repository scans are unchanged; no new scan or account entitlement verification is claimed.",
+      "catalog_result": "Bind seven reviewed Claude model identities through eight exact subscription IDs. Keep account eligibility conditional, preserve model ceilings and source reasoning facts, and expose the supported manual-thinking toggle subset separately from adaptive effort."
+    },
     {
       "change_key": "client-metadata-field-completeness",
       "client_signal": "Hermes Agent and OpenClaw expose broad provider/model fields with uneven completeness across usage scenarios.",

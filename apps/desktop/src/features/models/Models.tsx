@@ -37,6 +37,7 @@ type Props = {
   onCreatePlan?(bindingId: string): void;
   onEditPrice?(source: ManagedSource, model: ManagedModel): void;
   onReauthorize?(sourceId: string): void;
+  onManageSubscriptionLogin?(): void;
   onRecheck?(source: ManagedSource, checkId: string, editRevision: number): Promise<'saved' | 'uncertain'>;
   onCancelRecheck?(checkId: string): Promise<void>;
   onReconnect?(source: ManagedSource): void;
@@ -399,12 +400,13 @@ export function Models(props: Props) {
           <section className="detail-section">
             <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>
             <p className="muted">{access === 'subscription'
-              ? text('使用本机订阅连接，无需重复填写 API Key。', 'Uses the local subscription; no additional API key is needed.')
+              ? text('使用订阅连接，无需重复填写 API Key。', 'Uses a subscription; no additional API key is needed.')
               : connectorManaged
                 ? text('凭据由本机连接器管理，无需在 HiRoute 中填写 API Key。', 'Credentials are managed by the local connector; no API key is entered in HiRoute.')
               : source.authentication.kind === 'none'
                 ? text('此接入不需要用户提供 API Key。', 'No user-provided API key is required.')
                 : sourceLabel}</p>
+            {access === 'subscription' && props.onManageSubscriptionLogin && <div className="actions"><button className="btn" type="button" disabled={!props.mutable} onClick={props.onManageSubscriptionLogin}>{text('管理订阅登录', 'Manage subscription sign-ins')}</button></div>}
             {source.provenance === 'user_configured' && props.onReconnect && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting} onClick={() => props.onReconnect?.(source)}>{text('编辑端点', 'Edit endpoints')}</button><span className="field-help">{text('一个来源的端点共用已保存的 API Key。', 'Endpoints in one connection share the saved API key.')}</span></div>}
             {source.provenance !== 'connector_owned' && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting || !source.actions.includes(source.state === 'disabled' ? 'enable' : 'disable')} onClick={() => void changeSourceState(source.state === 'disabled')}>{submitting ? text('正在保存…', 'Saving…') : source.state === 'disabled' ? text('启用接入', 'Enable connection') : text('停用接入', 'Disable connection')}</button></div>}
             {stateChangeError && <div className="callout bad" role="alert" data-error-code={stateChangeError}><UiIcon name="warning" /><span>{text('接入状态未修改；请刷新后重试。', 'The connection state was not changed. Refresh and try again.')}</span></div>}

@@ -4,6 +4,15 @@ use crate::{Client, ClientFailure, FailureCode};
 use hiroute_application_api::*;
 
 impl Client {
+    pub async fn manage_subscription_login(
+        &self,
+        request_id: &str,
+        request: ComputeSubscriptionLoginRequestV1,
+    ) -> Result<MachineEnvelopeV2<ComputeSubscriptionLoginResultV1>, ClientFailure> {
+        self.query(MANAGE_SUBSCRIPTION_LOGIN_OPERATION_V1, request_id, &request)
+            .await
+    }
+
     pub async fn compute_candidate(
         &self,
         request_id: &str,

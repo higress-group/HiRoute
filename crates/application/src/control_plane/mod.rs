@@ -4,6 +4,7 @@ mod compute;
 mod plan_content;
 mod plan_draft;
 mod plan_lifecycle;
+pub(crate) mod subscription_login;
 
 use hiroute_application_api::{
     APPLY_COMPUTE_SAVE_OPERATION_V2, APPLY_SUBSCRIPTION_CHECK_OPERATION_V2, ApplyRequestV1,

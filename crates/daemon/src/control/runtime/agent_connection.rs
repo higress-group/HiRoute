@@ -729,6 +729,7 @@ mod tests {
             cpa_runtime: None,
             subscription_sources: Mutex::new(BTreeMap::new()),
             subscription_targets: Mutex::new(BTreeMap::new()),
+            subscription_lifecycle: Mutex::new(()),
             subscription_maintenance: Mutex::new(
                 crate::control::runtime::subscriptions::SubscriptionMaintenance::new().unwrap(),
             ),

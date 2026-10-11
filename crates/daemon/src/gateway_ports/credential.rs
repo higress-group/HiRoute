@@ -22,15 +22,22 @@ use hiroute_gateway::server::core_runtime::profiles::AuthenticationSemantics;
 use hiroute_gateway::server::request_plan::IngressProtocol;
 use http::{HeaderMap, HeaderName, HeaderValue, header};
 
+mod cpa;
+
 /// Request-scoped credential dispatcher. It owns no credential, target, or publication state.
 pub struct GatewayCredentialResolver<N, C> {
     native: Arc<N>,
     cpa: Arc<C>,
+    cpa_executor: cpa::CpaExecutor,
 }
 
 impl<N, C> GatewayCredentialResolver<N, C> {
     pub fn new(native: Arc<N>, cpa: Arc<C>) -> Self {
-        Self { native, cpa }
+        Self {
+            native,
+            cpa,
+            cpa_executor: cpa::CpaExecutor::new(),
+        }
     }
 }
 
@@ -131,25 +138,24 @@ where
                 };
                 let address = operational_address(request.operational_target)?;
                 let Some(capability) = self
-                    .cpa
-                    .lease_downstream_capability(ExactCpaCredentialRequest {
-                        credential_id: request.credential_ref,
-                        connector_id: request.connector_id,
-                        upstream_model_id: request.upstream_model_id,
-                        protocol: domain_protocol(request.upstream_protocol),
-                        address,
-                        request_path: request.request_path,
-                        native_transport_model: request.native_transport_model,
-                        runtime_epoch,
-                        target_epoch,
-                        excluded_key_ids: request.excluded_key_ids,
-                    })
-                    .map_err(|error| match error {
-                        hiroute_cpa_bridge::CpaAttemptError::Unavailable => {
-                            PortError::Unavailable("CpaDownstreamCredentialPort")
-                        }
-                        _ => PortError::Rejected,
-                    })?
+                    .cpa_executor
+                    .lease(
+                        Arc::clone(&self.cpa),
+                        ExactCpaCredentialRequest {
+                            credential_id: request.credential_ref,
+                            connector_id: request.connector_id,
+                            upstream_model_id: request.upstream_model_id,
+                            protocol: domain_protocol(request.upstream_protocol),
+                            address,
+                            request_path: request.request_path,
+                            native_transport_model: request.native_transport_model,
+                            runtime_epoch,
+                            target_epoch,
+                            excluded_key_ids: request.excluded_key_ids,
+                        },
+                        scope,
+                    )
+                    .await?
                 else {
                     return Ok(None);
                 };

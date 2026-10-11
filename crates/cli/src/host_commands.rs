@@ -15,7 +15,10 @@ use crate::{CliExecution, LocalControlClient, failure, service, success};
 
 pub(crate) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExecution> {
     let family = arguments.first()?.as_str();
-    if !matches!(family, "service" | "gateway" | "protected-input") {
+    if !matches!(
+        family,
+        "service" | "gateway" | "protected-input" | "subscription-proxy"
+    ) {
         return None;
     }
     if globals.help {
@@ -34,6 +37,7 @@ pub(crate) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExec
     }
     let result = match family {
         "service" => service_command(&arguments[1..], globals),
+        "subscription-proxy" => subscription_proxy_command(&arguments[1..]),
         "gateway" => gateway_command(&arguments[1..], globals),
         "protected-input" => protected_input_command(&arguments[1..], globals),
         _ => unreachable!(),
@@ -51,6 +55,9 @@ fn host_help(family: &str) -> &'static str {
         }
         "gateway" => {
             "Usage\n  hiroute gateway show --output json\n  hiroute gateway set --address <IPV4> --port auto|<PORT> [--accept-remote-risk] --output json\n  hiroute gateway recover --output json\n"
+        }
+        "subscription-proxy" => {
+            "Usage\n  hiroute subscription-proxy show --output json\n  hiroute subscription-proxy set --mode inherit|direct|manual [--url <HTTP_PROXY_URL>] [--no-proxy <BYPASS_LIST>] --output json\n  Restart the service to apply saved settings: hiroute service restart --output json\n"
         }
         "protected-input" => {
             "Usage\n  hiroute protected-input register --candidate <REF> --secret-fd <FD> --output json\n  hiroute protected-input release --candidate <REF> --output json\n"
@@ -292,6 +299,59 @@ fn json_value(value: impl serde::Serialize) -> Result<serde_json::Value, ErrorCo
     serde_json::to_value(value).map_err(|_| ErrorCode::Internal)
 }
 
+fn subscription_proxy_command(arguments: &[String]) -> Result<serde_json::Value, ErrorCode> {
+    use hiroute_host_runtime::{SubscriptionProxyPolicy, SubscriptionProxyStore};
+    let layout = StandaloneLayout::from_environment().map_err(|_| ErrorCode::GatewayUnavailable)?;
+    hiroute_host_runtime::read_standalone_install_record(&layout.marker_path)
+        .map_err(|_| ErrorCode::GatewayUnavailable)?;
+    let store = SubscriptionProxyStore::new(layout.gateway_config_root());
+    match arguments {
+        [verb] if verb == "show" => {
+            let mut view = store.view().map_err(|_| ErrorCode::GatewayUnavailable)?;
+            view.applied &= service::status().is_ok_and(|status| status.local_control_ready);
+            json_value(view)
+        }
+        [verb, options @ ..] if verb == "set" => {
+            let mut mode = None;
+            let mut url = None;
+            let mut no_proxy = None;
+            for pair in options.chunks(2) {
+                let [key, value] = pair else {
+                    return Err(ErrorCode::InvalidArguments);
+                };
+                let slot = match key.as_str() {
+                    "--mode" => &mut mode,
+                    "--url" => &mut url,
+                    "--no-proxy" => &mut no_proxy,
+                    _ => return Err(ErrorCode::InvalidArguments),
+                };
+                if slot.replace(value.clone()).is_some() {
+                    return Err(ErrorCode::InvalidArguments);
+                }
+            }
+            let policy = match mode.as_deref() {
+                Some("inherit") if url.is_none() && no_proxy.is_none() => {
+                    SubscriptionProxyPolicy::Inherit
+                }
+                Some("direct") if url.is_none() && no_proxy.is_none() => {
+                    SubscriptionProxyPolicy::Direct
+                }
+                Some("manual") => SubscriptionProxyPolicy::Manual {
+                    url: url.ok_or(ErrorCode::InvalidArguments)?,
+                    no_proxy: no_proxy.unwrap_or_default(),
+                },
+                _ => return Err(ErrorCode::InvalidArguments),
+            };
+            policy.validate().map_err(|_| ErrorCode::InvalidArguments)?;
+            let config = store
+                .configure(policy)
+                .map_err(|_| ErrorCode::GatewayUnavailable)?;
+            Ok(json!({"config":config,"applied":false,"action":"service_restart_required"}))
+        }
+        _ => Err(ErrorCode::InvalidArguments),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,7 +389,12 @@ mod tests {
 
     #[test]
     fn host_command_help_is_available_without_starting_a_service() {
-        for family in ["service", "gateway", "protected-input"] {
+        for family in [
+            "service",
+            "gateway",
+            "protected-input",
+            "subscription-proxy",
+        ] {
             let execution = execute(
                 &[family.to_owned()],
                 &Globals {

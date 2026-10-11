@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 mod delegation;
 mod plan_authoring;
+mod subscription_login;
 mod worker;
 
 use hiroute_domain::{
@@ -328,6 +329,14 @@ fn value_query_schema() -> Value {
 pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
     let mut files = BTreeMap::from([
         (
+            "subscription-login-request.v1.schema.json",
+            pretty_json(&subscription_login::request()),
+        ),
+        (
+            "subscription-login-result.v1.schema.json",
+            pretty_json(&subscription_login::response()),
+        ),
+        (
             "delegation-cancel-request.v1.schema.json",
             pretty_json(&delegation::cancel()),
         ),
@@ -550,6 +559,8 @@ mod tests {
                 "session-lookup.v1.schema.json",
                 "setup-apply-request.v1.schema.json",
                 "setup-request.v1.schema.json",
+                "subscription-login-request.v1.schema.json",
+                "subscription-login-result.v1.schema.json",
                 "value-query.v1.schema.json",
                 "work-plan-list-request.v1.schema.json",
                 "worker-cancel-request.v1.schema.json",

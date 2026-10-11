@@ -20,19 +20,19 @@ use crate::config::{ensure_private_dir, private_atomic_write};
 use super::*;
 
 struct FakeRuntime {
-    evidence: parking_lot::Mutex<BorrowedCodexEvidence>,
+    evidence: parking_lot::Mutex<BorrowedSubscriptionEvidence>,
     materialize_calls: AtomicUsize,
     sources: Vec<CpaRegisteredSourceV1>,
 }
 
 impl CpaSubscriptionRuntimePort for FakeRuntime {
-    fn inspect(&self) -> Result<BorrowedCodexEvidence, CpaLifecycleError> {
+    fn inspect(&self) -> Result<BorrowedSubscriptionEvidence, CpaLifecycleError> {
         Ok(self.evidence.lock().clone())
     }
 
     fn materialize(
         &self,
-        expected: &BorrowedCodexEvidence,
+        expected: &BorrowedSubscriptionEvidence,
     ) -> Result<Vec<CpaRegisteredSourceV1>, CpaLifecycleError> {
         assert_eq!(expected, &*self.evidence.lock());
         self.materialize_calls.fetch_add(1, Ordering::SeqCst);
@@ -97,7 +97,11 @@ fn descriptor(source_ref: &str) -> ProtectedInputSourceDescriptorV1 {
 
 fn source_evidence(
     account: &str,
-) -> (tempfile::TempDir, std::path::PathBuf, BorrowedCodexEvidence) {
+) -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    BorrowedSubscriptionEvidence,
+) {
     let temp = tempfile::tempdir().unwrap();
     ensure_private_dir(temp.path()).unwrap();
     let path = temp.path().join("auth.json");
@@ -115,10 +119,10 @@ fn source_evidence(
     .unwrap();
     private_atomic_write(&path, &bytes).unwrap();
     let evidence = crate::BorrowedCodexAuthSpec::new(&path).inspect().unwrap();
-    (temp, path, evidence)
+    (temp, path, evidence.into())
 }
 
-fn registered(evidence: &BorrowedCodexEvidence) -> CpaRegisteredSourceV1 {
+fn registered(evidence: &BorrowedSubscriptionEvidence) -> CpaRegisteredSourceV1 {
     let evidence_ref = CanonicalDigest::of_bytes(b"registered");
     let identity = SourceIdentityV1 {
         identity_revision: 1,
@@ -178,7 +182,7 @@ fn registered(evidence: &BorrowedCodexEvidence) -> CpaRegisteredSourceV1 {
     }
 }
 
-fn context(evidence: BorrowedCodexEvidence) -> CpaSubscriptionEffectContext {
+fn context(evidence: BorrowedSubscriptionEvidence) -> CpaSubscriptionEffectContext {
     CpaSubscriptionEffectContext::new(
         operation("operation-a"),
         candidate(),
@@ -427,8 +431,37 @@ fn artifact_auth_and_runtime_failures_have_distinct_subscription_states() {
         cpa_subscription_availability(Err(&CpaLifecycleError::BorrowedCodexAuthUnavailable)),
         CpaSubscriptionAvailability::NeedsAuthentication
     );
+    for error in [
+        CpaLifecycleError::BorrowedClaudeAuthMissing,
+        CpaLifecycleError::BorrowedClaudeAuthUnavailable,
+        CpaLifecycleError::InvalidBorrowedClaudeAuth,
+        CpaLifecycleError::BorrowedClaudeAuthSourceChanged,
+        CpaLifecycleError::BorrowedCodexAuthSourceChanged,
+    ] {
+        assert_eq!(
+            cpa_subscription_availability(Err(&error)),
+            CpaSubscriptionAvailability::NeedsAuthentication
+        );
+    }
     assert_eq!(
         cpa_subscription_availability(Err(&CpaLifecycleError::ControlUnavailable)),
         CpaSubscriptionAvailability::RuntimeUnavailable
+    );
+}
+
+#[test]
+fn a_provider_cannot_materialize_another_providers_native_evidence() {
+    let (_temp, _path, evidence) = source_evidence("account-a");
+    assert!(
+        CpaSubscriptionEffectContext::new(
+            operation("operation-a"),
+            candidate(),
+            descriptor("source/codex"),
+            evidence,
+            None,
+            "connector.cpa.claude",
+            ComputeSubscriptionResourceReceiptV2::new("effect/operation-a/cpa", 1).unwrap(),
+        )
+        .is_err()
     );
 }

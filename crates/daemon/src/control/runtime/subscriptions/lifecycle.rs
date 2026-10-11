@@ -82,6 +82,43 @@ impl LocalControlAdapter {
         )
     }
 
+    /// A checked receipt is tied to the saved-source expectation in its original
+    /// admitted check. Discovery identity alone does not permit reusing it after edits.
+    pub(super) fn subscription_check_saved_source_matches(
+        &self,
+        record: &ComputeSubscriptionValidationRecordV1,
+        stored: &StoredSubscriptionValidationV1,
+        source: Option<&hiroute_domain::ComputeManagementSourceV2>,
+    ) -> Result<bool, hiroute_application::control::ComputeManagementControlError> {
+        let checked = stored.checked_facts().map_err(map_port)?;
+        if checked.existing_source_id.as_deref() != source.map(|source| source.source_id.as_str())
+            || checked.trusted_lineage_digest.as_ref()
+                != source.map(|source| &source.lineage_digest)
+        {
+            return Ok(false);
+        }
+        let operation_id = OperationId::parse(&record.operation_id)
+            .map_err(|_| hiroute_application::control::ComputeManagementControlError::Corrupt)?;
+        let stores = self.stores_lock().map_err(|_| {
+            hiroute_application::control::ComputeManagementControlError::Unavailable
+        })?;
+        let operation = stores
+            .control()
+            .load_operation(&operation_id)
+            .map_err(map_port)?
+            .ok_or(hiroute_application::control::ComputeManagementControlError::Corrupt)?;
+        let intent = operation
+            .plan
+            .external()
+            .first()
+            .and_then(|effect| {
+                hiroute_domain::decode_subscription_check_intent(effect.desired()).ok()
+            })
+            .ok_or(hiroute_application::control::ComputeManagementControlError::Corrupt)?;
+        Ok(intent.existing_source()
+            == source.map(|source| (source.source_id.as_str(), source.revision)))
+    }
+
     pub(super) fn subscription_source_status(
         &self,
         record: &ComputeSubscriptionValidationRecordV1,
@@ -91,12 +128,40 @@ impl LocalControlAdapter {
         hiroute_application::control::ComputeManagementControlError,
     > {
         let expected = self.subscription_source_evidence(record, stored)?;
-        let source = match self.scanner.codex_subscription_source() {
+        let snapshot = self
+            .stores_lock()
+            .map_err(|_| hiroute_application::control::ComputeManagementControlError::Unavailable)?
+            .control()
+            .compute_management_snapshot(&hiroute_domain::WorkspaceId::default())
+            .map_err(map_port)?;
+        let mut saved = snapshot.sources.iter().filter(|source| {
+            matches!(
+                &source.provenance,
+                hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. }
+                    if connector_id == &stored.connector_id
+            )
+        });
+        let current = saved.next();
+        if saved.next().is_some()
+            || !self.subscription_check_saved_source_matches(record, stored, current)?
+        {
+            return Ok(Some((
+                ComputeSubscriptionCheckStatusV2::SourceChanged,
+                "SUBSCRIPTION_SOURCE_CHANGED",
+            )));
+        }
+        let source = match self.subscription_source_for_candidate(&record.candidate_ref) {
             Ok(Some(source)) => source,
             Ok(None) => {
                 return Ok(Some((
                     ComputeSubscriptionCheckStatusV2::NeedsAuth,
                     "SUBSCRIPTION_NEEDS_AUTH",
+                )));
+            }
+            Err(hiroute_application::control::ComputeManagementControlError::Conflict) => {
+                return Ok(Some((
+                    ComputeSubscriptionCheckStatusV2::SourceChanged,
+                    "SUBSCRIPTION_SOURCE_CHANGED",
                 )));
             }
             Err(_) => {
@@ -113,6 +178,43 @@ impl LocalControlAdapter {
                 ComputeSubscriptionCheckStatusV2::SourceChanged,
                 "SUBSCRIPTION_SOURCE_CHANGED",
             )));
+        }
+        if let Some(expected_account) = source.expected_account_ref() {
+            if expected_account != stored.account_ref {
+                return Ok(Some((
+                    ComputeSubscriptionCheckStatusV2::SourceChanged,
+                    "SUBSCRIPTION_SOURCE_CHANGED",
+                )));
+            }
+            let inspected = self
+                .cpa_runtime
+                .as_ref()
+                .and_then(|runtimes| runtimes.runtime_for_candidate(&record.candidate_ref))
+                .ok_or(CpaLifecycleError::ManagedOAuthCredentialsMissing)
+                .and_then(|runtime| runtime.inspect_subscription());
+            match inspected {
+                Ok(observed)
+                    if observed.kind() == source.kind()
+                        && observed.account_ref() == expected_account => {}
+                Ok(_) | Err(CpaLifecycleError::ManagedOAuthAccountChanged) => {
+                    return Ok(Some((
+                        ComputeSubscriptionCheckStatusV2::SourceChanged,
+                        "SUBSCRIPTION_SOURCE_CHANGED",
+                    )));
+                }
+                Err(CpaLifecycleError::ManagedOAuthCredentialsMissing) => {
+                    return Ok(Some((
+                        ComputeSubscriptionCheckStatusV2::NeedsAuth,
+                        "SUBSCRIPTION_NEEDS_AUTH",
+                    )));
+                }
+                Err(_) => {
+                    return Ok(Some((
+                        ComputeSubscriptionCheckStatusV2::Unavailable,
+                        "SUBSCRIPTION_SOURCE_UNAVAILABLE",
+                    )));
+                }
+            }
         }
         Ok(None)
     }

@@ -82,6 +82,7 @@ pub(super) struct RequestObservationInner {
 
 #[derive(Default)]
 pub(super) struct RequestObservationState {
+    pub(super) managed_cpa: bool,
     #[cfg(all(unix, debug_assertions))]
     pub(super) private_capture: Option<(
         String,

@@ -560,6 +560,13 @@ pub(super) async fn materialize_attempt(
             body,
         },
         ProductionAttemptState {
+            managed_cpa: execution.connector_runtime
+                == hiroute_domain::ConnectorRuntimeKind::CpaBridge
+                && !resolved_target.addresses.is_empty()
+                && resolved_target
+                    .addresses
+                    .iter()
+                    .all(|address| address.ip().is_loopback()),
             #[cfg(all(unix, debug_assertions))]
             capture,
             response_status: None,

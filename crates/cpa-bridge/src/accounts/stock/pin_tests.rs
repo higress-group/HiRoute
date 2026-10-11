@@ -91,7 +91,7 @@ impl Fixture {
                 };
                 let written = write!(
                     stream,
-                    "HTTP/1.1 {status} OK\r\nX-CPA-Version: 8.0.4-hiroute.2\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status} OK\r\nX-CPA-Version: 8.0.4-hiroute.4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
                 // The legacy-deadline negative case deliberately closes this socket early.
@@ -131,7 +131,7 @@ impl Fixture {
                 client_version: None,
             }],
             &InstanceSecrets::generate().unwrap(),
-            "8.0.4-hiroute.2",
+            "8.0.4-hiroute.4",
             timeout,
             refresh,
         )

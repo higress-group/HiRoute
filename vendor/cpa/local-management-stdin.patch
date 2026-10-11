@@ -1,52 +1,6 @@
---- a/cmd/server/main.go
-+++ b/cmd/server/main.go
-@@ -85,6 +85,7 @@
- 	var vertexImportPrefix string
- 	var configPath string
- 	var password string
-+	var localPasswordStdin bool
- 	var homeJWT string
- 	var homeDisableClusterDiscovery bool
- 	var tuiMode bool
-@@ -104,6 +105,7 @@
- 	flag.StringVar(&vertexImport, "vertex-import", "", "Import Vertex service account key JSON file")
- 	flag.StringVar(&vertexImportPrefix, "vertex-import-prefix", "", "Prefix for Vertex model namespacing (use with -vertex-import)")
- 	flag.StringVar(&password, "password", "", "")
-+	flag.BoolVar(&localPasswordStdin, "local-password-stdin", false, "Read the local management credential from the parent pipe")
- 	flag.StringVar(&homeJWT, "home-jwt", "", "Home control plane JWT for mTLS certificate bootstrap and connection")
- 	flag.BoolVar(&homeDisableClusterDiscovery, "home-disable-cluster-discovery", false, "Disable Home CLUSTER NODES discovery and keep using the configured -home-jwt address")
- 	flag.BoolVar(&tuiMode, "tui", false, "Start with terminal management UI")
-@@ -145,6 +147,18 @@
- 
- 	// Parse the command-line flags.
- 	flag.Parse()
-+	if localPasswordStdin {
-+		if password != "" || os.Getenv("MANAGEMENT_PASSWORD") != "" {
-+			log.Error("local management pipe cannot be combined with another password input")
-+			return
-+		}
-+		localPassword, errPassword := readLocalManagementPassword(os.Stdin)
-+		if errPassword != nil {
-+			log.Error("local management pipe credential is invalid")
-+			return
-+		}
-+		password = localPassword
-+	}
- 
- 	if discoverGateways || discoverJSON {
- 		cfgInclude, cfgExclude := cmd.LoadDiscoveryScanFilters(configPath)
-@@ -752,6 +766,11 @@
- 			managementasset.StartAutoUpdater(context.Background(), configFilePath)
- 			misc.StartAntigravityVersionUpdater(context.Background())
- 			startModelCatalogUpdaters(localModel, cfg.Home.Enabled)
-+			if localPasswordStdin {
-+				// The managed parent owns process lifetime, not the interactive keep-alive endpoint.
-+				serverOptions = append(serverOptions, api.WithLocalManagementPassword(password))
-+				password = ""
-+			}
- 			cmd.StartServiceWithPluginHost(cfg, configFilePath, password, pluginHost, serverOptions...)
- 		}
- 	}
+diff --git a/cmd/server/local_management_password.go b/cmd/server/local_management_password.go
+new file mode 100644
+index 0000000..67333ea
 --- /dev/null
 +++ b/cmd/server/local_management_password.go
 @@ -0,0 +1,24 @@
@@ -74,6 +28,9 @@
 +	clear(content)
 +	return password, nil
 +}
+diff --git a/cmd/server/local_management_password_test.go b/cmd/server/local_management_password_test.go
+new file mode 100644
+index 0000000..abb036f
 --- /dev/null
 +++ b/cmd/server/local_management_password_test.go
 @@ -0,0 +1,19 @@
@@ -96,6 +53,60 @@
 +		}
 +	}
 +}
+diff --git a/cmd/server/main.go b/cmd/server/main.go
+index 2b99077..a661fbb 100644
+--- a/cmd/server/main.go
++++ b/cmd/server/main.go
+@@ -125,6 +125,7 @@ func main() {
+ 	var vertexImportPrefix string
+ 	var configPath string
+ 	var password string
++	var localPasswordStdin bool
+ 	var homeJWT string
+ 	var homeDisableClusterDiscovery bool
+ 	var tuiMode bool
+@@ -154,6 +155,7 @@ func main() {
+ 	flag.StringVar(&vertexImport, "vertex-import", "", "Import Vertex service account key JSON file")
+ 	flag.StringVar(&vertexImportPrefix, "vertex-import-prefix", "", "Prefix for Vertex model namespacing (use with -vertex-import)")
+ 	flag.StringVar(&password, "password", "", "")
++	flag.BoolVar(&localPasswordStdin, "local-password-stdin", false, "Read the local management credential from the parent pipe")
+ 	flag.StringVar(&homeJWT, "home-jwt", "", "Home control plane JWT for mTLS certificate bootstrap and connection")
+ 	flag.BoolVar(&homeDisableClusterDiscovery, "home-disable-cluster-discovery", false, "Disable Home CLUSTER NODES discovery and keep using the configured -home-jwt address")
+ 	flag.BoolVar(&tuiMode, "tui", false, "Start with terminal management UI")
+@@ -198,6 +200,18 @@ func main() {
+ 
+ 	// Parse the command-line flags.
+ 	flag.Parse()
++	if localPasswordStdin {
++		if password != "" || os.Getenv("MANAGEMENT_PASSWORD") != "" {
++			log.Error("local management pipe cannot be combined with another password input")
++			return
++		}
++		localPassword, errPassword := readLocalManagementPassword(os.Stdin)
++		if errPassword != nil {
++			log.Error("local management pipe credential is invalid")
++			return
++		}
++		password = localPassword
++	}
+ 
+ 	if discoverGateways || discoverJSON {
+ 		cfgInclude, cfgExclude := cmd.LoadDiscoveryScanFilters(configPath)
+@@ -825,6 +839,11 @@ func main() {
+ 			managementasset.StartAutoUpdater(context.Background(), configFilePath)
+ 			misc.StartAntigravityVersionUpdater(context.Background())
+ 			startModelCatalogUpdaters(localModel, cfg.Home.Enabled)
++			if localPasswordStdin {
++				// The managed parent owns process lifetime, not the interactive keep-alive endpoint.
++				serverOptions = append(serverOptions, api.WithLocalManagementPassword(password))
++				password = ""
++			}
+ 			cmd.StartServiceWithPluginHost(cfg, configFilePath, password, pluginHost, serverOptions...)
+ 		}
+ 	}
+diff --git a/internal/api/handlers/management/local_machine_password_test.go b/internal/api/handlers/management/local_machine_password_test.go
+new file mode 100644
+index 0000000..74d027d
 --- /dev/null
 +++ b/internal/api/handlers/management/local_machine_password_test.go
 @@ -0,0 +1,38 @@
@@ -137,9 +148,338 @@
 +		t.Fatal("old instance credential accepted")
 +	}
 +}
+diff --git a/internal/auth/claude/hiroute_environment_proxy_test.go b/internal/auth/claude/hiroute_environment_proxy_test.go
+new file mode 100644
+index 0000000..3869b7e
+--- /dev/null
++++ b/internal/auth/claude/hiroute_environment_proxy_test.go
+@@ -0,0 +1,195 @@
++package claude
++
++import (
++	"context"
++	"errors"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"os/exec"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
++)
++
++type hirouteOAuthDirectDialer struct{ calls atomic.Int32 }
++
++func (d *hirouteOAuthDirectDialer) Dial(network, address string) (net.Conn, error) {
++	return d.DialContext(context.Background(), network, address)
++}
++
++func (d *hirouteOAuthDirectDialer) DialContext(context.Context, string, string) (net.Conn, error) {
++	d.calls.Add(1)
++	return nil, errors.New("synthetic direct dial stopped before network")
++}
++
++// Each case needs a clean process because net/http snapshots environment proxy
++// settings once. Actual local CONNECT requests establish the selected route;
++// no provider requests, credentials, DNS resolution or token exchange are used.
++func TestHiRouteClaudeOAuthEnvironmentRouting(t *testing.T) {
++	if scenario := os.Getenv("HIROUTE_CLAUDE_OAUTH_PROXY_CASE"); scenario != "" {
++		testHiRouteClaudeOAuthEnvironmentRouting(t, scenario)
++		return
++	}
++	for _, scenario := range []string{
++		"upper", "lower", "upper-precedence", "no-proxy", "lower-no-proxy",
++		"per-target", "direct", "none", "explicit", "invalid-environment",
++		"invalid-explicit", "proxy-connect-failure", "selection-failure",
++		"all-proxy-ignored", "http-only-does-not-proxy-https", "http-inherit",
++		"malformed-https-upper", "malformed-https-lower", "malformed-http-upper",
++		"malformed-http-lower", "malformed-with-no-proxy", "malformed-upper-wins",
++		"valid-upper-ignores-malformed-lower", "valid-https-ignores-malformed-http",
++		"valid-http-ignores-malformed-https", "https-host-port-shorthand",
++	} {
++		t.Run(scenario, func(t *testing.T) {
++			command := exec.Command(os.Args[0], "-test.run=^TestHiRouteClaudeOAuthEnvironmentRouting$")
++			command.Env = []string{"HIROUTE_CLAUDE_OAUTH_PROXY_CASE=" + scenario}
++			if output, err := command.CombinedOutput(); err != nil {
++				t.Fatalf("isolated proxy case failed: %v\n%s", err, output)
++			}
++		})
++	}
++}
++
++func testHiRouteClaudeOAuthEnvironmentRouting(t *testing.T, scenario string) {
++	t.Helper()
++	var inheritedCalls, explicitCalls atomic.Int32
++	makeProxy := func(calls *atomic.Int32) *httptest.Server {
++		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
++			calls.Add(1)
++			if request.Method != http.MethodConnect || request.Host != "platform.claude.invalid:443" {
++				t.Errorf("proxy did not receive the exact OAuth target CONNECT")
++			}
++			// Deliberately fail the proxy hop. The caller must not retry directly.
++			w.WriteHeader(http.StatusBadGateway)
++		}))
++	}
++	inherited := makeProxy(&inheritedCalls)
++	defer inherited.Close()
++	explicit := makeProxy(&explicitCalls)
++	defer explicit.Close()
++	cfg := &config.SDKConfig{}
++	target := "https://platform.claude.invalid:443/v1/oauth/token"
++	wantInherited, wantExplicit, wantDirect := int32(1), int32(0), int32(0)
++	switch scenario {
++	case "upper":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++	case "lower":
++		t.Setenv("https_proxy", inherited.URL)
++	case "upper-precedence":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++		t.Setenv("https_proxy", explicit.URL)
++	case "malformed-https-upper", "malformed-https-lower", "malformed-http-upper", "malformed-http-lower", "malformed-with-no-proxy", "malformed-upper-wins":
++		key := "HTTPS_PROXY"
++		if strings.HasPrefix(scenario, "malformed-http-") {
++			key = "HTTP_PROXY"
++			target = "http://platform.claude.invalid:443/v1/oauth/token"
++		}
++		if strings.HasSuffix(scenario, "-lower") {
++			key = strings.ToLower(key)
++		}
++		t.Setenv(key, "http://%zz")
++		if scenario == "malformed-with-no-proxy" {
++			t.Setenv("NO_PROXY", "*")
++		}
++		if scenario == "malformed-upper-wins" {
++			t.Setenv("https_proxy", inherited.URL)
++		}
++		wantInherited = 0
++	case "valid-upper-ignores-malformed-lower":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++		t.Setenv("https_proxy", "http://%zz")
++	case "valid-https-ignores-malformed-http":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++		t.Setenv("HTTP_PROXY", "http://%zz")
++	case "valid-http-ignores-malformed-https":
++		t.Setenv("HTTP_PROXY", inherited.URL)
++		t.Setenv("HTTPS_PROXY", "http://%zz")
++		target = "http://platform.claude.invalid:443/v1/oauth/token"
++	case "https-host-port-shorthand":
++		t.Setenv("HTTPS_PROXY", strings.TrimPrefix(inherited.URL, "http://"))
++	case "no-proxy", "lower-no-proxy", "per-target":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++		key := "NO_PROXY"
++		if scenario == "lower-no-proxy" {
++			key = "no_proxy"
++		}
++		if scenario == "per-target" {
++			t.Setenv(key, "api.anthropic.invalid")
++		} else {
++			t.Setenv(key, "platform.claude.invalid")
++			wantInherited, wantDirect = 0, 1
++		}
++	case "direct", "none":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++		cfg.ProxyURL = scenario
++		wantInherited, wantDirect = 0, 1
++	case "explicit":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++		t.Setenv("NO_PROXY", "*") // Explicit settings take precedence over environment bypass.
++		cfg.ProxyURL = explicit.URL
++		wantInherited, wantExplicit = 0, 1
++	case "invalid-environment":
++		t.Setenv("HTTPS_PROXY", "ftp://127.0.0.1:1187")
++		wantInherited = 0
++	case "invalid-explicit":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++		cfg.ProxyURL = "ftp://127.0.0.1:1187"
++		wantInherited = 0
++	case "proxy-connect-failure":
++		t.Setenv("HTTPS_PROXY", inherited.URL)
++		inherited.Close()
++		wantInherited = 0
++	case "selection-failure":
++		t.Setenv("HTTP_PROXY", inherited.URL)
++		t.Setenv("REQUEST_METHOD", "POST") // Go refuses the unsafe CGI HTTP_PROXY route.
++		target = "http://platform.claude.invalid:443/v1/oauth/token"
++		wantInherited = 0
++	case "all-proxy-ignored":
++		t.Setenv("ALL_PROXY", inherited.URL)
++		t.Setenv("all_proxy", inherited.URL)
++		wantInherited, wantDirect = 0, 1
++	case "http-only-does-not-proxy-https":
++		t.Setenv("HTTP_PROXY", inherited.URL)
++		wantInherited, wantDirect = 0, 1
++	case "http-inherit":
++		t.Setenv("HTTP_PROXY", inherited.URL)
++		target = "http://platform.claude.invalid:443/v1/oauth/token"
++	default:
++		t.Fatal("unknown proxy case")
++	}
++	client := NewAnthropicHttpClient(cfg)
++	client.Timeout = time.Second
++	transport := client.Transport.(*utlsRoundTripper)
++	defer transport.CloseIdleConnections()
++	direct := &hirouteOAuthDirectDialer{}
++	if scenario != "explicit" {
++		transport.dialer = direct
++	}
++	makeRequest := func(target string) {
++		request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, target, nil)
++		if err != nil {
++			t.Fatal("create synthetic request failed")
++		}
++		response, err := client.Do(request)
++		if response != nil {
++			_ = response.Body.Close()
++		}
++		if err == nil {
++			t.Fatal("synthetic network boundary unexpectedly succeeded")
++		}
++	}
++	makeRequest(target)
++	if scenario == "per-target" {
++		makeRequest("https://api.anthropic.invalid/api/oauth/profile")
++		wantDirect = 1
++	}
++	if inheritedCalls.Load() != wantInherited || explicitCalls.Load() != wantExplicit || direct.calls.Load() != wantDirect {
++		t.Fatalf("route counts: inherited=%d explicit=%d direct=%d; want %d/%d/%d",
++			inheritedCalls.Load(), explicitCalls.Load(), direct.calls.Load(), wantInherited, wantExplicit, wantDirect)
++	}
++}
+diff --git a/internal/auth/claude/utls_transport.go b/internal/auth/claude/utls_transport.go
+index 7d69d46..44da6d5 100644
+--- a/internal/auth/claude/utls_transport.go
++++ b/internal/auth/claude/utls_transport.go
+@@ -2,9 +2,11 @@ package claude
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"fmt"
+ 	"net"
+ 	"net/http"
++	"net/url"
+ 	"strings"
+ 	"time"
+ 
+@@ -84,6 +86,13 @@ var claudeOAuthSessionCaches = internalcache.NewBoundedLRU[string, tls.ClientSes
+ 	nil,
+ )
+ 
++// Inherited proxy routing shares a bounded pool by effective proxy, matching the
++// existing TLS session isolation. Failed proxy requests never retry directly.
++var claudeOAuthEnvironmentTransports = internalcache.NewBoundedLRU[string, *utlsRoundTripper](
++	claudeOAuthProxySessionCacheCapacity,
++	func(_ string, transport *utlsRoundTripper) { transport.CloseIdleConnections() },
++)
++
+ func claudeOAuthSessionCache(proxyURL string) tls.ClientSessionCache {
+ 	return claudeOAuthSessionCaches.GetOrAdd(proxyURL, func() tls.ClientSessionCache {
+ 		return tls.NewLRUClientSessionCache(claudeOAuthSessionCacheCapacity)
+@@ -166,7 +175,9 @@ func claudeOAuthTLSClientHelloSpec() *tls.ClientHelloSpec {
+ // profile while retaining net/http proxy, cancellation, response parsing and
+ // connection lifecycle semantics.
+ type utlsRoundTripper struct {
+-	dialer proxy.Dialer
++	dialer             proxy.Dialer
++	configurationError error
++	environmentProxy   func(*http.Request) (*url.URL, error)
+ 	// sessionCache is shared by every transport built for the same proxy, so
+ 	// short-lived ClaudeAuth instances can still resume, while resumption never
+ 	// crosses proxy boundaries.
+@@ -177,37 +188,47 @@ type utlsRoundTripper struct {
+ func newUtlsRoundTripper(cfg *config.SDKConfig) *utlsRoundTripper {
+ 	var dialer proxy.Dialer = proxy.Direct
+ 	var proxyURL string
++	var configurationError error
++	mode := proxyutil.ModeInherit
+ 	if cfg != nil {
+ 		proxyURL = cfg.ProxyURL
+-		proxyDialer, mode, errBuild := proxyutil.BuildDialer(cfg.ProxyURL)
++		proxyDialer, selectedMode, errBuild := proxyutil.BuildDialer(cfg.ProxyURL)
++		mode = selectedMode
+ 		if errBuild != nil {
+ 			log.Errorf("failed to configure proxy dialer for %q: %v", proxyutil.Redact(cfg.ProxyURL), errBuild)
++			configurationError = errors.New("invalid claude oauth proxy configuration")
+ 		} else if mode != proxyutil.ModeInherit && proxyDialer != nil {
+ 			dialer = proxyDialer
+ 		}
+ 	}
+ 
+ 	roundTripper := &utlsRoundTripper{
+-		dialer:       dialer,
+-		sessionCache: claudeOAuthSessionCache(proxyURL),
++		dialer:             dialer,
++		configurationError: configurationError,
++		sessionCache:       claudeOAuthSessionCache(proxyURL),
++	}
++	if mode == proxyutil.ModeInherit {
++		// Use the same target-aware HTTP(S)_PROXY/NO_PROXY policy as inference.
++		// Setting Transport.Proxy would bypass the custom uTLS CONNECT dialer.
++		roundTripper.environmentProxy = proxyutil.EnvironmentProxyFunc()
+ 	}
+ 	roundTripper.transport = &http.Transport{
+ 		ForceAttemptHTTP2: false,
++		DialContext:       roundTripper.dialContext,
+ 		DialTLSContext:    roundTripper.dialTLSContext,
+ 	}
+ 	return roundTripper
+ }
+ 
+-func (t *utlsRoundTripper) dialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+-	var (
+-		conn net.Conn
+-		err  error
+-	)
++func (t *utlsRoundTripper) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+ 	if contextDialer, ok := t.dialer.(proxy.ContextDialer); ok {
+-		conn, err = contextDialer.DialContext(ctx, network, addr)
+-	} else {
+-		conn, err = t.dialer.Dial(network, addr)
++		return contextDialer.DialContext(ctx, network, addr)
+ 	}
++	return t.dialer.Dial(network, addr)
++}
++
++func (t *utlsRoundTripper) dialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
++	conn, err := t.dialContext(ctx, network, addr)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("claude oauth tls: dial upstream: %w", err)
+ 	}
+@@ -242,6 +263,24 @@ func (t *utlsRoundTripper) dialTLSContext(ctx context.Context, network, addr str
+ }
+ 
+ func (t *utlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
++	if t.configurationError != nil {
++		return nil, t.configurationError
++	}
++	if t.environmentProxy != nil {
++		selected, err := t.environmentProxy(req)
++		if err != nil {
++			return nil, errors.New("failed to select claude oauth environment proxy")
++		}
++		if selected != nil {
++			if !proxyutil.ValidRequestProxy(selected.String()) {
++				return nil, errors.New("invalid claude oauth environment proxy")
++			}
++			transport := claudeOAuthEnvironmentTransports.GetOrAdd(selected.String(), func() *utlsRoundTripper {
++				return newUtlsRoundTripper(&config.SDKConfig{ProxyURL: selected.String()})
++			})
++			return transport.RoundTrip(req)
++		}
++	}
+ 	return t.transport.RoundTrip(req)
+ }
+ 
+diff --git a/internal/runtime/executor/codex_models.go b/internal/runtime/executor/codex_models.go
+new file mode 100644
+index 0000000..403683d
 --- /dev/null
 +++ b/internal/runtime/executor/codex_models.go
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,126 @@
 +package executor
 +
 +import (
@@ -166,10 +506,9 @@
 +	if strings.TrimSpace(token) == "" {
 +		return nil, fmt.Errorf("codex model discovery: missing access token")
 +	}
-+	version, _ := auth.Metadata["hiroute_client_version"].(string)
-+	version = strings.TrimSpace(version)
-+	if version == "" || len(version) > 128 || strings.ContainsAny(version, "\r\n\x00") {
-+		return nil, fmt.Errorf("codex model discovery: local client version unavailable")
++	version, err := codexModelDiscoveryVersion(auth)
++	if err != nil {
++		return nil, err
 +	}
 +	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://chatgpt.com/backend-api/codex/models?client_version="+url.QueryEscape(version), nil)
 +	if err != nil {
@@ -245,9 +584,34 @@
 +	}
 +	return models, nil
 +}
++
++func codexModelDiscoveryVersion(auth *cliproxyauth.Auth) (string, error) {
++	version, _ := auth.Metadata["hiroute_client_version"].(string)
++	refreshToken, _ := auth.Metadata["refresh_token"].(string)
++	if strings.TrimSpace(refreshToken) != "" {
++		// Independently authorized credentials belong to CPA. Advertise the same
++		// upstream client version its executor actually uses, including at the
++		// first OAuth registration before HiRoute has patched account controls.
++		// Access-only native leases must still provide their observed version.
++		clientIdentity, _, _ := strings.Cut(codexUserAgent, " ")
++		var ok bool
++		version, ok = strings.CutPrefix(clientIdentity, codexOriginator+"/")
++		if !ok {
++			return "", fmt.Errorf("codex model discovery: executor client version unavailable")
++		}
++	}
++	version = strings.TrimSpace(version)
++	if version == "" || len(version) > 128 || strings.ContainsAny(version, "\r\n\x00") {
++		return "", fmt.Errorf("codex model discovery: local client version unavailable")
++	}
++	return version, nil
++}
+diff --git a/internal/runtime/executor/codex_models_test.go b/internal/runtime/executor/codex_models_test.go
+new file mode 100644
+index 0000000..c262d05
 --- /dev/null
 +++ b/internal/runtime/executor/codex_models_test.go
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,84 @@
 +package executor
 +
 +import (
@@ -299,124 +663,42 @@
 +		t.Fatal("must not query with an invented version")
 +		return nil, nil
 +	}))
-+	_, err := NewCodexExecutor(nil).DiscoverModels(ctx, &cliproxyauth.Auth{Metadata: map[string]any{"access_token": "secret"}}, nil)
-+	if err == nil || !strings.Contains(err.Error(), "local client version unavailable") {
-+		t.Fatalf("missing version: %v", err)
++	for _, refresh := range []any{nil, "", "  "} {
++		_, err := NewCodexExecutor(nil).DiscoverModels(ctx, &cliproxyauth.Auth{Metadata: map[string]any{"access_token": "secret", "refresh_token": refresh}}, nil)
++		if err == nil || !strings.Contains(err.Error(), "local client version unavailable") {
++			t.Fatalf("missing version: %v", err)
++		}
 +	}
 +}
---- a/sdk/cliproxy/service_models.go
-+++ b/sdk/cliproxy/service_models.go
-@@ -9,8 +9,10 @@
- 	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
- 	"github.com/router-for-me/CLIProxyAPI/v8/internal/modelconfig"
- 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
-+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
- 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
- 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
-+	log "github.com/sirupsen/logrus"
- )
- 
- // registerModelsForAuth (re)binds provider models in the global registry using the core auth ID as client identifier.
-@@ -149,6 +151,22 @@
- 		default:
- 			models = registry.GetCodexProModels()
- 		}
-+		if token, _ := a.Metadata["access_token"].(string); strings.TrimSpace(token) != "" {
-+			discovered, err := executor.NewCodexExecutor(s.cfg).DiscoverModels(ctx, a, models)
-+			if err != nil {
-+				log.Warnf("Codex model discovery failed; retaining registered catalog: %v", err)
-+				return
++
++func TestCodexModelDiscoveryManagedUsesExecutorVersion(t *testing.T) {
++	for _, observedVersion := range []any{nil, "0.999.0"} {
++		auth := &cliproxyauth.Auth{Provider: "codex", Metadata: map[string]any{
++			"access_token": "fixture-access", "refresh_token": "independent-refresh",
++			"account_id": "fixture-account", "hiroute_client_version": observedVersion,
++		}}
++		calls := 0
++		ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryRoundTrip(func(req *http.Request) (*http.Response, error) {
++			calls++
++			identity, _, _ := strings.Cut(req.Header.Get("User-Agent"), " ")
++			_, actualVersion, hasVersion := strings.Cut(identity, "/")
++			if !hasVersion || actualVersion == "" || req.URL.Query().Get("client_version") != actualVersion {
++				t.Fatal("managed discovery version differs from executor wire identity")
 +			}
-+			// An auth removed or replaced during the bounded request must not reappear.
-+			if s.coreManager != nil {
-+				current, ok := s.coreManager.GetByID(a.ID)
-+				if !ok || current.Disabled || current.Generation != a.Generation || current.RegistrationEpoch != a.RegistrationEpoch {
-+					return
-+				}
++			if req.URL.Query().Get("client_version") == "0.999.0" || req.Header.Get("Authorization") != "Bearer fixture-access" || req.Header.Get("ChatGPT-Account-ID") != "fixture-account" {
++				t.Fatal("managed discovery did not use its own credential and executor identity")
 +			}
-+			models = discovered
-+			log.Infof("Codex account model discovery completed: %d models", len(models))
++			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"remote-managed-model"}]}`)), Request: req}, nil
++		}))
++		models, err := NewCodexExecutor(nil).DiscoverModels(ctx, auth, nil)
++		if err != nil || calls != 1 || len(models) != 1 || models[0].ID != "remote-managed-model" {
++			t.Fatalf("independent login discovery failed: calls=%d models=%d err=%v", calls, len(models), err)
 +		}
- 		models = applyExcludedModels(models, excluded)
- 	case "kimi", "kimi-ai", "kimi.ai", "kimi.com":
- 		models = registry.GetKimiModels()
---- /dev/null
-+++ b/sdk/cliproxy/service_codex_discovery_test.go
-@@ -0,0 +1,62 @@
-+package cliproxy
-+
-+import (
-+	"context"
-+	"io"
-+	"net/http"
-+	"strings"
-+	"testing"
-+
-+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
-+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
-+)
-+
-+type discoveryTransport func(*http.Request) (*http.Response, error)
-+
-+func (f discoveryTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-+
-+func TestCodexDiscoveryRegistration(t *testing.T) {
-+	s := &Service{cfg: &config.Config{}}
-+	s.cfg.ForceModelPrefix = true
-+	a := &coreauth.Auth{ID: "discovery-account", Provider: "codex", Prefix: "subscription", Metadata: map[string]any{"access_token": "test-token", "account_id": "test-account", "hiroute_client_version": "0.999.0"}, Attributes: map[string]string{"excluded_models": "excluded"}}
-+	defer GlobalModelRegistry().UnregisterClient(a.ID)
-+	status, body := 200, `{"models":[{"slug":"future-model-not-in-bundle","display_name":"Future","context_window":123456,"input_modalities":["text","image"],"supported_reasoning_levels":[{"effort":"max"}]},{"slug":"excluded"}]}`
-+	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
-+		if r.URL.String() != "https://chatgpt.com/backend-api/codex/models?client_version=0.999.0" || r.Header.Get("Authorization") != "Bearer test-token" || r.Header.Get("ChatGPT-Account-ID") != "test-account" {
-+			t.Fatal("wrong discovery request")
-+		}
-+		if _, ok := r.Context().Deadline(); !ok {
-+			t.Fatal("missing deadline")
-+		}
-+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
-+	}))
-+	s.registerModelsForAuth(ctx, a)
-+	check := func() {
-+		t.Helper()
-+		models := GlobalModelRegistry().GetModelsForClient(a.ID)
-+		if len(models) != 1 || models[0].ID != "subscription/future-model-not-in-bundle" || models[0].ContextLength != 123456 || models[0].Thinking.Levels[0] != "max" {
-+			t.Fatalf("unexpected registered models: %+v", models)
-+		}
-+	}
-+	check()
-+	for _, failure := range []struct {
-+		status int
-+		body   string
-+	}{{401, `secret upstream error`}, {200, `{broken`}, {200, `{}`}, {200, `{"models":[{"slug":""}]}`}} {
-+		status, body = failure.status, failure.body
-+		s.registerModelsForAuth(ctx, a)
-+		check()
-+	}
-+	status, body = 200, `{"models":[]}`
-+	s.registerModelsForAuth(ctx, a)
-+	if len(GlobalModelRegistry().GetModelsForClient(a.ID)) != 0 {
-+		t.Fatal("empty authoritative list did not remove models")
-+	}
-+	status, body = 200, `{"models":[{"slug":"other-account-model"}]}`
-+	a.ID, a.Prefix = "other-account", "other"
-+	defer GlobalModelRegistry().UnregisterClient(a.ID)
-+	s.registerModelsForAuth(ctx, a)
-+	if len(GlobalModelRegistry().GetModelsForClient("discovery-account")) != 0 {
-+		t.Fatal("cross-account catalog leakage")
 +	}
 +}
---- a/internal/runtime/executor/helps/utls_client.go
-+++ b/internal/runtime/executor/helps/utls_client.go
-@@ -385,6 +385,9 @@
- 		chromeRT = ctxRoundTripper
- 		anthropicRT = ctxRoundTripper
- 		standardTransport = ctxRoundTripper
-+	} else {
-+		chromeRT = &environmentProxyTransport{direct: chromeRT, build: func(proxy string) http.RoundTripper { return newUtlsRoundTripper(proxy) }, proxy: http.ProxyFromEnvironment}
-+		anthropicRT = &environmentProxyTransport{direct: anthropicRT, build: cachedClaudeCodeRoundTripper, proxy: http.ProxyFromEnvironment}
- 	}
- 
- 	client := &http.Client{
+diff --git a/internal/runtime/executor/helps/environment_proxy.go b/internal/runtime/executor/helps/environment_proxy.go
+new file mode 100644
+index 0000000..32f01f4
 --- /dev/null
 +++ b/internal/runtime/executor/helps/environment_proxy.go
 @@ -0,0 +1,31 @@
@@ -451,18 +733,23 @@
 +	}
 +	return t.build(proxy.String()).RoundTrip(req)
 +}
+diff --git a/internal/runtime/executor/helps/environment_proxy_test.go b/internal/runtime/executor/helps/environment_proxy_test.go
+new file mode 100644
+index 0000000..8b7ef41
 --- /dev/null
 +++ b/internal/runtime/executor/helps/environment_proxy_test.go
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,147 @@
 +package helps
 +
 +import (
 +	"context"
 +	"errors"
++	"io"
 +	"net/http"
 +	"net/url"
 +	"os"
 +	"os/exec"
++	"strings"
 +	"testing"
 +)
 +
@@ -544,4 +831,755 @@
 +			t.Fatal("invalid proxy accepted")
 +		}
 +	}
++}
++
++func TestHiRouteInferenceMalformedEnvironmentNeverDialsDirect(t *testing.T) {
++	if scenario := os.Getenv("HIROUTE_INFERENCE_BAD_PROXY_CASE"); scenario != "" {
++		key := "HTTPS_PROXY"
++		if scenario == "lower" {
++			key = "https_proxy"
++		}
++		t.Setenv(key, "http://%zz")
++		if scenario == "no-proxy" {
++			t.Setenv("NO_PROXY", "*")
++		}
++		if scenario == "upper-wins" {
++			t.Setenv("https_proxy", "http://127.0.0.1:1187")
++		}
++		client := NewUtlsHTTPClient(context.Background(), nil, nil, 0)
++		fallback := client.Transport.(*fallbackRoundTripper)
++		for _, protected := range []struct {
++			transport http.RoundTripper
++			target    string
++		}{
++			{fallback.chrome, "https://chatgpt.com/backend-api/codex/models"},
++			{fallback.anthropic, "https://api.anthropic.com/v1/messages"},
++		} {
++			route := protected.transport.(*environmentProxyTransport)
++			directCalls, proxyCalls := 0, 0
++			route.direct = environmentTestRT(func(*http.Request) (*http.Response, error) {
++				directCalls++
++				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
++			})
++			route.build = func(string) http.RoundTripper {
++				proxyCalls++
++				return route.direct
++			}
++			request, _ := http.NewRequest(http.MethodPost, protected.target, nil)
++			response, err := client.Do(request)
++			if response != nil {
++				_ = response.Body.Close()
++			}
++			if err == nil || directCalls != 0 || proxyCalls != 0 {
++				t.Fatal("malformed effective proxy reached an inference transport")
++			}
++		}
++		return
++	}
++	for _, scenario := range []string{"upper", "lower", "no-proxy", "upper-wins"} {
++		t.Run(scenario, func(t *testing.T) {
++			command := exec.Command(os.Args[0], "-test.run=^TestHiRouteInferenceMalformedEnvironmentNeverDialsDirect$")
++			command.Env = []string{"HIROUTE_INFERENCE_BAD_PROXY_CASE=" + scenario}
++			if output, err := command.CombinedOutput(); err != nil {
++				t.Fatalf("isolated inference proxy case failed: %v\n%s", err, output)
++			}
++		})
++	}
++}
+diff --git a/internal/runtime/executor/helps/hiroute_execution_test.go b/internal/runtime/executor/helps/hiroute_execution_test.go
+new file mode 100644
+index 0000000..09fe73b
+--- /dev/null
++++ b/internal/runtime/executor/helps/hiroute_execution_test.go
+@@ -0,0 +1,53 @@
++package helps
++
++import (
++	"context"
++	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"sync/atomic"
++	"testing"
++)
++
++func TestHiRouteExecutionCountsActualHTTPAndExcludesOAuth(t *testing.T) {
++	var sends atomic.Int32
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		n := sends.Add(1)
++		if r.URL.Path == "/oauth/token" {
++			w.WriteHeader(200)
++			return
++		}
++		if n == 1 {
++			w.WriteHeader(401)
++			return
++		}
++		w.WriteHeader(200)
++	}))
++	defer server.Close()
++	ctx, trace := coreexecutor.WithHiRouteExecution(context.Background())
++	reporter := NewUsageReporter(ctx, "codex", "fixture-model", nil)
++	client := reporter.TrackHTTPClient(server.Client())
++	for _, path := range []string{"/responses", "/oauth/token", "/responses"} {
++		// Auth manager replaces its per-executor tracker, but retains the trace.
++		child := coreexecutor.WithUpstreamAttemptTracker(ctx)
++		req, err := http.NewRequestWithContext(child, http.MethodPost, server.URL+path, nil)
++		if err != nil {
++			t.Fatal(err)
++		}
++		coreexecutor.MarkUpstreamAttempt(child) // Claude's outer send marker.
++		selected := client
++		if path == "/oauth/token" {
++			selected = server.Client()
++		}
++		resp, err := selected.Do(req)
++		if err != nil {
++			t.Fatal(err)
++		}
++		_, _ = io.Copy(io.Discard, resp.Body)
++		_ = resp.Body.Close()
++	}
++	if sends.Load() != 3 || trace.Header() != "v1;2;1;0;0" {
++		t.Fatalf("actual HTTP=%d trace=%q", sends.Load(), trace.Header())
++	}
++}
+diff --git a/internal/runtime/executor/helps/usage_helpers.go b/internal/runtime/executor/helps/usage_helpers.go
+index 266012a..ef002b8 100644
+--- a/internal/runtime/executor/helps/usage_helpers.go
++++ b/internal/runtime/executor/helps/usage_helpers.go
+@@ -738,9 +738,16 @@ type usageTTFTRoundTripper struct {
+ }
+ 
+ func (t usageTTFTRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
++	if errCtx := req.Context().Err(); errCtx != nil {
++		return nil, errCtx
++	}
+ 	cliproxyexecutor.MarkUpstreamAttempt(req.Context())
++	cliproxyexecutor.HiRouteInferenceStarted(req.Context())
+ 	t.reporter.StartResponseTTFT()
+ 	resp, errRoundTrip := t.base.RoundTrip(req)
++	if resp != nil {
++		cliproxyexecutor.HiRouteInferenceResponse(req.Context(), resp.StatusCode)
++	}
+ 	if errRoundTrip != nil {
+ 		return resp, errRoundTrip
+ 	}
+diff --git a/internal/runtime/executor/helps/utls_client.go b/internal/runtime/executor/helps/utls_client.go
+index 4857bac..7247b85 100644
+--- a/internal/runtime/executor/helps/utls_client.go
++++ b/internal/runtime/executor/helps/utls_client.go
+@@ -385,6 +385,10 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
+ 		chromeRT = ctxRoundTripper
+ 		anthropicRT = ctxRoundTripper
+ 		standardTransport = ctxRoundTripper
++	} else {
++		selectProxy := proxyutil.EnvironmentProxyFunc()
++		chromeRT = &environmentProxyTransport{direct: chromeRT, build: func(proxy string) http.RoundTripper { return newUtlsRoundTripper(proxy) }, proxy: selectProxy}
++		anthropicRT = &environmentProxyTransport{direct: anthropicRT, build: cachedClaudeCodeRoundTripper, proxy: selectProxy}
+ 	}
+ 
+ 	client := &http.Client{
+diff --git a/sdk/api/handlers/handlers.go b/sdk/api/handlers/handlers.go
+index b4fc423..6b88bf3 100644
+--- a/sdk/api/handlers/handlers.go
++++ b/sdk/api/handlers/handlers.go
+@@ -539,6 +539,7 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
+ 	}
+ 	newCtx = context.WithValue(newCtx, "gin", c)
+ 	newCtx = context.WithValue(newCtx, "handler", handler)
++	newCtx = withHiRouteExecution(newCtx, c)
+ 	return newCtx, func(params ...interface{}) {
+ 		if c != nil {
+ 			logging.SetResponseStatus(cancelCtx, c.Writer.Status())
+diff --git a/sdk/api/handlers/header_filter.go b/sdk/api/handlers/header_filter.go
+index e724674..4889c35 100644
+--- a/sdk/api/handlers/header_filter.go
++++ b/sdk/api/handlers/header_filter.go
+@@ -44,6 +44,7 @@ var cpaReservedResponseHeaders = map[string]struct{}{
+ 	"Access-Control-Expose-Headers":    {},
+ 	"Access-Control-Max-Age":           {},
+ 	"X-Cpa-Trace-Id":                   {},
++	"X-Hiroute-Cpa-Execution":          {},
+ }
+ 
+ // IsCPAReservedResponseHeader reports whether a downstream response header is managed by CPA.
+diff --git a/sdk/api/handlers/hiroute_execution.go b/sdk/api/handlers/hiroute_execution.go
+new file mode 100644
+index 0000000..15168d3
+--- /dev/null
++++ b/sdk/api/handlers/hiroute_execution.go
+@@ -0,0 +1,53 @@
++package handlers
++
++import (
++	"context"
++	"github.com/gin-gonic/gin"
++	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
++)
++
++// Snapshot immediately before the first downstream commit, including error
++// replies. Upstream/plugin headers cannot forge this reserved value. All stock
++// auth recovery finishes before a stream becomes visible to the downstream.
++func withHiRouteExecution(ctx context.Context, c *gin.Context) context.Context {
++	if c == nil || c.Writer == nil {
++		return ctx
++	}
++	if writer, ok := c.Writer.(*hiRouteExecutionWriter); ok {
++		return writer.trace.Context(ctx)
++	}
++	tracked, trace := coreexecutor.WithHiRouteExecution(ctx)
++	c.Writer = &hiRouteExecutionWriter{ResponseWriter: c.Writer, trace: trace}
++	return tracked
++}
++
++type hiRouteExecutionWriter struct {
++	gin.ResponseWriter
++	trace *coreexecutor.HiRouteExecution
++}
++
++func (w *hiRouteExecutionWriter) snapshot() {
++	if !w.Written() {
++		w.Header().Set(coreexecutor.HiRouteExecutionHeader, w.trace.Header())
++	}
++}
++func (w *hiRouteExecutionWriter) WriteHeader(code int) {
++	w.snapshot()
++	w.ResponseWriter.WriteHeader(code)
++}
++func (w *hiRouteExecutionWriter) WriteHeaderNow() {
++	w.snapshot()
++	w.ResponseWriter.WriteHeaderNow()
++}
++func (w *hiRouteExecutionWriter) Write(data []byte) (int, error) {
++	w.snapshot()
++	return w.ResponseWriter.Write(data)
++}
++func (w *hiRouteExecutionWriter) WriteString(data string) (int, error) {
++	w.snapshot()
++	return w.ResponseWriter.WriteString(data)
++}
++func (w *hiRouteExecutionWriter) Flush() {
++	w.snapshot()
++	w.ResponseWriter.Flush()
++}
+diff --git a/sdk/api/handlers/hiroute_execution_test.go b/sdk/api/handlers/hiroute_execution_test.go
+new file mode 100644
+index 0000000..d052313
+--- /dev/null
++++ b/sdk/api/handlers/hiroute_execution_test.go
+@@ -0,0 +1,62 @@
++package handlers
++
++import (
++	"context"
++	"errors"
++	"github.com/gin-gonic/gin"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
++	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++)
++
++func TestHiRouteExecutionHeaderIncludesFailuresAndRejectsUpstreamSpoof(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	for _, status := range []int{200, 401, 404, 503} {
++		recorder := httptest.NewRecorder()
++		c, _ := gin.CreateTestContext(recorder)
++		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
++		ctx := withHiRouteExecution(context.Background(), c)
++		coreexecutor.HiRouteInferenceStarted(ctx)
++		coreexecutor.HiRouteInferenceResponse(ctx, status)
++		c.Writer.Header().Set(coreexecutor.HiRouteExecutionHeader, "untrusted-provider-text")
++		if status == 200 {
++			c.Writer.WriteHeader(status)
++			_, _ = c.Writer.Write([]byte("{}"))
++		} else {
++			NewBaseAPIHandlers(nil, nil).WriteErrorResponse(c, &interfaces.ErrorMessage{
++				StatusCode: status, Error: errors.New("fixture error"),
++			})
++		}
++		expected := "v1;1;0;0;0"
++		if status == 401 {
++			expected = "v1;1;1;0;0"
++		}
++		if got := recorder.Result().Header.Get(coreexecutor.HiRouteExecutionHeader); got != expected {
++			t.Fatalf("status=%d trace=%q, want %q", status, got, expected)
++		}
++		if got := FilterUpstreamHeaders(http.Header{coreexecutor.HiRouteExecutionHeader: {"v1;32;0;0;0"}}); len(got) != 0 {
++			t.Fatalf("reserved header passed upstream filter: %v", got)
++		}
++	}
++}
++
++func TestHiRouteExecutionHeaderFreezesAtStreamCommit(t *testing.T) {
++	recorder := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(recorder)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
++	ctx := withHiRouteExecution(context.Background(), c)
++	coreexecutor.HiRouteInferenceStarted(ctx)
++	coreexecutor.HiRouteInferenceResponse(ctx, 401)
++	coreexecutor.HiRouteAuthRecovery(ctx, false)
++	coreexecutor.HiRouteAuthRecovery(ctx, true)
++	coreexecutor.HiRouteInferenceStarted(ctx)
++	_, _ = c.Writer.WriteString("data: {}\n\n")
++	c.Writer.Flush()
++	coreexecutor.HiRouteInferenceStarted(ctx)
++	_, _ = c.Writer.WriteString("data: [DONE]\n\n")
++	if got := recorder.Result().Header.Get(coreexecutor.HiRouteExecutionHeader); got != "v1;2;1;1;1" {
++		t.Fatalf("stream commit trace=%q", got)
++	}
++}
+diff --git a/sdk/cliproxy/auth/conductor_refresh.go b/sdk/cliproxy/auth/conductor_refresh.go
+index 4bf7fd1..18e48c6 100644
+--- a/sdk/cliproxy/auth/conductor_refresh.go
++++ b/sdk/cliproxy/auth/conductor_refresh.go
+@@ -485,12 +485,14 @@ func (m *Manager) tryRefreshAfterUnauthorized(ctx context.Context, auth *Auth, e
+ 	if !isUnauthorizedError(execErr) || !authHasRefreshCredential(auth) {
+ 		return auth, false
+ 	}
++	cliproxyexecutor.HiRouteAuthRecovery(ctx, false)
+ 	log.Debugf("unauthorized response for %s (%s), refreshing credentials before fallback", auth.Provider, auth.ID)
+ 	refreshed, errRefresh := m.refreshAuthForRequest(ctx, auth.ID, authAccessToken(auth))
+ 	if errRefresh != nil || refreshed == nil {
+ 		log.Debugf("credential refresh before fallback failed for %s (%s): %v", auth.Provider, auth.ID, errRefresh)
+ 		return auth, false
+ 	}
++	cliproxyexecutor.HiRouteAuthRecovery(ctx, true)
+ 	return refreshed, true
+ }
+ 
+@@ -537,6 +539,11 @@ func (m *Manager) refreshAuthForRequest(ctx context.Context, id, failedAccessTok
+ 	}
+ 	lock.mu.Lock()
+ 	defer lock.mu.Unlock()
++	// A canceled waiter must not refresh or persist credentials after another
++	// request releases the per-account refresh lock.
++	if errCtx := ctx.Err(); errCtx != nil {
++		return nil, errCtx
++	}
+ 
+ 	m.mu.RLock()
+ 	auth := m.auths[id]
+diff --git a/sdk/cliproxy/auth/hiroute_execution_test.go b/sdk/cliproxy/auth/hiroute_execution_test.go
+new file mode 100644
+index 0000000..4b729b4
+--- /dev/null
++++ b/sdk/cliproxy/auth/hiroute_execution_test.go
+@@ -0,0 +1,118 @@
++package auth
++
++import (
++	"context"
++	"errors"
++	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
++	"net/http"
++	"testing"
++)
++
++func TestHiRouteExecutionRecoveryUsesPinnedAuthAndCannotLoop(t *testing.T) {
++	for _, stream := range []bool{false, true} {
++		for _, mode := range []string{"managed", "borrowed", "invalid_after_refresh"} {
++			t.Run(mode, func(t *testing.T) {
++				m, executor, primary, _, model := newUnauthorizedRefreshFixture(t, false)
++				m.SetRetryConfig(0, 0, 1)
++				if mode == "borrowed" {
++					delete(primary.Metadata, "refresh_token")
++					if _, err := m.Update(context.Background(), primary); err != nil {
++						t.Fatal(err)
++					}
++				}
++				if mode == "invalid_after_refresh" {
++					executor.refreshTokens[primary.ID] = "still-invalid-token"
++					executor.tokenInvalid["still-invalid-token"] = struct{}{}
++				}
++				ctx, trace := coreexecutor.WithHiRouteExecution(context.Background())
++				opts := coreexecutor.Options{Metadata: map[string]any{coreexecutor.PinnedAuthMetadataKey: primary.ID}}
++				var err error
++				if stream {
++					result, errStream := m.ExecuteStream(ctx, []string{"codex"}, coreexecutor.Request{Model: model}, opts)
++					err = errStream
++					if result != nil {
++						for range result.Chunks {
++						}
++					}
++				} else {
++					_, err = m.Execute(ctx, []string{"codex"}, coreexecutor.Request{Model: model}, opts)
++				}
++				if (err == nil) != (mode == "managed") {
++					t.Fatalf("stream=%t mode=%s err=%v", stream, mode, err)
++				}
++				calls := executor.ExecuteCalls()
++				if stream {
++					calls = executor.StreamCalls()
++				}
++				wantCalls, wantRefresh, wantTrace := 2, 1, "v1;0;0;1;1"
++				if mode == "borrowed" {
++					wantCalls, wantRefresh, wantTrace = 1, 0, "v1;0;0;0;0"
++				}
++				if len(calls) != wantCalls || executor.RefreshCalls() != wantRefresh || trace.Header() != wantTrace {
++					t.Fatalf("stream=%t calls=%v refresh=%d trace=%q", stream, calls, executor.RefreshCalls(), trace.Header())
++				}
++				for _, id := range calls {
++					if id != primary.ID {
++						t.Fatalf("cross-account execution %q", id)
++					}
++				}
++				// This fixture has no HTTP transport. Do not invent wire counts.
++			})
++		}
++	}
++}
++
++func TestHiRouteCanceledRefreshWaiterDoesNotRefresh(t *testing.T) {
++	m, executor, primary, _, _ := newUnauthorizedRefreshFixture(t, false)
++	lock := &authRefreshLock{}
++	lock.mu.Lock()
++	m.refreshLocks.Store(primary.ID, lock)
++	ctx, cancel := context.WithCancel(context.Background())
++	done := make(chan error, 1)
++	go func() { _, err := m.refreshAuthForRequest(ctx, primary.ID, "stale-access-token"); done <- err }()
++	cancel()
++	lock.mu.Unlock()
++	if err := <-done; !errors.Is(err, context.Canceled) {
++		t.Fatalf("refresh error=%v", err)
++	}
++	if got := executor.RefreshCalls(); got != 0 {
++		t.Fatalf("canceled refresh calls=%d", got)
++	}
++}
++
++type hiRouteCommittedStreamExecutor struct{ *unauthorizedRefreshExecutor }
++
++func (e *hiRouteCommittedStreamExecutor) ExecuteStream(_ context.Context, auth *Auth, _ coreexecutor.Request, _ coreexecutor.Options) (*coreexecutor.StreamResult, error) {
++	e.mu.Lock()
++	e.streamCalls = append(e.streamCalls, auth.ID)
++	e.mu.Unlock()
++	chunks := make(chan coreexecutor.StreamChunk, 2)
++	chunks <- coreexecutor.StreamChunk{Payload: []byte("data: accepted\n\n")}
++	chunks <- coreexecutor.StreamChunk{Err: &Error{HTTPStatus: http.StatusUnauthorized, Message: "fixture stream failure"}}
++	close(chunks)
++	return &coreexecutor.StreamResult{Headers: http.Header{}, Chunks: chunks}, nil
++}
++
++func TestHiRouteStreamAfterPayloadCannotRefreshOrReplay(t *testing.T) {
++	m, executor, primary, _, model := newUnauthorizedRefreshFixture(t, false)
++	m.SetRetryConfig(0, 0, 1)
++	m.RegisterExecutor(&hiRouteCommittedStreamExecutor{executor})
++	ctx, trace := coreexecutor.WithHiRouteExecution(context.Background())
++	result, err := m.ExecuteStream(ctx, []string{"codex"}, coreexecutor.Request{Model: model},
++		coreexecutor.Options{Metadata: map[string]any{coreexecutor.PinnedAuthMetadataKey: primary.ID}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	payloads, failures := 0, 0
++	for chunk := range result.Chunks {
++		if len(chunk.Payload) != 0 {
++			payloads++
++		}
++		if chunk.Err != nil {
++			failures++
++		}
++	}
++	if payloads != 1 || failures != 1 || len(executor.StreamCalls()) != 1 || executor.RefreshCalls() != 0 || trace.Header() != "v1;0;0;0;0" {
++		t.Fatalf("payloads=%d failures=%d calls=%v refresh=%d trace=%s", payloads, failures, executor.StreamCalls(), executor.RefreshCalls(), trace.Header())
++	}
++}
+diff --git a/sdk/cliproxy/executor/hiroute_execution.go b/sdk/cliproxy/executor/hiroute_execution.go
+new file mode 100644
+index 0000000..f896ccb
+--- /dev/null
++++ b/sdk/cliproxy/executor/hiroute_execution.go
+@@ -0,0 +1,104 @@
++package executor
++
++import (
++	"context"
++	"fmt"
++	"sync"
++)
++
++// HiRouteExecutionHeader is a package-private bridge contract. It contains only
++// bounded counts, never account identifiers, credentials, usage or provider text.
++const HiRouteExecutionHeader = "X-Hiroute-Cpa-Execution"
++
++type hiRouteExecutionKey struct{}
++
++type HiRouteExecution struct {
++	mu                    sync.Mutex
++	inferenceAttempts     uint32
++	unauthorizedResponses uint32
++	authRecoveryAttempts  uint32
++	authRecoverySuccesses uint32
++	overflow              bool
++}
++
++// WithHiRouteExecution owns one downstream HTTP call across auth-manager child
++// contexts. OAuth refresh and account discovery do not use the inference hook.
++func WithHiRouteExecution(ctx context.Context) (context.Context, *HiRouteExecution) {
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	if value, ok := ctx.Value(hiRouteExecutionKey{}).(*HiRouteExecution); ok && value != nil {
++		return ctx, value
++	}
++	trace := &HiRouteExecution{}
++	return trace.Context(ctx), trace
++}
++
++// Context keeps a request's existing trace without replacing the new caller's
++// deadline or cancellation parent when a handler creates another child context.
++func (t *HiRouteExecution) Context(ctx context.Context) context.Context {
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	return context.WithValue(ctx, hiRouteExecutionKey{}, t)
++}
++
++func hiRouteExecutionFrom(ctx context.Context) *HiRouteExecution {
++	if ctx == nil {
++		return nil
++	}
++	trace, _ := ctx.Value(hiRouteExecutionKey{}).(*HiRouteExecution)
++	return trace
++}
++
++func (t *HiRouteExecution) increment(value *uint32) {
++	// The wire contract never allocates per attempt. Exceeding this observation
++	// bound is explicit unknown, not a fabricated/clamped attempt count.
++	if *value >= 32 {
++		t.overflow = true
++		return
++	}
++	*value++
++}
++
++// HiRouteInferenceStarted is called at the actual HTTP RoundTrip boundary,
++// rather than MarkUpstreamAttempt, which can run more than once per wire send.
++func HiRouteInferenceStarted(ctx context.Context) {
++	if trace := hiRouteExecutionFrom(ctx); trace != nil {
++		trace.mu.Lock()
++		defer trace.mu.Unlock()
++		trace.increment(&trace.inferenceAttempts)
++	}
++}
++
++func HiRouteInferenceResponse(ctx context.Context, status int) {
++	if status != 401 {
++		return
++	}
++	if trace := hiRouteExecutionFrom(ctx); trace != nil {
++		trace.mu.Lock()
++		defer trace.mu.Unlock()
++		trace.increment(&trace.unauthorizedResponses)
++	}
++}
++
++func HiRouteAuthRecovery(ctx context.Context, success bool) {
++	if trace := hiRouteExecutionFrom(ctx); trace != nil {
++		trace.mu.Lock()
++		defer trace.mu.Unlock()
++		if success {
++			trace.increment(&trace.authRecoverySuccesses)
++		} else {
++			trace.increment(&trace.authRecoveryAttempts)
++		}
++	}
++}
++
++func (t *HiRouteExecution) Header() string {
++	t.mu.Lock()
++	defer t.mu.Unlock()
++	if t.overflow {
++		return "v1;unknown"
++	}
++	return fmt.Sprintf("v1;%d;%d;%d;%d", t.inferenceAttempts, t.unauthorizedResponses, t.authRecoveryAttempts, t.authRecoverySuccesses)
++}
+diff --git a/sdk/cliproxy/executor/hiroute_execution_test.go b/sdk/cliproxy/executor/hiroute_execution_test.go
+new file mode 100644
+index 0000000..91db81d
+--- /dev/null
++++ b/sdk/cliproxy/executor/hiroute_execution_test.go
+@@ -0,0 +1,16 @@
++package executor
++
++import (
++	"context"
++	"testing"
++)
++
++func TestHiRouteExecutionOverflowIsUnknown(t *testing.T) {
++	ctx, trace := WithHiRouteExecution(context.Background())
++	for i := 0; i < 33; i++ {
++		HiRouteInferenceStarted(ctx)
++	}
++	if trace.Header() != "v1;unknown" {
++		t.Fatalf("overflow trace=%q", trace.Header())
++	}
++}
+diff --git a/sdk/cliproxy/service_codex_discovery_test.go b/sdk/cliproxy/service_codex_discovery_test.go
+new file mode 100644
+index 0000000..4b42cba
+--- /dev/null
++++ b/sdk/cliproxy/service_codex_discovery_test.go
+@@ -0,0 +1,62 @@
++package cliproxy
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++
++	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
++)
++
++type discoveryTransport func(*http.Request) (*http.Response, error)
++
++func (f discoveryTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
++
++func TestCodexDiscoveryRegistration(t *testing.T) {
++	s := &Service{cfg: &config.Config{}}
++	s.cfg.ForceModelPrefix = true
++	a := &coreauth.Auth{ID: "discovery-account", Provider: "codex", Prefix: "subscription", Metadata: map[string]any{"access_token": "test-token", "account_id": "test-account", "hiroute_client_version": "0.999.0"}, Attributes: map[string]string{"excluded_models": "excluded"}}
++	defer GlobalModelRegistry().UnregisterClient(a.ID)
++	status, body := 200, `{"models":[{"slug":"future-model-not-in-bundle","display_name":"Future","context_window":123456,"input_modalities":["text","image"],"supported_reasoning_levels":[{"effort":"max"}]},{"slug":"excluded"}]}`
++	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
++		if r.URL.String() != "https://chatgpt.com/backend-api/codex/models?client_version=0.999.0" || r.Header.Get("Authorization") != "Bearer test-token" || r.Header.Get("ChatGPT-Account-ID") != "test-account" {
++			t.Fatal("wrong discovery request")
++		}
++		if _, ok := r.Context().Deadline(); !ok {
++			t.Fatal("missing deadline")
++		}
++		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
++	}))
++	s.registerModelsForAuth(ctx, a)
++	check := func() {
++		t.Helper()
++		models := GlobalModelRegistry().GetModelsForClient(a.ID)
++		if len(models) != 1 || models[0].ID != "subscription/future-model-not-in-bundle" || models[0].ContextLength != 123456 || models[0].Thinking.Levels[0] != "max" {
++			t.Fatalf("unexpected registered models: %+v", models)
++		}
++	}
++	check()
++	for _, failure := range []struct {
++		status int
++		body   string
++	}{{401, `secret upstream error`}, {200, `{broken`}, {200, `{}`}, {200, `{"models":[{"slug":""}]}`}} {
++		status, body = failure.status, failure.body
++		s.registerModelsForAuth(ctx, a)
++		check()
++	}
++	status, body = 200, `{"models":[]}`
++	s.registerModelsForAuth(ctx, a)
++	if len(GlobalModelRegistry().GetModelsForClient(a.ID)) != 0 {
++		t.Fatal("empty authoritative list did not remove models")
++	}
++	status, body = 200, `{"models":[{"slug":"other-account-model"}]}`
++	a.ID, a.Prefix = "other-account", "other"
++	defer GlobalModelRegistry().UnregisterClient(a.ID)
++	s.registerModelsForAuth(ctx, a)
++	if len(GlobalModelRegistry().GetModelsForClient("discovery-account")) != 0 {
++		t.Fatal("cross-account catalog leakage")
++	}
++}
+diff --git a/sdk/cliproxy/service_models.go b/sdk/cliproxy/service_models.go
+index 1bb4b62..7d18fc8 100644
+--- a/sdk/cliproxy/service_models.go
++++ b/sdk/cliproxy/service_models.go
+@@ -9,8 +9,10 @@ import (
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/modelconfig"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+ 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
++	log "github.com/sirupsen/logrus"
+ )
+ 
+ // registerModelsForAuth (re)binds provider models in the global registry using the core auth ID as client identifier.
+@@ -149,6 +151,22 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+ 		default:
+ 			models = registry.GetCodexProModels()
+ 		}
++		if token, _ := a.Metadata["access_token"].(string); strings.TrimSpace(token) != "" {
++			discovered, err := executor.NewCodexExecutor(s.cfg).DiscoverModels(ctx, a, models)
++			if err != nil {
++				log.Warnf("Codex model discovery failed; retaining registered catalog: %v", err)
++				return
++			}
++			// An auth removed or replaced during the bounded request must not reappear.
++			if s.coreManager != nil {
++				current, ok := s.coreManager.GetByID(a.ID)
++				if !ok || current.Disabled || current.Generation != a.Generation || current.RegistrationEpoch != a.RegistrationEpoch {
++					return
++				}
++			}
++			models = discovered
++			log.Infof("Codex account model discovery completed: %d models", len(models))
++		}
+ 		models = applyExcludedModels(models, excluded)
+ 	case "kimi", "kimi-ai", "kimi.ai", "kimi.com":
+ 		models = registry.GetKimiModels()
+diff --git a/sdk/proxyutil/environment.go b/sdk/proxyutil/environment.go
+new file mode 100644
+index 0000000..46f700b
+--- /dev/null
++++ b/sdk/proxyutil/environment.go
+@@ -0,0 +1,52 @@
++package proxyutil
++
++import (
++	"errors"
++	"net/http"
++	"net/url"
++
++	"golang.org/x/net/http/httpproxy"
++)
++
++// EnvironmentProxyFunc captures the standard HTTP(S)_PROXY/NO_PROXY settings,
++// but rejects a malformed effective proxy instead of silently dialing directly.
++// Uppercase nonempty values win, host[:port] shorthand remains valid, and only
++// the request's scheme is validated. Invalid configuration fails even when a
++// NO_PROXY rule would otherwise bypass it; explicit direct mode does not call us.
++func EnvironmentProxyFunc() func(*http.Request) (*url.URL, error) {
++	cfg := httpproxy.FromEnvironment()
++	httpError := validateEnvironmentProxy(cfg.HTTPProxy)
++	httpsError := validateEnvironmentProxy(cfg.HTTPSProxy)
++	selectProxy := cfg.ProxyFunc()
++	return func(request *http.Request) (*url.URL, error) {
++		if request == nil || request.URL == nil {
++			return nil, errors.New("invalid environment proxy request")
++		}
++		switch request.URL.Scheme {
++		case "http":
++			if httpError != nil {
++				return nil, httpError
++			}
++		case "https":
++			if httpsError != nil {
++				return nil, httpsError
++			}
++		}
++		return selectProxy(request.URL)
++	}
++}
++
++func validateEnvironmentProxy(raw string) error {
++	if raw == "" {
++		return nil
++	}
++	parsed, err := url.Parse(raw)
++	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
++		// Match Go's documented environment-only host[:port] shorthand.
++		parsed, err = url.Parse("http://" + raw)
++	}
++	if err != nil || !ValidRequestProxy(parsed.String()) {
++		return errors.New("invalid environment proxy configuration")
++	}
++	return nil
 +}
