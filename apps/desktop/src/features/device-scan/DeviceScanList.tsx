@@ -5,12 +5,17 @@ import { agentBrandFromId } from '../../ui/BrandIcon';
 
 export type ComputeScanItem = {
   agent_id: string;
-  supported: boolean;
+  connection_ref: string;
+  context_ref: string;
+  display_name: string;
+  protocol: 'responses' | 'messages' | 'chat_completions' | null;
+  declared_model_ids: string[];
+  default_model_id: string | null;
+  target?: { scheme: string; authority: string; port: number; request_path: string } | null;
   native_provider_id?: string;
   configuration_state: string;
   connection_option_id?: string;
-  observed_model_id?: string;
-  inventory_eligible: boolean;
+
   discovery?: {
     discovery_ref: string;
     discovery_revision: string;
@@ -18,13 +23,17 @@ export type ComputeScanItem = {
   actions_required?: string[];
 };
 
-export type ComputeScanResult = { items: ComputeScanItem[] };
+export type ComputeScanResult = {
+  connections: ComputeScanItem[];
+  diagnostics: { agent_id: string; reason: string; native_provider_id?: string; model_id?: string }[];
+};
 
 function agentName(agentId: string, language: 'zh' | 'en') {
   if (agentId.includes('claude')) return 'Claude Code';
   if (agentId.includes('codex')) return 'Codex';
   if (agentId === 'agent_dsh_default') return 'DeepSeek Harness';
   if (agentId === 'agent_pi_default') return 'Pi';
+  if (agentId === 'agent_hermes_default') return 'Hermes';
   if (agentId.includes('qoder')) return 'Qoder';
   return language === 'zh' ? '本机 Agent' : 'Local agent';
 }
@@ -40,8 +49,8 @@ function connectionName(optionId: string | undefined, language: 'zh' | 'en') {
 }
 
 function configurationMessage(item: ComputeScanItem, language: 'zh' | 'en') {
-  const model = item.observed_model_id?.trim();
-  if (item.inventory_eligible) {
+  const model = item.declared_model_ids.join(', ');
+  if (item.discovery) {
     return language === 'zh'
       ? `已识别${model ? ` ${model}` : ''}，可复用现有配置。`
       : model ? `${model} was recognized. The existing configuration can be reused.` : 'The existing configuration can be reused.';
@@ -156,13 +165,15 @@ export function DeviceScanList({
     {subscriptionScanFailed && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{text('暂时无法读取本机订阅。', 'The local subscription could not be read.')}</span></div>}
 
     <h3 className="oc-section-label">{text('Agent 中的模型配置', 'Model configurations in agents')}</h3>
-    {configurations.map(item => <div className="oc-status-row" key={item.discovery?.discovery_ref ?? `${item.agent_id}:${item.native_provider_id ?? item.connection_option_id}:${item.observed_model_id ?? 'unknown'}`}>
+    {configurations.map(item => <div className="oc-status-row" key={item.connection_ref}>
       <BrandIcon kind={agentBrandFromId(item.agent_id)} label={agentName(item.agent_id, language)} />
       <div className="row-main">
-        <strong>{item.native_provider_id ?? connectionName(item.connection_option_id, language)}</strong>
+        <strong>{item.display_name || item.native_provider_id || connectionName(item.connection_option_id, language)}</strong>
         <p>{agentName(item.agent_id, language)} · {configurationMessage(item, language)}</p>
+        {item.protocol && <p className="oc-meta">{item.protocol}{item.target ? ` · ${item.target.authority}${item.target.request_path}` : ''}</p>}
+        {item.default_model_id && <p className="oc-meta">{text('当前默认', 'Current default')} · {item.default_model_id}</p>}
       </div>
-      {item.discovery && item.inventory_eligible
+      {item.discovery
         ? <button className="btn btn-primary" type="button" disabled={!trustedAuthority} onClick={() => onOpenDiscoveredConfiguration(item)}>{text('接入', 'Connect')}</button>
         : <span className="badge warn no-dot">{text('暂不可接入', 'Not connectable')}</span>}
     </div>)}

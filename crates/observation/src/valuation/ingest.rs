@@ -6,7 +6,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub(super) struct RawUsage {
+pub(crate) struct RawUsage {
     pub input: Option<u64>,
     pub output: Option<u64>,
     pub read: Option<u64>,

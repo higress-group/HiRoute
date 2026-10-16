@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::*;
 
 /// The proof belongs to these exact immutable bytes, never to a workspace or an epoch.
-#[derive(Clone, Debug, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize)]
 pub struct PublicationRecordV1 {
     pub workspace_id: WorkspaceId,
     pub publication_revision: GatewayPublicationRevision,

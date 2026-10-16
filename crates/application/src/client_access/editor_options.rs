@@ -66,6 +66,58 @@ pub(super) fn dispatch(
         if payload.published_plan.is_some() && payload.editor.is_some() {
             return Err(ErrorCode::InvalidArguments);
         }
+        let candidates: Vec<PlanCandidateOptionV1> = state
+            .facts
+            .candidates
+            .iter()
+            .map(|fact| PlanCandidateOptionV1 {
+                binding_id: fact.binding.binding_id.clone(),
+                model_configuration_id: fact.model.model_configuration_id.clone(),
+                display_name: fact.model.display_name.clone(),
+                reasoning: fact.reasoning.clone(),
+                billing_class: fact.binding.billing_class,
+                routable: fact.is_routable(),
+                native_ingress_protocols: fact
+                    .protocol_profiles
+                    .iter()
+                    .filter(|p| p.ingress_protocol == p.capability.upstream_protocol)
+                    .map(|p| p.ingress_protocol)
+                    .collect(),
+                ingress_protocols: fact
+                    .protocol_profiles
+                    .iter()
+                    .map(|p| p.ingress_protocol)
+                    .collect(),
+            })
+            .collect();
+        let authoring = payload
+            .authoring
+            .as_ref()
+            .map(|input| {
+                let current = if let Some(plan_id) = &input.plan_id {
+                    let client = ports
+                        .client_access
+                        .as_ref()
+                        .ok_or(ErrorCode::DaemonUnavailable)?;
+                    Some(
+                        client
+                            .plan_catalog()
+                            .map_err(map_control_error)?
+                            .plans
+                            .into_iter()
+                            .find(|plan| &plan.agent_plan_id == plan_id)
+                            .ok_or(ErrorCode::ResourceNotFound)?,
+                    )
+                } else {
+                    None
+                };
+                crate::routing::prepare_authoring(input, current.as_ref(), &candidates)
+            })
+            .transpose()?;
+        let editor = payload
+            .editor
+            .as_ref()
+            .or_else(|| authoring.as_ref().map(|value| &value.editor));
         let (codex_capabilities, claude_capabilities, context_window) = if let Some(reference) =
             &payload.published_plan
         {
@@ -95,39 +147,16 @@ pub(super) fn dispatch(
             )
         } else {
             (
-                codex_capabilities(payload.editor.as_ref(), &state.facts, port.as_ref())?,
-                claude_capabilities(payload.editor.as_ref(), &state.facts, port.as_ref()),
-                context_window_preview(payload.editor.as_ref(), &state.facts),
+                codex_capabilities(editor, &state.facts, port.as_ref())?,
+                claude_capabilities(editor, &state.facts, port.as_ref()),
+                context_window_preview(editor, &state.facts),
             )
         };
-        let candidates = state
-            .facts
-            .candidates
-            .iter()
-            .map(|fact| PlanCandidateOptionV1 {
-                binding_id: fact.binding.binding_id.clone(),
-                model_configuration_id: fact.model.model_configuration_id.clone(),
-                display_name: fact.model.display_name.clone(),
-                reasoning: fact.reasoning.clone(),
-                billing_class: fact.binding.billing_class,
-                routable: fact.is_routable(),
-                native_ingress_protocols: fact
-                    .protocol_profiles
-                    .iter()
-                    .filter(|p| p.ingress_protocol == p.capability.upstream_protocol)
-                    .map(|p| p.ingress_protocol)
-                    .collect(),
-                ingress_protocols: fact
-                    .protocol_profiles
-                    .iter()
-                    .map(|p| p.ingress_protocol)
-                    .collect(),
-            })
-            .collect();
         let unavailable_candidate_count = (payload.include_unavailable
             && state.unavailable_candidates.len() > MAX_RATING_QUERY_ITEMS)
             .then_some(state.unavailable_candidates.len());
         Ok(PlanEditorOptionsV1 {
+            authoring,
             unavailable_candidate_count,
             unavailable_candidates: if payload.include_unavailable {
                 state

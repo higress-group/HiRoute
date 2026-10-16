@@ -803,9 +803,14 @@ fn apply(
     spec: serde_json::Value,
     key: &str,
 ) -> serde_json::Value {
-    let model_changed = spec["model"].get("intent").is_some();
+    let model_changed = matches!(
+        spec["model"]["intent"].as_str(),
+        Some("configure" | "restore")
+    );
     let model_restore = spec["model"]["intent"] == "restore";
-    let restore = model_restore || spec["collaboration"]["intent"] == "restore";
+    let restore = model_restore
+        || spec["collaboration"]["intent"] == "restore"
+        || spec["management_skill"]["intent"] == "restore";
     let preview_operation = if restore {
         "PreviewAgentConnectionRestore"
     } else {
@@ -1086,6 +1091,8 @@ mod facets;
 #[path = "settings_profile_tests.rs"]
 mod settings_profile_tests;
 
+#[path = "settings_entry_hermes_tests.rs"]
+mod hermes;
 #[path = "settings_entry_qoder_tests.rs"]
 mod qoder;
 

@@ -157,7 +157,7 @@ pub struct RunObservationLink {
     pub continued_from_run_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationRequestQuery {
     pub from_ms: i64,
@@ -182,7 +182,7 @@ pub struct ObservationRequestQuery {
     pub only_model_switch: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObservationRoutingContextStateV1 {
     Recorded,
@@ -191,14 +191,14 @@ pub enum ObservationRoutingContextStateV1 {
     Conflicted,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObservationRoutingContextNameStateV1 {
     Recorded,
     Unavailable,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationRoutingContextV1 {
     pub state: ObservationRoutingContextStateV1,
@@ -291,7 +291,7 @@ impl ObservationRoutingContextV1 {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservedRequestSummary {
     pub session_id: String,
     pub request_id: String,
@@ -315,7 +315,7 @@ pub struct ObservedRequestSummary {
     pub turn_final_native_model: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationRequestPage {
     pub requests: Vec<ObservedRequestSummary>,
     pub next_cursor: Option<String>,
@@ -444,7 +444,7 @@ pub struct ObservationValuationAmountV2 {
     pub missing_attempt_count: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObservationMetricCoverageV2 {
     Complete,
@@ -452,7 +452,7 @@ pub enum ObservationMetricCoverageV2 {
     Unknown,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationSearchQueryV2 {
     #[serde(default)]
@@ -472,7 +472,7 @@ pub struct ObservationSearchQueryV2 {
     pub limit: u16,
     pub cursor: Option<String>,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationTextAnchorV2 {
     pub session_id: String,
@@ -483,7 +483,7 @@ pub struct ObservationTextAnchorV2 {
     pub original_text_offset: u64,
     pub match_kind: String,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationSearchPageV2 {
     pub hits: Vec<ObservationTextAnchorV2>,
@@ -493,7 +493,7 @@ pub struct ObservationSearchPageV2 {
 }
 
 /// Live conversation results, distinct from released occurrence pagination.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationSessionSearchPageV1 {
     pub hits: Vec<ObservationTextAnchorV2>,
@@ -501,7 +501,7 @@ pub struct ObservationSessionSearchPageV1 {
     pub index_partial: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationContentQueryV2 {
     #[serde(default)]
@@ -510,7 +510,7 @@ pub struct ObservationContentQueryV2 {
     pub content_id: String,
     pub cursor: Option<String>,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationContentPageV2 {
     pub request_id: LogicalRequestId,
@@ -525,21 +525,21 @@ pub struct ObservationContentPageV2 {
     pub chunks: Vec<ObservationTextChunkV2>,
     pub next_cursor: Option<String>,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationTextChunkV2 {
     pub original_byte_offset: u64,
     pub text: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationFactsQueryV2 {
     pub request_id: LogicalRequestId,
     pub limit: u16,
     pub cursor: Option<String>,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationSafeFactV2 {
     pub event_id: String,
@@ -561,7 +561,7 @@ pub struct ObservationSafeFactV2 {
     pub outcome: Option<String>,
     pub sensitive_fields_deleted: bool,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationFactsPageV2 {
     pub facts: Vec<ObservationSafeFactV2>,
@@ -570,13 +570,15 @@ pub struct ObservationFactsPageV2 {
 }
 
 /// Session-level summaries contain only observations visible to this reader.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationSessionPageV2 {
     pub sessions: Vec<ObservationSessionSummaryV2>,
     pub next_cursor: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ObservationSessionCorrelationKindV1 {
     AgentSupplied,
@@ -587,7 +589,7 @@ pub enum ObservationSessionCorrelationKindV1 {
     Unknown,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationSessionSummaryV2 {
     pub session_id: String,
     pub agent_id: String,

@@ -3,6 +3,7 @@ import type { Agent, AgentModelSelection, ModelStatus } from './types';
 /** Every model selection projects its own explicit Plan references through this boundary. */
 export function agentModelPlanIds(selection: AgentModelSelection | null | undefined): string[] {
   if (!selection) return [];
+  if (selection.mode === 'hermes_default') return [selection.plan_id];
   if ('allowed_plan_ids' in selection) {
     const defaultId = selection.mode === 'codex_default' && selection.default_selection.kind === 'plan'
       ? [selection.default_selection.plan_id] : [];

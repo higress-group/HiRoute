@@ -34,15 +34,18 @@ mod additional_model;
 mod codex_association;
 #[path = "settings_facts/codex_models.rs"]
 mod codex_models;
+mod hermes;
+mod hermes_model;
 mod qoder;
+pub(super) mod skills;
 use codex_association::{
     connector_account_matches, endpoint_matches_target, mark_catalog_structure_proven,
 };
 
 const COLLABORATION_SKILL_EXPLICIT_REVISION: &str = "worker-instance-explicit-v2";
-const COLLABORATION_SKILL_DEFAULT_REVISION: &str = "worker-instance-default-v2";
+const COLLABORATION_SKILL_DEFAULT_REVISION: &str = "worker-instance-default-v3";
 const COLLABORATION_SKILL_EXPLICIT_CONTENT: &str = "---\nname: hiroute-collaboration\ndescription: Delegate through HiRoute only when the user explicitly asks for delegation.\n---\n\n# HiRoute collaboration\n\nUse delegation only when the user explicitly requests it. Before delegating, run `hiroute worker plans` and select a published plan whose stated purpose matches the work; if none matches, say so instead of inventing one.\n\nStart executable work with `hiroute worker exec --plan <ID> --cwd <PATH> ...`. Permission policy defaults to `approve-all`; use a restricted policy only when the user asks for one and the selected harness supports it. For each new exec or continue, choose a unique submission key and put its literal value in `--submission-key` before invoking the CLI; do not generate it dynamically inside the command. Reuse that key only when retrying the identical request. Use a short recognizable `--title` for a new task. Supply exactly one input source and keep the submission key, task ID, and run ID in the conversation. The CLI keeps no local submission receipt. Use the response's next actions to read progress, check status, wait, fetch results, continue, or recover an uncertain submission. If a response is lost, query `hiroute worker status --submission-key <ORIGINAL_KEY> --operation <start|continue>` first. If the key is lost, use `hiroute worker list --title <TITLE>`, follow all pages, and confirm the workspace, time and task details before using an existing task ID. Titles may repeat and disappear after seven days or content deletion. An empty list or unclear match does not prove that submission failed: stop and ask the user instead of automatically submitting again or replacing the key.\n\nDo not delegate coordination, plan discovery, status checks, waits, result summaries, or another delegation. A Worker must not recursively delegate. Never request or expose grants, capabilities, root identities, digests, revisions, credentials, or native session material.\n";
-const COLLABORATION_SKILL_DEFAULT_CONTENT: &str = "---\nname: hiroute-collaboration\ndescription: Delegate suitable executable work through HiRoute by default.\n---\n\n# HiRoute collaboration\n\nDelegate suitable executable work by default. Before delegating, run `hiroute worker plans` and select a published plan whose stated purpose matches the work; if none matches, say so instead of inventing one.\n\nStart executable work with `hiroute worker exec --plan <ID> --cwd <PATH> ...`. Permission policy defaults to `approve-all`; use a restricted policy only when the user asks for one and the selected harness supports it. For each new exec or continue, choose a unique submission key and put its literal value in `--submission-key` before invoking the CLI; do not generate it dynamically inside the command. Reuse that key only when retrying the identical request. Use a short recognizable `--title` for a new task. Supply exactly one input source and keep the submission key, task ID, and run ID in the conversation. The CLI keeps no local submission receipt. Use the response's next actions to read progress, check status, wait, fetch results, continue, or recover an uncertain submission. If a response is lost, query `hiroute worker status --submission-key <ORIGINAL_KEY> --operation <start|continue>` first. If the key is lost, use `hiroute worker list --title <TITLE>`, follow all pages, and confirm the workspace, time and task details before using an existing task ID. Titles may repeat and disappear after seven days or content deletion. An empty list or unclear match does not prove that submission failed: stop and ask the user instead of automatically submitting again or replacing the key.\n\nDo not delegate coordination, plan discovery, status checks, waits, result summaries, or another delegation. A Worker must not recursively delegate. Never request or expose grants, capabilities, root identities, digests, revisions, credentials, or native session material.\n";
+const COLLABORATION_SKILL_DEFAULT_CONTENT: &str = "---\nname: hiroute-collaboration\ndescription: Delegate suitable executable work through HiRoute by default.\n---\n\n# HiRoute collaboration\n\nDelegate suitable executable work by default. Respect answer-only requests: do not start or delegate work when the user asks only for an answer. Before delegating, run `hiroute worker plans` and select a published plan whose stated purpose matches the work; if none matches, say so instead of inventing one.\n\nStart executable work with `hiroute worker exec --plan <ID> --cwd <PATH> ...`. Permission policy defaults to `approve-all`; use a restricted policy only when the user asks for one and the selected harness supports it. For each new exec or continue, choose a unique submission key and put its literal value in `--submission-key` before invoking the CLI; do not generate it dynamically inside the command. Reuse that key only when retrying the identical request. Use a short recognizable `--title` for a new task. Supply exactly one input source and keep the submission key, task ID, and run ID in the conversation. The CLI keeps no local submission receipt. Use the response's next actions to read progress, check status, wait, fetch results, continue, or recover an uncertain submission. If a response is lost, query `hiroute worker status --submission-key <ORIGINAL_KEY> --operation <start|continue>` first. If the key is lost, use `hiroute worker list --title <TITLE>`, follow all pages, and confirm the workspace, time and task details before using an existing task ID. Titles may repeat and disappear after seven days or content deletion. An empty list or unclear match does not prove that submission failed: stop and ask the user instead of automatically submitting again or replacing the key.\n\nDo not delegate coordination, plan discovery, status checks, waits, result summaries, or another delegation. A Worker must not recursively delegate. Never request or expose grants, capabilities, root identities, digests, revisions, credentials, or native session material.\n";
 
 struct CodexRestoreModelFacts {
     ids: Option<Vec<String>>,
@@ -50,93 +53,8 @@ struct CodexRestoreModelFacts {
     catalog: Option<CodexCatalogSummaryV1>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum SettingsAgentClass {
-    Codex,
-    CodexProfile,
-    Claude,
-    Qoder,
-    Pi,
-    Dsh,
-}
-
-impl SettingsAgentClass {
-    pub(super) fn is_codex(self) -> bool {
-        matches!(self, Self::Codex | Self::CodexProfile)
-    }
-
-    pub(super) fn agent_id(self) -> &'static str {
-        match self {
-            Self::Codex | Self::CodexProfile => "agent_codex_default",
-            Self::Claude => "agent_claude_default",
-            Self::Qoder => "agent_qoder_default",
-            Self::Pi => "agent_pi_default",
-            Self::Dsh => "agent_dsh_default",
-        }
-    }
-
-    fn context_segment(self) -> &'static str {
-        match self {
-            Self::Codex | Self::CodexProfile => "codex",
-            Self::Claude => "claude",
-            Self::Qoder => "qoder",
-            Self::Pi => "pi",
-            Self::Dsh => "dsh",
-        }
-    }
-
-    pub(super) fn native_path(self, scanner: &FilesystemAgentScannerV1) -> std::path::PathBuf {
-        match self {
-            Self::Codex => scanner.codex_user_config_target(),
-            Self::CodexProfile => scanner.codex_profile_config_target(),
-            Self::Claude => scanner.claude_user_settings_target(),
-            Self::Qoder => scanner.qoder_user_config_target(),
-            Self::Pi => scanner.pi_user_models_target(),
-            Self::Dsh => scanner.dsh_user_models_target(),
-        }
-    }
-
-    pub(super) fn skill_root_ref(self) -> &'static str {
-        match self {
-            Self::Codex | Self::CodexProfile => "skill-root/agent_codex_default",
-            Self::Claude => "skill-root/agent_claude_default",
-            Self::Qoder => "skill-root/agent_qoder_default",
-            Self::Pi => "skill-root/agent_pi_default",
-            Self::Dsh => "skill-root/agent_dsh_default",
-        }
-    }
-
-    pub(super) fn skill_target(self) -> Result<String, hiroute_domain::OperationValidationError> {
-        let (profile_id, integration_profile_ref) = match self {
-            Self::Codex | Self::CodexProfile => (
-                hiroute_integrations::CODEX_PROFILE_ID_V1,
-                hiroute_integrations::CODEX_INTEGRATION_PROFILE_REF_V1,
-            ),
-            Self::Claude => (
-                hiroute_integrations::CLAUDE_PROFILE_ID_V1,
-                hiroute_integrations::CLAUDE_INTEGRATION_PROFILE_REF_V1,
-            ),
-            Self::Pi => (
-                hiroute_integrations::PI_PROFILE_ID_V1,
-                hiroute_integrations::PI_INTEGRATION_PROFILE_REF_V1,
-            ),
-            Self::Dsh => (
-                hiroute_integrations::DSH_PROFILE_ID_V1,
-                hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,
-            ),
-            Self::Qoder => (
-                hiroute_integrations::QODER_PROFILE_ID_V1,
-                hiroute_integrations::QODER_INTEGRATION_PROFILE_REF_V1,
-            ),
-        };
-        let subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
-            self.agent_id(),
-            profile_id,
-            integration_profile_ref,
-        )?;
-        AgentConnectionEffectRoleV1::RoutingSkill.target_for(&subject)
-    }
-}
+mod class;
+pub(super) use class::SettingsAgentClass;
 
 impl LocalControlAdapter {
     pub(super) fn settings_context_for_agent(&self, agent_id: &str) -> Option<String> {
@@ -152,6 +70,17 @@ impl LocalControlAdapter {
     }
 
     pub(super) fn settings_agent_for_context(&self, context: &str) -> Option<SettingsAgentClass> {
+        if context
+            .strip_prefix("agent-context/hermes/sha256:")
+            .is_some_and(|id| {
+                id.len() == 64
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
+        {
+            return Some(SettingsAgentClass::Hermes);
+        }
         [
             SettingsAgentClass::Codex,
             SettingsAgentClass::CodexProfile,
@@ -165,7 +94,9 @@ impl LocalControlAdapter {
     }
 
     pub(super) fn settings_context(&self, class: SettingsAgentClass) -> String {
-        let path = class.native_path(&self.scanner);
+        let Some(path) = class.native_path(&self.scanner) else {
+            return String::new();
+        };
         let digest = CanonicalDigest::of_bytes(path.as_os_str().as_encoded_bytes());
         format!(
             "agent-context/{}/{}",
@@ -182,8 +113,8 @@ impl LocalControlAdapter {
             .settings_agent_for_context(&spec.context_id)
             .ok_or(ControlReadError::NotFound)?;
         self.check_codex_slot(spec, class)?;
-        let first = self.settings_snapshot(spec, class)?;
-        let second = self.settings_snapshot(spec, class)?;
+        let first = self.complete_settings_snapshot(spec, class)?;
+        let second = self.complete_settings_snapshot(spec, class)?;
         if first.facts.dependency_digest != second.facts.dependency_digest {
             return Err(ControlReadError::SnapshotChanged);
         }
@@ -233,18 +164,19 @@ impl LocalControlAdapter {
         } else {
             None
         };
+        // Both Skill facets consume the same explicitly observed native loading capability.
+        // Model-only edits remain independent from that optional check.
+        let configure_skill = matches!(spec.collaboration, AgentFacetIntent::Configure { .. })
+            || matches!(
+                spec.management_skill,
+                Some(AgentFacetIntent::Configure { .. })
+            );
         let discovery = if class == SettingsAgentClass::Claude {
-            self.scanner.claude_settings_discovery(matches!(
-                &spec.collaboration,
-                AgentFacetIntent::Configure { .. }
-            ))
+            self.scanner.claude_settings_discovery(configure_skill)
         } else if class == SettingsAgentClass::CodexProfile {
             self.scanner.codex_profile_settings_discovery()
         } else {
-            self.scanner.codex_settings_discovery(matches!(
-                &spec.collaboration,
-                AgentFacetIntent::Configure { .. }
-            ))
+            self.scanner.codex_settings_discovery(configure_skill)
         };
         let mut installation = match &owned_claude {
             Some((installation, _)) => installation.clone(),
@@ -259,7 +191,7 @@ impl LocalControlAdapter {
         };
         #[cfg(unix)]
         if class == SettingsAgentClass::Claude
-            && matches!(&spec.collaboration, AgentFacetIntent::Configure { .. })
+            && configure_skill
             && let Some((_, executable)) = &owned_claude
         {
             self.scanner.attach_claude_collaboration_evidence(
@@ -327,26 +259,28 @@ impl LocalControlAdapter {
         let skill_target = class
             .skill_target()
             .map_err(|_| ControlReadError::Corrupt)?;
-        let skill_before_fingerprint = self
-            .artifacts
-            .current_external_fingerprint(&skill_target)
-            .map_err(super::map_port)?;
-        let skill_bytes = self
-            .artifacts
-            .read_native_target(&skill_target)
-            .map_err(super::map_port)?;
-        let observed_skill_file = skill_bytes
-            .as_deref()
-            .map(|bytes| CanonicalDigest::of_bytes(bytes.as_slice()));
-        if skill_before_fingerprint
-            != self
-                .artifacts
-                .current_external_fingerprint(&skill_target)
-                .map_err(super::map_port)?
-        {
-            return Err(ControlReadError::SnapshotChanged);
-        }
-        drop(skill_bytes);
+        let (skill_before_fingerprint, observed_skill_file) =
+            if matches!(spec.collaboration, AgentFacetIntent::Keep) {
+                (None, None)
+            } else {
+                let fingerprint = self
+                    .artifacts
+                    .current_external_fingerprint(&skill_target)
+                    .map_err(super::map_port)?;
+                let bytes = self
+                    .artifacts
+                    .read_native_target(&skill_target)
+                    .map_err(super::map_port)?;
+                if fingerprint
+                    != self
+                        .artifacts
+                        .current_external_fingerprint(&skill_target)
+                        .map_err(super::map_port)?
+                {
+                    return Err(ControlReadError::SnapshotChanged);
+                }
+                (fingerprint, bytes.map(|b| CanonicalDigest::of_bytes(&b)))
+            };
 
         let runtime = self
             .managed_agent_runtime
@@ -408,7 +342,10 @@ impl LocalControlAdapter {
                 SettingsAgentClass::Claude
             }
             SettingsAgentClass::Claude => SettingsAgentClass::Codex,
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
+            SettingsAgentClass::Qoder
+            | SettingsAgentClass::Pi
+            | SettingsAgentClass::Dsh
+            | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
             }
         };
@@ -476,7 +413,7 @@ impl LocalControlAdapter {
                 selected_collaboration_restore = Some(original.operation_id.clone());
             }
             let model = match class {
-                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => return Err(ControlReadError::Denied),
+                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh | SettingsAgentClass::Hermes => return Err(ControlReadError::Denied),
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => original
                     .plan
                     .external()
@@ -543,9 +480,19 @@ impl LocalControlAdapter {
         }
         if let Some(operation) = selected_collaboration_restore {
             restore_points.insert(
-                codex_model_restore_point_ref(&operation),
+                skills::skill_restore_ref(
+                    &spec.context_id,
+                    AgentSettingsFacet::Collaboration,
+                    &operation,
+                ),
                 AgentSettingsFacet::Collaboration,
             );
+            if matches!(spec.model, AgentFacetIntent::Keep) {
+                restore_points.insert(
+                    codex_model_restore_point_ref(&operation),
+                    AgentSettingsFacet::Collaboration,
+                );
+            }
         }
         drop(stores);
         let (restore_native_model_ids, restored_native_model) = if class
@@ -612,7 +559,10 @@ impl LocalControlAdapter {
             None
         };
         let native_default_model = match class {
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
+            SettingsAgentClass::Qoder
+            | SettingsAgentClass::Pi
+            | SettingsAgentClass::Dsh
+            | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
             }
             SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => codex_catalog_summary
@@ -902,7 +852,10 @@ impl LocalControlAdapter {
             ))
             .map_err(|_| ControlReadError::Corrupt)?;
         let model_target = match class {
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
+            SettingsAgentClass::Qoder
+            | SettingsAgentClass::Pi
+            | SettingsAgentClass::Dsh
+            | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
             }
             SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => {
@@ -925,6 +878,7 @@ impl LocalControlAdapter {
             }
         };
         Ok(AgentSettingsPlanningInput {
+            additional_skill_file: None,
             collaboration_state,
             expected_revisions,
             subject,
@@ -947,6 +901,9 @@ impl LocalControlAdapter {
                 template,
             },
             facts: AgentSettingsFacts {
+                reference_only_skill_restores: BTreeSet::new(),
+                management_file_conflict: false,
+                native_target: None,
                 context_id: spec.context_id.clone(),
                 dependency_digest,
                 capabilities,

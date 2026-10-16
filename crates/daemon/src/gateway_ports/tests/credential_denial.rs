@@ -24,6 +24,7 @@ async fn exact_native_lease_keeps_source_and_key_denials_distinct_from_authority
         let result = resolver
             .lease_exact(
                 CredentialLeaseRequest {
+                    execution_binding_id: "binding/claude",
                     stable_binding_id: "binding/claude",
                     credential_ref: "credential/claude",
                     credential_destination_ref: "connection-option/claude.custom.v1",

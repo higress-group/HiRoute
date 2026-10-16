@@ -12,10 +12,12 @@ hiroute-client-core = { path = "../client-core" }
 hiroute-host-runtime = { path = "../host-runtime" }
 tokio = { workspace = true, features = ["signal", "time"] }
 hiroute-application-api = { path = "../application-api" }
-nix = { workspace = true, features = ["signal", "user"] }
+nix = { workspace = true, features = ["signal", "user", "term"] }
 serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
+serde_path_to_error = "0.1.20"
+tempfile.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 hiroute-diagnostics = { path = "../diagnostics" }
@@ -26,7 +28,6 @@ hiroute-application = { path = "../application" }
 hiroute-daemon = { path = "../daemon" }
 hiroute-domain = { path = "../domain" }
 hiroute-local-storage = { path = "../local-storage" }
-tempfile.workspace = true
 
 [target.'cfg(windows)'.dev-dependencies]
 hiroute-platform-test-support = { path = "../platform/test-support" }

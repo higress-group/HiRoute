@@ -103,6 +103,7 @@ async fn gateway_ports_native_credential_is_request_scoped_and_capability_only()
     let lease = resolver
         .lease_exact(
             CredentialLeaseRequest {
+                execution_binding_id: "binding/claude",
                 stable_binding_id: "binding/claude",
                 credential_ref: "credential/claude",
                 credential_destination_ref: "connection-option/claude.custom.v1",
@@ -140,6 +141,7 @@ async fn gateway_ports_native_credential_is_request_scoped_and_capability_only()
     let header_lease = resolver
         .lease_exact(
             CredentialLeaseRequest {
+                execution_binding_id: "binding/claude",
                 stable_binding_id: "binding/claude",
                 credential_ref: "credential/claude",
                 credential_destination_ref: "connection-option/claude.custom.v1",
@@ -174,6 +176,7 @@ async fn gateway_ports_native_credential_is_request_scoped_and_capability_only()
     let no_auth_resolution = resolver
         .lease_exact(
             CredentialLeaseRequest {
+                execution_binding_id: "binding/claude",
                 stable_binding_id: "binding/claude",
                 credential_ref: "credential/none/source-local",
                 credential_destination_ref: "compute-target/source-local",
@@ -201,6 +204,7 @@ async fn gateway_ports_native_credential_is_request_scoped_and_capability_only()
     let rewritten_model = resolver
         .lease_exact(
             CredentialLeaseRequest {
+                execution_binding_id: "binding/claude",
                 stable_binding_id: "binding/claude",
                 credential_ref: "credential/claude",
                 credential_destination_ref: "connection-option/claude.custom.v1",
@@ -270,6 +274,7 @@ async fn gateway_ports_cpa_forwards_dual_models_numeric_target_and_epochs_once()
     let result = resolver
         .lease_exact(
             CredentialLeaseRequest {
+                execution_binding_id: "binding/codex",
                 stable_binding_id: "binding/codex",
                 credential_ref: "credential/cpa/account-a",
                 credential_destination_ref: "connection-option/cpa.codex.v1",
@@ -314,6 +319,7 @@ async fn gateway_ports_cpa_forwards_dual_models_numeric_target_and_epochs_once()
     let stale_epoch = resolver
         .lease_exact(
             CredentialLeaseRequest {
+                execution_binding_id: "binding/codex",
                 stable_binding_id: "binding/codex",
                 credential_ref: "credential/cpa/account-a",
                 credential_destination_ref: "connection-option/cpa.codex.v1",

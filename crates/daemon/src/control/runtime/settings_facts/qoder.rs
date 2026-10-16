@@ -158,6 +158,7 @@ impl LocalControlAdapter {
             ))
             .map_err(|_| ControlReadError::Corrupt)?;
         Ok(AgentSettingsPlanningInput {
+            additional_skill_file: None,
             collaboration_state,
             expected_revisions,
             subject,
@@ -171,6 +172,9 @@ impl LocalControlAdapter {
                 template,
             },
             facts: AgentSettingsFacts {
+                reference_only_skill_restores: BTreeSet::new(),
+                management_file_conflict: false,
+                native_target: None,
                 context_id: spec.context_id.clone(),
                 dependency_digest,
                 capabilities,

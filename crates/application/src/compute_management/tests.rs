@@ -891,6 +891,44 @@ fn imported_native_model_keeps_observed_capabilities_when_compiled_for_routing()
     );
 }
 
+#[test]
+fn native_point_catalog_facts_keep_source_local_eligibility_and_explicit_membership() {
+    use hiroute_domain::{
+        ComputeManagementFactBasisV2 as Basis, ComputeManagementMembershipV2 as Membership,
+    };
+    let mut source = complete_management_source();
+    let model = &mut source.models[0];
+    model.membership = Membership::Observed;
+    model.catalog_configuration_id = Some("model/qualified-native-point".into());
+    model.capabilities.tool.basis = Basis::RegisteredCatalog;
+    model.capabilities.vision.basis = Basis::RegisteredCatalog;
+    model.capabilities.streaming.basis = Basis::RegisteredCatalog;
+    model.capabilities.context_tokens.basis = Basis::Observed;
+    model.capabilities.max_output_tokens.basis = Basis::RegisteredCatalog;
+    model.capabilities.native_reasoning.basis = Basis::RegisteredCatalog;
+    let facts = compile_compute_management_source(&source).unwrap();
+    assert_eq!(
+        facts[0].eligibility,
+        ComputeManagementEligibilityV2::NativeObserved
+    );
+    assert_eq!(facts[0].capabilities, source.models[0].capabilities);
+    source.models[0].membership = Membership::Catalog;
+    assert!(
+        compile_compute_management_source(&source).is_err(),
+        "Catalog membership cannot relabel an observed capability"
+    );
+    source.models[0].capabilities.context_tokens.basis = Basis::RegisteredCatalog;
+    assert_eq!(
+        compile_compute_management_source(&source).unwrap()[0].eligibility,
+        ComputeManagementEligibilityV2::NativeObserved
+    );
+    source.models[0].membership = Membership::UserDeclared;
+    assert!(
+        compile_compute_management_source(&source).is_err(),
+        "User declarations cannot claim catalog authority"
+    );
+}
+
 struct OneSourceRepository(hiroute_domain::ComputeManagementSourceV2);
 
 impl hiroute_domain::ComputeManagementRepositoryPort for OneSourceRepository {

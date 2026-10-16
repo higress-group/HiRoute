@@ -36,7 +36,7 @@ baseManagement.sources[0].models = [baseManagement.sources[0].models[0]];
 baseManagement.sources[0].models[0].presentation = { billing_class: 'unknown', availability: 'unknown', reason_code: 'facts_unavailable', evaluated_at_ms: 1, price_contexts: [] };
 baseManagement.runtime_state = 'partial';
 const discovery = { discovery_ref: `discovery/${'a'.repeat(64)}`, discovery_revision: '1' };
-const discovered = { agent_id: 'agent_claude_default', supported: false, configuration_state: 'configured', connection_option_id: 'zhipu.coding-plan.cn.v1', observed_model_id: 'GLM-5.3', inventory_eligible: true, discovery };
+const discovered = { connection_ref: 'connection-point/component', context_ref: 'native-scope/component', agent_id: 'agent_claude_default', display_name: '智谱 Coding Plan', configuration_state: 'configured', connection_option_id: 'zhipu.coding-plan.cn.v1', protocol: 'messages', declared_model_ids: ['GLM-5.3'], default_model_id: 'GLM-5.3', discovery };
 const prepared = { ...checked, candidate: { candidate_ref: 'candidate/discovered/component', candidate_revision: 1 }, producer: 'native', provenance: 'registered', validation: undefined, display_name: 'Discovered component', models: [checked.models[0]] };
 const saveOperation = { operation_id: 'operation/component-save', state: 'succeeded', sequence: 4, cancellable: false };
 
@@ -63,7 +63,7 @@ mockIPC(async (command, payload) => {
   switch (command) {
     case 'compute_management_snapshot': return structuredClone(control.management);
     case 'compute_subscriptions': return { discovery_state: 'complete', candidates: structuredClone(control.subscriptions) };
-    case 'compute_scan': return { items: [discovered] };
+    case 'compute_scan': return { connections: [discovered], diagnostics: [] };
     case 'recover_subscription_check': return control.result;
     case 'check_subscription':
       control.subscriptions = [structuredClone(checked)];

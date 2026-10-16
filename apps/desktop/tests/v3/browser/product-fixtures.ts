@@ -5,7 +5,7 @@ import type { AgentTaskRead } from '../../../src/features/AgentTasks';
 import type { ManagementSnapshot } from '../../../src/features/models/types';
 import type { ComputeCandidateView } from '../../../src/features/model-connections/types';
 import type { SubscriptionCandidate, SubscriptionCheckResult } from '../../../src/features/subscriptions/types';
-import type { Draft, Plan } from '../../../src/plan-editor';
+import type { AuthoringOptions, Draft, Editor, Plan } from '../../../src/plan-editor';
 import type { DesktopSnapshot } from '../../../src/product/home-projections';
 import { fixture as legacyHomeFixture } from '../../mvp16/browser/fixtures';
 import connectionRegistry from '../../../../../assets/release-facts/current/bundle/connector-registry.json';
@@ -269,6 +269,32 @@ export const codeImplementationPlan: Plan = {
   execution: 'published',
 };
 
+// API fixture: production defaults and reopening are owned by routing options.
+export function fixturePlanAuthoring(plan?: Plan): AuthoringOptions {
+  const editor: Editor = {
+    schema: 'hiroute.plan-editor/v2', display_name: '', purpose: '', mode: 'fixed_model', candidates: [],
+    smart: { economy: [], primary: [], judgment: structuredClone(defaultJudgment), reselect_on_user_message: true,
+      classifier: { kind: 'decision_service', service: { id: '', revision: 0, name: '', connection: { kind: 'custom', endpoint: '', timeout_ms: 10000, auth_header: null } } }, complex_keywords: [] },
+    free: { candidates: [], primary: [], primary_fallback: false }, delegation_enabled: false, requirements: {},
+    limits: { maximum_attempts: 6, request_timeout_ms: 3600000, attempt_timeout_ms: 30000 },
+  };
+  if (plan) {
+    const { strategy, ...desired } = structuredClone(plan.desired);
+    Object.assign(editor, desired, { custom_alias: plan.model_alias });
+    if (desired.mode === 'smart_saving') Object.assign(editor.smart, strategy);
+    else if (desired.mode === 'free_first') Object.assign(editor.free, strategy);
+    else if (desired.mode === 'custom_branches') editor.branch_routing = strategy.routing;
+    else editor.candidates = strategy.candidates ?? [];
+  }
+  return { editor, plan_id: plan?.agent_plan_id ?? null, expected_head_revision: plan?.head.head_revision ?? null,
+    required_choices: [], candidate_defaults: readyManagement.sources.flatMap(source => source.models.map(model => ({
+      binding_id: model.binding_id,
+      economy: (model.native_reasoning as { kind?: string } | undefined)?.kind === 'discrete' ? { kind: 'profile' as const, profile: 'low' } : null,
+      primary: (model.native_reasoning as { kind?: string } | undefined)?.kind === 'discrete' ? { kind: 'profile' as const, profile: 'high' } : null,
+    }))),
+  };
+}
+
 export const savedDraft: Draft = {
   draft_id: 'draft/daily-review',
   plan_id: dailyPlan.agent_plan_id,
@@ -491,13 +517,13 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     ...localSubscriptionCandidate,
     ...(fresh ? {} : { existing_source_id: 'source/codex/subscription' }),
   }] };
-  if (command === 'compute_scan') return { items: fresh ? [] : [{
+  if (command === 'compute_scan') return { diagnostics: [], connections: fresh ? [] : [{
     agent_id: 'agent_claude_default',
     supported: false,
     configuration_state: 'registered_with_protected_input',
     connection_option_id: 'zhipu.coding-plan.cn.v1',
-    observed_model_id: 'glm-5.3',
-    inventory_eligible: true,
+    connection_ref: 'connection-point/claude-component', context_ref: 'native-scope/claude-component',
+    display_name: '智谱 Coding Plan', protocol: 'messages', declared_model_ids: ['glm-5.3'], default_model_id: 'glm-5.3',
     discovery: {
       discovery_ref: `discovery/${'a'.repeat(64)}`,
       discovery_revision: '8091638379121373450',
@@ -605,6 +631,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     },
   };
   if (command === 'plan_editor_options') return {
+    ...(payload?.input?.authoring ? { authoring: fixturePlanAuthoring(readyDesktop.catalog.plans.find(plan => plan.agent_plan_id === payload.input.authoring.plan_id)) } : {}),
     context_window: fresh || !payload?.input?.editor ? null : { maximum_tokens: 64000, default_tokens: 64000 },
     suggested_alias: 'hiroute-daily-coding',
     candidates: fresh ? [] : readyManagement.sources.flatMap(source => source.models.map(model => ({ binding_id: model.binding_id, model_configuration_id: model.catalog_configuration_id ?? model.upstream_model_id, display_name: model.display_name, reasoning: model.native_reasoning ?? { kind: 'fixed', profile: 'provider-default' }, billing_class: model.presentation?.billing_class ?? 'unknown', routable: source.state === 'ready', ingress_protocols: ['responses', 'messages'] }))),

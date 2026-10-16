@@ -5,7 +5,7 @@ use hiroute_domain::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PriceTargetLocatorV1 {
     Binding {
@@ -16,7 +16,7 @@ pub enum PriceTargetLocatorV1 {
         model_identity: PriceModelIdentityV1,
     },
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PreviewPriceOverrideChangeV2 {
     pub target_locator: PriceTargetLocatorV1,
@@ -27,7 +27,7 @@ pub struct PreviewPriceOverrideChangeV2 {
     pub expected_binding_revision: Option<u64>,
     pub expected_override_revision: u64,
 }
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceOverridePreviewV2 {
     pub normalized_target: PriceTargetV1,
@@ -38,7 +38,7 @@ pub struct PriceOverridePreviewV2 {
     pub change_digest: CanonicalDigest,
     pub expected_revisions: RevisionSetV1,
 }
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PriceRateFieldV1 {
     InputUncached,
@@ -46,7 +46,7 @@ pub enum PriceRateFieldV1 {
     CacheRead,
     CacheWrite,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PriceFieldChangeV1 {
     Rate {
@@ -63,7 +63,7 @@ pub enum PriceFieldChangeV1 {
         after: SourcePriceSettingV1,
     },
 }
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApplyPriceOverrideChangeV2 {
     pub spec: ChangeSpecV1,
@@ -71,7 +71,7 @@ pub struct ApplyPriceOverrideChangeV2 {
     pub expected_revisions: RevisionSetV1,
     pub idempotency_key: String,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectivePriceTargetQueryV2 {
     pub query_id: String,
@@ -79,23 +79,23 @@ pub struct EffectivePriceTargetQueryV2 {
     pub currency: String,
     pub valuation_kind: PriceValuationKindV1,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetEffectivePricesV2 {
     pub targets: Vec<EffectivePriceTargetQueryV2>,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectivePriceResultItemV2 {
     pub query_id: String,
     pub quote: FrozenPriceQuoteV1,
-    /// Exact optimistic-concurrency inputs for an API price edit. Subscription-backed
-    /// targets deliberately return `None` because this release does not permit editing them.
+    /// Exact optimistic-concurrency inputs for a source-specific price edit. Ordinary
+    /// subscription usage prices are not editable; explicit API-equivalent reference prices are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edit_context: Option<PriceEditContextV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceEditContextV1 {
     pub target_locator: PriceTargetLocatorV1,
@@ -104,7 +104,7 @@ pub struct PriceEditContextV1 {
     /// Zero is the server-observed absence of an override, not a client default.
     pub expected_override_revision: u64,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectivePricesResultV2 {
     pub pending_activation: bool,
@@ -113,7 +113,7 @@ pub struct EffectivePricesResultV2 {
     pub items: Vec<EffectivePriceResultItemV2>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceApplyOperationV2 {
     pub operation_id: String,

@@ -61,7 +61,9 @@ pub use subscription_check::{
 
 pub const OPERATION_SCHEMA_VERSION: u16 = 2;
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(transparent)]
 pub struct OperationId(String);
 
@@ -102,7 +104,7 @@ impl fmt::Display for OperationId {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct IdempotencyScopeV1 {
     pub principal: String,
     pub operation_kind: String,
@@ -127,7 +129,9 @@ impl IdempotencyScopeV1 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationState {
     Accepted,
@@ -192,7 +196,9 @@ impl OperationState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationStepKind {
     Prepare,
@@ -225,7 +231,7 @@ impl OperationStepKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationStepStatus {
     Pending,
@@ -236,7 +242,9 @@ pub enum OperationStepStatus {
     Attention,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum OwnedEffectKind {
     Control,
@@ -250,7 +258,7 @@ pub enum OwnedEffectKind {
     LoginItem,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct OwnedEffectV1 {
     pub effect_id: String,
     pub kind: OwnedEffectKind,
@@ -261,10 +269,11 @@ pub struct OwnedEffectV1 {
     pub after_fingerprint: Option<CanonicalDigest>,
     /// Bounded, non-secret adapter metadata. Secret ciphertext and source locators are forbidden.
     #[serde(default, with = "shared_input")]
+    #[schemars(with = "Value")]
     pub compensation: Arc<Value>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct OperationStepV1 {
     pub sequence: u16,
     pub kind: OperationStepKind,
@@ -277,7 +286,7 @@ pub struct OperationStepV1 {
     pub terminal_result: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SecretMutationKind {
     Upsert,
@@ -285,14 +294,16 @@ pub enum SecretMutationKind {
     Rebind,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SecretFingerprintAlgorithm {
     #[default]
     HmacSha256V1,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CredentialRefV1 {
     credential_id: String,
@@ -391,7 +402,7 @@ impl VerifiedSecretSubjectV1 {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct SecretMutationV1 {
     kind: SecretMutationKind,
     credential: CredentialRefV1,
@@ -507,7 +518,7 @@ impl SecretMutationV1 {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, PartialEq, Serialize)]
 pub struct RuntimeMutationV1 {
     key: String,
     value: Value,
@@ -544,7 +555,7 @@ impl RuntimeMutationV1 {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize)]
 pub struct ExternalEffectIntentV1 {
     effect_id: String,
     kind: OwnedEffectKind,
@@ -711,7 +722,7 @@ impl ExternalEffectIntentV1 {
 
 /// One complete daemon-local installation tuple selected for a Worker harness. Paths are
 /// metadata inputs, not executable identities or ambient authority.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkerDependencySelectionRecordV1 {
     pub harness: crate::delegation::WorkerHarnessV1,
@@ -752,7 +763,7 @@ impl WorkerDependencySelectionRecordV1 {
 }
 
 /// Compare-and-select input owned by the protected Worker dependency management operation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkerDependencySelectionChangeV1 {
     pub before_revision: u64,
@@ -778,7 +789,7 @@ impl WorkerDependencySelectionChangeV1 {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, PartialEq, Serialize)]
 pub struct TransactionPlanV1 {
     spec: ChangeSpecV1,
     control: Value,
@@ -1335,7 +1346,7 @@ impl VerifiedApplyAuthorizationV1 {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize)]
 pub struct OperationV1 {
     #[serde(skip)]
     journal_checkpoint: Option<Arc<journal::JournalCheckpoint>>,
@@ -1347,6 +1358,7 @@ pub struct OperationV1 {
     pub accepted_digest: CanonicalDigest,
     pub expected_revisions: RevisionSetV1,
     #[serde(serialize_with = "stored::serialize_plan")]
+    #[schemars(with = "StoredOperationInputV1")]
     pub plan: Arc<TransactionPlanV1>,
     pub state: OperationState,
     pub generation: u64,

@@ -3,7 +3,7 @@ use super::*;
 use crate::CHANGE_SPEC_SCHEMA_V1;
 use crate::DecisionServiceV1;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionServiceChangeV1 {
     pub id: String,

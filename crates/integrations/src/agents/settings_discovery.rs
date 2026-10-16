@@ -2,6 +2,51 @@
 use super::*;
 
 impl FilesystemAgentScannerV1 {
+    /// Skill-only saves do not parse the unrelated model document. Capability evidence is
+    /// still supplied by the same native resource checks used by collaboration.
+    pub fn skill_settings_installation(
+        &self,
+        agent_id: &str,
+    ) -> Option<hiroute_domain::SupportedAgentInstallationV1> {
+        let (kind, selected, config) = match agent_id {
+            "agent_codex_default" => (
+                AgentKindV1::Codex,
+                &self.layout.codex_executable,
+                &self.layout.codex_user_config,
+            ),
+            "agent_claude_default" => (
+                AgentKindV1::ClaudeCode,
+                &self.layout.claude_executable,
+                &self.layout.claude_user_settings,
+            ),
+            _ => return None,
+        };
+        let executable = super::super::executable::resolve(selected).ok().flatten()?;
+        let AgentDiscoveryOutcomeV1::Supported { mut installation } =
+            resolve_agent_observation(base_observation(agent_id, kind, "not-probed".into()))
+        else {
+            return None;
+        };
+        super::super::observed_capabilities::attach_file_capabilities(
+            &mut installation,
+            &executable,
+            config,
+        );
+        #[cfg(unix)]
+        if kind == AgentKindV1::Codex {
+            if let Ok(cache) = self.codex_ingress.lock()
+                && let Some(evidence) = cache.as_ref()
+            {
+                evidence.attach_collaboration(&mut installation);
+            }
+        } else if let Ok(cache) = self.claude_ingress.lock()
+            && let Some(evidence) = cache.as_ref()
+        {
+            evidence.attach_collaboration(&executable, &mut installation);
+        }
+        Some(*installation)
+    }
+
     pub fn codex_profile_settings_discovery(&self) -> FilesystemAgentDiscoveryV1 {
         // The profile owns its file capabilities; inherited root is independently sealed for
         // configure, and must not make a safe revoke depend on the current root's validity.

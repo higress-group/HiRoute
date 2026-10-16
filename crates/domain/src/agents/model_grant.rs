@@ -8,7 +8,7 @@ use crate::{
     ModelAlias, UpstreamProtocol, valid_client_model_name,
 };
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentModelRouteV2 {
     Plan {
@@ -20,11 +20,14 @@ pub enum AgentModelRouteV2 {
     Fixed {
         candidate: CandidateSelectionV1,
         #[serde(with = "crate::binding_codec")]
+        #[schemars(with = "crate::StoredCandidateV1")]
         binding: Box<AttemptOwnedCandidateV1>,
     },
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModelRequestRouteV2 {
     Plan {
@@ -58,9 +61,18 @@ impl ModelRequestRouteV2 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Sealed native consumer classification. Headers and User-Agent never produce this authority.
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentModelConsumerV1 {
+    Hermes,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentModelGrantV2 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumer: Option<AgentModelConsumerV1>,
     pub protocol: AgentIngressProtocolV1,
     pub routes: BTreeMap<String, AgentModelRouteV2>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -76,19 +88,21 @@ impl AgentModelGrantV2 {
         fixed_bindings: &BTreeMap<String, AttemptOwnedCandidateV1>,
     ) -> Result<Self, AgentConnectionError> {
         selection.validate()?;
-        if !matches!(
-            (selection, protocol),
-            (
-                AgentModelSelectionV2::CodexDefault { .. }
-                    | AgentModelSelectionV2::QoderAdditional { .. }
-                    | AgentModelSelectionV2::PiAdditional { .. }
-                    | AgentModelSelectionV2::DshAdditional { .. },
-                AgentIngressProtocolV1::Responses
-            ) | (
-                AgentModelSelectionV2::ClaudeLauncher { .. },
-                AgentIngressProtocolV1::Messages
+        if !matches!(selection, AgentModelSelectionV2::HermesDefault { protocol: selected, .. } if *selected == protocol)
+            && !matches!(
+                (selection, protocol),
+                (
+                    AgentModelSelectionV2::CodexDefault { .. }
+                        | AgentModelSelectionV2::QoderAdditional { .. }
+                        | AgentModelSelectionV2::PiAdditional { .. }
+                        | AgentModelSelectionV2::DshAdditional { .. },
+                    AgentIngressProtocolV1::Responses
+                ) | (
+                    AgentModelSelectionV2::ClaudeLauncher { .. },
+                    AgentIngressProtocolV1::Messages
+                )
             )
-        ) {
+        {
             return Err(AgentConnectionError::InvalidGrant);
         }
         let mut routes = BTreeMap::new();
@@ -121,7 +135,13 @@ impl AgentModelGrantV2 {
                 return Err(AgentConnectionError::InvalidGrant);
             }
         }
-        Self::seal_routes(protocol, routes, route_protocols)
+        Self::seal_routes_with_consumer(
+            protocol,
+            routes,
+            route_protocols,
+            matches!(selection, AgentModelSelectionV2::HermesDefault { .. })
+                .then_some(AgentModelConsumerV1::Hermes),
+        )
     }
 
     pub fn from_plan_ids(
@@ -140,9 +160,12 @@ impl AgentModelGrantV2 {
         plan_ids: std::collections::BTreeSet<AgentPlanId>,
         publication: &GatewayPublicationV1,
     ) -> Result<BTreeMap<String, AgentModelRouteV2>, AgentConnectionError> {
-        let published = publication
-            .published_agent_plans()
-            .map_err(|_| AgentConnectionError::InvalidPlan)?;
+        let published = if protocol == AgentIngressProtocolV1::ChatCompletions {
+            publication.published_hermes_agent_plans()
+        } else {
+            publication.published_agent_plans()
+        }
+        .map_err(|_| AgentConnectionError::InvalidPlan)?;
         let mut routes = BTreeMap::new();
         for plan_id in plan_ids {
             let plan = published
@@ -191,8 +214,17 @@ impl AgentModelGrantV2 {
 
     pub fn seal_routes(
         protocol: AgentIngressProtocolV1,
+        routes: BTreeMap<String, AgentModelRouteV2>,
+        route_protocols: BTreeMap<String, AgentIngressProtocolV1>,
+    ) -> Result<Self, AgentConnectionError> {
+        Self::seal_routes_with_consumer(protocol, routes, route_protocols, None)
+    }
+
+    pub fn seal_routes_with_consumer(
+        protocol: AgentIngressProtocolV1,
         mut routes: BTreeMap<String, AgentModelRouteV2>,
         route_protocols: BTreeMap<String, AgentIngressProtocolV1>,
+        consumer: Option<AgentModelConsumerV1>,
     ) -> Result<Self, AgentConnectionError> {
         for route in routes.values_mut() {
             if let AgentModelRouteV2::Fixed { binding, .. } = route {
@@ -201,8 +233,9 @@ impl AgentModelGrantV2 {
                     .map_err(|_| AgentConnectionError::InvalidGrant)?;
             }
         }
-        let digest = Self::route_digest(protocol, &routes, &route_protocols)?;
+        let digest = Self::route_digest(protocol, &routes, &route_protocols, consumer)?;
         let grant = Self {
+            consumer,
             protocol,
             routes,
             route_protocols,
@@ -222,7 +255,18 @@ impl AgentModelGrantV2 {
         protocol: AgentIngressProtocolV1,
         routes: &BTreeMap<String, AgentModelRouteV2>,
         protocols: &BTreeMap<String, AgentIngressProtocolV1>,
+        consumer: Option<AgentModelConsumerV1>,
     ) -> Result<CanonicalDigest, AgentConnectionError> {
+        if consumer.is_some() {
+            return CanonicalDigest::of(&(
+                "hiroute.agent-model-grant/v4",
+                protocol,
+                routes,
+                protocols,
+                consumer,
+            ))
+            .map_err(|_| AgentConnectionError::Encoding);
+        }
         if protocols.is_empty() {
             CanonicalDigest::of(&("hiroute.agent-model-grant/v3", protocol, routes))
         } else {
@@ -233,6 +277,19 @@ impl AgentModelGrantV2 {
 
     pub fn validate(&self) -> Result<(), AgentConnectionError> {
         if self.routes.is_empty()
+            || (self.consumer != Some(AgentModelConsumerV1::Hermes)
+                && (self.protocol == AgentIngressProtocolV1::ChatCompletions
+                    || self
+                        .route_protocols
+                        .values()
+                        .any(|p| *p == AgentIngressProtocolV1::ChatCompletions)))
+            || (self.consumer.is_some()
+                && (self.routes.len() != 1
+                    || !self.route_protocols.is_empty()
+                    || self
+                        .routes
+                        .values()
+                        .any(|route| !matches!(route, AgentModelRouteV2::Plan { .. }))))
             || self.route_protocols.iter().any(|(name, protocol)| {
                 *protocol == self.protocol
                     || !matches!(self.routes.get(name), Some(AgentModelRouteV2::Plan { .. }))
@@ -243,6 +300,7 @@ impl AgentModelGrantV2 {
         let ingress = match self.protocol {
             AgentIngressProtocolV1::Responses => UpstreamProtocol::Responses,
             AgentIngressProtocolV1::Messages => UpstreamProtocol::Messages,
+            AgentIngressProtocolV1::ChatCompletions => UpstreamProtocol::ChatCompletions,
         };
         for (name, route) in &self.routes {
             if !valid_client_model_name(name) {
@@ -281,7 +339,13 @@ impl AgentModelGrantV2 {
                 }
             }
         }
-        if Self::route_digest(self.protocol, &self.routes, &self.route_protocols)? != self.digest {
+        if Self::route_digest(
+            self.protocol,
+            &self.routes,
+            &self.route_protocols,
+            self.consumer,
+        )? != self.digest
+        {
             return Err(AgentConnectionError::DigestMismatch);
         }
         Ok(())
@@ -293,19 +357,26 @@ impl AgentModelGrantV2 {
     ) -> Result<(), AgentConnectionError> {
         self.validate()?;
         selection.validate()?;
-        if !matches!(
-            (selection, self.protocol),
-            (
-                AgentModelSelectionV2::CodexDefault { .. }
-                    | AgentModelSelectionV2::QoderAdditional { .. }
-                    | AgentModelSelectionV2::PiAdditional { .. }
-                    | AgentModelSelectionV2::DshAdditional { .. },
-                AgentIngressProtocolV1::Responses
-            ) | (
-                AgentModelSelectionV2::ClaudeLauncher { .. },
-                AgentIngressProtocolV1::Messages
+        let expected = matches!(selection, AgentModelSelectionV2::HermesDefault { .. })
+            .then_some(AgentModelConsumerV1::Hermes);
+        if self.consumer != expected {
+            return Err(AgentConnectionError::InvalidGrant);
+        }
+        if !matches!(selection, AgentModelSelectionV2::HermesDefault { protocol: selected, .. } if *selected == self.protocol)
+            && !matches!(
+                (selection, self.protocol),
+                (
+                    AgentModelSelectionV2::CodexDefault { .. }
+                        | AgentModelSelectionV2::QoderAdditional { .. }
+                        | AgentModelSelectionV2::PiAdditional { .. }
+                        | AgentModelSelectionV2::DshAdditional { .. },
+                    AgentIngressProtocolV1::Responses
+                ) | (
+                    AgentModelSelectionV2::ClaudeLauncher { .. },
+                    AgentIngressProtocolV1::Messages
+                )
             )
-        ) {
+        {
             return Err(AgentConnectionError::InvalidGrant);
         }
         let plans = self
@@ -416,6 +487,80 @@ mod tests {
             fixed_models: Vec::new(),
             allowed_plan_ids: [AgentPlanId::parse("plan/example").unwrap()].into(),
             default_selection,
+        }
+    }
+
+    #[test]
+    fn hermes_consumer_is_digest_bound_and_legacy_absence_retains_its_bytes() {
+        let legacy = grant();
+        let bytes = serde_json::to_value(&legacy).unwrap();
+        assert!(bytes.get("consumer").is_none());
+        assert_eq!(
+            legacy.digest,
+            CanonicalDigest::of(&(
+                "hiroute.agent-model-grant/v3",
+                legacy.protocol,
+                &legacy.routes
+            ))
+            .unwrap()
+        );
+        let hermes = AgentModelGrantV2::seal_routes_with_consumer(
+            legacy.protocol,
+            legacy.routes.clone(),
+            BTreeMap::new(),
+            Some(AgentModelConsumerV1::Hermes),
+        )
+        .unwrap();
+        let selection = AgentModelSelectionV2::HermesDefault {
+            plan_id: AgentPlanId::parse("plan/example").unwrap(),
+            protocol: AgentIngressProtocolV1::Responses,
+        };
+        assert!(hermes.validate_selection(&selection).is_ok());
+        assert!(legacy.validate_selection(&selection).is_err());
+        assert_eq!(serde_json::to_value(&hermes).unwrap()["consumer"], "hermes");
+        assert_ne!(hermes.digest, legacy.digest);
+        let mut unbound = hermes;
+        unbound.consumer = None;
+        assert!(unbound.validate().is_err());
+    }
+
+    #[test]
+    fn chat_grants_are_scoped_to_hermes_and_do_not_expand_other_agent_selections() {
+        let old = grant();
+        let protocol = AgentIngressProtocolV1::ChatCompletions;
+        assert!(AgentModelGrantV2::seal(protocol, old.routes.clone()).is_err());
+        let hermes = AgentModelGrantV2::seal_routes_with_consumer(
+            protocol,
+            old.routes,
+            BTreeMap::new(),
+            Some(AgentModelConsumerV1::Hermes),
+        )
+        .unwrap();
+        let plan_id = AgentPlanId::parse("plan/example").unwrap();
+        assert!(
+            hermes
+                .validate_selection(&AgentModelSelectionV2::HermesDefault {
+                    plan_id: plan_id.clone(),
+                    protocol,
+                })
+                .is_ok()
+        );
+        for selection in [
+            AgentModelSelectionV2::PiAdditional {
+                allowed_plan_ids: [plan_id.clone()].into(),
+                plan_protocols: [(plan_id.clone(), protocol)].into(),
+            },
+            AgentModelSelectionV2::DshAdditional {
+                allowed_plan_ids: [plan_id.clone()].into(),
+                plan_protocols: [(plan_id.clone(), protocol)].into(),
+            },
+            AgentModelSelectionV2::QoderAdditional {
+                allowed_plan_ids: [plan_id.clone()].into(),
+                plan_protocols: [(plan_id, protocol)].into(),
+            },
+        ] {
+            assert!(selection.validate().is_err());
+            assert!(hermes.validate_selection(&selection).is_err());
         }
     }
 

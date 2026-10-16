@@ -7,7 +7,7 @@ pub const PUBLICATION_CHECKPOINT_CHANGE_SCHEMA_V1: &str =
 const CONTROL_SCHEMA: &str = "hiroute.publication-checkpoint-control/v1";
 const EFFECT_SCHEMA: &str = "hiroute.publication-checkpoint-effect/v1";
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicationCheckpointChangeV1 {
     pub schema: String,

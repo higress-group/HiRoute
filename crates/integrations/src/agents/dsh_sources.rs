@@ -112,12 +112,12 @@ impl FilesystemAgentScannerV1 {
             super::dsh_config::Patch::parse(Some(&home)).map_err(|_| Error::InvalidConfig)?;
         let profile_patch =
             super::dsh_config::Patch::parse(Some(&profile)).map_err(|_| Error::InvalidConfig)?;
+        let home_provider_definition = home_patch
+            .config("llm-pi-ai")
+            .map_err(|_| Error::InvalidConfig)?
+            .is_some();
         let providers = super::pi_sources::Document(
-            if home_patch
-                .config("llm-pi-ai")
-                .map_err(|_| Error::InvalidConfig)?
-                .is_some()
-            {
+            if home_provider_definition {
                 home_patch.providers()
             } else {
                 profile_patch.providers()
@@ -151,14 +151,19 @@ impl FilesystemAgentScannerV1 {
                     && r.len() <= 256
                     && r.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
             });
-            let secret = reference
-                .and_then(|r| {
-                    std::env::var(r)
-                        .ok()
-                        .filter(|v| !v.is_empty())
-                        .or_else(|| credentials_value.0["refs"][r].as_str().map(str::to_owned))
-                })
-                .map(Zeroizing::new);
+            let (secret, credential_origin) = match reference {
+                Some(reference) => match std::env::var(reference).ok().filter(|v| !v.is_empty()) {
+                    Some(value) => (Some(Zeroizing::new(value)), "process_environment"),
+                    None => (
+                        credentials_value.0["refs"][reference]
+                            .as_str()
+                            .map(str::to_owned)
+                            .map(Zeroizing::new),
+                        "credential_reference_file",
+                    ),
+                },
+                None => (None, "missing"),
+            };
             let protocol = match provider["api"].as_str() {
                 Some("openai-responses") => Some(UpstreamProtocol::Responses),
                 Some("anthropic-messages") => Some(UpstreamProtocol::Messages),
@@ -238,6 +243,44 @@ impl FilesystemAgentScannerV1 {
                     ));
                 }
                 sources.push(NativeApiSource {
+                    point_binding: endpoint.map(|endpoint| super::NativeApiPointBindingV1 {
+                        configured_default_model_id: None,
+                        authentication: if protocol == Some(UpstreamProtocol::Messages) {
+                            hiroute_domain::GatewayAuthenticationSemanticsV1::ApiKeyHeader {
+                                header: "x-api-key".into(),
+                            }
+                        } else {
+                            hiroute_domain::GatewayAuthenticationSemanticsV1::Bearer
+                        },
+                        native_scope: CanonicalDigest::of(&(
+                            "dsh-native-scope/v1",
+                            &self.layout.dsh_config_root,
+                        ))
+                        .expect("native scope"),
+                        provider_definition: format!(
+                            "{}/llm-pi-ai/providers/{provider_id}",
+                            if home_provider_definition {
+                                "cordis.patch.yml"
+                            } else {
+                                "profiles/hiroute.yml"
+                            }
+                        ),
+                        endpoint: endpoint.into(),
+                        endpoint_selector: format!("providers/{provider_id}/baseURL"),
+                        protocol_selector: format!("providers/{provider_id}/api"),
+                        model_override_scope: None,
+                        credential_binding: format!(
+                            "providers/{provider_id}/apiKeyEnv:{}:{}:{}",
+                            reference.unwrap_or("missing"),
+                            credential_origin,
+                            CanonicalDigest::of(&(
+                                "dsh-credential-file-location/v1",
+                                &credentials_path
+                            ))
+                            .expect("native credential location")
+                            .as_str()
+                        ),
+                    }),
                     provider_id: provider_id.clone(),
                     model_id: id.into(),
                     protocol,

@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 hiroute-domain = { path = "../domain" }
 serde.workspace = true
+schemars = "=1.2.2"
 serde_json.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true

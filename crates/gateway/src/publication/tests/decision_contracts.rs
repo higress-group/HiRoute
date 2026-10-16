@@ -138,6 +138,7 @@ fn custom_extension_snapshot() -> GatewayPublicationSnapshotV3 {
             candidates: vec![candidate(1), candidate(2)],
         }],
         vec![GrantV1 {
+            consumer: None,
             route_protocols: Default::default(),
             grant_id: "grant".into(),
             generation: 1,

@@ -189,14 +189,9 @@ fn production_writer_store_drives_application_owned_defaults_and_all_plan_scope(
         payload: serde_json::to_value(&search).unwrap(),
         protected_grant: None,
     };
-    assert_eq!(
-        application
-            .dispatch(search_wire.clone())
-            .error
-            .unwrap()
-            .code,
-        hiroute_application_api::ErrorCode::CapabilityDenied
-    );
+    let same_user_search = application.dispatch(search_wire.clone());
+    assert!(same_user_search.error.is_none(), "{same_user_search:?}");
+    assert!(same_user_search.data.unwrap()["hits"].is_array());
     search_wire.protected_grant = Some(grant(
         search.protected_operation(),
         CanonicalDigest::of(&search).unwrap(),
@@ -1037,7 +1032,7 @@ fn ingest_value(store: &Arc<LocalObservationStore>, suffix: &str, plan: &str, oc
     }
 }
 
-fn envelope(
+pub(super) fn envelope(
     stream: &ObservationStreamV1,
     suffix: &str,
     plan: &str,

@@ -3,14 +3,14 @@ use super::*;
 use crate::UpstreamProtocol;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredModelSupportV1 {
     pub tools: GatewayCriticalFactV1<bool>,
     pub vision: GatewayCriticalFactV1<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredModelCapabilitiesV1 {
     pub capability_id: String,
@@ -26,7 +26,7 @@ pub struct StoredModelCapabilitiesV1 {
     pub selected_reasoning_profile_id: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredNativeReasoningV1 {
     pub profile_id: String,
@@ -34,14 +34,14 @@ pub struct StoredNativeReasoningV1 {
     pub parameters: StoredReasoningParametersV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredNativeParameterV1 {
     pub path: Vec<String>,
     pub value: GatewayNativeReasoningValueV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StoredReasoningParametersV1 {
     NoControlParameter,

@@ -50,7 +50,29 @@ impl LocalControlAdapter {
         let spec: AgentSettingsSpecV2 =
             serde_json::from_value(operation.plan.spec().desired_state.clone())
                 .map_err(|_| error())?;
-        if matches!(spec.collaboration, AgentFacetIntent::Keep) {
+        if spec.keeps_skills() {
+            return Ok(());
+        }
+        let class = self
+            .settings_agent_for_context(&spec.context_id)
+            .ok_or_else(error)?;
+        for facet in [
+            hiroute_domain::AgentSettingsFacet::ManagementSkill,
+            hiroute_domain::AgentSettingsFacet::Collaboration,
+        ] {
+            if matches!(spec.skill_intent_for(facet), AgentFacetIntent::Keep) {
+                continue;
+            }
+            let (_, target) = self
+                .settings_skill_resource(&spec.context_id, spec.native_target.as_ref(), facet)
+                .map_err(|_| error())?;
+            let stores = self.stores_lock()?;
+            hiroute_application::agent_connection::persist_settings_skill_reference_change_for_facet(
+                stores.control(), &self.artifacts, operation, facet, &target)?;
+        }
+        if matches!(spec.collaboration, AgentFacetIntent::Keep)
+            || class == SettingsAgentClass::Hermes
+        {
             return Ok(());
         }
         let state = operation
@@ -66,19 +88,6 @@ impl LocalControlAdapter {
                 != serde_json::to_value(settings.trigger_mode).map_err(|_| error())?
         {
             return Err(error());
-        }
-        let class = self
-            .settings_agent_for_context(&spec.context_id)
-            .ok_or_else(error)?;
-        let skill_target = class.skill_target().map_err(|_| error())?;
-        {
-            let stores = self.stores_lock()?;
-            hiroute_application::agent_connection::persist_settings_skill_reference_change(
-                stores.control(),
-                &self.artifacts,
-                operation,
-                &skill_target,
-            )?;
         }
         // Only historical clients ever owned sealed collaboration credentials.
         if matches!(
@@ -112,7 +121,10 @@ impl LocalControlAdapter {
                 self.scanner.codex_user_config_target()
             }
             SettingsAgentClass::Claude => self.scanner.claude_user_settings_target(),
-            SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
+            SettingsAgentClass::Qoder
+            | SettingsAgentClass::Pi
+            | SettingsAgentClass::Dsh
+            | SettingsAgentClass::Hermes => {
                 return Err(error());
             }
         };
@@ -126,7 +138,10 @@ impl LocalControlAdapter {
             .join(match class {
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => "codex.sealed",
                 SettingsAgentClass::Claude => "claude-code.sealed",
-                SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh => {
+                SettingsAgentClass::Qoder
+                | SettingsAgentClass::Pi
+                | SettingsAgentClass::Dsh
+                | SettingsAgentClass::Hermes => {
                     return Err(error());
                 }
             }))

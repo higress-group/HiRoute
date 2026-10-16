@@ -1,0 +1,27 @@
+{
+  "$id": "hiroute://contracts/cli/agent-scan-request.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "native_target": {
+      "additionalProperties": false,
+      "properties": {
+        "config_root": {
+          "description": "Explicit absolute effective Hermes profile directory; never inferred from the daemon environment.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "const": "hermes"
+        }
+      },
+      "required": [
+        "kind",
+        "config_root"
+      ],
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

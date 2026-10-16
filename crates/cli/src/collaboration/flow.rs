@@ -135,6 +135,9 @@ fn workflow(
             client,
             "GetAgentConnectionStatus",
             json!(AgentSettingsStatusRequestV2 {
+                effective: None,
+                include_skills: true,
+                native_target: None,
                 schema_version: AGENT_SETTINGS_SCHEMA_V2,
                 context_id
             }),
@@ -150,6 +153,9 @@ fn workflow(
                 client,
                 "GetAgentConnectionStatus",
                 json!(AgentSettingsStatusRequestV2 {
+                    effective: None,
+                    include_skills: true,
+                    native_target: None,
                     schema_version: AGENT_SETTINGS_SCHEMA_V2,
                     context_id: context_id.clone()
                 }),
@@ -167,6 +173,8 @@ fn workflow(
         Intent::Status => unreachable!(),
     };
     let spec = AgentSettingsSpecV2 {
+        native_target: None,
+        management_skill: None,
         schema_version: AGENT_SETTINGS_SCHEMA_V2,
         context_id,
         model: AgentFacetIntent::Keep,

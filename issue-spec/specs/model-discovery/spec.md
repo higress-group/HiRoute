@@ -99,6 +99,60 @@ tool, streaming, or reasoning constants cannot be promoted to verified capabilit
 - **THEN** save MUST reject the stale candidate without modifying the source,
   and the user can rescan/prepare through the same protected path.
 
+### Requirement: Discover configured Hermes model sources through existing scan flows
+
+HiRoute SHALL add the selected effective Hermes profile as a native producer in the shared connection-point discovery and model-selection workflow. Its configured default main model and statically declared provider/model sources SHALL retain profile/native provenance, with exact resolvable product, endpoint, protocol and authentication-reference semantics. A user-named Coding Plan provider SHALL be recognized by the supported endpoint/product facts rather than requiring a built-in provider name. Configured native models, catalog candidates and unobserved live selections SHALL remain distinct. Supported Hermes findings SHALL use the same connection-level preparation and explicit model save as other supported scanners; unresolved/helper-dependent findings retain precise reasons and cannot silently become importable or recursive HiRoute upstream sources. The shared model-discovery passive/protected contracts and connection-point selection requirement remain authoritative.
+
+#### Scenario: Produce a Hermes connection point with the configured default
+
+- **WHEN** a selected Hermes profile configures a default model and a statically resolvable provider, including a user-named Coding Plan provider
+- **THEN** the shared scan reports the scoped connection point and marks its native configured default; models offered by its prepared candidate retain their separate native/catalog provenance.
+
+#### Scenario: Use shared model selection for Hermes
+
+- **WHEN** the owner prepares a supported Hermes connection point and chooses its models
+- **THEN** the generic CLI/Desktop preparation and exact-model save flow is used, including shared initial-selection and stale-fact semantics, without a Hermes-only import wizard or backend.
+
+#### Scenario: Keep unresolved native state local
+
+- **WHEN** Hermes contains helper/OAuth-dependent, unreadable, ambiguous or managed HiRoute entries
+- **THEN** valid findings remain available, unsupported entries carry precise reasons, scan does not change native configuration or execute helpers, and no recursive upstream is admitted.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/119#issuecomment-6169260806
+
+### Requirement: Discover connection points and choose models through one shared workflow
+
+HiRoute SHALL organize supported native API model-source discovery by connection point and expose the same scan, preparation and model-selection contract to CLI and Desktop. A connection point SHALL retain its native scope/provider provenance and exact product/endpoint/protocol/authentication binding; models MAY share a point only when those semantics are proven equal. Equal URLs or provider labels alone SHALL NOT merge different credentials, products, protocols or profile scopes. Scan SHALL remain passive under the existing discovery contract. After explicit connection-point selection, preparation SHALL expose all supported native declarations and eligible existing catalog candidates for that exact point with their fact basis, selectable state and unsupported reasons; a configured default alone SHALL NOT truncate the candidate to one model or become proof of account entitlement. The discovered-connection Desktop flow and canonical CLI management guidance SHALL initially select all models marked selectable in the current prepared candidate, while an explicit model subset takes precedence. Every save SHALL freeze a nonempty exact selection of model references under the existing protected Preview/Apply contract; scan, preparation, catalog refresh and defaults alone SHALL NOT save models or silently expand an accepted selection. Existing supported discovery callers retain their published shapes and meanings through the applicable versioned boundary.
+
+#### Scenario: Group models under the right connection point
+
+- **WHEN** multiple native model declarations share a proven scope, provider definition, product, endpoint/protocol and authentication binding
+- **THEN** one discovered point carries their provenance and prepares a multi-model candidate; differing credentials, products, protocols or roots remain separate even if URLs or labels match.
+
+#### Scenario: Offer endpoint models beyond the configured default
+
+- **WHEN** a native default names one model but that selected point has other supported declarations or exact-product eligible catalog bindings
+- **THEN** preparation exposes those models with their individual fact basis and selectable reasons; it does not claim they were configured or authorized by the account merely because they appear in a catalog.
+
+#### Scenario: Start with all currently selectable models and permit a subset
+
+- **WHEN** the owner starts a discovered-connection setup in Desktop or follows the canonical CLI guidance for a selected point
+- **THEN** the initial selection includes only that candidate's selectable models; the owner can choose a subset, and the save Preview/Apply contains the exact selected references rather than a backend wildcard or omitted-selection default.
+
+#### Scenario: Do not expand a pending or saved selection
+
+- **WHEN** a later scan/catalog refresh adds a model or changes source/credential facts
+- **THEN** previously selected/saved models are not automatically expanded; changed binding facts require the existing fresh-preparation/conflict handling, and adding models uses an explicit new selection through the existing lifecycle.
+
+#### Scenario: Use the same protected preparation from CLI
+
+- **WHEN** an authorized local CLI caller selects an opaque discovered connection-point reference for preparation
+- **THEN** the backend rereads its scoped facts and prepares credentials privately under the existing local/protected-input contracts, returning only a safe candidate and model references for explicit save; no native helper or model call occurs merely because it was scanned or prepared.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/119#issuecomment-6171346891
+
 ## Implementation references
 
 - [Native discovery assembly](../../../crates/daemon/src/control/runtime/model_connections/pi_discovered.rs).

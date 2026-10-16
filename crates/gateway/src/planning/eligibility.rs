@@ -174,7 +174,7 @@ fn static_cost_gate(
             CostClassV1::Free | CostClassV1::Subscription
         ),
         StaticCostPolicyV1::BudgetedPaid => candidate.cost_class != CostClassV1::Unknown,
-        StaticCostPolicyV1::ExplicitFixed => true,
+        StaticCostPolicyV1::ExplicitFixed | StaticCostPolicyV1::PublishedCandidates => true,
     };
     if !class_allowed {
         return Err(ExclusionReasonCodeV1::CostPolicyExcluded);

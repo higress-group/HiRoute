@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn hermes_chat_plan_grant_installs_and_reopens_without_widening_its_scope() {
+    let mut publication = snapshot(1, "renderer");
+    publication.aliases[0].protocols = vec![IngressProtocol::ChatCompletions];
+    publication.aliases[0].candidates = vec![exact_test_candidate(
+        1,
+        IngressProtocol::ChatCompletions,
+        None,
+    )];
+    publication.grants[0].protocol = IngressProtocol::ChatCompletions;
+    publication.grants[0].consumer = Some(hiroute_domain::AgentModelConsumerV1::Hermes);
+    let publication = reseal(publication);
+    publication.validate().unwrap();
+    let directory = TestDirectory::new();
+    let lkg = directory.path().join("publication.json");
+    let installer = GatewayPublicationInstaller::open(&lkg).unwrap();
+    publish(&installer, publication.clone());
+    drop(installer);
+    let reopened = GatewayPublicationInstaller::open(&lkg).unwrap();
+    assert_eq!(reopened.active().unwrap().publication_revision(), 1);
+    let mut widened = publication;
+    let (name, route) = test_plan_route("beta", 20);
+    widened.grants[0].routes.insert(name, route);
+    assert!(reseal(widened).validate().is_err());
+}
+
+#[test]
 fn publication_revision_gap_is_rejected_before_lkg_or_core_swap() {
     let directory = TestDirectory::new();
     let lkg = directory.path().join("publication.json");
@@ -214,6 +240,7 @@ fn mixed_plan_grant_authorizes_only_each_selected_protocol_after_restart() {
         alias.protocols.push(IngressProtocol::Messages);
     }
     snapshot.grants = vec![GrantV1 {
+        consumer: None,
         grant_id: "mixed-plan-protocols".into(),
         generation: 1,
         bearer_token_sha256: token_sha256("mixed-protocol-token"),

@@ -23,6 +23,27 @@ impl ConfirmedAgentSettings {
             &AgentConnectionControlIntentV1,
         ) -> Result<Vec<ExternalEffectIntentV1>, OperationValidationError>,
     ) -> Result<TransactionPlanV1, OperationValidationError> {
+        self.seal_effects_with_skills(
+            subject,
+            state,
+            skill_file_change,
+            false,
+            model_grants,
+            render,
+        )
+    }
+
+    pub fn seal_effects_with_skills<T: Serialize>(
+        &self,
+        subject: AgentConnectionTransactionSubjectV1,
+        state: &T,
+        skill_file_change: bool,
+        additional_skill_file_change: bool,
+        model_grants: Vec<AgentAccessGrantMutationV1>,
+        render: impl FnOnce(
+            &AgentConnectionControlIntentV1,
+        ) -> Result<Vec<ExternalEffectIntentV1>, OperationValidationError>,
+    ) -> Result<TransactionPlanV1, OperationValidationError> {
         let preview = self.preview();
         let spec = ChangeSpecV1 {
             schema_version: CHANGE_SPEC_SCHEMA_V1,
@@ -32,10 +53,11 @@ impl ConfirmedAgentSettings {
             resource_id: Some(preview.spec.context_id.clone()),
             desired_state: serde_json::to_value(&preview.spec)?,
         };
-        let control = AgentConnectionControlIntentV1::from_settings_planner(
+        let control = AgentConnectionControlIntentV1::from_settings_planner_with_skills(
             subject,
             &spec,
             skill_file_change,
+            additional_skill_file_change,
             &serde_json::json!({
                 "accept_digest": preview.accept_digest,
                 "dependency_digest": preview.dependency_digest,

@@ -773,6 +773,89 @@ def build_runtime_projection(catalog):
         "gaps": gaps,
     }
 
+def add_qualified_zhipu_chat_capabilities(projection, catalog, data):
+    """Reuse the Coding Plan connector with its qualified Chat-native model configuration."""
+    product = next(value for value in catalog["access_products"]
+        if value["product_key"] == "zhipu-coding-cn")
+    interface = next(value for value in product["interfaces"]
+        if value["interface_key"] == "zhipu-coding-cn/openai-chat")
+    if joined_request_path(interface) != ("https://open.bigmodel.cn", "/api/coding/paas/v4/chat/completions"):
+        raise ValueError("qualified Coding Plan Chat endpoint changed")
+    evidence = keyed(catalog["evidence_sources"], "source_key")
+    source_models = keyed(catalog["models"], "model_key")
+    model_ids = []
+    for key, identity, upstream in [
+        ("glm-5-3-global", "model.zhipu.glm-5.3.coding-chat", "glm-5.3"),
+        ("glm-5-3-flash-global", "model.zhipu.glm-5.3-flash.coding-chat", "glm-5.3-flash"),
+    ]:
+        matches = [value for value in catalog["endpoint_bindings"]
+            if value["product_key"] == product["product_key"] and value["model_key"] == key
+            and value["upstream_model_id"] == upstream
+            and interface["interface_key"] in value["interface_candidates"]]
+        if len(matches) != 1:
+            raise ValueError("Coding Plan Chat requires one exact model binding")
+        binding = matches[0]
+        if binding["availability"]["state"] != "available" or binding["protocol_qualification"] != "qualified":
+            continue
+        if not any(evidence[ref]["source_kind"] == "authenticated-service-metadata"
+                and evidence[ref]["locator"] == "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
+                and evidence[ref]["digest_state"] == "captured" for ref in binding["evidence_refs"]):
+            raise ValueError("qualified Chat binding requires authenticated endpoint evidence")
+        source_model = source_models[key]
+        if source_model["reasoning"] != {"kind": "discrete-fixed-on", "profiles": ["low", "high", "max"], "default": "max"}:
+            raise ValueError("GLM Chat native reasoning contract changed")
+        native = {"model_configuration_id": identity,
+            "capability": {"kind": "discrete", "parameter": "reasoning_effort", "profiles": ["low", "high", "max"], "default_profile": "max"},
+            "native_render_convention": "zhipu_thinking_chat"}
+        projection["models"].append({"source_model_key": key,
+            "model": runtime_model_definition(source_model, identity, "publisher.zai"),
+            "native_reasoning": native, "sources": [evidence[ref]["locator"] for ref in source_model["evidence_refs"]]})
+        projection["model_endpoint_capabilities"].append({
+            "capability_id": f"cap.zhipu.{upstream}.coding-plan.chat", "revision": 1,
+            "model_configuration_id": identity, "connector_id": "connector.zhipu.p0", "connector_revision": 1,
+            "endpoint_profile_id": "endpoint.zhipu.coding-chat.cn.v1", "endpoint_profile_revision": 1,
+            "protocol_endpoint_id": "endpoint.zhipu.coding-chat.cn.v1.chat", "upstream_protocol": "chat_completions",
+            "upstream_model_id": upstream, "required_adapter_ref": "adapter.openai-chat.v1", "required_adapter_revision": 1,
+            "evidence_digest": digest([binding, source_model["evidence_refs"]])})
+        model_ids.append(identity)
+    if model_ids:
+        existing = next(value for value in data["offers"]
+            if value["endpoint_profile_id"] == "endpoint.zhipu.coding-plan.cn.v1")
+        offer = copy.deepcopy(existing)
+        offer["offer_id"] = "offer.zhipu.coding-chat"
+        offer["endpoint_profile_id"] = "endpoint.zhipu.coding-chat.cn.v1"
+        offer["model_configuration_ids"] = sorted(model_ids)
+        offer["evidence_digest"] = digest([product["evidence_refs"], model_ids])
+        projection["offers"].append(offer)
+        profile_id = offer["endpoint_profile_id"]
+        reviewed_on = max(evidence[ref]["collected_on"] for ref in product["evidence_refs"])
+        profile = {
+            "endpoint_profile_id": profile_id, "revision": 1,
+            "connector_id": "connector.zhipu.p0", "connector_revision": 1,
+            "provider_platform_id": "zhipu", "service_offering_id": offer["service_offering_id"],
+            "entitlement_id": offer["entitlement_id"], "usage_scope": offer["usage_scope"],
+            "region_id": offer["region_id"], "logical_endpoint_group": "zhipu-coding-plan",
+            "inventory_strategy": "bundled_catalog", "verification_evidence": offer["evidence_digest"],
+            "last_verified_at": int(datetime.datetime.strptime(reviewed_on, "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc).timestamp()),
+            "protocol_endpoints": [{"protocol_endpoint_id": profile_id + ".chat", "protocol": "chat_completions",
+                "base_url": "https://open.bigmodel.cn", "request_path": "/api/coding/paas/v4/chat/completions",
+                "adapter_ref": "adapter.openai-chat.v1", "adapter_revision": 1, "stable_preference": 0,
+                "authentication_semantics": {"kind": "bearer"}}],
+        }
+        option = {"connection_option_id": "zhipu.coding-chat.cn.v1", "display_name": "Zhipu Coding Plan Chat (China)",
+            "origin": "native_api", "connector_id": "connector.zhipu.p0", "connector_revision": 1,
+            "endpoint_profile_id": profile_id, "endpoint_profile_revision": 1, "billing_class": "subscription"}
+        projection["registrations"].append({"connector_id": "connector.zhipu.p0", "implementation_ref": "builtin/zhipu",
+            "endpoint_profile": profile, "connection_option": option})
+        projection["attempts"].append({"connection_option_id": option["connection_option_id"], "product_key": product["product_key"],
+            "outcome": "endpoint_qualified", "models": [{"model_key": v["source_model_key"], "outcome": "qualified"}
+                for v in projection["models"] if v["model"]["model_configuration_id"] in model_ids]})
+        projection["registrations"].sort(key=lambda v: v["connection_option"]["connection_option_id"])
+        projection["attempts"].sort(key=lambda v: v["connection_option_id"])
+    for field, key in [("models", lambda v: v["model"]["model_configuration_id"]),
+            ("model_endpoint_capabilities", lambda v: v["capability_id"]), ("offers", lambda v: v["offer_id"])]:
+        projection[field].sort(key=key)
+
 def add_documented_zhipu_responses_capability(projection, catalog, data):
     """Project the current GLM-5.3 facts onto its Coding Plan runtime entry."""
     product = next(value for value in catalog["access_products"]
@@ -962,6 +1045,7 @@ def compile_candidate():
             "native_render_convention": convention})
     runtime_projection = build_runtime_projection(metadata_catalog)
     add_documented_zhipu_responses_capability(runtime_projection, metadata_catalog, data)
+    add_qualified_zhipu_chat_capabilities(runtime_projection, metadata_catalog, data)
     native_by_id = {value["model_configuration_id"]: value for value in models}
     model_by_id = {value["model_configuration_id"]: value for value in data["models"]}
     for projected in runtime_projection["models"]:

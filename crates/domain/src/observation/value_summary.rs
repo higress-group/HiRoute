@@ -1,6 +1,6 @@
 use crate::ObservationMetricCoverageV2;
 use serde::{Deserialize, Serialize};
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationValueQueryV2 {
     pub from_ms: i64,
@@ -9,7 +9,7 @@ pub struct ObservationValueQueryV2 {
     pub plan_id: Option<String>,
     pub currency: Option<String>,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationValueSummaryV2 {
     pub from_ms: i64,
     pub to_ms: i64,
@@ -27,14 +27,14 @@ pub struct ObservationValueSummaryV2 {
 
 /// Summary and optional UTC day buckets from one database snapshot. Partial
 /// first/last days retain their actual half-open query bounds.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationValueReportV2 {
     pub summary: ObservationValueSummaryV2,
     pub group_by: crate::ValueGroupByV1,
     pub day_timezone: Option<String>,
     pub days: Vec<ObservationValueSummaryV2>,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationValueTotalV2 {
     pub currency: String,
     pub valuation_kind: String,
@@ -42,7 +42,7 @@ pub struct ObservationValueTotalV2 {
     pub coverage: ObservationMetricCoverageV2,
     pub missing_contribution_count: u64,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationUsageTotalV2 {
     pub metric: String,
     pub known_sum: Option<u64>,
@@ -50,7 +50,7 @@ pub struct ObservationUsageTotalV2 {
     pub missing_attempt_count: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObservationCacheHitStateV2 {
     Available,
@@ -58,7 +58,7 @@ pub enum ObservationCacheHitStateV2 {
     Unknown,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationCacheHitSummaryV2 {
     pub state: ObservationCacheHitStateV2,
@@ -76,9 +76,44 @@ pub struct ObservationCacheHitSummaryV2 {
     pub coverage: ObservationMetricCoverageV2,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationMaintenanceStatusV2 {
     pub running: bool,
     pub index_running: bool,
     pub error_count: u64,
+}
+
+/// Explicit read-time counterfactual, separate from immutable request settlement.
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
+pub struct ApiEquivalentPriceV1 {
+    pub binding_id: String,
+    /// Exact execution identity derived from this source/model's materialization facts.
+    /// A local execution identity can differ from the canonical manual-price locator.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_model_configuration_id: Option<String>,
+    pub quote: crate::FrozenPriceQuoteV1,
+}
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
+pub struct ApiEquivalentValueReportV1 {
+    pub schema: String,
+    pub from_ms: i64,
+    pub to_ms: i64,
+    pub evaluated_at_ms: i64,
+    pub currency: String,
+    pub reference: ApiEquivalentPriceV1,
+    pub prices: Vec<ApiEquivalentPriceV1>,
+    pub request_count: u64,
+    pub compared_request_count: u64,
+    pub arithmetic_overflow: bool,
+    pub missing_request_count: u64,
+    pub excluded_request_count: u64,
+    pub retention_boundary_partial: bool,
+    pub coverage: ObservationMetricCoverageV2,
+    pub routed_estimate_micros: Option<u64>,
+    pub reference_estimate_micros: Option<u64>,
+    pub estimated_savings_micros: Option<i64>,
+    pub compared_routed_subtotal_micros: Option<u64>,
+    pub compared_reference_subtotal_micros: Option<u64>,
+    pub actual_cash_micros: Option<u64>,
+    pub disclosure: String,
 }

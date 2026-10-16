@@ -178,10 +178,11 @@ impl GatewayPublicationV1 {
                 let mut projected = grant.clone();
                 let mut protocols = grant.model_grant.route_protocols.clone();
                 protocols.retain(|name, _| routes.contains_key(name));
-                projected.model_grant = crate::AgentModelGrantV2::seal_routes(
+                projected.model_grant = crate::AgentModelGrantV2::seal_routes_with_consumer(
                     grant.model_grant.protocol,
                     routes,
                     protocols,
+                    grant.model_grant.consumer,
                 )
                 .map_err(|_| PublicationError::InvalidGrant)?;
                 enabled.push(projected);

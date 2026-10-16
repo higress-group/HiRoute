@@ -36,7 +36,7 @@ impl CredentialResolver for ObservedCredentialResolver {
         &self,
         request: CredentialLeaseRequest<'_>,
     ) -> Result<Option<Vec<String>>, PortError> {
-        let stable_binding_id = request.stable_binding_id;
+        let stable_binding_id = request.execution_binding_id;
         let credential_ref = request.credential_ref;
         let excluded_key_count = request.excluded_key_ids.len();
         let result = self.inner.current_credential_refs(request);
@@ -72,7 +72,7 @@ impl CredentialResolver for ObservedCredentialResolver {
         request: CredentialLeaseRequest<'_>,
         scope: &ExecutionScope,
     ) -> Result<Option<crate::ports::CredentialLease>, PortError> {
-        let stable_binding_id = request.stable_binding_id.to_owned();
+        let stable_binding_id = request.execution_binding_id.to_owned();
         let credential_ref = request.credential_ref.to_owned();
         let excluded_key_count = request.excluded_key_ids.len();
         let result = self.inner.lease_exact(request, scope).await;

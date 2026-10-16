@@ -42,51 +42,63 @@ pub(crate) fn preview(
         Ok(preview) => preview,
         Err(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
     };
-    let mut result = serde_json::to_value(&preview).expect("settings preview is serializable");
-    result["schema"] = json!("hiroute.agent-settings-preview/v2");
-    result["expected_revisions"] = json!(input.expected_revisions);
-    result["applicable"] = json!(preview.blockers.is_empty());
-    result["resident_service"] = json!({
-        "login_item_required": input.facts.model.as_ref().is_some_and(|model| model.common.login_item_required),
-        "login_item_removal_required": input.facts.model.as_ref().is_some_and(|model| model.common.login_item_removal_required),
-    });
-    if matches!(
-        &preview.spec.collaboration,
-        hiroute_application_api::AgentFacetIntent::Configure { .. }
-    ) {
-        let hiroute_application_api::AgentFacetIntent::Configure { settings } =
-            &preview.spec.collaboration
-        else {
-            unreachable!()
+    use hiroute_application_api::{
+        AgentModelEffectPreviewV2, AgentResidentServicePreviewV2, AgentSettingsPreviewV2,
+    };
+    let collaboration_effect = match &preview.spec.collaboration {
+        hiroute_application_api::AgentFacetIntent::Configure { settings } => {
+            Some(AgentCollaborationEffectV2 {
+                action: "configure".into(),
+                trigger_mode: settings.trigger_mode,
+            })
+        }
+        _ => None,
+    };
+    let configured =
+        |agent_class: &str,
+         provider_id: Option<&String>,
+         endpoint: &String,
+         selection: &hiroute_application_api::AgentModelSelectionV2| {
+            AgentModelEffectPreviewV2::Configure {
+                agent_class: agent_class.into(),
+                provider_id: provider_id.cloned(),
+                endpoint: endpoint.clone(),
+                selection: Box::new(selection.clone()),
+                authentication: "connection_scoped_local_grant".into(),
+                native_adapter: (agent_class == "hermes").then(|| hiroute_application_api::AgentNativeAdapterPreviewV1 {
+                    resources: "planned".into(), runtime_loading: hiroute_application_api::AgentNativeRuntimeLoadingV1::Unobserved,
+                    next_action: hiroute_application_api::AgentNativeAdapterNextActionV1::ReloadPluginsIfRunning,
+                }),
+                context_windows: (!preview.context_windows.is_empty())
+                    .then(|| preview.context_windows.clone()),
+                claude_context_window: (!preview.context_windows.is_empty())
+                    .then_some(preview.claude_context_window),
+            }
         };
-        result["collaboration_effect"] = json!(AgentCollaborationEffectV2 {
-            action: "configure".into(),
-            trigger_mode: settings.trigger_mode,
-        });
-    }
-    result["model_effect"] = match (
+    let model_effect = match (
         &preview.spec.model,
         input.model_file.as_ref().map(|file| &file.target),
     ) {
         (
             hiroute_application_api::AgentFacetIntent::Configure { settings },
+            Some(SettingsModelTargetFacts::Hermes {
+                provider_id,
+                endpoint,
+                ..
+            }),
+        ) => configured("hermes", Some(provider_id), endpoint, settings),
+        (
+            hiroute_application_api::AgentFacetIntent::Configure { settings },
             Some(SettingsModelTargetFacts::Codex {
                 provider_id,
                 endpoint,
+                ..
             }),
-        ) => json!({
-            "action":"configure", "agent_class":"codex", "provider_id":provider_id, "endpoint":endpoint,
-            "selection":settings,
-            "authentication":"connection_scoped_local_grant",
-        }),
+        ) => configured("codex", Some(provider_id), endpoint, settings),
         (
             hiroute_application_api::AgentFacetIntent::Configure { settings },
             Some(SettingsModelTargetFacts::Claude(claude)),
-        ) => json!({
-            "action":"configure", "agent_class":"claude", "endpoint":claude.gateway_base_url,
-            "selection":settings,
-            "authentication":"connection_scoped_local_grant",
-        }),
+        ) => configured("claude", None, &claude.gateway_base_url, settings),
         (
             hiroute_application_api::AgentFacetIntent::Configure { settings },
             Some(SettingsModelTargetFacts::Additional {
@@ -95,21 +107,38 @@ pub(crate) fn preview(
                 endpoint,
                 ..
             }),
-        ) => json!({
-            "action":"configure", "agent_class":kind.as_str(), "provider_id":provider_id, "endpoint":endpoint,
-            "selection":settings, "authentication":"connection_scoped_local_grant",
-        }),
+        ) => configured(kind.as_str(), Some(provider_id), endpoint, settings),
         (hiroute_application_api::AgentFacetIntent::Restore { restore_point_ref }, Some(_)) => {
-            json!({"action":"restore","restore_point_ref":restore_point_ref})
+            AgentModelEffectPreviewV2::Restore {
+                restore_point_ref: restore_point_ref.clone(),
+            }
         }
-        (hiroute_application_api::AgentFacetIntent::Keep, _) => json!({"action":"keep"}),
+        (hiroute_application_api::AgentFacetIntent::Keep, _) => AgentModelEffectPreviewV2::Keep,
         (_, None) => return failed(ErrorCode::InvalidArguments, request.request_id),
     };
-    if !preview.context_windows.is_empty() {
-        result["model_effect"]["context_windows"] = json!(preview.context_windows);
-        result["model_effect"]["claude_context_window"] = json!(preview.claude_context_window);
-    }
-    succeeded(result, request.request_id)
+    succeeded(
+        AgentSettingsPreviewV2 {
+            schema: "hiroute.agent-settings-preview/v2".into(),
+            expected_revisions: input.expected_revisions,
+            applicable: preview.blockers.is_empty(),
+            resident_service: AgentResidentServicePreviewV2 {
+                login_item_required: input
+                    .facts
+                    .model
+                    .as_ref()
+                    .is_some_and(|model| model.common.login_item_required),
+                login_item_removal_required: input
+                    .facts
+                    .model
+                    .as_ref()
+                    .is_some_and(|model| model.common.login_item_removal_required),
+            },
+            collaboration_effect,
+            model_effect,
+            preview,
+        },
+        request.request_id,
+    )
 }
 
 pub(crate) fn apply(
@@ -295,7 +324,11 @@ pub(crate) fn status(
             request.payload,
         ) {
             Ok(payload)
-                if payload.schema_version == hiroute_application_api::AGENT_SETTINGS_SCHEMA_V2 =>
+                if payload.schema_version == hiroute_application_api::AGENT_SETTINGS_SCHEMA_V2
+                    && payload
+                        .effective
+                        .as_ref()
+                        .is_none_or(|effective| effective.valid()) =>
             {
                 payload
             }

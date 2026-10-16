@@ -16,7 +16,34 @@ const claudeOf = (snapshot: AgentSnapshot) => modelAgent(snapshot, 'agent_claude
 const codexOf = (snapshot: AgentSnapshot) => modelAgent(snapshot, 'agent_codex_default');
 
 function registered(): AgentSnapshot {
-  return structuredClone(readyAgents);
+  const snapshot = structuredClone(readyAgents);
+  for (const ecosystem of ['qoder', 'pi', 'dsh'] as const) snapshot.agents.push({
+    agent_id: `agent_${ecosystem}_default`, context_id: `agent-context/${ecosystem}/fixture`, version: 'fixture',
+    configuration_state: 'registered', status_error: null, available_surfaces: [`${ecosystem}_cli`],
+    settings: { state: 'not_configured', model_verified: false, restore_point_ref: null,
+      collaboration: { state: 'not_configured', restore_point_ref: null, current_selection: null } },
+  });
+  for (const agent of snapshot.agents) if (agent.settings) agent.settings.management_skill = {
+    schema: 'hiroute.agent-management-skill-status/v1', state: 'not_configured', restore_point_ref: null, operation_id: null, operation_state: null,
+  };
+  return snapshot;
+}
+function hermesAgent(configured = false): AgentSnapshot {
+  const snapshot = registered();
+  const target = { kind: 'hermes' as const, config_root: '/tmp/hermes-profile-fixture' };
+  snapshot.agents.push({
+    ...claudeOf(snapshot), agent_id: 'agent_hermes_default', context_id: 'agent-context/hermes/fixture',
+    version: '0.19.1', native_target: target, configuration_state: configured ? 'configured' : 'not_configured',
+    available_surfaces: ['hermes_cli'],
+    settings: { state: configured ? 'configured' : 'not_configured', model_verified: false,
+      native_target: target, restore_point_ref: configured ? 'restore/hermes' : null,
+      current_selection: configured ? { mode: 'hermes_default', plan_id: snapshot.plans.plans[0].agent_plan_id, protocol: 'responses' } : null,
+      collaboration: { state: 'not_configured', restore_point_ref: null, current_selection: null },
+      management_skill: { schema: 'hiroute.agent-management-skill-status/v1', state: 'not_configured', restore_point_ref: null, operation_id: null, operation_state: null },
+      native_adapter: configured ? { resources_installed: true, runtime_loading: 'unobserved', next_action: 'reload_plugins_if_running', known_channel_models: ['native-channel-model'] } : undefined,
+    },
+  });
+  return snapshot;
 }
 function notRunnable(): AgentSnapshot {
   const snapshot = registered();
@@ -147,6 +174,7 @@ const control = {
   operations: [] as { operation: { operation_id: string; state: string }; presentation: { kind: string; target: string } }[],
   refresh: () => {},
   reset: () => {},
+  remount: () => {},
   registered,
   notRunnable,
   notRunnableWithRestore,
@@ -160,6 +188,8 @@ const control = {
   qoderConfigured: () => additionalAgent(true),
   qoderRouted: () => additionalRouted(),
   additionalRouted,
+  hermesFresh: () => hermesAgent(),
+  hermesConfigured: () => hermesAgent(true),
 };
 Object.assign(window, { agentTrust: control });
 
@@ -168,6 +198,7 @@ mockIPC(async (command, payload) => {
   control.commands.push({ command, payload: args });
   if (control.handlers[command]) return control.handlers[command](args);
   switch (command) {
+    case 'cli_entry_status': return { state: 'valid', command_resolves_to_app_cli: true, path_contains_entry_directory: true };
     case 'agent_snapshot': return structuredClone(control.agents);
     case 'preview_agent_settings': {
       return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } };
@@ -179,11 +210,16 @@ mockIPC(async (command, payload) => {
 });
 
 function Harness() {
+  const presentation = new URLSearchParams(location.search);
+  const language = presentation.get('language') === 'en' ? 'en' : 'zh';
+  const theme = presentation.get('theme') === 'light' ? 'light' : 'dark';
   const [generation, setGeneration] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [operation, setOperation] = useState<OperationReference | null>(null);
   control.refresh = () => setRefresh(value => value + 1);
+  control.remount = () => setGeneration(value => value + 1);
   control.reset = () => {
+    localStorage.removeItem('hiroute.agent-discovery');
     control.agents = registered();
     control.commands = [];
     control.handlers = {};
@@ -193,11 +229,11 @@ function Harness() {
     setRefresh(0);
     setGeneration(value => value + 1);
   };
-  return <PresentationRoot language="zh" theme="dark" textScale={1}>
+  return <PresentationRoot language={language} theme={theme} textScale={1}>
     <div className="app-window">
       <div role="note" style={{ gridColumn: '1 / -1', gridRow: 1 }}>组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实安装。</div>
       <main className="main" style={{ gridColumn: '1 / -1', gridRow: 2 }}>
-      <Agents key={generation} language="zh" refreshVersion={refresh} operation={operation} mutationAllowed onMutation={() => { control.mutations += 1; }} onOperation={(operation, presentation) => { control.operations.push({ operation, presentation }); setOperation(operation); }} />
+      <Agents key={generation} language={language} refreshVersion={refresh} operation={operation} mutationAllowed onMutation={() => { control.mutations += 1; }} onOperation={(operation, presentation) => { control.operations.push({ operation, presentation }); setOperation(operation); }} />
     </main></div>
   </PresentationRoot>;
 }

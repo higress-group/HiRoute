@@ -54,6 +54,7 @@ pub(super) fn wire_snapshot(provider_authority: &str) -> GatewayPublicationSnaps
         ],
         vec![
             GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "wire-grant".into(),
                 generation: 5,
@@ -62,6 +63,7 @@ pub(super) fn wire_snapshot(provider_authority: &str) -> GatewayPublicationSnaps
                 routes: plan_routes(&[("wire-fast", 41), ("wire-deep", 42)]),
             },
             GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "wire-messages-grant".into(),
                 generation: 5,
@@ -104,6 +106,7 @@ pub(super) fn live_snapshot(
             )],
         }],
         vec![GrantV1 {
+            consumer: None,
             route_protocols: Default::default(),
             grant_id: "live-grant".into(),
             generation: 1,

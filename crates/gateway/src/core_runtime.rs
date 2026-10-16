@@ -1494,8 +1494,10 @@ fn inbound_authorization<'a>(
         return Some(std::borrow::Cow::Borrowed(authorization));
     }
     if headers.contains_key("x-hiroute-token") {
-        if !matches!(path, "/v1/responses" | "/v1/messages" | "/v1/models")
-            || headers.get_all("x-hiroute-token").iter().count() != 1
+        if !matches!(
+            path,
+            "/v1/responses" | "/v1/chat/completions" | "/v1/messages" | "/v1/models"
+        ) || headers.get_all("x-hiroute-token").iter().count() != 1
         {
             return None;
         }

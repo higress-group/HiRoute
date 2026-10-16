@@ -16,6 +16,7 @@ fn collaboration_spec() -> AgentSettingsSpecV2 {
 
 fn input(facts: AgentSettingsFacts) -> AgentSettingsPlanningInput {
     AgentSettingsPlanningInput {
+        additional_skill_file: None,
         collaboration_state: json!({"trigger_mode":"explicit"}),
         facts,
         expected_revisions: RevisionSetV1 {
@@ -143,4 +144,89 @@ fn sealing_rechecks_model_support_even_for_a_previously_confirmed_restore() {
     // converted into model file/grant effects or a default configuration target.
     fresh.model = None;
     assert!(input(fresh).seal_settings(&confirmed).is_err());
+}
+
+#[test]
+fn both_skills_seal_distinct_owned_effects_without_model_authority() {
+    let mut facts = facts();
+    facts.model = None;
+    let mut spec = collaboration_spec();
+    spec.management_skill = Some(AgentFacetIntent::Configure {
+        settings: hiroute_domain::AgentManagementSkillSelectionV1 {},
+    });
+    let confirmed = confirm(spec, &facts);
+    assert_eq!(
+        confirmed.preview().changed_facets,
+        BTreeSet::from([
+            AgentSettingsFacet::ManagementSkill,
+            AgentSettingsFacet::Collaboration,
+        ])
+    );
+    let mut input = input(facts);
+    input.additional_skill_file = Some(SettingsSkillFileFacts {
+        root_ref: "skill-root/qoder/additional".into(),
+        target: "agent-connections/test/management-skill".into(),
+        before: None,
+        observed_file: None,
+        before_fingerprint: None,
+        template: CollaborationSkillTemplate::bundled("management/v1", "# Management\n").unwrap(),
+    });
+    let plan = input.seal_settings(&confirmed).unwrap();
+    assert!(plan.agent_access_grants().is_empty());
+    assert_eq!(plan.external().len(), 2);
+    assert_eq!(
+        plan.external()
+            .iter()
+            .map(|i| i.effect_id())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "agent-connection-routing-skill",
+            "agent-connection-management-skill",
+        ])
+    );
+    for missing in 0..2 {
+        let effects = plan
+            .external()
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != missing)
+            .map(|(_, e)| e.clone())
+            .collect();
+        assert!(
+            hiroute_domain::TransactionPlanV1::from_registered_typed_planner(
+                plan.spec().clone(),
+                plan.control().clone(),
+                None,
+                vec![],
+                vec![],
+                effects,
+            )
+            .is_err(),
+            "recovery must retain both exact effects"
+        );
+    }
+}
+
+#[test]
+fn management_conflict_blocks_only_the_requested_management_facet() {
+    let mut facts = facts();
+    facts.model = None;
+    facts.management_file_conflict = true;
+    let mut spec = collaboration_spec();
+    assert!(
+        preview_agent_settings(spec.clone(), &facts)
+            .unwrap()
+            .blockers
+            .is_empty()
+    );
+    spec.collaboration = AgentFacetIntent::Keep;
+    spec.management_skill = Some(AgentFacetIntent::Configure {
+        settings: hiroute_domain::AgentManagementSkillSelectionV1 {},
+    });
+    let preview = preview_agent_settings(spec, &facts).unwrap();
+    assert_eq!(preview.blockers.len(), 1);
+    assert_eq!(
+        preview.blockers[0].facet,
+        AgentSettingsFacet::ManagementSkill
+    );
 }

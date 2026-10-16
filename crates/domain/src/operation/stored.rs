@@ -3,7 +3,7 @@ use super::*;
 
 pub const OPERATION_INPUT_SCHEMA: &str = "hiroute.operation-input/v1";
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredOperationInputV1 {
     pub schema: String,
@@ -16,7 +16,7 @@ pub struct StoredOperationInputV1 {
     pub external: Vec<StoredExternalIntentV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredSecretMutationV1 {
     kind: SecretMutationKind,
@@ -28,7 +28,7 @@ pub struct StoredSecretMutationV1 {
     new_allowed_destinations: Option<BTreeSet<String>>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredRuntimeMutationV1 {
     key: String,
@@ -36,7 +36,7 @@ pub struct StoredRuntimeMutationV1 {
     expected_generation: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredExternalIntentV1 {
     pub(super) effect_id: String,

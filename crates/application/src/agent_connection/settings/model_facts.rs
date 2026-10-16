@@ -19,6 +19,7 @@ pub enum SettingsModelNativeFacts {
     Codex(Box<SettingsCodexModelFacts>),
     Claude(SettingsClaudeNativeFacts),
     Additional(SettingsAdditionalModelFacts),
+    Hermes(SettingsAdditionalModelFacts),
 }
 
 #[derive(Default)]

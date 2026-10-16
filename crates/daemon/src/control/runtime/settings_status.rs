@@ -53,6 +53,9 @@ impl LocalControlAdapter {
             return Err(ControlReadError::Denied);
         }
         let (status, grant, _) = self.evaluate_model_settings(&AgentSettingsStatusRequestV2 {
+            effective: None,
+            include_skills: false,
+            native_target: None,
             schema_version: hiroute_application_api::AGENT_SETTINGS_SCHEMA_V2,
             context_id: target.context_id.clone(),
         })?;
@@ -76,18 +79,34 @@ impl LocalControlAdapter {
         &self,
         request: &AgentSettingsStatusRequestV2,
     ) -> Result<AgentModelSettingsStatusV2, ControlReadError> {
-        let (mut status, _, _) = self.evaluate_model_settings(request)?;
+        let (mut status, _, join) = self.evaluate_model_settings(request)?;
         let collaboration_request = if self.settings_agent_for_context(&request.context_id)
             == Some(SettingsAgentClass::CodexProfile)
         {
             AgentSettingsStatusRequestV2 {
+                effective: None,
+                include_skills: false,
+                native_target: None,
                 schema_version: request.schema_version,
                 context_id: self.settings_context(SettingsAgentClass::Codex),
             }
         } else {
             request.clone()
         };
-        status.collaboration = Some(self.collaboration_settings_status(&collaboration_request)?);
+        let hermes = self.settings_agent_for_context(&request.context_id)
+            == Some(SettingsAgentClass::Hermes);
+        if hermes || request.include_skills {
+            status.management_skill =
+                Some(self.management_settings_status(&collaboration_request)?);
+        }
+        if !hermes || request.include_skills {
+            status.collaboration =
+                Some(self.collaboration_settings_status(&collaboration_request)?);
+        }
+        if let Some(effective) = &request.effective {
+            status.effective =
+                Some(self.agent_effective_state(&status, join.as_ref(), effective)?);
+        }
         Ok(status)
     }
 
@@ -98,6 +117,9 @@ impl LocalControlAdapter {
         context_id: &str,
     ) -> Result<Option<ConfiguredModelSettings>, ControlReadError> {
         let (_, _, join) = self.evaluate_model_settings(&AgentSettingsStatusRequestV2 {
+            effective: None,
+            include_skills: false,
+            native_target: None,
             schema_version: hiroute_application_api::AGENT_SETTINGS_SCHEMA_V2,
             context_id: context_id.to_owned(),
         })?;
@@ -117,6 +139,9 @@ impl LocalControlAdapter {
             .filter(|context| format!("agent-connection/{context}") == connection_id)
             .ok_or(ControlReadError::NotFound)?;
         let request = AgentSettingsStatusRequestV2 {
+            effective: None,
+            include_skills: false,
+            native_target: None,
             schema_version: hiroute_application_api::AGENT_SETTINGS_SCHEMA_V2,
             context_id: context_id.to_owned(),
         };
@@ -141,7 +166,36 @@ impl LocalControlAdapter {
         let class = self
             .settings_agent_for_context(&request.context_id)
             .ok_or(ControlReadError::NotFound)?;
+        let requested_target =
+            if class == SettingsAgentClass::Hermes && request.native_target.is_some() {
+                Some(self.hermes_target_for_context(
+                    &request.context_id,
+                    request.native_target.as_ref(),
+                )?)
+            } else if class != SettingsAgentClass::Hermes && request.native_target.is_some() {
+                return Err(ControlReadError::Denied);
+            } else {
+                None
+            };
+        let native_target = if class == SettingsAgentClass::Hermes {
+            self.stores_lock()
+                .map_err(super::map_port)?
+                .control()
+                .agent_settings_native_targets(&WorkspaceId::default())
+                .map_err(super::map_port)?
+                .into_iter()
+                .find(|target| {
+                    hiroute_integrations::hermes_context_id(target.config_root())
+                        == request.context_id
+                })
+                .or(requested_target)
+        } else {
+            None
+        };
         let mut status = AgentModelSettingsStatusV2 {
+            effective: None,
+            native_target,
+            native_adapter: None,
             schema: "hiroute.agent-model-settings-status/v2".into(),
             context_id: request.context_id.clone(),
             state: State::NotConfigured,
@@ -155,6 +209,7 @@ impl LocalControlAdapter {
             current_selection: None,
             protected_native_model_ids: Vec::new(),
             collaboration: None,
+            management_skill: None,
         };
         let stores = self.stores_lock().map_err(super::map_port)?;
         let belongs = |operation: &dyn hiroute_domain::AgentOperationRead| {
@@ -211,6 +266,9 @@ impl LocalControlAdapter {
                         intent,
                     )
                     .map_err(super::map_port)?
+                } else if class == SettingsAgentClass::Hermes {
+                    self.hermes_operation_files_applied(&operation, intent)
+                        .map_err(super::map_port)?
                 } else if class == SettingsAgentClass::Claude {
                     let policy =
                         hiroute_application::agent_connection::decode_settings_claude_model_file(
@@ -300,6 +358,28 @@ impl LocalControlAdapter {
                     )
                     .map_err(super::map_port)?
                 };
+                if class == SettingsAgentClass::Hermes {
+                    let resources_installed = self
+                        .hermes_operation_plugin_files_applied(&operation)
+                        .map_err(super::map_port)?;
+                    status.native_adapter = Some(
+                        hiroute_application_api::AgentNativeAdapterStatusV1 {
+                            resources_installed,
+                            known_channel_models: status.native_target.as_ref().and_then(
+                                |target| {
+                                    hiroute_integrations::hermes_known_channel_models(target).ok()
+                                },
+                            ),
+                            runtime_loading:
+                                hiroute_application_api::AgentNativeRuntimeLoadingV1::Unobserved,
+                            next_action: if resources_installed {
+                                hiroute_application_api::AgentNativeAdapterNextActionV1::ReloadPluginsIfRunning
+                            } else {
+                                hiroute_application_api::AgentNativeAdapterNextActionV1::RepairOwnedResources
+                            },
+                        },
+                    );
+                }
                 let configured = file_applied
                     && endpoint_current
                     && current.as_ref() == Some(&expected)
@@ -347,6 +427,10 @@ impl LocalControlAdapter {
                             hiroute_domain::AgentModelSelectionV2::DshAdditional { .. },
                             SettingsAgentClass::Dsh,
                         ) => [hiroute_domain::AgentModelSurfaceV2::DshCli].into(),
+                        (
+                            hiroute_domain::AgentModelSelectionV2::HermesDefault { .. },
+                            SettingsAgentClass::Hermes,
+                        ) => [hiroute_domain::AgentModelSurfaceV2::HermesCli].into(),
                         _ => return Err(ControlReadError::Corrupt),
                     };
                     // The applied revision is the installed publication this configuration was
@@ -477,6 +561,9 @@ fn model_intent(
             | super::settings_facts::SettingsAgentClass::CodexProfile => {
                 super::native_model::is_settings_codex_model(intent)
             }
+            super::settings_facts::SettingsAgentClass::Hermes => {
+                hiroute_application::agent_connection::is_settings_hermes_model(intent)
+            }
             super::settings_facts::SettingsAgentClass::Claude => {
                 super::native_claude_model::is_settings_claude_model(intent)
             }
@@ -494,6 +581,10 @@ fn model_action(
     intent: &hiroute_domain::ExternalEffectIntentV1,
 ) -> hiroute_domain::PortResult<ModelAction> {
     match class {
+        super::settings_facts::SettingsAgentClass::Hermes => match hiroute_application::agent_connection::settings_hermes_model_file_for_operation(operation, intent)?.change {
+            hiroute_application::agent_connection::HermesModelFileAction::Configure { .. } => Ok(ModelAction::Configure),
+            hiroute_application::agent_connection::HermesModelFileAction::Restore { .. } => Ok(ModelAction::Restore),
+        },
         super::settings_facts::SettingsAgentClass::Qoder | super::settings_facts::SettingsAgentClass::Pi | super::settings_facts::SettingsAgentClass::Dsh => {
             match hiroute_application::agent_connection::settings_additional_model_file_for_operation(
                 operation, intent,
@@ -537,6 +628,9 @@ fn model_endpoint_matches_runtime(
         settings_additional_model_file_for_operation,
     };
     match class {
+        SettingsAgentClass::Hermes => Ok(
+            matches!(hiroute_application::agent_connection::settings_hermes_model_file_for_operation(operation, intent)?.change, hiroute_application::agent_connection::HermesModelFileAction::Configure { endpoint, .. } if endpoint == gateway_base_url),
+        ),
         SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => Ok(matches!(
             settings_codex_model_file_for_operation(operation, intent)?.change,
             CodexModelFileAction::Configure { endpoint, .. } if endpoint == gateway_base_url

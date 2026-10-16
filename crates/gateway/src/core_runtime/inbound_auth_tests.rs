@@ -137,6 +137,10 @@ fn model_entry_uses_independent_grant_without_native_bearer_fallback() {
         inbound_authorization("/v1/messages", &headers).as_deref(),
         Some("Bearer model-grant")
     );
+    assert_eq!(
+        inbound_authorization("/v1/chat/completions", &headers).as_deref(),
+        Some("Bearer model-grant")
+    );
     headers.insert("x-hiroute-token", HeaderValue::from_static(""));
     assert!(inbound_authorization("/v1/responses", &headers).is_none());
 }
@@ -147,6 +151,7 @@ fn repeated_or_combined_grant_headers_are_rejected() {
     headers.append("x-hiroute-token", HeaderValue::from_static("first"));
     headers.append("x-hiroute-token", HeaderValue::from_static("second"));
     assert!(inbound_authorization("/v1/responses", &headers).is_none());
+    assert!(inbound_authorization("/v1/chat/completions", &headers).is_none());
     headers.insert("x-hiroute-token", HeaderValue::from_static("first,second"));
     assert!(inbound_authorization("/v1/responses", &headers).is_none());
     headers.remove("x-hiroute-token");

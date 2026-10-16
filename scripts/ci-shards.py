@@ -38,6 +38,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-platform", "windows_scm_owner"),
         ("hiroute-cli", "contracts"),
         ("hiroute-cli", "desktop_locator"),
+        ("hiroute-cli", "management_contracts"),
         ("hiroute-cli", "request_input"),
         ("hiroute-cli", "service_proxy"),
         ("hiroute-cli", "transport_unavailable"),

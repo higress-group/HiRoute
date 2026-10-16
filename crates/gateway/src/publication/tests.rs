@@ -136,6 +136,7 @@ pub(super) fn snapshot(revision: u64, renderer: &str) -> GatewayPublicationSnaps
         ],
         vec![
             GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "grant-alpha".into(),
                 generation: 1,
@@ -144,6 +145,7 @@ pub(super) fn snapshot(revision: u64, renderer: &str) -> GatewayPublicationSnaps
                 routes: [test_plan_route("alpha", 10)].into(),
             },
             GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "grant-beta".into(),
                 generation: 1,
@@ -813,6 +815,7 @@ fn fixed_grants_isolate_same_name_and_revocation_without_hidden_plans() {
         .map(|id| {
             let binding = candidate(id);
             GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: format!("fixed-{id}"),
                 generation: 1,

@@ -24,7 +24,7 @@ pub enum ConversationContentChannelV2 {
     ConversationContent,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationContentDirectionV2 {
     RequestInput,
@@ -68,7 +68,7 @@ pub enum ContentCompletenessDeltaV2 {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentDownstreamDeliveryV2 {
     FullFrameTransportAccepted,
@@ -103,7 +103,7 @@ pub struct ContentLossWatermarkV2 {
     pub reason: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContentRefV2 {
     pub content_id: ContentId,

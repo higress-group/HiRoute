@@ -8,7 +8,9 @@ use crate::{CanonicalDigest, ManagedLaunchProfileV1};
 
 pub const AGENT_PROFILE_SCHEMA_V1: &str = "hiroute.agent-profile/v1";
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentKindV1 {
     Codex,
@@ -16,6 +18,7 @@ pub enum AgentKindV1 {
     Qoder,
     Pi,
     DeepseekHarness,
+    Hermes,
 }
 
 impl AgentKindV1 {
@@ -37,7 +40,7 @@ impl AgentKindV1 {
                 ConfigLayerV1::Project,
                 ConfigLayerV1::User,
             ],
-            Self::Pi | Self::DeepseekHarness => &[
+            Self::Pi | Self::DeepseekHarness | Self::Hermes => &[
                 ConfigLayerV1::Process,
                 ConfigLayerV1::Launch,
                 ConfigLayerV1::Project,
@@ -59,15 +62,19 @@ impl AgentKindV1 {
             Self::Qoder => "qoder",
             Self::Pi => "pi",
             Self::DeepseekHarness => "deepseek_harness",
+            Self::Hermes => "hermes",
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentIngressProtocolV1 {
     Responses,
     Messages,
+    ChatCompletions,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -217,7 +224,10 @@ impl AgentProfileV1 {
         }
         if matches!(
             self.kind,
-            AgentKindV1::Qoder | AgentKindV1::Pi | AgentKindV1::DeepseekHarness
+            AgentKindV1::Qoder
+                | AgentKindV1::Pi
+                | AgentKindV1::DeepseekHarness
+                | AgentKindV1::Hermes
         ) && (self.dynamic_catalog
             || self.static_catalog_fallback
             || self.native_subagent_routing
@@ -262,7 +272,8 @@ impl AgentProfileV1 {
                 AgentKindV1::Codex
                 | AgentKindV1::Qoder
                 | AgentKindV1::Pi
-                | AgentKindV1::DeepseekHarness,
+                | AgentKindV1::DeepseekHarness
+                | AgentKindV1::Hermes,
                 Some(AgentIngressProtocolV1::Responses),
             )
             | (AgentKindV1::ClaudeCode, Some(AgentIngressProtocolV1::Messages)) => Ok(()),

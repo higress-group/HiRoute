@@ -4,20 +4,23 @@ use hiroute_application_api::{
 };
 use hiroute_domain::{
     AgentAccessTokenIntentV1, AgentAction, AgentCapability, AgentCapabilitySet,
-    AgentCollaborationTriggerModeV2, AgentIngressProtocolV1, AgentModelDefaultSelectionV2,
-    AgentModelGrantV2, AgentModelRouteV2, AgentModelSelectionV2, CanonicalDigest,
-    GatewayPublicationV1,
+    AgentIngressProtocolV1, AgentModelDefaultSelectionV2, AgentModelGrantV2, AgentModelRouteV2,
+    AgentModelSelectionV2, CanonicalDigest, GatewayPublicationV1,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub struct AgentSettingsFacts {
+    pub native_target: Option<hiroute_domain::AgentNativeTargetV1>,
     pub context_id: String,
     pub dependency_digest: CanonicalDigest,
     pub capabilities: AgentCapabilitySet,
     /// No model facts or configuration target are needed by collaboration-only installations.
     pub model: Option<SettingsModelFacts>,
     pub collaboration_file_conflict: bool,
+    pub management_file_conflict: bool,
+    /// Releasing an external reference has no native-file replacement prerequisite.
+    pub reference_only_skill_restores: BTreeSet<AgentSettingsFacet>,
     pub restore_points: BTreeMap<String, AgentSettingsFacet>,
 }
 
@@ -48,48 +51,8 @@ pub enum CodexCatalogProducerKindV1 {
     HirouteGenerated,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct AgentSettingsPreview {
-    pub context_windows: BTreeMap<String, u64>,
-    pub claude_context_window: Option<u64>,
-    pub spec: AgentSettingsSpecV2,
-    pub dependency_digest: CanonicalDigest,
-    pub accept_digest: CanonicalDigest,
-    pub changed_facets: BTreeSet<AgentSettingsFacet>,
-    pub model_grant: Option<AgentModelGrantV2>,
-    /// None means keep/restore; Configure always persists the selected Skill trigger mode.
-    pub collaboration_trigger_mode: Option<AgentCollaborationTriggerModeV2>,
-    pub blockers: Vec<AgentSettingsBlock>,
-    pub unproven_native_model_ids: Vec<String>,
-}
+pub use hiroute_application_api::{AgentSettingsBlock, AgentSettingsPreview, SettingsBlockReason};
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct AgentSettingsBlock {
-    pub facet: AgentSettingsFacet,
-    pub reason: SettingsBlockReason,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub capabilities: Vec<hiroute_domain::CapabilityBlock>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub model_ids: Vec<String>,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SettingsBlockReason {
-    QoderDefaultInUse,
-    AdditionalDefaultInUse,
-    QoderModelFileConflict,
-    CodexContextOverride,
-    ClaudeContextOverride,
-    ClaudePlanCapabilityUnavailable,
-    ClaudeContextWindowUnsupported,
-    CapabilityUnavailable,
-    ModelPlanUnavailable,
-    NativeModelCoverageUnavailable,
-    NativeDefaultInvalid,
-    RestoreNativeModelInvalid,
-    RestorePointUnavailable,
-    SkillFileConflict,
-}
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum SettingsPlanningError {
     #[error("Agent settings schema or context is invalid")]
@@ -131,6 +94,21 @@ pub fn preview_agent_settings(
     {
         return Err(SettingsPlanningError::InvalidSelection);
     }
+    let hermes = spec.context_id.starts_with("agent-context/hermes/");
+    if spec
+        .native_target
+        .as_ref()
+        .is_some_and(|target| target.validate().is_err())
+        || (!hermes && spec.native_target.is_some())
+    {
+        return Err(SettingsPlanningError::InvalidSelection);
+    }
+    if hermes {
+        spec.native_target = facts.native_target.clone();
+        if spec.native_target.is_none() {
+            return Err(SettingsPlanningError::InvalidContext);
+        }
+    }
     spec.protected_native_model_ids.clear();
     if let Some(model) = facts.model.as_ref().and_then(SettingsModelFacts::codex) {
         spec.protected_native_model_ids = if model.require_native_model_routes {
@@ -156,7 +134,9 @@ pub fn preview_agent_settings(
     let mut changed_facets = BTreeSet::new();
     let mut blockers = Vec::new();
     if let Some(reason) = facts.model.as_ref().and_then(|model| match &model.native {
-        SettingsModelNativeFacts::Additional(facts) => facts.model_conflict,
+        SettingsModelNativeFacts::Additional(facts) | SettingsModelNativeFacts::Hermes(facts) => {
+            facts.model_conflict
+        }
         _ => None,
     }) {
         if !matches!(
@@ -164,6 +144,7 @@ pub fn preview_agent_settings(
             SettingsBlockReason::QoderDefaultInUse
                 | SettingsBlockReason::QoderModelFileConflict
                 | SettingsBlockReason::AdditionalDefaultInUse
+                | SettingsBlockReason::HermesModelFileConflict
         ) {
             return Err(SettingsPlanningError::InvalidSelection);
         }
@@ -241,6 +222,14 @@ pub fn preview_agent_settings(
                     .common
                     .available_surfaces
                     .contains(&hiroute_domain::AgentModelSurfaceV2::DshCli)
+            {
+                return Err(SettingsPlanningError::InvalidSelection);
+            }
+            if matches!(settings, AgentModelSelectionV2::HermesDefault { .. })
+                != model
+                    .common
+                    .available_surfaces
+                    .contains(&hiroute_domain::AgentModelSurfaceV2::HermesCli)
             {
                 return Err(SettingsPlanningError::InvalidSelection);
             }
@@ -413,6 +402,55 @@ pub fn preview_agent_settings(
                     model_ids: Vec::new(),
                 });
             }
+        }
+    }
+    if let Some(intent) = &spec.management_skill {
+        let facet = AgentSettingsFacet::ManagementSkill;
+        match intent {
+            AgentFacetIntent::Keep => {}
+            AgentFacetIntent::Configure { .. } => {
+                if facts.management_file_conflict {
+                    blockers.push(AgentSettingsBlock {
+                        facet,
+                        reason: SettingsBlockReason::SkillFileConflict,
+                        capabilities: Vec::new(),
+                        model_ids: Vec::new(),
+                    });
+                }
+                changed_facets.insert(facet);
+                require(
+                    facts,
+                    AgentAction::InstallManagementSkill,
+                    facet,
+                    &mut blockers,
+                );
+            }
+            AgentFacetIntent::Restore { restore_point_ref } => {
+                if facts.management_file_conflict {
+                    blockers.push(AgentSettingsBlock {
+                        facet,
+                        reason: SettingsBlockReason::SkillFileConflict,
+                        capabilities: Vec::new(),
+                        model_ids: Vec::new(),
+                    });
+                }
+                changed_facets.insert(facet);
+                restore(
+                    facts,
+                    AgentAction::RemoveManagementSkill,
+                    facet,
+                    restore_point_ref,
+                    &mut blockers,
+                );
+            }
+        }
+        if !matches!(intent, AgentFacetIntent::Keep) && facts.collaboration_file_conflict {
+            blockers.push(AgentSettingsBlock {
+                facet,
+                reason: SettingsBlockReason::SkillFileConflict,
+                capabilities: Vec::new(),
+                model_ids: Vec::new(),
+            });
         }
     }
     if changed_facets.is_empty() {
@@ -596,6 +634,9 @@ fn validate_model_default(
     let invalid = || SettingsPlanningError::InvalidSelection;
     let claude_presets;
     let default_name = match settings {
+        AgentModelSelectionV2::HermesDefault { plan_id, .. } => grant.routes.iter().find_map(|(name, route)| {
+            matches!(route, AgentModelRouteV2::Plan { plan_id: selected, .. } if selected == plan_id).then_some(name.as_str())
+        }),
         AgentModelSelectionV2::CodexDefault { default_selection, .. } => match default_selection {
             AgentModelDefaultSelectionV2::PreserveNative => facts.codex().ok_or_else(invalid)?.native_default_model.as_deref(),
             AgentModelDefaultSelectionV2::FixedModel { client_model_id } => Some(client_model_id.as_str()),
@@ -653,7 +694,9 @@ fn restore(
     reference: &str,
     blockers: &mut Vec<AgentSettingsBlock>,
 ) {
-    require(facts, action, facet, blockers);
+    if facet == AgentSettingsFacet::Model || !facts.reference_only_skill_restores.contains(&facet) {
+        require(facts, action, facet, blockers);
+    }
     if !identity(reference) || facts.restore_points.get(reference) != Some(&facet) {
         blockers.push(AgentSettingsBlock {
             facet,

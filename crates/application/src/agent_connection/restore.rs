@@ -365,7 +365,11 @@ fn fingerprint_for(
         AgentConnectionEffectRoleV1::SpawnGuidanceRewrite => values.spawn_guidance.clone(),
         // The login item is a settings-transaction host effect and never rides a V1
         // connect/restore plan, so no V1 fingerprint slot exists for it.
-        AgentConnectionEffectRoleV1::LoginItem => None,
+        AgentConnectionEffectRoleV1::LoginItem
+        | AgentConnectionEffectRoleV1::HermesPluginModule
+        | AgentConnectionEffectRoleV1::HermesPluginManifest
+        | AgentConnectionEffectRoleV1::ManagementSkill
+        | AgentConnectionEffectRoleV1::CollaborationSkill => None,
     }
 }
 

@@ -17,6 +17,8 @@ export type AgentEditorValues = {
   defaultChoice: AgentDefaultChoice;
   claudePresets: AgentClaudePresetMappings;
   triggerMode: AgentCollaborationTriggerMode;
+  hermesPlanId: string;
+  hermesProtocol: 'chat_completions' | 'responses' | 'messages';
 };
 
 export const EMPTY_EDITOR_VALUES: AgentEditorValues = {
@@ -31,6 +33,8 @@ export const EMPTY_EDITOR_VALUES: AgentEditorValues = {
     haiku: { kind: 'preserve_native' },
   },
   triggerMode: 'explicit',
+  hermesPlanId: '',
+  hermesProtocol: 'responses',
 };
 const preserve = (): AgentClaudePresetChoice => ({ kind: 'preserve_native' });
 
@@ -61,10 +65,15 @@ export function codexDefaultChoiceValid(
 
 export function agentEditorSeed(
   agent: Agent,
-  facet: 'model' | 'collaboration',
+  facet: 'model' | 'collaboration' | 'management_skill',
   availablePlanIds: string[] = [],
 ): AgentEditorValues & { known: boolean } {
   const ecosystem = agentEcosystem(agent.agent_id);
+  if (facet === 'management_skill') {
+    const management = agent.settings?.management_skill;
+    return { ...EMPTY_EDITOR_VALUES, known: ecosystem !== null && (ecosystem !== 'hermes' || !!agent.native_target)
+      && !agent.status_error && !!management && ['not_configured', 'restored', 'configured'].includes(management.state) };
+  }
   const status = facet === 'model' ? agentModelStatus(agent) : agent.settings?.collaboration;
   const selection = status?.current_selection;
   const initial = status?.state === 'not_configured' || status?.state === 'restored';
@@ -84,6 +93,8 @@ export function agentEditorSeed(
     known: facet === 'model'
       ? known && agentSupportsModelRouting(agent.agent_id) && (initial || Boolean(currentModel && agentModelSelectionMatches(agent.agent_id, currentModel)))
       : known,
+    hermesPlanId: currentModel?.mode === 'hermes_default' ? currentModel.plan_id : initialPlan && ecosystem === 'hermes' ? initialPlan : '',
+    hermesProtocol: currentModel?.mode === 'hermes_default' ? currentModel.protocol : 'responses',
     planProtocols: qoder?.plan_protocols ?? {},
     fixedModels: currentModel && 'fixed_models' in currentModel ? currentModel.fixed_models : [],
     nativeModelMode: codex?.native_model_mode ?? 'hiroute_only',
@@ -116,6 +127,9 @@ export function sharedClaudePlan(planId: string): AgentClaudePresetMappings {
 /** Local form completeness only; Preview remains the authority for capabilities and grants. */
 export function agentModelFormInvalid(agent: Agent | undefined, editorValues: AgentEditorValues, enabledPlanIds: string[]): boolean {
   if (!agent || agentEcosystem(agent.agent_id) === null) return true;
+  if (agentEcosystem(agent.agent_id) === 'hermes') {
+    return !agent.native_target || !enabledPlanIds.includes(editorValues.hermesPlanId);
+  }
   if (['qoder', 'pi', 'dsh'].includes(agentEcosystem(agent.agent_id) ?? '')) {
     return editorValues.allowedPlanIds.length === 0
       || editorValues.allowedPlanIds.some(id => !enabledPlanIds.includes(id));

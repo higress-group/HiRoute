@@ -28,6 +28,9 @@ pub(crate) struct CollaborationChallenge {
     selected_tool: SelectedTool,
     issued: bool,
     completed: bool,
+    poll_count: usize,
+    pending_session: Option<u64>,
+    collected: String,
 }
 
 impl CollaborationChallenge {
@@ -197,6 +200,9 @@ impl CollaborationChallenge {
             selected_tool: SelectedTool::Unknown,
             issued: false,
             completed: false,
+            poll_count: 0,
+            pending_session: None,
+            collected: String::new(),
         })
     }
 
@@ -260,17 +266,27 @@ impl CollaborationChallenge {
             let command = self.command.clone();
             return Ok(shell_call(name, &command));
         }
+        // exec_command may yield before shell startup completes. Follow only this
+        // challenge's correlated session, without re-executing the command.
+        let call_id = if self.poll_count == 0 {
+            "call_hiroute_probe".into()
+        } else {
+            format!("call_hiroute_probe_poll_{}", self.poll_count)
+        };
         let result = body["input"].as_array().and_then(|input| {
-            input.iter().find(|item| {
-                item["type"] == "function_call_output" && item["call_id"] == "call_hiroute_probe"
-            })
+            input
+                .iter()
+                .find(|item| item["type"] == "function_call_output" && item["call_id"] == call_id)
         });
-        // Codex 0.160.0 serializes native tool output as a string OR input_text
-        // content items (protocol/models.rs at a956835d). Match only that exact
-        // correlated result; unrelated prompt text, images or metadata cannot prove it.
         let output = result.and_then(|item| responses_tool_text(&item["output"]));
         #[cfg(test)]
         {
+            let complete = output.as_deref().map(|output| {
+                let payload = output
+                    .split_once("\nOutput:\n")
+                    .map_or(output, |(_, text)| text);
+                format!("{}{payload}", self.collected)
+            });
             let diagnostic = ToolResultDiagnostic::capture(
                 self.selected_tool,
                 result,
@@ -279,27 +295,57 @@ impl CollaborationChallenge {
                 &self.expected_cli,
                 self.readonly
                     .as_ref()
-                    .map(|control| control.receipt_facts(output.as_deref().unwrap_or_default())),
+                    .map(|control| control.receipt_facts(complete.as_deref().unwrap_or_default())),
             );
-            // Native acceptance keeps closed failure facts before rejection;
-            // production probes do not compile or emit these test diagnostics.
             observe(&diagnostic);
         }
         #[cfg(any(windows, test))]
-        if let Some(control) = self.readonly.as_mut() {
-            let output = output
-                .as_deref()
-                .ok_or("native read-only correlated result")?;
-            control.confirm(output)?;
+        if self.readonly.is_some() && output.is_none() {
+            return Err("native read-only correlated result");
         }
-        let content_proved = output
-            .as_ref()
-            .is_some_and(|text| text.contains(&self.contents));
-        let cli_proved = output
-            .as_ref()
-            .is_some_and(|text| text.contains(&self.expected_cli));
-        let proved = content_proved && cli_proved;
-        if !proved {
+        let output = output
+            .as_deref()
+            .ok_or("native Skill read and trusted CLI execution")?;
+        let payload = output
+            .split_once("\nOutput:\n")
+            .map_or(output, |(_, text)| text);
+        if self.collected.len() + payload.len() > 64 * 1024 {
+            return Err("native CLI output bound");
+        }
+        let running = output
+            .lines()
+            .find_map(|line| line.strip_prefix("Process running with session ID "));
+        if let Some(session) = running {
+            let session = session.parse::<u64>().map_err(|_| "native CLI session")?;
+            if self
+                .pending_session
+                .is_some_and(|pending| pending != session)
+                || self.poll_count >= 2
+                || !body["tools"]
+                    .as_array()
+                    .is_some_and(|tools| tools.iter().any(|tool| tool["name"] == "write_stdin"))
+            {
+                return Err("native CLI pending execution");
+            }
+            self.collected.push_str(payload);
+            self.pending_session = Some(session);
+            self.poll_count += 1;
+            let id = format!("call_hiroute_probe_poll_{}", self.poll_count);
+            return Ok(
+                json!([{"type":"function_call", "id":format!("fc_probe_poll_{}", self.poll_count),
+                "call_id":id, "name":"write_stdin", "status":"completed",
+                "arguments":json!({"session_id":session, "chars":"", "yield_time_ms":10000,
+                    "max_output_tokens":2000}).to_string()}]),
+            );
+        }
+        let complete_output = format!("{}{payload}", self.collected);
+        #[cfg(any(windows, test))]
+        if let Some(control) = self.readonly.as_mut() {
+            control.confirm(&complete_output)?;
+        }
+        if !complete_output.contains(&self.contents)
+            || !complete_output.contains(&self.expected_cli)
+        {
             return Err("native Skill read and trusted CLI execution");
         }
         self.completed = true;
@@ -412,6 +458,9 @@ mod tests {
             selected_tool: SelectedTool::Unknown,
             issued: false,
             completed: false,
+            poll_count: 0,
+            pending_session: None,
+            collected: String::new(),
         }
     }
 
@@ -584,6 +633,37 @@ mod tests {
     }
 
     #[test]
+    fn codex_pending_command_requires_correlated_completion_without_reexecution() {
+        let mut check = challenge();
+        check
+            .reply(&json!({"input":"discovery-nonce", "tools":[{"name":"exec_command"}]}))
+            .unwrap();
+        let pending = check
+            .reply(&json!({"tools":[{"name":"write_stdin"}], "input":[{
+            "type":"function_call_output", "call_id":"call_hiroute_probe",
+            "output":"Process running with session ID 42\nOutput:\ncontents-nonce "}]}))
+            .unwrap();
+        assert_eq!(pending[0]["name"], "write_stdin");
+        let args: Value = serde_json::from_str(pending[0]["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args["session_id"], 42);
+        assert_eq!(args["chars"], "");
+        assert!(!check.complete());
+        for id in ["unrelated", "call_hiroute_probe"] {
+            assert!(
+                check
+                    .reply(
+                        &json!({"input":[{"type":"function_call_output", "call_id":id,
+                "output":"CLI-contract-output"}]})
+                    )
+                    .is_err()
+            );
+        }
+        check.reply(&json!({"input":[{"type":"function_call_output", "call_id":"call_hiroute_probe_poll_1",
+            "output":"Process exited with code 0\nOutput:\nCLI-contract-output"}]})).unwrap();
+        assert!(check.complete());
+    }
+
+    #[test]
     fn codex_collaboration_accepts_correlated_native_text_content_items_only() {
         let mut check = challenge();
         check
@@ -602,6 +682,24 @@ mod tests {
         assert!(check.reply(&json!({"input":[{"type":"function_call_output","call_id":"wrong-call","output":output}]})).is_err());
         check.reply(&json!({"input":[{"type":"function_call_output","call_id":"call_hiroute_probe","output":output}]})).unwrap();
         assert!(check.complete());
+    }
+
+    #[test]
+    fn codex_pending_challenge_has_a_fixed_session_and_poll_bound() {
+        let mut check = challenge();
+        check.issued = true;
+        for (index, session) in [(0, 42), (1, 43), (1, 42), (2, 42)] {
+            let id = if index == 0 {
+                "call_hiroute_probe".into()
+            } else {
+                format!("call_hiroute_probe_poll_{index}")
+            };
+            let result = check.reply(&json!({"tools":[{"name":"write_stdin"}], "input":[{
+                "type":"function_call_output", "call_id":id,
+                "output":format!("Process running with session ID {session}\nOutput:\n")}]}));
+            assert_eq!(result.is_ok(), session == 42 && index < 2);
+            assert!(!check.complete());
+        }
     }
 
     #[test]

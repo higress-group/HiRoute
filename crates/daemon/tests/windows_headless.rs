@@ -922,7 +922,19 @@ fn public_headless_business(include_claude: bool) {
             .unwrap()
             .starts_with("sha256:")
     );
-    assert_eq!(manifest["commands"].as_array().unwrap().len(), 51);
+    let commands = manifest["commands"].as_array().unwrap();
+    assert_eq!(commands.len(), 55);
+    for command_id in [
+        "prices.effective",
+        "prices.override.preview",
+        "prices.override.apply",
+    ] {
+        assert!(
+            commands
+                .iter()
+                .any(|command| command["command_id"] == command_id)
+        );
+    }
     let descriptor = product.cli(&["schema", "show", "--command-id", "compute.connection.login"]);
     assert_eq!(descriptor["data"]["command_id"], "compute.connection.login");
     assert_eq!(descriptor["data"]["lifecycle"], "released");

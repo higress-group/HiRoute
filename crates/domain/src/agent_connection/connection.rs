@@ -12,7 +12,9 @@ pub const AGENT_CONNECTION_SCHEMA_V1: &str = "hiroute.agent-connection/v1";
 pub const AGENT_PLAN_GRANT_SCHEMA_V1: &str = "hiroute.agent-plan-grant/v1";
 pub const GATEWAY_ACCESS_GRANT_SCHEMA_V1: &str = "hiroute.gateway-access-grant/v1";
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentPlanAllowedScopeV1 {
     AllPublished,

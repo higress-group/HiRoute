@@ -1,0 +1,25 @@
+{
+  "$id": "hiroute://contracts/cli/compute-scan-request.union.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "native_target": {
+          "$ref": "agent-scan-request.v1.schema.json#/properties/native_target"
+        },
+        "schema": {
+          "const": "hiroute.compute-scan-request/v2"
+        }
+      },
+      "required": [
+        "schema"
+      ],
+      "type": "object"
+    }
+  ]
+}

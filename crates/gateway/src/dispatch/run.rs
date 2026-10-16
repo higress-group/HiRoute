@@ -365,6 +365,7 @@ mod tests {
                 candidates: vec![exact_test_candidate(1, IngressProtocol::Responses, None)],
             }],
             vec![GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "delegation-run/run-one".into(),
                 generation: 1,

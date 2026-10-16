@@ -25,6 +25,7 @@ Ordinary native correlation uses these current inputs:
 | Pi / branded pi-ai | Native Responses `x-client-request-id` / optional `session_id`, or configured `x-session-id` / Messages `x-session-affinity` |
 | DeepSeek Harness | `x-deepseek-harness-session-id`; branded pi-ai fields when actually sent |
 | OpenCode | `x-opencode-session-id` across all three ingress protocols |
+| Hermes | `X-Hermes-Session-Id` from the actual native conversation on the managed main-request path |
 
 Pi `pi (...)` and DSH `deepseek-harness/<version>` User-Agent qualify interpretation
 of their pi-ai fields, not authentication. Generic request IDs/cache keys/affinity
@@ -40,6 +41,16 @@ Absent native fields use conservative complete-first-real-user inference when le
 empty/unreliable/incomplete/generic wrapper input remains request-scoped. Raw native
 IDs are not persisted. Equal content cannot merge distinct native IDs; rewriting
 content does not change an established native session.
+
+Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connection/authorization. Equal raw native IDs under distinct connections cannot merge conversations. For a trusted registered Hermes consumer, absent or invalid native identity remains request-scoped without first-user content inference. A caller-supplied header or user-agent does not establish managed-consumer authority; session identity itself grants no model or management access. Native cache/root affinity is not Hermes conversation proof.
+
+#### Scenario: Separate Hermes conversations when identity is missing or content matches
+
+- **WHEN** independent managed Hermes conversations have equal prompts, equal raw IDs under different connections, or no usable native ID
+- **THEN** proven scoped identities remain distinct and unproven requests remain request-scoped; equal content or cache affinity cannot merge their decisions or observations.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
 
 ### Requirement: Captured content preserves actual request and response attribution
 
@@ -210,6 +221,23 @@ body stays unavailable and cannot be rebuilt from a score explanation. Public
 `observation plan-quality samples --plan-id/--session-id` exposes the same bounded
 read-only facts, help/schema discovery, and cursor without content/model calls.
 Competence is stage performance, not task acceptance rate or universal model ranking.
+
+### Requirement: Expose Hermes connection state and recorded execution models
+
+HiRoute SHALL expose the managed Hermes profile's saved connection scope/Plan/protocol and preparation/operation state through existing CLI status queries and Desktop views. Routed Hermes requests SHALL be readable through the existing public execution queries with their recorded Plan, branch and actual execution model. Saved configuration, configuration-operation state and recorded execution SHALL remain distinguishable; the current Plan or an installed adapter SHALL NOT substitute for historical execution or unobserved live conversation selection. Existing session-history attribution and query-access contracts remain authoritative.
+
+#### Scenario: Read saved intent and routed results separately
+
+- **WHEN** a caller inspects a managed Hermes connection and a recorded request after the Plan has changed
+- **THEN** status reports the saved connection/operation facts, while execution queries report that request's recorded Plan/branch/model through existing views.
+
+#### Scenario: No routed request has been recorded
+
+- **WHEN** a Hermes default and adapter are prepared but no applicable request has reached HiRoute
+- **THEN** CLI/Desktop report prepared/configured state and any known next action without claiming runtime loading, effective live selection or an actual execution model.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165297426
 
 ## Implementation references
 

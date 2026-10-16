@@ -11,6 +11,8 @@ use zeroize::{Zeroize, Zeroizing};
 
 #[derive(Clone, Eq, PartialEq, Serialize)]
 pub struct NativeApiSource {
+    #[serde(skip)]
+    pub point_binding: Option<super::NativeApiPointBindingV1>,
     pub provider_id: String,
     pub model_id: String,
     pub protocol: Option<UpstreamProtocol>,
@@ -67,18 +69,23 @@ fn read(path: &std::path::Path) -> Result<(Document, CanonicalDigest), Error> {
 fn key(
     value: Option<&Value>,
     env: Option<&Value>,
-) -> (DiscoveredAuthSource, Option<Zeroizing<String>>) {
+) -> (DiscoveredAuthSource, Option<Zeroizing<String>>, String) {
     let Some(value) = value.and_then(Value::as_str).filter(|s| !s.is_empty()) else {
-        return (DiscoveredAuthSource::Missing, None);
+        return (DiscoveredAuthSource::Missing, None, "missing".into());
     };
     if value.starts_with('!') {
-        return (DiscoveredAuthSource::HelperNeedsInput, None);
+        return (
+            DiscoveredAuthSource::HelperNeedsInput,
+            None,
+            "unsupported_helper".into(),
+        );
     }
     // Supported native key templates: $NAME/${NAME}, $$ and $!. Plain names are literal.
     // Resolve only referenced names, never evaluate a shell or enumerate the environment.
     let mut resolved = Zeroizing::new(String::new());
     let mut rest = value;
     let mut used_env = false;
+    let mut origins = Vec::new();
     while let Some(index) = rest.find('$') {
         resolved.push_str(&rest[..index]);
         rest = &rest[index + 1..];
@@ -122,15 +129,23 @@ fn key(
             .then(|| std::env::var(name).ok())
             .flatten();
         let Some(material) = configured.or(process.as_deref()).filter(|v| !v.is_empty()) else {
-            return (DiscoveredAuthSource::Missing, None);
+            return (DiscoveredAuthSource::Missing, None, "missing".into());
         };
+        origins.push((
+            name.to_owned(),
+            if configured.is_some() {
+                "configured_environment"
+            } else {
+                "process_environment"
+            },
+        ));
         resolved.push_str(material);
         used_env = true;
         rest = &rest[consumed..];
     }
     resolved.push_str(rest);
     if resolved.is_empty() || resolved.len() > 64 * 1024 {
-        return (DiscoveredAuthSource::Missing, None);
+        return (DiscoveredAuthSource::Missing, None, "missing".into());
     }
     (
         if used_env {
@@ -139,6 +154,7 @@ fn key(
             DiscoveredAuthSource::InlineToken
         },
         Some(resolved),
+        serde_json::to_string(&origins).expect("referenced native environment selectors"),
     )
 }
 fn bounded(value: &str) -> bool {
@@ -189,6 +205,12 @@ impl FilesystemAgentScannerV1 {
             .pi_executable_target()
             .and_then(|p| super::super::pi_cli_installation(&p).ok());
         let mut catalog_digests = BTreeMap::new();
+        let configured_providers = providers.keys().cloned().collect::<BTreeSet<_>>();
+        let configured_keys = providers
+            .iter()
+            .filter(|(_, p)| p.get("apiKey").is_some())
+            .map(|(id, _)| id.clone())
+            .collect::<BTreeSet<_>>();
         for (provider_id, variable) in [
             ("openai", "OPENAI_API_KEY"),
             ("anthropic", "ANTHROPIC_API_KEY"),
@@ -266,16 +288,21 @@ impl FilesystemAgentScannerV1 {
                 return Err(Error::InvalidConfig);
             }
             let native_auth = auth.0.get(provider_id);
-            let (authentication, secret) = if native_auth.is_some_and(|v| v["type"] == "oauth") {
-                (DiscoveredAuthSource::NativeSessionNeedsConfirmation, None)
-            } else if native_auth.is_some_and(|v| v["type"] == "api_key") {
-                key(
-                    native_auth.and_then(|v| v.get("key")),
-                    native_auth.and_then(|v| v.get("env")),
-                )
-            } else {
-                key(provider.get("apiKey"), None)
-            };
+            let (authentication, secret, selection) =
+                if native_auth.is_some_and(|v| v["type"] == "oauth") {
+                    (
+                        DiscoveredAuthSource::NativeSessionNeedsConfirmation,
+                        None,
+                        "native_oauth".into(),
+                    )
+                } else if native_auth.is_some_and(|v| v["type"] == "api_key") {
+                    key(
+                        native_auth.and_then(|v| v.get("key")),
+                        native_auth.and_then(|v| v.get("env")),
+                    )
+                } else {
+                    key(provider.get("apiKey"), None)
+                };
             let supported_auth = provider.get("oauth").is_none()
                 // Additional Bearer headers are not represented by the import contract.
                 && provider.get("authHeader").is_none_or(|v| v == &Value::Bool(false))
@@ -366,7 +393,64 @@ impl FilesystemAgentScannerV1 {
                             .map_err(|_| Error::InvalidConfig)?,
                     ));
                 }
+                let inherited = catalog_digests.contains_key(provider_id.as_str());
+                let explicit_endpoint_override = !inherited && model.get("baseUrl").is_some();
+                let endpoint_selector = if explicit_endpoint_override {
+                    format!("models.json/providers/{provider_id}/models/{id}/baseUrl")
+                } else if inherited && provider.get("baseUrl").is_none() {
+                    format!("native-catalog/providers/{provider_id}/baseUrl")
+                } else {
+                    format!("models.json/providers/{provider_id}/baseUrl")
+                };
+                let protocol_selector = if model.get("api").is_some() {
+                    format!(
+                        "{}/providers/{provider_id}/models/{id}/api",
+                        if inherited {
+                            "native-catalog"
+                        } else {
+                            "models.json"
+                        }
+                    )
+                } else {
+                    format!("models.json/providers/{provider_id}/api")
+                };
+                let credential_selector = if native_auth.is_some_and(|v| v["type"] == "api_key") {
+                    format!("auth.json/{provider_id}/key")
+                } else if configured_keys.contains(provider_id) {
+                    format!("models.json/providers/{provider_id}/apiKey")
+                } else {
+                    format!("native-environment/providers/{provider_id}/apiKey")
+                };
                 items.push(PiApiSource {
+                    point_binding: endpoint.map(|endpoint| super::NativeApiPointBindingV1 {
+                        configured_default_model_id: None,
+                        authentication: if protocol == Some(UpstreamProtocol::Messages) {
+                            hiroute_domain::GatewayAuthenticationSemanticsV1::ApiKeyHeader {
+                                header: "x-api-key".into(),
+                            }
+                        } else {
+                            hiroute_domain::GatewayAuthenticationSemanticsV1::Bearer
+                        },
+                        native_scope: CanonicalDigest::of(&(
+                            "pi-native-scope/v1",
+                            &self.layout.pi_config_root,
+                        ))
+                        .expect("native scope"),
+                        provider_definition: format!(
+                            "{}/providers/{provider_id}",
+                            if configured_providers.contains(provider_id) {
+                                "models.json"
+                            } else {
+                                "native-catalog"
+                            }
+                        ),
+                        endpoint: endpoint.to_owned(),
+                        endpoint_selector,
+                        protocol_selector,
+                        model_override_scope: explicit_endpoint_override
+                            .then(|| format!("models/{id}")),
+                        credential_binding: format!("{credential_selector}:{selection}"),
+                    }),
                     provider_id: provider_id.clone(),
                     model_id: id.into(),
                     protocol,

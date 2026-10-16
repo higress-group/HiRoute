@@ -335,6 +335,7 @@ fn gateway_protocol(
     match protocol {
         AgentIngressProtocolV1::Responses => Ok(IngressProtocol::Responses),
         AgentIngressProtocolV1::Messages => Ok(IngressProtocol::Messages),
+        AgentIngressProtocolV1::ChatCompletions => Err(DelegationErrorV1::PermissionDenied),
     }
 }
 

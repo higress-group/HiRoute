@@ -90,6 +90,7 @@ fn snapshot(publication_revision: u64, fast_plan_revision: u64) -> GatewayPublic
             },
         ],
         vec![GrantV1 {
+            consumer: None,
             route_protocols: Default::default(),
             grant_id: "agent-a".into(),
             generation: 3,

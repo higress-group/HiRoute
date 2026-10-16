@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 pub const PLAN_DRAFT_SCHEMA_V1: &str = "hiroute.plan-draft/v1";
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanDraftV1 {
     pub schema: String,
@@ -39,13 +39,13 @@ impl PlanDraftV1 {
 }
 
 pub const PLAN_DRAFT_CHANGE_SCHEMA_V1: &str = "hiroute.plan-draft-change/v1";
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlanDraftActionV1 {
     Save { draft: Box<PlanDraftV1> },
     Discard,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanDraftChangeV1 {
     pub schema: String,

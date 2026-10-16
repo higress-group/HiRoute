@@ -47,6 +47,58 @@ impl TryFrom<WebComputeDiscoveryRefV1> for ComputeDiscoveryRefV1 {
     }
 }
 
+/// Current point projection. No hidden auth selectors, credential origins or private root paths.
+#[derive(Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct WebComputeConnectionPointV2 {
+    connection_ref: String,
+    context_ref: String,
+    agent_id: String,
+    display_name: String,
+    native_provider_id: Option<String>,
+    connection_option_id: Option<String>,
+    endpoint_profile_id: Option<String>,
+    target: Option<ComputeCandidateTargetV2>,
+    protocol: Option<hiroute_domain::UpstreamProtocol>,
+    declared_model_ids: Vec<String>,
+    default_model_id: Option<String>,
+    configuration_state: String,
+    discovery: Option<WebComputeDiscoveryRefV1>,
+    actions_required: Vec<String>,
+}
+#[derive(Serialize)]
+pub(super) struct WebComputeScanResultV2 {
+    connections: Vec<WebComputeConnectionPointV2>,
+    diagnostics: Vec<ComputeScanDiagnosticV2>,
+}
+impl From<ComputeScanResultV2> for WebComputeScanResultV2 {
+    fn from(value: ComputeScanResultV2) -> Self {
+        Self {
+            connections: value
+                .connections
+                .into_iter()
+                .map(|point| WebComputeConnectionPointV2 {
+                    connection_ref: point.connection_ref,
+                    context_ref: point.context_ref,
+                    agent_id: point.agent_id,
+                    display_name: point.display_name,
+                    native_provider_id: point.native_provider_id,
+                    connection_option_id: point.connection_option_id,
+                    endpoint_profile_id: point.endpoint_profile_id,
+                    target: point.target,
+                    protocol: point.protocol,
+                    declared_model_ids: point.declared_model_ids,
+                    default_model_id: point.default_model_id,
+                    configuration_state: point.configuration_state,
+                    discovery: point.discovery.map(Into::into),
+                    actions_required: point.actions_required,
+                })
+                .collect(),
+            diagnostics: value.diagnostics,
+        }
+    }
+}
+
 /// Read-only local discovery facts safe to expose to the WebView. Protected-input slots, source
 /// locators, filesystem paths, endpoint details, and catalog digests deliberately remain in Rust.
 #[derive(Serialize)]

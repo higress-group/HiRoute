@@ -148,7 +148,21 @@ impl RequestPriceSnapshot for CapturedPrice {
                 result.unknown_reason = quote.unknown_reasons.first().copied();
                 result.quote = Some(quote);
             }
-            Ok(_) => {}
+            Ok(_) => {
+                // The source/model identity is verified even when its catalog offer is not.
+                // Retain that identity and usage semantics without borrowing any catalog rates,
+                // so a later explicit current-price comparison can use source-specific prices.
+                if let Ok(mut unknown) =
+                    PriceSnapshotHandle::Unavailable(PriceUnknownReasonV1::UnverifiedOfferMapping)
+                        .freeze_price(&target.target, at_ms / 1000, target.billing_context.clone())
+                {
+                    unknown.generation_ref = result.request_generation.clone();
+                    if let Ok(digest) = unknown.computed_digest() {
+                        unknown.quote_digest = digest;
+                        result.quote = Some(unknown);
+                    }
+                }
+            }
             Err(_) => {
                 result.unknown_reason = Some(PriceUnknownReasonV1::UnverifiedOfferMapping);
             }

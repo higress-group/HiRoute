@@ -53,6 +53,7 @@ impl LocalControlAdapter {
             .ok_or(ControlReadError::Denied)?;
         let expected = match connection.connection.protocol {
             AgentIngressProtocolV1::Responses => runtime.gateway_base_url.as_str(),
+            AgentIngressProtocolV1::ChatCompletions => return Err(ControlReadError::Denied),
             AgentIngressProtocolV1::Messages => runtime
                 .gateway_base_url
                 .strip_suffix("/v1")

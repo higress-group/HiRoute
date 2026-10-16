@@ -537,11 +537,21 @@ fn losing_role_runtime_never_publishes_over_the_owner() {
     }));
     let dir = role_dir(&root);
     let deadline = Instant::now() + Duration::from_secs(5);
-    while !dir_path_has(&dir, CURRENT_LOG_FILE) && Instant::now() < deadline {
+    // Creation precedes the writer thread's first append. Snapshot a complete
+    // record, not merely an existing (possibly still empty) log file.
+    let before_log = loop {
+        if let Ok(bytes) = std::fs::read(dir.path().join(CURRENT_LOG_FILE))
+            && bytes.ends_with(b"\n")
+        {
+            break bytes;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "owner log record was not written"
+        );
         std::thread::sleep(Duration::from_millis(25));
-    }
+    };
     let before_names = dir.list_names().expect("names");
-    let before_log = std::fs::read(dir.path().join(CURRENT_LOG_FILE)).expect("read log");
     let owner_boot_id = before_log
         .split(|byte| *byte == b'\n')
         .find(|line| !line.is_empty())

@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 pub const STORED_PLAN_SCHEMA: &str = "hiroute.stored-plan/v1";
 pub const STABLE_ROUTE_SCHEMA: &str = "hiroute.stable-route/v1";
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredProtocolChoiceV1 {
     pub ingress_protocol: UpstreamProtocol,
@@ -19,7 +19,7 @@ pub struct StoredProtocolChoiceV1 {
     pub credential_profile_identity: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredConnectorFactsV1 {
     pub provider_id: String,
@@ -125,7 +125,7 @@ fn protocol_name(p: UpstreamProtocol) -> &'static str {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredCandidateV1 {
     pub binding_id: String,
@@ -319,7 +319,7 @@ impl StoredCandidateV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredGroupV1 {
     pub group_id: MaterializedGroupId,
@@ -328,7 +328,7 @@ pub struct StoredGroupV1 {
     pub candidates: Vec<StoredCandidateV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredPlanV1 {
     pub schema: String,

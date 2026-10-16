@@ -62,6 +62,18 @@ impl ObservationQueryPort for LocalObservationStore {
         self.apply_session_deletion_v2(principal, preview, accepted, now_ms)
     }
 
+    fn observed_api_equivalent_value(
+        &self,
+        reader: &hiroute_domain::ObservationReaderContext,
+        query: &hiroute_domain::ObservationValueQueryV2,
+        reference: &hiroute_domain::ApiEquivalentPriceV1,
+        prices: &[hiroute_domain::ApiEquivalentPriceV1],
+        now_ms: i64,
+    ) -> Result<hiroute_domain::ApiEquivalentValueReportV1, ObservationQueryError> {
+        self.observed_api_equivalent_value(reader, query, reference, prices, now_ms)
+            .map_err(crate::query_v2::ObservationV2Error::into_domain)
+    }
+
     fn observed_value_report(
         &self,
         reader: &hiroute_domain::ObservationReaderContext,

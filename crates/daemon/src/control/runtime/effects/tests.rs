@@ -578,6 +578,7 @@ fn permission_effect_hardens_only_pinned_identity_and_never_reverts_mode() {
         ),
         model_connection_cancellations: Mutex::new(BTreeMap::new()),
         prepared_discoveries: Mutex::new(BTreeMap::new()),
+        hermes_scan_targets: Mutex::new(BTreeMap::new()),
         permission_findings: Mutex::new(BTreeMap::from([(
             finding.discovered_source_ref.clone(),
             finding.clone(),

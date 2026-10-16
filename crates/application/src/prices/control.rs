@@ -29,6 +29,7 @@ pub struct PriceSourceBinding {
     pub binding_id: String,
     pub binding_revision: u64,
     pub model_configuration_id: String,
+    pub execution_model_configuration_id: Option<String>,
     pub billing_class: BillingClass,
     pub offer_ref: Option<String>,
 }

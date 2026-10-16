@@ -104,6 +104,20 @@ pub(crate) fn normalize_model_connection_target_with_timeout(
     input: ModelConnectionTargetInputV1<'_>,
     resolution_timeout: Duration,
 ) -> Result<NormalizedModelConnectionTargetV1, ModelConnectionTargetError> {
+    normalize_target(input, Some(resolution_timeout))
+}
+
+/// Pure scan projection. It never resolves hostnames or opens a socket.
+pub fn project_model_connection_target(
+    input: ModelConnectionTargetInputV1<'_>,
+) -> Result<NormalizedModelConnectionTargetV1, ModelConnectionTargetError> {
+    normalize_target(input, None)
+}
+
+fn normalize_target(
+    input: ModelConnectionTargetInputV1<'_>,
+    resolution_timeout: Option<Duration>,
+) -> Result<NormalizedModelConnectionTargetV1, ModelConnectionTargetError> {
     let ModelConnectionTargetInputV1 {
         base_url,
         base_kind,
@@ -167,7 +181,16 @@ pub(crate) fn normalize_model_connection_target_with_timeout(
 
     let host_header = authority_for(&host, port, &scheme);
     let network_authority = if scheme == "http" {
-        let addresses = resolve_loopback(&host, port, resolution_timeout)?;
+        let addresses = match resolution_timeout {
+            Some(timeout) => resolve_loopback(&host, port, timeout)?,
+            None => match host.parse::<IpAddr>() {
+                Ok(ip) if ip.is_loopback() => vec![SocketAddr::new(ip, port)],
+                _ if host == "localhost" => {
+                    vec![SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port)]
+                }
+                _ => return Err(ModelConnectionTargetError::NonLoopbackHttp),
+            },
+        };
         let address = addresses
             .first()
             .ok_or(ModelConnectionTargetError::NonLoopbackHttp)?;

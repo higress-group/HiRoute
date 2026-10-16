@@ -21,6 +21,8 @@ pub enum GatewayModelRouteV2 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GatewayProjectedGrantV2 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumer: Option<crate::AgentModelConsumerV1>,
     pub grant_id: String,
     pub generation: u64,
     pub bearer_token_sha256: CanonicalDigest,
@@ -101,6 +103,7 @@ pub(super) fn project_grants(
                                 return Err(PublicationError::CandidateIdCollision);
                             }
                             let mut projected = project_candidate(&binding, local_id, &[protocol])?;
+                            projected.billing_class = Some(binding.billing_class);
                             projected.pricing_identity = Some(GatewayCandidatePricingIdentityV1 {
                                 source_id: binding.source_id.clone(),
                                 source_identity_digest: binding.source_identity_digest.clone(),
@@ -126,6 +129,7 @@ pub(super) fn project_grants(
                 bearer_token_sha256: grant.bearer_token_sha256,
                 protocol,
                 route_protocols: grant.model_grant.route_protocols,
+                consumer: grant.model_grant.consumer,
                 routes,
             })
         })
@@ -144,6 +148,7 @@ pub(super) fn project_candidate(
         let ingress = match protocol {
             AgentIngressProtocolV1::Responses => UpstreamProtocol::Responses,
             AgentIngressProtocolV1::Messages => UpstreamProtocol::Messages,
+            AgentIngressProtocolV1::ChatCompletions => UpstreamProtocol::ChatCompletions,
         };
         if candidate
             .protocol_profiles
@@ -171,6 +176,7 @@ pub(super) fn project_candidate(
         local_id,
         stable_target_key: candidate.binding_id.clone(),
         source_binding_id: None,
+        billing_class: None,
         adapter_id: format!("{}@{}", candidate.adapter_ref, candidate.adapter_revision),
         credential_refs: candidate.credential_refs.clone(),
         credential_destination_ref: candidate
@@ -212,6 +218,10 @@ pub(super) fn project_pricing_identities(
                 .get(projected.stable_target_key.as_str())
                 .copied()
                 .ok_or(PublicationError::InvalidExecutableProjection)?;
+            if projected.stable_target_key != candidate.binding_id {
+                projected.source_binding_id = Some(candidate.binding_id.clone());
+            }
+            projected.billing_class = Some(candidate.billing_class);
             projected.pricing_identity = Some(GatewayCandidatePricingIdentityV1 {
                 source_id: candidate.source_id.clone(),
                 source_identity_digest: candidate.source_identity_digest.clone(),

@@ -2,6 +2,9 @@
 use super::CommandKind;
 
 pub(super) fn command_effect(command_id: &str, kind: CommandKind) -> &'static str {
+    if command_id == "compute.connection.prepare" {
+        return "local_candidate_preparation";
+    }
     if command_id == "agent.launch" {
         return "managed_local_process";
     }
@@ -31,8 +34,39 @@ pub(super) fn command_network(command_id: &str, kind: CommandKind) -> &'static s
     }
 }
 pub(super) fn automation(command_id: &str) -> &'static str {
+    if matches!(command_id, "sessions.list" | "sessions.show") {
+        return "Authenticated same-OS-user Local Control can read explicit message/tool content and search without a separate GUI grant. Supplied capability FDs are still validated. List first; sessions show ID --content messages-and-tools reads retained content. Typed V2 sessions/list accepts sessions, search and session_search; sessions/show accepts a scoped timeline, catalog, ancestry or content query. Follow next_cursor and retain exact time/filter scope. Use sessions receipt for request facts and observation plan-quality samples for decision/competence analysis. Missing, expired or partial capture is not proof of a routing error. Model Gateway credentials do not grant management access.";
+    }
+    if command_id == "value.show" {
+        return "Ordinary value show retains frozen historical valuation. Opt in with --basis api-equivalent --reference-binding BINDING --currency USD|CNY and --routing PLAN or --session SESSION plus an interval/period. Resolve the reference from actual model/Plan options, normally the primary model. This read uses one current source-specific API-equivalent price generation and recorded attempt usage, including retries; it does not rewrite receipts or prove subscription payments/cash savings. Fill missing reference rates through prices effective and prices override preview/apply with valuation_kind=api_equivalent; copy observed edit_context revisions and exact Preview Apply fields. Output includes prices, reference, coverage and paired request counts. Incomplete totals/savings are null; paired subtotals are partial evidence. Narrow the interval if the bounded query is unavailable. Day grouping is not supported for this opt-in view.";
+    }
+    if command_id == "decision.services.apply" {
+        return "Read decision services options first; reuse an exact saved connection when suitable. Convenience flags prepare a Preview only. A new connection requires --id, --name, --provider and its required endpoint/model plus --candidate, or explicit --no-auth for custom only. --candidate refers to an existing protected registration; never pass a credential in flags/JSON/chat. The user can run protected-input register --candidate REF --prompt --format bearer|raw in their own terminal. System One uses Authorization and bearer; custom supports --header NAME or --no-auth. Updates by --id preserve omitted fields; changing endpoint/provider/header requires explicit new credentials or custom --no-auth. --timeout-ms defaults to 10000 for a new connection. --apply-file creates a new private exact Apply request, never overwrites or applies; submit it with the same decision services apply verb. Keep its Operation lookup and identical request for uncertain delivery. Typed Preview/Apply remain alternatives; --apply-file accepts Preview input only. No save proves connectivity, native loading or decision quality.";
+    }
+    if command_id == "decision.services.test" {
+        return "An explicit potentially billed probe. --service ID@REVISION resolves an exact current listed connection; historical pinned versions remain available through the typed request. Inspect data.outcome and failure_code even when the command itself succeeded. Passing establishes this synthetic connection test, not semantic decision quality, execution model availability or native loading. Never silently switch a selected service to local_rules after failure.";
+    }
+    if matches!(
+        command_id,
+        "routing.preview"
+            | "compute.connection.preview"
+            | "agents.connect.preview"
+            | "agents.restore.preview"
+    ) {
+        return "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.";
+    }
+
+    if command_id == "agents.connect.status" {
+        return "Use --effective --context ID --plan ID for separate saved, native-loading, selection and exact request evidence. Unknown loading stays unknown. This read-only query never restarts an Agent or calls a model; recorded outcomes apply only to the identified request/session.";
+    }
     if command_id == "compute.connection.login" {
         return "Keep the returned login_ref for status, cancel and forget. After uncertain delivery, list/status the existing session before starting again or resubmitting a one-use callback. Never persist the authorization URL or put callback material in argv, environment, logs or ordinary request JSON.";
+    }
+    if command_id == "compute.connection.prepare" {
+        return "Reuse the opaque discovery reference and revision exactly. Prepare privately rereads native facts and returns selectable model refs. Save all currently selectable refs by default or the explicit requested subset through Preview/Apply; never omit selection or treat all as a wildcard.";
+    }
+    if command_id == "compute.scan" {
+        return "No input retains released V1 rows. Request hiroute.compute-scan-request/v2 explicitly for connection points, with the selected native_target for Hermes. No scan result is a saved source or account entitlement.";
     }
     if command_id == "worker.executors" {
         return "Ready permits a managed launch attempt, not a promise of execution or authorization. Optional capabilities remain unknown until the actual ACP handshake; start, load and cancel report real outcomes.";
@@ -113,6 +147,9 @@ pub(super) fn effects(command_id: &str, kind: CommandKind) -> &'static str {
     ) {
         return "Same-UID Application-owned journaled operation after exact spec, digest, revision, and idempotency checks.";
     }
+    if command_id == "compute.connection.prepare" {
+        return "Registers a private ephemeral candidate and protected credential reference after exact source reread. Does not save a source, mutate native files or call a model.";
+    }
     if command_id == "agent.launch" {
         return "Creates one owner-only temporary launch overlay, directly spawns the exact managed Agent executable without a shell, and removes the overlay after child exit; no persistent user configuration is changed.";
     }
@@ -164,6 +201,16 @@ pub(super) fn network_and_model_use(command_id: &str, kind: CommandKind) -> &'st
         }
     }
 }
+pub(super) fn examples(command_id: &str, joined_path: &str) -> Vec<String> {
+    if command_id == "decision.services.apply" {
+        return vec![
+            "hiroute decision services apply --request-file preview-request.json --output json  # Preview: schema_version and spec".into(),
+            "hiroute decision services apply --request-file apply-request.json --output json  # Apply: add exact accept_digest, expected_revisions and a stable idempotency_key".into(),
+            "hiroute schema show --command-id decision.services.apply --include-schema  # Complete wrappers; substitute current IDs and exact Preview values".into(),
+        ];
+    }
+    vec![example(command_id, joined_path)]
+}
 pub(super) fn example(command_id: &str, joined_path: &str) -> String {
     match command_id {
         "compute.connection.login" => "printf '%s' '{\"action\":\"start\",\"provider\":\"claude\"}' | hiroute compute connection login --request-stdin --output json".to_owned(),
@@ -207,6 +254,9 @@ pub(super) fn example(command_id: &str, joined_path: &str) -> String {
         }
         "decision.services.list" => "hiroute decision services list --output json".to_owned(),
         "decision.services.apply" | "decision.services.test" => format!("hiroute {joined_path} --request-stdin --output json < request.json"),
+        "routing.options" => "printf '%s' '{}' | hiroute routing options --request-stdin --output json".into(),
+        "routing.preview" | "agents.connect.preview" | "agents.restore.preview" => format!("hiroute {joined_path} --request-file preview-request.json --output json"),
+        "routing.apply" | "compute.connection.apply" | "agents.connect.apply" | "agents.restore.apply" => format!("hiroute {joined_path} --request-file apply-request.json --output json"),
         "routing.list" => "hiroute routing list --non-interactive --output json".to_owned(),
         "routing.show" => {
             "hiroute routing show plan/example --non-interactive --output json".to_owned()

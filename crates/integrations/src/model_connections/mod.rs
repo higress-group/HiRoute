@@ -4,6 +4,7 @@
 //! results use the C0 safe candidate view and never expose those bytes or their source locator.
 
 mod inference;
+mod point_discovery;
 mod probe;
 mod target;
 #[cfg(test)]

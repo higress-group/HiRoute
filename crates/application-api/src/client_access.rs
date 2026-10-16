@@ -5,24 +5,24 @@ use hiroute_domain::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientEmptyRequestV1 {}
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPlanLookupV1 {
     pub agent_plan_id: AgentPlanId,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicationIdentityViewV1 {
     pub revision: u64,
     pub digest: CanonicalDigest,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientGatewayStateV1 {
     NotComposed,
@@ -32,7 +32,7 @@ pub enum ClientGatewayStateV1 {
     Unavailable,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientServiceStatusV1 {
     pub schema: String,
@@ -44,7 +44,7 @@ pub struct ClientServiceStatusV1 {
     pub revisions: RevisionSetV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPlanStatusV2 {
     pub protocol_advice: hiroute_domain::AgentProtocolAdviceV1,
@@ -60,7 +60,7 @@ pub struct AgentPlanStatusV2 {
     pub revisions: RevisionSetV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPlanCatalogViewV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -71,7 +71,7 @@ pub struct AgentPlanCatalogViewV2 {
     pub plans: Vec<AgentPlanStatusV2>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationIdempotencyLookupV1 {
     pub principal_kind: PrincipalKind,
@@ -83,7 +83,7 @@ pub struct OperationIdempotencyLookupV1 {
     pub include_model_budget_conflict: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientOperationViewV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,20 +96,20 @@ pub struct ClientOperationViewV1 {
     pub safe_error_code: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationIdempotencyResultV1 {
     pub operation: Option<ClientOperationViewV1>,
     pub digest_matches: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPlanCatalogCursorV2 {
     pub snapshot_digest: CanonicalDigest,
     pub offset: usize,
 }
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPlanCatalogQueryV2 {
     #[serde(default = "default_plan_page_size")]

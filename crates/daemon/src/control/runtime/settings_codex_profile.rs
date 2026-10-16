@@ -108,9 +108,7 @@ impl LocalControlAdapter {
         if !class.is_codex() {
             return Ok(());
         }
-        if class == SettingsAgentClass::CodexProfile
-            && !matches!(spec.collaboration, AgentFacetIntent::Keep)
-        {
+        if class == SettingsAgentClass::CodexProfile && !spec.keeps_skills() {
             return Err(ControlReadError::CollaborationRootRequired);
         }
         if class == SettingsAgentClass::CodexProfile && spec.restore_native_model.is_some() {
@@ -199,6 +197,7 @@ impl LocalControlAdapter {
             slot_occupied: owner.is_some(),
             target_file: class
                 .native_path(&self.scanner)
+                .ok_or(ControlReadError::Corrupt)?
                 .to_string_lossy()
                 .into_owned(),
             profile_name: hiroute_integrations::CODEX_MANAGED_PROFILE_NAME.into(),

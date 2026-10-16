@@ -10,7 +10,7 @@ use tauri::{State, WebviewWindow};
 use super::model_connection_web::{
     WebComputeCandidateViewV2, WebComputeConnectionApplyRequestV1, WebComputeDiscoveryRefV1,
     WebComputeManagementChangeV2, WebComputeSavePreviewV2, WebComputeSaveResultV2,
-    WebComputeScanResultV1, WebComputeSubscriptionCandidatesV2,
+    WebComputeScanResultV2, WebComputeSubscriptionCandidatesV2,
     WebComputeSubscriptionCheckResultV2, WebValidationRefV2,
 };
 
@@ -228,7 +228,8 @@ pub async fn compute_management_snapshot(
 pub async fn compute_scan(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
-) -> Result<WebComputeScanResultV1, DesktopFailure> {
+    native_target: Option<hiroute_domain::AgentNativeTargetV1>,
+) -> Result<WebComputeScanResultV2, DesktopFailure> {
     main_window(&window)?;
     let client = state
         .0
@@ -238,7 +239,18 @@ pub async fn compute_scan(
         .ok_or("RESIDENT_UNAVAILABLE")?
         .client
         .clone();
-    envelope_data(client.scan_compute(&crate::random_id()?).await?).map(Into::into)
+    envelope_data(
+        client
+            .scan_compute_points(
+                &crate::random_id()?,
+                ComputeScanRequestV2 {
+                    schema: COMPUTE_SCAN_REQUEST_SCHEMA_V2.into(),
+                    native_target,
+                },
+            )
+            .await?,
+    )
+    .map(Into::into)
 }
 
 #[tauri::command]
@@ -311,7 +323,7 @@ pub async fn compute_connection_options(
     crate::session::query(
         &client,
         "ListConnectionOptions",
-        &ComputeConnectionOptionsRequestV1 {},
+        &ComputeConnectionOptionsRequestV1 { candidate: None },
     )
     .await
 }

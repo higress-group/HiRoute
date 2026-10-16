@@ -358,10 +358,8 @@ pub(crate) fn dispatch_compute_management(
             )
         }
         PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1 => {
-            let Some(grant) = request.protected_grant.as_ref() else {
-                return failed(ErrorCode::CapabilityDenied, request_id);
-            };
-            if grant.principal_kind != PrincipalKind::Desktop {
+            let grant = request.protected_grant.as_ref();
+            if grant.is_some_and(|grant| grant.principal_kind != PrincipalKind::Desktop) {
                 return failed(ErrorCode::CapabilityDenied, request_id);
             }
             let Ok(prepare) = serde_json::from_value::<PrepareDiscoveredModelConnectionRequestV1>(
@@ -380,17 +378,18 @@ pub(crate) fn dispatch_compute_management(
                 Ok(value) => value.revisions,
                 Err(_) => return failed(ErrorCode::DaemonUnavailable, request_id),
             };
-            if ports
-                .control
-                .validate_protected_capability(
-                    &grant.capability,
-                    &WorkspaceId::default(),
-                    grant.principal_kind,
-                    PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1,
-                    &digest,
-                    &revisions,
-                )
-                .is_err()
+            if let Some(grant) = grant
+                && ports
+                    .control
+                    .validate_protected_capability(
+                        &grant.capability,
+                        &WorkspaceId::default(),
+                        grant.principal_kind,
+                        PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1,
+                        &digest,
+                        &revisions,
+                    )
+                    .is_err()
             {
                 return failed(ErrorCode::CapabilityDenied, request_id);
             }

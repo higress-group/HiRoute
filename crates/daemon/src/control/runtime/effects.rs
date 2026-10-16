@@ -5,8 +5,8 @@
 
 use hiroute_domain::{
     AgentConfigChangeV1, CanonicalDigest, CompensationOutcome, ControlRepositoryPort,
-    EffectReconciliation, ExternalEffectIntentV1, ExternalEffectPort, OperationId,
-    OperationStepKind, OperationStepStatus, OwnedEffectKind, OwnedEffectV1, PortError,
+    EffectReconciliation, ExternalEffectIntentV1, ExternalEffectPort, NativeAgentArtifactPort,
+    OperationId, OperationStepKind, OperationStepStatus, OwnedEffectKind, OwnedEffectV1, PortError,
     PortErrorCode, PortResult,
 };
 use hiroute_integrations::{PermissionHardeningOutcomeV1, PermissionHardeningRequiredV1};
@@ -111,6 +111,10 @@ impl LocalControlAdapter {
         }
         if super::native_additional_model::is_settings_additional_model(intent) {
             hiroute_application::agent_connection::decode_settings_additional_model_file(intent)?;
+            return Ok(None);
+        }
+        if hiroute_application::agent_connection::is_settings_hermes_model(intent) {
+            hiroute_application::agent_connection::decode_settings_hermes_model_file(intent)?;
             return Ok(None);
         }
         let envelope: AgentConfigurationEnvelopeV1 =
@@ -247,7 +251,10 @@ impl ExternalEffectPort for LocalControlAdapter {
         if super::native_additional_model::is_settings_additional_model(intent) {
             self.validate_additional_model_dependencies(operation, intent)?;
         }
-        if intent.effect_id() == "agent-connection-routing-skill"
+        if hiroute_application::agent_connection::is_settings_hermes_model(intent) {
+            self.validate_hermes_model_dependencies(operation, intent)?;
+        }
+        if hiroute_application::agent_connection::is_settings_skill_file(intent)
             && intent.desired()["transaction"] == "settings"
         {
             let stores = self.stores_lock()?;
@@ -272,12 +279,15 @@ impl ExternalEffectPort for LocalControlAdapter {
             .get("transaction")
             .and_then(serde_json::Value::as_str)
             == Some("settings")
-            && intent.effect_id() == "agent-connection-routing-skill"
+            && hiroute_application::agent_connection::is_settings_skill_file(intent)
         {
             hiroute_application::agent_connection::validate_settings_skill_file_intent(intent)?;
         }
         // Resolve known native adapters before a capability is consumed or an Operation exists.
         self.native_claude_change(intent)?;
+        if hiroute_application::agent_connection::is_settings_hermes_plugin(intent) {
+            hiroute_application::agent_connection::decode_settings_hermes_plugin_file(intent)?;
+        }
         self.permission_intent(intent)?;
         self.validate_publication_admission(intent)
     }
@@ -305,7 +315,41 @@ impl ExternalEffectPort for LocalControlAdapter {
         &self,
         operation: &hiroute_domain::OperationV1,
     ) -> PortResult<()> {
-        self.finish_product_activation(operation)
+        self.finish_product_activation(operation)?;
+        if operation.state != hiroute_domain::OperationState::Succeeded {
+            return Ok(());
+        }
+        for intent in operation.plan.external() {
+            if hiroute_application::agent_connection::is_settings_hermes_plugin(intent)
+                && matches!(hiroute_application::agent_connection::settings_hermes_plugin_file_for_operation(operation, intent)?.change, hiroute_application::agent_connection::HermesPluginFileAction::Restore { .. })
+                && self.artifacts.read_native_target(intent.target())?.is_none() {
+                self.artifacts.cleanup_native_parents(&operation.operation_id, intent)?;
+            }
+            if hiroute_application::agent_connection::is_settings_skill_file(intent)
+                && intent.desired()["transaction"] == "settings"
+                && intent.desired()["payload"]["action"] == "remove"
+            {
+                let (_, record) =
+                    hiroute_application::agent_connection::settings_skill_file_record(
+                        &operation.operation_id,
+                        intent,
+                    )?;
+                let actual = self
+                    .stores_lock()?
+                    .control()
+                    .skill_installation(&operation.workspace_id, &record.root_ref)?;
+                if actual.as_ref() != Some(&record) {
+                    return Err(invalid("skill.cleanup.record.binding"));
+                }
+                hiroute_application::agent_connection::finish_collaboration_skill_removal(
+                    &self.artifacts,
+                    &operation.operation_id,
+                    intent,
+                    &record,
+                )?;
+            }
+        }
+        Ok(())
     }
     fn current_external_fingerprint(&self, target: &str) -> PortResult<Option<CanonicalDigest>> {
         if target.starts_with("compute-subscription/") {
@@ -343,7 +387,7 @@ impl ExternalEffectPort for LocalControlAdapter {
             .get("transaction")
             .and_then(serde_json::Value::as_str)
             == Some("settings")
-            && intent.effect_id() == "agent-connection-routing-skill"
+            && hiroute_application::agent_connection::is_settings_skill_file(intent)
         {
             return hiroute_application::agent_connection::stage_settings_skill_file(
                 &self.artifacts,
@@ -370,6 +414,12 @@ impl ExternalEffectPort for LocalControlAdapter {
         }
         if super::native_additional_model::is_settings_additional_model(intent) {
             return self.stage_settings_additional_model(operation, intent);
+        }
+        if hiroute_application::agent_connection::is_settings_hermes_model(intent) {
+            return self.stage_settings_hermes_model(operation, intent);
+        }
+        if hiroute_application::agent_connection::is_settings_hermes_plugin(intent) {
+            return self.stage_settings_hermes_plugin(operation, intent);
         }
         let Some(permission) = self.permission_intent(intent)? else {
             if let Some(change) = self.native_claude_change(intent)? {

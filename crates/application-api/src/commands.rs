@@ -179,7 +179,7 @@ impl StaticCommandDescriptor {
                 automation: automation(self.command_id).to_owned(),
                 output: output(self.command_id).to_owned(),
                 exit_status: exit_status(self.command_id).to_owned(),
-                examples: vec![example(self.command_id, &joined_path)],
+                examples: examples(self.command_id, &joined_path),
                 see_also: vec![format!(
                     "hiroute schema show --command-id {}",
                     self.command_id
@@ -452,6 +452,15 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         Planned,
         Action,
         "Refresh inventory only through its registered connector contract."
+    ),
+    command!(
+        "compute.connection.prepare",
+        ["compute", "connection", "prepare"],
+        "PrepareDiscoveredModelConnection",
+        [],
+        Released,
+        Query,
+        "Prepare the current opaque native connection-point reference without an inference call."
     ),
     command!(
         "compute.connection.options",
@@ -872,7 +881,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         ["prices", "effective"],
         "GetEffectivePrices",
         ["CLI-040", "APP-040"],
-        Planned,
+        Released,
         Query,
         "Read effective current-catalog price facts and local override revisions."
     ),
@@ -881,7 +890,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         ["prices", "override", "preview"],
         "PreviewPriceOverrideChange",
         ["CLI-041", "APP-041"],
-        Planned,
+        Released,
         Preview,
         "Preview a typed local price override change."
     ),
@@ -890,7 +899,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         ["prices", "override", "apply"],
         "ApplyPriceOverrideChange",
         ["CLI-042", "APP-042"],
-        Planned,
+        Released,
         Apply,
         "Apply an exact local price override revision."
     ),

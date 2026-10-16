@@ -189,3 +189,28 @@ fn reference_comparison_includes_retries_preserves_negative_values_and_rejects_m
         None
     );
 }
+
+#[test]
+fn known_zero_bucket_needs_no_rate_but_unknown_usage_stays_unknown() {
+    let mut price = quote();
+    price.rates.cache_write = TokenRateV1::unknown(PriceUnknownReasonV1::CacheRateNotCollected);
+    price.quote_digest = price.computed_digest().unwrap();
+    let usage = UsageBucketsV2 {
+        input_uncached: Some(100),
+        output: Some(10),
+        cache_read: Some(0),
+        cache_write: Some(0),
+    };
+    assert_eq!(
+        value_attempt(&price, &usage).unwrap().coverage,
+        MetricCoverage::Complete
+    );
+    let unknown = UsageBucketsV2 {
+        cache_write: None,
+        ..usage
+    };
+    assert_eq!(
+        value_attempt(&price, &unknown).unwrap().coverage,
+        MetricCoverage::Partial
+    );
+}

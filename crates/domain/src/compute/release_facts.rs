@@ -22,6 +22,7 @@ pub struct ModelNativeReasoningV1 {
 #[serde(rename_all = "snake_case")]
 pub enum NativeReasoningRenderConventionV1 {
     ClaudeAdaptiveEffortMessages,
+    ZhipuThinkingChat,
 }
 
 impl ModelNativeReasoningV1 {
@@ -29,10 +30,16 @@ impl ModelNativeReasoningV1 {
         self.capability
             .validate()
             .map_err(|_| ComputeContractError::InvalidModelData)?;
-        if self.native_render_convention.is_some()
-            && !matches!(&self.capability, NativeReasoningCapabilityV1::Discrete { parameter, .. } if parameter == "output_config.effort")
-        {
-            return Err(ComputeContractError::InvalidModelData);
+        match self.native_render_convention {
+            Some(NativeReasoningRenderConventionV1::ClaudeAdaptiveEffortMessages) if !matches!(&self.capability, NativeReasoningCapabilityV1::Discrete { parameter, .. } if parameter == "output_config.effort") =>
+            {
+                return Err(ComputeContractError::InvalidModelData);
+            }
+            Some(NativeReasoningRenderConventionV1::ZhipuThinkingChat) if !matches!(&self.capability, NativeReasoningCapabilityV1::Discrete { parameter, profiles, default_profile } if parameter == "reasoning_effort" && profiles == &["low", "high", "max"] && default_profile.as_deref() == Some("max")) =>
+            {
+                return Err(ComputeContractError::InvalidModelData);
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -43,8 +50,16 @@ impl ModelNativeReasoningV1 {
         protocol: super::UpstreamProtocol,
     ) -> Result<(), ComputeContractError> {
         self.validate()?;
-        if self.native_render_convention.is_some() && protocol != super::UpstreamProtocol::Messages
-        {
+        let required = match self.native_render_convention {
+            Some(NativeReasoningRenderConventionV1::ClaudeAdaptiveEffortMessages) => {
+                Some(super::UpstreamProtocol::Messages)
+            }
+            Some(NativeReasoningRenderConventionV1::ZhipuThinkingChat) => {
+                Some(super::UpstreamProtocol::ChatCompletions)
+            }
+            None => None,
+        };
+        if required.is_some_and(|required| required != protocol) {
             return Err(ComputeContractError::InvalidModelData);
         }
         Ok(())

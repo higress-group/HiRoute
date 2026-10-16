@@ -1,6 +1,6 @@
 # Agent settings feature
 
-This feature presents Codex, Claude Code and Qoder model routing and task collaboration. It translates an
+This feature presents supported Agent model routing, task collaboration and independent management Skills. It translates an
 editable draft into the existing Agent settings intent; it does not discover installations,
 read credentials, authorize a route, or implement file recovery. The [code map](../../../../../docs/code-map/README.md) connects these boundaries
 to their production owners and executable contracts.
@@ -11,11 +11,14 @@ to their production owners and executable contracts.
 | --- | --- |
 | [types.ts](types.ts) | WebView projections and current serialized model choices. These describe the existing native/API contract, not a second capability authority. |
 | [status.ts](status.ts) | Reads the shared model/collaboration-only status union. A missing model capability is distinct from an unconfigured model or an unreadable status. |
+| [discovery.ts](discovery.ts), [AgentDiscoveryFeedback.tsx](AgentDiscoveryFeedback.tsx) | Supported catalog, remembered non-secret target hints, common rescan and distinct undiscovered/unavailable states. Backend revalidation owns context and write authority. |
+| [AgentSkillDetails.tsx](AgentSkillDetails.tsx) | Backend-supplied Skill scope, shared/borrowed availability, unobserved native loading and the existing CLI-entry preparation commands. |
 | [ecosystems.ts](ecosystems.ts) | Explicit current Agent identity, display name, brand and surface labels. Unknown discovered identities have no settings editor. |
 | [editor-state.ts](editor-state.ts) | Draft initialization, dirty comparison and local form completeness. Only a trusted first connection can preselect a sole enabled route. Existing mappings, including unavailable choices, are retained. |
-| [settings-request.ts](settings-request.ts) | Ecosystem-specific intent construction, independent model/collaboration restore intents, token changes that retain the saved selection, and capability-based prerequisite check selection. |
+| [settings-request.ts](settings-request.ts) | Ecosystem-specific intent construction, independent model/management/collaboration restore intents, token changes that retain the saved selection, and capability-based prerequisite check selection. |
 | [AgentModelEditor.tsx](AgentModelEditor.tsx) | Explicit composition of [Codex](CodexModelEditor.tsx), [Claude](ClaudeModelEditor.tsx) and [Qoder](AdditionalModelEditor.tsx) forms and their saved-selection summary. Codex allowlist/default/native retention, Claude preset mappings and Qoder additional routes remain different concepts. |
 | [AgentSettingsFeedback.tsx](AgentSettingsFeedback.tsx) | Presentation of authoritative Preview blockers. |
+| [HermesModelEditor.tsx](HermesModelEditor.tsx), [HermesRootFields.tsx](HermesRootFields.tsx) | One Plan/protocol and explicit effective profile; root fields are shared with source scan. Automatic adapter preparation and unobserved native loading stay distinct. |
 | [collaboration-check-feedback.ts](collaboration-check-feedback.ts) | Versioned collaboration-check failures become safe login, Skill recovery and retry guidance; native output is never display text. |
 | [CodexAccessPanel.tsx](CodexAccessPanel.tsx) | Profile/root facts, mode controls, launch commands, ordinary file-conflict diagnosis and an existing pending Operation's recovery entry. |
 | [codex-launch.ts](codex-launch.ts), [codex-surfaces.ts](codex-surfaces.ts) | Confirmed command-copy eligibility and the distinction between detected executables and mode applicability. |
@@ -25,6 +28,39 @@ to their production owners and executable contracts.
 Qoder, Pi and DSH share the additional-route editor and explicitly selected Plan IDs
 through `qoder_additional`, `pi_additional` and `dsh_additional`. It does not
 edit the native default or show native catalogs, fixed-source choices or import controls.
+Hermes selects one default main-model Plan. Its management Skill has independent
+prepare/restore controls and needs no model connection or published Plan. Model
+restore retains that Skill. Pending model/Skill Operations use the shared exact
+retry entry. Statically known channel models are shown separately from unobserved
+live session selection. Hermes can independently prepare the shared collaboration
+Skill and either existing trigger mode, retaining its native model and requiring
+no model plugin. It is not a Worker executor.
+All six supported Agents remain in the common catalog even when discovery returns
+no usable installation/configuration. Common rescan preserves existing entries;
+absence is not proof of uninstallation. Hermes appears before a profile is selected. This
+presentation entry has no context or settings authority. Its details contain the
+configuration-directory control, reusing `HermesRootFields` and `agent_snapshot`
+for a selected target; successful discovery replaces the unscoped entry. Existing
+backend profiles remain authoritative. A successful selected target is saved as a
+Desktop preference and reread after remount/restart; an unavailable remembered
+target retains its scope instead of silently selecting a default. Preference
+storage failure keeps this session usable and reports that the choice was not saved.
+Directory reads, cancellation and failures
+never configure routing, prepare resources or imply that Hermes is installed.
+With no explicit target, the Desktop host checks its caller's nonempty
+`HERMES_HOME`, otherwise `HOME/.hermes`, and sends an existing profile through that
+same backend scan. It does not guess an IM process's profile. An unavailable
+explicit root never falls back to another; an unreadable default remains visible
+without hiding other Agents. Known invalid paths, missing explicit roots/configuration
+and read errors remain distinct. Hermes uses its own bundled mark in the common icon component.
+
+Management is a separate enable/disable control for every supported family. It
+uses the same settings Preview/Apply/owned restore as the other facets, with no
+Plan or model requirement. Scope/shared/external facts come from backend status;
+retained native files are not presented as globally disabled. CLI entry installation
+uses the existing host command only after an explicit click. Current clients opt
+into extended Skill status with `include_skills`; legacy queries retain their
+original response shape and primary restore references.
 Qoder's editor explains that the selected Qoder CLI must complete its own `/login`
 before using these routes. Saving configuration does not perform native sign-in or
 make a model call. A valid native login rejection in the separate Qoder Live check
@@ -44,8 +80,7 @@ collaboration-only status retain this path. Capability and installed-Skill check
 provide scoped prerequisite or diagnostic facts; neither proves a delegated task
 completed or a model route worked. They do not create another settings workflow.
 Context IDs bind requests and are not user-facing configuration scopes. Show only
-readable locations already supplied by the native projection (currently the Codex
-configuration directory and file); do not infer a path from an opaque context ID.
+readable locations already supplied by the native projection (native configuration and Skill directories/files); do not infer a path from an opaque context ID.
 The Plan editor owns its single-CLI installation selection through
 [WorkerDependencies](../WorkerDependencies.tsx); `qoder` and `qodercli` paths are presented
 as returned by discovery, without adapter or Node placeholders.

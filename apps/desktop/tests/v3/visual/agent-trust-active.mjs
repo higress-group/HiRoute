@@ -83,6 +83,37 @@ try {
       checks.push(...result.results);
       for (const item of result.results) process.stdout.write(`${item.state}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
     }
+    if (routeOptionsOnly || (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly)) {
+      const required = ['routing.authoring.loading', 'routing.authoring.failure', 'routing.authoring.reopen', 'routing.authoring.dirty'];
+      for (const language of ['zh', 'en']) {
+        for (const viewport of [{ width: 755, height: 600 }, { width: 1200, height: 813 }]) {
+          await navigate(client, new URL(`plan-editor-ux.html?checks=authoring&language=${language}`, baseUrl).href, viewport);
+          await waitFor(client, 'Boolean(window.planAuthoringChecks)', { timeout: 7000 });
+          const names = await evaluate(client, 'window.planAuthoringChecks.names');
+          if (names.length !== required.length || required.some((id, i) => !names[i].startsWith(`${id}:`))) throw new Error('Required authoring cases are missing');
+          for (let i = 0; i < required.length; i++) {
+            const result = await evaluate(client, `window.planAuthoringChecks.run(${i})`);
+            const file = `${required[i]}-${language}-${viewport.width}.png`;
+            const shot = await client.send('Page.captureScreenshot', { format: 'png' });
+            await writeFile(path.join(outputRoot, file), Buffer.from(shot.data, 'base64'));
+            checks.push({ ...result, language, viewport, screenshot: file });
+            process.stdout.write(`${result.state}: ${result.name} (${language}, ${viewport.width})${result.error ? ` · ${result.error}` : ''}\n`);
+            if (result.state !== 'green') break;
+          }
+        }
+      }
+      // Geometry is covered above; sample contrast with the same production states in dark mode.
+      await navigate(client, new URL('plan-editor-ux.html?checks=authoring&language=zh&theme=dark', baseUrl).href, { width: 755, height: 600 });
+      await waitFor(client, 'Boolean(window.planAuthoringChecks)', { timeout: 7000 });
+      for (const i of [1, 2]) {
+        const result = await evaluate(client, `window.planAuthoringChecks.run(${i})`);
+        const file = `${required[i]}-zh-755-dark.png`;
+        const shot = await client.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(path.join(outputRoot, file), Buffer.from(shot.data, 'base64'));
+        checks.push({ ...result, language: 'zh', theme: 'dark', viewport: { width: 755, height: 600 }, screenshot: file });
+        process.stdout.write(`${result.state}: ${result.name} (dark)${result.error ? ` · ${result.error}` : ''}\n`);
+      }
+    }
     if (shellOnly || (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly)) {
       await navigate(client, new URL('product-shell.html', baseUrl).href, { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.productShell)', { timeout: 7000 });

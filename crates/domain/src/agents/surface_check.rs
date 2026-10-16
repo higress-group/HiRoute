@@ -11,7 +11,7 @@ pub struct AgentSurfaceCheckValidationError;
 /// The durable current result of one trusted executor's live model check for one surface.
 /// `not_verified` is never stored: it is derived by the status join when no record matches
 /// the currently installed publication revision.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentSurfaceCheckStateV1 {
     Passed,

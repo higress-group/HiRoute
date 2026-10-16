@@ -12,6 +12,8 @@ pub struct AgentSettingsInput {
 }
 #[derive(Deserialize, Serialize)]
 pub struct AgentEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_target: Option<hiroute_domain::AgentNativeTargetV1>,
     #[serde(default)]
     pub codex_access: Option<Value>,
     pub agent_id: String,
@@ -69,6 +71,8 @@ pub enum AgentPreparation {
 fn trusted_preview_spec(requested: &AgentSettingsSpecV2, returned: &AgentSettingsSpecV2) -> bool {
     if requested.schema_version != returned.schema_version
         || requested.context_id != returned.context_id
+        || requested.native_target != returned.native_target
+        || requested.management_skill != returned.management_skill
         || requested.collaboration != returned.collaboration
         || requested.access_token != returned.access_token
     {
@@ -158,6 +162,17 @@ impl AgentConfirmation {
             } else {
                 "恢复受管模型设置"
             }
+        } else if self.input.spec.is_restore_only()
+            && matches!(
+                self.input.spec.management_skill,
+                Some(AgentFacetIntent::Restore { .. })
+            )
+        {
+            if self.english() {
+                "Restore HiRoute management Skill"
+            } else {
+                "恢复 HiRoute 管理 Skill"
+            }
         } else if self.input.spec.is_restore_only() {
             if self.english() {
                 "Disable task routing"
@@ -194,6 +209,7 @@ impl AgentConfirmation {
             _ => "—".to_string(),
         };
         let default_route = |settings: &AgentModelSelectionV2| match settings {
+            AgentModelSelectionV2::HermesDefault { plan_id, .. } => route_name(plan_id.as_str()),
             AgentModelSelectionV2::CodexDefault {
                 default_selection: AgentModelDefaultSelectionV2::Plan { plan_id },
                 ..
@@ -359,11 +375,38 @@ impl AgentConfirmation {
                 }
             )
         };
-        let details = [model_details, collaboration_details]
-            .into_iter()
-            .filter(|part| !part.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n\n");
+        let management_details = match &self.input.spec.management_skill {
+            Some(AgentFacetIntent::Configure { .. }) => if self.english() { "Prepare the independent HiRoute management Skill. This does not enable Worker or collaboration authority." } else { "准备独立的 HiRoute 管理 Skill，不启用 Worker 或任务协作权限。" },
+            Some(AgentFacetIntent::Restore { .. }) => if self.english() { "Conditionally restore the owned management Skill. Current model routing remains unchanged." } else { "按所有权恢复管理 Skill，当前模型路由保持不变。" },
+            _ => "",
+        }.to_owned();
+        let target_details = self
+            .input
+            .spec
+            .native_target
+            .as_ref()
+            .map(|target| {
+                format!(
+                    "{}: {}",
+                    if self.english() {
+                        "Selected configuration directory"
+                    } else {
+                        "所选配置目录"
+                    },
+                    target.config_root()
+                )
+            })
+            .unwrap_or_default();
+        let details = [
+            target_details,
+            model_details,
+            collaboration_details,
+            management_details,
+        ]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
         format!("{action} · {}\n\n{details}", self.agent_name)
     }
 }
@@ -375,19 +418,71 @@ impl Session {
         query(&self.client, "ApplyAgentConnectionChange", &input).await
     }
     pub async fn agent_snapshot(&mut self) -> Result<AgentSnapshot, DesktopFailure> {
+        self.agent_snapshot_for_targets(Vec::new()).await
+    }
+
+    pub async fn agent_snapshot_for_targets(
+        &mut self,
+        targets: Vec<hiroute_domain::AgentNativeTargetV1>,
+    ) -> Result<AgentSnapshot, DesktopFailure> {
+        if targets.len() > 128 || targets.iter().any(|target| target.validate().is_err()) {
+            return Err("AGENT_INPUT_INVALID".into());
+        }
         #[derive(Deserialize)]
         struct Scan {
             agents: Vec<AgentEntry>,
         }
-        let mut scan: Scan = query(&self.client, "ScanAgents", &ClientEmptyRequestV1 {}).await?;
+        let mut scan: Scan = query(&self.client, "ListAgents", &ClientEmptyRequestV1 {}).await?;
+        let automatic = targets.is_empty();
+        let targets = if automatic {
+            match super::agent_discovery::default_hermes_profile() {
+                super::agent_discovery::ProfileDiscovery::Found(target) => vec![target],
+                super::agent_discovery::ProfileDiscovery::Missing => Vec::new(),
+                super::agent_discovery::ProfileDiscovery::Unavailable { target, reason } => {
+                    super::agent_discovery::merge_entry(
+                        &mut scan.agents,
+                        super::agent_discovery::unavailable_hermes(target, reason),
+                    );
+                    Vec::new()
+                }
+            }
+        } else {
+            targets
+        };
+        for target in targets {
+            let selected: Result<Scan, DesktopFailure> = query(
+                &self.client,
+                "ScanAgents",
+                &hiroute_application_api::AgentScanRequestV1 {
+                    native_target: Some(target.clone()),
+                },
+            )
+            .await;
+            let selected = match selected {
+                Ok(selected) => selected,
+                Err(_) => {
+                    super::agent_discovery::merge_entry(
+                        &mut scan.agents,
+                        super::agent_discovery::unreadable_hermes(target),
+                    );
+                    continue;
+                }
+            };
+            for agent in selected.agents {
+                super::agent_discovery::merge_entry(&mut scan.agents, agent);
+            }
+        }
         for agent in &mut scan.agents {
             if let Some(context_id) = &agent.context_id {
                 match query(
                     &self.client,
                     "GetAgentConnectionStatus",
                     &AgentSettingsStatusRequestV2 {
+                        effective: None,
+                        include_skills: true,
                         schema_version: AGENT_SETTINGS_SCHEMA_V2,
                         context_id: context_id.clone(),
+                        native_target: agent.native_target.clone(),
                     },
                 )
                 .await
@@ -519,7 +614,7 @@ impl Session {
                 agents: Vec<AgentEntry>,
             }
             let names: Option<AgentNames> =
-                query(&self.client, "ScanAgents", &ClientEmptyRequestV1 {})
+                query(&self.client, "ListAgents", &ClientEmptyRequestV1 {})
                     .await
                     .ok();
             let agent_name = names
@@ -552,8 +647,11 @@ impl Session {
                 &self.client,
                 "GetAgentConnectionStatus",
                 &AgentSettingsStatusRequestV2 {
+                    effective: None,
+                    include_skills: true,
                     schema_version: AGENT_SETTINGS_SCHEMA_V2,
                     context_id: input.spec.context_id.clone(),
+                    native_target: input.spec.native_target.clone(),
                 },
             )
             .await

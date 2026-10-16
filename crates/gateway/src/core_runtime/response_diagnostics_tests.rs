@@ -695,6 +695,7 @@ fn publication(
                 .collect(),
         }],
         vec![GrantV1 {
+            consumer: None,
             grant_id: "stream-grant".into(),
             generation: 1,
             bearer_token_sha256: token_sha256(TOKEN),

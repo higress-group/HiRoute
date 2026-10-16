@@ -1,7 +1,6 @@
 //! Current non-secret collaboration projection for the native Desktop task surface.
 
 use super::LocalControlAdapter;
-use hiroute_application::agent_connection::codex_model_restore_point_ref;
 use hiroute_application::control::ControlReadError;
 use hiroute_application_api::{
     AgentCollaborationSettingsStatusV2, AgentModelSettingsStateV2 as State,
@@ -17,10 +16,18 @@ impl LocalControlAdapter {
         &self,
         request: &AgentSettingsStatusRequestV2,
     ) -> Result<AgentCollaborationSettingsStatusV2, ControlReadError> {
-        let class = self
-            .settings_agent_for_context(&request.context_id)
-            .ok_or(ControlReadError::NotFound)?;
+        let (root_ref, target) = self.settings_skill_resource(
+            &request.context_id,
+            request.native_target.as_ref(),
+            hiroute_domain::AgentSettingsFacet::Collaboration,
+        )?;
         let mut status = empty_status();
+        if request.include_skills {
+            status.resource = Some(self.skill_resource_status(
+                request,
+                hiroute_domain::AgentSettingsFacet::Collaboration,
+            )?);
+        }
         let stores = self.stores_lock().map_err(super::map_port)?;
         let belongs =
             |operation: &dyn hiroute_domain::AgentOperationRead| -> Result<bool, ControlReadError> {
@@ -74,7 +81,7 @@ impl LocalControlAdapter {
         status.operation_state = Some(operation.state.as_str().into());
         let skill = stores
             .control()
-            .skill_installation(&operation.workspace_id, class.skill_root_ref())
+            .skill_installation(&operation.workspace_id, &root_ref)
             .map_err(super::map_port)?;
         drop(stores);
         match &spec.collaboration {
@@ -99,14 +106,12 @@ impl LocalControlAdapter {
                                 record.file_effect.is_none()
                             }
                         };
-                        let target = class
-                            .skill_target()
-                            .map_err(|_| ControlReadError::Corrupt)?;
                         ownership_current
                             && self
                                 .artifacts
                                 .read_native_target(&target)
-                                .map_err(super::map_port)?
+                                .ok()
+                                .flatten()
                                 .is_some_and(|bytes| {
                                     CanonicalDigest::of_bytes(bytes.as_slice())
                                         == record.content_digest
@@ -120,8 +125,17 @@ impl LocalControlAdapter {
                 } else {
                     State::Drift
                 };
-                status.restore_point_ref =
-                    Some(codex_model_restore_point_ref(&operation.operation_id));
+                status.restore_point_ref = Some(if request.include_skills {
+                    super::settings_facts::skills::skill_restore_ref(
+                        &request.context_id,
+                        hiroute_domain::AgentSettingsFacet::Collaboration,
+                        &operation.operation_id,
+                    )
+                } else {
+                    hiroute_application::agent_connection::codex_model_restore_point_ref(
+                        &operation.operation_id,
+                    )
+                });
                 status.current_selection = configured.then_some(
                     hiroute_application_api::AgentCollaborationCurrentSelectionV2 {
                         trigger_mode: settings.trigger_mode,
@@ -136,6 +150,7 @@ impl LocalControlAdapter {
 
 fn empty_status() -> AgentCollaborationSettingsStatusV2 {
     AgentCollaborationSettingsStatusV2 {
+        resource: None,
         schema: "hiroute.agent-collaboration-settings-status/v2".into(),
         state: State::NotConfigured,
         operation_id: None,

@@ -32,11 +32,14 @@ export type CodexAccess = {
 };
 
 export type CollaborationStatus = {
+  operation_id?: string | null;
+  operation_state?: string | null;
+  resource?: SkillResourceStatus;
   state: string;
   restore_point_ref: string | null;
   current_selection?: { trigger_mode: AgentCollaborationTriggerMode } | null;
 };
-export type AgentModelSurface = 'codex_cli' | 'codex_desktop' | 'claude_cli' | 'qoder_cli' | 'pi_cli' | 'dsh_cli';
+export type AgentModelSurface = 'codex_cli' | 'codex_desktop' | 'claude_cli' | 'qoder_cli' | 'pi_cli' | 'dsh_cli' | 'hermes_cli';
 export type AgentReasoningSelection =
   | { kind: 'profile'; profile: string }
   | { kind: 'toggle'; enabled: boolean }
@@ -88,7 +91,14 @@ export type QoderModelSelection = {
 };
 export type PiModelSelection = { mode: 'pi_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
 export type DshModelSelection = { mode: 'dsh_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
-export type AgentModelSelection = CodexModelSelection | ClaudeModelSelection | QoderModelSelection | PiModelSelection | DshModelSelection;
+export type AgentNativeTarget = { kind: 'hermes'; config_root: string };
+export type HermesModelSelection = { mode: 'hermes_default'; plan_id: string; protocol: 'chat_completions' | 'responses' | 'messages' };
+export type SkillResourceStatus = {
+  directory: string; file_ownership: 'managed' | 'borrowed_identical' | null;
+  shared_context_count: number; native_available: boolean | null; runtime_loading: 'unobserved';
+};
+export type ManagementSkillStatus = { resource?: SkillResourceStatus; schema: string; state: string; restore_point_ref: string | null; operation_id: string | null; operation_state: string | null };
+export type AgentModelSelection = HermesModelSelection | CodexModelSelection | ClaudeModelSelection | QoderModelSelection | PiModelSelection | DshModelSelection;
 export type AgentSurfaceResult = {
   surface: AgentModelSurface;
   applied_revision: number;
@@ -110,6 +120,9 @@ export type AgentLiveCheckCompletion = {
   requested_call_count: number;
 };
 export type ModelStatus = {
+  native_target?: AgentNativeTarget;
+  management_skill?: ManagementSkillStatus;
+  native_adapter?: { resources_installed: boolean; runtime_loading: 'unobserved'; next_action: 'reload_plugins_if_running' | 'repair_owned_resources'; known_channel_models?: string[] };
   state: string;
   operation_id?: string | null;
   operation_state?: string | null;
@@ -123,12 +136,14 @@ export type ModelStatus = {
   collaboration?: CollaborationStatus | null;
 };
 export type CollaborationOnlyStatus = {
+  management_skill?: ManagementSkillStatus;
   schema: 'hiroute.agent-collaboration-only-settings-status/v2';
   context_id: string;
   collaboration: CollaborationStatus;
 };
 export type AgentSettingsStatus = ModelStatus | CollaborationOnlyStatus;
 export type Agent = {
+  native_target?: AgentNativeTarget;
   codex_access?: CodexAccess | null;
   agent_id: string;
   version: string;
@@ -158,5 +173,5 @@ export type Outcome = {
   preview: Preview;
   mutation: AgentMutationOutcome | null;
 };
-export type AgentFacet = 'model' | 'collaboration';
+export type AgentFacet = 'model' | 'collaboration' | 'management_skill';
 export type AgentCheckScope = 'native_authentication' | 'collaboration';

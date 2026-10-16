@@ -21,7 +21,7 @@ fn observation(kind: AgentKindV1, version: &str) -> AgentScanObservationV1 {
 #[test]
 fn agents_registry_binds_codex_to_responses_and_claude_to_messages() {
     let profiles = builtin_agent_profiles();
-    assert_eq!(profiles.len(), 5);
+    assert_eq!(profiles.len(), 6);
     for profile in &profiles {
         profile.validate().unwrap();
     }
@@ -120,6 +120,9 @@ fn agents_codex_and_claude_emulators_have_closed_native_shapes() {
         );
         assert_eq!(rendered.payload["tools"], json!([]));
         match rendered.protocol {
+            AgentIngressProtocolV1::ChatCompletions => {
+                panic!("legacy connectivity probes do not advertise Chat")
+            }
             AgentIngressProtocolV1::Responses => {
                 assert!(rendered.payload.get("input").is_some());
                 assert!(rendered.payload.get("messages").is_none());

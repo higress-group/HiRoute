@@ -15,7 +15,7 @@ pub const LOCAL_CONTROL_RELEASE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Maximum newline-delimited JSON frame size, including the trailing newline.
 pub const LOCAL_CONTROL_MAX_FRAME_BYTES: usize = 10 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PrincipalKind {
     InteractiveUser,
@@ -104,6 +104,7 @@ pub fn negotiate_hello(client: &ClientHelloV1) -> Result<ServerHelloV1, ErrorV1>
             "client-access-v1".to_owned(),
             "protected-client-grant-v2".to_owned(),
             "planned-command-registry-v1".to_owned(),
+            "compute-discovery-points-v2".to_owned(),
         ],
     })
 }
@@ -232,7 +233,7 @@ pub struct SetupApplyRequestV1 {
     pub idempotency_key: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCheckRequestV1 {
     pub agent_id: String,
@@ -244,7 +245,7 @@ pub struct AgentCheckRequestV1 {
     pub target: Option<AgentModelCheckTargetV2>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentModelCheckTargetV2 {
     pub context_id: String,
@@ -278,7 +279,7 @@ impl AgentCheckRequestV1 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentCheckScopeV1 {
     Configuration,
@@ -289,7 +290,7 @@ pub enum AgentCheckScopeV1 {
     Live,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentCheckSuiteV1 {
     Quick,
@@ -297,7 +298,7 @@ pub enum AgentCheckSuiteV1 {
     Conformance,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionLookupV1 {
     pub id: String,
@@ -305,7 +306,9 @@ pub struct SessionLookupV1 {
     pub content: Option<SessionContentModeV1>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
+)]
 pub enum SessionContentModeV1 {
     #[default]
     #[serde(rename = "none")]
@@ -326,7 +329,7 @@ impl From<SessionContentModeV1> for ContentMode {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionListRequestV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -347,7 +350,7 @@ pub struct SessionListRequestV1 {
     pub cursor: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionListPageV1 {
     pub sessions: Vec<SessionSummaryV1>,
@@ -355,7 +358,9 @@ pub struct SessionListPageV1 {
     pub next_cursor: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ValuePeriodV1 {
     Today,
@@ -417,7 +422,7 @@ pub struct ValueScopeViewV1 {
     pub plans: Vec<ValueViewV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationLookupV1 {
     pub operation_id: String,
@@ -459,7 +464,7 @@ pub struct SetupPreviewV1 {
     pub effects: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct PreviewRequestV1 {
     pub schema_version: SchemaVersion,
     pub spec: ChangeSpecV1,
@@ -474,7 +479,7 @@ impl PreviewRequestV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct PreviewResultV1 {
     pub normalized_spec: ChangeSpecV1,
     pub change_digest: CanonicalDigest,
@@ -485,7 +490,7 @@ pub struct PreviewResultV1 {
     pub blockers: Vec<BlockerV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EffectPreviewV1 {
     pub effect_id: String,
     pub channel: String,
@@ -493,13 +498,13 @@ pub struct EffectPreviewV1 {
     pub target: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BlockerV1 {
     pub code: String,
     pub details_schema: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ApplyRequestV1 {
     pub schema_version: SchemaVersion,
     /// Apply always resubmits the complete structured spec; a preview handle is forbidden.
@@ -511,14 +516,14 @@ pub struct ApplyRequestV1 {
     pub apply_capability: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ApplyResultV1 {
     pub operation_id: String,
     pub accepted_digest: CanonicalDigest,
     pub state: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MachineStatus {
     Succeeded,
@@ -549,7 +554,7 @@ impl MachineStatus {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
     UnknownCommand,
@@ -578,7 +583,7 @@ pub enum ErrorCode {
     Internal,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCategory {
     Usage,
@@ -666,7 +671,7 @@ impl ErrorCode {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ErrorV1 {
     pub code: ErrorCode,
     pub category: ErrorCategory,
@@ -697,20 +702,20 @@ impl ErrorV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WarningV1 {
     pub code: String,
     pub details_schema: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct NextActionV1 {
     pub command_id: String,
     pub input: serde_json::Value,
     pub reason_code: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct OperationReferenceV1 {
     pub operation_id: String,
     pub state: String,
@@ -719,7 +724,7 @@ pub struct OperationReferenceV1 {
 }
 
 /// Enriched machine envelope negotiated only with machine-schema v2 clients.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MachineEnvelopeV2<T> {
     pub schema_version: SchemaVersion,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -859,8 +864,12 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         }
         "agents.connect.status" => "hiroute.agent-connection-status-request/union",
         "agents.check" => "hiroute.agent-check-request/v1",
+        "agents.scan" => "hiroute.agent-scan-request/v1",
         "compute.list" | "compute.show" => "hiroute.compute-management-query/v2",
         "compute.connection.preview" => "hiroute.compute-connection-preview-request/union",
+        "compute.connection.prepare" => "hiroute.prepare-discovered-model-connection-request/v1",
+        "compute.connection.options" => "hiroute.compute-connection-options-request/v1",
+        "compute.scan" => "hiroute.compute-scan-request/union",
         "compute.connection.apply" => "hiroute.compute-connection-apply-request/v1",
         "compute.connection.authorize" => "hiroute.compute-connection-authorization-request/v1",
         "compute.connection.login" => "hiroute.subscription-login-request/v1",
@@ -923,9 +932,10 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "agents.connect.apply" | "agents.restore.apply" => "hiroute.operation-view/v1",
         "agents.connect.status" => "hiroute.agent-connection-status/union",
         "agents.check" => "hiroute.agent-check/v1",
-        "compute.scan" => "hiroute.compute-scan-result/v1",
+        "compute.scan" => "hiroute.compute-scan-result/union",
         "compute.list" | "compute.show" => "hiroute.compute-management-snapshot/v2",
         "compute.connection.options" => "hiroute.compute-connection-options/v1",
+        "compute.connection.prepare" => "hiroute.compute-candidate-view/v2",
         "compute.connection.preview" => "hiroute.compute-connection-preview/union",
         "compute.connection.apply" => "hiroute.operation-view/v1",
         "compute.connection.authorize" => "hiroute.compute-subscription-check-result/v2",
@@ -978,6 +988,10 @@ pub(crate) fn command_stdin_channels(command_id: &str) -> &'static [&'static str
         | "prices.override.apply"
         | "compute.credential.add"
         | "models.show"
+        | "compute.scan"
+        | "agents.scan"
+        | "compute.connection.prepare"
+        | "compute.connection.options"
         | "compute.connection.preview"
         | "compute.connection.apply"
         | "compute.connection.authorize"
@@ -1052,6 +1066,16 @@ pub(crate) fn staged_coverage(command_id: &str, positive: bool) -> Option<Covera
 }
 
 pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
+    match command_id {
+        "decision.services.apply" => return "hiroute decision services apply (--id ID [--name NAME] [--provider bailian-token-plan|bailian-workspace|openrouter|typesafe|compatible|custom] [--endpoint URL] [--model MODEL] [--timeout-ms MS] [--candidate REF [--header NAME] | --no-auth] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        "decision.services.test" => return "hiroute decision services test (--service ID@REVISION | --request-file PATH | --request-stdin)".into(),
+        "routing.preview" => return "hiroute routing preview (--name NAME --purpose PURPOSE --mode fixed_model --model BINDING | --name NAME --purpose PURPOSE --mode smart_saving --economy BINDING --primary BINDING --decision local_rules | --plan ID <changes> | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        "compute.connection.preview" => return "hiroute compute connection preview (--candidate REF --candidate-revision REV (--all-selectable | --model-ref REF...) | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        "agents.connect.preview" => return "hiroute agents connect preview (--context ID [--hermes-root PATH] [--plan ID <native choices>] [--management enable|keep] [--collaboration explicit|delegate_by_default|keep] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        "agents.restore.preview" => return "hiroute agents restore preview (--context ID --facet model|management_skill|collaboration [--hermes-root PATH] [--restore-native-model ID] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        _ => {}
+    }
+
     let usage: String = match command_id {
         "worker.executors" => "hiroute worker executors [--output <json|text|quiet>]".into(),
         "worker.dependencies.discover" => "hiroute worker dependencies discover [--harness <codex_cli|claude_code|qoder_cli|pi|deepseek_harness>] [--output <json|text|quiet>]".into(),
@@ -1075,9 +1099,10 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
         "tasks.continue" => "hiroute tasks continue --request-stdin (--agent <codex|claude-code> | --capability-fd <FD>) --json".into(),
         "work-plans.list" => "hiroute work-plans list --request-stdin (--agent <codex|claude-code> | --capability-fd <FD>) --json".to_owned(),
         "agent.launch" => "hiroute agent launch --agent claude-code --context <CONTEXT_ID> -- <CLAUDE_SESSION_ARGS...>".to_owned(),
-        "schema.show" => "hiroute schema show --command-id <stable-command-id> --non-interactive --output json".to_owned(),
+        "schema.show" => "hiroute schema show --command-id <stable-command-id> [--include-schema] --non-interactive --output json".to_owned(),
         "operations.find" => "hiroute operations find --request-stdin --output json".to_owned(),
         "models.show" | "prices.effective" | "prices.override.preview" | "prices.override.apply" | "compute.credential.add" => format!("hiroute {joined_path} --request-stdin --output json"),
+        "compute.connection.options" => "hiroute compute connection options [--request-file <PATH> | --request-stdin] --output json".to_owned(),
         "compute.list" => "hiroute compute list --output json".to_owned(),
         "compute.show" => "hiroute compute show <SOURCE_ID> --output json".to_owned(),
         "compute.connection.preview" | "compute.connection.apply" | "compute.connection.authorize" | "compute.connection.login" | "compute.connection.test" => {
@@ -1089,15 +1114,16 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
         "routing.list" => "hiroute routing list [--request-stdin] --output json".to_owned(),
         "decision.services.list" => "hiroute decision services list --output json".to_owned(),
         "routing.show" => "hiroute routing show <PLAN_ID> --output json".to_owned(),
-        "agents.connect.preview" | "agents.connect.apply" | "agents.restore.preview" | "agents.restore.apply" => {
+        "compute.scan" | "compute.connection.prepare" | "agents.connect.preview" | "agents.connect.apply" | "agents.restore.preview" | "agents.restore.apply" => {
             format!("hiroute {joined_path} --request-stdin --output json")
         }
-        "agents.connect.status" => "hiroute agents connect status <CONNECTION_OR_CONTEXT_ID> --output json".to_owned(),
+        "agents.connect.status" => "hiroute agents connect status <CONNECTION_OR_CONTEXT_ID> | --effective --context <ID> --plan <ID> [--session-id <ID>] [--observed-request-id <ID>] | --request-file <PATH> --output json".to_owned(),
         "sessions.list" | "value.show" | "observation.plan-quality.samples" => {
             format!("hiroute {joined_path} ([OPTIONS] | --request-stdin) [--capability-fd <FD>] --non-interactive --output json")
         }
         "sessions.show" => "hiroute sessions show (<SESSION_ID> [--content <none|messages|messages-and-tools>] | --request-stdin) [--capability-fd <FD>] --non-interactive --output json".to_owned(),
-        "system.status" | "agents.scan" | "agents.list" | "sessions.status" => {
+        "agents.scan" => "hiroute agents scan [--request-stdin | --request-file <PATH>] --non-interactive --output json".to_owned(),
+        "system.status" | "agents.list" | "sessions.status" => {
             format!("hiroute {joined_path} [OPTIONS] --non-interactive --output json")
         }
         "setup.preview" => "hiroute setup preview [HUMAN OPTIONS] | --spec-stdin".to_owned(),
@@ -1141,7 +1167,7 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "work-plans.list" => "Required identity: --agent reads the private sealed collaboration installation, or --capability-fd supplies an inherited collaboration pipe; never both. stdin JSON contains workspace_id, context_id, and grant_id as non-secret selectors. The latest allowlist, published Worker metadata, and behavior-verified installation availability are read on every query.".to_owned(),
         "agent.launch" => "--agent claude-code and --context <CONTEXT_ID> are required, followed by the exact -- delimiter. Session arguments after -- are passed as native OsString values. The last --settings object or file supplies the managed overlay, matching native repeated-option precedence (unrelated fields survive; routing, authentication, and provider entries stay managed). --model, --setting-sources, and --fallback-model pass through unchanged. Cloud-provider, authentication, and routing override arguments are rejected before Local Control access or spawn.".to_owned(),
         "schema.list" => "Global --output json and --request-id options only.".to_owned(),
-        "schema.show" => "Required: --command-id <stable-command-id>. Global --output json and --request-id options are supported.".to_owned(),
+        "schema.show" => "Required: --command-id <stable-command-id>. --include-schema returns complete bundled request/response definitions and examples for management commands; omission retains the descriptor. Global --output json and --request-id options are supported.".to_owned(),
         "setup.apply" => "The setup document is read from --spec-fd. Digest, expected revision, and idempotency key are mandatory. Mutation authority is accepted only from the protected inherited capability channel.".to_owned(),
         "agents.check" => "Configuration, native-authentication and collaboration are bounded local checks admitted by the owner-only same-UID transport and make no upstream model call. Live requires --target JSON containing context_id, surface, expected_applied_revision and client_model_ids, --allow-model-call and a separately delivered one-shot capability bound to that target. Targets are forbidden on local checks; provider, credential, prompt and URL overrides are forbidden.".to_owned(),
         "compute.connection.preview" => "--request-stdin accepts exactly one registered v1 projection, compute-management v2 save/edit, or subscription-check v2 preview request. The optional edit action is rename (display_name), append_models (checked candidate; preserves existing models), remove_models (saved source; selected refs are removals), or delete (saved source; no selected refs). Omitting edit retains released save semantics. Referenced models, including disabled routes and retained versions, cannot be deleted. Preview has no durable side effect and returns the exact digest and revisions required by Apply.".to_owned(),
@@ -1153,7 +1179,7 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "decision.services.apply" => "--request-stdin accepts a ChangeSpec preview request first, then the exact ApplyRequest with accept_digest, expected_revisions and idempotency_key. spec.desired_state contains id, expected_revision, service (null to delete), and optional protected input_slot. Replacing a credential requires a new reference. A referenced service cannot be deleted.".to_owned(),
         "decision.services.test" => "--request-stdin accepts schema hiroute.classifier-decision-test/v1 and classifier {kind: decision_service, service: <saved version>}. Sends one fixed synthetic decision; no session history is read. Failure is reported in data.outcome and failure_code, even when the command query succeeds.".to_owned(),
         "routing.preview" | "routing.apply" => "--request-stdin accepts only the existing strict draft, content, or lifecycle schema. Apply must reproduce Preview and carry its exact revisions, digest, and idempotency key; publication remains one recoverable Operation.".to_owned(),
-        "agents.connect.preview" | "agents.connect.apply" | "agents.restore.preview" | "agents.restore.apply" => "--request-stdin accepts only the strict v1 connection or v2 managed-settings request. Apply is same-UID, revision-checked, idempotent, and writes only owned Agent fields; restore refuses concurrent ownership drift.".to_owned(),
+        "agents.connect.preview" | "agents.connect.apply" | "agents.restore.preview" | "agents.restore.apply" => "--request-stdin accepts only the strict v1 connection or v2 managed-settings request. Model, management_skill and collaboration each support independent keep/configure/restore, including both Skills in one request. Omitted facets keep their state. Apply uses local OS socket access and is revision-checked and idempotent; it and writes only owned Agent fields; restore refuses concurrent ownership drift.".to_owned(),
         "sessions.list" => "Human options retain the v1 query. Fact-only listing is available to the same-UID Local Control peer; --query searches retained text and therefore still requires a separately delivered protected capability. --request-stdin accepts only a strict v2 sessions intent.".to_owned(),
         "observation.plan-quality.samples" => "Provide at least --plan-id or --session-id. Use --competence below-floor|meets-floor to compare the latest reliable score with the floor saved for that stage, or --unrated for missing/partial scores. Score bounds remain strict open bounds. Detail filters do not alter full-scope summaries. Facts are same-UID reads; protected evidence content is never returned.".to_owned(),
         "value.show" => "Human options use the current v2 value_report intent; defaults are the last seven days and separate totals for every currency. --group-by day returns UTC day buckets from the same snapshot. --request-stdin accepts strict v2 value, home_value or value_report intents. Same-UID reads retain known/unknown usage, amounts and coverage; missing values are never filled with zero.".to_owned(),

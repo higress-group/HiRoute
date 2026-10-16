@@ -95,11 +95,17 @@ pub(crate) fn identity_facts(
     }
 
     match native_identity(ingress, headers, document, request) {
+        Field::Value((kind, _)) if authorized.is_hermes_consumer() && kind != "hermes_session" => {
+            return ContextIdentityFacts::request_scoped();
+        }
         Field::Value((kind, parts)) => return reliable(kind, parts, false),
         Field::Invalid => return ContextIdentityFacts::request_scoped(),
         Field::Absent => {}
     }
 
+    if authorized.is_hermes_consumer() {
+        return ContextIdentityFacts::request_scoped();
+    }
     let Some(first_user) = first_user_digest(request, hold_key) else {
         return ContextIdentityFacts::request_scoped();
     };
@@ -186,7 +192,7 @@ fn native_identity(
     );
     let vendor = merge_vendor_identity(vendor, pi_ai_identity(ingress, headers));
     let generic = codex_identity(ingress, headers, request);
-    match (generic, vendor) {
+    let existing = match (generic, vendor) {
         (Field::Invalid, _) | (_, Field::Invalid) => Field::Invalid,
         (Field::Absent, value) | (value, Field::Absent) => value,
         (Field::Value((kind, parts)), Field::Value((_, session)))
@@ -198,7 +204,15 @@ fn native_identity(
             Field::Value((kind, parts))
         }
         (Field::Value(_), Field::Value(_)) => Field::Invalid,
-    }
+    };
+    // Hermes retains its own namespace; every competing family degrades to request scope.
+    merge_vendor_identity(
+        existing,
+        session_identity(
+            "hermes_session",
+            header_value(headers, "x-hermes-session-id"),
+        ),
+    )
 }
 
 fn session_identity(kind: &'static str, session: Field<String>) -> Field<NativeIdentity> {

@@ -515,9 +515,11 @@
     {
       "authority_key": "zhipu-bigmodel",
       "allowed_https_prefixes": [
-        "https://docs.bigmodel.cn/"
+        "https://docs.bigmodel.cn/",
+        "https://open.bigmodel.cn/api/coding/paas/v4/"
       ],
       "scope": [
+        "authenticated model availability and protocol semantics",
         "interfaces",
         "models",
         "products",

@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-10-10",
+  "as_of": "2026-10-14",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -1943,6 +1943,42 @@
       "collected_on": "2026-10-10",
       "bytes_digest": null,
       "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-190",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3.md",
+      "collected_on": "2026-10-14",
+      "bytes_digest": "sha256:2ae550297e839b51498db0f487d9ba5cb0c44f996236546d0eb2e07ce43ef8d8",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-191",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash.md",
+      "collected_on": "2026-10-14",
+      "bytes_digest": "sha256:d9e2d56363f9e04e18c5bb60756edffaf565d2ccb28c420552da2ead3eecef9c",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-192",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+      "collected_on": "2026-10-14",
+      "bytes_digest": "sha256:fdf3459416c9902d2b549ed69e66dfb8ea6cd4baf4ffcfcefa8ddbdc72cd2ba2",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-193",
+      "authority": "open.bigmodel.cn",
+      "source_kind": "authenticated-service-metadata",
+      "locator": "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+      "collected_on": "2026-10-14",
+      "bytes_digest": "sha256:e40b0d3e5da233ddf46fae1ecd5823b693cb83e6cfbb8af489dc4b34f9d347be",
+      "digest_state": "captured"
     }
   ],
   "access_products": [
@@ -3102,7 +3138,9 @@
         "source-024",
         "source-025",
         "source-125",
-        "source-141"
+        "source-141",
+        "source-192",
+        "source-193"
       ],
       "disposition": [
         "catalog-representable",
@@ -3901,7 +3939,8 @@
       "source_stability_note": "current-documented-zai-global",
       "evidence_refs": [
         "source-035",
-        "source-036"
+        "source-036",
+        "source-191"
       ]
     },
     {
@@ -3937,7 +3976,8 @@
       "source_stability_note": "current-documented-zai-global",
       "evidence_refs": [
         "source-035",
-        "source-036"
+        "source-036",
+        "source-190"
       ],
       "data_note": "Use one publisher model identity; China and Z.ai international availability remain separate product and endpoint bindings"
     },
@@ -7290,7 +7330,6 @@
       "upstream_model_id": "glm-5.3-flash",
       "interface_candidates": [
         "zhipu-coding-cn/anthropic-messages",
-        "zhipu-coding-cn/openai-chat",
         "zhipu-coding-cn/openai-responses"
       ],
       "availability": {
@@ -7303,13 +7342,31 @@
       ]
     },
     {
+      "binding_key": "zhipu-coding-cn/glm-5-3-flash-global/glm-5-3-flash/openai-chat",
+      "product_key": "zhipu-coding-cn",
+      "model_key": "glm-5-3-flash-global",
+      "upstream_model_id": "glm-5.3-flash",
+      "interface_candidates": [
+        "zhipu-coding-cn/openai-chat"
+      ],
+      "availability": {
+        "state": "available",
+        "condition": "China Coding Plan credential required; bounded authenticated text, native effort, streamed tool replay, usage and error qualification; no other region or protocol implied"
+      },
+      "protocol_qualification": "qualified",
+      "evidence_refs": [
+        "source-191",
+        "source-192",
+        "source-193"
+      ]
+    },
+    {
       "binding_key": "zhipu-coding-cn/glm-5-3-global/glm-5-3",
       "product_key": "zhipu-coding-cn",
       "model_key": "glm-5-3-global",
       "upstream_model_id": "glm-5.3",
       "interface_candidates": [
         "zhipu-coding-cn/anthropic-messages",
-        "zhipu-coding-cn/openai-chat",
         "zhipu-coding-cn/openai-responses"
       ],
       "availability": {
@@ -7319,6 +7376,25 @@
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-125"
+      ]
+    },
+    {
+      "binding_key": "zhipu-coding-cn/glm-5-3-global/glm-5-3/openai-chat",
+      "product_key": "zhipu-coding-cn",
+      "model_key": "glm-5-3-global",
+      "upstream_model_id": "glm-5.3",
+      "interface_candidates": [
+        "zhipu-coding-cn/openai-chat"
+      ],
+      "availability": {
+        "state": "available",
+        "condition": "China Coding Plan credential required; bounded authenticated text, native effort, streamed tool replay, usage and error qualification; no other region or protocol implied"
+      },
+      "protocol_qualification": "qualified",
+      "evidence_refs": [
+        "source-190",
+        "source-192",
+        "source-193"
       ]
     },
     {
@@ -118326,6 +118402,27 @@
       "endpoint_defaults": [
         {
           "protocol_endpoint_id": "endpoint.zai.general.global.v1.chat",
+          "authentication_semantics": {
+            "kind": "bearer"
+          }
+        }
+      ]
+    },
+    {
+      "connection_option_id": "zhipu.coding-chat.cn.v1",
+      "provider_id": "zhipu",
+      "name": {
+        "zh": "智谱 · Coding Plan Chat（中国）",
+        "en": "Zhipu · Coding Plan Chat (China)"
+      },
+      "description": {
+        "zh": "套餐权益与按量 API 分开计费，请使用对应套餐的凭据。",
+        "en": "Plan entitlements are separate from pay-as-you-go API billing. Use the matching plan credential."
+      },
+      "documentation_url": "https://docs.bigmodel.cn/cn/coding-plan/quick-start",
+      "endpoint_defaults": [
+        {
+          "protocol_endpoint_id": "endpoint.zhipu.coding-chat.cn.v1.chat",
           "authentication_semantics": {
             "kind": "bearer"
           }

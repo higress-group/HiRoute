@@ -238,6 +238,28 @@ H1 uses the correct Host. Both retain port/path/query. This applies to model cal
 and decision connection tests. Native HTTP identity cannot be supplied by inbound
 credential/account override headers.
 
+### Requirement: Hermes requests use existing task-dependent routing
+
+HiRoute SHALL accept the managed Hermes main conversation and its model/tool continuations through one stable published Plan alias so different eligible new user turns can use the Plan's configured task-dependent execution models without rewriting Hermes per task. The existing request-routing decision, continuation, eligibility, protocol, budget and fallback contracts remain the routing policy. The Hermes integration SHALL carry real native conversation identity into the existing scoped correlation path so independent conversations retain separate decisions and observations. If native identity is missing or invalid on a trusted managed Hermes consumer, requests SHALL remain request-scoped rather than correlating conversations by equal prompt content. Integration guidance SHALL identify the main-conversation/tool-loop scope and auxiliary model slots left under native control.
+
+#### Scenario: Different tasks keep one invocation alias
+
+- **WHEN** different eligible new user turns reach the same published Plan from Hermes
+- **THEN** HiRoute applies the existing Plan policy to select the corresponding execution models while Hermes continues to invoke the same alias.
+
+#### Scenario: Continue a tool loop without merging conversations
+
+- **WHEN** one managed Hermes conversation makes a tool continuation while another independent conversation submits equal user content
+- **THEN** existing eligible same-turn reuse remains within the first conversation, and identity, decisions and recorded execution remain separate for the second.
+
+#### Scenario: Native identity is unproven
+
+- **WHEN** a trusted managed Hermes consumer sends requests without usable native conversation identity
+- **THEN** those requests use request-scoped correlation and cannot obtain cross-request decision/history identity merely from equal prompts or cache affinity.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
+
 ## Implementation references
 
 - [Request adapters](../../../crates/gateway/src/adapters/request),

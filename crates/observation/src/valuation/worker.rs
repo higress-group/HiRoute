@@ -225,7 +225,7 @@ pub(super) fn settle_one(
     Ok(())
 }
 
-fn normalize(pricing: &ExecutionPricingEvidenceV1, raw: &RawUsage) -> UsageBucketsV2 {
+pub(crate) fn normalize(pricing: &ExecutionPricingEvidenceV1, raw: &RawUsage) -> UsageBucketsV2 {
     let semantics = pricing.usage_semantics;
     if semantics.frame_kind == UsageFrameKindV1::Unknown {
         return UsageBucketsV2::default();

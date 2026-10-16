@@ -27,7 +27,7 @@ pub const GET_SUBSCRIPTION_CHECK_RESULT_OPERATION_V2: &str = "GetSubscriptionChe
 pub const RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2: &str = "ReleaseSubscriptionCheck";
 
 /// Web-safe base interpretation for a user-configured Native API endpoint.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NativeModelConnectionBaseKindV1 {
     ApiRoot,
@@ -37,21 +37,21 @@ pub enum NativeModelConnectionBaseKindV1 {
 
 /// Public fact bases accepted from the Desktop custom-API form. Registered and observed facts
 /// are intentionally absent: an ordinary client cannot claim either authority.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NativeUserFactBasisV1 {
     UserDeclared,
     Unknown,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeUserFactValueV1<T> {
     pub value: Option<T>,
     pub basis: NativeUserFactBasisV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeUserCapabilityDeclarationV1 {
     pub tool: NativeUserFactValueV1<bool>,
@@ -62,7 +62,7 @@ pub struct NativeUserCapabilityDeclarationV1 {
     pub native_reasoning: NativeUserFactValueV1<NativeReasoningCapabilityV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeUserModelDeclarationV1 {
     pub upstream_model_id: String,
@@ -74,7 +74,7 @@ pub struct NativeUserModelDeclarationV1 {
     pub capabilities: NativeUserCapabilityDeclarationV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeUserModelEndpointV1 {
     pub base_url: String,
@@ -87,7 +87,7 @@ pub struct NativeUserModelEndpointV1 {
     pub authentication: GatewayAuthenticationSemanticsV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeUserModelConnectionDraftV1 {
     /// Display only; does not confer provider, capability, billing or credential authority.
@@ -117,7 +117,7 @@ pub struct NativeUserModelConnectionDraftV1 {
     pub models: Vec<NativeUserModelDeclarationV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeModelConnectionCheckRequestV1 {
     pub draft: NativeUserModelConnectionDraftV1,
@@ -128,7 +128,7 @@ pub struct NativeModelConnectionCheckRequestV1 {
 /// Closed request for a catalog-registered API option. Endpoint, protocol, authentication,
 /// capability, billing, and provider identity are deliberately absent and are resolved by the
 /// daemon from its authenticated release catalog.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegisteredModelConnectionCheckRequestV1 {
     #[serde(default)]
@@ -162,7 +162,7 @@ pub struct RegisteredModelConnectionCheckRequestV1 {
 /// Source, scanner, selector, path, endpoint, authentication, model, capability, credential, and
 /// protected input facts are intentionally absent. The daemon reconstructs all of them after an
 /// exact rescan under the protected Desktop operation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrepareDiscoveredModelConnectionRequestV1 {
     pub discovery: crate::ComputeDiscoveryRefV1,
@@ -217,7 +217,7 @@ impl RegisteredModelConnectionCheckRequestV1 {
 
 /// Closed correlation-only request for rechecking one exact durable Native source. Every target,
 /// provenance, model, lineage and credential fact is reconstructed by the daemon.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SavedModelConnectionCheckRequestV1 {
     pub source_id: String,
@@ -259,7 +259,7 @@ pub struct ComputeCandidateQueryV2 {
     pub candidate: ComputeCandidateRefV2,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeSavePreviewRequestV2 {
     pub change: ComputeManagementChangeV2,
@@ -271,7 +271,7 @@ pub struct ComputeSaveResultQueryV2 {
     pub operation: OperationReferenceV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeSubscriptionCandidatesV2 {
     pub candidates: Vec<ComputeCandidateViewV2>,
@@ -280,14 +280,14 @@ pub struct ComputeSubscriptionCandidatesV2 {
     pub reason_code: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeSubscriptionDiscoveryStateV2 {
     Complete,
     RuntimeUnavailable,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeSubscriptionCheckPreviewRequestV2 {
     pub candidate: ComputeCandidateRefV2,
@@ -296,7 +296,7 @@ pub struct ComputeSubscriptionCheckPreviewRequestV2 {
 /// Public same-UID connection probe selected explicitly by the caller. The wrapper keeps the
 /// released CLI operation stable while preserving the closed request shapes owned by each
 /// existing Application path.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ComputeConnectionTestRequestV1 {
     Native {
@@ -316,7 +316,7 @@ pub enum ComputeConnectionTestRequestV1 {
 /// Read or release one exact subscription authorization result. Starting the check remains the
 /// normal connection Preview/Apply flow so authorization cannot bypass digest, revision, or
 /// idempotency admission.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ComputeConnectionAuthorizationRequestV1 {
     Result {
@@ -333,7 +333,7 @@ pub struct ComputeSubscriptionCheckResultQueryV2 {
     pub operation: OperationReferenceV1,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelConnectionReachabilityV1 {
     NotRun,
@@ -341,7 +341,7 @@ pub enum ModelConnectionReachabilityV1 {
     TransportFailed,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelConnectionAuthenticationStatusV1 {
     NotRun,
@@ -351,7 +351,7 @@ pub enum ModelConnectionAuthenticationStatusV1 {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelConnectionDirectoryStatusV1 {
     NotRun,
@@ -362,14 +362,14 @@ pub enum ModelConnectionDirectoryStatusV1 {
     Partial,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelConnectionProtocolStatusV1 {
     Selected,
     Inconclusive,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelConnectionInferenceStatusV1 {
     NotRun,
@@ -377,7 +377,7 @@ pub enum ModelConnectionInferenceStatusV1 {
     Failed,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConnectionCheckIssueV1 {
     pub code: String,
@@ -389,7 +389,7 @@ pub struct ModelConnectionCheckIssueV1 {
 ///
 /// It never contains a credential, protected input slot, source selector, redirect target, or
 /// upstream response body. Inference remains `not_run` unless the user explicitly selects a single-model text test.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConnectionCheckViewV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]

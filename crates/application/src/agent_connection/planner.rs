@@ -601,6 +601,9 @@ fn desired_config(
         .ok_or(AgentConnectionPlanningError::InvalidGrant)?;
     let mut desired = BTreeMap::new();
     match protocol {
+        AgentIngressProtocolV1::ChatCompletions => {
+            return Err(AgentConnectionPlanningError::ProfileContractDrift);
+        }
         AgentIngressProtocolV1::Responses => {
             insert_field(profile, &mut desired, "provider", Some(json!("hiroute")))?;
             insert_field(profile, &mut desired, "default_model", Some(json!(alias)))?;

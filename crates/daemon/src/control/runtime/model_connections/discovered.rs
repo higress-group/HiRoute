@@ -130,6 +130,27 @@ impl LocalControlAdapter {
             candidate.discovery.discovery_ref == request.discovery.discovery_ref
                 && candidate.discovery.discovery_revision == request.discovery.discovery_revision
         }) else {
+            let sources: Vec<_> = self
+                .scanner
+                .pi_api_sources()
+                .unwrap_or_default()
+                .into_iter()
+                .chain(self.scanner.dsh_api_sources().unwrap_or_default())
+                .collect();
+            let mut sources = sources;
+            sources.extend(self.claude_api_point_sources().unwrap_or_default());
+            sources.extend(
+                self.hermes_source_facts()
+                    .map(|facts| facts.sources)
+                    .unwrap_or_default(),
+            );
+            let native_exists = !sources.is_empty();
+            if let Some(point) = hiroute_integrations::native_api_connection_points(sources)
+                .into_iter()
+                .find(|point| super::points::point_discovery(point, catalog) == request.discovery)
+            {
+                return self.prepare_native_point_candidate(point, &request.prepare_id);
+            }
             if let Some(source) = self
                 .scanner
                 .pi_api_sources()
@@ -143,7 +164,7 @@ impl LocalControlAdapter {
             {
                 return self.prepare_native_api_candidate(source, &request.prepare_id);
             }
-            return Err(if current_exists {
+            return Err(if current_exists || native_exists {
                 ComputeManagementControlError::DiscoveryChanged
             } else if recognized_configuration {
                 ComputeManagementControlError::DiscoveryNotImportable
@@ -205,7 +226,7 @@ impl LocalControlAdapter {
             .map_err(|_| ComputeManagementControlError::Corrupt)
     }
 
-    fn validate_discovered_allowlist(
+    pub(super) fn validate_discovered_allowlist(
         &self,
         discovery: &AuthorizedComputeDiscoveryV1,
     ) -> Result<(), ComputeManagementControlError> {

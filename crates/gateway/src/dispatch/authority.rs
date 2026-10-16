@@ -250,6 +250,7 @@ impl AuthenticatedRequest {
             Arc::clone(&execution.pricing_bindings),
             core,
         )
+        .with_native_consumer(self.grant.consumer)
         .with_web_search_allowed(self.run.as_ref().is_none_or(|run| run.network_allowed())))
     }
 

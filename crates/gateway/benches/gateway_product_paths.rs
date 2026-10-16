@@ -508,6 +508,7 @@ impl Fixture {
                 )],
             }],
             vec![GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "gateway-benchmark-grant".into(),
                 generation: 1,

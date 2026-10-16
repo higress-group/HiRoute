@@ -4,7 +4,9 @@ use crate::CanonicalDigest;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentCapability {
     EffectiveConfiguration,
@@ -55,6 +57,8 @@ pub enum CapabilityReason {
 pub enum AgentAction {
     ConfigureModel,
     InstallCollaborationSkill,
+    InstallManagementSkill,
+    RemoveManagementSkill,
     RestoreModel,
     RemoveCollaborationSkill,
     VerifyModel,
@@ -70,6 +74,8 @@ impl AgentAction {
                 AtomicManagedReplace,
                 IngressAuthentication,
             ],
+            Self::InstallManagementSkill => &[AtomicManagedReplace, SkillLoading],
+            Self::RemoveManagementSkill => &[AtomicManagedReplace],
             Self::InstallCollaborationSkill => {
                 &[AtomicManagedReplace, SkillLoading, TrustedCliExecution]
             }
@@ -117,6 +123,15 @@ impl AgentCapabilitySet {
         self.0.get(&capability)
     }
 
+    /// Extend a trusted fact snapshot without turning stale capability evidence into proof.
+    pub fn rebind_dependency(&mut self, previous: &CanonicalDigest, current: &CanonicalDigest) {
+        for evidence in self.0.values_mut() {
+            if &evidence.dependency_digest == previous {
+                evidence.dependency_digest = current.clone();
+            }
+        }
+    }
+
     pub fn require(
         &self,
         action: AgentAction,
@@ -155,13 +170,13 @@ impl AgentCapabilitySet {
 #[error("native capability evidence is invalid or duplicated")]
 pub struct InvalidCapabilityEvidence;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CapabilityBlock {
     pub capability: AgentCapability,
     pub reason: CapabilityBlockReason,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityBlockReason {
     Unknown,

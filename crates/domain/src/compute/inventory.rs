@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::common::*;
 use super::model_data::*;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservedModelV1 {
     pub upstream_model_id: String,

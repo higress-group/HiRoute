@@ -27,7 +27,7 @@ const DEEP_REASONING_PHRASES: &[&str] = &[
     "权衡",
 ];
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ComplexityClassifierModeV1 {
     LocalRules,
@@ -36,7 +36,7 @@ pub enum ComplexityClassifierModeV1 {
     },
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClassifierAuthHeaderV1 {
     pub name: String,
@@ -126,7 +126,7 @@ fn valid_bounded_text(value: &str, max_chars: usize) -> bool {
         && !value.chars().any(char::is_control)
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComplexityClassifierV1 {
     pub revision: String,

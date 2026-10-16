@@ -8,6 +8,9 @@ use thiserror::Error;
 use super::ExecutionScope;
 
 pub struct CredentialLeaseRequest<'a> {
+    /// Frozen routing identity for observations, independent of source membership.
+    pub execution_binding_id: &'a str,
+    /// Exact original source binding used by the credential authority.
     pub stable_binding_id: &'a str,
     pub credential_ref: &'a str,
     pub credential_destination_ref: &'a str,

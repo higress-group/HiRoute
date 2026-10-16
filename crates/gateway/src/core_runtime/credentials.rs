@@ -45,10 +45,8 @@ pub(super) fn bind_current(
     let current = ports
         .credentials
         .current_credential_refs(CredentialLeaseRequest {
-            stable_binding_id: execution
-                .source_binding_id
-                .as_deref()
-                .unwrap_or(&execution.stable_target_key),
+            execution_binding_id: &execution.stable_target_key,
+            stable_binding_id: execution.credential_binding_id(),
             credential_ref: original.as_str(),
             credential_destination_ref: destination,
             excluded_key_ids: &[],

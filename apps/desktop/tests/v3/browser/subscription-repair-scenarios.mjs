@@ -215,7 +215,7 @@ const scenarios = [
     assert(!button('管理凭据'), 'ConnectorOwned exposed manual keys');
   }],
   ['scan empty, runtime unavailable and failed remain distinct', async () => {
-    await fresh(control => { control.subscriptions = []; control.handlers.compute_scan = () => ({ items: [] }); });
+    await fresh(control => { control.subscriptions = []; control.handlers.compute_scan = () => ({ connections: [], diagnostics: [] }); });
     await scan();
     assert(text().includes('没有发现可复用的 Codex / Claude Code 订阅'), 'Successful empty scan missing');
     await click('完成');
@@ -239,6 +239,33 @@ const scenarios = [
     assert(!button('保存接入'), 'Late Prepare opened save');
     assert(calls('apply_compute_save').length === 0 && calls('cancel_model_connection_check').length === 0, 'Prepare close wrote or called cancellation');
   }],
+  ['point preparation selects all selectable models and freezes an explicit subset', async () => {
+    const first = c().prepared.models[0];
+    const second = { ...first, model_ref: 'model/point/second', upstream_model_id: 'second', display_name: 'Second declared model' };
+    const unavailable = { ...first, model_ref: 'model/point/unavailable', upstream_model_id: 'unsupported', display_name: 'Unsupported declared model', selectable: false, reason: 'model_connections.runtime_fallback_ineligible' };
+    await fresh(control => { control.handlers.prepare_discovered_model_connection = () => ({ ...control.prepared, models: [first, second, unavailable] }); });
+    await scan(); await connect('智谱 Coding Plan');
+    await until(() => button('保存接入'), 'multi-model point prepared');
+    const selected = [...document.querySelectorAll('[role="dialog"] input[type="checkbox"]')];
+    assert(selected.filter(input => input.checked).length === 2, 'Current selectable set was not selected');
+    const secondRow = [...document.querySelectorAll('[role="dialog"] label')].find(row => row.textContent.includes('Second declared model'));
+    assert(secondRow?.querySelector('input'), 'Second model toggle missing');
+    secondRow.querySelector('input').click(); await tick();
+    await click('保存接入');
+    await until(() => calls('preview_compute_save').length > 0, 'exact subset preview');
+    assert(JSON.stringify(calls('preview_compute_save').at(-1).payload.change.selected_model_refs) === JSON.stringify([first.model_ref]), 'Save expanded or omitted the explicit subset');
+  }],
+  ['point without selectable models blocks save without mutating the source', async () => {
+    await fresh(control => { control.handlers.prepare_discovered_model_connection = () => ({ ...control.prepared,
+      models: control.prepared.models.map(model => ({ ...model, selectable: false, reason: 'model_connections.capability_required' })) }); });
+    await scan(); await connect('智谱 Coding Plan');
+    await until(() => text().includes('Discovered component'), 'unselectable point prepared');
+    assert(!button('保存接入') || button('保存接入').disabled, 'No-selectable point permitted Save');
+    assert(calls('preview_compute_save').length === 0 && calls('apply_compute_save').length === 0, 'Blocked point changed a saved source');
+    const close = document.querySelector('[role="dialog"] button[aria-label="关闭扫描"]');
+    assert(close && !close.disabled, 'Scan can be closed with no selectable models');
+    close.click(); await tick();
+  }],
   ['stale discovery Preview requires a new scan and Prepare', async () => {
     for (const [stage, code] of [
       ['preview_compute_save', 'CHANGE_PREVIEW_STALE'],
@@ -259,7 +286,7 @@ const scenarios = [
       assert(!button('保存接入') && c().changes === 0, 'Stale candidate was saved');
       assert(calls('apply_compute_save').length === (stage === 'apply_compute_save' ? 1 : 0), 'Unexpected Apply attempt');
       const next = { ...c().discovered, discovery: { discovery_ref: `discovery/${'b'.repeat(64)}`, discovery_revision: '2' } };
-      c().handlers.compute_scan = () => ({ items: [next] });
+      c().handlers.compute_scan = () => ({ connections: [next], diagnostics: [] });
       delete c().handlers[stage];
       await click('重新扫描'); await until(() => text().includes('可复用的订阅'), 'rescan complete');
       await connect('智谱 Coding Plan');

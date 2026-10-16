@@ -73,8 +73,10 @@ pub(crate) fn dispatch(
         }) else {
             return failed(ErrorCode::Internal, request.request_id);
         };
-        let edit_context = (source_origin != hiroute_domain::SourceOrigin::Cpa
-            && binding.billing_class != hiroute_domain::BillingClass::Subscription)
+        let edit_context = (target.valuation_kind
+            == hiroute_domain::PriceValuationKindV1::ApiEquivalent
+            || (source_origin != hiroute_domain::SourceOrigin::Cpa
+                && binding.billing_class != hiroute_domain::BillingClass::Subscription))
             .then(|| PriceEditContextV1 {
                 target_locator: PriceTargetLocatorV1::Binding {
                     binding_id: binding.binding_id.clone(),

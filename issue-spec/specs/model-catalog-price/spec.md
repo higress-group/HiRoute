@@ -122,6 +122,38 @@ price revisions, or publication, and restart preserves the committed choice.
 - **THEN** its projection MUST show the specific unknown/unavailable state without
   hiding healthy sources or inventing an editable subscription price.
 
+### Requirement: Compare routed usage using an explicit API-equivalent price basis
+
+HiRoute SHALL support an explicitly selected API-equivalent cost view for recorded routed usage, including subscription/Coding Plan traffic, against an explicitly identified reference model and currency. It SHALL reuse source-scoped current API-reference prices or user-provided revisioned prices, expose the chosen price/time basis, routed estimate, reference estimate and signed estimated savings, and include observed retry usage. This current-price comparison SHALL NOT rewrite immutable historical receipts or be represented as a subscription bill or realized cash savings. Missing or incompatible usage/price facts SHALL remain unknown or partial, with counted coverage and no fabricated savings. Correct supply classification SHALL distinguish free, subscription, paid and unknown independently from the selected estimate basis. The common management Skill SHALL guide price completion, comparison and evidence-based optimization through installed public CLI capabilities.
+
+#### Scenario: Estimate a Coding Plan combination
+
+- **WHEN** a user chooses API-equivalent value with prices for economy and primary/reference models
+- **THEN** the view compares recorded routed usage with the selected reference under one disclosed currency and price basis, while actual subscription payment remains independent and unknown unless separately evidenced.
+
+#### Scenario: Supply reference prices
+
+- **WHEN** a source/model lacks collected API prices
+- **THEN** the caller can use the existing revisioned source-specific manual price path and explicitly rerun the estimate; this does not change entitlement or historic settlement.
+
+#### Scenario: Keep missing evidence honest
+
+- **WHEN** required usage, price, identity, retention or terminal facts are missing
+- **THEN** the report counts coverage and leaves incomplete comparisons unknown rather than treating them as free or claiming a full saving.
+
+#### Scenario: Include retries and regressions
+
+- **WHEN** a routed request uses multiple attempts or costs more than the reference
+- **THEN** all observed attempt usage contributes and a valid negative difference remains negative.
+
+#### Scenario: Keep historical meaning
+
+- **WHEN** the user later edits API-equivalent prices
+- **THEN** a new selected current-price estimate may change, but stored receipts and ordinary historical value queries retain their original meanings.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/125#issuecomment-6220387895
+
 ## Implementation references
 
 - [Metadata records](../../../crates/domain/src/compute/model_metadata_records.rs) and

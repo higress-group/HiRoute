@@ -2,7 +2,7 @@
 use crate::{AgentIngressProtocolV1, MaterializedAgentPlanV1, UpstreamProtocol};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentProtocolAdviceV1 {
     pub supported: Vec<AgentIngressProtocolV1>,

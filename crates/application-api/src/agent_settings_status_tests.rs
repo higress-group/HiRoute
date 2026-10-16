@@ -30,3 +30,17 @@ fn collaboration_only_status_has_no_model_shell_and_rejects_mixed_shape() {
     .unwrap();
     assert!(!invalid.valid());
 }
+
+#[test]
+fn legacy_status_requests_omit_extended_skill_projection() {
+    let old = r#"{"schema_version":{"major":2,"minor":0},"context_id":"agent-context/codex"}"#;
+    let request: AgentSettingsStatusRequestV2 = serde_json::from_str(old).unwrap();
+    assert!(!request.include_skills);
+    assert_eq!(serde_json::to_string(&request).unwrap(), old);
+    let mut extended = request;
+    extended.include_skills = true;
+    assert_eq!(
+        serde_json::to_value(extended).unwrap()["include_skills"],
+        true
+    );
+}

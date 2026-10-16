@@ -1,6 +1,10 @@
 //! Typed AgentConnection Preview and Apply-plan sealing.
 
 mod additional_model_journal;
+mod hermes_model_journal;
+pub use hermes_model_journal::*;
+mod hermes_plugin_journal;
+pub use hermes_plugin_journal::*;
 mod claude_model_journal;
 pub(crate) mod collaboration_check;
 pub(crate) mod control;

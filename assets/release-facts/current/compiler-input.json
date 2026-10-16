@@ -373,6 +373,7 @@
           "provider_api_key"
         ],
         "endpoint_profile_refs": [
+          "endpoint.zhipu.coding-chat.cn.v1",
           "endpoint.zhipu.coding-plan.cn.v1",
           "endpoint.zhipu.general.cn.v1"
         ],
@@ -1097,6 +1098,35 @@
         "verification_evidence": "sha256:3b5e30780af253304d215c20ac1254a3f9ebecb898b7cc27948c25203492f302"
       },
       {
+        "connector_id": "connector.zhipu.p0",
+        "connector_revision": 1,
+        "endpoint_profile_id": "endpoint.zhipu.coding-chat.cn.v1",
+        "entitlement_id": "coding-plan-api-key",
+        "inventory_strategy": "bundled_catalog",
+        "last_verified_at": 1791936000,
+        "logical_endpoint_group": "zhipu-coding-plan",
+        "protocol_endpoints": [
+          {
+            "adapter_ref": "adapter.openai-chat.v1",
+            "adapter_revision": 1,
+            "authentication_semantics": {
+              "kind": "bearer"
+            },
+            "base_url": "https://open.bigmodel.cn",
+            "protocol": "chat_completions",
+            "protocol_endpoint_id": "endpoint.zhipu.coding-chat.cn.v1.chat",
+            "request_path": "/api/coding/paas/v4/chat/completions",
+            "stable_preference": 0
+          }
+        ],
+        "provider_platform_id": "zhipu",
+        "region_id": "cn",
+        "revision": 1,
+        "service_offering_id": "coding-plan",
+        "usage_scope": "account",
+        "verification_evidence": "sha256:b1ad8c148887a08a0371e8c39a5f7844d4ae7b35300d36a34fd0b14c6bb80cee"
+      },
+      {
         "endpoint_profile_id": "endpoint.zhipu.coding-plan.cn.v1",
         "revision": 1,
         "connector_id": "connector.zhipu.p0",
@@ -1152,7 +1182,7 @@
           }
         ],
         "inventory_strategy": "bundled_catalog",
-        "verification_evidence": "sha256:986bc15e6f82b3865467573c0c6df3d566f544b7e173ee73588befa0898655d1",
+        "verification_evidence": "sha256:3d1243d58f8308be5aef401ba01a086d8b9bbd87c1f0827d2b7aa194b5be526c",
         "last_verified_at": 1789862400
       },
       {
@@ -1386,6 +1416,16 @@
         "connector_revision": 1,
         "display_name": "Z.AI · General API",
         "endpoint_profile_id": "endpoint.zai.general.global.v1",
+        "endpoint_profile_revision": 1,
+        "origin": "native_api"
+      },
+      {
+        "billing_class": "subscription",
+        "connection_option_id": "zhipu.coding-chat.cn.v1",
+        "connector_id": "connector.zhipu.p0",
+        "connector_revision": 1,
+        "display_name": "Zhipu · Coding Plan Chat (China)",
+        "endpoint_profile_id": "endpoint.zhipu.coding-chat.cn.v1",
         "endpoint_profile_revision": 1,
         "origin": "native_api"
       },
@@ -1853,6 +1893,36 @@
           "upstream_protocol": "chat_completions"
         },
         {
+          "capability_id": "cap.zhipu.glm-5.3-flash.coding-plan.chat",
+          "connector_id": "connector.zhipu.p0",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.zhipu.coding-chat.cn.v1",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:3661d17c3fcbbcbc1e88c3c42d7a938401a98a2f9b34a710f18bbe2591d5526d",
+          "model_configuration_id": "model.zhipu.glm-5.3-flash.coding-chat",
+          "protocol_endpoint_id": "endpoint.zhipu.coding-chat.cn.v1.chat",
+          "required_adapter_ref": "adapter.openai-chat.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "glm-5.3-flash",
+          "upstream_protocol": "chat_completions"
+        },
+        {
+          "capability_id": "cap.zhipu.glm-5.3.coding-plan.chat",
+          "connector_id": "connector.zhipu.p0",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.zhipu.coding-chat.cn.v1",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:ac244c817bb03d624467fd62599147c82d245869a5274ecd30e2d539a5d71f22",
+          "model_configuration_id": "model.zhipu.glm-5.3.coding-chat",
+          "protocol_endpoint_id": "endpoint.zhipu.coding-chat.cn.v1.chat",
+          "required_adapter_ref": "adapter.openai-chat.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "glm-5.3",
+          "upstream_protocol": "chat_completions"
+        },
+        {
           "capability_id": "cap.zhipu.glm-5.3.coding-plan.messages",
           "connector_id": "connector.zhipu.p0",
           "connector_revision": 1,
@@ -1873,7 +1943,7 @@
           "connector_revision": 1,
           "endpoint_profile_id": "endpoint.zhipu.coding-plan.cn.v1",
           "endpoint_profile_revision": 1,
-          "evidence_digest": "sha256:d618a894b4403464be1176d2a047bbffea5032806bb97bc773a532c8b48fca91",
+          "evidence_digest": "sha256:c143fe597a760e7f74cc097c98ea8f6c74361c18505f59c5d58e3b04a1da4aad",
           "model_configuration_id": "model.zhipu.glm-5.3",
           "protocol_endpoint_id": "endpoint.zhipu.coding-plan.cn.v1.responses",
           "required_adapter_ref": "adapter.openai-responses.v1",
@@ -2234,6 +2304,32 @@
           "model_configuration_id": "model.zhipu.glm-5.3",
           "publisher_id": "publisher.zhipu",
           "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1000000,
+            "max_output_tokens": 131072,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
+          "display_name": "GLM-5.3 Flash",
+          "model_configuration_id": "model.zhipu.glm-5.3-flash.coding-chat",
+          "publisher_id": "publisher.zai",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1000000,
+            "max_output_tokens": 131072,
+            "streaming": true,
+            "tool": true,
+            "vision": false
+          },
+          "display_name": "GLM-5.3",
+          "model_configuration_id": "model.zhipu.glm-5.3.coding-chat",
+          "publisher_id": "publisher.zai",
+          "revision": 1
         }
       ],
       "models_slice_version": "hiroute-20260913/current-1",
@@ -2372,6 +2468,22 @@
           "region_id": "cn",
           "revision": 1,
           "service_offering_id": "inference-api",
+          "usage_scope": "account"
+        },
+        {
+          "billing_class": "subscription",
+          "endpoint_profile_id": "endpoint.zhipu.coding-chat.cn.v1",
+          "endpoint_profile_revision": 1,
+          "entitlement_id": "coding-plan-api-key",
+          "evidence_digest": "sha256:b1ad8c148887a08a0371e8c39a5f7844d4ae7b35300d36a34fd0b14c6bb80cee",
+          "model_configuration_ids": [
+            "model.zhipu.glm-5.3-flash.coding-chat",
+            "model.zhipu.glm-5.3.coding-chat"
+          ],
+          "offer_id": "offer.zhipu.coding-chat",
+          "region_id": "cn",
+          "revision": 1,
+          "service_offering_id": "coding-plan",
           "usage_scope": "account"
         },
         {
@@ -3691,7 +3803,9 @@
             "source-024",
             "source-025",
             "source-125",
-            "source-141"
+            "source-141",
+            "source-192",
+            "source-193"
           ],
           "interfaces": [
             {
@@ -3762,7 +3876,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-10-10",
+      "as_of": "2026-10-14",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -4745,7 +4859,8 @@
           "display_name": "GLM-5.3 Flash",
           "evidence_refs": [
             "source-035",
-            "source-036"
+            "source-036",
+            "source-191"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -4794,7 +4909,8 @@
           "display_name": "GLM-5.3",
           "evidence_refs": [
             "source-035",
-            "source-036"
+            "source-036",
+            "source-190"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -8937,13 +9053,35 @@
           ],
           "interface_candidates": [
             "zhipu-coding-cn/anthropic-messages",
-            "zhipu-coding-cn/openai-chat",
             "zhipu-coding-cn/openai-responses"
           ],
           "lifecycle": null,
           "model_key": "glm-5-3-flash-global",
           "product_key": "zhipu-coding-cn",
           "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.3-flash"
+        },
+        {
+          "availability": {
+            "condition": "China Coding Plan credential required; bounded authenticated text, native effort, streamed tool replay, usage and error qualification; no other region or protocol implied",
+            "state": "available"
+          },
+          "binding_key": "zhipu-coding-cn/glm-5-3-flash-global/glm-5-3-flash/openai-chat",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-191",
+            "source-192",
+            "source-193"
+          ],
+          "interface_candidates": [
+            "zhipu-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-flash-global",
+          "product_key": "zhipu-coding-cn",
+          "protocol_qualification": "qualified",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "glm-5.3-flash"
@@ -8960,13 +9098,35 @@
           ],
           "interface_candidates": [
             "zhipu-coding-cn/anthropic-messages",
-            "zhipu-coding-cn/openai-chat",
             "zhipu-coding-cn/openai-responses"
           ],
           "lifecycle": null,
           "model_key": "glm-5-3-global",
           "product_key": "zhipu-coding-cn",
           "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "glm-5.3"
+        },
+        {
+          "availability": {
+            "condition": "China Coding Plan credential required; bounded authenticated text, native effort, streamed tool replay, usage and error qualification; no other region or protocol implied",
+            "state": "available"
+          },
+          "binding_key": "zhipu-coding-cn/glm-5-3-global/glm-5-3/openai-chat",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-190",
+            "source-192",
+            "source-193"
+          ],
+          "interface_candidates": [
+            "zhipu-coding-cn/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-global",
+          "product_key": "zhipu-coding-cn",
+          "protocol_qualification": "qualified",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "glm-5.3"
@@ -10718,6 +10878,42 @@
           "locator": "https://platform.claude.com/docs/en/build-with-claude/effort",
           "source_key": "source-189",
           "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.bigmodel.cn",
+          "bytes_digest": "sha256:2ae550297e839b51498db0f487d9ba5cb0c44f996236546d0eb2e07ce43ef8d8",
+          "collected_on": "2026-10-14",
+          "digest_state": "captured",
+          "locator": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3.md",
+          "source_key": "source-190",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.bigmodel.cn",
+          "bytes_digest": "sha256:d9e2d56363f9e04e18c5bb60756edffaf565d2ccb28c420552da2ead3eecef9c",
+          "collected_on": "2026-10-14",
+          "digest_state": "captured",
+          "locator": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash.md",
+          "source_key": "source-191",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.bigmodel.cn",
+          "bytes_digest": "sha256:fdf3459416c9902d2b549ed69e66dfb8ea6cd4baf4ffcfcefa8ddbdc72cd2ba2",
+          "collected_on": "2026-10-14",
+          "digest_state": "captured",
+          "locator": "https://docs.bigmodel.cn/cn/coding-plan/overview.md",
+          "source_key": "source-192",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "open.bigmodel.cn",
+          "bytes_digest": "sha256:e40b0d3e5da233ddf46fae1ecd5823b693cb83e6cfbb8af489dc4b34f9d347be",
+          "collected_on": "2026-10-14",
+          "digest_state": "captured",
+          "locator": "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+          "source_key": "source-193",
+          "source_kind": "authenticated-service-metadata"
         }
       ],
       "inference_rules": [
@@ -101413,11 +101609,11 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:3e7296c017c14f359a918a33d833aa44586b8b22d8f84ad684772c38dc0174cf"
+      "source_catalog_digest": "sha256:275bb1862f855a05d04888e59666a1249e2e8108b4c519bb757219caafb2b5af"
     },
     "rating_snapshot": {
-      "digest": "sha256:5bc8011157d035ba257d8d53a1c9de69430a6be950bcfdbc380791e2bb700e24",
-      "model_catalog_digest": "sha256:9720393b04c5dd40fcedce7977853c0d03c580bb453d1cca9e5517967505e766",
+      "digest": "sha256:4421ab512915f871dbbec5ec7d437302beb8e2f7bfeced07a9eecf4232c372e8",
+      "model_catalog_digest": "sha256:6e7f5a3ac7d08198a0e5d0719e156dc543a2e0a321a967844cf8e95100268c7d",
       "models": [
         {
           "capability": {
@@ -101722,6 +101918,34 @@
             "profile": "provider-default"
           },
           "model_configuration_id": "model.zhipu.glm-5.3"
+        },
+        {
+          "capability": {
+            "default_profile": "max",
+            "kind": "discrete",
+            "parameter": "reasoning_effort",
+            "profiles": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "model_configuration_id": "model.zhipu.glm-5.3-flash.coding-chat",
+          "native_render_convention": "zhipu_thinking_chat"
+        },
+        {
+          "capability": {
+            "default_profile": "max",
+            "kind": "discrete",
+            "parameter": "reasoning_effort",
+            "profiles": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "model_configuration_id": "model.zhipu.glm-5.3.coding-chat",
+          "native_render_convention": "zhipu_thinking_chat"
         }
       ],
       "records": [
@@ -103336,6 +103560,120 @@
           "native_configuration": {
             "kind": "profile",
             "profile": "xhigh"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.zhipu.glm-5.3-flash.coding-chat",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "high"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.zhipu.glm-5.3-flash.coding-chat",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "low"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.zhipu.glm-5.3-flash.coding-chat",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "max"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.zhipu.glm-5.3.coding-chat",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "high"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.zhipu.glm-5.3.coding-chat",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "low"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.zhipu.glm-5.3.coding-chat",
+          "native_configuration": {
+            "kind": "profile",
+            "profile": "max"
           },
           "overall": {
             "reason": "rating_not_collected",

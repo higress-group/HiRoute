@@ -493,6 +493,114 @@ fn staged_grant_compensation_removes_the_unpublished_version() {
             .unwrap();
         assert_eq!(count, 0);
     });
+    super::validate_stable_grants(&store).unwrap();
+}
+
+#[test]
+fn compensated_grant_receipts_survive_startup_and_never_authorize_reused_generations() {
+    use crate::LocalStorageSet;
+    for activated in [false, true] {
+        for rotate in [false, true] {
+            let root = tempdir().unwrap();
+            let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            let before = if rotate {
+                let mutation = ensure(scope(b"original"), 0);
+                let effect = stores
+                    .secrets()
+                    .apply_agent_access_grant(&operation_id('1'), &mutation, None)
+                    .unwrap();
+                stores
+                    .secrets()
+                    .activate_agent_access_grant(&effect)
+                    .unwrap();
+                stores
+                    .secrets()
+                    .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+                    .unwrap()
+            } else {
+                None
+            };
+            let generation = u64::from(rotate);
+            let mutation = ensure(scope(b"cancelled"), generation);
+            let effect = stores
+                .secrets()
+                .apply_agent_access_grant(&operation_id('2'), &mutation, None)
+                .unwrap();
+            if activated {
+                stores
+                    .secrets()
+                    .activate_agent_access_grant(&effect)
+                    .unwrap();
+            }
+            stores
+                .secrets()
+                .compensate_agent_access_grant(&effect)
+                .unwrap();
+            drop(stores);
+            let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            assert_eq!(
+                stores
+                    .secrets()
+                    .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+                    .unwrap(),
+                before
+            );
+            let replacement = ensure(scope(b"replacement"), generation);
+            let effect = stores
+                .secrets()
+                .apply_agent_access_grant(&operation_id('3'), &replacement, None)
+                .unwrap();
+            stores
+                .secrets()
+                .activate_agent_access_grant(&effect)
+                .unwrap();
+            assert!(
+                stores
+                    .secrets()
+                    .resolve_prepared_agent_access_grant(&operation_id('2'), &mutation)
+                    .is_err()
+            );
+            drop(stores);
+            let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            let current = stores
+                .secrets()
+                .inspect_agent_access_grant(OWNER_SCOPE, CONNECTION_ID)
+                .unwrap()
+                .unwrap();
+            assert_eq!(current.scope(), replacement.desired_scope().unwrap());
+        }
+    }
+}
+
+#[test]
+fn uncompensated_revoked_grant_still_requires_its_exact_historical_version_at_startup() {
+    use crate::LocalStorageSet;
+    let root = tempdir().unwrap();
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let effect = stores
+        .secrets()
+        .apply_agent_access_grant(&operation_id('1'), &ensure(scope(b"retained"), 0), None)
+        .unwrap();
+    stores
+        .secrets()
+        .activate_agent_access_grant(&effect)
+        .unwrap();
+    let revoke = AgentAccessGrantMutationV1::revoke(OWNER_SCOPE, CONNECTION_ID, 1).unwrap();
+    let effect = stores
+        .secrets()
+        .apply_agent_access_grant(&operation_id('2'), &revoke, None)
+        .unwrap();
+    stores
+        .secrets()
+        .activate_agent_access_grant(&effect)
+        .unwrap();
+    stores.secrets().with_connection(|connection| {
+        connection
+            .execute("DELETE FROM agent_access_grant_versions", [])
+            .unwrap();
+    });
+    drop(stores);
+    assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
 }
 
 #[test]

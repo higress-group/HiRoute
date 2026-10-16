@@ -41,7 +41,9 @@ pub const DEFAULT_CATALOG_RENDERER_REVISION: &str = "hiroute.gateway-catalog-ren
 const MAX_REQUEST_ATTEMPTS: u16 = 6;
 const MAX_LOGICAL_REQUEST_DURATION_MS: u64 = 60 * 60 * 1_000;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(transparent)]
 pub struct GatewayPublicationRevision(u64);
 
@@ -65,9 +67,13 @@ impl GatewayPublicationRevision {
 pub struct GatewayExecutableCandidateV2 {
     pub local_id: u32,
     pub stable_target_key: String,
-    /// Source membership remains independent of branch/reasoning execution identity.
+    /// Original source membership, independent of a branch's reasoning-specific execution key.
+    /// Derived from the stored Plan; absent on unchanged legacy/fixed projections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_binding_id: Option<String>,
+    /// Derived only in the executable projection; omitted in retained Product bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub billing_class: Option<crate::BillingClass>,
     pub adapter_id: String,
     pub credential_refs: Vec<String>,
     /// Exact Secret authority destination derived from the current connection option.
@@ -733,6 +739,19 @@ impl GatewayPublicationV1 {
     /// AgentConnection grant. A protocol is advertised only when every ordered candidate has
     /// one exact renderer for that ingress; grant material never participates in this catalog.
     pub fn published_agent_plans(&self) -> Result<Vec<PublishedAgentPlanV1>, PublicationError> {
+        self.project_published_agent_plans(false)
+    }
+
+    pub(crate) fn published_hermes_agent_plans(
+        &self,
+    ) -> Result<Vec<PublishedAgentPlanV1>, PublicationError> {
+        self.project_published_agent_plans(true)
+    }
+
+    fn project_published_agent_plans(
+        &self,
+        include_chat: bool,
+    ) -> Result<Vec<PublishedAgentPlanV1>, PublicationError> {
         self.validate()?;
         self.plans
             .iter()
@@ -747,8 +766,15 @@ impl GatewayPublicationV1 {
                         UpstreamProtocol::Responses,
                     ),
                     (AgentIngressProtocolV1::Messages, UpstreamProtocol::Messages),
+                    (
+                        AgentIngressProtocolV1::ChatCompletions,
+                        UpstreamProtocol::ChatCompletions,
+                    ),
                 ]
                 .into_iter()
+                .filter(|(protocol, _)| {
+                    include_chat || *protocol != AgentIngressProtocolV1::ChatCompletions
+                })
                 .filter(|(_, ingress)| {
                     candidates.iter().all(|candidate| {
                         candidate

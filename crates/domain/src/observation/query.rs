@@ -63,7 +63,9 @@ pub enum ContentMode {
     MessagesAndTools,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelSwitchFilter {
     #[default]
@@ -89,7 +91,7 @@ pub struct SessionListQueryV1 {
     pub include_unlinked: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionSummaryV1 {
     pub session_id: SessionId,
@@ -114,7 +116,7 @@ pub struct SessionListV1 {
     pub sessions: Vec<SessionSummaryV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TurnDetailV1 {
     pub turn_id: TurnId,
@@ -124,7 +126,7 @@ pub struct TurnDetailV1 {
     pub messages: Vec<StoredMessageV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionDetailV1 {
     pub summary: SessionSummaryV1,
@@ -132,7 +134,9 @@ pub struct SessionDetailV1 {
     pub content_access: ContentAccess,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ValueGroupByV1 {
     #[default]
@@ -202,7 +206,7 @@ pub struct ValueGroupedSummaryV1 {
     pub detail_available: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationGapV1 {
     pub channel: super::ObservationChannel,
@@ -216,7 +220,7 @@ pub struct ObservationGapV1 {
     pub session_id: Option<SessionId>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationStatusV1 {
     pub retention: RetentionPolicyV1,
@@ -255,6 +259,17 @@ pub trait ObservationQueryPort: Send + Sync {
         _accepted: &CanonicalDigest,
         _now_ms: i64,
     ) -> Result<super::SessionDeletionOutcomeV2, ObservationQueryError> {
+        Err(ObservationQueryError::Unavailable)
+    }
+
+    fn observed_api_equivalent_value(
+        &self,
+        _reader: &super::ObservationReaderContext,
+        _query: &super::ObservationValueQueryV2,
+        _reference: &super::ApiEquivalentPriceV1,
+        _prices: &[super::ApiEquivalentPriceV1],
+        _now_ms: i64,
+    ) -> Result<super::ApiEquivalentValueReportV1, ObservationQueryError> {
         Err(ObservationQueryError::Unavailable)
     }
 

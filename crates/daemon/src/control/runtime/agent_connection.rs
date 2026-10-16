@@ -716,6 +716,7 @@ mod tests {
             ),
             model_connection_cancellations: Mutex::new(BTreeMap::new()),
             prepared_discoveries: Mutex::new(BTreeMap::new()),
+        hermes_scan_targets: Mutex::new(BTreeMap::new()),
             permission_findings: Mutex::new(BTreeMap::new()),
             admission: TransactionRuntime::default(),
             plan_admission,

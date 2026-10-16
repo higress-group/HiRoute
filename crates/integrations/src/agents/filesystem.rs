@@ -432,7 +432,10 @@ impl FilesystemAgentScannerV1 {
                         );
                         self.layout.claude_executable.clone()
                     }
-                    AgentKindV1::Qoder | AgentKindV1::Pi | AgentKindV1::DeepseekHarness => continue,
+                    AgentKindV1::Qoder
+                    | AgentKindV1::Pi
+                    | AgentKindV1::DeepseekHarness
+                    | AgentKindV1::Hermes => continue,
                 };
                 #[cfg(any(unix, windows))]
                 if installation.profile.kind == AgentKindV1::Codex
@@ -571,7 +574,8 @@ impl FilesystemAgentScannerV1 {
             hiroute_domain::AgentModelSurfaceV2::ClaudeCli
             | hiroute_domain::AgentModelSurfaceV2::QoderCli
             | hiroute_domain::AgentModelSurfaceV2::PiCli
-            | hiroute_domain::AgentModelSurfaceV2::DshCli => None,
+            | hiroute_domain::AgentModelSurfaceV2::DshCli
+            | hiroute_domain::AgentModelSurfaceV2::HermesCli => None,
         }
     }
 

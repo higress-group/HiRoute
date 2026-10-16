@@ -7,7 +7,7 @@ use crate::CanonicalDigest;
 use super::common::*;
 use super::model_data::ModelDataBundleV1;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceScheduleV1 {
     pub timezone_id: String,
@@ -47,7 +47,7 @@ impl PriceScheduleV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceRateV1 {
     pub price_rate_id: String,
@@ -61,7 +61,7 @@ pub struct PriceRateV1 {
     pub schedule: Option<PriceScheduleV1>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PriceOverrideOperation {
     Replace,
@@ -69,7 +69,7 @@ pub enum PriceOverrideOperation {
     DisableCatalogRule,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceOverrideV1 {
     pub override_id: String,
@@ -93,7 +93,7 @@ impl PriceOverrideV1 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AppliedPriceOverrideV1 {
     pub override_id: String,
@@ -105,7 +105,7 @@ pub struct AppliedPriceOverrideV1 {
     pub semantic_digest: CanonicalDigest,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectivePriceV1 {
     pub base_price_rate_id: String,
@@ -369,7 +369,7 @@ fn validate_price_override(value: &PriceOverrideV1) -> Result<(), ComputeContrac
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PriceTracking {
     FollowLatest,

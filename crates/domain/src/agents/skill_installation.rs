@@ -39,7 +39,7 @@ pub struct ManagedCollaborationSkill {
     pub file_effect: Option<SkillFileEffectRef>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CollaborationSkillFileOwnership {
     /// HiRoute created the file and may remove its exact managed generation.
@@ -61,6 +61,14 @@ impl ManagedCollaborationSkill {
         }
         if let Some(reference) = &self.file_effect {
             reference.validate()?;
+            if !matches!(
+                reference.effect_id.as_str(),
+                "agent-connection-routing-skill"
+                    | "agent-connection-management-skill"
+                    | "agent-connection-collaboration-skill"
+            ) {
+                return Err(InvalidSkillRecord);
+            }
         }
         if self.file_ownership == CollaborationSkillFileOwnership::BorrowedIdentical
             && self.file_effect.is_some()
@@ -110,8 +118,14 @@ impl SkillFileEffectRef {
         Ok(value)
     }
     pub fn validate(&self) -> Result<(), InvalidSkillRecord> {
-        if self.effect_id != "agent-connection-routing-skill"
-            || !identity(&self.target)
+        if !matches!(
+            self.effect_id.as_str(),
+            "agent-connection-routing-skill"
+                | "agent-connection-management-skill"
+                | "agent-connection-collaboration-skill"
+                | "agent-connection-hermes-plugin-module"
+                | "agent-connection-hermes-plugin-manifest"
+        ) || !identity(&self.target)
             || CanonicalDigest::parse(self.intent_digest.as_str().to_owned()).is_err()
         {
             return Err(InvalidSkillRecord);

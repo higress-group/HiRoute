@@ -126,6 +126,15 @@ impl SourcePriceControlPort for LocalControlAdapter {
                     (SourceOrigin::Cpa, BillingClass::Subscription, None)
                 }
             };
+            let execution_models =
+                hiroute_application::compute_management::compile_compute_management_source(source)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|fact| {
+                        super::candidate_execution::management_execution_model_id(&fact)
+                            .map(|id| (fact.binding_id, id))
+                    })
+                    .collect::<std::collections::BTreeMap<_, _>>();
             for model in &source.models {
                 let model_configuration_id = model
                     .catalog_configuration_id
@@ -144,6 +153,9 @@ impl SourcePriceControlPort for LocalControlAdapter {
                     binding_id: model.binding_id.clone(),
                     binding_revision: model.revision,
                     model_configuration_id,
+                    execution_model_configuration_id: execution_models
+                        .get(&model.binding_id)
+                        .cloned(),
                     billing_class,
                     offer_ref,
                 });
@@ -180,6 +192,7 @@ impl SourcePriceControlPort for LocalControlAdapter {
                 binding_id: binding.binding_id,
                 binding_revision: binding.revision,
                 model_configuration_id: binding.model_configuration_id,
+                execution_model_configuration_id: None,
                 billing_class: binding.billing_class,
                 offer_ref,
             });

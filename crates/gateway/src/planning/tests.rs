@@ -1606,3 +1606,35 @@ fn planner_opaque_state_affinity_and_cost_are_after_streaming() {
 
 #[path = "namespace_tests.rs"]
 mod namespace_tests;
+
+#[test]
+fn published_plan_candidates_keep_truthful_cost_classes_without_inventing_a_budget_quote() {
+    for class in [
+        CostClassV1::Paid,
+        CostClassV1::Subscription,
+        CostClassV1::Unknown,
+    ] {
+        let mut fact = candidate(
+            "selected",
+            IngressProtocol::Responses,
+            None,
+            Some(10),
+            class,
+        );
+        fact.api_equivalent_cost_micros = None;
+        if class == CostClassV1::Paid {
+            fact.paid_budget_quote = PaidBudgetQuoteFactV1::Unavailable;
+        }
+        let policy = custom_policy(&["selected"], StaticCostPolicyV1::PublishedCandidates);
+        let output = Planner
+            .plan(&input(
+                request(IngressProtocol::Responses, "requested task"),
+                policy,
+                vec![fact],
+            ))
+            .unwrap();
+        assert_eq!(output.ledger.ordered_candidates.len(), 1);
+        assert_eq!(evaluation(&output, "selected").cost_class, class);
+        assert_eq!(evaluation(&output, "selected").effective_cost_micros, None);
+    }
+}

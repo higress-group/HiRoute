@@ -22,6 +22,14 @@ CLI JSON request sources (`--request-file` / `--request-stdin`) share the bounde
 typed intent, selector and byte-limit ownership; see the [CLI input guide](../../crates/cli/INPUT.md)
 and [production argv regressions](../../crates/cli/tests/request_input.rs).
 
+[Quickstart and Preview convenience inputs](../../crates/cli/src/quickstart.rs) compose existing
+queries and transactions. They use [Application authoring options](../../crates/application/src/routing/editor_options.rs)
+for both initial and reopened editors, also consumed by Desktop. Exact Apply files are ordinary
+user-selected requests, not another journal or authority. [Offline schemas](../../crates/application-api/src/command_schemas.rs)
+come from shared wire DTOs, including [discovery](../../crates/application-api/src/agent_discovery.rs)
+and [settings Preview](../../crates/application-api/src/agent_settings_preview.rs); Application
+still owns discovery/planning and the daemon supplies adapters.
+
 CLI/Desktop → client-core → daemon control → Application → storage/native adapters
 is the control path. Published plans and grants feed Gateway execution. Worker
 admission freezes a plan and run authority before the native client calls Gateway.
@@ -31,6 +39,10 @@ Observation records what actually ran and supplies authorized reads and continua
 module before extending it; a local feature does not require a facade-wide rewrite.
 
 ## Model sources and native configuration
+
+Branch execution keys distinguish reasoning selections. The derived Gateway candidate
+also retains its original source binding for current credential membership and exact
+leases; routing, retry and context identities continue using the execution key.
 
 CLI secret entry uses the shared local [protected input socket](../../crates/daemon/src/control/standalone.rs)
 in both standalone and Desktop-owned `role=all` processes. The [CLI input owner](../../crates/cli/src/host_commands.rs)
@@ -43,8 +55,8 @@ The name must fit any runtime root that supports `hiroute/control.sock`, includi
 | User step | Owners to follow | Representative guard |
 | --- | --- | --- |
 | Add an API connection and choose its models | [Connection directory](../../apps/desktop/src/features/model-connections/ConnectionDirectory.tsx), [form and draft ownership](../../apps/desktop/src/features/model-connections/README.md), [registered check](../../crates/daemon/src/control/runtime/model_connections/registered.rs) | The executable catalog supplies the complete directory. A source name survives check/save; per-product credentials stay in the dialog and protected input. Released public registered probes may omit the name and use the authenticated option label; the current Desktop check requires an explicit label. |
-| Discover a native source without executing it | [Native model connections](../../crates/integrations/src/model_connections), [Pi reader](../../crates/integrations/src/agents/pi_sources.rs), [DSH reader](../../crates/integrations/src/agents/dsh_sources.rs) | Static declarations and supported credential references only; OAuth/helpers are not executed by discovery |
-| Display, prepare and save the selected source | [Safe Desktop projection](../../apps/desktop/src-tauri/src/bridge/model_connection_web.rs), [daemon preparation](../../crates/daemon/src/control/runtime/model_connections/pi_discovered.rs) | Provider/model identity remains visible; privileged scan material stays private; source changes invalidate the prepared candidate |
+| Discover a native source without executing it | [Native model connections](../../crates/integrations/src/model_connections), [Pi reader](../../crates/integrations/src/agents/pi_sources.rs), [DSH reader](../../crates/integrations/src/agents/dsh_sources.rs), [Hermes reader](../../crates/integrations/src/agents/hermes_sources.rs) | Shared [point grouping](../../crates/integrations/src/agents/native_points.rs) keeps scope/provider/address/protocol/authentication distinct; static scan never executes helpers |
+| Display, prepare and save the selected source | [Safe Desktop projection](../../apps/desktop/src-tauri/src/bridge/model_connection_web.rs), [V2 points/catalog qualification](../../crates/daemon/src/control/runtime/model_connections/points.rs), [daemon preparation](../../crates/daemon/src/control/runtime/model_connections/pi_discovered.rs) | Exact native/catalog provenance and explicit model selection remain visible; privileged locators stay private; stale facts cannot expand an accepted selection; legacy one-model handles retain their meaning |
 | Rename a connection, append models or remove saved configuration | [Shared lifecycle planner](../../crates/application/src/compute_management/mutations/lifecycle.rs), [transactional reference guards](../../crates/local-storage/src/control/compute/management/references.rs), [Desktop lifecycle dialog](../../apps/desktop/src/features/models/ConnectionLifecycleDialog.tsx) | Templates do not own credentials. Explicit append preserves saved members; enabled/disabled routes and retained recovery versions block removal. Removing the last model requires explicit connection deletion; owned secrets follow the same recoverable operation. |
 | Save Key order or use current Keys with an older plan | [Single-save edits](../../apps/desktop/src/features/models/model-draft.ts), [request admission](../../crates/gateway/src/core_runtime/credentials.rs), [current pool authority](../../crates/local-storage/src/control/compute/management/runtime_pool.rs), [safe Key masks](../../crates/daemon/src/control/runtime/model_connections/key_masks.rs) | A request owns its admitted Key IDs and order; later exact leases enforce current source/Key eligibility and generation. Admission retains closed permission denials in the existing request summary. Shared Plan content stays frozen. Masks are a separate authenticated query; saved plaintext never reaches Desktop. |
 | Connect a native Codex or Claude subscription | [Source discovery](../../crates/integrations/src/agents/subscription_sources.rs), [credential adapters](../../crates/cpa-bridge/src), [shared lifecycle](../../crates/daemon/src/control/runtime/subscriptions.rs), [provider runtimes](../../crates/cpa-bridge/src/runtime_set.rs) | Native clients retain refresh authority; only access leases enter isolated CPA instances. Claude Keychain interaction is limited to an explicit check; discovery reads metadata only. Codex borrowing reads file storage only and rejects a configured non-file store even if stale auth.json remains. |
@@ -66,7 +78,10 @@ Do not move either rule into a generic provider merge.
 
 [Model settings status](../../crates/daemon/src/control/runtime/settings_status.rs)
 joins owned native configuration with the current Gateway endpoint as well as
-grant/publication evidence. [CLI listener status](../../crates/cli/src/host_commands.rs)
+grant/publication evidence. Its opt-in [effective-state projection](../../crates/daemon/src/control/runtime/agent_effective_state.rs)
+uses existing Observation queries and authenticated receipts with the same current Plan/publication/grant identity.
+It does not infer loading from saved files, persist new state, restart Agents or send inference requests.
+[CLI listener status](../../crates/cli/src/host_commands.rs)
 uses that read and, for unconfigured/restored targets, the
 [released V1 connection join](../../crates/daemon/src/control/runtime/agent_connection_discovery.rs)
 to request explicit reconfiguration; listener operation history alone
@@ -105,6 +120,8 @@ Scan → Prepare → Save → restart → native use, including stale-source rej
 | Upstream fault attribution | [Wire projection](../../crates/gateway/src/observation/provider/wire_diagnostic.rs), [attempt association](../../crates/gateway/src/observation/request/diagnostic.rs), [decision calls](../../crates/gateway/src/core_runtime/classification/diagnostic.rs) | Actual bounded model/control fields, negotiated HTTP protocol, closed error codes, hashed request IDs and separate client headers/body commit facts must preserve the real outcome without prompts or provider error text |
 | Source disabled before an upstream attempt | [Exact permission gate](../../crates/local-storage/src/secrets/runtime.rs), [product preparation reply](../../crates/gateway/src/runtime/driver/selection/preparation.rs), [Gateway error guide](../../crates/gateway/README.md#candidate-preparation-errors) | Preserve the closed lease denial in the request fact and local JSON response; a frozen route does not grant current source/Key permission, and rejected preparation remains zero attempts |
 | Inspect CPA authentication recovery | [Private response metadata](../../crates/gateway/src/observation/provider/cpa_execution.rs), [pinned CPA adapter](../../vendor/cpa/README.md) | Logical attempts and actual HTTP sends differ; only verified CPA targets can supply recovery counters. Missing evidence remains unknown and does not create token usage. |
+| Same-user CLI analysis | [Read admission](../../crates/application/src/observation_query/control/v2.rs), [CLI codec](../../crates/cli/src/observation.rs), [installed journey](../../crates/daemon/tests/support/quickstart_analysis.py) | Explicit content/search uses authenticated same-user Local Control without a second graphical ticket; supplied grants, visibility, retention and pagination remain checked. |
+| Current API-equivalent comparison | [Application price capture](../../crates/application/src/observation_query/control/v2/api_equivalent.rs), [source/execution mapping](../../crates/daemon/src/control/runtime/candidate_execution.rs), [read projection](../../crates/observation/src/query_v2/api_equivalent.rs) | An opt-in read uses one current source-price generation and recorded normalized attempt usage; exact materialization maps local execution IDs to canonical price targets. Chosen reference and paired coverage remain explicit. It never rewrites historical settlement or proves cash saved. |
 | Search and gaps | [Live session search](../../crates/observation/src/query_v2/session_search.rs), [query contract](../../crates/observation/src/query_v2/README.md), [keyword lookup](../../crates/observation/src/text_index/lookup.rs) | Fresh authorized pages count matching sessions; bounded background backfill and explicit gaps distinguish pending indexes from complete empty results. The released occurrence-search interface remains separate. |
 | Business relations and visibility | [Relation owner](../../crates/observation/src/query_v2/relation.rs), [managed content](../../crates/observation/src/managed_text/README.md) | `query_v2` also writes relations; every content read checks current authorization and visibility |
 | Native tool-history continuation | [Responses ingress](../../crates/gateway/src/adapters/responses_ingress.rs), [real continuation journey](../../tools/e2e-harness/tests/p0_gateway_protocol/continuation.rs) | Preserve model-generated empty tool names in native history without relaxing declarations/call IDs; unsafe conversion, ContextHold and reasoning cleanup stay disabled for that history |

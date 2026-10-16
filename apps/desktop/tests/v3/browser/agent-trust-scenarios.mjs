@@ -60,6 +60,213 @@ function changeSelect(select, value) {
 const configureSpecs = () => calls('preview_agent_settings').map(item => item.payload.input.spec);
 
 const scenarios = [
+  scenario('hermes.discovery.brand-and-known-profile', ['hermes', 'agent-discovery'], 'Hermes shows its own mark and the discovered profile without a separate selection step', async () => {
+    c().reset(); c().agents = c().hermesFresh(); await tick();
+    const rows = () => [...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Hermes'));
+    await until(() => rows().length === 1, 'Discovered Hermes'); rows()[0].click();
+    await until(() => document.querySelector('[data-hermes-profile]'), 'Discovered Hermes details');
+    await until(() => [...document.querySelectorAll('[data-brand="hermes"] img')].length === 2
+      && [...document.querySelectorAll('[data-brand="hermes"] img')].every(img => img.complete && img.naturalWidth > 0), 'Hermes brand images');
+    assert(!facet('model').disabled && document.querySelector('[data-hermes-profile]').textContent.includes('/tmp/hermes-profile-fixture'), 'Discovered profile still requires directory selection');
+    assert(document.querySelector('[data-hermes-select-root]').textContent === '更改', 'Discovered profile cannot change scope');
+    assert(configureSpecs().length === 0 && calls('check_agent_live').length === 0, 'Discovery changed native settings or called a model');
+    const agent = c().agents.agents.find(a => a.agent_id === 'agent_hermes_default');
+    agent.context_id = null; agent.settings = null; agent.status_error = 'AGENT_STATUS_UNAVAILABLE'; agent.configuration_state = 'profile_unavailable';
+    c().refresh(); await tick();
+    await until(() => document.querySelector('[data-agent-discovery="unavailable"]'), 'Unreadable default profile');
+    assert(rows().length === 1 && document.querySelectorAll('.native-list .list-row').length === c().agents.agents.length, 'An unreadable profile hid or duplicated Agents');
+    assert(facet('model').disabled && !document.querySelector('[data-hermes-select-root]').disabled, 'Unreadable profile has settings authority or cannot change directory');
+  }),
+  scenario('hermes.discovery.parallel-entry', ['hermes', 'agent-discovery'], 'Hermes remains alongside other Agents and selects its profile from details without writes', async () => {
+    c().reset(); await tick();
+    const hermesRows = () => [...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Hermes'));
+    await until(() => hermesRows().length === 1, 'Unscoped Hermes list row');
+    assert(document.querySelectorAll('.native-list .list-row').length === c().agents.agents.length + 1, 'Existing Agent entries changed');
+    assert(!document.querySelector('[data-hermes-select-root]'), 'Hermes directory control leaked into another Agent');
+    assert(![...document.querySelectorAll('button')].some(button => button.textContent === '选择 Hermes 配置目录'), 'Hermes has a page-level directory entry');
+    hermesRows()[0].click();
+    await until(() => document.querySelector('[data-hermes-profile]'), 'Hermes profile details');
+    assert(hermesRows()[0].textContent.includes('未发现本机配置'), 'Unselected profile is presented as installed or connected');
+    assert(facet('model').disabled && facet('management_skill').disabled, 'Unscoped entry acquired settings authority');
+    assert(facet('collaboration').disabled, 'Unscoped Hermes acquired collaboration authority');
+    const rootControl = () => document.querySelector('[data-hermes-select-root]');
+    rootControl().click(); await until(() => dialog(), 'Profile dialog');
+    assert(document.activeElement === dialog().querySelector('input'), 'Profile field did not receive focus');
+    [...dialog().querySelectorAll('button')].find(button => button.textContent === '取消').click();
+    await until(() => !dialog(), 'Profile selection cancelled');
+    assert(calls('agent_snapshot').length === 1, 'Cancel read or changed the profile');
+    rootControl().click(); await until(() => dialog(), 'Profile dialog reopened');
+    const input = dialog().querySelector('input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '/tmp/hermes-profile-fixture');
+    input.dispatchEvent(new Event('input', { bubbles: true })); await tick();
+    c().handlers.agent_snapshot = () => { throw new Error('AGENT_INPUT_INVALID'); };
+    submit().click(); await until(() => dialog()?.querySelector('[role="alert"]'), 'Invalid profile feedback');
+    assert(input.value === '/tmp/hermes-profile-fixture' && !submit().disabled, 'Failed read lost the path or retry');
+    assert(facet('model').disabled && hermesRows().length === 1, 'Failed read fabricated a configured profile');
+    c().handlers.agent_snapshot = payload => {
+      assert(payload.nativeTargets?.length === 1 && payload.nativeTargets[0].config_root === input.value, 'Read did not use the selected native target');
+      return c().hermesFresh();
+    };
+    submit().click(); await until(() => !dialog() && !facet('model').disabled, 'Selected Hermes profile');
+    assert(hermesRows().length === 1, 'Selected profile duplicated its placeholder');
+    assert(document.querySelector('[data-hermes-profile]').textContent.includes('/tmp/hermes-profile-fixture'), 'Details lost the selected scope');
+    rootControl().click(); await until(() => dialog(), 'Change profile');
+    assert(dialog().querySelector('input').value === '/tmp/hermes-profile-fixture', 'Change profile did not retain the current directory');
+    [...dialog().querySelectorAll('button')].find(button => button.textContent === '取消').click();
+    await until(() => !dialog(), 'Change profile cancelled');
+    assert(configureSpecs().length === 0 && calls('check_agent_live').length === 0 && calls('check_agent_authentication').length === 0,
+      'Profile navigation configured settings or called a model');
+  }),
+  scenario('agent.discovery.remember-and-revalidate', ['agent-discovery'], 'Remembered targets are reread after remount and an unavailable profile preserves all entries', async () => {
+    c().reset(); await tick();
+    [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
+    await until(() => document.querySelector('[data-agent-discovery="not_discovered"]'), 'Honest missing profile');
+    const before = calls('agent_snapshot').length;
+    document.querySelector('[data-agent-rescan]').click();
+    await until(() => calls('agent_snapshot').length === before + 1, 'Common rescan');
+    document.querySelector('[data-hermes-select-root]').click(); await until(() => dialog(), 'Custom profile');
+    const input = dialog().querySelector('input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '/tmp/hermes-profile-fixture');
+    input.dispatchEvent(new Event('input', { bubbles: true })); await tick();
+    c().handlers.agent_snapshot = () => c().hermesFresh();
+    submit().click(); await until(() => !dialog() && !facet('model').disabled, 'Custom profile selected');
+    c().handlers.agent_snapshot = payload => {
+      assert(payload.nativeTargets?.[0]?.config_root === '/tmp/hermes-profile-fixture', 'Saved preference was not revalidated');
+      const snapshot = c().hermesFresh(); const agent = snapshot.agents.find(a => a.agent_id === 'agent_hermes_default');
+      agent.context_id = null; agent.settings = null; agent.status_error = 'AGENT_STATUS_UNAVAILABLE'; agent.configuration_state = 'profile_unavailable';
+      return snapshot;
+    };
+    c().remount(); await tick();
+    await until(() => calls('agent_snapshot').at(-1)?.payload.nativeTargets?.length === 1, 'Remembered target reread');
+    [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
+    await until(() => document.querySelector('[data-agent-discovery="unavailable"]'), 'Unavailable retained profile');
+    assert(document.querySelectorAll('.native-list .list-row').length === 6, 'One failed target hid another Agent');
+    assert(document.querySelector('[data-hermes-profile]').textContent.includes('/tmp/hermes-profile-fixture'), 'Failed read lost the selected root');
+    assert(facet('model').disabled && facet('management_skill').disabled && facet('collaboration').disabled, 'A preference became settings authority');
+    assert(configureSpecs().length === 0 && calls('check_agent_live').length === 0, 'Discovery wrote settings or called a model');
+  }),
+  scenario('agent.management.all-supported-families', ['agent-management'], 'Each supported family independently prepares management without model routes or Plans', async () => {
+    for (const id of ['agent_codex_default', 'agent_claude_default', 'agent_qoder_default', 'agent_pi_default', 'agent_dsh_default', 'agent_hermes_default']) {
+      c().reset(); c().agents = c().hermesFresh(); c().agents.plans.plans = []; await tick();
+      const agent = c().agents.agents.find(a => a.agent_id === id);
+      assert(agent?.settings, `Missing fixture for ${id}`);
+      agent.settings.management_skill = { state: 'not_configured', schema: 'hiroute.agent-management-skill-status/v1', restore_point_ref: null, operation_id: null, operation_state: null };
+      c().refresh(); await tick();
+      [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes(id === 'agent_hermes_default' ? 'Hermes' : id === 'agent_claude_default' ? 'Claude' : id === 'agent_dsh_default' ? 'DeepSeek' : id === 'agent_pi_default' ? 'Pi' : id === 'agent_qoder_default' ? 'Qoder' : 'Codex')).click();
+      await until(() => document.querySelector(`[data-agent-id="${id}"] [data-agent-management]`), `${id} management control`);
+      await openEditor('management_skill', false);
+      assert(!dialog().textContent.includes('Hermes 配置目录'), 'Management uses a provider-specific form');
+      assert(!dialog().querySelector('select'), 'Management requires a model or Plan');
+      await save();
+      const spec = configureSpecs().at(-1);
+      assert(spec.management_skill.intent === 'configure' && spec.model.intent === 'keep' && spec.collaboration.intent === 'keep', `${id} changed another facet`);
+      assert(calls('check_agent_live').length === 0, `${id} management called a model`);
+    }
+  }),
+  scenario('agent.management.owned-restore', ['agent-management'], 'Disabling management restores only its reference and reports retained shared or external files', async () => {
+    c().reset(); c().agents = c().hermesFresh();
+    const agent = c().agents.agents.find(a => a.agent_id === 'agent_qoder_default');
+    agent.settings.management_skill = { schema: 'hiroute.agent-management-skill-status/v1', state: 'configured', restore_point_ref: 'restore/management-only', operation_id: null, operation_state: null,
+      resource: { directory: '/selected/skills/hiroute-management', native_available: true, runtime_loading: 'unobserved', shared_context_count: 2, file_ownership: 'borrowed_identical' } };
+    await tick();
+    [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Qoder')).click();
+    await until(() => facet('management_skill')?.getAttribute('aria-checked') === 'true', 'Enabled management switch');
+    c().handlers.preview_agent_settings = payload => {
+      const spec = payload.input.spec;
+      assert(spec.management_skill.intent === 'restore' && spec.management_skill.restore_point_ref === 'restore/management-only', 'Management switch did not restore its own reference');
+      assert(spec.model.intent === 'keep' && spec.collaboration.intent === 'keep', 'Management switch disabled another facet');
+      agent.settings.management_skill.state = 'restored'; agent.settings.management_skill.restore_point_ref = null;
+      agent.settings.management_skill.resource.shared_context_count = 1;
+      return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } };
+    };
+    facet('management_skill').click(); await until(() => configureSpecs().length === 1 && facet('management_skill')?.getAttribute('aria-checked') === 'false', 'Management restore observed');
+    assert(document.querySelector('[data-agent-management]').textContent.includes('外部') && document.querySelector('[data-agent-management]').textContent.includes('可能仍然可用'), 'Restore claimed global removal of external files');
+  }),
+  scenario('hermes.collaboration.native-model-independent', ['hermes', 'agent-collaboration'], 'Hermes chooses either delegation policy independently of model and management preparation', async () => {
+    for (const mode of ['explicit', 'delegate_by_default']) {
+      c().reset(); c().agents = c().hermesFresh(); c().agents.plans.plans = []; await tick();
+      [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
+      await until(() => facet('collaboration'), 'Hermes task routing');
+      await openEditor('collaboration', false);
+      const radio = dialog().querySelector(`input[value="${mode}"]`);
+      assert(radio, 'Shared trigger-mode editor is unavailable'); radio.click(); await tick(); await save();
+      const spec = configureSpecs().at(-1);
+      assert(spec.native_target?.config_root === '/tmp/hermes-profile-fixture' && spec.collaboration.settings.trigger_mode === mode, 'Hermes lost scope or trigger mode');
+      assert(spec.model.intent === 'keep' && !spec.management_skill, 'Task routing changed another facet');
+      assert(calls('check_agent_live').length === 0 && calls('check_agent_authentication').length === 0, 'Static Skill preparation ran inference');
+    }
+  }),
+  scenario('hermes.routing.root-cancel-and-save', ['hermes', 'agent-model-routing'], 'Hermes keeps its explicit root and one Plan through cancellation and normal save', async () => {
+    c().reset(); c().agents = c().hermesFresh();
+    c().agents.plans.plans = c().agents.plans.plans.filter(plan => plan.head.status === 'enabled').slice(0, 1);
+    await tick();
+    await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Hermes')), 'Hermes list row');
+    [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
+    await until(() => document.querySelector('[data-agent-id="agent_hermes_default"] .detail-hero'), 'Hermes details');
+    assert(facet('collaboration') && !facet('collaboration').disabled, 'Hermes task routing is missing or coupled to a managed model');
+    await openEditor('model', false);
+    assert(dialog().querySelector('input[readonly]')?.value === '/tmp/hermes-profile-fixture', 'Hermes root is missing');
+    const routeLabel = dialog().querySelector('[data-hermes-main-routing] label:nth-of-type(2)');
+    const labelText = document.createRange(); labelText.selectNodeContents(routeLabel.firstChild);
+    const textStyle = getComputedStyle(routeLabel.firstChild.nodeType === Node.ELEMENT_NODE ? routeLabel.firstChild : routeLabel);
+    const lineHeight = parseFloat(textStyle.lineHeight) || parseFloat(textStyle.fontSize) * 1.6;
+    const labelHeight = labelText.getBoundingClientRect().height;
+    assert(labelHeight <= lineHeight * 1.3,
+      `Hermes route label wraps vertically beside its control (${labelHeight}px versus ${lineHeight}px per line)`);
+    assert(dialog().querySelector('select').value, 'Sole enabled Plan was not selected');
+    [...dialog().querySelectorAll('button')].find(button => button.textContent === '取消').click();
+    await until(() => !dialog(), 'Hermes cancelled');
+    assert(configureSpecs().length === 0, 'Cancel submitted Hermes settings');
+    await openEditor('model', false); await save();
+    const spec = configureSpecs().at(-1);
+    assert(spec.native_target.config_root === '/tmp/hermes-profile-fixture' && spec.model.settings.mode === 'hermes_default', 'Hermes save lost target or mode');
+    assert(spec.model.settings.plan_id === c().agents.plans.plans[0].agent_plan_id && spec.model.settings.protocol === 'responses', 'Hermes save changed Plan/protocol');
+    assert(!spec.management_skill && spec.collaboration.intent === 'keep', 'Model save changed an independent facet');
+    await openEditor('model', false);
+    const protocol = dialog().querySelector('[data-plan-protocol] select');
+    assert([...protocol.options].some(option => option.value === 'chat_completions' && !option.disabled), 'Hermes cannot select native Chat Completions');
+    changeSelect(protocol, 'chat_completions'); await tick(); await save();
+    const chatSpec = configureSpecs().at(-1);
+    assert(chatSpec.model.settings.protocol === 'chat_completions' && chatSpec.model.settings.plan_id === spec.model.settings.plan_id,
+      'Hermes Chat selection was lost or changed the selected Plan');
+    assert(chatSpec.native_target.config_root === spec.native_target.config_root && !chatSpec.management_skill,
+      'Hermes Chat selection changed its target or independent management facet');
+  }),
+  scenario('hermes.management.independent-without-plan', ['hermes', 'agent-management'], 'Hermes management preparation needs neither a model connection nor a Plan', async () => {
+    c().reset(); c().agents = c().hermesFresh(); c().agents.plans.plans = []; await tick();
+    await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Hermes')), 'Hermes management row');
+    [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
+    await until(() => facet('management_skill'), 'Management preparation');
+    await openEditor('management_skill', false); await save();
+    const spec = configureSpecs().at(-1);
+    assert(spec.model.intent === 'keep' && spec.management_skill.intent === 'configure', 'Management preparation changed model intent');
+    assert(spec.native_target.config_root === '/tmp/hermes-profile-fixture', 'Management preparation lost profile scope');
+    assert(calls('check_agent_live').length === 0 && calls('check_agent_authentication').length === 0, 'Independent preparation ran a model check');
+  }),
+  scenario('hermes.routing.unavailable-and-exact-recovery', ['hermes', 'agent-recovery'], 'Hermes retains unavailable selections and retries the original scoped Operation', async () => {
+    c().reset(); c().agents = c().hermesConfigured();
+    const agent = c().agents.agents.find(a => a.agent_id === 'agent_hermes_default');
+    agent.settings.current_selection.plan_id = 'unavailable-hermes-plan'; await tick();
+    await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Hermes')), 'Configured Hermes row');
+    [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
+    await until(() => facet('model'), 'Configured Hermes detail');
+    assert(text().includes('native-channel-model') && text().includes('加载状态尚未确认'), 'Static overrides or unobserved loading guidance is missing');
+    await openEditor('model', false);
+    assert(dialog().querySelector('select').value === 'unavailable-hermes-plan', 'Unavailable saved Plan was replaced');
+    assert(submit().disabled, 'Unavailable Plan can be applied');
+    [...dialog().querySelectorAll('button')].find(button => button.textContent === '取消').click();
+    await until(() => !dialog(), 'Unavailable selection cancelled');
+    agent.settings.state = 'needs_attention'; agent.settings.operation_id = 'operation/hermes-pending'; agent.settings.current_selection = null;
+    c().refresh(); await tick();
+    await until(() => document.querySelector('[data-hermes-settings-recovery] button'), 'Hermes recovery action');
+    c().handlers.retry_agent_settings = payload => {
+      assert(payload.input.context_id === agent.context_id && payload.input.operation_id === 'operation/hermes-pending', 'Hermes retry rebound its Operation or root');
+      agent.settings.state = 'configured'; return {};
+    };
+    document.querySelector('[data-hermes-settings-recovery] button').click();
+    await until(() => calls('retry_agent_settings').length === 1, 'Original Hermes operation retried');
+    assert(configureSpecs().length === 0, 'Recovery submitted a replacement operation');
+  }),
   scenario('claude.routing.blocker-guidance', ['agent-model-routing'], 'Claude save explains configuration and route blockers without applying or making a model call', async () => {
     await fresh('notRunnable', true);
     c().handlers.preview_agent_settings = () => ({
@@ -104,6 +311,8 @@ const scenarios = [
   scenario('codex.enable.draft-cancel', ['agent-model-routing'], 'Codex first enable is a ready-to-submit draft and cancel does not apply', async () => {
     await freshCodex('cliOnly', true);
     await openEditor('model', false);
+    assert(![...dialog().querySelectorAll('[data-plan-protocol] option')].some(option => option.value === 'chat_completions'),
+      'Hermes Chat choice leaked into Codex routing');
     assert(!dialog().querySelector('[role="switch"]'), 'Redundant enable switch remains');
     assert(dialog().querySelector('[data-agent-service-responsibility]')?.textContent.includes('启用不会自动设置开机启动'), 'Enabling routing promises automatic startup');
     const route = dialog().querySelector('[data-agent-plan-id] input');
@@ -234,10 +443,12 @@ const scenarios = [
     assert(spec.default_selection.kind === 'preserve_native', 'Covered native default was not preserved');
   }),
   scenario('agent.configuration.shared-interactions', ['agent-configuration', 'qoder'], 'Codex, Claude and Qoder share configuration actions without model verification steps', async () => {
-    const snapshots = [c().splitCodexStatus(), c().registered(), c().qoderRouted()];
-    for (const snapshot of snapshots) {
-      const id = snapshot.agents.some(agent => agent.agent_id === 'agent_qoder_default')
-        ? 'agent_qoder_default' : snapshot === snapshots[0] ? 'agent_codex_default' : 'agent_claude_default';
+    const snapshots = [
+      ['agent_codex_default', c().splitCodexStatus()],
+      ['agent_claude_default', c().registered()],
+      ['agent_qoder_default', c().qoderRouted()],
+    ];
+    for (const [id, snapshot] of snapshots) {
       for (const state of ['not_verified', 'passed', 'failed']) {
         c().reset();
         c().agents = structuredClone(snapshot);

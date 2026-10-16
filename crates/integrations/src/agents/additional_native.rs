@@ -282,7 +282,7 @@ fn render_provider(
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        qoder_provider::provider(endpoint, credential, models, protocol)
+        qoder_provider::provider(endpoint, credential, models, protocol)?
     } else {
         let models = models
             .iter()

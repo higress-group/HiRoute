@@ -2,6 +2,8 @@ mod runtime_support;
 
 #[path = "p0_gateway_runtime/decision_branches.rs"]
 mod decision_branches;
+#[path = "p0_gateway_runtime/hermes_identity.rs"]
+mod hermes_identity;
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};

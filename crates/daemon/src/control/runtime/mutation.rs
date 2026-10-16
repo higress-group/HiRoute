@@ -153,6 +153,18 @@ impl LocalControlAdapter {
             .filter_map(|discovery| discovery.permission_hardening.clone())
             .map(|finding| (finding.discovered_source_ref.clone(), finding))
             .collect::<std::collections::BTreeMap<_, _>>();
+        let native_sources = self
+            .scanner
+            .pi_api_sources()
+            .unwrap_or_default()
+            .into_iter()
+            .chain(self.scanner.dsh_api_sources().unwrap_or_default())
+            .chain(
+                self.hermes_source_facts()
+                    .map(|facts| facts.sources)
+                    .unwrap_or_default(),
+            )
+            .collect::<Vec<_>>();
         let mut inputs = self
             .protected_inputs
             .lock()
@@ -167,13 +179,7 @@ impl LocalControlAdapter {
                 return Err("protected discovery slot collision".to_owned());
             }
         }
-        for source in self
-            .scanner
-            .pi_api_sources()
-            .unwrap_or_default()
-            .into_iter()
-            .chain(self.scanner.dsh_api_sources().unwrap_or_default())
-        {
+        for source in native_sources {
             if let Some(descriptor) = source.credential {
                 let slot = protected_input_slot(&descriptor)?;
                 if inputs.insert(slot, descriptor).is_some() {
@@ -633,6 +639,21 @@ impl ProtectedInputPort for LocalControlAdapter {
             .get(input_slot)
             .cloned()
             .ok_or_else(|| PortError::new(PortErrorCode::NotFound, "discovery.input.missing"))?;
+        if descriptor.field_selector == "hermes.api-key" {
+            let source = self
+                .hermes_source_facts()
+                .map_err(|_| PortError::new(PortErrorCode::Conflict, "discovery.input.changed"))?
+                .sources
+                .into_iter()
+                .find(|source| source.credential.as_ref() == Some(&descriptor))
+                .ok_or_else(|| {
+                    PortError::new(PortErrorCode::Conflict, "discovery.input.changed")
+                })?;
+            return self
+                .read_hermes_source(&source)
+                .map(|(_, secret)| secret)
+                .map_err(|_| PortError::new(PortErrorCode::Conflict, "discovery.input.changed"));
+        }
         self.scanner
             .read_discovered_secret(&descriptor)
             .map_err(|_| PortError::new(PortErrorCode::Conflict, "discovery.input.changed"))

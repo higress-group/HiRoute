@@ -1,0 +1,4 @@
+name: hiroute
+version: 1.0.0
+kind: standalone
+description: Attach native session identity to the configured HiRoute model route.

@@ -115,6 +115,20 @@ impl Client {
         .await
     }
 
+    /// Local OS-authenticated management entry; Desktop continues to use its scoped grant method.
+    pub async fn prepare_local_discovered_model_connection(
+        &self,
+        request_id: &str,
+        request: PrepareDiscoveredModelConnectionRequestV1,
+    ) -> Result<MachineEnvelopeV2<ComputeCandidateViewV2>, ClientFailure> {
+        self.query(
+            PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1,
+            request_id,
+            &request,
+        )
+        .await
+    }
+
     pub async fn check_saved_model_connection(
         &self,
         request_id: &str,

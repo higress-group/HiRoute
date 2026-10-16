@@ -416,6 +416,7 @@ fn snapshot(
         .into_iter()
         .filter(|protocol| pairs.iter().any(|(ingress, _)| ingress == protocol))
         .map(|protocol| GrantV1 {
+            consumer: None,
             route_protocols: Default::default(),
             grant_id: format!("protocol-grant-{}", protocol_name(protocol)),
             generation: 1,

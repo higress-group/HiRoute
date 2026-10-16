@@ -9,9 +9,13 @@ mod args;
 mod client;
 mod collaboration;
 mod control_plane;
+mod effective_status;
+mod help;
 mod host_commands;
 mod managed_launch;
 mod observation;
+mod protected_prompt;
+mod quickstart;
 mod request_input;
 mod service;
 mod worker;
@@ -109,6 +113,18 @@ where
     if let Some(execution) = collaboration::execute(&path_and_options, &globals) {
         return execution;
     }
+    if let Some(execution) = quickstart::execute(&path_and_options, &globals) {
+        return execution;
+    }
+    if globals.help
+        && let Some(document) = help::family(&path_and_options)
+    {
+        return CliExecution {
+            exit_code: 0,
+            stdout: document,
+            stderr: String::new(),
+        };
+    }
     let Some((descriptor, option_start)) = resolve_callable(&path_and_options) else {
         return failure(ErrorCode::UnknownCommand, globals.request_id);
     };
@@ -125,6 +141,10 @@ where
     }
     if globals.output != args::OutputMode::Json {
         return failure(ErrorCode::InvalidArguments, globals.request_id);
+    }
+    if let Some(execution) = quickstart::preview_command(&descriptor.command_id, options, &globals)
+    {
+        return execution;
     }
     match descriptor.command_id.as_str() {
         "schema.list" => execute_schema_list(options, globals.request_id),
@@ -215,6 +235,8 @@ fn execute_control(
     options: &[String],
     globals: Globals,
 ) -> CliExecution {
+    let _diagnostics =
+        request_input::diagnostics::Scope::enter(&descriptor.command_id, globals.error_details);
     let request_id = globals.request_id.clone().unwrap_or_else(next_request_id);
     if globals.agent.is_some()
         && descriptor.command_id != "work-plans.list"
@@ -233,7 +255,7 @@ fn execute_control(
     }
     let payload = match command_payload(&descriptor.command_id, options) {
         Ok(payload) => payload,
-        Err(code) => return failure(code, Some(request_id)),
+        Err(code) => return request_input::diagnostics::failure(code, Some(request_id)),
     };
     let client = match LocalControlClient::cli_from_environment().map(|client| {
         client.with_timeout(
@@ -305,6 +327,11 @@ fn execute_control(
     } else {
         PrincipalKind::InteractiveUser
     };
+    let hermes_chat = matches!(
+        descriptor.command_id.as_str(),
+        "agents.connect.preview" | "agents.connect.apply"
+    ) && payload["spec"]["model"]["settings"]["mode"] == "hermes_default"
+        && payload["spec"]["model"]["settings"]["protocol"] == "chat_completions";
     let request = LocalControlWireRequestV2 {
         schema_version: LOCAL_CONTROL_SCHEMA_V2,
         request_id: request_id.clone(),
@@ -318,16 +345,28 @@ fn execute_control(
     let response = client.call(request).unwrap_or_else(|_| {
         MachineEnvelopeV2::failed(ErrorV1::new(ErrorCode::DaemonUnavailable), Some(request_id))
     });
-    render(response)
+    let mut output = render(response);
+    if hermes_chat && output.exit_code == 0 {
+        output.stderr.push_str("建议使用 Hermes >= v0.21.7，以保留工具续接中的推理内容。旧版本仍可连接；仅在插件或接入接口不兼容时阻断。 / Hermes >= v0.21.7 is recommended for reasoning replay across tool calls. Compatible older versions can connect.\n");
+    }
+    output
 }
 
 fn command_payload(command_id: &str, options: &[String]) -> Result<Value, ErrorCode> {
     match command_id {
-        "system.status"
-        | "system.client-status"
-        | "agents.scan"
-        | "agents.list"
-        | "sessions.status" => empty(options),
+        "system.status" | "system.client-status" | "agents.list" | "sessions.status" => {
+            empty(options)
+        }
+        "agents.scan" => {
+            if options.is_empty() {
+                empty(options)
+            } else {
+                request_input::typed::<hiroute_application_api::AgentScanRequestV1>(
+                    options,
+                    request_input::MAX_REQUEST_BYTES,
+                )
+            }
+        }
         "routing.list" if options.is_empty() => empty(options),
         "routing.show" => match options {
             [id] if request_input::valid_positional(id) => Ok(json!({"agent_plan_id": id})),
@@ -620,17 +659,32 @@ fn execute_schema_list(options: &[String], request_id: Option<String>) -> CliExe
 }
 
 fn execute_schema_show(options: &[String], request_id: Option<String>) -> CliExecution {
-    let [flag, command_id] = options else {
-        return failure(ErrorCode::InvalidArguments, request_id);
+    let (command_id, include_schema) = match options {
+        [flag, id] if flag == "--command-id" => (id, false),
+        [flag, id, include] if flag == "--command-id" && include == "--include-schema" => {
+            (id, true)
+        }
+        [include, flag, id] if include == "--include-schema" && flag == "--command-id" => {
+            (id, true)
+        }
+        _ => return failure(ErrorCode::InvalidArguments, request_id),
     };
-    if flag != "--command-id" || command_id.is_empty() {
-        return failure(ErrorCode::InvalidArguments, request_id);
-    }
     let Some(descriptor) = command_by_id(command_id)
         .filter(|descriptor| descriptor.lifecycle == CommandLifecycle::Released)
     else {
         return failure(ErrorCode::ResourceNotFound, request_id);
     };
+    if include_schema {
+        let Some(schemas) = hiroute_application_api::command_schemas(command_id) else {
+            let mut result = failure(ErrorCode::ResourceNotFound, request_id);
+            result.stderr = "Full installed schemas are not yet available for this command. Omit --include-schema to read its descriptor.\n".into();
+            return result;
+        };
+        return success(
+            json!({"descriptor":descriptor,"schemas":schemas}),
+            request_id,
+        );
+    }
     success(descriptor, request_id)
 }
 
@@ -690,6 +744,7 @@ pub fn root_help() -> String {
         "protected-input".into(),
         "service".into(),
         "subscription-proxy".into(),
+        "quickstart".into(),
     ]);
     families.sort();
     families.dedup();
@@ -699,7 +754,7 @@ pub fn root_help() -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "HiRoute headless product CLI\n\nUsage\n  hiroute <command> [options]\n\nPublic command families\n{commands}\n\nHost management: run 'hiroute service --help', 'hiroute gateway --help', 'hiroute protected-input --help', or 'hiroute subscription-proxy --help'.\nAgent collaboration workflow: run 'hiroute agents collaboration --help' to enable, edit, disable or inspect collaboration independently of model settings.\nApplication/Local Control: run 'hiroute schema list --output json' and 'hiroute schema show --command-id <ID> --output json', then append '--help' to a complete command path, for example 'hiroute worker dependencies discover --help'.\n"
+        "HiRoute headless product CLI\n\nUsage\n  hiroute <command> [options]\n\nPublic command families\n{commands}\n\nStart or resume: run 'hiroute quickstart --help'.\nDecision connections: run 'hiroute decision services options --help' for installed presets and reusable saved connections.\nHost management: run 'hiroute service --help', 'hiroute gateway --help', 'hiroute protected-input --help', or 'hiroute subscription-proxy --help'.\nAgent collaboration workflow: run 'hiroute agents collaboration --help' to enable, edit, disable or inspect collaboration independently of model settings.\nApplication/Local Control: run 'hiroute schema list --output json' and 'hiroute schema show --command-id <ID> --output json', then append '--help' to a complete command path, for example 'hiroute worker dependencies discover --help'.\n"
     )
 }
 
@@ -804,11 +859,11 @@ mod tests {
     }
 
     #[test]
-    fn root_help_points_to_working_leaf_help_instead_of_unsupported_family_help() {
+    fn root_help_reaches_family_navigation_and_precise_leaf_help() {
         let family = execute(["worker", "--help"]);
-        assert_eq!(family.exit_code, 2);
-        let family_error: Value = serde_json::from_str(&family.stdout).unwrap();
-        assert_eq!(family_error["error"]["code"], "UNKNOWN_COMMAND");
+        assert_eq!(family.exit_code, 0);
+        assert!(family.stdout.contains("dependencies select"));
+        assert!(family.stdout.contains("--include-schema"));
 
         let leaf = execute(["worker", "dependencies", "select", "--help"]);
         assert_eq!(leaf.exit_code, 0);
@@ -823,7 +878,7 @@ mod tests {
         assert_eq!(execution.exit_code, 0);
         assert_eq!(execution.stdout.lines().count(), 1);
         let value: Value = serde_json::from_str(&execution.stdout).unwrap();
-        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 51);
+        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 55);
         assert!(!execution.stdout.contains(HIDDEN_AGENT_GRANT_HELPER_VERB_V1));
     }
 

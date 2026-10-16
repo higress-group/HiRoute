@@ -5,14 +5,14 @@ use crate::{PlanHeadV1, PlanLifecycleV1, PlanVersionV1, PublicationRecordV1};
 const CONTROL_SCHEMA: &str = "hiroute.routing-control/v2";
 const EFFECT_SCHEMA: &str = "hiroute.routing-publication-effect/v2";
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConsumedPlanDraftV1 {
     pub draft_id: String,
     pub revision: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanContentControlV2 {
     pub schema: String,
@@ -27,7 +27,7 @@ pub struct PlanContentControlV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub consumed_draft: Option<ConsumedPlanDraftV1>,
 }
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct ContentEffectV2 {
     schema: String,

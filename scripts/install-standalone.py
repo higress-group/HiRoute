@@ -386,6 +386,9 @@ def prepare_skill_parent(home, destination):
 
 def service_bytes(paths, daemon, cpa, cpa_digest):
     home = paths["home"]
+    # Native Agent discovery needs the same conventional user/system install locations
+    # after a service-manager start. Do not inherit shell functions or an ambient PATH.
+    native_path = f"{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
     if platform.system() == "Linux":
         quote = lambda value: '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
         text = (
@@ -394,7 +397,7 @@ def service_bytes(paths, daemon, cpa, cpa_digest):
             "[Service]\nType=simple\n"
             f"ExecStart={quote(daemon)} --role all --standalone --cpa-binary {quote(cpa)} --cpa-sha256 {cpa_digest}\n"
             "Restart=on-failure\nRestartSec=2\nTimeoutStopSec=45\n"
-            f"Environment=HOME={quote(home)}\nEnvironment=PATH=/usr/bin:/bin\n"
+            f"Environment=HOME={quote(home)}\nEnvironment={quote('PATH=' + native_path)}\n"
             "NoNewPrivileges=true\nPrivateTmp=true\n\n[Install]\nWantedBy=default.target\n"
         )
         path = home / ".config/systemd/user/ai.hiroute.cli.service"
@@ -409,7 +412,7 @@ def service_bytes(paths, daemon, cpa, cpa_digest):
         "RunAtLoad": False,
         "KeepAlive": {"SuccessfulExit": False},
         "ProcessType": "Background",
-        "EnvironmentVariables": {"HOME": str(home), "PATH": "/usr/bin:/bin"},
+        "EnvironmentVariables": {"HOME": str(home), "PATH": native_path},
         "StandardOutPath": str(logs / "hirouted.log"),
         "StandardErrorPath": str(logs / "hirouted-error.log"),
     }

@@ -21,6 +21,9 @@ pub fn render_agent_probe(
     let protocol = model_protocol(profile)?;
     probe.validate_for(profile)?;
     let payload = match protocol {
+        AgentIngressProtocolV1::ChatCompletions => {
+            return Err(AgentProbeAdapterError::UnexpectedResponse);
+        }
         AgentIngressProtocolV1::Responses => json!({
             "input": [{
                 "content": [{"text": probe.prompt, "type": "input_text"}],
@@ -65,6 +68,9 @@ pub fn parse_agent_probe_response(
 ) -> Result<AgentProbeResultV1, AgentProbeAdapterError> {
     let protocol = model_protocol(profile)?;
     let text = match protocol {
+        AgentIngressProtocolV1::ChatCompletions => {
+            return Err(AgentProbeAdapterError::UnexpectedResponse);
+        }
         AgentIngressProtocolV1::Responses => response
             .get("output")
             .and_then(Value::as_array)

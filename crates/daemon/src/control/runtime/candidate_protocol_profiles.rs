@@ -13,6 +13,60 @@ use super::{ProtocolConnectorFacts, ProtocolFace, protocol_label};
 
 const MAX_MATERIALIZED_BUDGET_PROFILES: u64 = 64;
 
+/// Reuse companion controls only for the saved binding's exact catalog model and wire target.
+/// A catalog label attached to another product/address/protocol never grants those controls.
+pub(super) fn qualified_native_render_convention(
+    fact: &hiroute_application::compute_management::ComputeManagementCompilationFactV2,
+    catalog: Option<&hiroute_integrations::TrustedReleaseCatalog>,
+) -> Option<NativeReasoningRenderConventionV1> {
+    let catalog = catalog?;
+    let id = fact.catalog_configuration_id.as_deref()?;
+    let native = catalog
+        .native_reasoning()
+        .iter()
+        .find(|n| n.model_configuration_id == id)?;
+    let convention = native.native_render_convention?;
+    if native.capability != fact.native_reasoning
+        || native
+            .validate_for_protocol(fact.target.upstream_protocol)
+            .is_err()
+    {
+        return None;
+    }
+    let exact = catalog
+        .model_data()
+        .model_endpoint_capabilities
+        .iter()
+        .any(|cap| {
+            if cap.model_configuration_id != id
+                || cap.upstream_model_id != fact.upstream_model_id
+                || cap.upstream_protocol != fact.target.upstream_protocol
+                || cap.required_adapter_ref != fact.target.protocol_profile_id
+                || cap.required_adapter_revision != fact.target.protocol_profile_revision
+            {
+                return false;
+            }
+            catalog.registry().endpoint_profiles.iter().any(|profile| {
+                profile.endpoint_profile_id == cap.endpoint_profile_id
+                    && profile.revision == cap.endpoint_profile_revision
+                    && profile.connector_id == cap.connector_id
+                    && profile.connector_revision == cap.connector_revision
+                    && profile.protocol_endpoints.iter().any(|endpoint| {
+                        endpoint.protocol_endpoint_id == cap.protocol_endpoint_id
+                            && endpoint.protocol == fact.target.upstream_protocol
+                            && endpoint.authentication_semantics.as_ref()
+                                == Some(&fact.authentication)
+                            && fact.target.scheme == "https"
+                            && fact.target.port == 443
+                            && endpoint.base_url.strip_prefix("https://")
+                                == Some(fact.target.authority.as_str())
+                            && endpoint.request_path == fact.target.request_path
+                    })
+            })
+        });
+    exact.then_some(convention)
+}
+
 pub(super) fn protocol_profiles(
     connector: &ProtocolConnectorFacts,
     model: &ModelDefinitionV1,
@@ -310,6 +364,25 @@ pub(super) fn reasoning_profiles(
             fields.push(field(
                 "thinking.type",
                 GatewayNativeReasoningValueV1::String("adaptive".into()),
+                protocol,
+            ));
+        }
+    }
+    if native.native_render_convention == Some(NativeReasoningRenderConventionV1::ZhipuThinkingChat)
+    {
+        for profile in &mut values {
+            let GatewayNativeReasoningRenderV1::ExactFields { fields, .. } = &mut profile.render
+            else {
+                return None;
+            };
+            fields.push(field(
+                "thinking.type",
+                GatewayNativeReasoningValueV1::String("enabled".into()),
+                protocol,
+            ));
+            fields.push(field(
+                "thinking.clear_thinking",
+                GatewayNativeReasoningValueV1::Bool(false),
                 protocol,
             ));
         }

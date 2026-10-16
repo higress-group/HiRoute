@@ -196,6 +196,18 @@ impl Client {
                             && hello.daemon_version == LOCAL_CONTROL_RELEASE_VERSION
                             && hello.release_version == LOCAL_CONTROL_RELEASE_VERSION
                             && hello.capabilities.iter().any(|c| c == "local-control-v2")
+                            && (!(request.0.operation_id == "ScanCompute"
+                                && request.0.payload.get("schema").and_then(Value::as_str)
+                                    == Some(
+                                        hiroute_application_api::COMPUTE_SCAN_REQUEST_SCHEMA_V2,
+                                    )
+                                || request.0.operation_id
+                                    == "PrepareDiscoveredModelConnection"
+                                    && request.0.protected_grant.is_none())
+                                || hello
+                                    .capabilities
+                                    .iter()
+                                    .any(|c| c == "compute-discovery-points-v2"))
                             && (!matches!(
                                 request.0.operation_id.as_str(),
                                 "GetClientServiceStatus"

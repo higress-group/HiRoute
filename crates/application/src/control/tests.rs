@@ -50,6 +50,7 @@ impl AgentDiscoveryPort for MemoryDiscovery {
 
 fn agent() -> DiscoveredAgentV1 {
     DiscoveredAgentV1 {
+        native_target: None,
         codex_access: None,
         context_id: None,
         agent_id: "agent_codex_default".to_owned(),

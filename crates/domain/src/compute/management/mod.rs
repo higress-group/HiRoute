@@ -19,7 +19,7 @@ pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2: &str = "hiroute.compute-managemen
 pub const COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V2: &str = "hiroute.compute-management-mutation/v2";
 pub const COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2: &str = "hiroute.compute-management-change/v2";
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeManagementFactBasisV2 {
     RegisteredCatalog,
@@ -30,7 +30,7 @@ pub enum ComputeManagementFactBasisV2 {
     Unknown,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeManagementFactValueV2<T> {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -63,7 +63,7 @@ pub enum ComputeManagementMembershipV2 {
     UserDeclared,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeManagedCapabilitiesV2 {
     pub tool: ComputeManagementFactValueV2<bool>,
@@ -197,7 +197,7 @@ impl ComputeManagementProvenanceV2 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeManagementTargetV2 {
     pub scheme: String,
@@ -282,7 +282,7 @@ impl ComputeManagedCredentialV2 {
 
 /// A second or third exact protocol endpoint for a Native source. The existing source target is
 /// its first endpoint; CPA sources never have these records.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeNativeEndpointV3 {
     pub target: ComputeManagementTargetV2,
@@ -326,7 +326,7 @@ impl ComputeManagementValidationV2 {
 
 /// Non-secret native probe context retained only in the durable source aggregate. Public
 /// management projections deliberately omit it; a saved-source recheck consumes it server-side.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeNativeRecheckDescriptorV2 {
     /// Display only; does not confer provider, capability, billing or credential authority.

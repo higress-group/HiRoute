@@ -195,6 +195,7 @@ try:
     response = client.getresponse()
     payload = response.read()
     if response.status != 200:
+        print(json.dumps({'status': response.status, 'body': payload.decode(errors='replace')}), file=sys.stderr)
         raise SystemExit(1)
     if probe:
         raise SystemExit(0)

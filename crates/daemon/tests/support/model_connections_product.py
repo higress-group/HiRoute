@@ -427,7 +427,7 @@ def assert_saved_recheck_fences_before_network(product, upstream, saved):
 
 
 def publish_plan_and_agent(product, binding_id, native_model_mode='preserve_available',
-                           *, economy_binding=None):
+                           *, economy_binding=None, branch_service=None):
     assert native_model_mode in ('preserve_available', 'hiroute_only')
     product.editor = {
         'schema': 'hiroute.plan-editor/v2',
@@ -454,6 +454,16 @@ def publish_plan_and_agent(product, binding_id, native_model_mode='preserve_avai
             'complex_keywords': ['complex-route'],
         })
         product.editor['limits']['maximum_attempts'] = 3
+    if branch_service is not None:
+        assert economy_binding is None
+        product.editor.update(mode='custom_branches', candidates=[], branch_routing={
+            'classifier': {'kind': 'decision_service', 'service': branch_service},
+            'branches': [{'id': key, 'name': key, 'condition': 'Choose ' + key,
+                          'candidates': [{'binding_id': binding_id}], 'primary_candidates': []}
+                         for key in ('code', 'docs')],
+            'default_branch_id': 'docs', 'judgment': judgment_fixture(),
+            'reselect_on_user_message': True,
+        })
     change = {
         'schema': 'hiroute.plan-content-change/v2',
         'target': {'intent': 'create', 'creation_key': 'native-product-plan'},

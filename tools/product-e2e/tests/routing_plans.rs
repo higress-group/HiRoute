@@ -51,7 +51,7 @@ struct BoundaryGolden {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct FrozenG0Snapshot {
+struct CurrentG0Snapshot {
     schema_version: String,
     admission: hiroute_domain::GatewayAdmissionStateV1,
     workspace_id: String,
@@ -60,13 +60,13 @@ struct FrozenG0Snapshot {
     publication_revision: u64,
     payload_digest: String,
     catalog_renderer_revision: String,
-    aliases: Vec<FrozenG0Alias>,
-    grants: Vec<FrozenG0Grant>,
+    aliases: Vec<CurrentG0Alias>,
+    grants: Vec<CurrentG0Grant>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct FrozenG0Alias {
+struct CurrentG0Alias {
     served_model_id: String,
     purpose: String,
     agent_plan_revision: u64,
@@ -74,14 +74,18 @@ struct FrozenG0Alias {
     overall_timeout_ms: u64,
     max_attempts: u32,
     routing: Option<GatewayExecutableRoutingV2>,
-    candidates: Vec<FrozenG0Candidate>,
+    candidates: Vec<CurrentG0Candidate>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct FrozenG0Candidate {
+// Closed shape of the current paired Gateway transport. The exact historical producer
+// remains frozen separately in LegacySnapshotSource/LegacyFrozenG0Snapshot below.
+struct CurrentG0Candidate {
     local_id: u32,
     stable_target_key: String,
+    source_binding_id: Option<String>,
+    billing_class: Option<hiroute_domain::BillingClass>,
     adapter_id: String,
     credential_refs: Vec<String>,
     credential_destination_ref: String,
@@ -98,7 +102,7 @@ struct FrozenG0Candidate {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct FrozenG0Grant {
+struct CurrentG0Grant {
     grant_id: String,
     generation: u64,
     bearer_token_sha256: String,
@@ -287,7 +291,7 @@ fn routing_plans_golden_is_a_closed_deterministic_publication() {
         gateway_snapshot.payload_digest,
         gateway_snapshot.canonical_digest().unwrap().as_str()
     );
-    let g0: FrozenG0Snapshot =
+    let g0: CurrentG0Snapshot =
         serde_json::from_slice(&serde_json::to_vec(&gateway_snapshot).unwrap()).unwrap();
     assert_eq!(g0.schema_version, boundary.gateway_snapshot_schema);
     assert_eq!(
@@ -368,12 +372,14 @@ fn compact_json_preserving_member_order(source: &str) -> Vec<u8> {
 }
 
 fn assert_frozen_candidate_matches(
-    frozen: &FrozenG0Candidate,
+    frozen: &CurrentG0Candidate,
     exact: &GatewayExecutableCandidateV2,
 ) {
     assert!(frozen.local_id > 0);
     assert_eq!(frozen.local_id, exact.local_id);
     assert_eq!(frozen.stable_target_key, exact.stable_target_key);
+    assert_eq!(frozen.source_binding_id, exact.source_binding_id);
+    assert_eq!(frozen.billing_class, exact.billing_class);
     assert_eq!(frozen.adapter_id, exact.adapter_id);
     assert!(!frozen.credential_refs.is_empty());
     assert_eq!(

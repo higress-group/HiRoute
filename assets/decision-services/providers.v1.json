@@ -1,0 +1,10 @@
+{
+  "schema": "hiroute.decision-provider-presets/v1",
+  "providers": [
+    { "id": "bailian-token-plan", "name": "百炼 Token Plan", "endpoint": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone", "model": "decision-model-preview" },
+    { "id": "bailian-workspace", "name": "百炼业务空间", "endpoint": "", "model": "decision-model-preview" },
+    { "id": "openrouter", "name": "OpenRouter", "endpoint": "https://openrouter.ai/api/alpha/decisions", "model": "typesafe/jev-1.13" },
+    { "id": "typesafe", "name": "TypeSafe", "endpoint": "https://api.typesafe.ai/v1/systemone", "model": "jev-latest" },
+    { "id": "compatible", "name": "System One 兼容", "endpoint": "", "model": "" }
+  ]
+}

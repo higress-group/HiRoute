@@ -9,6 +9,18 @@ fn real_process_decision_services_and_branch_publication() {
     run_script("decision_services_product.py");
 }
 
+/// Current released CLI point scan/preparation shares the native multi-model exact-save boundary.
+#[test]
+fn released_cli_connection_points_prepare_and_save_exact_models() {
+    run_script("connection_point_product.py");
+}
+
+/// Exact prepared CLI files survive both mid-publication and lost-terminal-response crashes.
+#[test]
+fn quickstart_exact_prepared_files_survive_publication_interruption() {
+    run_script("quickstart_recovery.py");
+}
+
 /// Client-bundled release assets, actual binaries and production inherited authority FDs.
 #[test]
 fn real_process_publication_crashes_recover_without_reapplying() {
@@ -60,6 +72,12 @@ fn real_process_native_model_save_publishes_and_reaches_gateway() {
     run_script("model_connections_product.py");
 }
 
+/// Branch execution identity must not replace current managed source membership.
+#[test]
+fn real_process_native_branch_credentials_preserve_source_and_key_permissions() {
+    run_script("native_branch_credentials_product.py");
+}
+
 #[test]
 fn real_process_current_credential_pool_relays_without_republishing() {
     run_script("credential_pool_product.py");
@@ -81,6 +99,12 @@ fn real_process_route_options_preserve_opaque_ids_and_isolate_unavailable_models
 #[cfg(target_os = "linux")]
 fn installed_standalone_cli_completes_the_headless_management_loop() {
     run_standalone_script("standalone_headless_product.py");
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn installed_cli_quickstart_reuses_resources_and_exact_apply_files() {
+    run_standalone_script("quickstart_product.py");
 }
 
 /// Runs only on request: five isolated one-candidate Plan publishes through the production

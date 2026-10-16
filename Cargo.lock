@@ -2214,6 +2214,7 @@ name = "hiroute-application-api"
 version = "0.3.1"
 dependencies = [
  "hiroute-domain",
+ "schemars 1.2.2",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -2239,6 +2240,7 @@ dependencies = [
  "nix",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "tempfile",
  "tokio",
  "zeroize",
@@ -2389,6 +2391,7 @@ name = "hiroute-domain"
 version = "0.1.0"
 dependencies = [
  "pinyin",
+ "schemars 1.2.2",
  "serde",
  "serde_json",
  "sha2",
@@ -5103,6 +5106,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+dependencies = [
+ "itoa",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]

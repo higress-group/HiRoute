@@ -2,7 +2,7 @@
 //! Cold decoding reconstructs and validates the plan before establishing a new checkpoint.
 use super::*;
 
-#[derive(Clone, Debug)]
+#[derive(schemars::JsonSchema, Clone, Debug)]
 pub(super) struct JournalCheckpoint {
     identity: CanonicalDigest,
     plan: Arc<TransactionPlanV1>,

@@ -5,6 +5,7 @@ import type { Agent, AgentModelSelection } from './types';
 import type { AgentEditorValues } from './editor-state';
 import { commonClaudePlan } from './editor-state';
 import { agentEcosystem } from './ecosystems';
+import { HermesModelEditor } from './HermesModelEditor';
 import { CodexModelEditor } from './CodexModelEditor';
 import { ClaudeModelEditor } from './ClaudeModelEditor';
 import { AdditionalModelEditor } from './AdditionalModelEditor';
@@ -25,6 +26,7 @@ export type AgentModelEditorProps = {
 
 export function AgentModelEditor(props: AgentModelEditorProps) {
   switch (agentEcosystem(props.agent.agent_id)) {
+    case 'hermes': return <HermesModelEditor {...props} />;
     case 'codex': return <CodexModelEditor {...props} />;
     case 'claude': return <ClaudeModelEditor {...props} />;
     case 'dsh':
@@ -38,6 +40,7 @@ export function modelSelectionSummary(selection: AgentModelSelection | null | un
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const planName = (id: string) => plans.find(plan => plan.agent_plan_id === id)?.desired.display_name;
   switch (selection?.mode) {
+    case 'hermes_default': return (planName(selection.plan_id) ?? text('当前路由不可用', 'Current route unavailable')) + ` · ${selection.protocol}`;
     case 'codex_default':
       return selection.default_selection.kind === 'plan'
         ? planName(selection.default_selection.plan_id) ?? text('当前路由不可用', 'Current route unavailable')

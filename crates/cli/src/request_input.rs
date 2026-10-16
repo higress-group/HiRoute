@@ -8,6 +8,7 @@ use serde::de::{DeserializeOwned, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
+pub(crate) mod diagnostics;
 mod fields;
 
 pub(crate) const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
@@ -81,8 +82,14 @@ pub(crate) fn typed<T: DeserializeOwned + Serialize>(
 }
 
 pub(crate) fn deserialize<T: DeserializeOwned + Serialize>(value: Value) -> Result<T, ErrorCode> {
-    let request = serde_json::from_value(value.clone()).map_err(|_| ErrorCode::InvalidArguments)?;
-    fields::validate(&request, &value).map_err(|_| ErrorCode::InvalidArguments)?;
+    let request = serde_path_to_error::deserialize(value.clone()).map_err(|error| {
+        diagnostics::typed(&error);
+        ErrorCode::InvalidArguments
+    })?;
+    fields::validate(&request, &value).map_err(|_| {
+        diagnostics::record("unknown_field", "$", "only declared request fields");
+        ErrorCode::InvalidArguments
+    })?;
     Ok(request)
 }
 
@@ -97,10 +104,17 @@ pub(crate) fn read_json(reader: impl Read, limit: u64) -> Result<Value, ErrorCod
         .read_to_end(&mut bytes)
         .map_err(|_| ErrorCode::InvalidArguments)?;
     if bytes.len() as u64 > limit {
+        diagnostics::record(
+            "input_too_large",
+            "$",
+            "a request within the documented byte limit",
+        );
         return Err(ErrorCode::InvalidArguments);
     }
-    let StrictValue(value) =
-        serde_json::from_slice(&bytes).map_err(|_| ErrorCode::InvalidArguments)?;
+    let StrictValue(value) = serde_json::from_slice(&bytes).map_err(|error| {
+        diagnostics::json(&error);
+        ErrorCode::InvalidArguments
+    })?;
     Ok(value)
 }
 

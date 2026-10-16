@@ -64,7 +64,7 @@ fn host_help(family: &str) -> &'static str {
                 return "Usage\n  hiroute protected-input register --candidate <REF> --secret-handle <INHERITED_HANDLE> --output json\n  hiroute protected-input release --candidate <REF> --output json\nThe inherited handle must name a private non-stdio pipe; payload and EOF are bounded.\n";
             }
             #[cfg(not(windows))]
-            "Usage\n  hiroute protected-input register --candidate <REF> --secret-fd <FD> --output json\n  hiroute protected-input release --candidate <REF> --output json\n"
+            "Usage\n  hiroute protected-input register --candidate <REF> --secret-fd <FD> --output json\n  hiroute protected-input register --candidate <REF> --prompt --format bearer|raw --output json\n  hiroute protected-input release --candidate <REF> --output json\n\n--prompt is a human step in the user's own terminal (for example SSH), outside chat and Agent tools. It reads hidden input from the controlling terminal only; no stdin fallback. bearer accepts a bare API key and adds Bearer; raw accepts the complete custom header value. Never put credentials in argv, environment, normal JSON or chat. Cancellation/missing terminal saves no service. Continue using the candidate reference after registered=true. The existing --secret-fd value remains unchanged.\n"
         }
         _ => unreachable!(),
     }
@@ -320,6 +320,9 @@ fn agent_update_status(
         let status = query(
             "GetAgentConnectionStatus",
             json!(AgentSettingsStatusRequestV2 {
+                effective: None,
+                include_skills: true,
+                native_target: None,
                 schema_version: AGENT_SETTINGS_SCHEMA_V2,
                 context_id: context.clone(),
             }),
@@ -393,6 +396,17 @@ fn protected_input_command(
         .map(|client| client.with_timeout(globals.timeout.unwrap_or(Duration::from_secs(30))))
         .map_err(|_| ErrorCode::DaemonUnavailable)?;
     let request = match arguments {
+        [verb, candidate_flag, candidate, prompt, format_flag, format]
+            if verb == "register"
+                && candidate_flag == "--candidate"
+                && prompt == "--prompt"
+                && format_flag == "--format" =>
+        {
+            StandaloneProtectedInputRequestV1::register(
+                candidate.clone(),
+                crate::protected_prompt::read(format)?,
+            )
+        }
         #[cfg(windows)]
         [verb, candidate_flag, candidate, secret_flag, handle]
             if verb == "register"

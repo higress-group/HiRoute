@@ -18,7 +18,7 @@ pub const VALUE_CALCULATION_BASIS_V1: &str = "hiroute.value-calculation/baseline
 pub const OBSERVATION_RETENTION_SCHEMA_V1: &str = "hiroute.observation-retention/v1";
 pub const SEVEN_DAYS_MILLIS: i64 = 7 * 24 * 60 * 60 * 1_000;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CorrelationProvenance {
     AgentSupplied,
@@ -27,14 +27,14 @@ pub enum CorrelationProvenance {
     Unproven,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrafficKind {
     Normal,
     ConnectivityProbe,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FactsCompleteness {
     Complete,
@@ -42,7 +42,7 @@ pub enum FactsCompleteness {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentCompleteness {
     Complete,
@@ -53,13 +53,13 @@ pub enum ContentCompleteness {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObservationCompletenessScope {
     GatewayVisible,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentAccess {
     Authorized,
@@ -67,7 +67,7 @@ pub enum ContentAccess {
     NotRequested,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestOutcome {
     Accepted,
@@ -77,7 +77,7 @@ pub enum RequestOutcome {
     PostcommitTransportFailed,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct UsageFactsV1 {
     pub input_tokens: u64,
@@ -87,7 +87,7 @@ pub struct UsageFactsV1 {
     pub reasoning_tokens: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FrozenValueFactsV1 {
     pub agent_plan_id: AgentPlanId,
@@ -157,7 +157,7 @@ fn validate_savings(
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReceiptExecutionEventV1 {
     pub sequence: u64,
@@ -168,7 +168,7 @@ pub struct ReceiptExecutionEventV1 {
     pub fact: ExecutionFactV1,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingReceiptV1 {
     pub schema: String,
@@ -505,7 +505,7 @@ impl ContentKind {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredMessageV1 {
     pub request_id: LogicalRequestId,
@@ -536,7 +536,7 @@ pub struct StoredMessageV1 {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RetentionPolicyV1 {
     pub schema: String,
@@ -554,7 +554,7 @@ impl Default for RetentionPolicyV1 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TombstoneReason {
     RetentionExpired,

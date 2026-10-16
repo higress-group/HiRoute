@@ -217,7 +217,12 @@ fn build_planner_input(
             profile,
             projection.target_serialized_bytes,
             None,
-            CostClassV1::Free,
+            match candidate.billing_class {
+                Some(hiroute_domain::BillingClass::Free) => CostClassV1::Free,
+                Some(hiroute_domain::BillingClass::Subscription) => CostClassV1::Subscription,
+                Some(hiroute_domain::BillingClass::Paid) => CostClassV1::Paid,
+                _ => CostClassV1::Unknown,
+            },
             None,
         )
         .map_err(|_| PortError::Rejected)?;

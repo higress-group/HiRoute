@@ -16,6 +16,9 @@ pub fn pi_native_provider_api(
     Ok(match protocol {
         hiroute_domain::AgentIngressProtocolV1::Responses => ("openai-responses", gateway_v1_base),
         hiroute_domain::AgentIngressProtocolV1::Messages => ("anthropic-messages", root),
+        hiroute_domain::AgentIngressProtocolV1::ChatCompletions => {
+            return Err(super::AgentFilesystemScanError::InvalidConfig);
+        }
     })
 }
 

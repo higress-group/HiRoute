@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const AGENT_SETTINGS_SCHEMA_V2: SchemaVersion = SchemaVersion::new(2, 0);
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "intent", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentFacetIntent<T> {
     #[default]
@@ -17,9 +17,13 @@ pub enum AgentFacetIntent<T> {
         restore_point_ref: String,
     },
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentModelSelectionV2 {
+    HermesDefault {
+        plan_id: AgentPlanId,
+        protocol: crate::AgentIngressProtocolV1,
+    },
     DshAdditional {
         allowed_plan_ids: BTreeSet<AgentPlanId>,
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -48,14 +52,16 @@ pub enum AgentModelSelectionV2 {
     },
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CodexNativeModelModeV2 {
     HirouteOnly,
     PreserveAvailable,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentModelSurfaceV2 {
     CodexCli,
@@ -64,16 +70,17 @@ pub enum AgentModelSurfaceV2 {
     QoderCli,
     PiCli,
     DshCli,
+    HermesCli,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentFixedModelSelectionV2 {
     pub client_model_id: String,
     pub candidate: crate::CandidateSelectionV1,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentModelDefaultSelectionV2 {
     PreserveNative,
@@ -81,14 +88,14 @@ pub enum AgentModelDefaultSelectionV2 {
     Plan { plan_id: AgentPlanId },
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentClaudePresetSelectionV2 {
     PreserveNative,
     Plan { plan_id: AgentPlanId },
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentClaudePresetMappingsV2 {
     pub opus: AgentClaudePresetSelectionV2,
@@ -111,6 +118,7 @@ impl AgentModelSelectionV2 {
         fallback: crate::AgentIngressProtocolV1,
     ) -> crate::AgentIngressProtocolV1 {
         match self {
+            Self::HermesDefault { protocol, .. } => *protocol,
             Self::QoderAdditional { plan_protocols, .. }
             | Self::PiAdditional { plan_protocols, .. } => {
                 plan_protocols.get(id).copied().unwrap_or(fallback)
@@ -129,12 +137,14 @@ impl AgentModelSelectionV2 {
             }
             Self::QoderAdditional { .. }
             | Self::PiAdditional { .. }
-            | Self::DshAdditional { .. } => &[],
+            | Self::DshAdditional { .. }
+            | Self::HermesDefault { .. } => &[],
         }
     }
 
     pub fn allowed_plan_ids(&self) -> BTreeSet<AgentPlanId> {
         match self {
+            Self::HermesDefault { plan_id, .. } => [plan_id.clone()].into(),
             Self::CodexDefault {
                 allowed_plan_ids, ..
             }
@@ -198,7 +208,11 @@ impl AgentModelSelectionV2 {
             Self::QoderAdditional { plan_protocols, .. }
             | Self::PiAdditional { plan_protocols, .. }
             | Self::DshAdditional { plan_protocols, .. } => {
-                if plan_protocols.keys().any(|id| !plans.contains(id)) {
+                if plan_protocols.keys().any(|id| !plans.contains(id))
+                    || plan_protocols
+                        .values()
+                        .any(|p| *p == crate::AgentIngressProtocolV1::ChatCompletions)
+                {
                     return Err(crate::AgentConnectionError::InvalidGrant);
                 }
             }
@@ -207,6 +221,7 @@ impl AgentModelSelectionV2 {
                     return Err(invalid);
                 }
             }
+            Self::HermesDefault { .. } => {}
         }
         Ok(())
     }
@@ -216,24 +231,28 @@ pub fn valid_client_model_name(value: &str) -> bool {
     !value.is_empty() && !value.bytes().any(|byte| matches!(byte, 0 | b'\r' | b'\n'))
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationSelectionV2 {
     pub trigger_mode: AgentCollaborationTriggerModeV2,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentCollaborationTriggerModeV2 {
     Explicit,
     DelegateByDefault,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsSpecV2 {
     pub schema_version: SchemaVersion,
     pub context_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_target: Option<crate::AgentNativeTargetV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub management_skill: Option<AgentFacetIntent<crate::AgentManagementSkillSelectionV1>>,
     #[serde(default)]
     pub model: AgentFacetIntent<AgentModelSelectionV2>,
     #[serde(default)]
@@ -252,7 +271,7 @@ pub struct AgentSettingsSpecV2 {
 
 /// Token changes belong to the model connection. A custom value is supplied separately through
 /// the protected local input channel; only its one-use slot enters the settings journal.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "intent", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentAccessTokenIntentV1 {
     #[default]
@@ -264,19 +283,76 @@ pub enum AgentAccessTokenIntentV1 {
 }
 
 impl AgentSettingsSpecV2 {
+    /// The legacy slot remains readable with its original meaning in accepted Operations.
+    pub fn skill_intent(&self) -> AgentFacetIntent<()> {
+        self.skill_intent_for(self.skill_facet())
+    }
+
+    pub fn skill_facet(&self) -> AgentSettingsFacet {
+        if self.context_id.starts_with("agent-context/hermes/") {
+            AgentSettingsFacet::ManagementSkill
+        } else {
+            AgentSettingsFacet::Collaboration
+        }
+    }
+
+    pub fn skill_intent_for(&self, facet: AgentSettingsFacet) -> AgentFacetIntent<()> {
+        match facet {
+            AgentSettingsFacet::ManagementSkill => match self.management_skill.as_ref() {
+                None | Some(AgentFacetIntent::Keep) => AgentFacetIntent::Keep,
+                Some(AgentFacetIntent::Configure { .. }) => {
+                    AgentFacetIntent::Configure { settings: () }
+                }
+                Some(AgentFacetIntent::Restore { restore_point_ref }) => {
+                    AgentFacetIntent::Restore {
+                        restore_point_ref: restore_point_ref.clone(),
+                    }
+                }
+            },
+            AgentSettingsFacet::Collaboration => match &self.collaboration {
+                AgentFacetIntent::Keep => AgentFacetIntent::Keep,
+                AgentFacetIntent::Configure { .. } => AgentFacetIntent::Configure { settings: () },
+                AgentFacetIntent::Restore { restore_point_ref } => AgentFacetIntent::Restore {
+                    restore_point_ref: restore_point_ref.clone(),
+                },
+            },
+            AgentSettingsFacet::Model => AgentFacetIntent::Keep,
+        }
+    }
+
+    pub fn keeps_skills(&self) -> bool {
+        [
+            AgentSettingsFacet::ManagementSkill,
+            AgentSettingsFacet::Collaboration,
+        ]
+        .into_iter()
+        .all(|facet| matches!(self.skill_intent_for(facet), AgentFacetIntent::Keep))
+    }
+
     /// Restore commands may keep other facets, but cannot configure or grant new access.
     pub fn is_restore_only(&self) -> bool {
         matches!(self.access_token, AgentAccessTokenIntentV1::Keep)
             && !matches!(self.model, AgentFacetIntent::Configure { .. })
             && !matches!(self.collaboration, AgentFacetIntent::Configure { .. })
+            && !matches!(
+                self.management_skill,
+                Some(AgentFacetIntent::Configure { .. })
+            )
             && (matches!(self.model, AgentFacetIntent::Restore { .. })
-                || matches!(self.collaboration, AgentFacetIntent::Restore { .. }))
+                || matches!(self.collaboration, AgentFacetIntent::Restore { .. })
+                || matches!(
+                    self.management_skill,
+                    Some(AgentFacetIntent::Restore { .. })
+                ))
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentSettingsFacet {
     Model,
     Collaboration,
+    ManagementSkill,
 }

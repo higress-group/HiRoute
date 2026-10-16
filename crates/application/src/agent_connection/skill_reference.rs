@@ -120,28 +120,63 @@ pub fn persist_settings_skill_reference_change(
     operation: &OperationV1,
     expected_target: &str,
 ) -> PortResult<Option<ManagedCollaborationSkill>> {
+    let spec: AgentSettingsSpecV2 =
+        serde_json::from_value(operation.plan.spec().desired_state.clone())
+            .map_err(|_| PortError::new(PortErrorCode::InvalidData, "skill.reference.intent"))?;
+    persist_settings_skill_reference_change_for_facet(
+        store,
+        native,
+        operation,
+        spec.skill_facet(),
+        expected_target,
+    )
+}
+
+pub fn persist_settings_skill_reference_change_for_facet(
+    store: &dyn AgentSkillInstallationStorePort,
+    native: &dyn NativeAgentArtifactPort,
+    operation: &OperationV1,
+    facet: hiroute_domain::AgentSettingsFacet,
+    expected_target: &str,
+) -> PortResult<Option<ManagedCollaborationSkill>> {
     let invalid = || PortError::new(PortErrorCode::InvalidData, "skill.reference.intent");
     if operation.state != OperationState::Succeeded
         || operation.plan.spec().command_id != "agents.settings.apply"
     {
         return Err(invalid());
     }
-    let record_change = operation
+    let spec: AgentSettingsSpecV2 =
+        serde_json::from_value(operation.plan.spec().desired_state.clone())
+            .map_err(|_| invalid())?;
+    let additional = facet != spec.skill_facet();
+    let record_key = if additional {
+        "additional_skill_record_change"
+    } else {
+        "skill_record_change"
+    };
+    let reference_key = if additional {
+        "additional_skill_reference_change"
+    } else {
+        "skill_reference_change"
+    };
+    let mutations = operation
         .plan
         .control()
-        .pointer("/payload/state/mutations/skill_record_change")
+        .pointer("/payload/state/mutations")
+        .ok_or_else(invalid)?;
+    if additional && matches!(spec.skill_intent_for(facet), AgentFacetIntent::Keep) {
+        return Ok(None);
+    }
+    let record_change = mutations
+        .get(record_key)
         .and_then(serde_json::Value::as_bool)
         .ok_or_else(invalid)?;
-    let encoded = operation
-        .plan
-        .control()
-        .pointer("/payload/state/mutations/skill_reference_change")
+    let encoded = mutations.get(reference_key).ok_or_else(invalid)?;
+    let role = hiroute_domain::AgentConnectionEffectRoleV1::settings_skill(&spec.context_id, facet)
         .ok_or_else(invalid)?;
-    let routing_skill_file_change = operation
-        .plan
-        .external()
-        .iter()
-        .any(|intent| intent.effect_id() == "agent-connection-routing-skill");
+    let routing_skill_file_change = operation.plan.external().iter().any(|intent| {
+        intent.desired()["role"] == role.as_str() && intent.desired()["transaction"] == "settings"
+    });
     if encoded.is_null() {
         return if record_change == routing_skill_file_change {
             Ok(None)
@@ -155,7 +190,7 @@ pub fn persist_settings_skill_reference_change(
     let spec: AgentSettingsSpecV2 =
         serde_json::from_value(operation.plan.spec().desired_state.clone())
             .map_err(|_| invalid())?;
-    let expected_action = match spec.collaboration {
+    let expected_action = match spec.skill_intent_for(facet) {
         AgentFacetIntent::Configure { .. } => SkillReferenceAction::Add,
         AgentFacetIntent::Restore { .. } => SkillReferenceAction::Remove,
         AgentFacetIntent::Keep => return Err(invalid()),

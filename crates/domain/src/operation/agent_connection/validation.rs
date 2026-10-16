@@ -49,10 +49,8 @@ pub(crate) fn validate_plan(
         )?;
         let envelope = decode_effect(&effect.desired)?;
         let role = AgentConnectionEffectRoleV1::parse(&envelope.role)?;
-        if transaction == AgentConnectionTransactionKindV1::Settings
-            && role == AgentConnectionEffectRoleV1::RoutingSkill
-        {
-            settings::validate_skill_selection(spec, &envelope.payload)?;
+        if transaction == AgentConnectionTransactionKindV1::Settings && role.is_skill() {
+            settings::validate_skill_selection(spec, role, &envelope.payload)?;
         }
         if AgentConnectionTransactionKindV1::parse(&envelope.transaction)? != transaction
             || decode_subject(envelope.subject)? != subject

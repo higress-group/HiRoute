@@ -489,11 +489,19 @@ mod tests {
         let legacy = serde_json::from_str::<hiroute_application_api::ComputeConnectionTestRequestV1>(
             include_str!("../../../../../application-api/tests/fixtures/v0.3.0-registered-connection-test.json"),
         ).unwrap();
-        let hiroute_application_api::ComputeConnectionTestRequestV1::Registered { request: legacy } =
-            legacy
+        let hiroute_application_api::ComputeConnectionTestRequestV1::Registered {
+            request: mut legacy,
+        } = legacy
         else {
             panic!("released fixture is not registered");
         };
+        // The released request shape remains supported. Its pinned catalog must still
+        // reject changed metadata; a client refreshes that public snapshot before retrying.
+        assert!(matches!(
+            runtime.adapter.trusted_registered_draft(&legacy),
+            Err(ComputeManagementControlError::RegisteredCatalogChanged)
+        ));
+        legacy.expected_catalog = request(&catalog, &legacy.connection_option_id).expected_catalog;
         let legacy_draft = runtime.adapter.trusted_registered_draft(&legacy).unwrap();
         let option = listed
             .options

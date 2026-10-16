@@ -8,14 +8,14 @@ use crate::ComputeCandidateRefV2;
 pub const MANAGE_SUBSCRIPTION_LOGIN_OPERATION_V1: &str = "ManageSubscriptionLogin";
 pub const SUBSCRIPTION_LOGIN_RESULT_SCHEMA_V1: &str = "hiroute.subscription-login-result/v1";
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubscriptionLoginProviderV1 {
     Codex,
     Claude,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ComputeSubscriptionLoginRequestV1 {
     List {
@@ -64,7 +64,7 @@ impl ComputeSubscriptionLoginRequestV1 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubscriptionLoginStatusV1 {
     Pending,
@@ -77,7 +77,7 @@ pub enum SubscriptionLoginStatusV1 {
 
 /// An account reference is an opaque local identity, never a credential-store path or token.
 /// `authorization_url` is returned only by Start and must not be logged or persisted by clients.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeSubscriptionLoginSessionV1 {
     pub provider: SubscriptionLoginProviderV1,
@@ -96,7 +96,7 @@ pub struct ComputeSubscriptionLoginSessionV1 {
 }
 
 /// List returns zero or more sessions. Every other action returns exactly its addressed session.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeSubscriptionLoginResultV1 {
     pub schema: String,

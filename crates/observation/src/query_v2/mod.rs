@@ -1,6 +1,7 @@
 //! Bounded observation projections. Reader contexts are internal authenticated
 //! inputs, never deserialized from a client request or inferred from its name.
 
+mod api_equivalent;
 mod cache_hit;
 mod catalog;
 mod content;

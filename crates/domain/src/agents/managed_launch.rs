@@ -43,7 +43,7 @@ pub const MANAGED_CLAUDE_CALLER_FORBIDDEN_OPTIONS_V1: [&str; 14] = [
     "--vertex",
 ];
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentActivationModeV1 {
     ManagedConfiguration,

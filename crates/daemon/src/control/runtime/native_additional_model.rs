@@ -23,7 +23,10 @@ pub(super) fn additional_model_endpoint(
     kind: AgentKindV1,
     gateway_base_url: &str,
 ) -> PortResult<String> {
-    if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
+    if matches!(
+        kind,
+        AgentKindV1::Pi | AgentKindV1::DeepseekHarness | AgentKindV1::Hermes
+    ) {
         return Ok(gateway_base_url.to_owned());
     }
     let origin = gateway_base_url
@@ -63,7 +66,10 @@ pub(super) fn additional_models_for_grant(
             if &plan.body.materialized_route_digest != semantic_digest {
                 return Err(conflict("qoder.models.plan.digest"));
             }
-            let budget = (if matches!(kind, AgentKindV1::Pi | AgentKindV1::DeepseekHarness) {
+            let budget = (if matches!(
+                kind,
+                AgentKindV1::Pi | AgentKindV1::DeepseekHarness | AgentKindV1::Hermes
+            ) {
                 hiroute_integrations::pi_plan_token_budget(&plan.body.materialized)
             } else {
                 hiroute_integrations::qoder_plan_token_budget(&plan.body.materialized)

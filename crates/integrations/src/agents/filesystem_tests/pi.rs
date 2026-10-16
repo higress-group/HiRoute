@@ -17,6 +17,69 @@ fn models() -> serde_json::Value {
 }
 
 #[test]
+fn native_points_group_shared_binding_despite_legacy_model_handles_and_separate_overrides() {
+    let root = tempfile::tempdir().unwrap();
+    let mut declaration = models();
+    declaration["providers"]["private-api"]["models"] = json!([
+        {"id":"first"}, {"id":"second"},
+        {"id":"own-address", "baseUrl":"http://127.0.0.1:4222/v1"},
+        {"id":"other-protocol", "api":"openai-completions"}
+    ]);
+    let scanner = source_scanner(root.path(), declaration, json!({}));
+    let sources = scanner.pi_api_sources().unwrap();
+    assert_ne!(
+        sources[0]
+            .credential
+            .as_ref()
+            .unwrap()
+            .discovered_source_ref,
+        sources[1]
+            .credential
+            .as_ref()
+            .unwrap()
+            .discovered_source_ref
+    );
+    let points = crate::native_api_connection_points(sources);
+    assert_eq!(points.len(), 3);
+    let shared = points.iter().find(|p| p.sources.len() == 2).unwrap();
+    assert_eq!(
+        shared
+            .sources
+            .iter()
+            .map(|s| s.model_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first", "second"]
+    );
+}
+
+#[test]
+fn native_point_identity_includes_root_and_selected_credential_origin_without_exposing_them() {
+    let first = tempfile::tempdir().unwrap();
+    let second = tempfile::tempdir().unwrap();
+    let scanner = source_scanner(first.path(), models(), json!({}));
+    let other = source_scanner(second.path(), models(), json!({}));
+    let before = crate::native_api_connection_points(scanner.pi_api_sources().unwrap()).remove(0);
+    let other = crate::native_api_connection_points(other.pi_api_sources().unwrap()).remove(0);
+    assert_ne!(before.key_digest, other.key_digest);
+    write_secret_settings(
+        &scanner.layout.pi_config_root.join("auth.json"),
+        json!({"private-api":{"type":"api_key","key":"provider-fallback"}}),
+    );
+    let after = crate::native_api_connection_points(scanner.pi_api_sources().unwrap()).remove(0);
+    assert_ne!(
+        before.key_digest, after.key_digest,
+        "equal material from a different native selector is not the same binding"
+    );
+    assert_ne!(before.snapshot_digest, after.snapshot_digest);
+    let serialized = serde_json::to_string(&after.sources[0]).unwrap();
+    assert!(
+        !serialized.contains("point_binding")
+            && !serialized.contains("models.json/")
+            && !serialized.contains("4222")
+    );
+}
+
+#[test]
 fn pi_static_api_import_uses_saved_credential_templates_and_rejects_changed_source() {
     let root = tempfile::tempdir().unwrap();
     let scanner = source_scanner(

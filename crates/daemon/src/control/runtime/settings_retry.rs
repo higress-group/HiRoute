@@ -15,9 +15,11 @@ impl LocalControlAdapter {
                     !class.is_codex()
                         && !matches!(
                             class,
-                            SettingsAgentClass::Qoder
+                            SettingsAgentClass::Claude
+                                | SettingsAgentClass::Qoder
                                 | SettingsAgentClass::Pi
                                 | SettingsAgentClass::Dsh
+                                | SettingsAgentClass::Hermes
                         )
                 })
         {
@@ -38,13 +40,15 @@ impl LocalControlAdapter {
         let spec: AgentSettingsSpecV2 =
             serde_json::from_value(op.plan.spec().desired_state.clone())
                 .map_err(|_| ControlReadError::Corrupt)?;
-        if matches!(spec.model, AgentFacetIntent::Keep) {
+        if matches!(spec.model, AgentFacetIntent::Keep) && spec.keeps_skills() {
             return Err(ControlReadError::Denied);
         }
-        if matches!(
-            self.settings_agent_for_context(&request.context_id),
-            Some(SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh)
-        ) {
+        if !matches!(spec.model, AgentFacetIntent::Keep)
+            && matches!(
+                self.settings_agent_for_context(&request.context_id),
+                Some(SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh)
+            )
+        {
             let intent = op
                 .plan
                 .external()

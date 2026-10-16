@@ -671,6 +671,7 @@ fn snapshot(
         ],
         vec![
             GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "continuation-grant".into(),
                 generation: 1,
@@ -698,6 +699,7 @@ fn snapshot(
                 .collect(),
             },
             GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "other-grant".into(),
                 generation: 1,

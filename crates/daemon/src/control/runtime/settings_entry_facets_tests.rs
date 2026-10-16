@@ -864,3 +864,6 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
 
 #[path = "settings_entry_collaboration_tests.rs"]
 mod collaboration;
+
+#[path = "settings_entry_shared_skills_tests.rs"]
+mod shared_skills;

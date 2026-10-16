@@ -145,6 +145,25 @@ fn branches_publish_distinct_reasoning_and_freeze_whole_judgment_overrides() {
         ],
     )
     .unwrap();
+    let stored_bytes = publication.canonical_bytes().unwrap();
+    let stored = serde_json::to_value(&publication).unwrap();
+    assert!(
+        stored["aliases"][0]["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|candidate| candidate.get("source_binding_id").is_some()
+                && candidate.get("billing_class").is_none()
+                && candidate.get("pricing_identity").is_none())
+    );
+    assert_eq!(
+        hiroute_domain::GatewayPublicationV1::decode(&stored_bytes)
+            .unwrap()
+            .canonical_bytes()
+            .unwrap(),
+        stored_bytes,
+        "source membership is durable; billing and pricing projections do not alter stored bytes"
+    );
     let snapshot = publication.gateway_snapshot().unwrap();
     let alias = &snapshot.aliases[0];
     assert_eq!(
@@ -155,6 +174,10 @@ fn branches_publish_distinct_reasoning_and_freeze_whole_judgment_overrides() {
     assert_ne!(
         alias.candidates[0].protocol_profile_digest,
         alias.candidates[1].protocol_profile_digest
+    );
+    assert_ne!(
+        alias.candidates[0].stable_target_key, alias.candidates[1].stable_target_key,
+        "reasoning variants retain separate routing and retry identities"
     );
     for candidate in &alias.candidates {
         assert!(candidate.stable_target_key.starts_with("candidate/sha256:"));

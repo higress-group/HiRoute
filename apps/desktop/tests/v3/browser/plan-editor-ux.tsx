@@ -8,9 +8,13 @@ import { RoutingPage } from '../../../src/product/RoutingPage';
 import { PresentationRoot } from '../../../src/ui';
 import { manualModelError } from '../../../src/features/model-connections/form-support';
 import { blankModel } from '../../../src/features/model-connections/state';
-import { dailyPlan, fixtureTrace, mockProductInvoke, readyDesktop, resetFixtureTrace } from './product-fixtures';
+import { dailyPlan, fixturePlanAuthoring, fixtureTrace, mockProductInvoke, readyDesktop, resetFixtureTrace } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
+const authoringChecks = new URLSearchParams(location.search).get('checks') === 'authoring';
+const authoringLanguage = new URLSearchParams(location.search).get('language') === 'en' ? 'en' : 'zh';
+let authoringCalls = 0;
+let rejectAuthoring: ((reason: unknown) => void) | undefined;
 const workerChecks = new URLSearchParams(location.search).get('checks') === 'workers';
 const availabilityChecks = new URLSearchParams(location.search).get('checks') === 'availability';
 let availabilityFailure = false;
@@ -28,6 +32,17 @@ mockIPC((command, payload) => {
   if (command === 'desktop_snapshot') {
     fixtureTrace.commands.push(command);
     return structuredClone(savedSnapshot);
+  }
+  if (command === 'plan_editor_options' && (payload as any)?.input?.authoring?.plan_id) {
+    authoringCalls += 1;
+    if (authoringChecks && authoringCalls === 1) return new Promise((_resolve, reject) => { rejectAuthoring = reject; });
+    const authoring = fixturePlanAuthoring(plan);
+    if (authoringChecks) {
+      authoring.expected_head_revision = 11;
+      authoring.editor.limits.request_timeout_ms = 123000;
+      authoring.editor.limits.maximum_attempts = 3;
+    }
+    return { ...mockProductInvoke(command, payload as Record<string, unknown>, 'ready') as object, authoring };
   }
   if (command === 'plan_editor_options' && availabilityChecks) {
     unavailableRequested = (payload as { input?: { include_unavailable?: boolean } }).input?.include_unavailable === true;
@@ -251,6 +266,49 @@ const availabilityCases: [string, () => Promise<void>][] = [
   }],
 ];
 
+const authoringCases: [string, () => Promise<void>][] = [
+  ['routing.authoring.loading: wait for authoritative settings before editing', async () => {
+    await until(() => Boolean(rejectAuthoring && document.querySelector('[aria-busy="true"] [role="status"]')), 'shared settings loading');
+    assert(!document.querySelector('.plan-identity-fields'), 'Invented editable defaults before options arrived');
+    assert(document.documentElement.scrollWidth <= innerWidth, 'Loading page overflowed');
+  }],
+  ['routing.authoring.failure: retry preserves selected plan and hides raw errors', async () => {
+    rejectAuthoring!({ source: 'backend', envelope: { error: { code: 'DAEMON_UNAVAILABLE', private: 'private-provider-message' } } });
+    await until(() => Boolean(document.querySelector('[role="alert"]')), 'authoring failure');
+    assert(!document.body.textContent?.includes('private-provider-message'), 'Raw service error leaked');
+    assert(!document.querySelector('.plan-identity-fields'), 'Failed initialization enabled guessed defaults');
+    const rect = button(authoringLanguage === 'en' ? 'Retry' : '重试').getBoundingClientRect();
+    assert(rect.width > 30 && rect.height >= 32 && rect.left >= 16 && rect.right <= innerWidth - 16, 'Retry is not usable or lacks page spacing');
+  }],
+  ['routing.authoring.reopen: retry uses the backend revision and settings', async () => {
+    button(authoringLanguage === 'en' ? 'Retry' : '重试').click();
+    await until(() => Boolean(document.querySelector('[data-codex-capability-state]')), 'authoritative editor');
+    assert(authoringCalls === 2, 'Retry repeated initialization unexpectedly');
+    assert(element<HTMLInputElement>('.plan-identity-fields input').value === plan.desired.display_name, 'Reopening lost the selected plan');
+  }],
+  ['routing.authoring.dirty: options refresh and save preserve edits and backend policy', async () => {
+    setInput('.plan-identity-fields input', 'Review shared defaults');
+    await until(() => fixtureTrace.requests.some(row => row.command === 'plan_editor_options' && row.payload?.input?.editor?.display_name === 'Review shared defaults'), 'options refresh for edited name');
+    assert(element<HTMLInputElement>('.plan-identity-fields input').value === 'Review shared defaults', 'Async options overwrote edits');
+    const before = submitted.length;
+    button(authoringLanguage === 'en' ? 'Save draft' : '保存草稿').click();
+    await until(() => submitted.length > before, 'shared editor draft saved');
+    const saved = submitted.at(-1)!;
+    assert(saved.editor.limits.request_timeout_ms === 123000 && saved.editor.limits.maximum_attempts === 3, 'Frontend replaced backend defaults');
+    assert(saved.editor.smart.reselect_on_user_message === false, 'Reopening reset the saved turn policy');
+    assert(savedSnapshot.catalog.drafts.at(-1)?.base_head_revision === 11, 'Save used stale props instead of the returned revision');
+    assert(authoringCalls === 2, 'Dirty editor was initialized again');
+  }],
+];
+(window as any).planAuthoringChecks = {
+  names: authoringCases.map(([name]) => name),
+  run: async (index: number) => {
+    const [name, run] = authoringCases[index];
+    try { await run(); return { name, state: 'green' }; }
+    catch (error) { return { name, state: 'red', error: error instanceof Error ? error.message : String(error) }; }
+  },
+};
+
 function Harness() {
   const [snapshot, setSnapshot] = useState(() => structuredClone(savedSnapshot));
   const [running, setRunning] = useState(false);
@@ -266,20 +324,20 @@ function Harness() {
       return;
     }
     const next = [];
-    for (const [name, check] of availabilityChecks ? availabilityCases : checks) {
+    for (const [name, check] of authoringChecks ? authoringCases : availabilityChecks ? availabilityCases : checks) {
       try { await check(); next.push({ name, state: 'green' }); }
       catch (error) { next.push({ name, state: 'red', error: error instanceof Error ? error.message : String(error) }); }
     }
     setResults(next);
     setRunning(false);
   }
-  return <PresentationRoot language="zh" theme="light" textScale={1}>
+  return <PresentationRoot language={authoringChecks ? authoringLanguage : "zh"} theme={new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light'} textScale={1}>
     <aside style={{ padding: 16 }}>
       <p>React + mock IPC 回归检查；不代表原生 Desktop 或真实 daemon 验收。</p>
       <button className="btn" disabled={running || results.length > 0} onClick={() => void run()}>运行智能路由交互检查</button>
       <output aria-live="polite" data-ux-results>{results.length > 0 && JSON.stringify({ tests: results.length, passed: results.filter(result => result.state === 'green').length, results })}</output>
     </aside>
-    <RoutingPage language="zh" snapshot={snapshot} initialEditor={{ key: plan.agent_plan_id, plan }} loading={false} busy={false} onRefresh={async () => setSnapshot(structuredClone(savedSnapshot))} onOperation={() => {}} />
+    <RoutingPage language={authoringChecks ? authoringLanguage : "zh"} snapshot={snapshot} initialEditor={{ key: plan.agent_plan_id, plan }} loading={false} busy={false} onRefresh={async () => setSnapshot(structuredClone(savedSnapshot))} onOperation={() => {}} />
   </PresentationRoot>;
 }
 createRoot(document.getElementById('root')!).render(<Harness />);

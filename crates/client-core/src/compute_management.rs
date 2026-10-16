@@ -16,6 +16,15 @@ impl Client {
             .await
     }
 
+    pub async fn scan_compute_points(
+        &self,
+        request_id: &str,
+        request: hiroute_application_api::ComputeScanRequestV2,
+    ) -> Result<MachineEnvelopeV2<hiroute_application_api::ComputeScanResultV2>, ClientFailure>
+    {
+        self.query("ScanCompute", request_id, &request).await
+    }
+
     pub async fn compute_management_snapshot(
         &self,
         request_id: &str,

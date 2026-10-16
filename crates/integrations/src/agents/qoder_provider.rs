@@ -76,11 +76,16 @@ pub(super) fn provider(
     credential: &str,
     models: Vec<Value>,
     protocol: hiroute_domain::AgentIngressProtocolV1,
-) -> Value {
+) -> Result<Value, QoderNativeError> {
     let protocol = match protocol {
         hiroute_domain::AgentIngressProtocolV1::Responses => "openai-responses",
         hiroute_domain::AgentIngressProtocolV1::Messages => "anthropic",
+        hiroute_domain::AgentIngressProtocolV1::ChatCompletions => {
+            return Err(qoder_error("unsupported native protocol"));
+        }
     };
-    json!({"type":"openai-compatible", "protocol":protocol, "authType":"bearer",
-        "baseUrl":endpoint, "apiKey":credential, "models":models})
+    Ok(
+        json!({"type":"openai-compatible", "protocol":protocol, "authType":"bearer",
+        "baseUrl":endpoint, "apiKey":credential, "models":models}),
+    )
 }

@@ -1,3 +1,4 @@
+mod api_equivalent;
 use super::*;
 use hiroute_application_api::{ObservationReadIntentV2, ObservationReadRequestV2};
 use hiroute_domain::ObservationReaderContext;
@@ -32,15 +33,15 @@ impl ObservationControl {
             request.intent,
             ObservationReadIntentV2::Search(_) | ObservationReadIntentV2::SessionSearch(_)
         );
-        if grant.is_some() || content {
+        if grant.is_some() {
             self.protected_principal(grant, request.protected_operation(), &request)?;
         }
-        // A new short-lived context follows actual grant validation on EVERY
-        // page. Its expiry is not a cursor scope: renewing this same local-user
-        // scope does not authorize a broader filter or bypass grant validation.
+        // The transport authenticates same-OS-user Local Control. Explicit content
+        // selection needs no second GUI-issued ticket; supplied grants are still
+        // validated on every page. Visibility, expiry and cursor scopes remain checked.
         let reader = ObservationReaderContext::local_user(
             self.workspace_id.clone(),
-            "protected-local-observer".into(),
+            "local-observer".into(),
             generation,
             now.saturating_add(1000),
             content,
@@ -145,6 +146,9 @@ impl ObservationControl {
                     q.group_by,
                     now,
                 )?)
+            }
+            ObservationReadIntentV2::ApiEquivalentValue(q) => {
+                serde_json::to_value(self.api_equivalent_value(&reader, q, now)?)
             }
             ObservationReadIntentV2::PlanQuality(q) => serde_json::to_value(
                 self.service

@@ -293,28 +293,47 @@ fn eligibility(
     }
 }
 
-// A discovered native user source is not a registered runtime fallback. Keep
-// its observed/unknown facts and give it the existing source-local authority.
+// A discovered native user source retains source-local authority. The trusted point
+// producer may also fill unknown facts or append models from an exact qualified catalog.
+// Neither case acquires registered billing, pricing or account authorization.
 fn native_observed_model(
     source: &ComputeManagementSourceV2,
     model: &ComputeManagedModelV2,
 ) -> bool {
-    model.membership == ComputeManagementMembershipV2::Observed
-        && model.catalog_configuration_id.is_none()
-        && matches!(
-            source.provenance,
-            ComputeManagementProvenanceV2::UserConfigured { .. }
-        )
-        && capability_bases(&model.capabilities)
-            .into_iter()
-            .all(|basis| {
+    if !matches!(
+        source.provenance,
+        ComputeManagementProvenanceV2::UserConfigured { .. }
+    ) {
+        return false;
+    }
+    let bases = capability_bases(&model.capabilities);
+    if model.catalog_configuration_id.is_none() {
+        return model.membership == ComputeManagementMembershipV2::Observed
+            && bases.into_iter().all(|basis| {
                 matches!(
                     basis,
                     ComputeManagementFactBasisV2::Observed
                         | ComputeManagementFactBasisV2::Unknown
                         | ComputeManagementFactBasisV2::UserDeclared
                 )
-            })
+            });
+    }
+    matches!(
+        model.membership,
+        ComputeManagementMembershipV2::Observed | ComputeManagementMembershipV2::Catalog
+    ) && bases.contains(&ComputeManagementFactBasisV2::RegisteredCatalog)
+        && bases.into_iter().all(|basis| {
+            matches!(
+                basis,
+                ComputeManagementFactBasisV2::Observed
+                    | ComputeManagementFactBasisV2::Unknown
+                    | ComputeManagementFactBasisV2::RegisteredCatalog
+            )
+        })
+        && (model.membership == ComputeManagementMembershipV2::Observed
+            || bases
+                .into_iter()
+                .all(|basis| basis == ComputeManagementFactBasisV2::RegisteredCatalog))
 }
 
 fn capability_bases(

@@ -14,13 +14,24 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
   const ecosystem = agentEcosystem(agent.agent_id);
   if (!agent.context_id || !ecosystem) throw new Error('AGENT_INPUT_INVALID');
   const { values, codexMode, restoreNativeModel } = draft;
+  const target = ecosystem === 'hermes' ? { native_target: agent.native_target } : {};
+  if (ecosystem === 'hermes' && !agent.native_target) throw new Error('AGENT_INPUT_INVALID');
   const keep = { intent: 'keep' as const };
+  if (facet === 'management_skill') {
+    return { schema_version: { major: 2, minor: 0 }, context_id: agent.codex_access?.root_context_id ?? agent.context_id, ...target,
+      model: keep, collaboration: keep, management_skill: restore
+        ? { intent: 'restore', restore_point_ref: agent.settings?.management_skill?.restore_point_ref }
+        : { intent: 'configure', settings: {} } };
+  }
   if (facet === 'model') {
     if (!agentSupportsModelRouting(agent.agent_id) || agentHasNoModelConnection(agent)) throw new Error('AGENT_INPUT_INVALID');
     const current = agentModelStatus(agent)?.current_selection;
     if (current && !agentModelSelectionMatches(agent.agent_id, current)) throw new Error('AGENT_INPUT_INVALID');
     let settings: AgentModelSelection;
     switch (ecosystem) {
+      case 'hermes':
+        settings = { mode: 'hermes_default', plan_id: values.hermesPlanId, protocol: values.hermesProtocol };
+        break;
       case 'codex':
         settings = {
           mode: 'codex_default',
@@ -51,6 +62,7 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
     }
     return {
       schema_version: { major: 2, minor: 0 },
+      ...target,
       context_id: agent.codex_access && !agent.codex_access.slot_occupied
         ? (codexMode === 'root' ? agent.codex_access.root_context_id : agent.codex_access.profile_context_id)
         : agent.context_id,
@@ -65,6 +77,7 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
   return {
     schema_version: { major: 2, minor: 0 },
     context_id: agent.codex_access?.root_context_id ?? agent.context_id,
+    ...target,
     model: keep,
     collaboration: restore
       ? { intent: 'restore', restore_point_ref: agent.settings?.collaboration?.restore_point_ref }
@@ -75,12 +88,13 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
 /** Token changes retain the current model selection and never resubmit an editor draft. */
 export function agentTokenSpec(agent: Agent, regenerate: boolean) {
   const selection = agentModelStatus(agent)?.current_selection;
-  if (!agent.context_id || !agentSupportsModelRouting(agent.agent_id) || !selection
+  if (!agent.context_id || (agentEcosystem(agent.agent_id) === 'hermes' && !agent.native_target) || !agentSupportsModelRouting(agent.agent_id) || !selection
     || !agentModelSelectionMatches(agent.agent_id, selection)) {
     throw new Error('AGENT_INPUT_INVALID');
   }
   return {
     schema_version: { major: 2, minor: 0 },
+    ...(agentEcosystem(agent.agent_id) === 'hermes' ? { native_target: agent.native_target } : {}),
     context_id: agent.context_id,
     model: { intent: 'configure', settings: selection },
     collaboration: { intent: 'keep' },
@@ -96,6 +110,6 @@ export function prerequisiteCheck(preview: Preview, facet: AgentFacet): AgentChe
   // task. Treat the capability as the authority instead of inferring the check
   // from whichever settings form happened to expose the blocker.
   if (missing.has('ingress_authentication')) return 'native_authentication';
-  if (facet === 'collaboration' && (missing.has('skill_loading') || missing.has('trusted_cli_execution'))) return 'collaboration';
+  if (facet !== 'model' && (missing.has('skill_loading') || missing.has('trusted_cli_execution'))) return 'collaboration';
   return null;
 }

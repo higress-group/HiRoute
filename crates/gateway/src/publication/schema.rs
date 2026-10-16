@@ -34,6 +34,9 @@ pub struct CandidateBindingV1 {
     pub stable_target_key: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_binding_id: Option<String>,
+    /// Derived from trusted supplying facts; absence remains unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub billing_class: Option<hiroute_domain::BillingClass>,
     pub adapter_id: String,
     pub credential_refs: Vec<String>,
     pub credential_destination_ref: String,
@@ -147,6 +150,7 @@ pub(crate) fn exact_test_candidate(
         local_id,
         stable_target_key: format!("target-{local_id}"),
         source_binding_id: None,
+        billing_class: Some(hiroute_domain::BillingClass::Free),
         adapter_id: "builtin".into(),
         credential_refs: vec![format!("credential-{local_id}")],
         credential_destination_ref: "connection-option/fixture.native.v1".into(),
@@ -194,6 +198,7 @@ pub(crate) fn exact_cpa_test_candidate(
         local_id,
         stable_target_key: format!("target-{local_id}"),
         source_binding_id: None,
+        billing_class: Some(hiroute_domain::BillingClass::Free),
         adapter_id: "adapter.cpa.responses@1".into(),
         credential_refs: vec![format!("credential-{local_id}")],
         credential_destination_ref: "connection-option/fixture.cpa.v1".into(),
@@ -230,6 +235,8 @@ pub struct AliasPlanV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GrantV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumer: Option<hiroute_domain::AgentModelConsumerV1>,
     pub grant_id: String,
     pub generation: u64,
     pub bearer_token_sha256: String,
@@ -420,7 +427,7 @@ impl GatewayPublicationSnapshotV3 {
                     || candidate
                         .source_binding_id
                         .as_ref()
-                        .is_some_and(|id| !valid_reference(id))
+                        .is_some_and(|binding| !valid_reference(binding))
                     || candidate.adapter_id.trim().is_empty()
                     || candidate.credential_refs.is_empty()
                     || candidate.credential_refs.len() > 64
@@ -556,6 +563,19 @@ impl GatewayPublicationSnapshotV3 {
                 || !is_sha256(&grant.bearer_token_sha256)
                 || !token_verifiers.insert(grant.bearer_token_sha256.as_str())
                 || grant.routes.is_empty()
+                || (grant.consumer.is_some()
+                    && (grant.routes.len() != 1
+                        || !grant.route_protocols.is_empty()
+                        || !matches!(
+                            grant.protocol,
+                            IngressProtocol::Responses
+                                | IngressProtocol::Messages
+                                | IngressProtocol::ChatCompletions
+                        )
+                        || grant
+                            .routes
+                            .values()
+                            .any(|route| !matches!(route, ModelRouteV2::Plan { .. }))))
                 || grant.route_protocols.iter().any(|(name, protocol)| {
                     *protocol == grant.protocol
                         || !matches!(grant.routes.get(name), Some(ModelRouteV2::Plan { .. }))

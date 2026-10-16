@@ -11,6 +11,13 @@ fn reply(body: &'static [u8]) -> ProviderReply {
 
 #[test]
 fn primary_relay_stays_in_this_turn_but_new_users_decide_again() {
+    assert_turn_routing(false);
+}
+#[test]
+fn hermes_native_turns_reuse_only_their_own_tool_decision() {
+    assert_turn_routing(true);
+}
+fn assert_turn_routing(hermes: bool) {
     for smart in [true, false] {
         for change_instructions in [false, true] {
             let simple: &'static [u8] = if smart {
@@ -31,9 +38,24 @@ fn primary_relay_stays_in_this_turn_but_new_users_decide_again() {
             let decider = NativeProvider::start(vec![reply(simple), reply(simple)]);
             let fixture =
                 RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], smart);
+            if hermes {
+                let mut publication = fixture.publication();
+                publication
+                    .grants
+                    .iter_mut()
+                    .filter(|grant| {
+                        grant.protocol
+                            == hiroute_gateway::server::request_plan::IngressProtocol::Responses
+                    })
+                    .for_each(|grant| {
+                        grant.consumer = Some(hiroute_domain::AgentModelConsumerV1::Hermes)
+                    });
+                publication.publication_revision += 1;
+                fixture.publish(&mut publication);
+            }
             let send = |input: &[Value], instructions: &str| {
                 let response = request(fixture.address, "POST", "/v1/responses", &[
-                    ("X-HiRoute-Token", TOKEN), ("session-id", "relay-turn-boundary"),
+                    ("X-HiRoute-Token", TOKEN), (if hermes { "x-hermes-session-id" } else { "session-id" }, "relay-turn-boundary"),
                 ], &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"instructions":instructions,"input":input})).unwrap());
                 assert_eq!(
                     response.status,

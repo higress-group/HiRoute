@@ -1,0 +1,36 @@
+{
+  "$id": "hiroute://contracts/cli/prepare-discovered-model-connection-request.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "discovery": {
+      "additionalProperties": false,
+      "properties": {
+        "discovery_ref": {
+          "pattern": "^discovery/[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "discovery_revision": {
+          "maximum": 18446744073709551615,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "discovery_ref",
+        "discovery_revision"
+      ],
+      "type": "object"
+    },
+    "prepare_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "discovery",
+    "prepare_id"
+  ],
+  "type": "object"
+}

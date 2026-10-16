@@ -43,6 +43,7 @@ mod windows_native_reader_tests;
 
 mod agent_check;
 mod agent_read;
+mod native_targets;
 pub use agent_read::SucceededAgentOperationV1;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
@@ -54,6 +55,8 @@ mod native_artifacts;
 #[path = "../agents/native_directories.rs"]
 mod native_directories;
 mod native_permissions;
+#[path = "../agents/native_reference.rs"]
+mod native_reference;
 use native_permissions::{
     current_artifact_aad, current_artifact_schema, desired_windows_permissions,
 };
@@ -1987,7 +1990,7 @@ pub struct ManagedArtifactStore {
     restore_key: Zeroizing<Vec<u8>>,
     restore_store_uuid: String,
     restore_key_id: CanonicalDigest,
-    external_targets: BTreeMap<String, PathBuf>,
+    external_targets: std::sync::RwLock<BTreeMap<String, PathBuf>>,
     // Process-local proof only. Reopening/replaying a deletion never recreates it.
     untouched_deletions: std::sync::Mutex<BTreeMap<(String, String), CanonicalDigest>>,
 }
@@ -2026,7 +2029,7 @@ impl ManagedArtifactStore {
             restore_key: restore.bytes,
             restore_store_uuid: restore.store_uuid,
             restore_key_id: restore.key_id,
-            external_targets: BTreeMap::new(),
+            external_targets: std::sync::RwLock::new(BTreeMap::new()),
             untouched_deletions: std::sync::Mutex::new(BTreeMap::new()),
         };
         store.migrate_legacy_markers()?;
@@ -2079,7 +2082,7 @@ impl ManagedArtifactStore {
             restore_key: restore.bytes,
             restore_store_uuid: restore.store_uuid,
             restore_key_id: restore.key_id,
-            external_targets,
+            external_targets: std::sync::RwLock::new(external_targets),
             untouched_deletions: std::sync::Mutex::new(BTreeMap::new()),
         };
         // Register all exact bindings before validating the targets actually owned by markers.
@@ -2108,15 +2111,52 @@ impl ManagedArtifactStore {
         let _ = self.target_path(&target)?;
         let path = path.into();
         validate_external_target_path(&path)?;
-        if self
+        let targets = self
             .external_targets
-            .values()
-            .any(|existing| existing == &path)
-            || self.external_targets.insert(target, path).is_some()
+            .get_mut()
+            .map_err(|_| LocalStorageError::InvalidData)?;
+        if targets.values().any(|existing| existing == &path)
+            || targets.insert(target, path).is_some()
         {
             return Err(LocalStorageError::InvalidData);
         }
         self.validate_existing_marker_bindings()
+    }
+
+    /// Add exact backend-validated profile bindings after discovery. Existing bindings are
+    /// immutable and idempotent; registration itself performs no native write or authorization.
+    pub fn register_external_targets(
+        &self,
+        additions: impl IntoIterator<Item = (String, PathBuf)>,
+    ) -> Result<(), LocalStorageError> {
+        let additions: Vec<_> = additions.into_iter().collect();
+        for (target, path) in &additions {
+            let logical = Path::new(target);
+            if logical.is_absolute()
+                || logical.components().any(|part| {
+                    !matches!(part, Component::Normal(_))
+                        || part.as_os_str().to_string_lossy().starts_with('.')
+                })
+            {
+                return Err(LocalStorageError::InvalidData);
+            }
+            validate_external_target_location(path)?;
+        }
+        let mut targets = self
+            .external_targets
+            .write()
+            .map_err(|_| LocalStorageError::InvalidData)?;
+        let mut next = targets.clone();
+        for (target, path) in additions {
+            if next.get(&target).is_some_and(|old| old != &path)
+                || next.iter().any(|(key, old)| key != &target && old == &path)
+            {
+                return Err(LocalStorageError::InvalidData);
+            }
+            next.insert(target, path);
+        }
+        *targets = next;
+        Ok(())
     }
 
     /// Stages already rendered native bytes using the same encrypted restore and atomic
@@ -2166,9 +2206,15 @@ impl ManagedArtifactStore {
     }
 
     fn target_path(&self, target: &str) -> Result<PathBuf, LocalStorageError> {
-        if let Some(path) = self.external_targets.get(target) {
-            validate_external_target_path(path)?;
-            return Ok(path.clone());
+        let external = self
+            .external_targets
+            .read()
+            .map_err(|_| LocalStorageError::InvalidData)?
+            .get(target)
+            .cloned();
+        if let Some(path) = external {
+            validate_external_target_path(&path)?;
+            return Ok(path);
         }
         let relative = Path::new(target);
         if relative.is_absolute()
@@ -2296,7 +2342,12 @@ impl ManagedArtifactStore {
             {
                 return Err(LocalStorageError::Locked);
             }
-            if self.external_targets.contains_key(&marker.target) {
+            let external = self
+                .external_targets
+                .read()
+                .map_err(|_| LocalStorageError::InvalidData)?
+                .contains_key(&marker.target);
+            if external {
                 // A durable effect is a real recovery consumer, not an unused registration.
                 // Validate before touching even a legacy marker's internal representation.
                 let _ = self.target_path(&marker.target)?;
@@ -2433,6 +2484,8 @@ impl ManagedArtifactStore {
         target: &str,
     ) -> Result<Option<CanonicalDigest>, LocalStorageError> {
         self.external_targets
+            .read()
+            .map_err(|_| LocalStorageError::InvalidData)?
             .get(target)
             .map(|path| {
                 path.to_str()
@@ -2750,6 +2803,9 @@ impl ManagedArtifactStore {
             .load_marker(operation_id, intent.effect_id())
             .map_err(|_| port(PortErrorCode::Unavailable, "artifact.marker.observe"))?
         else {
+            if let Some(state) = self.observe_native_file_reference(operation_id, intent)? {
+                return Ok(state);
+            }
             if let Some(state) = self.observe_unstaged_native_restoration(operation_id, intent)? {
                 return Ok(state);
             }
@@ -2834,6 +2890,12 @@ impl ManagedArtifactStore {
     }
 
     pub fn activate_artifact(&self, effect: &OwnedEffectV1) -> PortResult<OwnedEffectV1> {
+        if self.authenticate_native_file_reference_effect(effect)? {
+            if self.current_external_fingerprint(&effect.target)? != effect.after_fingerprint {
+                return Err(port(PortErrorCode::Conflict, "native.reference.changed"));
+            }
+            return Ok(effect.clone());
+        }
         let mut untouched = self
             .untouched_deletions
             .lock()
@@ -2959,6 +3021,9 @@ impl ManagedArtifactStore {
         // the user's cleanup, including recovery of a failed enclosing operation.
         if effect.compensation["schema"] == native_restoration_ack::ACK_SCHEMA {
             return Ok(CompensationOutcome::OwnershipLost);
+        }
+        if self.authenticate_native_file_reference_effect(effect)? {
+            return Ok(CompensationOutcome::AlreadyCompensated);
         }
         let operation_id = effect
             .compensation

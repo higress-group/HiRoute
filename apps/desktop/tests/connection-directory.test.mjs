@@ -15,7 +15,8 @@ test('the directory contains every current API option and excludes subscription 
   assert.deepEqual(directory.flatMap(provider => provider.products.map(product => product.option.connection_option_id)).sort(),
     native.map(option => option.connection_option_id).sort());
   assert.equal(directory.length, 13);
-  assert.equal(native.length, 18);
+  assert.equal(native.length, 19);
+  assert.ok(native.some(option => option.connection_option_id === 'zhipu.coding-chat.cn.v1' && option.billing_class === 'subscription'));
   assert.equal(directory.find(provider => provider.id === 'bailian').products.length, 3);
   const future = { ...native[0], connection_option_id: 'future.api', connector_id: 'future.connector', display_name: 'Future service' };
   assert.equal(connectionDirectory([...native, future], 'zh', lookup).at(-1).products[0].option.connection_option_id, 'future.api');

@@ -53,6 +53,7 @@ use crate::delegation::run_authority::DelegationRunAuthority;
 
 mod additional_model_budget;
 mod agent_connection;
+mod agent_effective_state;
 mod agent_live_check;
 mod candidate_execution;
 mod client_access;
@@ -70,11 +71,13 @@ mod delegation_task_queries;
 mod delegation_tasks;
 mod delegation_worker;
 mod effects;
+mod hermes_management_status;
 mod model_catalog;
 mod model_connections;
 mod mutation;
 mod native_additional_model;
 mod native_claude_model;
+mod native_hermes;
 mod native_model;
 mod observation_key;
 use observation_key::observation_workspace_key;
@@ -420,6 +423,47 @@ impl ProductionControlRuntime {
             hiroute_integrations::DSH_INTEGRATION_PROFILE_REF_V1,
         )
         .map_err(|e| e.to_string())?;
+        let mut scoped_targets = Vec::new();
+        let mut hermes_scan_targets = BTreeMap::new();
+        for target in stores
+            .control()
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .map_err(|e| e.to_string())?
+        {
+            let context = hiroute_integrations::hermes_context_id(target.config_root());
+            if !context.starts_with("agent-context/hermes/") {
+                return Err("invalid native target".into());
+            }
+            hermes_scan_targets.insert(context.clone(), target.clone());
+            scoped_targets.extend(
+                hiroute_integrations::hermes_external_targets(target.config_root())
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        for (subject, collaboration) in [
+            (
+                &codex_subject,
+                home.join(".agents/skills/hiroute-collaboration/SKILL.md"),
+            ),
+            (
+                &claude_subject,
+                home.join(".claude/skills/hiroute-collaboration/SKILL.md"),
+            ),
+            (&qoder_subject, scanner.qoder_user_skill_target()),
+            (&pi_subject, scanner.pi_user_skill_target()),
+            (&dsh_subject, scanner.dsh_user_skill_target()),
+        ] {
+            let root = collaboration
+                .parent()
+                .and_then(|p| p.parent())
+                .ok_or("invalid Skill root")?;
+            scoped_targets.push((
+                AgentConnectionEffectRoleV1::ManagementSkill
+                    .settings_target_for(subject)
+                    .map_err(|e| e.to_string())?,
+                root.join("hiroute-management/SKILL.md"),
+            ));
+        }
         let artifacts = stores
             .open_managed_artifacts_with_external_targets(
                 storage_root.join("managed-artifacts"),
@@ -476,7 +520,9 @@ impl ProductionControlRuntime {
                             .map_err(|error| error.to_string())?,
                         scanner.qoder_user_skill_target(),
                     ),
-                ],
+                ]
+                .into_iter()
+                .chain(scoped_targets),
             )
             .map_err(|error| error.to_string())?;
         let observation_workspace_key = observation_workspace_key(storage_root)?;
@@ -518,6 +564,7 @@ impl ProductionControlRuntime {
             ),
             model_connection_cancellations: Mutex::new(BTreeMap::new()),
             prepared_discoveries: Mutex::new(BTreeMap::new()),
+            hermes_scan_targets: Mutex::new(hermes_scan_targets),
             permission_findings: Mutex::new(BTreeMap::new()),
             admission: hiroute_application::TransactionRuntime::default(),
             plan_admission,
@@ -826,6 +873,7 @@ struct LocalControlAdapter {
     model_connection_cancellations:
         Mutex<BTreeMap<String, hiroute_integrations::ModelConnectionProbeCancellationV1>>,
     prepared_discoveries: Mutex<BTreeMap<String, PrepareDiscoveredModelConnectionRequestV1>>,
+    hermes_scan_targets: Mutex<BTreeMap<String, hiroute_domain::AgentNativeTargetV1>>,
     permission_findings: Mutex<BTreeMap<String, PermissionHardeningRequiredV1>>,
     admission: hiroute_application::TransactionRuntime,
     plan_admission: Arc<hiroute_application::publication::admission::SharedAdmissionGate>,
@@ -1153,6 +1201,83 @@ impl ControlStatePort for LocalControlAdapter {
 }
 
 impl AgentDiscoveryPort for LocalControlAdapter {
+    fn list(&self) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
+        let mut agents = self.discover()?;
+        let targets = self
+            .stores_lock()
+            .map_err(map_port)?
+            .control()
+            .agent_settings_native_targets(&WorkspaceId::default())
+            .map_err(map_port)?;
+        for target in targets {
+            match self.discover_target(&target) {
+                Ok(rows) => agents.extend(rows),
+                Err(_) => {
+                    let subject = hiroute_integrations::hermes_subject(target.config_root())
+                        .map_err(|_| ControlReadError::Corrupt)?;
+                    agents.push(DiscoveredAgentV1 {
+                        native_target: Some(target.clone()),
+                        codex_access: None,
+                        context_id: Some(hiroute_integrations::hermes_context_id(
+                            target.config_root(),
+                        )),
+                        agent_id: subject.agent_id().into(),
+                        profile_id: subject.profile_id().into(),
+                        version: "unknown".into(),
+                        supported: false,
+                        configuration_state: "selected_target_unavailable".into(),
+                        available_surfaces: Default::default(),
+                        native_model_catalog: None,
+                        registered_configuration: None,
+                        discovered_credential: None,
+                        permission_hardening: None,
+                    });
+                }
+            }
+        }
+        Ok(agents)
+    }
+    fn discover_target(
+        &self,
+        target: &hiroute_domain::AgentNativeTargetV1,
+    ) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
+        let target = hiroute_integrations::canonical_hermes_target(target)
+            .map_err(|_| ControlReadError::Denied)?;
+        let (installation, config_available) =
+            match hiroute_integrations::hermes_settings_installation(&target) {
+                Ok(installation) => (installation, true),
+                Err(_) => (
+                    hiroute_integrations::hermes_management_installation(&target)
+                        .map_err(|_| ControlReadError::Denied)?,
+                    false,
+                ),
+            };
+        let supported = config_available
+            && installation
+                .require_action(hiroute_domain::AgentAction::ConfigureModel)
+                .is_ok();
+        let context_id = hiroute_integrations::hermes_context_id(target.config_root());
+        Ok(vec![DiscoveredAgentV1 {
+            native_target: Some(target),
+            context_id: Some(context_id),
+            codex_access: None,
+            agent_id: installation.agent_id,
+            profile_id: installation.profile.profile_id,
+            version: installation.version,
+            supported,
+            configuration_state: if supported {
+                "registered"
+            } else {
+                "unsupported_native_feature"
+            }
+            .into(),
+            available_surfaces: [hiroute_domain::AgentModelSurfaceV2::HermesCli].into(),
+            native_model_catalog: None,
+            registered_configuration: None,
+            discovered_credential: None,
+            permission_hardening: None,
+        }])
+    }
     fn discover(&self) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
         let fixed_candidates =
             hiroute_application::control::RoutingFactsPort::routing_compilation_snapshot(
@@ -1390,6 +1515,7 @@ fn release_agent_scanner(
             AgentKindV1::Qoder => &mut layout.qoder_executable,
             AgentKindV1::Pi => &mut layout.pi_executable,
             AgentKindV1::DeepseekHarness => &mut layout.dsh_executable,
+            AgentKindV1::Hermes => continue,
         };
         *target = executable.clone();
     }
@@ -1425,6 +1551,7 @@ fn discovered_agent(
                 AgentKindV1::Qoder => QODER_PROFILE_ID_V1,
                 AgentKindV1::Pi => hiroute_integrations::PI_PROFILE_ID_V1,
                 AgentKindV1::DeepseekHarness => hiroute_integrations::DSH_PROFILE_ID_V1,
+                AgentKindV1::Hermes => hiroute_integrations::HERMES_PROFILE_ID_V1,
             }
             .to_owned(),
             version.clone(),
@@ -1452,6 +1579,7 @@ fn discovered_agent(
         })
         .transpose()?;
     Ok(DiscoveredAgentV1 {
+        native_target: None,
         codex_access: None,
         context_id: None,
         agent_id,

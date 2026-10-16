@@ -561,6 +561,7 @@ fn responses_chat_tools_snapshot(
             candidates: vec![chat, fallback],
         }],
         vec![GrantV1 {
+            consumer: None,
             route_protocols: Default::default(),
             grant_id: "responses-chat-tools-grant".into(),
             generation: 1,

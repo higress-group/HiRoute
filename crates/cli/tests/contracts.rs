@@ -16,7 +16,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 87); // Full staged surface including decision services.
+    assert_eq!(commands.len(), 88); // Full staged surface including decision services.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));
@@ -51,6 +51,7 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "compute.scan",
             "compute.list",
             "compute.show",
+            "compute.connection.prepare",
             "compute.connection.options",
             "compute.connection.preview",
             "compute.connection.apply",
@@ -79,6 +80,9 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "decision.services.apply",
             "decision.services.test",
             "models.show",
+            "prices.effective",
+            "prices.override.preview",
+            "prices.override.apply",
             "operations.get",
             "sessions.list",
             "sessions.show",
@@ -138,7 +142,7 @@ fn packaged_headless_docs_distinguish_host_and_application_discovery() {
         "hiroute subscription-proxy --help",
         "Application/Local Control",
         "hiroute schema list --output json",
-        "hiroute schema show --command-id compute.connection.test --output json",
+        "hiroute schema show --command-id compute.connection.test --include-schema --output json",
     ] {
         assert!(
             docs.contains(required),

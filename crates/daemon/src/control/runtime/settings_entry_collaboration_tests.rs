@@ -277,7 +277,10 @@ fn assert_skill_upgrade(
         .unwrap();
     assert_eq!(
         record.template_revision,
-        format!("worker-instance-{mode}-v2")
+        format!(
+            "worker-instance-{mode}-v{}",
+            if mode == "default" { 3 } else { 2 }
+        )
     );
     assert!(record.revision > 1);
     assert_eq!(

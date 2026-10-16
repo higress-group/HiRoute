@@ -50,6 +50,7 @@ impl RunPublicationHandle {
         if alias.served_model_id != model_alias
             || alias.protocols.len() != 1
             || alias.protocols[0] != protocol
+            || grant.consumer.is_some()
             || grant.protocol != protocol
             || !grant.route_protocols.is_empty()
             || grant.routes.len() != 1

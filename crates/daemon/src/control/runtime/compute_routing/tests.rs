@@ -512,6 +512,7 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
         ),
         model_connection_cancellations: Mutex::new(BTreeMap::new()),
         prepared_discoveries: Mutex::new(BTreeMap::new()),
+        hermes_scan_targets: Mutex::new(BTreeMap::new()),
         permission_findings: Mutex::new(BTreeMap::new()),
         admission: TransactionRuntime::default(),
         plan_admission,

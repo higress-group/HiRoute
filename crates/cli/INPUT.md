@@ -46,3 +46,65 @@ argument validation. `src/args.rs` preserves the request-file path as an option 
 while extracting global flags. Follow `tests/request_input.rs` for actual binary argv
 regressions and the owner codec tests for typed projections. Generated help/channel
 metadata belongs to application-api; regenerate CLI and Product E2E contracts together.
+
+
+## Quickstart composition and prepared files
+
+`quickstart.rs` and its leaves own read-only navigation, bounded convenience flags and
+composition over existing Local Control requests. They own no default editor, save transaction,
+credential store or observation database. `routing options` authoring owns initial/reopen policy;
+`agent_effective_state` composes current settings with authenticated receipt identity.
+
+Supported Preview commands accept convenience flags OR one JSON input source. `--apply-file`
+may accompany either form and creates a new private request atomically with noclobber semantics.
+The opt-in result wraps the unchanged Preview with the exact Apply argv and Operation lookup tuple.
+The original Apply file/key is the retry identity, not a submission journal. Advanced unsupported
+Preview variants stay available as typed requests but cannot silently produce a different Apply.
+A Desktop login-item requirement blocks prepared submission until the actual host handles it.
+
+`effective_status.rs` preserves legacy positional output and adds explicit `--effective --context
+ID --plan ID` and typed-request forms. Native loading stays unknown without observation. Quickstart
+and status never activate a process or call a model. `command_schemas.rs` in Application API derives
+complete offline schemas from wire DTOs; unflagged descriptor output is unchanged. Detailed input
+errors are opt-in and bounded; raw input, enum values and arbitrary object keys never enter hints.
+
+The installed [Quickstart scenario](../daemon/tests/support/quickstart_product.py) covers first use,
+smart saving, exact replay, stale submission, continuation and one-facet restore. Native caller/target
+activation is a separate acceptance obligation, not established by external fixtures.
+
+## Decision onboarding and human terminal input
+
+`quickstart/decision.rs` presents the shared bundled provider presets and existing saved-service
+query without probing them. It translates convenience save/test flags to existing typed operations;
+`--apply-file` on `decision services apply` requires Preview input and never submits an Apply.
+Service edits preserve omitted connection fields and require explicit credentials for endpoint
+changes. Immutable Secret references and pinned Plan revisions remain owned by existing services.
+The same preset asset is consumed by Desktop; it is not a current provider availability catalog.
+
+`protected_prompt.rs` is a user terminal adapter for the existing protected socket. It reads only
+`/dev/tty` with echo and signal characters disabled, restores terminal settings through the guard,
+bounds/zeroizes input, and adds the selected header scheme. It never reads stdin or writes a secret
+to CLI output; `--secret-fd` retains its released meaning. The human executes the prompt outside
+Agent tools/chat and returns registration status only. Non-Unix hosts report action required.
+The installed Quickstart scenario includes PTY cancellation/error/no-terminal checks and actual
+saved-service test, exact retry and controlled decision-to-execution receipts.
+
+### Complete Plan recovery input
+
+`routing preview --plan ID --restore-from BEFORE_JSON [--apply-file NEW_FILE]` consumes a complete
+successful `routing show` machine response saved before the edit. It is exclusive of typed request
+input and individual edit flags. The existing strict, bounded regular-file codec validates the
+response/target; the saved authoring value uses the Domain editor projection and the current target
+head for normal content Preview/Apply. It never restores sources/credentials/native files or rewinds
+immutable metadata. An uncertain Apply retains its original file/key; stale/dependency errors remain
+explicit. Both preview effects and all restored effective fields must be reviewed.
+
+
+Observation content/search reads use same-user Local Control without a separate GUI ticket;
+explicit grants remain checked. The CLI accepts matching V2 catalog/ancestry/content on sessions
+show and search/session_search on sessions list. Request facts and plan-quality use their existing
+owners. `value show --basis api-equivalent --reference-binding ID --currency CNY|USD` selects a new
+read-only V2 intent; unflagged value calls retain the released historical response. Application pins
+one current price handle, and Observation reuses normalized retained usage and integer valuation.
+This does not rewrite settlement or claim subscription cash savings. See the standalone CLI guide
+for the explicit reference, incomplete coverage and source-specific price restoration workflow.

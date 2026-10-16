@@ -1,0 +1,49 @@
+{
+  "$defs": {
+    "variant_0": {
+      "$defs": {
+        "ComputeCandidateRefV2": {
+          "additionalProperties": false,
+          "properties": {
+            "candidate_ref": {
+              "type": "string"
+            },
+            "candidate_revision": {
+              "description": "Server-issued revision of the complete candidate facts. This is never a UI edit counter.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "candidate_ref",
+            "candidate_revision"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/variant_0/$defs/ComputeCandidateRefV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Opt in to the existing candidate registry's exact, non-secret public view."
+        }
+      },
+      "title": "ComputeConnectionOptionsRequestV1",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/variant_0"
+    }
+  ]
+}

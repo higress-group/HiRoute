@@ -163,10 +163,10 @@ fn wire(operation: &str, payload: serde_json::Value) -> LocalControlRequestV2 {
 }
 
 #[test]
-fn subscription_price_query_is_explicitly_non_editable() {
+fn subscription_usage_is_non_editable_but_api_reference_prices_are_editable() {
     #[cfg(unix)]
     if crate::test_support::isolated_agent_home(
-        "control::runtime::prices::tests::subscription_price_query_is_explicitly_non_editable",
+        "control::runtime::prices::tests::subscription_usage_is_non_editable_but_api_reference_prices_are_editable",
     ) {
         return;
     }
@@ -178,23 +178,29 @@ fn subscription_price_query_is_explicitly_non_editable() {
     .unwrap();
     let binding = seed_source(&runtime, BillingClass::Subscription);
     let app = ApplicationService::new(runtime.application_ports());
-    let response = app.dispatch(wire(
-        "GetEffectivePrices",
-        serde_json::to_value(GetEffectivePricesV2 {
-            targets: vec![EffectivePriceTargetQueryV2 {
-                query_id: "subscription-price".into(),
-                target_locator: PriceTargetLocatorV1::Binding {
-                    binding_id: binding.binding_id,
-                },
-                currency: "USD".into(),
-                valuation_kind: PriceValuationKindV1::ApiEquivalent,
-            }],
-        })
-        .unwrap(),
-    ));
-    assert!(response.error.is_none(), "{response:?}");
-    let response: EffectivePricesResultV2 = serde_json::from_value(response.data.unwrap()).unwrap();
-    assert!(response.items[0].edit_context.is_none());
+    for (kind, editable) in [
+        (PriceValuationKindV1::ApiEquivalent, true),
+        (PriceValuationKindV1::UsageEstimate, false),
+    ] {
+        let response = app.dispatch(wire(
+            "GetEffectivePrices",
+            serde_json::to_value(GetEffectivePricesV2 {
+                targets: vec![EffectivePriceTargetQueryV2 {
+                    query_id: "subscription-price".into(),
+                    target_locator: PriceTargetLocatorV1::Binding {
+                        binding_id: binding.binding_id.clone(),
+                    },
+                    currency: "USD".into(),
+                    valuation_kind: kind,
+                }],
+            })
+            .unwrap(),
+        ));
+        assert!(response.error.is_none(), "{response:?}");
+        let response: EffectivePricesResultV2 =
+            serde_json::from_value(response.data.unwrap()).unwrap();
+        assert_eq!(response.items[0].edit_context.is_some(), editable);
+    }
 }
 
 #[test]

@@ -46,6 +46,9 @@ pub fn compile_agent_plan_v2(
                     let protocol = match work.protocol {
                         AgentIngressProtocolV1::Responses => UpstreamProtocol::Responses,
                         AgentIngressProtocolV1::Messages => UpstreamProtocol::Messages,
+                        AgentIngressProtocolV1::ChatCompletions => {
+                            return Err(AgentPlanCompilerError::InvalidDesiredPlan);
+                        }
                     };
                     if !candidate
                         .protocol_profiles

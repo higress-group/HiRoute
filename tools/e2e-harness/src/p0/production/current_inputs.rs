@@ -67,6 +67,7 @@ impl CurrentUpstream {
                 )],
             }],
             vec![GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "oracle-grant".into(),
                 generation: 1,

@@ -2,6 +2,7 @@ use super::*;
 use hiroute_domain::{
     GatewayNativeProviderStateEmissionV1, GatewayNativeReasoningRenderV1,
     GatewayNativeReasoningValueV1, GatewayReasoningControlKindV1, NativeReasoningCapabilityV1,
+    NativeReasoningRenderConventionV1,
 };
 #[path = "candidate_execution_tests/native_protocol_profiles.rs"]
 mod native_protocol_profiles;
@@ -113,11 +114,12 @@ fn source_local_fact(
 
 #[test]
 fn source_local_none_projection_keeps_port_and_has_no_credential_pool() {
-    let candidate = materialize_management_candidate(
-        &source_local_fact(GatewayAuthenticationSemanticsV1::None),
-        None,
-    )
-    .unwrap();
+    let fact = source_local_fact(GatewayAuthenticationSemanticsV1::None);
+    let candidate = materialize_management_candidate(&fact, None).unwrap();
+    assert_eq!(
+        management_execution_model_id(&fact).as_deref(),
+        Some(candidate.model.model_configuration_id.as_str())
+    );
     assert_eq!(
         candidate.authority,
         CandidateFactAuthorityV1::SourceLocalUser
@@ -274,17 +276,116 @@ fn registered_runtime_fallback_preserves_exact_provider_endpoint_and_has_no_comm
 }
 
 #[test]
+fn qualified_glm_chat_profiles_preserve_enabled_thinking_and_tool_replay() {
+    let bundle: hiroute_domain::ReleaseModelDataBundleV2 = serde_json::from_str(include_str!(
+        "../../../../../assets/model-data/current/model-data.json"
+    ))
+    .unwrap();
+    for id in [
+        "model.zhipu.glm-5.3.coding-chat",
+        "model.zhipu.glm-5.3-flash.coding-chat",
+    ] {
+        let native = bundle
+            .rating_snapshot
+            .models
+            .iter()
+            .find(|n| n.model_configuration_id == id)
+            .unwrap();
+        assert!(reasoning_profiles(native, UpstreamProtocol::Messages).is_none());
+        assert!(reasoning_profiles(native, UpstreamProtocol::Responses).is_none());
+        let profiles = reasoning_profiles(native, UpstreamProtocol::ChatCompletions).unwrap();
+        assert_eq!(
+            profiles
+                .iter()
+                .map(|p| p.profile_id.as_str())
+                .collect::<Vec<_>>(),
+            ["low", "high", "max"]
+        );
+        for profile in profiles {
+            assert_eq!(
+                profile.render,
+                GatewayNativeReasoningRenderV1::ExactFields {
+                    protocol: UpstreamProtocol::ChatCompletions,
+                    fields: vec![
+                        field(
+                            "reasoning_effort",
+                            GatewayNativeReasoningValueV1::String(profile.profile_id),
+                            UpstreamProtocol::ChatCompletions
+                        ),
+                        field(
+                            "thinking.type",
+                            GatewayNativeReasoningValueV1::String("enabled".into()),
+                            UpstreamProtocol::ChatCompletions
+                        ),
+                        field(
+                            "thinking.clear_thinking",
+                            GatewayNativeReasoningValueV1::Bool(false),
+                            UpstreamProtocol::ChatCompletions
+                        ),
+                    ],
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn native_companion_controls_require_exact_catalog_model_product_and_protocol() {
+    let catalog = current_catalog();
+    let mut fact = registered_fact(
+        &catalog,
+        "zhipu.coding-chat.cn.v1",
+        "model.zhipu.glm-5.3.coding-chat",
+    );
+    let convention = Some(NativeReasoningRenderConventionV1::ZhipuThinkingChat);
+    assert_eq!(
+        qualified_native_render_convention(&fact, Some(&catalog)),
+        convention
+    );
+    let original = fact.clone();
+    fact.target.request_path = "/api/paas/v4/chat/completions".into();
+    assert_eq!(
+        qualified_native_render_convention(&fact, Some(&catalog)),
+        None
+    );
+    fact = original.clone();
+    fact.authentication = GatewayAuthenticationSemanticsV1::None;
+    assert_eq!(
+        qualified_native_render_convention(&fact, Some(&catalog)),
+        None
+    );
+    fact = original.clone();
+    fact.target.upstream_protocol = UpstreamProtocol::Responses;
+    assert_eq!(
+        qualified_native_render_convention(&fact, Some(&catalog)),
+        None
+    );
+    fact = original.clone();
+    fact.upstream_model_id = "glm-5.3-flashx".into();
+    assert_eq!(
+        qualified_native_render_convention(&fact, Some(&catalog)),
+        None
+    );
+    fact = original;
+    fact.native_reasoning = NativeReasoningCapabilityV1::Toggle {
+        parameter: "thinking.type".into(),
+    };
+    assert_eq!(
+        qualified_native_render_convention(&fact, Some(&catalog)),
+        None
+    );
+}
+
+#[test]
 fn declared_claude_messages_profiles_emit_both_exact_controls() {
     let bundle: hiroute_domain::ReleaseModelDataBundleV2 = serde_json::from_str(include_str!(
         "../../../../../assets/model-data/current/model-data.json"
     ))
     .unwrap();
-    for native in bundle
-        .rating_snapshot
-        .models
-        .iter()
-        .filter(|n| n.native_render_convention.is_some())
-    {
+    for native in bundle.rating_snapshot.models.iter().filter(|n| {
+        n.native_render_convention
+            == Some(NativeReasoningRenderConventionV1::ClaudeAdaptiveEffortMessages)
+    }) {
         let profiles = reasoning_profiles(native, UpstreamProtocol::Messages).unwrap();
         assert!(!profiles.is_empty());
         for profile in profiles {
@@ -314,7 +415,10 @@ fn declared_claude_messages_profiles_emit_both_exact_controls() {
         .rating_snapshot
         .models
         .iter()
-        .filter(|n| n.native_render_convention.is_some())
+        .filter(|n| {
+            n.native_render_convention
+                == Some(NativeReasoningRenderConventionV1::ClaudeAdaptiveEffortMessages)
+        })
         .map(|n| n.model_configuration_id.as_str())
         .collect();
     // Existing models must keep their controls, and the current Claude additions

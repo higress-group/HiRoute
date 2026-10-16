@@ -620,3 +620,6 @@ fn corrupt_attempt_is_unknown_and_does_not_block_retention_batch() {
 
 #[path = "valuation_query_tests.rs"]
 mod query_tests;
+
+#[path = "api_equivalent_tests.rs"]
+mod api_equivalent_tests;

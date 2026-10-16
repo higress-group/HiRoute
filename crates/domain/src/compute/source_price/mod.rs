@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 mod change;
 pub use change::*;
 
-#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(
     tag = "kind",
     content = "id",
@@ -17,13 +19,17 @@ pub enum PriceModelIdentityV1 {
     CatalogModel(String),
     LocalModel(String),
 }
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum PriceValuationKindV1 {
     UsageEstimate,
     ApiEquivalent,
 }
-#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(deny_unknown_fields)]
 pub struct PriceTargetV1 {
     pub workspace_id: WorkspaceId,
@@ -54,7 +60,9 @@ impl PriceTargetV1 {
         CanonicalDigest::of(self).map_err(|_| ComputeContractError::InvalidPrice)
     }
 }
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum PriceUnknownReasonV1 {
     SnapshotUnavailable,
@@ -67,7 +75,7 @@ pub enum PriceUnknownReasonV1 {
     DisabledRule,
     UnverifiedOfferMapping,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TokenRateV1 {
     Known { micros_per_million_tokens: u64 },
@@ -117,7 +125,7 @@ impl TokenRateV1 {
         Ok(Self::known(amount))
     }
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TokenRatesV1 {
     pub input_uncached: TokenRateV1,
@@ -168,13 +176,13 @@ impl TokenRatesV1 {
         .collect()
     }
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SourcePriceSettingV1 {
     Set { rates: TokenRatesV1 },
     FollowCatalog,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourcePriceOverrideV1 {
     pub target: PriceTargetV1,
@@ -193,7 +201,7 @@ impl SourcePriceOverrideV1 {
         Ok(())
     }
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceFactRefV1 {
     pub id: String,
@@ -210,7 +218,7 @@ impl PriceFactRefV1 {
         Ok(())
     }
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceGenerationRefV1 {
     pub id: String,
@@ -218,7 +226,7 @@ pub struct PriceGenerationRefV1 {
     pub configuration_revision: u64,
     pub catalog_refs: Vec<PriceFactRefV1>,
 }
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PriceOriginV1 {
     Manual,
@@ -227,19 +235,19 @@ pub enum PriceOriginV1 {
     ApiReference,
     Unknown,
 }
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PriceUnitV1 {
     MicrosPerMillionTokens,
 }
 /// Verified adapter facts must supply this context. An unsupported condition keeps price unknown.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PriceBillingContextV1 {
     StandardTokens,
     Unsupported { condition: String },
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FrozenPriceQuoteV1 {
     pub generation_ref: Option<PriceGenerationRefV1>,
@@ -260,7 +268,7 @@ pub struct FrozenPriceQuoteV1 {
     pub unknown_reasons: Vec<PriceUnknownReasonV1>,
     pub quote_digest: CanonicalDigest,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriceReferenceOfferV1 {
     pub model_configuration_id: String,

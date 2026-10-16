@@ -139,6 +139,7 @@ impl AgentCheckConfirmation {
                 AgentModelSurfaceV2::QoderCli => "Qoder CLI",
                 AgentModelSurfaceV2::PiCli => "Pi CLI",
                 AgentModelSurfaceV2::DshCli => "DeepSeek Harness",
+                AgentModelSurfaceV2::HermesCli => "Hermes",
             };
             let models = target.client_model_ids.join(", ");
             let message = if self.english {

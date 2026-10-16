@@ -4,6 +4,7 @@ pub use checks::*;
 #[path = "agent_session.rs"]
 mod agents;
 pub use agents::*;
+mod agent_discovery;
 // Product-limited native session. No arbitrary operation, path, principal or grant IPC.
 use crate::confirmation::{ConfirmationGate, ConfirmationPermit};
 use crate::failure::DesktopFailure;

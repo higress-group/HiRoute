@@ -4,6 +4,15 @@ use hiroute_domain::NativeAgentArtifactPort;
 
 const MAX_NATIVE_BYTES: usize = 1024 * 1024;
 impl NativeAgentArtifactPort for ManagedArtifactStore {
+    fn stage_native_file_reference(
+        &self,
+        operation: &OperationId,
+        intent: &ExternalEffectIntentV1,
+        expected: Option<&[u8]>,
+        metadata: &[u8],
+    ) -> PortResult<OwnedEffectV1> {
+        self.stage_native_file_reference_record(operation, intent, expected, metadata)
+    }
     fn observe_artifact(
         &self,
         operation: &OperationId,

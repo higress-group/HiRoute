@@ -29,6 +29,25 @@ pub(crate) fn dispatch_scan_compute(
     service: &ApplicationService,
     request: LocalControlRequestV2,
 ) -> MachineEnvelopeV2<Value> {
+    if request.payload.get("schema").is_some() {
+        if request.protected_grant.is_some() {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        }
+        let parsed: hiroute_application_api::ComputeScanRequestV2 =
+            match serde_json::from_value::<hiroute_application_api::ComputeScanRequestV2>(
+                request.payload.clone(),
+            ) {
+                Ok(value) if value.valid() => value,
+                _ => return failed(ErrorCode::InvalidArguments, request.request_id),
+            };
+        let Some(port) = compute_port(service) else {
+            return failed(ErrorCode::DaemonUnavailable, request.request_id);
+        };
+        return match port.scan_compute_points(&parsed) {
+            Ok(value) => succeeded(value, request.request_id),
+            Err(error) => failed(crate::map_control_error(error), request.request_id),
+        };
+    }
     if request.protected_grant.is_some()
         || serde_json::from_value::<ComputeScanRequestV1>(request.payload.clone()).is_err()
     {
@@ -47,17 +66,38 @@ pub(crate) fn dispatch_connection_options(
     service: &ApplicationService,
     request: LocalControlRequestV2,
 ) -> MachineEnvelopeV2<Value> {
-    if request.protected_grant.is_some()
-        || serde_json::from_value::<ComputeConnectionOptionsRequestV1>(request.payload.clone())
-            .is_err()
-    {
-        return failed(ErrorCode::InvalidArguments, request.request_id);
-    }
+    let input = match serde_json::from_value::<ComputeConnectionOptionsRequestV1>(
+        request.payload.clone(),
+    ) {
+        Ok(input)
+            if request.protected_grant.is_none()
+                && input
+                    .candidate
+                    .as_ref()
+                    .is_none_or(|candidate| candidate.validate_shape().is_ok()) =>
+        {
+            input
+        }
+        _ => return failed(ErrorCode::InvalidArguments, request.request_id),
+    };
+    let candidate = match input.candidate.as_ref() {
+        Some(reference) => {
+            let Some(management) = management_port(service) else {
+                return failed(ErrorCode::DaemonUnavailable, request.request_id);
+            };
+            match management.get_compute_candidate(reference) {
+                Ok(candidate) => Some(candidate),
+                Err(error) => return failed(map_management_error(error), request.request_id),
+            }
+        }
+        None => None,
+    };
     let Some(port) = compute_port(service) else {
         return failed(ErrorCode::DaemonUnavailable, request.request_id);
     };
     match compute::connection_options(port) {
         Ok(mut result) => {
+            result.candidate = candidate;
             result.subscriptions = service
                 .ports
                 .as_ref()

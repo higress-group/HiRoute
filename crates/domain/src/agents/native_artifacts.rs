@@ -2,9 +2,32 @@
 use crate::{ExternalEffectIntentV1, ExternalEffectPort, OperationId, OwnedEffectV1, PortResult};
 use zeroize::Zeroizing;
 
+/// Protected metadata for an unchanged resource in the existing restore artifact slot.
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeFileReferenceRecordV1 {
+    pub schema: String,
+    pub fingerprint: Option<crate::CanonicalDigest>,
+    pub metadata: Vec<u8>,
+}
+pub const NATIVE_FILE_REFERENCE_SCHEMA_V1: &str = "hiroute.native-file-reference/v1";
+
 /// Implemented by the existing protected artifact store, never by an untrusted frontend.
 /// Operation admission and management authorization remain with the caller.
 pub trait NativeAgentArtifactPort: ExternalEffectPort {
+    /// Journal a borrowed plugin resource without changing its native bytes or mode.
+    fn stage_native_file_reference(
+        &self,
+        _operation: &OperationId,
+        _intent: &ExternalEffectIntentV1,
+        _expected: Option<&[u8]>,
+        _metadata: &[u8],
+    ) -> PortResult<OwnedEffectV1> {
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "native.reference.unsupported",
+        ))
+    }
     /// Inspect the existing native file marker before rendering/staging. This lower-level
     /// artifact operation does not authorize a control-plane Operation or install a publication.
     fn observe_artifact(

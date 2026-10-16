@@ -35,14 +35,34 @@ impl LocalControlAdapter {
         )? {
             let Some(intent) = operation.plan.external().iter().find(|intent| {
                 super::native_additional_model::is_settings_additional_model(intent)
+                    || hiroute_application::agent_connection::is_settings_hermes_model(intent)
             }) else {
                 continue;
             };
-            let payload = settings_additional_model_file_for_operation(&operation, intent)?;
-            let kind = hiroute_application::agent_connection::additional_model_kind(intent)?;
-            let AdditionalModelFileAction::Configure { models, .. } = payload.change else {
-                continue;
-            };
+            let (context_id, kind, models) =
+                if hiroute_application::agent_connection::is_settings_hermes_model(intent) {
+                    let payload = hiroute_application::agent_connection::settings_hermes_model_file_for_operation(&operation, intent)?;
+                    let hiroute_application::agent_connection::HermesModelFileAction::Configure {
+                        model,
+                        ..
+                    } = payload.change
+                    else {
+                        continue;
+                    };
+                    (
+                        payload.context_id,
+                        hiroute_domain::AgentKindV1::Hermes,
+                        vec![model],
+                    )
+                } else {
+                    let payload = settings_additional_model_file_for_operation(&operation, intent)?;
+                    let kind =
+                        hiroute_application::agent_connection::additional_model_kind(intent)?;
+                    let AdditionalModelFileAction::Configure { models, .. } = payload.change else {
+                        continue;
+                    };
+                    (payload.context_id, kind, models)
+                };
             let [mutation] = operation.plan.agent_access_grants() else {
                 return Err(invalid());
             };
@@ -91,6 +111,7 @@ impl LocalControlAdapter {
                             kind,
                             hiroute_domain::AgentKindV1::Pi
                                 | hiroute_domain::AgentKindV1::DeepseekHarness
+                                | hiroute_domain::AgentKindV1::Hermes
                         ) {
                             hiroute_integrations::pi_plan_token_budget(&plan.body.materialized)
                         } else {
@@ -105,7 +126,8 @@ impl LocalControlAdapter {
                 let (reason, proposed) = match projection {
                     Ok(proposed)
                         if proposed.context_window_tokens >= declared.context_window_tokens
-                            && proposed.max_output_tokens >= declared.max_output_tokens =>
+                            && (kind == hiroute_domain::AgentKindV1::Hermes
+                                || proposed.max_output_tokens >= declared.max_output_tokens) =>
                     {
                         continue;
                     }
@@ -114,7 +136,7 @@ impl LocalControlAdapter {
                 };
                 blockers.push(AgentModelBudgetBlockerV1 {
                     agent_kind: kind,
-                    context_id: payload.context_id.clone(),
+                    context_id: context_id.clone(),
                     plan_id: plan_id.clone(),
                     model_alias: ModelAlias::parse(model.alias).map_err(|_| invalid())?,
                     reason,
@@ -155,11 +177,10 @@ pub(super) fn guard_pending_model_change(
             .as_deref()
             .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
             .is_some()
-            && operation
-                .plan
-                .external()
-                .iter()
-                .any(super::native_additional_model::is_settings_additional_model)
+            && operation.plan.external().iter().any(|intent| {
+                super::native_additional_model::is_settings_additional_model(intent)
+                    || hiroute_application::agent_connection::is_settings_hermes_model(intent)
+            })
         {
             return Err(PortError::new(
                 PortErrorCode::Conflict,

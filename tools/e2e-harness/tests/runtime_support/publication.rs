@@ -235,6 +235,7 @@ pub(super) fn snapshot(
             ]
             .into_iter()
             .map(|(protocol, token)| GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: format!("runtime-grant-{}", protocol.path()),
                 generation: 1,
@@ -245,6 +246,7 @@ pub(super) fn snapshot(
             .collect()
         } else {
             vec![GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: "runtime-grant".into(),
                 generation: 1,
@@ -340,6 +342,7 @@ pub(super) fn make_isolated_fixed_grants(snapshot: &mut GatewayPublicationSnapsh
                 })
                 .collect();
             GrantV1 {
+                consumer: None,
                 route_protocols: Default::default(),
                 grant_id: format!("isolated-grant-{index}"),
                 generation: 1,

@@ -9,5 +9,7 @@ mod lifecycle;
 pub use lifecycle::*;
 mod authoring;
 pub use authoring::*;
+mod editor_options;
+pub(crate) use editor_options::prepare_authoring;
 mod suggestions;
 pub use suggestions::*;

@@ -23,11 +23,14 @@
     "hiroute.agent-connection-status/v1",
     "hiroute.agent-connection/v1",
     "hiroute.agent-discovery-list/v1",
+    "hiroute.agent-effective-state/v1",
     "hiroute.agent-launch-descriptor-request/v1",
     "hiroute.agent-live-check-evidence/v1",
     "hiroute.agent-live-check-receipt/v1",
+    "hiroute.agent-management-skill-status/v1",
     "hiroute.agent-model-budget-conflict/v1",
     "hiroute.agent-model-grant/v3",
+    "hiroute.agent-model-grant/v4",
     "hiroute.agent-model-settings-status/v2",
     "hiroute.agent-plan-alias-registry/v1",
     "hiroute.agent-plan-catalog-query/v2",
@@ -42,9 +45,11 @@
     "hiroute.agent-routing-catalog/v1",
     "hiroute.agent-routing-overlay/v1",
     "hiroute.agent-scan-observation/v1",
+    "hiroute.agent-scan-request/v1",
     "hiroute.agent-settings-preview/v2",
     "hiroute.agent-settings-retry/v1",
     "hiroute.agent-surface-check/v1",
+    "hiroute.api-equivalent-value/v1",
     "hiroute.borrowed-claude-binding/v1",
     "hiroute.borrowed-claude-evidence/v1",
     "hiroute.borrowed-codex-access-lease/v1",
@@ -65,6 +70,11 @@
     "hiroute.claude-subscription-candidate/v1",
     "hiroute.claude-subscription-discovery-evidence/v1",
     "hiroute.claude-subscription-source/v1",
+    "hiroute.cli-decision-options/v1",
+    "hiroute.cli-input-diagnostic/v1",
+    "hiroute.cli-prepared-preview/v1",
+    "hiroute.cli-quickstart/v1",
+    "hiroute.cli-required-choices/v1",
     "hiroute.client-protocol-profile/v1",
     "hiroute.client-service-status/v1",
     "hiroute.codex-catalog-artifact/v1",
@@ -81,9 +91,11 @@
     "hiroute.compiled-agent-plan/v1",
     "hiroute.compiled-agent-plan/v3",
     "hiroute.compiled-planner-policy/v1",
+    "hiroute.compute-candidate-view/v2",
     "hiroute.compute-connection-apply-request/v1",
     "hiroute.compute-connection-authorization-request/v1",
     "hiroute.compute-connection-change/v1",
+    "hiroute.compute-connection-options-request/v1",
     "hiroute.compute-connection-options/v1",
     "hiroute.compute-connection-preview/v1",
     "hiroute.compute-connection-test-request/v1",
@@ -106,7 +118,9 @@
     "hiroute.compute-projection-identity/v1",
     "hiroute.compute-runtime-identity/v1",
     "hiroute.compute-runtime-state/v1",
+    "hiroute.compute-scan-request/v2",
     "hiroute.compute-scan-result/v1",
+    "hiroute.compute-scan-result/v2",
     "hiroute.compute-scanner-evidence/v1",
     "hiroute.compute-source-binding-identity/v1",
     "hiroute.compute-source-control/v1",
@@ -213,6 +227,10 @@
     "hiroute.gateway.request-authority/v2",
     "hiroute.gateway.sealed-candidate-execution/v1",
     "hiroute.header-secret-lease-request/v1",
+    "hiroute.hermes-config-restore/v1",
+    "hiroute.hermes-native-restore/v1",
+    "hiroute.hermes-native/v1",
+    "hiroute.hermes-plugin-restore/v1",
     "hiroute.launcher-upgrade-status/v1",
     "hiroute.launcher-upgrade/v1",
     "hiroute.local-pipe/v1",
@@ -237,6 +255,7 @@
     "hiroute.native-claude-read/v1",
     "hiroute.native-credential-lease-request/v1",
     "hiroute.native-field-restore/v1",
+    "hiroute.native-file-reference/v1",
     "hiroute.native-files/v1",
     "hiroute.native-launch/v1",
     "hiroute.native-observation/v2",
@@ -291,6 +310,7 @@
     "hiroute.planner-input/v1",
     "hiroute.planner-output/v1",
     "hiroute.posix-artifact-fingerprint/v1",
+    "hiroute.prepare-discovered-model-connection-request/v1",
     "hiroute.prepared-discovery-input/v1",
     "hiroute.product-publication-marker/v1",
     "hiroute.product-publication-marker/v2",
@@ -334,6 +354,8 @@
     "hiroute.settings-claude-model-file/v1",
     "hiroute.settings-codex-model-file/v1",
     "hiroute.settings-dsh-model-file/v1",
+    "hiroute.settings-hermes-model-file/v1",
+    "hiroute.settings-hermes-plugin-file/v1",
     "hiroute.settings-login-item/v1",
     "hiroute.settings-model-publication/v1",
     "hiroute.settings-pi-model-file/v1",
@@ -856,9 +878,13 @@
         "hiroute.agent-model-grant"
       ],
       "current_contracts": [
-        "hiroute.agent-model-grant/v3"
+        "hiroute.agent-model-grant/v3",
+        "hiroute.agent-model-grant/v4"
       ],
-      "legacy_support": []
+      "legacy_support": [],
+      "owner": "domain/agents",
+      "reason": "One current grant type: consumerless grants retain the published v3 canonical bytes and meaning; explicitly sealed Hermes consumers use the v4 digest namespace. A caller header cannot create this authority.",
+      "removal_condition": "Retire the consumerless canonical projection only after supported released grants and their retained Operations/publications have an explicit conversion and recovery path."
     },
     {
       "subject": "stable_plan_version",
@@ -1059,6 +1085,20 @@
       "legacy_support": []
     },
     {
+      "subject": "compute_scan_projection",
+      "audited_prefixes": [
+        "hiroute.compute-scan-result"
+      ],
+      "current_contracts": [
+        "hiroute.compute-scan-result/v1",
+        "hiroute.compute-scan-result/v2"
+      ],
+      "legacy_support": [],
+      "owner": "application-api/daemon/model-connections",
+      "reason": "The shared scanner retains the currently published empty-request V1 projection and one-model discovery handles. An explicit V2 request selects connection-point projection; credentials and source semantics have one private owner. Current CLI/Desktop consume the V2 shape without expanding old handles.",
+      "removal_condition": "Remove the V1 request/projection adapter only when the supported public caller policy retires the released V1 API and its one-model handles."
+    },
+    {
       "subject": "windows_managed_artifact_marker",
       "audited_prefixes": [
         "hiroute.windows-managed-artifact-marker"
@@ -1142,7 +1182,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -1211,21 +1251,6 @@
       "removal_condition": "Retire only with declared schema23 recovery support and its replacement upgrade evidence.",
       "allowed_paths": [
         "crates/local-storage/src/migrations/fixtures/schema23-worker-operations.json",
-        "crates/local-storage/src/migrations/fixtures/README.md",
-        "crates/local-storage/src/migrations/worker_dependencies_v24_tests.rs",
-        "crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs"
-      ]
-    },
-    {
-      "contract": "hiroute.worker-dependency-selection-confirmation/v1",
-      "field": "test-only Windows path projection of frozen schema23 Worker journals",
-      "mode": "frozen_fixture",
-      "owner": "local-storage",
-      "reason": "Exercise original schema23 SQL migration and recovery with valid Windows absolute paths. An independent derivation first authenticates the unchanged original fixture and its digest formulas, then changes only installation paths and dependent proofs. This fixture is synthetic and does not establish a historical Windows release or cross-platform backup migration.",
-      "removal_condition": "Retire together with the schema23 native-path recovery matrix and its replacement evidence; preserve the original historical producer fixture independently.",
-      "allowed_paths": [
-        "crates/local-storage/src/migrations/fixtures/schema23-worker-operations-windows.json",
-        "crates/local-storage/src/migrations/fixtures/derive-windows-schema23.py",
         "crates/local-storage/src/migrations/fixtures/README.md",
         "crates/local-storage/src/migrations/worker_dependencies_v24_tests.rs",
         "crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs"
@@ -1444,6 +1469,61 @@
       ]
     },
     {
+      "contract": "hiroute.agent-model-grant/v3",
+      "field": "omitted consumer on retained grant, operation and publication bytes",
+      "mode": "recovery_read_only",
+      "owner": "domain/agents",
+      "reason": "An absent consumer retains the exact released v3 digest and existing non-Hermes interpretation. Only a digest-bound Hermes consumer receives the new identity policy; absence is never inferred from a native header or user-agent.",
+      "removal_condition": "Remove this absent-field read behavior only with supported grant/publication/Operation conversion and old-to-new recovery evidence.",
+      "allowed_paths": [
+        "crates/domain/src/agents/model_grant.rs",
+        "crates/domain/src/publication/snapshot.rs",
+        "crates/gateway/src/publication/schema.rs",
+        "crates/gateway/src/dispatch/run.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.hermes-config-restore/v1",
+      "field": "prior long scoped Hermes provider keys in before/after native fields",
+      "mode": "recovery_read_only",
+      "owner": "agent-integrations/hermes",
+      "reason": "Retained pre-compact restore records and accepted native effects bind full provider keys. Current writes use a compact scoped provider, preserve the original baseline, and validate foreign destinations/references. Frozen synthetic bytes were emitted by product revision 80269c50c0dd15fcc7cd48d3768ca52aa2c7c362 through hermes_configure, with capture inputs recorded in the fixture.",
+      "removal_condition": "Retire only when supported installed profiles and retained operation/restore records no longer contain long provider keys, together with the old-byte production reader regression.",
+      "allowed_paths": [
+        "crates/integrations/src/agents/hermes_config.rs",
+        "crates/integrations/tests/fixtures/hermes-config-restore-80269c5.json"
+      ]
+    },
+    {
+      "contract": "hiroute.gateway.publication-snapshot/v3",
+      "field": "omitted billing_class on retained executable projections",
+      "mode": "recovery_read_only",
+      "owner": "routing-publication",
+      "reason": "Preserve strict decoding and canonical stored Product bytes when the derived billing class is absent. gateway_snapshot projects trusted source billing class without rewriting stored publication/Plan records; absence is unknown, never free. Current request receipts use this supplying class independently of any selected API-equivalent estimate.",
+      "removal_condition": "Retire only with an explicit supported publication/cache compatibility decision.",
+      "allowed_paths": [
+        "crates/domain/src/publication/mod.rs",
+        "crates/domain/src/publication/snapshot.rs",
+        "crates/gateway/src/publication/schema.rs",
+        "crates/gateway/src/composition/ports.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.worker-dependency-selection-confirmation/v1",
+      "field": "test-only Windows path projection of frozen schema23 Worker journals",
+      "mode": "frozen_fixture",
+      "owner": "local-storage",
+      "reason": "Exercise original schema23 SQL migration and recovery with valid Windows absolute paths. An independent derivation first authenticates the unchanged original fixture and its digest formulas, then changes only installation paths and dependent proofs. This fixture is synthetic and does not establish a historical Windows release or cross-platform backup migration.",
+      "removal_condition": "Retire together with the schema23 native-path recovery matrix and its replacement evidence; preserve the original historical producer fixture independently.",
+      "allowed_paths": [
+        "crates/local-storage/src/migrations/fixtures/schema23-worker-operations-windows.json",
+        "crates/local-storage/src/migrations/fixtures/derive-windows-schema23.py",
+        "crates/local-storage/src/migrations/fixtures/README.md",
+        "crates/local-storage/src/migrations/worker_dependencies_v24_tests.rs",
+        "crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs"
+      ]
+    },
+    {
       "contract": "hiroute.gateway-publication/v3",
       "field": "source_binding_id absent from all executable candidates",
       "mode": "recovery_read_only",
@@ -1451,12 +1531,12 @@
       "reason": "Released v0.3.1 branch projections use distinct branch/reasoning execution keys without a separate source binding. Authenticate the complete original alias projection, including old routing/display-name variants, then rebuild source membership from the sealed Plans before current publication. Explicit mismatches and partially stripped bindings are rejected; credential or target checks are not relaxed.",
       "removal_condition": "Retire only after all supported active, prepared, last-known-good and backup publications have explicit branch source bindings and the corresponding old-projection recovery assertions are retired.",
       "allowed_paths": [
+        "crates/application/src/compiler/explicit/tests.rs",
         "crates/domain/src/publication/mod.rs",
         "crates/domain/src/publication/projection.rs",
         "crates/domain/src/publication/snapshot.rs",
-        "crates/gateway/src/publication/schema.rs",
         "crates/gateway/src/publication/mod.rs",
-        "crates/application/src/compiler/explicit/tests.rs"
+        "crates/gateway/src/publication/schema.rs"
       ]
     }
   ]

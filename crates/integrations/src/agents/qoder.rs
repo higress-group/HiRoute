@@ -108,7 +108,7 @@ pub fn render_qoder_transient_route(
         &format!("${{{}}}", input.credential_env),
         vec![model],
         input.protocol,
-    );
+    )?;
     provider["model"] = input.alias.into();
     provider["routing"] = json!({
         "utility":input.alias,"session_title":input.alias,"summary":input.alias,

@@ -13,7 +13,9 @@ use super::model_metadata_records::{
 
 pub const MODEL_METADATA_CATALOG_SCHEMA_V1: &str = "hiroute.model-metadata-catalog/v1";
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataCompletenessV1 {
     Complete,
@@ -24,7 +26,9 @@ pub enum MetadataCompletenessV1 {
     NotApplicable,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataCapabilityStateV1 {
     Supported,
@@ -34,7 +38,9 @@ pub enum MetadataCapabilityStateV1 {
     NotApplicable,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataTokenStateV1 {
     Conflict,
@@ -49,7 +55,9 @@ pub enum MetadataTokenStateV1 {
 /// The explicit execution outcome of a provider-scoped model record against the native
 /// text contract. It never grants runtime eligibility: endpoint, credential, and
 /// protocol qualification stay separate.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataExecutionFitStateV1 {
     NativeTextRepresentable,
@@ -57,7 +65,7 @@ pub enum MetadataExecutionFitStateV1 {
     NotApplicable,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataExecutionFitV1 {
     pub state: MetadataExecutionFitStateV1,
@@ -65,14 +73,18 @@ pub struct MetadataExecutionFitV1 {
     pub reason: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataCostHintStateV1 {
     NotRecorded,
     Recorded,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataReasoningRenderingStateV1 {
     NotApplicable,
@@ -81,20 +93,24 @@ pub enum MetadataReasoningRenderingStateV1 {
 /// A single field that was closed by a reviewed inference rule instead of an observed
 /// fact. `basis` is always `inferred`, so a rule-closed value can never be read as a
 /// provider-verified assertion.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataFieldProvenanceV1 {
     pub basis: MetadataInferenceBasisV1,
     pub rule_key: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataInferenceBasisV1 {
     Inferred,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataInferenceRecordKindV1 {
     Model,
@@ -104,7 +120,7 @@ pub enum MetadataInferenceRecordKindV1 {
 /// The audited shape of one inference rule that closed provider-scoped fields. The
 /// deterministic match and assignment table stays in the maintained catalog; this record
 /// keeps the rule identity, reason, and evidence inspectable next to the closed values.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataInferenceRuleV1 {
     pub rule_key: String,
@@ -115,7 +131,9 @@ pub struct MetadataInferenceRuleV1 {
     pub collected_on: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataAuthenticationHintV1 {
     ApiKey,
@@ -127,7 +145,9 @@ pub enum MetadataAuthenticationHintV1 {
     Vertex,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum MetadataUsageScenarioV1 {
     AdapterPlanning,
@@ -147,7 +167,7 @@ pub enum MetadataUsageScenarioV1 {
     VisionCapabilityPrefill,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataTokenLimitV1 {
     pub state: MetadataTokenStateV1,
@@ -156,14 +176,14 @@ pub struct MetadataTokenLimitV1 {
     pub candidates: Vec<u64>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataProvenanceRefV1 {
     pub kind: String,
     pub source_key: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataEvidenceSourceV1 {
     pub source_key: String,
@@ -175,7 +195,7 @@ pub struct MetadataEvidenceSourceV1 {
     pub digest_state: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataClientRunV1 {
     pub source_key: String,
@@ -186,7 +206,7 @@ pub struct MetadataClientRunV1 {
     pub result_digest: CanonicalDigest,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataProductInterfaceV1 {
     pub interface_key: String,
@@ -197,7 +217,7 @@ pub struct MetadataProductInterfaceV1 {
     pub request_path_template: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataAccessProductV1 {
     pub product_key: String,
@@ -215,7 +235,7 @@ pub struct MetadataAccessProductV1 {
     pub disposition: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataLimitVariantV1 {
     pub upstream_id: String,
@@ -223,7 +243,7 @@ pub struct MetadataLimitVariantV1 {
     pub condition: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataReasoningHintV1 {
     pub kind: String,
@@ -232,7 +252,7 @@ pub struct MetadataReasoningHintV1 {
     pub note: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataCanonicalModelV1 {
     pub model_key: String,
@@ -257,14 +277,14 @@ pub struct MetadataCanonicalModelV1 {
     pub data_note: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataAvailabilityV1 {
     pub state: String,
     pub condition: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataEndpointBindingV1 {
     pub binding_key: String,
@@ -282,7 +302,7 @@ pub struct MetadataEndpointBindingV1 {
     pub evidence_refs: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataBindingCapabilityOverridesV1 {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -297,7 +317,7 @@ pub struct MetadataBindingCapabilityOverridesV1 {
     pub streaming: Option<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataDynamicRouteV1 {
     pub route_key: String,
@@ -310,7 +330,7 @@ pub struct MetadataDynamicRouteV1 {
     pub evidence_refs: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelMetadataCatalogV1 {
     pub schema: String,

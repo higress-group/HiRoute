@@ -94,6 +94,31 @@ pub fn settings_skill_file_intent(
     template: Option<&CollaborationSkillTemplate>,
     before_fingerprint: Option<CanonicalDigest>,
 ) -> Result<ExternalEffectIntentV1, OperationValidationError> {
+    let facet = if control.subject().agent_id() == "agent_hermes_default" {
+        hiroute_domain::AgentSettingsFacet::ManagementSkill
+    } else {
+        hiroute_domain::AgentSettingsFacet::Collaboration
+    };
+    settings_skill_file_intent_for_facet(
+        control,
+        context_id,
+        facet,
+        before,
+        plan,
+        template,
+        before_fingerprint,
+    )
+}
+
+pub fn settings_skill_file_intent_for_facet(
+    control: &AgentConnectionControlIntentV1,
+    context_id: &str,
+    facet: hiroute_domain::AgentSettingsFacet,
+    before: Option<&ManagedCollaborationSkill>,
+    plan: &SkillOwnershipPlan,
+    template: Option<&CollaborationSkillTemplate>,
+    before_fingerprint: Option<CanonicalDigest>,
+) -> Result<ExternalEffectIntentV1, OperationValidationError> {
     if control.transaction() != AgentConnectionTransactionKindV1::Settings {
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }
@@ -113,11 +138,21 @@ pub fn settings_skill_file_intent(
     }
     ExternalEffectIntentV1::from_agent_connection_planner(
         control,
-        AgentConnectionEffectRoleV1::RoutingSkill,
+        AgentConnectionEffectRoleV1::settings_skill(context_id, facet)
+            .ok_or(OperationValidationError::UnregisteredEffectPlan)?,
         before_fingerprint,
         &payload,
         0o644,
     )
+}
+
+pub fn is_settings_skill_file(intent: &ExternalEffectIntentV1) -> bool {
+    matches!(
+        intent.effect_id(),
+        "agent-connection-routing-skill"
+            | "agent-connection-management-skill"
+            | "agent-connection-collaboration-skill"
+    ) && intent.desired()["transaction"] == "settings"
 }
 
 fn decode(intent: &ExternalEffectIntentV1) -> PortResult<SkillFilePayload> {
@@ -133,7 +168,7 @@ fn decode(intent: &ExternalEffectIntentV1) -> PortResult<SkillFilePayload> {
         intent.sensitive(),
     )
     .map_err(|_| invalid())?;
-    if intent.effect_id() != "agent-connection-routing-skill"
+    if !is_settings_skill_file(intent)
         || intent.desired_mode() != 0o644
         || intent
             .desired()

@@ -261,7 +261,7 @@ const scenarios = [
     await until(() => all('button').some(item => item.textContent.includes('新建 API 接入')), 'new connection entry');
     all('button').find(item => item.textContent.includes('新建 API 接入')).click();
     await until(() => all('.connection-provider-card').length === 13, 'complete provider directory');
-    assert(document.querySelector('.connection-directory-intro').textContent.includes('18 种接入方式'), 'Directory omits supported products');
+    assert(document.querySelector('.connection-directory-intro').textContent.includes('19 种接入方式'), 'Directory omits supported products');
     assert(getComputedStyle(document.querySelector('.connection-provider-grid')).display === 'grid', 'Production provider layout missing');
     for (const row of all('.connection-provider-card')) {
       assert(getComputedStyle(row).display === 'grid' && getComputedStyle(row).alignItems === 'center', 'Provider card is not aligned');

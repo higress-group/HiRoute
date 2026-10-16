@@ -327,8 +327,10 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
             protected_grant: None,
         }),
     );
-    assert_eq!(unprotected_skill["status"], "denied");
-    assert_eq!(unprotected_skill["error"]["code"], "CAPABILITY_DENIED");
+    // Same-user Local Control can explicitly read content without a second ticket.
+    // The absent session is a normal lookup result, not an authorization failure.
+    assert_eq!(unprotected_skill["status"], "not_found");
+    assert_eq!(unprotected_skill["error"]["code"], "RESOURCE_NOT_FOUND");
 }
 
 struct CliObservation {

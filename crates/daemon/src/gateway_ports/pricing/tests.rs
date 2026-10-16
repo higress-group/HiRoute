@@ -228,7 +228,14 @@ fn stale_offer_mapping_cannot_borrow_current_catalog_price() {
     let evidence = source(slot)
         .capture_request(WorkspaceId::DEFAULT, &bindings, 1000)
         .freeze_attempt("binding", "model-a", "profile", 2000);
-    assert!(evidence.quote.is_none());
+    let quote = evidence.quote.as_ref().unwrap();
+    assert_eq!(quote.exact_target.source_id, "source-a");
+    assert_eq!(quote.actual_offer_ref, None);
+    assert_eq!(quote.origin, PriceOriginV1::Unknown);
+    assert_eq!(
+        quote.rates,
+        TokenRatesV1::unknown(PriceUnknownReasonV1::UnverifiedOfferMapping)
+    );
     assert_eq!(
         evidence.unknown_reason,
         Some(PriceUnknownReasonV1::UnverifiedOfferMapping)

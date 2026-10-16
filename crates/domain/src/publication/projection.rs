@@ -80,10 +80,11 @@ pub(super) fn rebind_current_grant_routes(
             return Err(PublicationError::InvalidGrant);
         }
     }
-    let model_grant = crate::AgentModelGrantV2::seal_routes(
+    let model_grant = crate::AgentModelGrantV2::seal_routes_with_consumer(
         grant.model_grant.protocol,
         routes,
         grant.model_grant.route_protocols,
+        grant.model_grant.consumer,
     )
     .map_err(|_| PublicationError::InvalidGrant)?;
     Ok(GatewayExecutableGrantV2 {

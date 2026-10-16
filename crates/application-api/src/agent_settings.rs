@@ -4,12 +4,13 @@ pub use hiroute_domain::{
     AGENT_SETTINGS_SCHEMA_V2, AgentAccessTokenIntentV1, AgentClaudePresetMappingsV2,
     AgentClaudePresetSelectionV2, AgentClaudePresetValuesV2, AgentCollaborationSelectionV2,
     AgentCollaborationTriggerModeV2, AgentFacetIntent, AgentFixedModelSelectionV2,
-    AgentModelDefaultSelectionV2, AgentModelSelectionV2, AgentModelSurfaceV2, AgentSettingsFacet,
-    AgentSettingsSpecV2, CodexNativeModelModeV2,
+    AgentManagementSkillSelectionV1, AgentModelDefaultSelectionV2, AgentModelSelectionV2,
+    AgentModelSurfaceV2, AgentNativeTargetV1, AgentSettingsFacet, AgentSettingsSpecV2,
+    CodexNativeModelModeV2,
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsApplyV2 {
     pub expected_revisions: hiroute_domain::RevisionSetV1,
@@ -25,7 +26,7 @@ pub struct AgentSettingsApplyV2 {
 }
 
 /// Observed main-app login-item state, mirroring the native ServiceManagement status.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentLoginItemStatusV2 {
     NotRegistered,
@@ -48,7 +49,7 @@ impl AgentLoginItemStatusV2 {
 /// The Desktop host's own observation of the login item around a confirmed settings apply.
 /// The host performs the real status check and any registration before the Operation is
 /// sealed; the daemon never trusts a declaration that does not prove an active item.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentLoginItemDeclarationV2 {
     /// Status observed before any host action in this apply.
@@ -91,20 +92,30 @@ impl AgentLoginItemDeclarationV2 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsPreviewRequestV2 {
     pub spec: AgentSettingsSpecV2,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsStatusRequestV2 {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub include_skills: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_target: Option<AgentNativeTargetV1>,
     pub schema_version: hiroute_domain::SchemaVersion,
     pub context_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective: Option<crate::AgentEffectiveStateRequestV1>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentModelSettingsStateV2 {
     NotConfigured,
@@ -117,16 +128,18 @@ pub enum AgentModelSettingsStateV2 {
 
 /// Settings status follows the actual facets supported by an installation. The model variant
 /// serializes exactly as the existing V2 response, without an added envelope or discriminator.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum AgentSettingsStatusV2 {
     Model(Box<AgentModelSettingsStatusV2>),
-    CollaborationOnly(AgentCollaborationOnlySettingsStatusV2),
+    CollaborationOnly(Box<AgentCollaborationOnlySettingsStatusV2>),
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationOnlySettingsStatusV2 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub management_skill: Option<AgentManagementSkillStatusV1>,
     pub schema: String,
     pub context_id: String,
     pub collaboration: AgentCollaborationSettingsStatusV2,
@@ -172,9 +185,11 @@ impl AgentSettingsStatusV2 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentModelSettingsStatusV2 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_target: Option<AgentNativeTargetV1>,
     pub schema: String,
     pub context_id: String,
     pub state: AgentModelSettingsStateV2,
@@ -199,9 +214,36 @@ pub struct AgentModelSettingsStatusV2 {
     /// configuration also grants Worker authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collaboration: Option<AgentCollaborationSettingsStatusV2>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub management_skill: Option<AgentManagementSkillStatusV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_adapter: Option<AgentNativeAdapterStatusV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective: Option<crate::AgentEffectiveStateV1>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentNativeAdapterStatusV1 {
+    pub resources_installed: bool,
+    pub runtime_loading: AgentNativeRuntimeLoadingV1,
+    pub next_action: AgentNativeAdapterNextActionV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub known_channel_models: Option<Vec<String>>,
+}
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentNativeRuntimeLoadingV1 {
+    Unobserved,
+}
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentNativeAdapterNextActionV1 {
+    ReloadPluginsIfRunning,
+    RepairOwnedResources,
+}
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentModelCheckStateV2 {
     NotVerified,
@@ -209,7 +251,7 @@ pub enum AgentModelCheckStateV2 {
     Failed,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentModelSurfaceResultV2 {
     pub surface: AgentModelSurfaceV2,
@@ -242,6 +284,9 @@ impl AgentModelSettingsStatusV2 {
                 AgentModelSurfaceV2::CodexCli | AgentModelSurfaceV2::CodexDesktop
             ),
             AgentModelSelectionV2::ClaudeLauncher { surfaces, .. } => surfaces.contains(surface),
+            AgentModelSelectionV2::HermesDefault { .. } => {
+                *surface == AgentModelSurfaceV2::HermesCli
+            }
             AgentModelSelectionV2::DshAdditional { .. } => *surface == AgentModelSurfaceV2::DshCli,
             AgentModelSelectionV2::PiAdditional { .. } => *surface == AgentModelSurfaceV2::PiCli,
             AgentModelSelectionV2::QoderAdditional { .. } => {
@@ -258,9 +303,11 @@ impl AgentModelSettingsStatusV2 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationSettingsStatusV2 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<AgentSkillResourceStatusV1>,
     pub schema: String,
     pub state: AgentModelSettingsStateV2,
     pub operation_id: Option<String>,
@@ -270,14 +317,14 @@ pub struct AgentCollaborationSettingsStatusV2 {
     pub current_selection: Option<AgentCollaborationCurrentSelectionV2>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationEffectV2 {
     pub action: String,
     pub trigger_mode: AgentCollaborationTriggerModeV2,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationCurrentSelectionV2 {
     pub trigger_mode: AgentCollaborationTriggerModeV2,
@@ -329,6 +376,10 @@ mod tests {
     fn status() -> AgentModelSettingsStatusV2 {
         let revision = GatewayPublicationRevision::new(7).unwrap();
         AgentModelSettingsStatusV2 {
+            effective: None,
+            native_target: None,
+            management_skill: None,
+            native_adapter: None,
             schema: "hiroute.agent-model-settings-status/v2".into(),
             context_id: "agent-context/test".into(),
             state: AgentModelSettingsStateV2::Configured,
@@ -452,7 +503,7 @@ mod tests {
 
 /// Resume an original already-authorized settings Operation for a supported native client;
 /// never creates a new intent or changes the original context.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsRetryV1 {
     pub schema: String,
@@ -463,3 +514,26 @@ pub struct AgentSettingsRetryV1 {
 #[cfg(test)]
 #[path = "agent_settings_status_tests.rs"]
 mod status_contract_tests;
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentManagementSkillStatusV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<AgentSkillResourceStatusV1>,
+    pub schema: String,
+    pub state: AgentModelSettingsStateV2,
+    pub operation_id: Option<String>,
+    pub operation_state: Option<String>,
+    pub restore_point_ref: Option<String>,
+}
+
+/// Native file availability is separate from this context's managed reference and live loading.
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSkillResourceStatusV1 {
+    pub directory: String,
+    pub file_ownership: Option<hiroute_domain::CollaborationSkillFileOwnership>,
+    pub shared_context_count: usize,
+    pub native_available: Option<bool>,
+    pub runtime_loading: AgentNativeRuntimeLoadingV1,
+}

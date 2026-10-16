@@ -172,6 +172,7 @@ where
     resolver
         .lease_exact(
             CredentialLeaseRequest {
+                execution_binding_id: "binding/cpa-async",
                 stable_binding_id: "binding/cpa-async",
                 credential_ref: credential_id,
                 credential_destination_ref: destination,

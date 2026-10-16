@@ -24,6 +24,7 @@ pub fn builtin_agent_profiles() -> Vec<AgentProfileV1> {
         qoder_collaboration_profile_v1(),
         pi_profile_v1(),
         dsh_profile_v1(),
+        hermes_profile_v1(),
     ]
 }
 
@@ -186,4 +187,28 @@ pub fn codex_spawn_agent_tool_v1() -> FunctionToolV1 {
 fn field(field_id: &str, path: &str) -> OwnedConfigFieldV1 {
     OwnedConfigFieldV1::new(field_id, path, ConfigLayerV1::User)
         .expect("built-in config path is valid")
+}
+
+/// Hermes has a main default route and independent management resources; no Worker capability.
+pub const HERMES_PROFILE_ID_V1: &str = "hermes-main-v1";
+pub const HERMES_INTEGRATION_PROFILE_REF_V1: &str = "builtin/hermes-main/v1";
+pub fn hermes_profile_v1() -> AgentProfileV1 {
+    AgentProfileV1 {
+        schema: AGENT_PROFILE_SCHEMA_V1.into(),
+        profile_id: HERMES_PROFILE_ID_V1.into(),
+        integration_profile_ref: HERMES_INTEGRATION_PROFILE_REF_V1.into(),
+        kind: AgentKindV1::Hermes,
+        legacy_exact_versions: BTreeSet::new(),
+        ingress_protocol: Some(AgentIngressProtocolV1::Responses),
+        config_precedence: AgentKindV1::Hermes.config_precedence().to_vec(),
+        owned_config_fields: vec![
+            field("default_model", "model.default"),
+            field("provider", "model.provider"),
+        ],
+        dynamic_catalog: false,
+        static_catalog_fallback: false,
+        native_subagent_routing: false,
+        spawn_guidance: None,
+        managed_launch: None,
+    }
 }

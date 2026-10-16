@@ -92,9 +92,18 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         "../../../assets/release-facts/current/bundle/model-data.json"
     ))
     .unwrap();
+    data.data
+        .validate_against(&registry)
+        .expect("current executable model data");
+    data.rating_snapshot
+        .validate()
+        .expect("current native ratings");
+    data.metadata_catalog
+        .validate()
+        .expect("current directory metadata");
     data.validate_against(&registry).unwrap();
-    assert_eq!(data.data.models.len(), 27);
-    assert_eq!(data.rating_snapshot.records.len(), 85);
+    assert_eq!(data.data.models.len(), 29);
+    assert_eq!(data.rating_snapshot.records.len(), 91);
     assert!(
         data.data
             .model_endpoint_capabilities

@@ -183,6 +183,10 @@ pub enum AgentConnectionEffectRoleV1 {
     ManagedConfiguration,
     ModelCatalog,
     RoutingSkill,
+    ManagementSkill,
+    CollaborationSkill,
+    HermesPluginModule,
+    HermesPluginManifest,
     InstructionOverlay,
     SpawnGuidanceRewrite,
     /// The host-executed resident login item for the first managed connection. Unlike the
@@ -192,12 +196,43 @@ pub enum AgentConnectionEffectRoleV1 {
 }
 
 impl AgentConnectionEffectRoleV1 {
+    /// Preserve RoutingSkill's original file binding; the second resource has its own role.
+    pub fn settings_skill(context: &str, facet: crate::AgentSettingsFacet) -> Option<Self> {
+        use crate::AgentSettingsFacet::*;
+        match (context.starts_with("agent-context/hermes/"), facet) {
+            (true, ManagementSkill) | (false, Collaboration) => Some(Self::RoutingSkill),
+            (false, ManagementSkill) => Some(Self::ManagementSkill),
+            (true, Collaboration) => Some(Self::CollaborationSkill),
+            (_, Model) => None,
+        }
+    }
+
+    pub fn settings_skill_facet(self, context: &str) -> Option<crate::AgentSettingsFacet> {
+        [
+            crate::AgentSettingsFacet::ManagementSkill,
+            crate::AgentSettingsFacet::Collaboration,
+        ]
+        .into_iter()
+        .find(|facet| Self::settings_skill(context, *facet) == Some(self))
+    }
+
+    pub const fn is_skill(self) -> bool {
+        matches!(
+            self,
+            Self::RoutingSkill | Self::ManagementSkill | Self::CollaborationSkill
+        )
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::GrantScopedPublication => "grant_scoped_publication",
             Self::ManagedConfiguration => "managed_configuration",
             Self::ModelCatalog => "model_catalog",
             Self::RoutingSkill => "routing_skill",
+            Self::ManagementSkill => "management_skill",
+            Self::CollaborationSkill => "collaboration_skill",
+            Self::HermesPluginModule => "hermes_plugin_module",
+            Self::HermesPluginManifest => "hermes_plugin_manifest",
             Self::InstructionOverlay => "instruction_overlay",
             Self::SpawnGuidanceRewrite => "spawn_guidance_rewrite",
             Self::LoginItem => "login_item",
@@ -241,6 +276,10 @@ impl AgentConnectionEffectRoleV1 {
             Self::ManagedConfiguration => "agent-connection-managed-configuration",
             Self::ModelCatalog => "agent-connection-model-catalog",
             Self::RoutingSkill => "agent-connection-routing-skill",
+            Self::ManagementSkill => "agent-connection-management-skill",
+            Self::CollaborationSkill => "agent-connection-collaboration-skill",
+            Self::HermesPluginModule => "agent-connection-hermes-plugin-module",
+            Self::HermesPluginManifest => "agent-connection-hermes-plugin-manifest",
             Self::InstructionOverlay => "agent-connection-instruction-overlay",
             Self::SpawnGuidanceRewrite => "agent-connection-spawn-guidance",
             Self::LoginItem => "agent-connection-login-item",
@@ -253,6 +292,10 @@ impl AgentConnectionEffectRoleV1 {
             Self::ManagedConfiguration => "managed-configuration",
             Self::ModelCatalog => "model-catalog",
             Self::RoutingSkill => "routing-skill",
+            Self::ManagementSkill => "management-skill",
+            Self::CollaborationSkill => "collaboration-skill",
+            Self::HermesPluginModule => "hermes-plugin-module",
+            Self::HermesPluginManifest => "hermes-plugin-manifest",
             Self::InstructionOverlay => "instruction-overlay",
             Self::SpawnGuidanceRewrite => "spawn-guidance",
             Self::LoginItem => "login-item",
@@ -265,6 +308,10 @@ impl AgentConnectionEffectRoleV1 {
             Self::ManagedConfiguration
             | Self::ModelCatalog
             | Self::RoutingSkill
+            | Self::ManagementSkill
+            | Self::CollaborationSkill
+            | Self::HermesPluginModule
+            | Self::HermesPluginManifest
             | Self::InstructionOverlay
             | Self::SpawnGuidanceRewrite => OwnedEffectKind::AgentArtifact,
             Self::LoginItem => OwnedEffectKind::LoginItem,
@@ -277,6 +324,10 @@ impl AgentConnectionEffectRoleV1 {
             "managed_configuration" => Ok(Self::ManagedConfiguration),
             "model_catalog" => Ok(Self::ModelCatalog),
             "routing_skill" => Ok(Self::RoutingSkill),
+            "management_skill" => Ok(Self::ManagementSkill),
+            "collaboration_skill" => Ok(Self::CollaborationSkill),
+            "hermes_plugin_module" => Ok(Self::HermesPluginModule),
+            "hermes_plugin_manifest" => Ok(Self::HermesPluginManifest),
             "instruction_overlay" => Ok(Self::InstructionOverlay),
             "spawn_guidance_rewrite" => Ok(Self::SpawnGuidanceRewrite),
             "login_item" => Ok(Self::LoginItem),
