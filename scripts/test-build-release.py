@@ -3,6 +3,7 @@
 from contextlib import nullcontext, redirect_stdout
 import importlib.util
 import io
+import hashlib
 import json
 import os
 import re
@@ -19,7 +20,7 @@ REPO = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("build_release", REPO / "scripts/build-release.py")
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
-MODULES = {name: builder.module(name) for name in ("package-desktop", "package-standalone", "build-cpa", "local-rust", "linux-release-abi", "windows-native-runtime-audit")}
+MODULES = {name: builder.module(name) for name in ("package-desktop", "package-standalone", "package-windows-shell", "build-cpa", "local-rust", "linux-release-abi", "windows-native-runtime-audit")}
 PE_FIXTURES = builder.module("test-windows-native-runtime-audit")
 
 
@@ -76,6 +77,16 @@ class CandidateTests(unittest.TestCase):
             return json.dumps({"target_directory": str(self.root / "target")})
         if args[0] in ("cargo", "rustc") and args[1] == "--version":
             return "fixture toolchain"
+        if args[0] in ("npm", "npm.cmd"):
+            if args[1:3] == ("run", "build"):
+                assets = self.root / "apps/desktop/dist"
+                (assets / "assets").mkdir(parents=True)
+                (assets / "index.html").write_text('<script src="/assets/app.js"></script>')
+                (assets / "assets/app.js").write_text('console.info("fixture")')
+                for path in assets.rglob("*"):
+                    if path.is_file():
+                        path.chmod(0o644)
+            return ""
         if args[:2] == ("cargo", "build"):
             self.assertIn("--locked", args)
             self.assertEqual(args[args.index("--target") + 1], self.target)
@@ -125,6 +136,9 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(result["status"], "awaiting_runtime")
         self.assertEqual(set(result["linux_abi"]["files"]), {"bin/hiroute", "bin/hirouted", "libexec/cliproxyapi"})
         self.assertEqual(result["website_artifact"]["architecture"], "aarch64")
+        self.assertEqual(sum(args[:3] == ("npm", "run", "build") for args in self.commands), 1)
+        manifest = next(Path(result["assets"]).glob("*.json"))
+        self.assertIn("console/index.html", json.loads(manifest.read_text())["files"])
         artifacts = list(Path(result["assets"]).iterdir())
         self.assertEqual(len(artifacts), 2)
         catalog = self.root / "releases.json"
@@ -200,23 +214,16 @@ class CandidateTests(unittest.TestCase):
     def test_windows_candidate_is_verified_as_native_pe_and_consumed_by_release_verifier(self):
         result = self.build_windows_candidate()
         self.assertEqual(result["status"], "awaiting_runtime")
-        self.assertEqual(result["website_artifact"]["platform"], "Windows")
-        self.assertEqual(result["website_artifact"]["target"], self.target)
+        self.assertNotIn("website_artifact", result)
+        self.assertNotIn("assets", result)
+        self.assertEqual(result["publication"], "internal-only")
+        self.assertEqual(result["internal_payload"]["target"], self.target)
+        self.assertEqual(len(list(Path(result["internal_payloads"]).iterdir())), 2)
         self.assertNotIn("linux_abi", result)
         crt = result["windows_crt_build"]
         self.assertEqual(crt["dependency_gate"], "green")
         self.assertEqual({image["path"] for image in crt["images"]},
                          {"bin/hiroute.exe", "bin/hirouted.exe", "libexec/cliproxyapi.exe"})
-        catalog = self.root / "releases.json"
-        catalog.write_text(json.dumps({"schema": "hiroute.website.releases/v2", "releases": [{
-            "version": self.version, "channel": "stable", "published_at": "2026-10-08T00:00:00Z",
-            "notes": {"zh": "测试", "en": "Fixture"}, "artifacts": [result["website_artifact"]],
-        }]}))
-        verified = subprocess.run(["node", str(REPO / "apps/website/scripts/release-manifest.mjs"),
-            "verify-assets", str(catalog), "--tag", f"v{self.version}", "--revision", "a" * 40,
-            "--asset-dir", result["assets"]], text=True, capture_output=True)
-        self.assertEqual(verified.returncode, 0, verified.stderr)
-        self.assertIn("2 release asset(s) verified", verified.stdout)
 
     def test_release_vc_dependency_in_delayed_daemon_import_cannot_publish_assets(self):
         with self.assertRaisesRegex(ValueError, "unexpected CRT dependency"):
@@ -225,6 +232,104 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertNotIn("website_artifact", result)
         self.assertFalse((self.candidate.output / "assets").exists())
+
+    def test_windows_shell_stage_uses_verified_package_bytes_and_preserves_foreign_files(self):
+        result = self.build_windows_candidate()
+        assets = Path(result["internal_payloads"])
+        archive = next(assets.glob("*.tar.gz"))
+        manifest = next(assets.glob("*.json"))
+        destination = self.root / "shell-resources/standalone"
+        packager = MODULES["package-windows-shell"]
+        value = packager.stage(manifest, archive, destination)
+        self.assertEqual(value["revision"], "a" * 40)
+        self.assertTrue((destination / "hiroute.exe").read_bytes().startswith(b"MZ"))
+        self.assertEqual((destination / "package-manifest.json").read_bytes(), manifest.read_bytes())
+        self.assertTrue((destination / "console/index.html").is_file())
+        packager.stage(manifest, archive, destination)
+        foreign = destination / "personal.txt"
+        foreign.write_text("preserve me")
+        with self.assertRaisesRegex(ValueError, "foreign"):
+            packager.stage(manifest, archive, destination)
+        self.assertEqual(foreign.read_text(), "preserve me")
+        (destination / "hiroute.exe").write_bytes(b"changed owned entry")
+        with self.assertRaisesRegex(ValueError, "owned standalone stage entry changed"):
+            packager.stage(manifest, archive, destination)
+        self.assertEqual((destination / "hiroute.exe").read_bytes(), b"changed owned entry")
+
+    def test_windows_shell_identity_measures_actual_nsis_member_and_crt_imports(self):
+        result = self.build_windows_candidate()
+        payloads = Path(result["internal_payloads"])
+        files = [next(payloads.glob("*.tar.gz")), next(payloads.glob("*.json"))]
+        executable = self.root / "target" / self.target / "release/hiroute-shell.exe"
+        delayed = []
+
+        def command(*args, **kwargs):
+            if "--no-bundle" in args:
+                pe(executable, 0x8664)
+            if "bundle" in args:
+                pe(executable, 0x8664)
+                executable.write_bytes(executable.read_bytes() + b"workspace PE resources")
+                installer = executable.parent / "bundle/nsis" / f"HiRoute_{self.version}_x64-setup.exe"
+                installer.parent.mkdir(parents=True, exist_ok=True)
+                installer.write_bytes(b"fixture NSIS package")
+            if args[0] == "7z-fixture":
+                directory = Path(next(a[2:] for a in args if a.startswith("-o")))
+                pe(directory / "hiroute-shell.exe", 0x8664, delayed)
+                image = directory / "hiroute-shell.exe"
+                image.write_bytes(image.read_bytes() + b"actual NSIS member")
+            return ""
+
+        with patch.object(self.candidate, "standalone", return_value=(None, files)), \
+                patch.object(self.candidate, "run", side_effect=command), \
+                patch.object(MODULES["package-windows-shell"].shutil, "which", return_value="7z-fixture"):
+            self.candidate.desktop_windows()
+            identity = self.candidate.result["desktop_result"]
+            self.assertEqual(identity["shell_image"]["sha256"], hashlib.sha256(PE_FIXTURES.image() + b"actual NSIS member").hexdigest())
+            self.assertNotEqual(identity["shell_image"]["sha256"], MODULES["package-windows-shell"].digest(executable))
+            delayed.append("VCRUNTIME140_1.dll")
+            with self.assertRaisesRegex(ValueError, "CRT dependency"):
+                self.candidate.desktop_windows()
+
+    def test_nsis_shell_audit_rejects_missing_tool_or_ambiguous_members(self):
+        packager = MODULES["package-windows-shell"]
+        installer = self.root / "fixture.exe"
+        installer.write_bytes(b"fixture NSIS package")
+        with patch.object(packager.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "7-Zip is required"):
+                packager.shell_image(installer)
+        for count in (0, 2):
+            def extract(*args):
+                directory = Path(next(a[2:] for a in args if a.startswith("-o")))
+                for i in range(count):
+                    pe(directory / str(i) / "hiroute-shell.exe", 0x8664)
+            with patch.object(packager.shutil, "which", return_value="7z-fixture"):
+                with self.assertRaisesRegex(ValueError, "exactly one shell image"):
+                    packager.shell_image(installer, extract)
+
+    def test_desktop_publication_rejects_partial_or_misbound_native_attestation(self):
+        # Verifier-shape regression only; fabricated JSON is never installation evidence.
+        packager = MODULES["package-windows-shell"]
+        installer = self.root / f"HiRoute-{self.version}-aaaaaaaaaaaa-windows-x86_64-setup.exe"
+        installer.write_bytes(b"fixture installer")
+        identity = {"schema": packager.SCHEMA, "version": self.version, "revision": "a" * 40,
+                    "architecture": "x86_64", "distribution": "unsigned", "integrity": "green",
+                    "embedded_components": "green", "native_runtime": "green", "installer_sha256": packager.digest(installer),
+                    "installer_size": installer.stat().st_size}
+        with self.assertRaisesRegex(ValueError, "Windows 11"):
+            packager.verify(installer, identity, "a" * 40)
+        required = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())
+        identity["native_evidence"] = {"runs": [{"platform": platform_name, "revision": "a" * 40,
+            "installer_sha256": packager.digest(installer), "standard_user": True, "architecture": "AMD64",
+            "os_version": "fixture-only", "scenarios": dict.fromkeys(cases, "green")} for platform_name, cases in required.items()]}
+        self.assertIs(packager.verify(installer, identity, "a" * 40), identity)
+        for key, value in (("revision", "b" * 40), ("standard_user", False), ("architecture", "ARM64")):
+            altered = json.loads(json.dumps(identity))
+            altered["native_evidence"]["runs"][0][key] = value
+            with self.assertRaisesRegex(ValueError, "all standard-user"):
+                packager.verify(installer, altered, "a" * 40)
+        identity["native_evidence"]["runs"][0]["scenarios"].pop("update.killed-resume")
+        with self.assertRaisesRegex(ValueError, "all standard-user"):
+            packager.verify(installer, identity, "a" * 40)
 
     def test_windows_release_rejects_ambient_compiler_overrides_without_affecting_other_contexts(self):
         for name in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS",
@@ -333,10 +438,10 @@ class HostedReleasePolicyTests(unittest.TestCase):
         events = re.findall(r'^  ([a-z_]+):', triggers, re.M)
         self.assertEqual(set(events), {'workflow_dispatch', 'workflow_call'})
         self.assertNotIn('continue-on-error:', workflow)
-        self.assertEqual(workflow.count('ref: ${{ github.sha }}'), 2)
+        self.assertEqual(workflow.count('ref: ${{ github.sha }}'), 3)
         self.assertEqual(workflow.count(
             "-Phase '${{ inputs.scope != '' && inputs.scope != 'all' && 'focused' || 'final' }}'"), 2)
-        self.assertEqual(workflow.count('-ExpectedSha $env:GITHUB_SHA'), 2)
+        self.assertEqual(workflow.count('-ExpectedSha $env:GITHUB_SHA'), 3)
 
     def test_manual_scope_cannot_narrow_the_reusable_release_gate(self):
         workflow = (REPO / '.github/workflows/windows-headless.yml').read_text()
@@ -349,7 +454,9 @@ class HostedReleasePolicyTests(unittest.TestCase):
         matrix = ("scope: ${{ fromJSON(inputs.scope != '' && inputs.scope != 'all' && "
                   "format('[\"{0}\"]', inputs.scope) || "
                   "'[\"components\",\"core\",\"product\",\"background\",\"agents\"]') }}")
-        self.assertEqual(workflow.count(matrix), 2)
+        self.assertEqual(workflow.count(matrix), 1)
+        self.assertIn("windows11-arm-install:", workflow)
+        self.assertIn("-Scope install", workflow)
 
     def test_windows_replay_requires_successful_producers(self):
         workflow = (REPO / '.github/workflows/windows-headless.yml').read_text()
@@ -357,7 +464,8 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertRegex(replay, r'(?m)^    needs: native$')
         # Default job success admission skips replay after failed or cancelled
         # producers; always() remains appropriate only for evidence upload steps.
-        self.assertNotRegex(replay, r'(?m)^    (if|continue-on-error):')
+        self.assertIn("if: inputs.scope != 'background'", replay)
+        self.assertNotRegex(replay, r'(?m)^    continue-on-error:')
 
     def test_only_windows_assets_require_windows_validation(self):
         workflow = (REPO / '.github/workflows/build-release.yml').read_text()
@@ -389,7 +497,8 @@ class HostedReleasePolicyTests(unittest.TestCase):
     def test_pr_windows_check_is_bounded_cached_and_fails_closed(self):
         workflow = (REPO / '.github/workflows/windows-compile.yml').read_text()
         triggers = workflow.split('\non:\n', 1)[1].split('\npermissions:', 1)[0]
-        self.assertEqual(re.findall(r'^  ([a-z_]+):', triggers, re.M), ['pull_request'])
+        self.assertEqual(re.findall(r'^  ([a-z_]+):', triggers, re.M), ['workflow_dispatch', 'pull_request'])
+        self.assertIn('github.event.pull_request.number || github.run_id', workflow)
         for path in ('crates/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
                      '.cargo/**', 'assets/**', 'vendor/**', 'tools/**', 'scripts/**',
                      '.github/workflows/windows-compile.yml'):
@@ -405,7 +514,16 @@ class HostedReleasePolicyTests(unittest.TestCase):
                       '-p hiroute-cli -p hiroute-daemon -p hiroute-platform '
                       '-p hiroute-local-storage --all-targets', workflow)
         self.assertIn("if ($LASTEXITCODE -ne 0) { throw", workflow)
-        self.assertNotIn('cargo test', workflow)
+        component_tests = [line.strip() for line in workflow.splitlines()
+                           if line.strip().startswith('cargo test ')]
+        self.assertEqual(component_tests, [
+            'cargo test --locked --target x86_64-pc-windows-msvc '
+            '-p hiroute-host-runtime --lib standalone_install::'])
+        self.assertIn("throw 'Windows installation component regressions failed'", workflow)
+        self.assertIn('component fixtures, not standard-user installation acceptance', workflow)
+        self.assertNotIn('--ignored', workflow)
+        self.assertNotIn('--test windows_headless', workflow)
+        self.assertNotIn('--test windows_desktop', workflow)
         self.assertNotIn('windows-headless-ci.ps1', workflow)
 
 

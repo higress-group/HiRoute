@@ -165,3 +165,34 @@ test('native command authority agrees across handlers, manifest and main-window 
     assert.ok(permission.includes(`commands.deny = ["${command}"]`), `${command}: wrong denied command`);
   }
 });
+
+test('the product catalog covers native handlers and excludes host commands from HTTP', () => {
+  const catalog = JSON.parse(read('../../crates/product-session/src/commands.json'));
+  const handlers = [...read('src-tauri/src/bridge.rs').matchAll(/tauri::generate_handler!\[([\s\S]*?)\]/g)][0][1]
+    .split(',').map(item => item.trim()).filter(Boolean).sort();
+  const check = (catalog, handlers) => {
+    assert.deepEqual(catalog.map(c => c.name).sort(), handlers);
+    assert.equal(new Set(catalog.map(c => c.name)).size, catalog.length);
+    assert.ok(catalog.every(c => Array.isArray(c.args) && c.result.startsWith('Result<')));
+    assert.ok(catalog.find(c => c.name === 'quit_desktop').host_only);
+    assert.equal(catalog.find(c => c.name === 'observation_read').host_only, false);
+  };
+  check(catalog, handlers);
+  assert.throws(() => check(catalog.slice(1), handlers), 'missing catalog commands fail closed');
+  assert.throws(() => check(catalog, handlers.slice(1)), 'missing handlers fail closed');
+});
+
+test('all product commands have a console route and host commands cannot enter it', () => {
+  const catalog = JSON.parse(read('../../crates/product-session/src/commands.json'));
+  const shared = read('../../crates/product-session/src/commands/dispatch.rs');
+  const hostSettings = read('../../crates/daemon/src/console/host_settings.rs');
+  const routes = new Set([...shared.matchAll(/"([a-z][a-z0-9_]*)"\s*=>/g)].map(item => item[1]));
+  for (const name of ['gateway_listener_status', 'gateway_listener_apply', 'gateway_listener_recover', 'subscription_proxy_status', 'subscription_proxy_apply', 'diagnostic_status', 'set_diagnostic_level']) {
+    assert.ok(hostSettings.includes(`"${name}"`)); routes.add(name);
+  }
+  const check = routes => assert.deepEqual([...routes].sort(), catalog.filter(c => !c.host_only).map(c => c.name).sort());
+  check(routes);
+  const broken = new Set(routes); broken.delete('observation_read');
+  assert.throws(() => check(broken), 'a missing HTTP route fails the registry check');
+  for (const command of catalog.filter(c => c.host_only)) assert.ok(!routes.has(command.name));
+});

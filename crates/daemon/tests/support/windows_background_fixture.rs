@@ -413,6 +413,7 @@ pub fn entry() {
         | "transaction-verify"
         | "transaction-fail-install"
         | "transaction-upgrade-install" => transactions::run(&request),
+        "install" | "uninstall" => transactions::maintenance(&request),
         "command" => {
             let program = request.program.unwrap();
             let args = request

@@ -1,30 +1,5 @@
 use super::*;
 
-/// Native channel fixture for Session/transport checks; never a production daemon substitute.
-pub(crate) fn session_resident(root: &Path, client: Client) -> Resident {
-    use std::io::BufRead;
-    let mut resident = recovery_resident(root, false);
-    resident.client = client;
-    let (capability_reader, capability_writer) = pipe().unwrap();
-    let (ack_reader, mut ack_writer) = pipe().unwrap();
-    let owned = resident.owned.as_mut().unwrap();
-    owned.capability = capability_writer;
-    owned.ack = ack_reader;
-    std::thread::spawn(move || {
-        for line in std::io::BufReader::new(capability_reader).lines() {
-            let registration: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
-            let mut reply = serde_json::to_vec(&serde_json::json!({
-                "schema": "hiroute.protected-apply-ack/v2",
-                "registration_id": registration["registration_id"], "registered": true
-            }))
-            .unwrap();
-            reply.push(b'\n');
-            ack_writer.write_all(&reply).unwrap();
-        }
-    });
-    resident
-}
-
 fn recovery_resident(root: &Path, slow: bool) -> Resident {
     let (reader, writer) = pipe().unwrap();
     let (_, capability) = pipe().unwrap();

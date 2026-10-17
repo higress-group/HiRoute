@@ -70,7 +70,13 @@ jobs:
           node apps/website/scripts/release-manifest.mjs desktop-artifacts apps/website/data/releases.json --tag "$RELEASE_TAG" > "$RUNNER_TEMP/desktop-assets.txt"
           while IFS= read -r filename; do
             identity="$RUNNER_TEMP/release-assets/$filename.identity.json"
-            python3 scripts/package-desktop.py verify-dmg "$RUNNER_TEMP/release-assets/$filename" > "$identity"
+            case "$filename" in
+              *-windows-x86_64-setup.exe)
+                gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP/release-assets" --pattern "$filename.identity.json"
+                python3 scripts/package-windows-shell.py verify --installer "$RUNNER_TEMP/release-assets/$filename" --identity "$identity" --revision "$RELEASE_REVISION"
+                ;;
+              *) python3 scripts/package-desktop.py verify-dmg "$RUNNER_TEMP/release-assets/$filename" > "$identity" ;;
+            esac
             node apps/website/scripts/release-manifest.mjs verify-desktop-identity apps/website/data/releases.json --tag "$RELEASE_TAG" --revision "$RELEASE_REVISION" --filename "$filename" --identity "$identity"
           done < "$RUNNER_TEMP/desktop-assets.txt"
           node apps/website/scripts/release-manifest.mjs standalone-packages apps/website/data/releases.json --tag "$RELEASE_TAG" > "$RUNNER_TEMP/standalone-assets.tsv"

@@ -1,6 +1,22 @@
 name: build-release-platform
 
 on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Native installer candidate target
+        type: choice
+        default: x86_64-pc-windows-msvc
+        options: [x86_64-pc-windows-msvc]
+      runner:
+        description: Native build host
+        type: choice
+        default: windows-2025
+        options: [windows-2025]
+      windows_desktop:
+        description: Build the NSIS installer for native acceptance
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       target:
@@ -9,6 +25,9 @@ on:
       runner:
         required: true
         type: string
+      windows_desktop:
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -86,16 +105,36 @@ jobs:
         shell: pwsh
         env:
           RELEASE_TARGET: ${{ inputs.target }}
+          WINDOWS_DESKTOP: ${{ inputs.windows_desktop }}
         run: |
           if ((git rev-parse HEAD) -ne $env:GITHUB_SHA) { throw 'Exact dispatch SHA required' }
-          python scripts/build-release.py --target $env:RELEASE_TARGET --cpa-source-repo "$env:RUNNER_TEMP/cpa"
+          $desktop = @()
+          if ($env:WINDOWS_DESKTOP -eq 'true') { $desktop = @('--windows-desktop') }
+          $buildOutput = python scripts/build-release.py --target $env:RELEASE_TARGET --cpa-source-repo "$env:RUNNER_TEMP/cpa" @desktop
           if ($LASTEXITCODE -ne 0) { throw 'Native Windows candidate build failed' }
+          $buildOutput
+          if ($desktop.Count -gt 0) {
+            New-Item artifacts/windows-desktop -ItemType Directory -Force | Out-Null
+            $buildOutput | Set-Content artifacts/windows-desktop/build-result.json -Encoding utf8
+            $env:HIROUTE_BUILD_SOURCE_SHA = $env:GITHUB_SHA
+            $env:CARGO_ENCODED_RUSTFLAGS = '-C' + [char]31 + 'target-feature=+crt-static'
+            $env:CMAKE_TOOLCHAIN_FILE = (Join-Path $env:GITHUB_WORKSPACE 'scripts/windows-release-toolchain.cmake').Replace('\', '/')
+            cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-shell --features shell-runtime --lib runtime::install_transaction::tests::backup_copy_closes_exclusive_writer_before_verification -- --exact --nocapture 2>&1 | Tee-Object artifacts/windows-desktop/backup-copy-test.log
+            if ($LASTEXITCODE -ne 0) { throw 'Native shell backup regression failed' }
+            cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-cli --lib service::restore_plan::tests -- --nocapture 2>&1 | Tee-Object artifacts/windows-desktop/agent-restore-plan-test.log
+            if ($LASTEXITCODE -ne 0) { throw 'Native uninstall restore-plan regressions failed' }
+            cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-daemon --test windows_desktop --no-run --message-format=json | Tee-Object artifacts/windows-desktop/compiler.jsonl
+            if ($LASTEXITCODE -ne 0) { throw 'Native installer acceptance harness compilation failed' }
+            python scripts/windows-dev.py bundle-desktop --result artifacts/windows-desktop/build-result.json --log artifacts/windows-desktop/compiler.jsonl --output artifacts/windows-desktop/development-bundle.zip
+            if ($LASTEXITCODE -ne 0) { throw 'Native installer development bundle verification failed' }
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: release-${{ inputs.target }}-${{ github.sha }}-${{ github.run_attempt }}
+          name: release-${{ inputs.target }}${{ inputs.windows_desktop && '-desktop' || '' }}-${{ github.sha }}-${{ github.run_attempt }}
           path: |
             target/release-candidate/**/assets/*
+            target/release-candidate/**/internal-payloads/*
             target/release-candidate/**/result.json
             target/release-candidate/**/build.log
             target/release-candidate/**/linux-abi.json
@@ -105,5 +144,6 @@ jobs:
             target/desktop-package/**/result.json
             target/desktop-package/**/build.log
             artifacts/ci
+            artifacts/windows-desktop
           if-no-files-found: error
           retention-days: 14

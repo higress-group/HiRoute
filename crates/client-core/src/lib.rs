@@ -25,17 +25,33 @@ use hiroute_diagnostics::context::DiagnosticContext;
 use hiroute_diagnostics::correlation::CorrelationDomain;
 use hiroute_diagnostics::error::EventErrorCode;
 use hiroute_diagnostics::event::{
-    ControlCallEnd, ControlOperation, ControlStage, ControlStageKind, DiagnosticEvent,
-    SubmissionState as DiagnosticSubmissionState,
+    ControlCallEnd, ControlClientName, ControlOperation, ControlStage, ControlStageKind,
+    DiagnosticEvent, SubmissionState as DiagnosticSubmissionState,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::time::Duration;
 use zeroize::Zeroize;
 
+pub trait ControlDispatch: Send + Sync {
+    fn dispatch(&self, request: LocalControlWireRequestV2) -> MachineEnvelopeV2<Value>;
+}
+#[derive(Clone)]
+enum Transport {
+    LocalEndpoint(LocalEndpoint),
+    InProcess(std::sync::Arc<dyn ControlDispatch>),
+}
+impl std::fmt::Debug for Transport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LocalEndpoint(endpoint) => endpoint.fmt(f),
+            Self::InProcess(_) => f.write_str("InProcess"),
+        }
+    }
+}
 #[derive(Clone, Debug)]
 pub struct Client {
-    endpoint: LocalEndpoint,
+    transport: Transport,
     name: String,
     timeout: Duration,
     diagnostics: Option<DiagnosticContext>,
@@ -54,10 +70,27 @@ impl Drop for PrivateRequest {
 impl Client {
     pub fn new(name: impl Into<String>, endpoint: LocalEndpoint) -> Self {
         Self {
-            endpoint,
+            transport: Transport::LocalEndpoint(endpoint),
             name: name.into(),
             timeout: Duration::from_secs(30),
             diagnostics: None,
+        }
+    }
+    pub fn in_process(
+        name: impl Into<String>,
+        dispatcher: std::sync::Arc<dyn ControlDispatch>,
+    ) -> Self {
+        Self {
+            transport: Transport::InProcess(dispatcher),
+            name: name.into(),
+            timeout: Duration::from_secs(30),
+            diagnostics: None,
+        }
+    }
+    pub fn local_endpoint(&self) -> Option<&LocalEndpoint> {
+        match &self.transport {
+            Transport::LocalEndpoint(endpoint) => Some(endpoint),
+            Transport::InProcess(_) => None,
         }
     }
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -71,7 +104,8 @@ impl Client {
         self
     }
     pub fn endpoint(&self) -> &LocalEndpoint {
-        &self.endpoint
+        self.local_endpoint()
+            .expect("endpoint is available only for LocalEndpoint clients")
     }
 
     pub async fn query<P: Serialize, R: DeserializeOwned>(
@@ -142,8 +176,21 @@ impl Client {
             .checked_add(self.timeout)
             .ok_or_else(|| ClientFailure::before_send(FailureCode::Deadline))?;
         let operation = async {
+            let endpoint = match &self.transport {
+                Transport::LocalEndpoint(endpoint) => endpoint,
+                Transport::InProcess(dispatcher) => {
+                    let dispatcher = dispatcher.clone();
+                    let request = PrivateRequest(request.0.clone());
+                    sent = true;
+                    return tokio::task::spawn_blocking(move || {
+                        dispatcher.dispatch(request.0.clone())
+                    })
+                    .await
+                    .map_err(|_| FailureCode::TransportUnavailable);
+                }
+            };
             let step = std::time::Instant::now();
-            let validated = self.endpoint.validate_path();
+            let validated = endpoint.validate_path();
             stage(
                 ControlStageKind::EndpointValidate,
                 validated.is_ok(),
@@ -158,12 +205,12 @@ impl Client {
                     .protected_grant
                     .as_ref()
                     .is_some_and(|g| g.principal_kind == PrincipalKind::Desktop)
-                    && self.endpoint.expected_pid.is_none()
+                    && endpoint.expected_pid.is_none()
                 {
                     return Err(FailureCode::PeerRejected);
                 }
-                let stream = self.endpoint.connect().await?;
-                self.endpoint.validate_peer(&stream)?;
+                let stream = endpoint.connect().await?;
+                endpoint.validate_peer(&stream)?;
                 Ok::<_, FailureCode>(stream)
             };
             let stream = peer.await;
@@ -305,6 +352,8 @@ impl Client {
             Ok(Ok(result)) => {
                 emit_call_end(
                     &context,
+                    matches!(&self.transport, Transport::InProcess(_))
+                        .then_some(ControlClientName::Console),
                     operation_kind,
                     request_token,
                     DiagnosticSubmissionState::Sent,
@@ -320,6 +369,8 @@ impl Client {
                 let failure = ClientFailure::at(code, sent);
                 emit_call_end(
                     &context,
+                    matches!(&self.transport, Transport::InProcess(_))
+                        .then_some(ControlClientName::Console),
                     operation_kind,
                     request_token,
                     submission_state(failure),
@@ -332,6 +383,8 @@ impl Client {
                 let failure = ClientFailure::at(FailureCode::Deadline, sent);
                 emit_call_end(
                     &context,
+                    matches!(&self.transport, Transport::InProcess(_))
+                        .then_some(ControlClientName::Console),
                     operation_kind,
                     request_token,
                     submission_state(failure),
@@ -403,6 +456,7 @@ fn submission_state(failure: ClientFailure) -> DiagnosticSubmissionState {
 
 fn emit_call_end(
     context: &Option<DiagnosticContext>,
+    client_name: Option<ControlClientName>,
     operation: ControlOperation,
     request_token: Option<hiroute_diagnostics::identity::CorrelationToken>,
     submission: DiagnosticSubmissionState,
@@ -413,6 +467,7 @@ fn emit_call_end(
         return;
     };
     context.emit(DiagnosticEvent::ControlCallEnd(ControlCallEnd {
+        client_name,
         operation,
         request_token,
         submission,

@@ -61,7 +61,9 @@
     "docs/standalone-windows.md",
     "docs/test-selection.md",
     "docs/validation-feedback.md",
-    "docs/validation-routing.md"
+    "docs/validation-routing.md",
+    "docs/web-console.md",
+    "docs/windows-desktop-installation.md"
   ],
   "exclude_files": [
     ".claude/skills/hiroute-promo-video"

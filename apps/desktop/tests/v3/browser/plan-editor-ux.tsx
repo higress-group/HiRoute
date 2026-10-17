@@ -2,7 +2,7 @@
 import { runRoutingWorkerScenarios } from './routing-worker-scenarios.mjs';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { mockIPC } from '@tauri-apps/api/mocks';
+import { mockIPC } from './host-mock';
 import type { Draft, Editor } from '../../../src/plan-editor';
 import { RoutingPage } from '../../../src/product/RoutingPage';
 import { PresentationRoot } from '../../../src/ui';

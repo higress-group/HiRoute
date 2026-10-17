@@ -98,6 +98,8 @@ pub struct ApplyEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ControlCallEnd {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<ControlClientName>,
     pub operation: ControlOperation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_token: Option<CorrelationToken>,
@@ -105,6 +107,13 @@ pub struct ControlCallEnd {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<EventErrorCode>,
     pub elapsed_ms: u64,
+}
+
+/// A closed attribution label, never an arbitrary client-supplied string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ControlClientName {
+    Console,
 }
 
 /// Submission state mirrored from Client Core without reinterpreting its semantics.

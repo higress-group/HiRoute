@@ -1,6 +1,7 @@
 """DSH's fixture-owned public patch and opaque history; common journeys own assertions."""
 import json
 import os
+import subprocess
 from pathlib import Path
 from native_context_fixture import write_new, protect_configuration
 
@@ -39,6 +40,10 @@ def source_credentials(config, token):
     return active, (default, home_patch)
 
 def prepare_context(product, fixture):
+    # DSH roots project Skills at the nearest Git repository. Keep the owned test
+    # project independent of any repository above the host's temporary directory.
+    subprocess.run(['git', 'init', '--quiet', '--template=', str(fixture['project'])],
+                   env=product.env, check=True, capture_output=True)
     root = Path(fixture['config'])
     fixture['product_storage'] = str(product.storage)
     write_new(root/'cordis.patch.yml','[]\n')

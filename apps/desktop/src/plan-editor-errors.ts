@@ -61,6 +61,7 @@ export function planErrorMessage(error: unknown, language: 'zh' | 'en'): string 
     PLAN_UNCHANGED: ['没有待发布更改。', 'No changes to publish.'],
     EDITOR_INVALID: ['请检查名称、使用场景及模型设置，当前输入已保留。', 'Check the name, purpose and model settings. Your input is retained.'],
     INVALID_ARGUMENTS: ['部分路由设置未通过校验，请检查输入后重试。', 'Some routing settings failed validation. Check your input and retry.'],
+    REVISION_CONFLICT: ['另一会话更改了此路由。已重新读取当前状态，你的草稿已保留。请核对最新配置后重新编辑并提交。', 'Another session changed this route. The current state was reloaded and your draft is retained. Review the latest configuration before editing and submitting again.'],
     CONFLICT: ['配置已在其他地方变化，请重新读取后再提交。当前输入已保留。', 'The configuration changed elsewhere. Reload before submitting. Your input is retained.'],
     QODER_MODEL_BUDGET_CONFLICT: ['新预算低于 Qoder 当前已接入模型声明的容量。请先在 Agent 页面停用 Qoder 的模型路由，再发布此计划并重新配置模型路由；任务协作无需停用。当前输入已保留。', 'The new budget is below the capacity declared by the current Qoder model connection. Disable Qoder model routing on the Agent page, publish this plan, then configure model routing again. Task collaboration can stay enabled. Your input is retained.'],
     AGENT_MODEL_BUDGET_CONFLICT: ['已接入的 Agent 模型路由容量受保护。请读取连接状态，调整受影响的模型路由后重新发布。任务协作无需停用，当前输入已保留。', 'Installed Agent model routing capacity is protected. Read connection status and adjust the affected model routing before publishing again. Task collaboration can stay enabled. Your input is retained.'],

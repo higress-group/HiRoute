@@ -16,7 +16,15 @@ const SERVICE_LABEL: &str = "ai.hiroute.cli";
 const MAX_LOG_BYTES: usize = 256 * 1024;
 
 #[cfg(windows)]
+mod restore_agents;
+#[cfg(any(windows, test))]
+mod restore_plan;
+#[cfg(windows)]
 mod windows;
+#[cfg(windows)]
+pub(crate) fn windows_install_hidden(verb: &str, args: &[std::ffi::OsString]) -> u8 {
+    windows::install_hidden(verb, args)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ServiceFailure {
@@ -606,6 +614,10 @@ fn bounded_file(path: &Path) -> String {
     read().unwrap_or_default()
 }
 
+#[allow(
+    dead_code,
+    reason = "Retained unpublished manager adapter; no public installation entry"
+)]
 pub(crate) fn install_manager(
     manager: &str,
     password_stdin: bool,
@@ -639,6 +651,10 @@ pub(crate) fn windows_background_finalize(args: &[std::ffi::OsString]) -> u8 {
     windows::finalize_hidden(args)
 }
 
+#[allow(
+    dead_code,
+    reason = "Retained unpublished manager adapter; no public installation entry"
+)]
 pub(crate) fn uninstall_manager(timeout: Duration) -> Result<serde_json::Value, ServiceFailure> {
     #[cfg(windows)]
     {
@@ -667,6 +683,10 @@ pub(crate) fn windows_layout() -> Result<serde_json::Value, ServiceFailure> {
     Err(ServiceFailure::Unavailable)
 }
 
+#[allow(
+    dead_code,
+    reason = "Retained unpublished manager adapter; no public installation entry"
+)]
 pub(crate) fn prepare_windows_install() -> Result<serde_json::Value, ServiceFailure> {
     #[cfg(windows)]
     {
@@ -718,6 +738,10 @@ pub(crate) fn describe_windows_manager(
     }
 }
 
+#[allow(
+    dead_code,
+    reason = "Retained unpublished manager adapter; no public installation entry"
+)]
 pub(crate) fn publish_install_record() -> Result<serde_json::Value, ServiceFailure> {
     #[cfg(windows)]
     {
@@ -728,6 +752,10 @@ pub(crate) fn publish_install_record() -> Result<serde_json::Value, ServiceFailu
     Err(ServiceFailure::Unavailable)
 }
 
+#[allow(
+    dead_code,
+    reason = "Retained unpublished manager adapter; no public installation entry"
+)]
 pub(crate) fn write_private_record(path: &Path) -> Result<serde_json::Value, ServiceFailure> {
     #[cfg(windows)]
     {

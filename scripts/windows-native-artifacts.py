@@ -28,7 +28,8 @@ MAX_JSON = 32 * 1024 * 1024
 SOURCE_FILES = (
     "scripts/build-release.py",
     "scripts/windows-release-toolchain.cmake",
-    "scripts/install-standalone-windows.py",
+    "crates/cli/src/service/windows/install.rs",
+    "crates/host-runtime/src/standalone_install/windows.rs",
     "scripts/package-standalone.py",
     "scripts/package-standalone-windows.py",
     "scripts/windows-ci-package.py",

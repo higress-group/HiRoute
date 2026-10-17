@@ -1,7 +1,7 @@
 // Real product pages with synthetic IPC data; no daemon or provider calls.
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { mockIPC } from '@tauri-apps/api/mocks';
+import { mockIPC } from './host-mock';
 import { ModelManagementPage } from '../../../src/product/ModelManagementPage';
 import { RoutingPage } from '../../../src/product/RoutingPage';
 import { PresentationRoot, parseTextScale } from '../../../src/ui';

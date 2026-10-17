@@ -131,6 +131,9 @@ modules. `doctor` reports the actual OS and existing sessions; select the intend
 session in HOME rather than silently falling back to SSH service context. An
 administrator session is not standard-user evidence. The configured account must
 be able to read the bundles and register a task for its existing login session.
+Use a separate workbench `root` for each native account. Its private evidence
+directory must grant that account inheritable access; the runner rejects an
+inaccessible directory before creating a Task and preserves its existing ACL.
 
 ```sh
 python3 scripts/validation.py windows doctor
@@ -138,6 +141,7 @@ python3 scripts/validation.py windows doctor
 python3 scripts/validation.py windows bundle --result /path/to/run/result.json \
   --log /path/to/run/command.log --output /path/to/development-bundle.zip
 python3 scripts/validation.py windows stage /path/to/development-bundle.zip
+python3 scripts/validation.py windows inspect-installation --product PRODUCT_BUNDLE_ID
 python3 scripts/validation.py windows run --harness HARNESS_BUNDLE_ID \
   --product PRODUCT_BUNDLE_ID --binary windows_headless.exe \
   --case actual_windows_complete_public_headless_business --ignored
@@ -147,12 +151,99 @@ python3 scripts/validation.py windows collect RUN_ID --output artifacts/windows-
 python3 scripts/validation.py windows finish RUN_ID
 ```
 
+For an installed NSIS candidate, `windows desktop-session --product BUNDLE_ID
+--action launch` opens the measured installed shell in that same session.
+`--action snapshot` collects its native Windows UI Automation tree and a window
+screenshot. `invoke`/`text` require an exact Runtime ID from a recent successful
+`--observation-run`; changed processes, elements and image digests are refused.
+Use the observed UI for product actions; this entry does not inject page scripts
+or replace the WebView with HTTP assertions. `close` uses the native window-close
+pattern. Collect and finish each bounded operation before the next one.
+Desktop operations use the configured Python runtime's `pythonw.exe` sibling and
+hidden console children so the observer cannot obscure the product window. A
+native accessibility hit test supplements incomplete WebView fragment traversal.
+If needed, `click` requires coordinates from a recent screenshot of that exact
+foreground window; it refuses changed geometry. `native-files` captures a bounded,
+read-only Codex/Claude configuration and collaboration Skill inventory for restore
+comparisons, including absence before a product-created file.
+`quit` uses the visible HiRoute notification icon and the measured process's
+native Quit menu item, then requires that process to exit. It does not kill a
+process or stop the background service; an unavailable or ambiguous icon/menu
+is an observation failure that must be inspected before retrying.
+
+`--action install` runs the measured NSIS `/S` entry. For a different installed
+candidate, `--from-product OLD_BUNDLE_ID` verifies the old images before invoking
+the new installer. Preserve existing data and identify both packages in the
+result. Different source revisions carrying the same semantic version prove a
+cross-build replacement, not a newer-version catalog selection or N-to-N+1 update.
+`--action cli --cli-args PRIVATE_JSON_FILE` executes a bounded argument array
+through the installed public CLI for preparation and effect readback; it does
+not establish a UI action. The selected standard account must have no
+Administrators SID, including deny-only membership. All native observations and
+screenshots remain in ignored, private evidence.
+Before native input, the runner checks that the existing session's input desktop
+is accessible and matches its ordinary desktop. `--action desktop-state` reads
+that prerequisite without unlocking or creating a login. UI observations require
+the measured window to be foreground and use only its visible native controls.
+Content-addressed validator helpers are verified and published once by atomic
+rename. Wait/status/collection never overwrite helper files that a running
+standard-user task may be importing.
+
 Stage separate product and harness bundles when reusing an unchanged product for
 a test-only repair. Results record both full revisions, binary hashes, driver hash,
 client hashes, actual OS/session/elevation and exactly one test outcome. Zero exit
 without the selected passing case is failure. Archive entries must be flat,
 manifested x64 executables with matching size/hash; partial stages cannot be reused.
 Cross-built artifacts never become native CI producers.
+
+`inspect-installation` runs a read-only inventory in the configured account. Collect
+and finish it normally; its success is inspection evidence, not a product scenario.
+When the user explicitly authorizes clearing old validation data, use
+`windows archive-installation-data INSPECTION_RUN_ID --product PRODUCT_BUNDLE_ID`.
+It requires a recent matching standard-account inspection, no installed product,
+no product processes/tasks and no native Agent references to the old data. It moves
+only the three fixed HiRoute data, CLI state and shell state directories into private run evidence, with
+complete before/after hashes; native settings remain unchanged. Installed products
+must use their normal uninstall entry first. For the exact measured candidate,
+`windows uninstall-candidate INSPECTION_RUN_ID --product PRODUCT_BUNDLE_ID
+--shell-sha256 MEASURED_SHELL_SHA` invokes its actual NSIS `/S` entry, preserving
+data. It pins the installed CLI/daemon, shell and uninstaller inventory, rejects
+other active work, and waits for the owned installation to disappear. It cannot
+force an unavailable restore or remove business data. It copies the verified
+uninstaller outside the program directory and uses NSIS's final `_?=` argument
+to observe the actual uninstall process and exit code instead of its detached
+launcher. `--adapter-diagnostic` is a separate **mutating** diagnostic: it runs a
+verified shell copy's existing uninstall adapter and retains its typed result;
+it does not run the rest of NSIS or establish complete uninstall success.
+Read-only probing remains `--probe-only` and cannot be combined with that option.
+These operations create no account. A preparation record alone establishes no
+upgrade, Agent restoration or migration acceptance; business acceptance also
+requires actual before/after Agent files, Operation/status and package identity.
+
+For the NSIS candidate, manually dispatch `build-release-platform.yml` with its
+default x64 Windows/Desktop options. Its `artifacts/windows-desktop` upload
+contains a `development-bundle.zip` made from the measured installer, final shell image hash, embedded
+product binaries and exact compiled installer test. The explicitly declared NSIS
+entry has an x86 bootstrap stub; ordinary product and test images remain x64.
+Stage this bundle with the same `windows stage` entry, then select:
+
+```sh
+python3 scripts/validation.py windows run --harness BUNDLE_ID --product BUNDLE_ID \
+  --binary windows_desktop.exe \
+  --case actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data --ignored
+```
+
+This bounded case requires a fresh profile in the configured existing standard
+session, including an absent or empty versioned-package base. Retained payloads
+are refused before installer invocation so backlog cleanup cannot consume the
+bounded fresh-install scenario. It rejects even deny-only Administrators membership, and uses the actual
+NSIS `/S` entry for installation, repeat installation and uninstall. It verifies
+default login/tray choices, production Control/Gateway and packaged console
+readiness, and data preservation. Its result explicitly leaves WebView interaction,
+Agent restoration and update recovery unassessed. Preserved standalone data stays
+in that test profile after uninstall; `finish` does not remove it. The complete
+[Windows Desktop inventory](../scripts/windows-desktop-cases.json) retains its
+separate native obligations and artifact-bound release gate.
 
 Execution uses a one-off `Interactive`/`Limited` Task, with no startup trigger or
 saved password. One workbench lock prevents overlapping product mutation. Product
@@ -206,6 +297,10 @@ retains an explicit manual entry for diagnosis. PR and main pushes retain their
 ordinary Linux/frontend selection without automatically starting that matrix.
 Affected PRs also run one cached Windows headless compile check; it runs no
 business or account acceptance.
+That job also runs only the filtered package/journal/restoration-policy component
+fixtures from `hiroute-host-runtime`. It records OS/build, architecture and token
+elevation; fixture success never satisfies native installation or standard-user
+acceptance. The full native matrix remains release/manual-only.
 
 1. Record the comparison base, committed candidate, affected consumers and native
    cases from `test-plan.py --integration`. Run affected Linux tests as selected;
@@ -375,6 +470,13 @@ command above, optionally with `--no-fail-fast`. `workspace-smoke` remains an
 explicit rollback path and is never run automatically after a DAG failure. Other
 selectors, profiles and filters use the ordinary runner. A bridge over the old
 three-slot locks keeps legacy and eight-slot workers mutually exclusive.
+
+The installed Linux package scenario requires the same candidate's production frontend
+at `apps/desktop/dist`. Build it through the configured frontend target, then stage those
+bytes into the inactive managed backend checkout under its checkout lease before running
+`installed_standalone_cli_completes_the_headless_management_loop`. Do not replace them with
+a dummy page or install a second frontend toolchain on the backend. Hosted full CI uses
+its frontend artifact handoff for this prerequisite.
 
 ## Pilot from either development machine
 

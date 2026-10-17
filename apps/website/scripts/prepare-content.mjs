@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateLinuxInstallScript } from '../src/lib/install-script.mjs';
-import { releaseManifest } from '../src/lib/releases.mjs';
+import { releaseManifest, projectReleaseManifest, LEGACY_RELEASE_SCHEMA } from '../src/lib/releases.mjs';
 
 const website = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repository = path.resolve(website, '../..');
@@ -29,7 +29,8 @@ for (const entry of await fs.readdir(path.join(source, 'assets'), { withFileType
 }
 await fs.copyFile(path.join(repository, 'scripts/install-standalone.py'), path.join(installDirectory, 'standalone.py'));
 await fs.writeFile(path.join(publicDirectory, 'install.sh'), generateLinuxInstallScript(releaseManifest), { mode: 0o755 });
-await fs.writeFile(path.join(publicDirectory, 'releases.json'), JSON.stringify(releaseManifest, null, 2) + '\n');
+await fs.writeFile(path.join(publicDirectory, 'releases.json'), JSON.stringify(projectReleaseManifest(releaseManifest, LEGACY_RELEASE_SCHEMA), null, 2) + '\n');
+await fs.writeFile(path.join(publicDirectory, 'releases-v3.json'), JSON.stringify(projectReleaseManifest(releaseManifest), null, 2) + '\n');
 console.log('Prepared canonical Decision API, illustrations, and Linux installer entry.');
 
 const newsAssets = path.join(publicDirectory, 'news-assets');

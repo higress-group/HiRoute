@@ -1,3 +1,4 @@
+import { randomId } from '../../random-id.ts';
 import type { KeyEdit, ManagedSource, PreparedKeyInput, ProtectedKeyInput } from './types';
 
 export type DraftKey = {
@@ -41,7 +42,7 @@ export function addDraftKey(draft: ModelDraft): ModelDraft {
     ...draft,
     addedSecret: '',
     keys: [...draft.keys, {
-      draftId: crypto.randomUUID(),
+      draftId: randomId(),
       expectedGeneration: 0,
       fingerprintHint: '待保存',
       enabled: true,

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../host/index.ts';
 
 let readers = 0;
 const queue: (() => void)[] = [];

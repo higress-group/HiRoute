@@ -41,6 +41,7 @@ class RestagedBaseline(unittest.TestCase):
         patch.object(staging.platform, 'system', return_value='Windows').start()
         patch.object(staging, 'command', side_effect=self.command).start()
         patch.object(staging, 'module', return_value=packager).start()
+        patch.object(packager, 'host_target', return_value='x86_64-pc-windows-msvc').start()
         patch.object(staging, 'trusted_extraction', side_effect=self.extract).start()
         self.package(BASELINE)
 
@@ -58,7 +59,7 @@ class RestagedBaseline(unittest.TestCase):
         verified = owner.verify(manifest, archive)
         destination.mkdir(parents=True, exist_ok=False)
         for name, (payload, _) in owner.safe_members(archive, verified['files']).items():
-            path = destination / name
+            path = destination / name.removeprefix("bin/")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(payload)
         self.extractions.append(destination)

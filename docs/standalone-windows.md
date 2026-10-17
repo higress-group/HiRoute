@@ -1,182 +1,114 @@
-# Windows headless HiRoute
+# HiRoute on Windows
 
-Windows standalone uses the same `hiroute.exe`, role-all `hirouted.exe`, Application,
-Gateway, business stores and observations as the other headless hosts. It does not
-require Desktop or WSL. This page describes the implementation candidate; a release
-claim requires the native acceptance gates below to pass at the published revision.
+The Windows x64 Desktop installer is the only supported Windows installation
+path in this release. It includes the CLI, daemon, CPA, Skills, Web console and
+Desktop shell. A standard user needs neither Python, WSL nor administrator rights.
+Users who only need the CLI and daemon install the same package and can quit the
+shell afterwards; the background service keeps running.
 
-## Install a verified candidate
+## Install
 
-Use native Windows Python 3 and a distributor-provided archive and companion manifest
-from one exact source revision. The installer checks the archive size and SHA-256,
-closed file inventory, every file digest and the architecture of all three executable
-images before changing an installation. Do not infer an unpublished download URL.
+Download `HiRoute-<version>-<rev12>-windows-x86_64-setup.exe` from the
+[download page](https://hiroute.ai/en/download/) when a validated release is
+available. Follow the [Windows Desktop guide](windows-desktop-installation.md)
+for SHA-256 verification and the unsigned publisher/SmartScreen prompt.
+
+Run the installer in your ordinary logged-on account. Login start and tray
+residency are enabled by default and can be deselected independently. The shell
+opens after the service is ready. The installer adds the fixed user CLI directory
+to PATH; open a new terminal afterwards:
 
 ```powershell
-python scripts/install-standalone-windows.py install `
-  --manifest C:\packages\PACKAGE.tar.gz.json --archive C:\packages\PACKAGE.tar.gz
+hiroute system status --output json
+hiroute service status --output json
+hiroute console open
 ```
 
-The default manager is Task Scheduler. The ordinary user installs and starts it without
-administrator privileges. `hiroute.exe` and `hirouted.exe` have stable hardlink entry
-points under the actual profile's `.local\bin`; versioned binaries live under
-`.local\lib\hiroute`. Add the stable directory to the user PATH, or invoke the full path.
-User PATH changes are not required for daemon-managed executable discovery.
+For an unattended installation, verify the installer first, then run the same
+package with `/S`. This uses the default choices without prompts. The process
+exit code reports failure; a successful install starts a healthy service.
 
-The native Profile and LocalAppData KnownFolders select the installation and runtime.
-Environment variables named HOME or XDG do not redirect an installed Windows service.
-An installation maintenance journal blocks daemon admission until file publication and
-the actual manager registration agree. Retained prepared journals require repair or
-completion; a successful file copy is not a completed installation.
+```powershell
+$process = Start-Process -FilePath .\YOUR-INSTALLER.exe -ArgumentList '/S' -Wait -PassThru
+$process.ExitCode
+```
+
+The NSIS installer only supports native x64 hosts and refuses other architectures
+before product writes. Windows headless archives for x64 and ARM64 are internal
+build/test payloads, not downloads or a separate supported installation path.
+
+## Service and console
+
+Task Scheduler runs the service as the current logged-on user with an
+InteractiveToken and least privilege. Ordinary start and stop require no account
+password or elevation. Closing the launching terminal does not stop it; logging
+off ends its session. Starting now and starting at login are separate controls:
 
 ```powershell
 hiroute service start --output json
-hiroute service status --output json
-hiroute system status --output json
-hiroute gateway show --output json
-hiroute service autostart enable --output json
 hiroute service stop --output json
+hiroute service autostart enable --output json
+hiroute service autostart disable --output json
+hiroute service doctor --output json
+hiroute service logs --output json
 ```
 
-Starting, stopping, restarting, logs and doctor use the same CLI family. Business
-readiness requires Local Control to answer and the actual Gateway listener to be ready.
-Task registration or a successful process-manager call alone cannot establish readiness.
-The verified Task action supervises a separate business process under the same user.
-It waits for the complete child Job to stop and retries an unexpected exit up to three
-times, with a one-minute interval. A normal runtime stop ends the action; stopping the
-owned Task also stops its child tree and cancels a pending retry. Scheduler failure
-settings remain useful for action-launch failures, but do not establish runtime recovery.
-Foreground operation remains available through `hiroute service run`.
-`service logs` returns at most the last 256 KiB of `daemon/current.jsonl` and
-`daemon/previous-1.jsonl`. It reads existing diagnostic objects through held directory
-handles and refuses reparse points and multiply linked log files; settings, correlation
-keys and unrelated files are not log content.
+The Task and Desktop use the same instance, data and Gateway. The shell's login
+preference manages both the Task and its own login entry. The authenticated
+[Web console](web-console.md) can also be opened in a browser.
 
-## Background manager policy
+SCM service installation is not offered. Installation, update and uninstall refuse
+an existing SCM-managed installation before modifying it and explain the refusal.
 
-| Manager | Identity and permissions | Lifetime |
-| --- | --- | --- |
-| Task Scheduler, default | Current user's SID, InteractiveToken, least privilege | Survives terminal exit; demand start and login autostart are separate. Requires that user's interactive session; logout ends this mode |
-| Windows service, optional | Authenticated owner account; administrator registers a sealed service host; business child has the same SID, medium integrity, disabled administrative group and reduced privileges | Runs in service session zero, including without an interactive login; manual and automatic SCM startup are separate |
+## Ownership, updates and removal
 
-For a standard user who needs a service, prepare the installation as the owner:
+Windows KnownFolders determine the actual account Profile and LocalAppData;
+HOME and XDG variables cannot redirect an installed instance. Shell program files
+live in `%LOCALAPPDATA%\Programs\HiRoute`. Standalone state lives separately in
+`%LOCALAPPDATA%\HiRoute\cli`; versioned CLI/daemon/CPA files and shared data remain
+under the user's `.local` directories. The install directory never contains or
+sits inside the standalone state directory.
 
-```powershell
-python scripts/install-standalone-windows.py install `
-  --manifest C:\packages\PACKAGE.tar.gz.json --archive C:\packages\PACKAGE.tar.gz `
-  --manager scm --external-manager
-```
+The Rust installation transaction verifies the complete inventory, revision,
+digests and executable architecture before publishing stable entries. The package
+target must match the native host. An existing unreleased Task installation is
+adopted only when its layout and journal match the current schema; incompatible
+or changed material requires repair/reinstallation and is preserved for diagnosis.
+There are no released Windows Python-installer or ARM64 installations to migrate.
 
-The result is `pending_admin`. In an elevated administrator session, use a CLI obtained
-and verified independently by that administrator:
+Updates from Settings or a manually downloaded newer installer use the same
+journaled transaction. Active calls and accepted Worker tasks drain before stop;
+cancelling resumes admission without killing or replaying work. Rerun the
+installer after interruption. A prepared `hiroute.windows-install-journal/v1`
+blocks business startup until files, record and actual Task registration agree.
 
-```powershell
-python scripts/install-standalone-windows.py admin-scm `
-  --cli C:\admin-verified-package\bin\hiroute.exe `
-  --account COMPUTER\owner --operation install
-```
+Use **Installed apps → HiRoute → Uninstall**. HiRoute first restores managed Agent
+access through its existing restore flow. Conflicts stop removal and list the
+Agents that need a decision. Uninstall removes owned program files, Task, shell
+login entry and the CLI PATH entry it added. Data is preserved by default. Explicit
+data removal affects only standalone data/state, never Agent files or projects.
 
-The installer prompts for that owner's password; automation may use `--password-stdin`.
-Use the qualified local or domain account and its Windows password. A Windows Hello
-PIN is not a LogonUser password. The default Task mode needs no account password.
-Passwords do not belong in command arguments, environment variables, task XML or files.
-Never elevate the CLI from a standard user's writable installation directory. Keep the
-administrator's verified `hirouted.exe` beside that CLI: the sealed host must come from
-that trusted package and match the candidate installed by the owner.
-The helper authenticates through LogonUser, derives the SID from the returned token,
-loads the profile, reads the owner's private marker and held image while impersonating
-the owner, and leaves impersonation before changing machine service state.
+If the service is unavailable, the interactive installer or uninstaller can offer
+an explicit, default-No choice to continue without verified Agent restoration.
+Configured Agents may need manual repair and stopping the owned Task may interrupt
+work. Continuing retains all data; unattended mode refuses this exception. An
+enumerated restoration conflict still stops removal. A first-install rollback
+with no Agent storage does not require a running service.
 
-Return to the ordinary owner's session to finalize, using the prepared versioned CLI:
+After a successful upgrade, obsolete verified version directories are removed
+once shell rollback no longer needs them. Uninstall removes the current verified
+version too. Changed or foreign entries are preserved for repair.
 
-```powershell
-python scripts/install-standalone-windows.py finalize `
-  --cli C:\Users\owner\.local\lib\hiroute\VERSION\hiroute.exe
-```
+## Native evidence
 
-Finalization verifies the actual SCM account, binary path, sealed host and descriptor
-before committing the private installation definition. Upgrades use the same prepared
-transaction. Uninstall prepares as the owner, uses administrator `admin-scm --operation
-uninstall`, then finalizes as the owner only after SCM removal is confirmed. A pending
-service deletion retains the journal instead of reporting completion.
+[Validation routing](validation-routing.md#windows-iteration-and-release-validation)
+owns native execution. Record the actual source SHA, artifact hashes, OS/build,
+processor and account/session. Windows Server x64, Windows 11 x64 and native ARM64
+are separate evidence. The Windows 11 ARM CI installation case uses an ARM64
+package through `__windows-install` / `__windows-uninstall`; internal test payloads
+do not establish a released ARM64 Desktop. Retained SCM kernel/daemon/CLI code and
+low-level tests do not establish a supported SCM installation flow.
 
-The SCM host runs from an administrator-protected ProgramFiles directory. It executes
-the verified owner image only in its restricted business child; it never interprets a
-user-selected executable path while privileged. Service-account profile loading is an
-[SCM responsibility](https://learn.microsoft.com/en-us/windows/win32/services/service-user-accounts);
-the separate authenticated helper explicitly follows
-[LoadUserProfile requirements](https://learn.microsoft.com/en-us/windows/win32/shell/local-user-profiles).
-
-## Native boundaries and feature coverage
-
-Application behavior, routing, model/plan management, subscription login, observations,
-configuration transactions and Worker workflows retain their existing owners. Windows
-adapters supply the OS mechanisms those owners require:
-
-- Private named pipes carry Control, protected input, lifecycle and grants. Account SID,
-  held runtime-directory identity and kernel peer identity bind the endpoint. Remote
-  clients and occupied endpoints are rejected; bounded records replace Unix half-close.
-- Job Objects contain daemon, CPA, native Agent and tool process trees. Membership and
-  explicit inherited handles are assigned during creation. A leader exit does not mean
-  surviving descendants are stopped; cancellation waits for the Job to become empty.
-- Business processes set new-object owner/default ACL to their actual user SID before
-  third-party code runs. This covers Go auth files and SQLite sidecars without changing
-  the parent shell token. CPA-generated inherited private files have a narrow reader;
-  protected HiRoute files and borrowed native-client credentials keep separate rules.
-- Reparse-free, handle-relative file operations bind reads, creation, rename, diagnostics
-  and cleanup to held objects. Private new objects receive their ACL at creation.
-  Existing accessible native configurations retain their ACLs during discovery.
-- Windows configuration fingerprints include actual owner/DACL/read-only facts. Windows
-  V5 artifact markers authenticate these facts in backup AAD and restore them conditionally.
-  Unix V4 fingerprints and registered V2/V3 recovery adapters retain their released bytes.
-- Executable discovery resolves native PE binaries and declared Node entry points. Shell
-  metacharacters in user paths/arguments cannot be turned into a managed shell command.
-  Codex, Claude Code, Qoder, Pi and DSH retain separate native adapters and capability probes.
-
-Protected CLI carriers use pointer-width inherited handles on Windows:
-`--capability-handle`, setup `--spec-handle`, and protected-input `--secret-handle`.
-These accept private, non-stdio pipes with explicit inheritance and bounded bytes/EOF;
-they do not accept credential text, a pathname or an arbitrary numeric PID as authority.
-Unix descriptor flags keep their existing behavior. JSON request files/stdin remain
-ordinary bounded request sources and cannot grant authority.
-
-## CI and ongoing maintenance
-
-Native CI binds each report to the full product SHA, validation SHA, runner image,
-Windows version, CPU architecture, toolchain and selected cases. Missing or zero-selected
-required cases fail. Build checks, fixture tests and production business acceptance are
-separate evidence. Windows Server results establish those server runs; Windows 11 and
-each promised executable architecture require their own recorded native runs.
-
-Required gates cover pipe identity/deadlines, junction and hardlink refusal, native ACL
-restore/authentication, complete file publication, process-tree cancellation, literal
-argv, diagnostics rotation, actual installed foreground Control/Gateway/input/restart,
-Logged-on Task lifecycle, installation upgrade/recovery,
-and the five native Agent adapters. Subscription/provider tests use controlled endpoints;
-actual account login/refresh and upstream native clients require their own authorized
-acceptance evidence and pinned version records.
-
-Native Agent CI installs the committed `tools/windows-agent-fixtures` dependency lock.
-Pi 1.0.2's SDK requires pi-codemode 1.0.2; the fixture overrides only that transitive
-dependency because 1.2.0 removed an export still imported by this SDK. The selected
-CLI's actual SDK must pass capability admission. A working bundled CLI or a substituted
-SDK fixture cannot establish Worker, Continue or native tool support.
-
-The installed business journey covers fixed, smart-saving and custom plans,
-decision revisions, model ratings, Gateway receipts and observation after restart.
-Background login tests use the actual packaged CPA to check official authorization
-URLs, PKCE, cancellation and expiry after restart. Completing provider authorization,
-refresh and paid or free provider inference needs a real authorized account.
-Qoder's fixed ACP client also requires its own official login; custom model settings
-do not establish that login. Supplying a PAT in the child environment does not create
-the persistent profile used by a separately isolated Worker. Its lifecycle, tools
-and Main-agent account recipes form the explicitly selected `accounts` scope, bound
-to an officially prepared private profile. Missing profile prerequisites fail that
-scope. These account gates remain separate from native OS and account-free business
-acceptance and must pass before claiming full upstream-account acceptance.
-
-Future features use the shared business owner and extend the affected platform adapter
-and native gate together. CI catches deterministic OS and contract regressions without
-a personal Windows computer. Fresh runner profiles do not represent every enterprise
-policy, antivirus product or upgrade history; any field failure needs a retained,
-reproducible fixture before it becomes an ongoing regression gate.
+Real native clients and provider authorization require their own execution.
+Fixtures, compilation, manager registration and action launch cannot prove a
+healthy Gateway, installation, upgrade or real model call.

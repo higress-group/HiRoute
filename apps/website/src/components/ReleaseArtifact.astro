@@ -1,0 +1,17 @@
+---
+import { artifactManifestUrl, artifactUrl, formatBytes } from '../lib/releases.mjs';
+const { release, artifact, language } = Astro.props;
+const en = language === 'en';
+const t = (zh, english) => en ? english : zh;
+const windows = artifact.platform === 'Windows';
+const desktop = artifact.kind === 'desktop';
+const name = desktop ? windows ? t('Windows 桌面应用', 'Windows Desktop') : t('macOS 桌面应用', 'macOS Desktop')
+  : windows ? t('Windows 无界面版', 'Windows headless') : t('Linux 无界面版', 'Linux headless');
+---
+<div class="artifact-row"><div><strong>{name} · {artifact.architecture}</strong>
+  {desktop && !windows ? <span>{t(`最低 macOS ${artifact.minimum_os}`, `macOS ${artifact.minimum_os}+`)}</span> : <span>{desktop ? 'NSIS · x64 · current user' : artifact.target} · {formatBytes(artifact.size, language)}</span>}
+  <span class:list={['distribution-badge', { 'self-signed': artifact.distribution === 'self-signed' }]}>{artifact.distribution === 'unsigned' ? t('未签名 · 请核对 SHA-256', 'Unsigned · verify SHA-256') : artifact.distribution === 'self-signed' ? t('自签名 · 首次启动需手动确认', 'Self-signed · manual approval on first launch') : t('Developer ID 签名与公证', 'Developer ID signed and notarized')}</span>
+  <code>SHA256 {artifact.sha256}</code>
+  {desktop && windows && <a class="companion-link" href={en ? '/en/docs/install-windows/' : '/docs/install-windows/'}>{t('SmartScreen 提示与安装步骤', 'SmartScreen prompt and installation steps')}</a>}
+  {!desktop && <a class="companion-link" href={artifactManifestUrl(release, artifact)} download>{t('下载伴随清单', 'Download companion manifest')}</a>}
+</div><a class:list={['button', { outline: !desktop }]} href={artifactUrl(release, artifact)}>{desktop ? windows ? t('下载 Windows 安装包', 'Download Windows installer') : t('下载 DMG', 'Download DMG') : t('手动下载归档', 'Manual archive')} · {formatBytes(artifact.size, language)}</a></div>

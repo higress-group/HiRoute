@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { mockIPC } from '@tauri-apps/api/mocks';
+import { mockIPC } from './host-mock';
 import { ModelManagementPage } from '../../../src/product/ModelManagementPage';
 import { PresentationRoot } from '../../../src/ui';
 import type { ManagementSnapshot } from '../../../src/features/models/types';

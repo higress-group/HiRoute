@@ -61,7 +61,7 @@ def create_snapshot(repo, release, manifest, revision, repository):
     require(resolved == revision, "tag differs from the verified package source")
     channel = "preview" if release["isPrerelease"] else "stable"
     require(channel != "stable" or "-" not in tag, "prerelease tag cannot advance stable baseline")
-    require(manifest.get("schema") == "hiroute.website.releases/v2", "unknown release manifest")
+    require(manifest.get("schema") in {"hiroute.website.releases/v2", "hiroute.website.releases/v3"}, "unknown release manifest")
     records = [item for item in manifest["releases"] if item["version"] == tag[1:]]
     require(len(records) == 1, "release manifest must contain exactly one matching version")
     record = records[0]

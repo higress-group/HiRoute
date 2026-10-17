@@ -56,8 +56,8 @@ jobs:
           if-no-files-found: ignore
   backend_shard:
     name: backend-shard (${{ matrix.shard }})
-    needs: selection
-    if: needs.selection.outputs.rust == 'true'
+    needs: [selection, frontend]
+    if: always() && needs.selection.result == 'success' && needs.selection.outputs.rust == 'true' && (needs.frontend.result == 'success' || needs.frontend.result == 'skipped')
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.selection.outputs.backend_matrix) }}
@@ -71,6 +71,12 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/ci-setup
+      - name: Use the candidate console in installed-product tests
+        if: matrix.shard == 'integration-daemon'
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-console-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/desktop/dist
       - name: CI adapter tests
         if: matrix.shard == 'quality' || matrix.shard == 'affected'
         run: python3 scripts/test-ci-run.py && python3 scripts/test-rust-file-size.py
@@ -135,6 +141,12 @@ jobs:
         working-directory: apps/desktop
       - run: npm run build && npm test
         working-directory: apps/desktop
+      - name: Export the exact candidate console
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-console-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/desktop/dist
+          if-no-files-found: error
       - name: Current metadata generation
         run: |
           python3 tools/model-metadata/close_model_metadata.py --check

@@ -11,6 +11,7 @@ desktop-runtime = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "d
 desktop-pilot = ["desktop-runtime", "dep:tauri-plugin-pilot"]
 
 [dependencies]
+hiroute-product-session = { path = "../../../crates/product-session" }
 hiroute-client-core = { path = "../../../crates/client-core" }
 hiroute-diagnostics = { path = "../../../crates/diagnostics" }
 hiroute-application-api = { path = "../../../crates/application-api" }
@@ -40,6 +41,7 @@ hiroute-desktop-host-effects = { path = "../../../crates/desktop-host-effects" }
 tauri-build = { version = "2.6", optional = true }
 
 [dev-dependencies]
+hiroute-product-session = { path = "../../../crates/product-session", features = ["test-support"] }
 tempfile.workspace = true
 
 [[bin]]

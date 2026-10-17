@@ -3,7 +3,6 @@
 use hiroute_desktop::{
     bootstrap::Resident,
     bridge::{self, DesktopState},
-    session::Session,
 };
 use std::{
     io::{Read, Write},
@@ -26,7 +25,7 @@ fn main() {
         .unwrap()
         .join("hirouted");
     let resident = Resident::open(&root, &binary).unwrap();
-    let session = Session::new(resident);
+    let session = hiroute_desktop::session_from_resident(resident);
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/", listener.local_addr().unwrap());
     std::thread::spawn(move || {

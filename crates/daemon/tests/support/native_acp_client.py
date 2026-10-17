@@ -4,13 +4,18 @@ import os
 import select
 import signal
 import subprocess
+import sys
 import time
 import tempfile
 
 def prompt(product, command, text, selector=None, env=None, timeout=190):
     stderr = tempfile.TemporaryFile()
-    process = subprocess.Popen(command,cwd=product.project,env=env or product.env,
-        stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=stderr,start_new_session=True,umask=0o077)
+    # Set the child's private creation mask before exec without preexec_fn (unsafe
+    # in threaded fixtures) or Popen's umask argument, absent on Python 3.8.
+    private_command = [sys.executable, '-c',
+        'import os,sys;os.umask(0o077);os.execvp(sys.argv[1],sys.argv[1:])', *command]
+    process = subprocess.Popen(private_command,cwd=product.project,env=env or product.env,
+        stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=stderr,start_new_session=True)
     pending = bytearray()
     deadline, updates, counter = time.monotonic()+timeout, [], 0
     def request(method,params):

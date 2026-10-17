@@ -85,7 +85,7 @@ class StandaloneFixture(unittest.TestCase):
         for path in self.notices.iterdir():
             path.chmod(0o644)
 
-    def build(self, version="0.1.0"):
+    def build(self, version="0.1.0", console_assets=None):
         args = argparse.Namespace(
             target=installer.host_target(),
             version=version,
@@ -97,6 +97,7 @@ class StandaloneFixture(unittest.TestCase):
             cpa_license=self.license,
             notices=self.notices,
             output=self.output,
+            console_assets=console_assets,
         )
         with patch.object(package, "REPO", self.repo), patch("builtins.print"):
             package.build(args)
@@ -123,6 +124,27 @@ class StandaloneFixture(unittest.TestCase):
 
 
 class PackageTests(StandaloneFixture):
+    def test_console_assets_are_verified_and_installed_with_the_existing_package(self):
+        assets = self.root / "console"
+        (assets / "assets").mkdir(parents=True)
+        (assets / "index.html").write_text('<script src="/assets/app.js"></script>')
+        (assets / "assets/app.js").write_text('console.info("test")')
+        for path in assets.rglob("*"):
+            if path.is_file():
+                path.chmod(0o644)
+        manifest, archive = self.build(console_assets=assets)
+        verified = package.verify(manifest, archive)
+        self.assertEqual(verified["files"]["console/index.html"]["sha256"], package.digest(assets / "index.html"))
+        with self.environment(), patch.object(installer, "desktop_conflict", return_value=False), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            installer.install(self.install_args(manifest, archive))
+            marker = json.loads((self.home / ".local/share/hiroute/standalone.json").read_text())
+            self.assertEqual((Path(marker["install_root"]) / "console/assets/app.js").read_bytes(), (assets / "assets/app.js").read_bytes())
+        for name in ("console/../escape", "console/.hidden/../escape", "console//bad", "console/bad\\name", "unexpected.txt"):
+            self.assertFalse(package.valid_inventory(package.expected_files(installer.host_target()) | {"console/index.html", name}, installer.host_target()))
+        (assets / "unsafe.js").symlink_to(assets / "index.html")
+        with self.assertRaisesRegex(ValueError, "links"):
+            package.console_payload(assets)
+
     def test_archive_is_deterministic_and_tampering_is_rejected(self):
         manifest, archive = self.build()
         first = archive.read_bytes()

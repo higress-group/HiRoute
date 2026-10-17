@@ -1,3 +1,4 @@
+import { hostCapabilities } from '../../host/index.ts';
 import {
   canSave,
   debugEnabled,
@@ -102,7 +103,7 @@ export function DiagnosticsSettings(props: DiagnosticsSettingsProps) {
           <div className="settings-copy">
             <strong>{text('日志目录', 'Log directory')}</strong>
             <span>
-              {text(
+              {hostCapabilities().directory_reveal === 'path' ? text('日志保存在运行 HiRoute 服务的设备上。可显示目录路径，在该设备上打开目录并查看 daemon/ 下的日志文件；日志不包含对话内容或凭据。', 'Logs are stored on the device running HiRoute. Show the directory path and open it on that device to read the daemon/ logs. Logs contain no conversation content or credentials.') : text(
                 '日志保存在本机应用数据目录；点击会在文件管理器中打开该目录。目录里的 .jsonl 文件就是日志：desktop/ 下是客户端日志，daemon/ 下是引擎（本机服务）日志；向社区求助时附上这些文件即可，其余文件不需要发送。日志不含对话内容或凭据。',
                 'The logs live in this app\'s local data directory. The button opens that folder in your file manager. The .jsonl files are the logs: desktop/ holds the client logs and daemon/ the engine (local service) logs; attach these when asking the community for help — the other files are not needed. The logs never contain conversation content or credentials.',
               )}
@@ -117,7 +118,7 @@ export function DiagnosticsSettings(props: DiagnosticsSettingsProps) {
             >
               {view.logsState.phase === 'busy'
                 ? text('打开中…', 'Opening…')
-                : text('打开日志目录', 'Open log directory')}
+                : hostCapabilities().directory_reveal === 'path' ? text('显示目录路径', 'Show directory path') : text('打开日志目录', 'Open log directory')}
             </button>
           </div>
         </div>

@@ -214,7 +214,7 @@ async fn real_role_all_child_ack_and_read_only_lookup_use_shared_core() {
             .unwrap();
         assert_eq!(grant.len(), 64);
     }
-    let mut session = hiroute_desktop::session::Session::new(resident);
+    let mut session = hiroute_desktop::session_from_resident(resident);
     let agents = session.agent_snapshot().await.unwrap();
     assert!(agents.trusted_authority);
     assert!(agents.plans.plans.is_empty());
@@ -258,7 +258,7 @@ async fn obsolete_client_receipt_is_ignored_and_native_restart_requeries_backend
     )
     .unwrap();
     let resident = Resident::open(root.path(), &binary).unwrap();
-    let mut session = hiroute_desktop::session::Session::new(resident);
+    let mut session = hiroute_desktop::session_from_resident(resident);
     let snapshot = session.snapshot().await.unwrap();
     assert!(snapshot.service.recovery_ready);
     assert!(snapshot.service.mutation_available);

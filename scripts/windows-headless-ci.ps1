@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('components','product','background','core','agents','accounts','upgrade')][string]$Scope,
+  [ValidateSet('components','product','background','core','agents','accounts','upgrade','install')][string]$Scope,
   [Parameter(Mandatory)][string]$ExpectedSha,
   [Parameter(Mandatory)][string]$Evidence,
   [string]$Plan = 'windows-headless',
@@ -48,6 +48,7 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location('native_release_context', Path('scripts/build-release.py'))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+# CRT flags are architecture-independent; the native rustc host selects the target.
 context = module.windows_release_environment('x86_64-pc-windows-msvc', dict(os.environ))
 print(json.dumps({key: context[key] for key in ('CARGO_ENCODED_RUSTFLAGS', 'CMAKE_TOOLCHAIN_FILE')}))
 '@
@@ -359,7 +360,7 @@ if ($Scope -eq 'components') {
   foreach ($package in (Get-WindowsCorePackages)) {
     Invoke-LibraryTests $package
   }
-} elseif ($Scope -in @('background','upgrade')) {
+} elseif ($Scope -in @('background','upgrade','install')) {
   if (-not $InventoryOnly) {
   cargo build --locked -p hiroute-cli --bin hiroute -p hiroute-daemon --bin hirouted 2>&1 | Tee-Object "$evidence/headless-link.log"
   if ($LASTEXITCODE -ne 0) { throw 'Production background binaries failed to build' }
@@ -377,13 +378,17 @@ if ($Scope -eq 'components') {
   python scripts/windows-ci-package.py @packageArgs > "$evidence/package-result.json"
   if ($LASTEXITCODE -ne 0) { throw 'Production package prerequisites failed; background scenarios not executed' }
   $package = Get-Content "$evidence/package-result.json" -Raw | ConvertFrom-Json
+  $env:HIROUTE_WINDOWS_PACKAGE_TARGET = $package.target
   $env:HIROUTE_WINDOWS_PACKAGE_MANIFEST = $package.manifest
   $env:HIROUTE_WINDOWS_PACKAGE_ARCHIVE = $package.archive
-  $env:HIROUTE_WINDOWS_PYTHON = $package.python
+  $env:HIROUTE_WINDOWS_PACKAGE_DIRECTORY = $package.package_directory
   $env:HIROUTE_WINDOWS_ADMIN_CLI = $package.administrator_cli
   $env:HIROUTE_WORKER_DAEMON_BINARY = $package.worker_daemon
   }
-  if ($Scope -eq 'background') {
+  if ($Scope -eq 'install') {
+    $case = 'task_native_background_lua_gateway_control_stop_crash_recovery_and_autostart'
+    Invoke-RequiredTests 'native-install' @('-p','hiroute-daemon','--test','windows_background',$case) @($case) @('--exact','--nocapture')
+  } elseif ($Scope -eq 'background') {
     Invoke-RequiredTests 'background-capture' @('-p','hiroute-daemon','--test','windows_background','windows_token_launcher::capture_tests::') @(
       'windows_token_launcher::capture_tests::native_capture_requires_last_writer_close_for_eof',
       'windows_token_launcher::capture_tests::native_capture_bounds_output_and_never_reports_unknown_stage_data')
@@ -634,7 +639,7 @@ if ($Scope -eq 'components') {
   if ($CaptureArtifacts) {
     $artifactArgs = @('finalize','--expected-sha',$ExpectedSha,'--evidence',$evidence)
     if ($Scope -in @('product','background','upgrade','agents','accounts')) { $artifactArgs += '--include-product-binaries' }
-    if ($Scope -in @('background','upgrade') -and (Test-Path "$evidence/package-result.json") -and (Get-Item "$evidence/package-result.json").Length -gt 0) {
+    if ($Scope -in @('background','upgrade','install') -and (Test-Path "$evidence/package-result.json") -and (Get-Item "$evidence/package-result.json").Length -gt 0) {
       $artifactArgs += @('--package-result',"$evidence/package-result.json")
     }
     python scripts/windows-native-artifacts.py @artifactArgs > "$evidence/artifact-finalization.json"

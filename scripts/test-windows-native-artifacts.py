@@ -230,7 +230,7 @@ class NativeArtifactReceipts(unittest.TestCase):
         foreign["build"]["source_sha"] = "b" * 40
         with self.assertRaisesRegex(ValueError, "build SHA"):
             self.verify(foreign)
-        for name in ("Cargo.lock", "scripts/install-standalone-windows.py", "scripts/package-standalone.py"):
+        for name in ("Cargo.lock", "crates/cli/src/service/windows/install.rs", "scripts/package-standalone.py"):
             with self.subTest(name=name):
                 path = self.root / name
                 original = path.read_bytes()

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "apps/desktop/src-tauri",
+    "apps/shell/src-tauri",
     "crates/application",
     "crates/application-api",
     "crates/cli",
@@ -17,6 +18,7 @@ members = [
     "crates/local-storage",
     "crates/observation",
     "crates/platform",
+    "crates/product-session",
     "crates/platform/test-support",
     "tools/e2e-harness",
     "tools/product-e2e",

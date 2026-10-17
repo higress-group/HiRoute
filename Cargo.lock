@@ -329,6 +329,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-executor"
+version = "1.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c96bf972d85afc50bf5ab8fe2d54d1586b4e0b46c97c50a0c9e71e2f7bcd812a"
+dependencies = [
+ "async-task",
+ "concurrent-queue",
+ "fastrand",
+ "futures-lite",
+ "pin-project-lite",
+ "slab",
+]
+
+[[package]]
 name = "async-io"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2296,6 +2310,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "base64 0.22.1",
+ "bytes",
  "command-fds",
  "futures",
  "getrandom 0.3.4",
@@ -2312,7 +2327,11 @@ dependencies = [
  "hiroute-observation",
  "hiroute-platform",
  "hiroute-platform-test-support",
+ "hiroute-product-session",
  "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "nix",
  "rusqlite",
  "rustix",
@@ -2343,6 +2362,7 @@ dependencies = [
  "hiroute-diagnostics",
  "hiroute-domain",
  "hiroute-host-runtime",
+ "hiroute-product-session",
  "nix",
  "reqwest",
  "serde",
@@ -2483,6 +2503,7 @@ dependencies = [
 name = "hiroute-host-runtime"
 version = "0.1.0"
 dependencies = [
+ "fs2",
  "getrandom 0.3.4",
  "hiroute-platform",
  "nix",
@@ -2575,6 +2596,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "url",
  "windows 0.62.2",
  "windows-sys 0.61.2",
  "zeroize",
@@ -2609,6 +2631,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "hiroute-product-session"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "hiroute-application-api",
+ "hiroute-client-core",
+ "hiroute-diagnostics",
+ "hiroute-domain",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "hiroute-release-facts"
 version = "0.1.0"
 dependencies = [
@@ -2619,6 +2657,27 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "hiroute-shell"
+version = "0.3.1"
+dependencies = [
+ "fs2",
+ "hiroute-application-api",
+ "hiroute-client-core",
+ "hiroute-host-runtime",
+ "hiroute-platform",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-single-instance",
+ "tokio",
+ "url",
 ]
 
 [[package]]
@@ -2699,6 +2758,7 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
  "pin-project-lite",
  "smallvec",
@@ -5597,6 +5657,7 @@ dependencies = [
  "gtk",
  "heck 0.5.0",
  "http",
+ "image",
  "jni",
  "libc",
  "log",
@@ -5783,6 +5844,21 @@ dependencies = [
  "tokio",
  "tracing",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a33a5b7d78f0dec4406b003ea87c40bf928d801b6fd9323a556172c91d8712c1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.20",
+ "tracing",
+ "windows-sys 0.60.2",
+ "zbus",
 ]
 
 [[package]]
@@ -7578,8 +7654,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5db4be7c075cb421e4b7ee645541604239bd243ba7c357511f4ff3a74b555907"
 dependencies = [
  "async-broadcast",
+ "async-executor",
+ "async-io",
+ "async-lock",
+ "async-process",
  "async-recursion",
+ "async-task",
  "async-trait",
+ "blocking",
  "enumflags2",
  "event-listener",
  "futures-core",

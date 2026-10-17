@@ -12,8 +12,8 @@ native Windows acceptance uses `scripts/windows-headless-ci.ps1`.
 | `gateway-core-dedicated.yml` | Manual or reusable | Hosted Linux production stability and socket churn |
 | `p0-gateway-final-gates.yml` | Manual | Aggregate the three current hosted workflows |
 | `build-release.yml` | Manual, exact dispatch SHA | Builds macOS/Linux candidates independently; only Windows archives require the reusable Windows validation gate; uploads candidate assets and integrity evidence for the existing release publisher |
-| `build-release-platform.yml` | Reusable, exact caller SHA | Shared per-target candidate build and evidence upload |
-| `windows-compile.yml` | Path-filtered PR | One cached x64 MSVC check of CLI, daemon, platform and local-storage, including their test targets and transitive production libraries; no runtime tests |
+| `build-release-platform.yml` | Reusable, or explicit manual x64 Windows build | Shared per-target candidate build and evidence upload; the manual defaults build only an NSIS acceptance input with an `awaiting_runtime` identity |
+| `windows-compile.yml` | Path-filtered PR or manual | One cached x64 MSVC check of CLI, daemon, platform, local-storage and the console shell, including test targets and transitive production libraries. The shell compile excludes release payload resources; packaging validates the real payload separately. No runtime tests. |
 | `windows-headless.yml` | Release-candidate call, explicit manual diagnosis | Native MSVC primitives, shared business libraries, foreground control/Gateway and fixed upstream clients; complete background artifacts with explicit deferred Task acceptance; x64 artifact replay on Windows 11 ARM64 |
 
 PR and main pushes do not automatically run the Windows matrix. During normal
@@ -30,6 +30,13 @@ records the `focused` phase and cannot establish complete Windows acceptance.
 The reusable release entry accepts no scope input and always runs all five scopes.
 Neither manual mode publishes packages or establishes the separately required
 user/account acceptance.
+
+For installer iteration, manually dispatch **build-release-platform** with its
+default x64 Windows target, Windows runner and Desktop option. This uses the same
+release builder without starting the other platform or headless assessment jobs.
+Its uploaded installer is an acceptance input. The identity remains incomplete
+until the required Windows 11 x64 and Server standard-user scenarios pass, and
+the release publisher still enforces those artifact-bound results.
 
 Native Windows jobs enable sccache's GitHub Actions backend so compiler objects
 can be reused across runs. Cargo targets remain local to each checkout; artifact
@@ -49,7 +56,10 @@ binary tests, three ordinary integration-test groups, Gateway E2E, Product smoke
 remaining doctest/contract/transport gates. Each Cargo test shard keeps the full workspace
 package and all-features context. `ci-shards.py check` compares every non-Desktop Cargo
 integration target with the explicit shard inventory; a missing, duplicate or same-name
-cross-shard target fails selection instead of being silently omitted. The required
+cross-shard target fails selection instead of being silently omitted. The frontend job
+exports its exact candidate console build; the daemon integration shard downloads those
+bytes for the installed Linux package scenario. Backend shards keep their configured
+Rust runners and depend on the frontend result without rebuilding it there. The required
 `backend` status is a small aggregate job, so the public branch-protection contract remains
 stable while individual shard jobs can run concurrently.
 

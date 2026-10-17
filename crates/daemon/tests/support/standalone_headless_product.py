@@ -342,6 +342,13 @@ for line in sys.stdin:
             'packages': [{'id': 'fixture:cpa@1'}],
             'documents': [{'sha256': '0' * 64}],
         }, sort_keys=True) + '\n')
+        console_assets = self.repo / 'apps/desktop/dist'
+        assert (console_assets / 'index.html').is_file(), 'build the candidate console frontend before installed-product acceptance'
+        staged_console = package_source / 'console'
+        shutil.copytree(console_assets, staged_console, symlinks=True)
+        for path in staged_console.rglob('*'):
+            if path.is_file() and not path.is_symlink():
+                path.chmod(0o600)
         candidate_hiroute = self.root / 'candidate-hiroute'
         candidate_hirouted = self.root / 'candidate-hirouted'
         shutil.copy2(source_bin / 'hiroute', candidate_hiroute)
@@ -371,7 +378,8 @@ for line in sys.stdin:
             '--hirouted', str(candidate_hirouted),
             '--cpa-binary', str(cpa), '--cpa-version', '8.0.4-hiroute.4',
             '--cpa-license', str(license_path),
-            '--notices', str(package_source / 'notices'), '--output', str(self.package),
+            '--notices', str(package_source / 'notices'), '--console-assets', str(staged_console),
+            '--output', str(self.package),
         ], cwd=self.repo, env=self.env, capture_output=True, timeout=90)
         self.outputs.extend((package.stdout, package.stderr))
         assert package.returncode == 0, package.stderr.decode(errors='replace')

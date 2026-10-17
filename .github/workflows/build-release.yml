@@ -28,6 +28,7 @@ jobs:
       target: ${{ matrix.target }}
       runner: ${{ matrix.runner }}
 
+  # Headless archives are internal test/installer payloads, never public assets.
   build-windows:
     needs: windows-validation
     strategy:
@@ -42,3 +43,11 @@ jobs:
     with:
       target: ${{ matrix.target }}
       runner: ${{ matrix.runner }}
+
+  build-windows-desktop:
+    needs: windows-validation
+    uses: ./.github/workflows/build-release-platform.yml
+    with:
+      target: x86_64-pc-windows-msvc
+      runner: windows-2025
+      windows_desktop: true

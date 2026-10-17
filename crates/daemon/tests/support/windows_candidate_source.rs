@@ -7,11 +7,9 @@ use std::path::{Component, Path, PathBuf};
 use hiroute_platform::windows::security;
 use sha2::{Digest, Sha256};
 
-const INSTALLER: &[u8] = include_bytes!("../../../../scripts/install-standalone-windows.py");
 const PACKAGER: &[u8] = include_bytes!("../../../../scripts/package-standalone.py");
 
 pub struct Sources {
-    installer: PathBuf,
     // Deny mutation/removal through the complete scenario, including owner reexec.
     _held: Vec<File>,
 }
@@ -47,26 +45,18 @@ impl Sources {
                 .unwrap(),
         };
         // Explicitly reject a replaced/junction source ancestor before opening files.
-        let installer = root.join("scripts/install-standalone-windows.py");
-        let mut held = installer
+        let packager = root.join("scripts/package-standalone.py");
+        let mut held = packager
             .parent()
             .unwrap()
             .ancestors()
             .map(retain_directory)
             .collect::<Vec<_>>();
-        held.push(exact_source(&installer, INSTALLER));
         held.push(exact_source(
             &root.join("scripts/package-standalone.py"),
             PACKAGER,
         ));
-        Self {
-            installer,
-            _held: held,
-        }
-    }
-
-    pub fn installer(&self) -> PathBuf {
-        self.installer.clone()
+        Self { _held: held }
     }
 
     pub fn revision() -> Option<&'static str> {
@@ -111,7 +101,7 @@ fn exact_source(path: &Path, expected: &[u8]) -> File {
     let identity = security::open_identity(path, false).unwrap();
     let mut held = OpenOptions::new()
         .read(true)
-        // FILE_SHARE_READ only: Python may read, nobody can replace or write.
+        // FILE_SHARE_READ only: The packager may read, nobody can replace or write.
         .share_mode(1)
         .open(path)
         .unwrap();
@@ -129,7 +119,7 @@ fn exact_source(path: &Path, expected: &[u8]) -> File {
     assert_eq!(
         Sha256::digest(&actual),
         Sha256::digest(expected),
-        "candidate installer/dependency bytes differ from the compiled source"
+        "candidate package producer bytes differ from the compiled source"
     );
     held
 }

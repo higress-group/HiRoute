@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Development-runner admission regressions, not native product evidence."""
 import base64
+import contextlib
+import io
+import hashlib
 import importlib.util
 import json
 import os
@@ -21,6 +24,9 @@ def load(name):
 
 
 controller, host = load('windows-dev'), load('windows-dev-host')
+images = load('test-windows-native-runtime-audit')
+profiles = load('windows-dev-profile')
+desktop = load('windows-desktop-session')
 
 
 class Runner(unittest.TestCase):
@@ -63,6 +69,119 @@ class Runner(unittest.TestCase):
             host.stage(self.root, archive, '0' * 64)
         self.assertFalse((self.root / 'bundles').exists())
 
+    def test_desktop_observation_admits_installed_bytes_and_rejects_changed_shell(self):
+        home = self.root / 'home'
+        programs = home / 'local/Programs/HiRoute'
+        package = home / '.local/lib/hiroute/0.3.1-aaaaaaaaaaaa'
+        data = home / '.local/share/hiroute'
+        for path in (programs, package, data):
+            path.mkdir(parents=True)
+        files = {}
+        for name in ('hiroute.exe', 'hirouted.exe'):
+            (package / name).write_bytes(name.encode())
+            files[name] = dict(sha256=profiles.digest(package / name))
+        shell = programs / 'hiroute-shell.exe'
+        shell.write_bytes(b'measured NSIS member')
+        checksum = profiles.digest(shell)
+        (programs / 'shell-package.json').write_text(json.dumps(dict(files={'hiroute-shell.exe': checksum})))
+        (data / 'standalone.json').write_text(json.dumps(dict(install_root=str(package),
+            service_definition=str(package / 'task.json'), target='x86_64-pc-windows-msvc')))
+        manifest = dict(source_revision='a' * 40, target='x86_64-pc-windows-msvc', files=files, shell_sha256=checksum)
+        with patch.object(desktop.Path, 'home', return_value=home), patch.dict(os.environ, LOCALAPPDATA=str(home / 'local')):
+            self.assertEqual(desktop.installed(profiles, self.root, manifest)[2], shell)
+            shell.write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError, 'shell differs'):
+                desktop.installed(profiles, self.root, manifest)
+            shell.write_bytes(b'measured NSIS member')
+            (package / 'hiroute.exe').write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError, 'binary changed'):
+                desktop.installed(profiles, self.root, manifest)
+
+    def test_desktop_refuses_filtered_administrator_before_native_actions(self):
+        with self.assertRaisesRegex(ValueError, 'filtered administrator'), patch.object(desktop.subprocess, 'run') as run:
+            desktop.execute({}, self.root, self.root, {}, profiles, {'administrator_groups': True}, host.manifest, self.root)
+        run.assert_not_called()
+
+    def test_desktop_helper_requires_the_exact_committed_hash(self):
+        path = self.root / 'desktop.py'
+        path.write_text('raise RuntimeError("must not import")')
+        with self.assertRaisesRegex(ValueError, 'committed request'):
+            host.desktop_helper(dict(desktop_helper_path=str(path), desktop_helper_sha256='0' * 64))
+
+    def test_missing_windowless_runtime_refuses_before_task_or_lock_creation(self):
+        request = dict(config=dict(python=str(self.root / 'python.exe')), run_id='a' * 32,
+                       harness='b' * 12 + '-' + 'c' * 12, product='d' * 12 + '-' + 'e' * 12,
+                       timeout=120, binary='hiroute.exe', case='native_desktop_snapshot', operation='desktop')
+        with patch.object(host, 'manifest', return_value={}), \
+             patch.object(host, 'pe', side_effect=FileNotFoundError('pythonw.exe')), \
+             patch.object(host, 'private_runs') as prepare, self.assertRaises(FileNotFoundError):
+            host.start(self.root, request)
+        prepare.assert_not_called()
+        self.assertFalse((self.root / 'active.json').exists())
+
+    def test_desktop_cleanup_keeps_the_exact_windowless_action_identity(self):
+        run_id = 'a' * 32
+        run = self.root / 'runs' / run_id
+        run.mkdir(parents=True)
+        request = dict(config=dict(python=str(self.root / 'python.exe')),
+                       operation='desktop', driver_path=str(self.root / 'driver.py'))
+        (run / 'request.json').write_text(json.dumps(request))
+        lock = self.root / 'active.json'
+        lock.write_text(json.dumps(dict(run_id=run_id)))
+        with patch.object(host, 'ps', side_effect=RuntimeError('active or differs')):
+            with self.assertRaises(RuntimeError):
+                host.finish(self.root, run_id)
+        self.assertTrue(lock.exists())
+        with patch.object(host, 'ps') as ps:
+            self.assertTrue(host.finish(self.root, run_id)['task_removed'])
+        self.assertIn(str(self.root / 'pythonw.exe'), ps.call_args.args[0])
+        self.assertIn("$t.State -ne 'Ready'", ps.call_args.args[0])
+        self.assertFalse(lock.exists())
+
+    def test_nsis_uninstall_waits_on_the_staged_program_and_preserves_the_final_path_tail(self):
+        command = host.nsis_uninstall_command(r'C:\Private Runs\nsis-uninstaller.exe', r'C:\Users\Standard User\AppData\Local\Programs\HiRoute')
+        self.assertEqual(command, '"C:\\Private Runs\\nsis-uninstaller.exe" /S _?=C:\\Users\\Standard User\\AppData\\Local\\Programs\\HiRoute')
+        for invalid in ('path\nother', 'path"other', 'path\0other'):
+            with self.assertRaises(ValueError):
+                host.nsis_uninstall_command('uninstaller.exe', invalid)
+
+    def test_locked_input_desktop_refuses_before_any_native_ui_process(self):
+        with patch.object(desktop, 'desktop_state', return_value={'interactive':False,'input_desktop':None}), \
+             patch.object(desktop.subprocess, 'run') as run, self.assertRaisesRegex(RuntimeError, 'unlock'):
+            desktop.ui_action(self.root, {'desktop_action':'snapshot'}, Path('shell.exe'), 42)
+        run.assert_not_called()
+        self.assertFalse(json.loads((self.root / 'desktop-state.json').read_text())['interactive'])
+
+    def test_bootstrap_publishes_once_and_preserves_changed_content(self):
+        destination = self.root / 'helper.py'
+        temporary = self.root / 'upload'
+        payload = b'validated helper'
+        checksum = hashlib.sha256(payload).hexdigest()
+        entries = [dict(path=str(destination),sha256=checksum)]
+        def execute(publication=None):
+            output=io.StringIO()
+            with contextlib.redirect_stdout(output):
+                exec(controller.bootstrap_code(str(self.root), entries, publication), {})
+            return json.loads(output.getvalue())
+        self.assertEqual(execute(), [])
+        temporary.write_bytes(payload)
+        self.assertEqual(execute(dict(path=str(destination),temporary=str(temporary),sha256=checksum)),[checksum])
+        before=destination.stat().st_mtime_ns
+        self.assertEqual(execute(), [checksum])
+        self.assertEqual(destination.stat().st_mtime_ns,before)
+        destination.write_bytes(b'changed')
+        with self.assertRaisesRegex(ValueError,'identity changed'):
+            execute()
+        self.assertEqual(destination.read_bytes(),b'changed')
+
+    def test_wait_bootstrap_does_not_upload_over_live_helpers(self):
+        remote=controller.Remote(dict(root=str(self.root),python='python.exe',identity_file='key'))
+        checksums=[controller.digest(Path(__file__).with_name(name)) for name in
+                   ('windows-dev-host.py','windows-dev-profile.py','windows-desktop-session.py')]
+        with patch.object(remote,'execute',return_value=json.dumps(checksums)),patch.object(remote,'upload') as upload:
+            remote.bootstrap()
+        upload.assert_not_called()
+
     def test_archive_traversal_and_unmanifested_entries_fail(self):
         for name in ('../escape', '/absolute', 'C:/absolute', 'dir\\file.exe', 'other.exe'):
             with self.subTest(name=name):
@@ -87,6 +206,107 @@ class Runner(unittest.TestCase):
         with self.assertRaises(ValueError):
             host.pe(binary)
 
+    def test_nsis_stub_is_admitted_only_as_the_declared_installer(self):
+        payload = bytearray(70)
+        payload[:2] = b'MZ'
+        struct.pack_into('<I', payload, 60, 64)
+        payload[64:] = b'PE\0\0\x4c\x01'
+        entry = dict(sha256=hashlib.sha256(payload).hexdigest(), bytes=len(payload))
+        for declaration in (None, 'nsis'):
+            def mutate(value):
+                value['files']['installer.exe'] = entry
+                if declaration:
+                    value['installer_format'] = declaration
+            archive = self.archive(extra=('installer.exe', payload), mutate=mutate)
+            if declaration:
+                staged = host.stage(self.root, archive, controller.digest(archive))
+                self.assertIn('installer.exe', staged['files'])
+                path = self.root / 'bundles' / staged['bundle'] / 'installer.exe'
+                with self.assertRaises(ValueError):
+                    host.pe(path)  # Ordinary product/harness admission stays x64.
+            else:
+                with self.assertRaisesRegex(ValueError, 'explicit NSIS'):
+                    host.stage(self.root, archive, controller.digest(archive))
+
+    def test_desktop_bundle_binds_installer_and_compiled_harness_to_the_candidate(self):
+        sha = 'a' * 40
+        binaries = self.root / 'target/x86_64-pc-windows-msvc/release'
+        binaries.mkdir(parents=True)
+        harness = binaries / 'windows_desktop.exe'
+        harness.write_bytes(images.image())
+        payload = self.root / 'apps/shell/src-tauri/resources/standalone'
+        payload.mkdir(parents=True)
+        for name in ('hiroute.exe', 'hirouted.exe'):
+            (payload / name).write_bytes(b'embedded-' + name.encode())
+        (payload / 'package-manifest.json').write_text(json.dumps(dict(revision=sha,
+            target='x86_64-pc-windows-msvc', files={
+                'bin/' + name: dict(sha256=controller.digest(payload / name), size=(payload / name).stat().st_size)
+                for name in ('hiroute.exe', 'hirouted.exe')})))
+        assets = self.root / 'target/candidate/assets'
+        assets.mkdir(parents=True)
+        installer = assets / 'candidate.exe'
+        installer.write_bytes(b'component-nsis-fixture')
+        result = dict(revision=sha, target='x86_64-pc-windows-msvc', status='awaiting_runtime',
+                      package_integrity='green', assets=str(assets),
+                      desktop_result=dict(revision=sha, native_runtime='not_executed',
+                                          shell_image=dict(sha256='c' * 64),
+                                          installer_sha256=controller.digest(installer), installer_size=installer.stat().st_size,
+                                          standalone_manifest_sha256=controller.digest(payload / 'package-manifest.json')),
+                      website_artifact=dict(kind='desktop', format='nsis', platform='Windows', architecture='x86_64',
+                                            filename=installer.name, sha256=controller.digest(installer)))
+        record = self.root / 'result.json'
+        record.write_text(json.dumps(result))
+        log = self.root / 'compiler.jsonl'
+        log.write_text(json.dumps(dict(reason='compiler-artifact', target=dict(name='windows_desktop'),
+                                       profile=dict(test=True), executable=str(harness))) + '\n')
+        with patch.object(controller, 'REPO', self.root), \
+             patch.object(controller.subprocess, 'check_output', return_value=sha):
+            output = self.root / 'desktop.zip'
+            exported = controller.bundle_desktop(record, log, output)
+            self.assertEqual(exported['native_acceptance'], 'not_executed')
+            with zipfile.ZipFile(output) as archive:
+                manifest = json.loads(archive.read('manifest.json'))
+                self.assertEqual(manifest['installer_format'], 'nsis')
+                self.assertEqual(manifest['shell_sha256'], 'c' * 64)
+                self.assertEqual(archive.read('hirouted.exe'), b'embedded-hirouted.exe')
+            harness.write_bytes(images.image(('KERNEL32.dll', 'VCRUNTIME140.dll')))
+            with self.assertRaisesRegex(ValueError, 'static CRT'):
+                controller.bundle_desktop(record, log, self.root / 'dynamic-harness.zip')
+            harness.write_bytes(images.image())
+            installer.write_bytes(b'changed installer')
+            with self.assertRaisesRegex(ValueError, 'measured build identity'):
+                controller.bundle_desktop(record, log, self.root / 'changed.zip')
+            self.assertFalse((self.root / 'changed.zip').exists())
+            installer.write_bytes(b'component-nsis-fixture')
+            (payload / 'hirouted.exe').write_bytes(b'changed daemon')
+            with self.assertRaisesRegex(ValueError, 'Embedded product bytes'):
+                controller.bundle_desktop(record, log, self.root / 'changed-product.zip')
+
+    def test_installation_inspection_reads_owned_paths_without_starting_or_changing_them(self):
+        native_home, local = self.root / 'account', self.root / 'local'
+        data = native_home / '.local/share/hiroute'
+        data.mkdir(parents=True)
+        install = native_home / '.local/lib/hiroute/version'
+        install.mkdir(parents=True)
+        (install / 'hiroute.exe').write_bytes(b'existing-cli')
+        definition = install / 'task.json'
+        definition.write_text('{"manager":"task"}')
+        marker = data / 'standalone.json'
+        marker.write_text(json.dumps(dict(install_root=str(install), service_definition=str(definition))))
+        facts = profiles.inspect_installation(native_home, local)
+        self.assertTrue(facts['data']['exists'])
+        self.assertFalse(facts['state']['exists'])
+        self.assertEqual(facts['installed_cli']['sha256'], controller.digest(install / 'hiroute.exe'))
+        self.assertEqual(facts['definition']['text'], '{"manager":"task"}')
+        self.assertTrue(marker.exists())
+        self.assertFalse(local.exists())
+        foreign = self.root / 'foreign'
+        foreign.mkdir()
+        (local / 'Programs').mkdir(parents=True)
+        (local / 'Programs/HiRoute').symlink_to(foreign, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'Reparse'):
+            profiles.inspect_installation(native_home, local)
+
     def test_symlink_and_multiple_links_are_not_runner_storage(self):
         archive = self.archive()
         value = host.stage(self.root, archive, controller.digest(archive))
@@ -97,6 +317,148 @@ class Runner(unittest.TestCase):
         (self.root / 'linked').symlink_to(directory, target_is_directory=True)
         with self.assertRaises(ValueError):
             host.plain(self.root / 'linked/sample.exe')
+
+    def orphaned_profile(self):
+        native_home, local = self.root / 'native', self.root / 'appdata'
+        roots = profiles.locations(native_home, local)
+        for name in ('data', 'state', 'shell_state'):
+            roots[name].mkdir(parents=True)
+            (roots[name] / 'retained.txt').write_bytes(name.encode())
+        evidence = self.root / 'private-evidence'
+        evidence.mkdir()
+        return native_home, local, roots, evidence
+
+    def test_candidate_uninstall_requires_measured_images_and_rejects_other_active_work(self):
+        native_home, local, roots, _ = self.orphaned_profile()
+        sha = 'a' * 40
+        installed = native_home / '.local/lib/hiroute' / ('0.3.1-' + sha[:12])
+        installed.mkdir(parents=True)
+        files = {}
+        for name in ('hiroute.exe', 'hirouted.exe'):
+            (installed / name).write_bytes(name.encode())
+            files[name] = dict(sha256=controller.digest(installed / name))
+        definition = roots['data'] / 'task.json'
+        definition.write_text(json.dumps(dict(manager='task', name='HiRoute-candidate')))
+        marker = dict(schema_version='hiroute.standalone-install/v1', target='x86_64-pc-windows-msvc',
+                      install_root=str(installed), service_definition=str(definition))
+        (roots['data'] / 'standalone.json').write_text(json.dumps(marker))
+        roots['programs'].mkdir(parents=True)
+        for name in ('hiroute-shell.exe', 'uninstall.exe'):
+            (roots['programs'] / name).write_bytes(name.encode())
+        inventory = {n: controller.digest(roots['programs'] / n) for n in ('hiroute-shell.exe', 'uninstall.exe')}
+        (roots['programs'] / 'shell-package.json').write_text(json.dumps(dict(files=inventory)))
+        inspected = profiles.inspect_installation(native_home, local)
+        product = dict(source_revision=sha, target=marker['target'], files=files)
+        activity = dict(administrator_groups=False, processes=[], tasks=[])
+        result = profiles.candidate_uninstaller(native_home, local, inspected, product,
+                                               inventory['hiroute-shell.exe'], activity)
+        self.assertEqual(result, (roots['programs'] / 'uninstall.exe', installed))
+        with self.assertRaisesRegex(ValueError, 'measured inventory'):
+            profiles.candidate_uninstaller(native_home, local, inspected, product, 'f' * 64, activity)
+        activity['processes'] = [dict(ExecutablePath=str(roots['programs'] / 'hiroute-shell.exe'))]
+        with self.assertRaisesRegex(ValueError, 'Another product or installer'):
+            profiles.candidate_uninstaller(native_home, local, inspected, product,
+                                           inventory['hiroute-shell.exe'], activity)
+        self.assertTrue((installed / 'hirouted.exe').exists())
+
+    def test_archive_long_paths_use_extended_drive_and_unc_forms(self):
+        self.assertEqual(profiles.extended_windows_path(r'C:\account\data'), r'\\?\C:\account\data')
+        self.assertEqual(profiles.extended_windows_path(r'\\server\share\data'), r'\\?\UNC\server\share\data')
+        self.assertEqual(profiles.extended_windows_path(r'\\?\C:\data'), r'\\?\C:\data')
+
+    def test_fresh_nsis_case_rejects_old_payloads_before_installation(self):
+        native_home = self.root / 'account'
+        profiles.require_fresh_nsis_packages(native_home)
+        packages = native_home / '.local/lib/hiroute'
+        packages.mkdir(parents=True)
+        profiles.require_fresh_nsis_packages(native_home)
+        old = packages / 'old-version'
+        old.mkdir()
+        with self.assertRaisesRegex(ValueError, 'retained package roots'):
+            profiles.require_fresh_nsis_packages(native_home)
+        self.assertTrue(old.exists())
+
+    def test_orphaned_data_is_archived_with_complete_hashes_and_native_files_untouched(self):
+        native_home, local, roots, evidence = self.orphaned_profile()
+        native = native_home / '.codex/config.toml'
+        native.parent.mkdir()
+        native.write_text('model="unrelated"')
+        inspected = profiles.inspect_installation(native_home, local)
+        result = profiles.archive_orphaned_data(native_home, local, evidence, inspected,
+                    dict(administrator_groups=False, processes=[], tasks=[]))
+        self.assertEqual(result['assessment'], 'preparation_only')
+        for name in ('data', 'state', 'shell_state'):
+            self.assertFalse(roots[name].exists())
+            self.assertEqual((evidence / ('previous-' + name) / 'retained.txt').read_bytes(), name.encode())
+        manifest = json.loads((evidence / 'profile-backup.json').read_text())
+        self.assertEqual(manifest['paths'][0]['inventory']['retained.txt']['sha256'],
+                         hashlib.sha256(b'data').hexdigest())
+        self.assertEqual(native.read_text(), 'model="unrelated"')
+
+    def test_orphaned_partial_shell_backup_is_preserved_with_its_hash(self):
+        native_home, local, roots, evidence = self.orphaned_profile()
+        backup = roots['shell_state'] / 'install-backups/hiroute-shell.exe'
+        backup.parent.mkdir()
+        backup.write_bytes(b"retained previous shell")
+        inspected = profiles.inspect_installation(native_home, local)
+        profiles.archive_orphaned_data(native_home, local, evidence, inspected,
+                                      dict(administrator_groups=False))
+        self.assertEqual((evidence / 'previous-shell_state/install-backups/hiroute-shell.exe').read_bytes(),
+                         b"retained previous shell")
+        manifest = json.loads((evidence / 'profile-backup.json').read_text())
+        shell = next(p for p in manifest['paths'] if p['source'] == str(roots['shell_state']))
+        self.assertEqual(shell['inventory'][str(Path('install-backups/hiroute-shell.exe'))]['sha256'],
+                         hashlib.sha256(b"retained previous shell").hexdigest())
+        self.assertFalse(roots['shell_state'].exists())
+
+    def test_live_installation_activity_and_agent_references_prevent_archival(self):
+        native_home, local, roots, evidence = self.orphaned_profile()
+        inspected = profiles.inspect_installation(native_home, local)
+        for activity in [dict(administrator_groups=True),
+                         dict(administrator_groups=False, processes=[123]),
+                         dict(administrator_groups=False, tasks=['HiRoute-task'])]:
+            with self.assertRaises(ValueError):
+                profiles.archive_orphaned_data(native_home, local, evidence, inspected, activity)
+            self.assertTrue(roots['state'].exists())
+        native = native_home / '.codex/config.toml'
+        native.parent.mkdir()
+        native.write_text(str(roots['state']))
+        with self.assertRaisesRegex(ValueError, 'Native Agent configuration'):
+            profiles.archive_orphaned_data(native_home, local, evidence, inspected,
+                                          dict(administrator_groups=False))
+        self.assertFalse((evidence / 'profile-backup.json').exists())
+
+    def test_changed_or_linked_orphaned_data_is_preserved_before_any_move(self):
+        native_home, local, roots, evidence = self.orphaned_profile()
+        inspected = profiles.inspect_installation(native_home, local)
+        (roots['state'] / 'new.txt').touch()
+        with self.assertRaisesRegex(ValueError, 'changed since inspection'):
+            profiles.archive_orphaned_data(native_home, local, evidence, inspected,
+                                          dict(administrator_groups=False))
+        (roots['state'] / 'dangling').symlink_to(self.root / 'missing')
+        inspected = profiles.inspect_installation(native_home, local)
+        with self.assertRaisesRegex(ValueError, 'Reparse'):
+            profiles.archive_orphaned_data(native_home, local, evidence, inspected,
+                                          dict(administrator_groups=False))
+        self.assertTrue(roots['data'].exists())
+        self.assertFalse((evidence / 'previous-data').exists())
+
+    def test_failed_second_archive_move_restores_the_first_directory(self):
+        native_home, local, roots, evidence = self.orphaned_profile()
+        inspected = profiles.inspect_installation(native_home, local)
+        rename = Path.rename
+        def fail_second(source, target):
+            if source == roots['state']:
+                raise PermissionError('fixture file lock')
+            return rename(source, target)
+        with patch.object(Path, 'rename', fail_second), self.assertRaises(PermissionError):
+            profiles.archive_orphaned_data(native_home, local, evidence, inspected,
+                                          dict(administrator_groups=False))
+        self.assertEqual((roots['data'] / 'retained.txt').read_bytes(), b'data')
+        self.assertEqual((roots['state'] / 'retained.txt').read_bytes(), b'state')
+        self.assertFalse((evidence / 'previous-data').exists())
+        outcome = json.loads((evidence / 'profile-backup-outcome.json').read_text())
+        self.assertEqual(outcome['outcome'], 'restored_after_error')
 
     def test_config_contains_paths_not_tokens_and_lives_in_home(self):
         identity = self.root / 'key'

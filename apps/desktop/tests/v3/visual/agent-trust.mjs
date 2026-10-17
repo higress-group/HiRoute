@@ -10,7 +10,7 @@ const desktopRoot = path.resolve(here, '../../..');
 const outputRoot = path.resolve(process.argv[2] ?? path.join(desktopRoot, 'test-results/v3-agent-trust'));
 const subscriptionProxyOnly = process.argv[3] === '--subscription-proxy-only';
 const shellOnly = process.argv[3] === '--shell-only' || subscriptionProxyOnly;
-if (process.argv[3] && !['--shell-only', '--subscription-proxy-only', '--route-save-only', '--worker-replacement-only', '--claude-collaboration-only', '--route-options-only'].includes(process.argv[3])) throw new Error(`Unknown scenario selection: ${process.argv[3]}`);
+if (process.argv[3] && !['--shell-host-only', '--console-only', '--shell-only', '--subscription-proxy-only', '--route-save-only', '--worker-replacement-only', '--claude-collaboration-only', '--route-options-only'].includes(process.argv[3])) throw new Error(`Unknown scenario selection: ${process.argv[3]}`);
 const routeSaveOnly = process.argv[3] === '--route-save-only';
 const workerReplacementOnly = process.argv[3] === '--worker-replacement-only';
 const claudeCollaborationOnly = process.argv[3] === '--claude-collaboration-only';
@@ -40,6 +40,11 @@ const terminate = async child => {
     new Promise(resolve => child.once('exit', resolve)),
     new Promise(resolve => setTimeout(resolve, 1500)),
   ]);
+  // A detached browser descendant can retain inherited pipes after its parent
+  // exits. Close our pipe handles so completed scenarios do not keep Node alive.
+  child.stdin?.destroy();
+  child.stdout?.destroy();
+  child.stderr?.destroy();
 };
 const removeProfile = async directory => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -62,19 +67,20 @@ await mkdir(outputRoot, { recursive: true });
 let vite;
 let chrome;
 try {
-  vite = spawn(path.join(desktopRoot, 'node_modules/.bin/vite'), ['tests/v3/browser', '--host', '127.0.0.1', '--port', String(httpPort), '--strictPort'], { cwd: desktopRoot, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  vite = spawn(path.join(desktopRoot, 'node_modules/.bin/vite'), ['tests/v3/browser', '--config', 'tests/v3/browser/vite.config.ts', '--host', '127.0.0.1', '--port', String(httpPort), '--strictPort'], { cwd: desktopRoot, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   vite.stdout.resume();
   vite.stderr.on('data', data => process.stderr.write(data));
   await waitFor(`http://127.0.0.1:${httpPort}/`);
   const chromeExecutable = process.env.CHROME_BIN || (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome');
-  chrome = spawn(chromeExecutable, ['--headless=new', '--disable-gpu', `--remote-debugging-port=${cdpPort}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1280,900', 'about:blank'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  chrome = spawn(chromeExecutable, ['--headless=new', '--disable-gpu', '--no-proxy-server', '--host-resolver-rules=MAP console.test 127.0.0.1', `--remote-debugging-port=${cdpPort}`, '--remote-allow-origins=*', `--user-data-dir=${profile}`, '--window-size=1280,900', 'about:blank'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   chrome.stdout.resume();
   // Drain the diagnostic pipe: repeated platform warnings can otherwise block Chrome.
   let chromeErrors = '';
   chrome.stderr.on('data', data => { chromeErrors = (chromeErrors + data).slice(-8000); });
   try { await waitFor(`http://127.0.0.1:${cdpPort}/json/version`); }
   catch (error) { throw new Error(`${error.message}\n${chromeErrors}`); }
-  const runner = spawn(process.execPath, [path.join(here, 'agent-trust-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...(subscriptionProxyOnly ? ['--subscription-proxy-only'] : shellOnly ? ['--shell-only'] : routeSaveOnly ? ['--route-save-only'] : workerReplacementOnly ? ['--worker-replacement-only'] : claudeCollaborationOnly ? ['--claude-collaboration-only'] : routeOptionsOnly ? ['--route-options-only'] : [])], { cwd: desktopRoot, stdio: 'inherit' });
+  const consoleOnly = process.argv[3] === '--console-only';
+  const runner = spawn(process.execPath, [path.join(here, 'agent-trust-active.mjs'), String(cdpPort), `http://${consoleOnly ? 'console.test' : '127.0.0.1'}:${httpPort}/`, outputRoot, ...(process.argv[3] === '--shell-host-only' ? ['--shell-host-only'] : consoleOnly ? ['--console-only'] : subscriptionProxyOnly ? ['--subscription-proxy-only'] : shellOnly ? ['--shell-only'] : routeSaveOnly ? ['--route-save-only'] : workerReplacementOnly ? ['--worker-replacement-only'] : claudeCollaborationOnly ? ['--claude-collaboration-only'] : routeOptionsOnly ? ['--route-options-only'] : [])], { cwd: desktopRoot, stdio: 'inherit' });
   const outcome = await waitForExit(runner);
   if (outcome.code !== 0) process.exitCode = outcome.code ?? 1;
 } finally {

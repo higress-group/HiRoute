@@ -1,5 +1,5 @@
 //! Native owner transaction faults and proofs around the shipped installer.
-//! This fixture does not edit a journal or invoke a private Python recovery API.
+//! Exercises the Rust maintenance CLI; no fixture edits the installation journal.
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::Read;
@@ -122,12 +122,6 @@ pub(super) fn run(request: &Request) -> Value {
             verify_published(&layout)
         }
         "transaction-fail-install" | "transaction-upgrade-install" => {
-            let program = request.program.as_ref().unwrap();
-            let arguments = request
-                .arguments
-                .iter()
-                .map(OsString::from)
-                .collect::<Vec<_>>();
             let before = snapshot(&layout);
             assert_eq!(before["definition"]["manager"], "task");
             assert!(before["journal"].is_null());
@@ -153,15 +147,7 @@ pub(super) fn run(request: &Request) -> Value {
             } else {
                 None
             };
-            let command = process(
-                None,
-                program,
-                &arguments,
-                None,
-                false,
-                Duration::from_secs(75),
-                false,
-            );
+            let command = maintenance(request);
             if let Some(old) = old_daemon {
                 assert!(
                     old.wait(Duration::from_secs(10)).unwrap(),
@@ -195,4 +181,33 @@ pub(super) fn run(request: &Request) -> Value {
         }
         _ => panic!("unknown transaction fixture action"),
     }
+}
+
+/// Both real logged-on and alternate-token owners invoke the same private product entry.
+pub(super) fn maintenance(request: &Request) -> Value {
+    let uninstall = request.action == "uninstall";
+    let body = if uninstall {
+        assert!(request.arguments.is_empty());
+        json!({"schema":"hiroute.windows-uninstall-request/v1"})
+    } else {
+        assert_eq!(request.arguments.len(), 1);
+        json!({"schema":"hiroute.windows-install-request/v1",
+            "package_directory":request.arguments[0],"autostart":false})
+    };
+    process(
+        None,
+        request.program.as_ref().unwrap(),
+        &[
+            OsString::from(if uninstall {
+                "__windows-uninstall"
+            } else {
+                "__windows-install"
+            }),
+            OsString::from("--request-stdin"),
+        ],
+        Some(&serde_json::to_vec(&body).unwrap()),
+        false,
+        Duration::from_secs(75),
+        false,
+    )
 }

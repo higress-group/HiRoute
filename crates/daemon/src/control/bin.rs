@@ -39,6 +39,8 @@ const PROTECTED_FRAME_DEADLINE: Duration = Duration::from_secs(2);
 struct Arguments {
     role: Option<String>,
     standalone: bool,
+    #[cfg(debug_assertions)]
+    console_assets: Option<PathBuf>,
     #[cfg(windows)]
     windows_service: Option<String>,
     #[cfg(windows)]
@@ -198,13 +200,13 @@ fn run_daemon(
         None => None,
     };
     // Diagnostics start as soon as the root is known and never wait for business readiness.
-    let diagnostics = DiagnosticRuntime::start(RuntimeConfig {
+    let diagnostics = std::sync::Arc::new(DiagnosticRuntime::start(RuntimeConfig {
         root: diagnostics_root(&arguments),
         role: hiroute_diagnostics::event::ProcessRole::Daemon,
         component: Component::Daemon,
         parent_session_id: parent_session,
         level_override,
-    });
+    }));
     hiroute_diagnostics::panic::install_panic_hook(diagnostics.handle().clone());
     let result = match arguments.role.as_deref() {
         Some("control") => run_control(arguments, &diagnostics),
@@ -324,7 +326,7 @@ fn run_control(arguments: Arguments, diagnostics: &DiagnosticRuntime) -> Result<
 
 fn run_all(
     arguments: Arguments,
-    diagnostics: &DiagnosticRuntime,
+    diagnostics: &std::sync::Arc<DiagnosticRuntime>,
     #[cfg(windows)] service: Option<hiroute_platform::windows::service::ServiceShutdown>,
 ) -> Result<(), StartupError> {
     if arguments.standalone {
@@ -508,6 +510,8 @@ fn parse_arguments() -> Arguments {
         match name {
             "--role" => parsed.role = value(&mut arguments),
             "--standalone" => parsed.standalone = true,
+            #[cfg(debug_assertions)]
+            "--console-assets" => parsed.console_assets = value(&mut arguments).map(PathBuf::from),
             #[cfg(windows)]
             "--windows-service" => {
                 parsed.windows_service = Some(value(&mut arguments).unwrap_or_else(|| exit_usage()))

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../host/index.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, UiIcon } from '../../ui';
 import { confirmDiscard } from '../../ui/discard-guard';

@@ -267,7 +267,7 @@ def validate_manifest_shape(manifest):
         or type(archive.get("size")) is not int
         or not 0 < archive["size"] <= MAX_ARCHIVE
         or not isinstance(files, dict)
-        or set(files) != EXPECTED_FILES
+        or not valid_inventory(files)
         or not isinstance(cpa, dict)
         or set(cpa) != {"version", "sha256"}
         or not isinstance(cpa.get("version"), str)
@@ -279,7 +279,7 @@ def validate_manifest_shape(manifest):
     ):
         raise ValueError("package manifest is invalid for this host")
     total = 0
-    for name in EXPECTED_FILES:
+    for name in files:
         facts = files[name]
         if (
             not isinstance(facts, dict)
@@ -308,15 +308,25 @@ def validate_manifest(manifest, archive):
     return manifest
 
 
+def valid_inventory(files):
+    extra = set(files) - EXPECTED_FILES
+    return (EXPECTED_FILES <= set(files) and len(extra) <= 2048
+            and (not extra or "console/index.html" in extra)
+            and all(len(name) <= 240 and name.startswith("console/")
+                    and all(re.fullmatch(r"[A-Za-z0-9_@.-]+", part) and part not in {".", ".."}
+                            for part in name.split("/")) for name in extra))
+
+
 def extract_verified(manifest, archive, staging):
     seen = set()
+    inventory = set(manifest["files"])
     with tarfile.open(archive, "r:gz") as bundle:
         for member in bundle:
-            if len(seen) >= len(EXPECTED_FILES):
+            if len(seen) >= len(inventory):
                 raise ValueError("archive inventory is unsafe or differs from manifest")
             relative = Path(member.name)
             if (
-                member.name not in EXPECTED_FILES
+                member.name not in inventory
                 or member.name in seen
                 or not member.isfile()
                 or relative.is_absolute()
@@ -346,7 +356,7 @@ def extract_verified(manifest, archive, staging):
             mode = 0o755 if manifest["files"][member.name].get("mode") == "executable" else 0o644
             destination.chmod(mode)
             seen.add(member.name)
-    if seen != EXPECTED_FILES:
+    if seen != inventory:
         raise ValueError("archive is incomplete")
 
 
@@ -659,6 +669,8 @@ def install(args):
         try:
             shutil.copy2(staging / "bin/hiroute", staged_bin / "hiroute")
             shutil.copy2(staging / "bin/hirouted", staged_bin / "hirouted")
+            if (staging / "console").is_dir():
+                shutil.copytree(staging / "console", staged_bin / "console")
             for relative in ("libexec", "licenses", "docs", "skills"):
                 shutil.copytree(staging / relative, staged_data / relative)
             staged_components.extend(

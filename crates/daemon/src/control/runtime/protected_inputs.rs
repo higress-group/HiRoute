@@ -1,6 +1,29 @@
 use super::*;
 
+#[derive(Clone)]
+pub(crate) struct RuntimeAuthority {
+    pub(super) adapter: Arc<LocalControlAdapter>,
+}
 impl ProductionControlRuntime {
+    pub(crate) fn protected_authority(&self) -> RuntimeAuthority {
+        RuntimeAuthority {
+            adapter: self.adapter.clone(),
+        }
+    }
+    pub(crate) fn register_manual_protected_input(
+        &self,
+        candidate: hiroute_application_api::ComputeCandidateRefV2,
+        secret: hiroute_domain::ProtectedSecret,
+    ) -> Result<(), String> {
+        self.protected_authority()
+            .register_manual_protected_input(candidate, secret)
+    }
+    pub(crate) fn release_manual_protected_input(&self, candidate_ref: &str) -> Result<(), String> {
+        self.protected_authority()
+            .release_manual_protected_input(candidate_ref)
+    }
+}
+impl RuntimeAuthority {
     pub(crate) fn register_manual_protected_input(
         &self,
         candidate: hiroute_application_api::ComputeCandidateRefV2,

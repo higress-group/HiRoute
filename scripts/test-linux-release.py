@@ -200,11 +200,16 @@ else: raise SystemExit(2)
             'packages': [{'name': 'fixture'}], 'documents': [{'name': 'fixture'}],
         }))
         for path in notices.iterdir(): path.chmod(0o644)
+        console = self.root / 'console'
+        console.mkdir(exist_ok=True)
+        (console / 'index.html').write_text('<main>Runtime fixture</main>')
+        (console / 'index.html').chmod(0o644)
         args = self.packager.parser().parse_args([
             'build', '--version', '0.2.0', '--revision', 'a' * 40, '--target', self.target,
             '--hiroute', str(executable), '--hirouted', str(executable), '--cpa-binary', str(executable),
             '--cpa-version', 'fixture', '--cpa-license', str(license_path),
-            '--notices', str(notices), '--output', str(self.root / 'package'),
+            '--notices', str(notices), '--console-assets', str(console),
+            '--output', str(self.root / 'package'),
         ])
         output = io.StringIO()
         with redirect_stdout(output), patch.object(self.packager, 'REPO', self.root):

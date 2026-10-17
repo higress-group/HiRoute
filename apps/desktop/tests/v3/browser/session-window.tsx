@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { mockIPC } from '@tauri-apps/api/mocks';
+import { mockIPC } from './host-mock';
 import { PlanQuality, type PlanQualityModel } from '../../../src/features/PlanQuality';
 import { Sessions } from '../../../src/features/Sessions';
 import { Home, HomeNavigation } from '../../../src/features/home';

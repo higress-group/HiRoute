@@ -818,6 +818,8 @@ pub struct MachineNextActionV1 {
 
 pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
     match command_id {
+        "console.token.create" => "hiroute.console-token-create/v1",
+        "console.token.revoke" => "hiroute.console-token-revoke/v1",
         "worker.plans" => "hiroute.worker-plans-request/v1",
         "worker.dependencies.discover" => "hiroute.worker-dependencies-discover-request/v1",
         "worker.dependencies.select" => "hiroute.worker-dependencies-select-request/v1",
@@ -877,6 +879,10 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
 
 pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
     match command_id {
+        "console.open" => "hiroute.console-launch/v1",
+        "console.token.create" | "console.token.list" | "console.token.revoke" => {
+            "hiroute.console-token-result/v1"
+        }
         "worker.executors" => "hiroute.worker-executor-availability-list/v1",
         "worker.plans" => "hiroute.work-plan-list/v1",
         "worker.dependencies.discover" | "worker.dependencies.select" => {

@@ -34,6 +34,129 @@ pub struct Response {
     pub accepted: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpgradeResponse {
+    pub schema: String,
+    pub action: String,
+    pub pid: u32,
+    pub accepted: bool,
+    pub paused: bool,
+    pub active_calls: u64,
+    pub active_tasks: u64,
+}
+impl UpgradeResponse {
+    pub fn drained(&self) -> bool {
+        self.paused && self.active_calls == 0 && self.active_tasks == 0
+    }
+}
+
+pub fn upgrade(
+    endpoint: &Path,
+    image: &Path,
+    action: &str,
+    timeout: Duration,
+) -> io::Result<UpgradeResponse> {
+    if !matches!(
+        action,
+        "upgrade-prepare" | "upgrade-status" | "upgrade-cancel"
+    ) {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    let mut stream = pipe::Stream::connect_timeout(endpoint, timeout)?;
+    stream.set_deadline(Some(Instant::now() + timeout))?;
+    let process = DaemonProcess::from_pipe(&stream, image, false)?;
+    let request = serde_json::to_vec(&Request {
+        schema: SCHEMA.into(),
+        action: action.into(),
+    })
+    .map_err(io::Error::other)?;
+    local_record::write(
+        &mut stream,
+        Channel::Lifecycle,
+        Direction::Request,
+        &request,
+        MAXIMUM,
+    )?;
+    let bytes = local_record::read(
+        &mut stream,
+        Channel::Lifecycle,
+        Direction::Response,
+        MAXIMUM,
+    )
+    .map_err(|error| {
+        if matches!(
+            error.kind(),
+            io::ErrorKind::UnexpectedEof
+                | io::ErrorKind::BrokenPipe
+                | io::ErrorKind::ConnectionReset
+        ) {
+            io::Error::new(io::ErrorKind::Unsupported, "DRAIN_UNSUPPORTED")
+        } else {
+            error
+        }
+    })?;
+    let response: UpgradeResponse = serde_json::from_slice(&bytes).map_err(io::Error::other)?;
+    if response.schema != SCHEMA
+        || response.action != action
+        || response.pid != process.pid
+        || !response.accepted
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid upgrade response",
+        ));
+    }
+    local_record::acknowledge(&mut stream)?;
+    Ok(response)
+}
+
+/// No forced stop on active work. Any failed drain resumes normal admission.
+pub fn drain(endpoint: &Path, image: &Path, timeout: Duration) -> io::Result<()> {
+    let deadline = Instant::now() + timeout;
+    let cancel = || {
+        let _ = upgrade(endpoint, image, "upgrade-cancel", Duration::from_secs(2));
+    };
+    let mut status = match upgrade(
+        endpoint,
+        image,
+        "upgrade-prepare",
+        timeout.min(Duration::from_secs(2)),
+    ) {
+        Ok(status) => status,
+        Err(error) => {
+            if error.kind() != io::ErrorKind::Unsupported {
+                cancel();
+            }
+            return Err(error);
+        }
+    };
+    while !status.drained() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            cancel();
+            return Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "UPGRADE_ACTIVE_WORK",
+            ));
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(50)));
+        status = match upgrade(
+            endpoint,
+            image,
+            "upgrade-status",
+            remaining.min(Duration::from_secs(2)),
+        ) {
+            Ok(status) => status,
+            Err(error) => {
+                cancel();
+                return Err(error);
+            }
+        };
+    }
+    Ok(())
+}
+
 pub struct DaemonProcess {
     file: File,
     pub pid: u32,

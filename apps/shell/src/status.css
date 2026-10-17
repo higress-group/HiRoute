@@ -1,0 +1,6 @@
+.shell-status { height: 100%; display: grid; place-items: center; overflow: auto; padding: 24px; }
+.shell-status > section { width: min(100%, 560px); padding: 28px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.shell-status h1, .shell-status h2, .shell-status p { margin: 0; overflow-wrap: anywhere; }
+.shell-status h2 { font-size: 24px; line-height: 1.35; }
+.shell-status p { line-height: 1.65; }
+.shell-status input { min-width: 0; width: 100%; }

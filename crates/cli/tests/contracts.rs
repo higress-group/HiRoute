@@ -16,7 +16,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 87); // Full staged surface including decision services.
+    assert_eq!(commands.len(), 91); // Full staged surface including decision services.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));
@@ -35,6 +35,10 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             .map(|command| command.command_id.as_str())
             .collect::<Vec<_>>(),
         [
+            "console.open",
+            "console.token.create",
+            "console.token.list",
+            "console.token.revoke",
             "schema.list",
             "schema.show",
             "operations.find",

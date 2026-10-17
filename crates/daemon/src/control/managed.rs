@@ -27,6 +27,8 @@ pub enum ManagedControlPhase {
 }
 
 pub struct ManagedControlHandle {
+    pub(crate) daemon: LocalControlDaemon,
+    pub(crate) budgets: ControlConnectionBudgets,
     endpoint: super::ControlEndpoint,
     phase: Arc<std::sync::Mutex<ManagedControlPhase>>,
     shutdown: Arc<AtomicBool>,
@@ -143,10 +145,13 @@ fn start_control_inner(
     let worker_phase = Arc::clone(&phase);
     let worker_shutdown = Arc::clone(&shutdown);
     let (completion_tx, completion) = std::sync::mpsc::channel();
+    let handle_daemon = daemon.clone();
+    let budgets = ControlConnectionBudgets::default();
+    let worker_budgets = budgets.clone();
     let worker = std::thread::Builder::new()
         .name("hiroute-local-control".to_owned())
         .spawn(move || {
-            let budgets = ControlConnectionBudgets::default();
+            let budgets = worker_budgets;
             let (raw_listener, raw_guard, resolver) = match raw {
                 Some((listener, guard, resolver)) => (Some(listener), Some(guard), Some(resolver)),
                 None => (None, None, None),
@@ -174,6 +179,8 @@ fn start_control_inner(
         })
         .map_err(|error| ManagedControlError::Start(error.to_string()))?;
     Ok(ManagedControlHandle {
+        daemon: handle_daemon,
+        budgets,
         endpoint,
         phase,
         shutdown,

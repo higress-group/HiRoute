@@ -1,3 +1,4 @@
+import { randomId } from '../../random-id.ts';
 import type {
   CandidateModelView,
   ComputeCandidateRef,
@@ -164,7 +165,7 @@ export function buildSaveChange(input: {
 }
 
 export function clientOperationId(prefix: string): string {
-  return `${prefix}/${globalThis.crypto.randomUUID()}`;
+  return `${prefix}/${randomId()}`;
 }
 
 export function clientIdempotencyKey(prefix: string): string {

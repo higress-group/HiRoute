@@ -103,6 +103,10 @@ only when handing it to the user.
 Recovery acceptance also forces a recoverable length stop through the real Pi SDK,
 requires its persisted `context_edit` omission, and continues the exact recovered session.
 This is separate from threshold compaction; fixture-only history parsing is not native recovery proof.
+The controlled upstream waits for the public Worker read command to expose the
+real streamed text before emitting the length terminal frame. This selects the
+accepted-stream recovery case independently of TCP frame coalescing; an incomplete
+response received before Gateway commits its prefix remains an upstream failure.
 
 ## Dual-protocol acceptance
 

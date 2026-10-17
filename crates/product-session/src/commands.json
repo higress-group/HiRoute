@@ -1,0 +1,781 @@
+[
+  {
+    "name": "observation_read",
+    "args": [
+      {
+        "name": "request",
+        "type": "hiroute_application_api::ObservationReadRequestV2"
+      }
+    ],
+    "result": "Result<serde_json::Value, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "observation_delete",
+    "args": [
+      {
+        "name": "input",
+        "type": "ObservationDeleteInput"
+      }
+    ],
+    "result": "Result<serde_json::Value, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "test_classifier_decision",
+    "args": [
+      {
+        "name": "input",
+        "type": "ClassifierDecisionTestInput"
+      }
+    ],
+    "result": "Result<ClassifierDecisionTestResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "decision_services",
+    "args": [],
+    "result": "Result<crate::session::DecisionServiceList, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "save_decision_service",
+    "args": [
+      {
+        "name": "input",
+        "type": "DecisionServiceSaveInput"
+      }
+    ],
+    "result": "Result<ApplyResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "save_classifier_header_secret",
+    "args": [
+      {
+        "name": "input",
+        "type": "ClassifierHeaderSecretSaveInput"
+      }
+    ],
+    "result": "Result<ApplyResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "save_classifier_openapi",
+    "args": [],
+    "result": "Result<ClassifierOpenApiSaveOutcome, DesktopFailure>",
+    "host_only": true
+  },
+  {
+    "name": "desktop_snapshot",
+    "args": [],
+    "result": "Result<DesktopSnapshot, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_rename",
+    "args": [
+      {
+        "name": "input",
+        "type": "RenameInput"
+      }
+    ],
+    "result": "Result<MutationOutcome, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_plan_editor",
+    "args": [
+      {
+        "name": "input",
+        "type": "EditorInput"
+      }
+    ],
+    "result": "Result<MutationOutcome, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "refresh_route_references",
+    "args": [
+      {
+        "name": "language",
+        "type": "String"
+      }
+    ],
+    "result": "Result<MutationOutcome, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "plan_editor_options",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::PlanEditorOptionsRequestV1"
+      }
+    ],
+    "result": "Result<hiroute_application_api::PlanEditorOptionsV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_restore_name",
+    "args": [
+      {
+        "name": "input",
+        "type": "RestoreInput"
+      }
+    ],
+    "result": "Result<MutationOutcome, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_price_change",
+    "args": [
+      {
+        "name": "input",
+        "type": "PriceEditInput"
+      }
+    ],
+    "result": "Result<MutationOutcome, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "model_reference_query",
+    "args": [
+      {
+        "name": "input",
+        "type": "ModelCatalogQueryV1"
+      }
+    ],
+    "result": "Result<ModelCatalogResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "effective_price_query",
+    "args": [
+      {
+        "name": "input",
+        "type": "GetEffectivePricesV2"
+      }
+    ],
+    "result": "Result<PriceDisplayResult, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "compute_management_snapshot",
+    "args": [],
+    "result": "Result<ComputeManagementSnapshotV3, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "compute_key_masks",
+    "args": [
+      {
+        "name": "query",
+        "type": "ComputeKeyMasksQueryV1"
+      }
+    ],
+    "result": "Result<ComputeKeyMasksViewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "compute_scan",
+    "args": [],
+    "result": "Result<WebComputeScanResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "prepare_discovered_model_connection",
+    "args": [
+      {
+        "name": "discovery",
+        "type": "WebComputeDiscoveryRefV1"
+      }
+    ],
+    "result": "Result<WebComputeCandidateViewV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "compute_connection_options",
+    "args": [],
+    "result": "Result<ComputeConnectionOptionsResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "register_protected_model_input",
+    "args": [
+      {
+        "name": "secret",
+        "type": "String"
+      },
+      {
+        "name": "source_id",
+        "type": "Option<String>"
+      }
+    ],
+    "result": "Result<ProtectedModelInputRegistration, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "release_protected_model_input",
+    "args": [
+      {
+        "name": "input",
+        "type": "ComputeCandidateRefV2"
+      }
+    ],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_model_connection",
+    "args": [
+      {
+        "name": "request",
+        "type": "NativeModelConnectionCheckRequestV1"
+      }
+    ],
+    "result": "Result<ModelConnectionCheckViewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_registered_model_connection",
+    "args": [
+      {
+        "name": "request",
+        "type": "RegisteredModelConnectionCheckRequestV1"
+      }
+    ],
+    "result": "Result<ModelConnectionCheckViewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_saved_model_connection",
+    "args": [
+      {
+        "name": "request",
+        "type": "SavedModelConnectionCheckRequestV1"
+      }
+    ],
+    "result": "Result<ModelConnectionCheckViewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "cancel_model_connection_check",
+    "args": [
+      {
+        "name": "check_id",
+        "type": "String"
+      }
+    ],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_compute_save",
+    "args": [
+      {
+        "name": "change",
+        "type": "WebComputeManagementChangeV2"
+      }
+    ],
+    "result": "Result<WebComputeSavePreviewV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "apply_compute_save",
+    "args": [
+      {
+        "name": "request",
+        "type": "WebComputeConnectionApplyRequestV1"
+      },
+      {
+        "name": "language",
+        "type": "String"
+      }
+    ],
+    "result": "Result<ModelSaveAccepted, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "get_compute_save_result",
+    "args": [
+      {
+        "name": "operation",
+        "type": "OperationReferenceV1"
+      }
+    ],
+    "result": "Result<WebComputeSaveResultV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "compute_subscriptions",
+    "args": [],
+    "result": "Result<WebComputeSubscriptionCandidatesV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "manage_subscription_login",
+    "args": [
+      {
+        "name": "request",
+        "type": "ComputeSubscriptionLoginRequestV1"
+      }
+    ],
+    "result": "Result<ComputeSubscriptionLoginResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "submit_subscription_login_callback",
+    "args": [
+      {
+        "name": "login_ref",
+        "type": "String"
+      },
+      {
+        "name": "callback",
+        "type": "String"
+      }
+    ],
+    "result": "Result<ComputeSubscriptionLoginResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_subscription",
+    "args": [
+      {
+        "name": "candidate",
+        "type": "ComputeCandidateRefV2"
+      },
+      {
+        "name": "language",
+        "type": "String"
+      }
+    ],
+    "result": "Result<WebComputeSubscriptionCheckResultV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "get_subscription_check_result",
+    "args": [
+      {
+        "name": "operation",
+        "type": "OperationReferenceV1"
+      }
+    ],
+    "result": "Result<WebComputeSubscriptionCheckResultV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "recover_subscription_check",
+    "args": [],
+    "result": "Result<Option<WebComputeSubscriptionCheckResultV2>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "close_subscription_check",
+    "args": [],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "release_subscription_check",
+    "args": [
+      {
+        "name": "validation",
+        "type": "WebValidationRefV2"
+      }
+    ],
+    "result": "Result<WebComputeSubscriptionCheckResultV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "web_confirmation_snapshot",
+    "args": [],
+    "result": "Result<Option<WebConfirmationRequest>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "resolve_web_confirmation",
+    "args": [
+      {
+        "name": "input",
+        "type": "WebConfirmationDecision"
+      }
+    ],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "agent_snapshot",
+    "args": [],
+    "result": "Result<AgentSnapshot, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_agent_settings",
+    "args": [
+      {
+        "name": "input",
+        "type": "AgentSettingsInput"
+      }
+    ],
+    "result": "Result<AgentOutcome, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "retry_agent_settings",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::AgentSettingsRetryV1"
+      }
+    ],
+    "result": "Result<Value, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_agent_authentication",
+    "args": [
+      {
+        "name": "input",
+        "type": "AgentCheckInput"
+      }
+    ],
+    "result": "Result<bool, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_agent_live",
+    "args": [
+      {
+        "name": "input",
+        "type": "AgentCheckInput"
+      }
+    ],
+    "result": "Result<AgentCheckCompletion, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_settings_get",
+    "args": [],
+    "result": "Result<WorkerSettingsV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_settings_set",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerSettingsV1"
+      }
+    ],
+    "result": "Result<WorkerSettingsV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_plans",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerPlansRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<WorkPlanListV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_executor_availability",
+    "args": [],
+    "result": "Result<WorkerExecutorAvailabilityListV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_dependencies_discover",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerDependenciesDiscoverRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<WorkerDependenciesViewV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_dependencies_select_prepare",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerDependenciesSelectRequestV1"
+      }
+    ],
+    "result": "Result<WorkerDependencyConfirmationV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_dependencies_select_confirm",
+    "args": [
+      {
+        "name": "confirmations",
+        "type": "State<'_, WorkerDependencyConfirmationState>"
+      },
+      {
+        "name": "input",
+        "type": "WorkerDependencyConfirmationInput"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<WorkerDependenciesViewV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_dependencies_select_cancel",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerDependencyConfirmationInput"
+      }
+    ],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_list",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerListRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<DelegationListV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_status",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerStatusRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<DelegationGetV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_result",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerResultRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<DelegationResultV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_read",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerReadRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<WorkerReadDataV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_wait",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerWaitRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<DelegationWaitV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_cancel",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerCancelRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<DelegationCancelV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_confirm_residual",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerResidualConfirmRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<DelegationRunViewV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "worker_task_continue",
+    "args": [
+      {
+        "name": "input",
+        "type": "WorkerContinueRequestV1"
+      }
+    ],
+    "result": "Result<MachineEnvelopeV2<DelegationAcceptedV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "cli_entry_status",
+    "args": [],
+    "result": "Result<CliEntryView, DesktopFailure>",
+    "host_only": true
+  },
+  {
+    "name": "cli_entry_install",
+    "args": [],
+    "result": "Result<CliEntryView, DesktopFailure>",
+    "host_only": true
+  },
+  {
+    "name": "cli_entry_remove",
+    "args": [],
+    "result": "Result<CliEntryView, DesktopFailure>",
+    "host_only": true
+  },
+  {
+    "name": "gateway_listener_status",
+    "args": [],
+    "result": "Result<GatewayListenerView, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "subscription_proxy_status",
+    "args": [],
+    "result": "Result<SubscriptionProxyView, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "subscription_proxy_apply",
+    "args": [
+      {
+        "name": "policy",
+        "type": "SubscriptionProxyPolicy"
+      }
+    ],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "gateway_listener_apply",
+    "args": [
+      {
+        "name": "input",
+        "type": "GatewayListenerInput"
+      }
+    ],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "gateway_listener_recover",
+    "args": [],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "observe_operation",
+    "args": [],
+    "result": "Result<Option<ClientOperationViewV1>, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "stop_observing",
+    "args": [],
+    "result": "Result<(), String>",
+    "host_only": false
+  },
+  {
+    "name": "quit_desktop",
+    "args": [],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": true
+  },
+  {
+    "name": "diagnostic_status",
+    "args": [],
+    "result": "Result<DiagnosticStatusV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "startup_status",
+    "args": [],
+    "result": "Result<StartupReport, String>",
+    "host_only": true
+  },
+  {
+    "name": "open_startup_recovery_directory",
+    "args": [],
+    "result": "Result<(), String>",
+    "host_only": true
+  },
+  {
+    "name": "update_status",
+    "args": [],
+    "result": "Result<UpdateView, String>",
+    "host_only": true
+  },
+  {
+    "name": "update_check",
+    "args": [],
+    "result": "Result<UpdateView, String>",
+    "host_only": true
+  },
+  {
+    "name": "update_download",
+    "args": [],
+    "result": "Result<UpdateView, String>",
+    "host_only": true
+  },
+  {
+    "name": "update_install",
+    "args": [],
+    "result": "Result<UpdateView, String>",
+    "host_only": true
+  },
+  {
+    "name": "update_cancel",
+    "args": [],
+    "result": "Result<UpdateView, String>",
+    "host_only": true
+  },
+  {
+    "name": "set_diagnostic_level",
+    "args": [
+      {
+        "name": "input",
+        "type": "SetDiagnosticLevelInput"
+      }
+    ],
+    "result": "Result<DiagnosticStatusV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "open_diagnostic_directory",
+    "args": [],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": true
+  },
+  {
+    "name": "open_external_url",
+    "args": [],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": true
+  },
+  {
+    "name": "perform_titlebar_double_click",
+    "args": [],
+    "result": "Result<(), DesktopFailure>",
+    "host_only": true
+  }
+]

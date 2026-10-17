@@ -39,14 +39,15 @@ def identifier(value, pattern=r'[a-f0-9]{32}'):
     return value
 
 
-def pe(path):
+def pe(path, installer=False):
     with path.open('rb') as stream:
         header = stream.read(64)
         if len(header) != 64 or header[:2] != b'MZ':
             raise ValueError('Expected a native executable')
         stream.seek(struct.unpack_from('<I', header, 60)[0])
-        if stream.read(6) != b'PE\0\0\x64\x86':
-            raise ValueError('Expected an x64 PE artifact')
+        expected = b'PE\0\0\x4c\x01' if installer else b'PE\0\0\x64\x86'
+        if stream.read(6) != expected:
+            raise ValueError('Expected an NSIS x86 stub' if installer else 'Expected an x64 PE artifact')
 
 
 def manifest(directory):
@@ -60,7 +61,10 @@ def manifest(directory):
         file = plain(directory / name)
         if file.stat().st_nlink != 1 or file.stat().st_size != expected['bytes'] or digest(file) != expected['sha256']:
             raise ValueError('Artifact identity differs from its manifest')
-        pe(file)
+        installer = name == 'installer.exe' and value.get('installer_format') == 'nsis'
+        if name == 'installer.exe' and not installer:
+            raise ValueError('Installer requires an explicit NSIS bundle declaration')
+        pe(file, installer=installer)
     return value
 
 
@@ -103,7 +107,8 @@ def stage(root, archive, checksum):
 def ps(script):
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand',
                              base64.b64encode(script.encode('utf-16le')).decode()],
-                            capture_output=True, text=True, errors='replace', timeout=30)
+                            capture_output=True, text=True, errors='replace', timeout=30,
+                            creationflags=0x08000000 if os.name == 'nt' else 0)
     if result.returncode:
         raise RuntimeError('Scheduled task operation failed: ' + result.stderr[-1800:])
     return result.stdout.strip()
@@ -128,6 +133,20 @@ def task_state(run_id):
 
 def directory(root, run_id):
     return plain(root / 'runs' / identifier(run_id))
+
+
+def worker_image(request):
+    path = Path(request['config']['python'])
+    return path.with_name('pythonw.exe') if request.get('operation') == 'desktop' else path
+
+
+def nsis_uninstall_command(executable, programs):
+    # NSIS documents an unquoted, last _?= tail to suppress its detached copy.
+    # CreateProcess receives this directly; there is no command shell involved.
+    value = str(programs)
+    if any(c in value for c in '\x00\r\n"'):
+        raise ValueError('Invalid native installation directory')
+    return subprocess.list2cmdline([str(executable), '/S']) + ' _?=' + value
 
 
 def private_runs(root, user):
@@ -159,6 +178,17 @@ foreach($rule in $acl.GetAccessRules($true,$true,$sid)){
   throw 'Runner evidence directory admits an unrelated identity'
  }
 }
+$inherit=[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'
+$full=[Security.AccessControl.FileSystemRights]::FullControl
+$ownerRules=@($acl.GetAccessRules($true,$false,$sid)|Where-Object {
+ $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -eq $target.Value -and
+ ($_.FileSystemRights -band $full) -eq $full -and
+ ($_.InheritanceFlags -band $inherit) -eq $inherit -and
+ $_.PropagationFlags -eq [Security.AccessControl.PropagationFlags]::None
+})
+if($ownerRules.Count -eq 0){
+ throw 'Runner evidence directory does not grant the configured account inheritable access. Use a separate HOME-configured root for this account.'
+}
 '''
     ps(script)
 
@@ -185,6 +215,9 @@ def start(root, request):
         manifest(root / 'bundles' / request[field])
     identifier(request['binary'], r'[A-Za-z0-9_-]+\.exe')
     identifier(request['case'], r'[A-Za-z0-9_:]+')
+    worker_python = plain(worker_image(request))
+    if request.get('operation') == 'desktop':
+        pe(worker_python)
     private_runs(root, config['user'])
     lock = root / 'active.json'
     # A disconnected controller must not permit concurrent mutation of the same
@@ -198,12 +231,64 @@ def start(root, request):
     script = "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';"
     script += '$name=' + literal(task_name(run_id)) + ';'
     script += "if(Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue){throw 'Task already exists'};"
-    script += '$a=New-ScheduledTaskAction -Execute ' + literal(config['python']) + ' -Argument ' + literal(arguments) + ';'
+    script += '$a=New-ScheduledTaskAction -Execute ' + literal(worker_python) + ' -Argument ' + literal(arguments) + ';'
     script += '$p=New-ScheduledTaskPrincipal -UserId ' + literal(config['user']) + ' -LogonType Interactive -RunLevel Limited;'
     script += '$s=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds ' + str(request['timeout'] + 90) + ') -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;'
     script += 'Register-ScheduledTask -TaskName $name -Action $a -Principal $p -Settings $s|Out-Null;Start-ScheduledTask -TaskName $name'
     ps(script)
     return dict(run_id=run_id, state='submitted', task=task_name(run_id))
+
+
+def profile_helper(request):
+    import importlib.util
+    path = plain(request['profile_helper_path'])
+    if digest(path) != request['profile_helper_sha256']:
+        raise ValueError('Profile helper differs from the committed request')
+    spec = importlib.util.spec_from_file_location('windows_dev_profile', path)
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    return helper
+
+
+def desktop_helper(request):
+    import importlib.util
+    path = plain(request['desktop_helper_path'])
+    if digest(path) != request['desktop_helper_sha256']:
+        raise ValueError('Desktop helper differs from the committed request')
+    spec = importlib.util.spec_from_file_location('windows_desktop_session', path)
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    return helper
+
+
+def profile_activity(config, run_id):
+    native_home = Path.home()
+    roots = [native_home / '.local/share/hiroute', Path(os.environ['LOCALAPPDATA']) / 'HiRoute/cli',
+             Path(os.environ['LOCALAPPDATA']) / 'Programs/HiRoute']
+    script = "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';"
+    script += '$roots=@(' + ','.join(literal(p) for p in roots) + ');'
+    script += '$session=' + str(config['session_id']) + ';$ownTask=' + literal(task_name(run_id)) + ';'
+    script += r"""
+$identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+function InProductPath($value) {
+ if(-not $value){return $false}
+ foreach($root in $roots){if($value.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){return $true}}
+ return $false
+}
+$processes=@(Get-CimInstance Win32_Process | Where-Object {
+ (InProductPath $_.ExecutablePath) -or ($_.SessionId -eq $session -and $_.Name -in @('hiroute.exe','hirouted.exe','hiroute-shell.exe','hiroute-preflight.exe','hiroute-uninstall-helper.exe','installer.exe','cliproxyapi.exe','windows_headless.exe','windows_desktop.exe'))
+} | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,@{Name='installer_verb';Expression={
+ if($_.CommandLine -match '--installer-[a-z-]+|__windows-(?:install|uninstall)'){$Matches[0]}
+}},@{Name='created_at';Expression={$_.CreationDate.ToUniversalTime().ToString('o')}})
+$tasks=@(Get-ScheduledTask | Where-Object {
+ $principal=$_.Principal.UserId
+ $ours=$principal -eq $identity.User.Value -or $principal -eq $identity.Name -or $principal -eq $env:USERNAME
+ $_.TaskName -ne $ownTask -and $ours -and $_.TaskName -like 'HiRoute*' -and
+ ($_.TaskName -notlike 'HiRoute-Dev-*' -or $_.State -eq 'Running')
+} | Select-Object TaskName,State)
+@{administrator_groups=($identity.Groups.Value -contains 'S-1-5-32-544');processes=$processes;tasks=$tasks}|ConvertTo-Json -Depth 5 -Compress
+"""
+    return json.loads(ps(script))
 
 
 def worker(request):
@@ -232,12 +317,98 @@ def worker(request):
                       harness_files=hm['files'], product_files=pm['files'])
         if request['binary'] not in hm['files'] or not {'hiroute.exe', 'hirouted.exe'} <= set(pm['files']):
             raise ValueError('The selected manifests do not include required binaries')
+        if request.get('operation') == 'desktop':
+            if pm.get('installer_format') != 'nsis' or not re.fullmatch(r'[a-f0-9]{64}', pm.get('shell_sha256', '')):
+                raise ValueError('Desktop acceptance requires a measured NSIS bundle')
+            activity = profile_activity(config, request['run_id'])
+            result['profile_activity'] = activity
+            outcome = desktop_helper(request).execute(request, run, product, pm, profile_helper(request),
+                                                     activity, manifest, root)
+            result.update(passed=True, assessment='native_desktop_observation', desktop=outcome)
+            return 0
+        if request.get('operation') == 'inspect':
+            result.update(passed=True, assessment='inspection_only',
+                          installation=profile_helper(request).inspect_installation(Path.home(), Path(os.environ['LOCALAPPDATA'])),
+                          profile_activity=profile_activity(config, request['run_id']))
+            return 0
+        if request.get('operation') in ('archive', 'uninstall', 'probe', 'uninstall-adapter'):
+            parent = directory(root, request['inspection_run'])
+            inspected = json.loads((parent / 'result.json').read_text(encoding='utf-8'))
+            original = json.loads((parent / 'request.json').read_text(encoding='utf-8'))
+            if (not inspected.get('passed') or inspected.get('assessment') != 'inspection_only'
+                    or original.get('operation') != 'inspect'
+                    or original['config']['user'] != config['user']
+                    or original['config']['session_id'] != config['session_id']
+                    or original['product'] != request['product']
+                    or inspected.get('administrator') is not False
+                    or time.time() - (parent / 'result.json').stat().st_mtime > 3600):
+                raise ValueError('A recent inspection of this standard account and product is required')
+            activity = profile_activity(config, request['run_id'])
+            result['profile_activity'] = activity
+            if request['operation'] in ('uninstall', 'probe', 'uninstall-adapter'):
+                helper = profile_helper(request)
+                uninstaller, installed = helper.candidate_uninstaller(
+                    Path.home(), Path(os.environ['LOCALAPPDATA']), inspected['installation'],
+                    pm, request['shell_sha256'], activity)
+                before = helper.locations(Path.home(), Path(os.environ['LOCALAPPDATA']))
+                if request['operation'] == 'probe':
+                    probes = []
+                    for verb in ('--installer-preflight', '--installer-options'):
+                        completed = subprocess.run([str(before['programs'] / 'hiroute-shell.exe'), verb],
+                                                   stdin=subprocess.DEVNULL, capture_output=True,
+                                                   timeout=60, text=True, errors='replace')
+                        probes.append(dict(verb=verb, exit_code=completed.returncode,
+                                           stdout=completed.stdout[:4096], stderr=completed.stderr[:4096]))
+                    result.update(passed=True, assessment='read_only_probe', probes=probes)
+                    return 0
+                if request['operation'] == 'uninstall-adapter':
+                    source = before['programs'] / 'hiroute-shell.exe'
+                    adapter = run / 'uninstall-adapter.exe'
+                    shutil.copyfile(plain(source), adapter)
+                    if digest(adapter) != request['shell_sha256']:
+                        raise ValueError('Staged native adapter differs from the installed shell')
+                    with (run / 'adapter.stdout').open('xb') as out, (run / 'adapter.stderr').open('xb') as err:
+                        completed = subprocess.run([str(adapter), '--installer-uninstall'], stdin=subprocess.DEVNULL,
+                                                   stdout=out, stderr=err, timeout=150)
+                    result.update(passed=completed.returncode == 0, assessment='native_uninstall_adapter_only',
+                                  native_entry='packaged --installer-uninstall', exit_code=completed.returncode,
+                                  installation=helper.inspect_installation(Path.home(), Path(os.environ['LOCALAPPDATA'])))
+                    return 0 if result['passed'] else 1
+                staged = run / 'nsis-uninstaller.exe'
+                shutil.copyfile(plain(uninstaller), staged)
+                if digest(staged) != digest(uninstaller):
+                    raise ValueError('Staged NSIS uninstaller differs from its verified inventory')
+                deadline = time.monotonic() + request['timeout']
+                with (run / 'uninstall.stdout').open('xb') as out, (run / 'uninstall.stderr').open('xb') as err:
+                    completed = subprocess.run(nsis_uninstall_command(staged, before['programs']), executable=str(staged),
+                                               stdin=subprocess.DEVNULL, stdout=out, stderr=err, timeout=150, check=True)
+                removed = [Path(inspected['installation']['marker']['path']), installed,
+                           before['stable_cli'], before['programs'] / 'hiroute-shell.exe',
+                           Path(inspected['installation']['definition']['path'])]
+                while any(path.exists() for path in removed):
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('Candidate uninstall did not remove its owned installation')
+                    time.sleep(0.2)
+                result.update(passed=True, assessment='preparation_only', native_entry='NSIS /S',
+                              exit_code=completed.returncode, versioned_package_removed=True,
+                              state_preserved=before['state'].exists(),
+                              inspection_sha256=digest(parent / 'result.json'))
+                return 0
+            archived = profile_helper(request).archive_orphaned_data(
+                Path.home(), Path(os.environ['LOCALAPPDATA']), run,
+                inspected['installation'], activity)
+            result.update(passed=True, assessment='preparation_only', archival=archived,
+                          inspection_sha256=digest(parent / 'result.json'))
+            return 0
         # Never manufacture HOME or remove an existing installation to make a gate pass.
         home = Path.home()
         for path in (Path(os.environ['LOCALAPPDATA']) / 'HiRoute/cli',
                      home / '.local/share/hiroute/standalone.json', home / '.local/bin/hiroute.exe'):
             if path.exists():
                 raise ValueError('Disposable installed-product gate found an existing installation')
+        if (request['binary'] == 'windows_desktop.exe' and
+                request['case'] == 'actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data'):
+            profile_helper(request).require_fresh_nsis_packages(home)
         environment = os.environ.copy()
         environment.update(config['environment'])
         for path in config['environment'].values():
@@ -305,7 +476,7 @@ def finish(root, run_id):
     expected = subprocess.list2cmdline([request['driver_path'], '--worker', str(run / 'request.json')])
     script = "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';"
     script += '$t=Get-ScheduledTask -TaskName ' + literal(task_name(run_id)) + ';'
-    script += "if($t.State -ne 'Ready' -or $t.Actions.Execute -ne " + literal(config['python'])
+    script += "if($t.State -ne 'Ready' -or $t.Actions.Execute -ne " + literal(worker_image(request))
     script += ' -or $t.Actions.Arguments -ne ' + literal(expected) + "){throw 'Owned task is active or differs'};"
     script += '$t|Unregister-ScheduledTask -Confirm:$false'
     ps(script)

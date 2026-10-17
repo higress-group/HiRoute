@@ -8,7 +8,7 @@
 .review-controls label{display:flex;align-items:center;gap:6px;white-space:nowrap;color:var(--text-muted);}
 .review-controls .select{height:30px;font-size:calc(12px * var(--hr-text-scale));width:auto;min-width:115px;padding:0 28px 0 10px;}
 .review-controls .btn{font-size:calc(12px * var(--hr-text-scale));min-height:30px;}
-.v3-home{max-width:1080px;margin:0 auto;padding:8px 10px 36px;display:grid;gap:22px;}
+.v3-home{max-width:1080px;margin:0 auto;padding:8px 10px 36px;display:grid;grid-template-columns:minmax(0,1fr);gap:22px;}
 .v3-welcome{padding:24px 0 18px;max-width:750px;}
 .v3-welcome .eyebrow{color:var(--accent-bright);font-size:calc(12px * var(--hr-text-scale));letter-spacing:.04em;}
 .v3-welcome h1{font-size:calc(clamp(27px,3vw,39px) * var(--hr-text-scale));line-height:1.45;letter-spacing:-.035em;white-space:pre-line;margin:20px 0 14px;font-weight:660;}
@@ -29,6 +29,7 @@
 .v3-running p,.v3-ready p{color:var(--text-muted);font-size:calc(12px * var(--hr-text-scale));margin:6px 0 0;}
 .v3-attention>.btn{width:100%;justify-content:flex-start;padding:18px;}
 .v3-home .surface-header h2{margin:0;font-size:calc(15px * var(--hr-text-scale));font-weight:600;}
+.v3-home .native-list{grid-template-columns:minmax(0,1fr);}
 .v3-recent{min-height:83px;padding:18px 24px;gap:16px;}
 .v3-recent .row-title{font-size:calc(14px * var(--hr-text-scale));}
 .v3-recent .row-meta{margin-top:7px;font-size:calc(12px * var(--hr-text-scale));}

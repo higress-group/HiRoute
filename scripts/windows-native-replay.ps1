@@ -96,10 +96,11 @@ if ($Scope -in @('background','upgrade')) {
   python scripts/windows-ci-package.py --restage-only --expected-sha $ExpectedSha --manifest $packageManifest --archive $packageArchive --output "$evidence/package" > "$evidence/package-result.json"
   if ($LASTEXITCODE -ne 0) { throw 'Fresh administrator package trust could not be established' }
   $package = Get-Content "$evidence/package-result.json" -Raw | ConvertFrom-Json
+  $env:HIROUTE_WINDOWS_PACKAGE_TARGET = $package.target
   $env:HIROUTE_WINDOWS_PACKAGE_MANIFEST = $package.manifest
   $env:HIROUTE_WINDOWS_PACKAGE_ARCHIVE = $package.archive
   $env:HIROUTE_WINDOWS_ADMIN_CLI = $package.administrator_cli
-  $env:HIROUTE_WINDOWS_PYTHON = $package.python
+  $env:HIROUTE_WINDOWS_PACKAGE_DIRECTORY = $package.package_directory
   $env:HIROUTE_WORKER_DAEMON_BINARY = $package.worker_daemon
   if ($Scope -eq 'upgrade') {
     Initialize-WindowsUpgradeBaseline -ExpectedSha $ExpectedSha -BaselineRevision $BaselineRevision -BaselineManifest $BaselineManifest -BaselineArchive $BaselineArchive -Evidence $evidence

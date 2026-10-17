@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
+import { hostCapabilities } from '../../host/index.ts';
+import { invoke } from '../../host/index.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   acceptResponse,
@@ -115,7 +116,9 @@ export function useDiagnostics(active: boolean, language: 'zh' | 'en'): Diagnost
     setLogsState({ phase: 'busy' });
     try {
       await invoke<null>('open_diagnostic_directory');
-      setLogsState(openLogsState(true, undefined, language));
+      setLogsState(hostCapabilities().directory_reveal === 'path'
+        ? { phase: 'opened', code: language === 'zh' ? '目录路径已显示。' : 'The directory path is displayed.' }
+        : openLogsState(true, undefined, language));
     } catch (error) {
       setLogsState(openLogsState(false, nativeFailureCode(error, 'diagnostics_unavailable'), language));
     } finally {

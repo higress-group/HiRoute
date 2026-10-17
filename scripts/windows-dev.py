@@ -3,6 +3,7 @@
 import argparse
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PureWindowsPath
@@ -94,6 +95,39 @@ def python_command(binary, code):
             encoded + '\'))"; exit $LASTEXITCODE')
 
 
+def bootstrap_code(root, entries, publish=None):
+    """Publish a content-addressed helper once; wait/status never rewrite it."""
+    return ('bootstrap_root=' + repr(root) + '\nbootstrap_entries=' + repr(entries) +
+            '\nbootstrap_publication=' + repr(publish) + '\n') + '''from pathlib import Path
+import hashlib,json,stat
+def plain(value):
+ p=Path(value)
+ for entry in [p,*p.parents]:
+  try: info=entry.lstat()
+  except FileNotFoundError: continue
+  if stat.S_ISLNK(info.st_mode) or getattr(info,'st_file_attributes',0)&1024: raise ValueError('Reparse bootstrap path')
+ return p
+root=plain(bootstrap_root)
+root.mkdir(parents=True,exist_ok=True)
+def verify(value,checksum):
+ p=plain(value)
+ if not p.is_file() or p.stat().st_nlink!=1 or hashlib.sha256(p.read_bytes()).hexdigest()!=checksum: raise ValueError('Bootstrap helper identity changed')
+if bootstrap_publication:
+ source=plain(bootstrap_publication['temporary']);target=plain(bootstrap_publication['path']);checksum=bootstrap_publication['sha256']
+ verify(source,checksum)
+ if target.exists():
+  verify(target,checksum)
+  source.unlink()
+ else: source.rename(target)
+present=[]
+for entry in bootstrap_entries:
+ p=plain(entry['path'])
+ if p.exists():
+  verify(p,entry['sha256']);present.append(entry['sha256'])
+print(json.dumps(present))
+'''
+
+
 class Remote:
     def __init__(self, config):
         self.config = config
@@ -103,7 +137,7 @@ class Remote:
 
     def execute(self, script, timeout=65):
         result = subprocess.run(['ssh', *self.options, self.config['host'], powershell(script)],
-                                capture_output=True, text=True, timeout=timeout)
+                                capture_output=True, text=True, errors='replace', timeout=timeout)
         if result.returncode:
             raise RuntimeError('Windows transport failed; no automatic replay was attempted: ' +
                                result.stderr[-2000:])
@@ -117,23 +151,38 @@ class Remote:
         # Uploading source avoids Windows command-line length limits. Only a small
         # bootstrap enters argv; request data is a separately hashed JSON file.
         root = self.config['root']
-        code = "from pathlib import Path; import os; p=Path(" + repr(root) + "); " + (
-            "assert all(not x.exists() or not (x.lstat().st_file_attributes & 1024) "
-            "for x in [p,*p.parents]); p.mkdir(parents=True,exist_ok=True)")
-        self.execute(python_command(self.config['python'], code))
         source = REPO / 'scripts/windows-dev-host.py'
         self.driver_hash = digest(source)
         self.driver = root + '/driver-' + self.driver_hash + '.py'
-        self.upload(source, self.driver)
+        profile = REPO / 'scripts/windows-dev-profile.py'
+        self.profile_hash = digest(profile)
+        self.profile_helper = root + '/profile-' + self.profile_hash + '.py'
+        desktop = REPO / 'scripts/windows-desktop-session.py'
+        self.desktop_hash = digest(desktop)
+        self.desktop_helper = root + '/desktop-' + self.desktop_hash + '.py'
+        sources = [(source,self.driver,self.driver_hash),(profile,self.profile_helper,self.profile_hash),
+                   (desktop,self.desktop_helper,self.desktop_hash)]
+        entries = [dict(path=path,sha256=checksum) for _,path,checksum in sources]
+        present = json.loads(self.execute(python_command(self.config['python'], bootstrap_code(root, entries))))
+        for local,path,checksum in sources:
+            if checksum in present:
+                continue
+            temporary = path + '.upload-' + uuid.uuid4().hex
+            self.upload(local, temporary)
+            publication = dict(path=path,temporary=temporary,sha256=checksum)
+            self.execute(python_command(self.config['python'], bootstrap_code(root, entries, publication)))
 
     def call(self, action, **arguments):
-        paths = ['scripts/windows-dev.py', 'scripts/windows-dev-host.py', 'scripts/validation.py']
+        paths = ['scripts/windows-dev.py', 'scripts/windows-dev-host.py',
+                 'scripts/windows-dev-profile.py', 'scripts/windows-desktop-session.py', 'scripts/validation.py']
         if action == 'run':
             subprocess.run(['git', 'ls-files', '--error-unmatch', *paths], cwd=REPO,
                            stdout=subprocess.DEVNULL, check=True)
             if subprocess.check_output(['git', 'status', '--porcelain', '--', *paths], cwd=REPO):
                 raise ValueError('Commit the runner before native product execution')
         request = dict(action=action, config=self.config, driver_sha256=self.driver_hash,
+                       profile_helper_path=self.profile_helper, profile_helper_sha256=self.profile_hash,
+                       desktop_helper_path=self.desktop_helper, desktop_helper_sha256=self.desktop_hash,
                        driver_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),
                        driver_path=self.driver, **arguments)
         # SSH identity and host never need to reach the Windows execution process.
@@ -190,6 +239,68 @@ def bundle(result_path, log_path, output):
     return dict(bundle_sha256=digest(output), source_revision=sha, files=list(images))
 
 
+def bundle_desktop(result_path, log_path, output):
+    """Export a native release candidate and its exact compiled installer test."""
+    result = json.loads(result_path.read_text())
+    sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
+    identity = result.get('desktop_result', {})
+    shell_sha256 = identity.get('shell_image', {}).get('sha256', '')
+    artifact = result.get('website_artifact', {})
+    if (result.get('revision') != sha or result.get('target') != 'x86_64-pc-windows-msvc'
+            or result.get('status') != 'awaiting_runtime' or result.get('package_integrity') != 'green'
+            or identity.get('revision') != sha or identity.get('native_runtime') != 'not_executed'
+            or not re.fullmatch('[a-f0-9]{64}', shell_sha256)
+            or artifact.get('kind') != 'desktop' or artifact.get('format') != 'nsis'
+            or artifact.get('platform') != 'Windows' or artifact.get('architecture') != 'x86_64'):
+        raise ValueError('A matching unassessed native x64 NSIS candidate is required')
+    installer = Path(result['assets']) / artifact['filename']
+    installer.resolve(strict=True).relative_to(REPO.resolve() / 'target')
+    if (digest(installer) != identity.get('installer_sha256') or digest(installer) != artifact.get('sha256')
+            or installer.stat().st_size != identity.get('installer_size')):
+        raise ValueError('Installer differs from the measured build identity')
+    tests = set()
+    for line in log_path.read_text().splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if (row.get('reason') == 'compiler-artifact' and row.get('target', {}).get('name') == 'windows_desktop'
+                and row.get('profile', {}).get('test') is True and row.get('executable')):
+            tests.add(Path(row['executable']).resolve(strict=True))
+    if len(tests) != 1:
+        raise ValueError('Exactly one compiled Windows Desktop test artifact is required')
+    binaries = REPO / 'target/x86_64-pc-windows-msvc/release'
+    harness = tests.pop()
+    harness.relative_to(binaries.resolve(strict=True))
+    spec = importlib.util.spec_from_file_location('runtime_audit', Path(__file__).with_name('windows-native-runtime-audit.py'))
+    audit = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(audit)
+    imports = audit.pe_imports(harness.read_bytes())
+    if imports['debug_crt'] or imports['release_vc_runtime']:
+        raise ValueError('The native acceptance harness must use static CRT without external VC runtime DLLs')
+    payload = REPO / 'apps/shell/src-tauri/resources/standalone'
+    if digest(payload / 'package-manifest.json') != identity.get('standalone_manifest_sha256'):
+        raise ValueError('Embedded package differs from the installer build identity')
+    package = json.loads((payload / 'package-manifest.json').read_text())
+    if package.get('revision') != sha or package.get('target') != result['target']:
+        raise ValueError('Embedded package source differs from the installer')
+    for name in ('hiroute.exe', 'hirouted.exe'):
+        expected = package['files']['bin/' + name]
+        if digest(payload / name) != expected['sha256'] or (payload / name).stat().st_size != expected['size']:
+            raise ValueError('Embedded product bytes differ from the measured package')
+    files = {'installer.exe': installer, 'windows_desktop.exe': harness,
+             **{name: payload / name for name in ('hiroute.exe', 'hirouted.exe')}}
+    manifest = dict(source_revision=sha, target='x86_64-pc-windows-msvc', installer_format='nsis',
+                    shell_sha256=shell_sha256, native_ci_assessment='not_assessed', files={})
+    with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
+        for name, path in files.items():
+            manifest['files'][name] = dict(sha256=digest(path), bytes=path.stat().st_size)
+            archive.write(path, name)
+        archive.writestr('manifest.json', json.dumps(manifest))
+    return dict(bundle_sha256=digest(output), source_revision=sha, files=list(files),
+                native_acceptance='not_executed')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=CONFIG)
@@ -197,6 +308,28 @@ def main():
     commands.add_parser('doctor')
     stage = commands.add_parser('stage')
     stage.add_argument('archive', type=Path)
+    inspect = commands.add_parser('inspect-installation')
+    inspect.add_argument('--product', required=True)
+    archive = commands.add_parser('archive-installation-data')
+    archive.add_argument('inspection_run')
+    archive.add_argument('--product', required=True)
+    uninstall = commands.add_parser('uninstall-candidate')
+    uninstall.add_argument('inspection_run')
+    uninstall.add_argument('--product', required=True)
+    uninstall.add_argument('--shell-sha256', required=True)
+    uninstall.add_argument('--probe-only', action='store_true')
+    uninstall.add_argument('--adapter-diagnostic', action='store_true', help='Run the verified mutating shell uninstall adapter and retain its typed result; this is not a full NSIS uninstall')
+    desktop = commands.add_parser('desktop-session', help='Measured installed Desktop and native UI acceptance')
+    desktop.add_argument('--product', required=True)
+    desktop.add_argument('--action', dest='desktop_action', required=True,
+                         choices=('install', 'launch', 'snapshot', 'invoke', 'text', 'click', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files'))
+    desktop.add_argument('--from-product', help='Exact installed bundle admitted before a cross-build upgrade')
+    desktop.add_argument('--observation-run')
+    desktop.add_argument('--element', help='Runtime ID from a recent native UI observation')
+    desktop.add_argument('--text')
+    desktop.add_argument('--x', type=int)
+    desktop.add_argument('--y', type=int)
+    desktop.add_argument('--cli-args', type=Path, help='Private JSON array of public CLI arguments')
     run = commands.add_parser('run')
     run.add_argument('--harness', required=True)
     run.add_argument('--product', required=True)
@@ -218,8 +351,14 @@ def main():
     export.add_argument('--result', type=Path, required=True)
     export.add_argument('--log', type=Path, required=True)
     export.add_argument('--output', type=Path, required=True)
+    export = commands.add_parser('bundle-desktop')
+    export.add_argument('--result', type=Path, required=True)
+    export.add_argument('--log', type=Path, required=True)
+    export.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    if args.action == 'bundle':
+    if args.action == 'bundle-desktop':
+        value = bundle_desktop(args.result, args.log, args.output)
+    elif args.action == 'bundle':
         value = bundle(args.result, args.log, args.output)
     else:
         remote = Remote(configuration(args.config))
@@ -232,6 +371,51 @@ def main():
             destination = remote.config['root'] + '/upload-' + checksum + '.zip'
             remote.upload(args.archive, destination)
             values = dict(archive=destination, sha256=checksum)
+        elif args.action == 'inspect-installation':
+            values = dict(run_id=uuid.uuid4().hex, harness=args.product, product=args.product,
+                          binary='hiroute.exe', case='installation_profile_inspection',
+                          operation='inspect', ignored=False, timeout=120)
+            args.action = 'run'
+        elif args.action == 'desktop-session':
+            if args.from_product:
+                identifier = r'[a-f0-9]{12}-[a-f0-9]{12}'
+                if not re.fullmatch(identifier, args.from_product):
+                    raise ValueError('Expected an explicit prior product bundle')
+            if args.desktop_action in ('invoke', 'text'):
+                if (not args.observation_run or not re.fullmatch(r'[a-f0-9]{32}', args.observation_run)
+                        or not args.element or not re.fullmatch(r'[0-9.]+', args.element)):
+                    raise ValueError('Native interaction requires an observed Runtime ID and run')
+            if args.desktop_action == 'text' and (args.text is None or len(args.text) > 4096):
+                raise ValueError('Native text input requires bounded text')
+            if args.desktop_action == 'click':
+                if (not args.observation_run or not re.fullmatch(r'[a-f0-9]{32}', args.observation_run)
+                        or args.x is None or args.y is None or not 0 <= args.x < 4096 or not 0 <= args.y < 4096):
+                    raise ValueError('A click requires a recent observed window and bounded coordinates')
+            values.update(run_id=uuid.uuid4().hex, harness=args.product, binary='hiroute.exe',
+                          case='native_desktop_' + args.desktop_action.replace('-', '_'), operation='desktop', ignored=False, timeout=240)
+            values.pop('cli_args')
+            if args.desktop_action == 'cli':
+                if args.cli_args is None:
+                    raise ValueError('Public CLI acceptance requires a private argument file')
+                values['cli_args'] = json.loads(args.cli_args.read_text(encoding='utf-8'))
+            args.action = 'run'
+        elif args.action in ('archive-installation-data', 'uninstall-candidate'):
+            uninstall = args.action == 'uninstall-candidate'
+            values = dict(run_id=uuid.uuid4().hex, harness=args.product, product=args.product,
+                          binary='hiroute.exe', case='candidate_uninstallation' if uninstall else 'orphaned_installation_data_archival',
+                          operation='uninstall' if uninstall else 'archive', inspection_run=args.inspection_run,
+                          ignored=False, timeout=600 if uninstall else 300)
+            if uninstall:
+                if not re.fullmatch(r'[a-f0-9]{64}', args.shell_sha256):
+                    raise ValueError('Expected the measured shell SHA-256')
+                values['shell_sha256'] = args.shell_sha256
+                if args.adapter_diagnostic:
+                    if args.probe_only:
+                        raise ValueError('Read-only probing and mutating adapter diagnostics are distinct operations')
+                    values.update(operation='uninstall-adapter', case='native_uninstall_adapter_diagnostic')
+                if args.probe_only:
+                    values.update(operation='probe', case='candidate_read_only_probe')
+            args.action = 'run'
         elif args.action == 'run':
             values['run_id'] = uuid.uuid4().hex
         elif args.action == 'collect':

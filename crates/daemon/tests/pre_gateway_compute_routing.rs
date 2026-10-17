@@ -321,6 +321,8 @@ fn run_production_path(root: &Path) {
     assert_eq!(cli, desktop);
     control.shutdown();
     control.join(Duration::from_secs(5)).unwrap();
+    // The managed handle also owns the in-process dispatcher and its stores.
+    drop(control);
 
     let options_envelope = request(
         &application,

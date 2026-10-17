@@ -28,7 +28,7 @@ use std::os::unix::net::{UnixListener as LocalListener, UnixStream as LocalStrea
 
 #[cfg(any(unix, windows))]
 mod managed;
-mod runtime;
+pub(crate) mod runtime;
 
 #[cfg(any(unix, windows))]
 pub(crate) use managed::start_control_with_agent_grants;
@@ -96,7 +96,7 @@ impl Drop for CapacityPermit {
 
 #[cfg(any(unix, windows))]
 #[derive(Clone)]
-struct ControlConnectionBudgets {
+pub(crate) struct ControlConnectionBudgets {
     total: CapacityCounter,
     waits: CapacityCounter,
     unclassified: CapacityCounter,
@@ -211,6 +211,8 @@ pub struct LocalControlDaemon {
     upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
     application: ApplicationService,
     released_commands_only: bool,
+    diagnostic_client: Option<hiroute_diagnostics::event::ControlClientName>,
+    pub(crate) console: Arc<std::sync::OnceLock<Arc<crate::console::control::ConsoleControl>>>,
     /// Receive-side diagnostics; a no-op handle keeps every existing host unchanged.
     diagnostics: DiagnosticHandle,
 }
@@ -221,6 +223,8 @@ impl LocalControlDaemon {
             upgrade: Arc::new(hiroute_host_runtime::UpgradeDrain::default()),
             application,
             released_commands_only: false,
+            diagnostic_client: None,
+            console: Arc::default(),
             diagnostics: DiagnosticHandle::noop(),
         }
     }
@@ -257,6 +261,7 @@ impl LocalControlDaemon {
         let response = self.dispatch_wire_inner(request);
         self.diagnostics
             .try_emit(DiagnosticEvent::ControlCallEnd(ControlCallEnd {
+                client_name: self.diagnostic_client,
                 operation,
                 request_token,
                 submission: DiagnosticSubmissionState::Sent,
@@ -279,6 +284,29 @@ impl LocalControlDaemon {
         {
             return MachineEnvelopeV2::failed(
                 ErrorV1::new(ErrorCode::UnknownCommand),
+                Some(request.request_id),
+            );
+        }
+        if matches!(
+            request.operation_id.as_str(),
+            "CreateConsoleLaunch"
+                | "CreateConsoleToken"
+                | "ListConsoleTokens"
+                | "RevokeConsoleToken"
+        ) {
+            if request.protected_grant.is_some() {
+                return MachineEnvelopeV2::failed(
+                    ErrorV1::new(ErrorCode::CapabilityDenied),
+                    Some(request.request_id),
+                );
+            }
+            if let Some(console) = self.console.get()
+                && let Some(response) = console.dispatch(&request)
+            {
+                return response;
+            }
+            return MachineEnvelopeV2::failed(
+                ErrorV1::new(ErrorCode::DaemonUnavailable),
                 Some(request.request_id),
             );
         }
@@ -1250,3 +1278,6 @@ mod tests {
         server.join().unwrap();
     }
 }
+
+mod in_process;
+pub(crate) use in_process::InProcessControl;

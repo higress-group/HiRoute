@@ -9,6 +9,7 @@
 mod desktop_package;
 mod gateway_listener;
 mod releases;
+mod releases_v3;
 mod service_proxy;
 mod standalone;
 mod upgrade;
@@ -16,6 +17,7 @@ mod upgrade;
 pub use desktop_package::*;
 pub use gateway_listener::*;
 pub use releases::*;
+pub use releases_v3::*;
 pub use service_proxy::*;
 pub use standalone::*;
 pub use upgrade::*;
@@ -25,3 +27,7 @@ pub use storage_progress::StorageUpgradePhase;
 
 mod subscription_proxy;
 pub use subscription_proxy::*;
+
+mod console_listener;
+pub use console_listener::*;
+pub mod standalone_install;

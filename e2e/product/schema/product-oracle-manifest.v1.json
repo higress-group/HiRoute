@@ -1,7 +1,11 @@
 {
-  "descriptor_digest": "sha256:3ae32fc9b7da19b9d8b23ffefd8a25bc221dc86adc3bdbaca761f176928508b9",
+  "descriptor_digest": "sha256:36ebce38db8984e669ea9f4ae240bc0623cc12461eb5a9274896e74a106f2731",
   "expected_red_reasons": [],
   "planned_commands": [
+    "console.open",
+    "console.token.create",
+    "console.token.list",
+    "console.token.revoke",
     "schema.list",
     "schema.show",
     "system.client-status",
@@ -101,6 +105,10 @@
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
   "public_commands": [
+    "console.open",
+    "console.token.create",
+    "console.token.list",
+    "console.token.revoke",
     "schema.list",
     "schema.show",
     "operations.find",

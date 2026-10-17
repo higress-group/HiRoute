@@ -7,12 +7,19 @@ CLI, role-all `hirouted` daemon, Local Control, Gateway, business storage, and o
 form one control and execution loop. It uses the local control socket's OS access permissions, needs no
 second “CLI management token,” and exposes no second Agent-management API.
 
-Standalone and HiRoute Desktop must not manage the same user installation at the same time. It does not
-provide a system-wide multi-user install, a Windows installer, runtime downloads, or automatic
-updates. macOS can use the same candidate-package mechanism, but this page and the Quickstart
-are validated for Linux.
+Linux standalone and macOS HiRoute Desktop must not manage the same user installation
+at the same time. The Linux package provides neither a system-wide multi-user install
+nor runtime downloads or automatic updates. Windows has a separate
+[current-user Desktop installer](windows-desktop-installation.md) that shares its
+headless installation. macOS can use the same candidate-package mechanism, but this
+page and the Quickstart are validated for Linux.
 
 ## Installation
+
+The installed daemon also provides the [Web console](web-console.md). It defaults
+to off on Linux; after starting the service, `hiroute console open` creates a
+one-time loopback entry. Remote HTTP access uses owner-created CLI access tokens
+and displays plaintext warnings. It does not change the Gateway listener.
 
 Install the latest stable Linux package for `x86_64` or ARM64 (`aarch64`) from
 [hiroute.ai](https://hiroute.ai/en/download/):
@@ -47,6 +54,7 @@ python3 scripts/package-standalone.py build \
   --cpa-version PINNED_VERSION \
   --cpa-license /absolute/path/CLIProxyAPI-LICENSE \
   --notices /absolute/output/notices \
+  --console-assets /absolute/path/apps/desktop/dist \
   --output /absolute/output
 
 python3 scripts/install-standalone.py install \

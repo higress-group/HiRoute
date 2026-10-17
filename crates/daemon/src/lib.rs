@@ -16,3 +16,5 @@ mod publication_failpoint;
 
 #[cfg(test)]
 mod test_support;
+
+pub mod console;

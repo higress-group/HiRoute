@@ -1,0 +1,24 @@
+{
+  "$id": "hiroute://contracts/cli/console-token-create.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "expires_days": {
+      "maximum": 3650,
+      "minimum": 1,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "name": {
+      "maxLength": 80,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "type": "object"
+}

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, hostCapabilities } from '../host/index.ts';
 import { copyText, Dialog, UiIcon } from '../ui';
 import { useState } from 'react';
 import { protocolExamples, protocolCurl } from './decision-services/protocol-examples';
@@ -61,7 +61,7 @@ export function ClassifierProtocolDialog({
             actionStatus === 'copied' ? text('已复制', 'Copied')
               : actionStatus === 'copy_failed' ? text('复制失败', 'Copy failed')
                 : actionStatus === 'saving' ? text('请选择保存位置', 'Choose where to save the file')
-                  : actionStatus === 'saved' ? text(`已保存：${CLASSIFIER_OPENAPI_FILENAME}`, `Saved: ${CLASSIFIER_OPENAPI_FILENAME}`)
+                  : actionStatus === 'saved' ? (hostCapabilities().host === 'console' ? text(`已开始下载：${CLASSIFIER_OPENAPI_FILENAME}`, `Download started: ${CLASSIFIER_OPENAPI_FILENAME}`) : text(`已保存：${CLASSIFIER_OPENAPI_FILENAME}`, `Saved: ${CLASSIFIER_OPENAPI_FILENAME}`))
                     : actionStatus === 'save_cancelled' ? text('已取消保存', 'Save cancelled')
                       : actionStatus === 'save_failed' ? text('保存失败，请重试。', 'Save failed. Try again.')
                         : ''

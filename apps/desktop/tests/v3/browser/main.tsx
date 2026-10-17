@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { mockIPC } from '@tauri-apps/api/mocks';
+import { mockIPC } from './host-mock';
 import { Agents } from '../../../src/agents';
 import { Sessions } from '../../../src/features/Sessions';
 import { Home, HomeNavigation, type HomeAction, type HomeNavigationItem } from '../../../src/features/home';

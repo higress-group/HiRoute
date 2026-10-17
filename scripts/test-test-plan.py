@@ -307,7 +307,8 @@ class SelectionTests(unittest.TestCase):
 
     def test_windows_development_runner_does_not_select_product_or_hosted_matrix(self):
         result = plan.select(['scripts/windows-dev.py', 'scripts/windows-dev-host.py',
-                              'scripts/test-windows-dev.py'])
+                              'scripts/test-windows-dev.py', 'scripts/windows-desktop-session.py',
+                              'scripts/windows-dev-profile.py'])
         self.assertFalse(result['rust'])
         self.assertFalse(result['frontend'])
         self.assertEqual(result['product_checks'], [])

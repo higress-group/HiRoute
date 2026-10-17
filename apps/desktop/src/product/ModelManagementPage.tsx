@@ -1,7 +1,8 @@
+import { randomId } from '../random-id.ts';
 import { managementLoadFailureCopy, subscriptionFailureCopy } from '../features/models/subscription-copy';
 import { requestEditorReplacement } from '../ui/discard-guard';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../host/index.ts';
 import { SubscriptionProxySettings } from '../features/SubscriptionProxySettings';
 import { ModelConnectionForm } from '../features/model-connections/ModelConnectionForm';
 import { blankModel } from '../features/model-connections/form-support';
@@ -120,7 +121,7 @@ export function newModelConnectionDraft(kind: 'known' | 'custom' | 'free' = 'cus
   return {
     entry_kind: kind === 'free' ? 'free_api_key' : known ? 'preset_api' : 'custom_api',
     candidate_ref: null,
-    lineage_ref: `lineage/native/${crypto.randomUUID()}`,
+    lineage_ref: `lineage/native/${randomId()}`,
     display_name: '',
     existing_source_id: null,
     expected_source_revision: null,
@@ -885,7 +886,7 @@ export function ModelManagementPage({
   async function loadAppendModels(source: ManagedSource) {
     const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
     if (!current.sources.some(item => item.source_id === source.source_id && item.revision === source.revision)) throw { code: 'SOURCE_CHANGED' };
-    const checkId = `append/${crypto.randomUUID()}`;
+    const checkId = `append/${randomId()}`;
     const checked = await invoke<ModelConnectionCheckView>('check_saved_model_connection', { request: {
       source_id: source.source_id, expected_source_revision: source.revision, edit_revision: 1, check_id: checkId,
     } });
@@ -903,7 +904,7 @@ export function ModelManagementPage({
       expected_source_revision: source.revision,
       ...savedSourceConnectionFields(source),
       models: source.models.map(model => ({
-        client_id: crypto.randomUUID(), upstream_model_id: model.upstream_model_id,
+        client_id: randomId(), upstream_model_id: model.upstream_model_id,
         display_name: model.display_name, catalog_configuration_id: null,
         membership: 'user_declared' as const,
         capabilities: model.capabilities ?? blankModel(model.upstream_model_id, model.display_name).capabilities,

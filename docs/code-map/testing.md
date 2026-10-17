@@ -10,6 +10,16 @@ Windows development execution is owned by [windows-dev.py](../../scripts/windows
 and its [native executor](../../scripts/windows-dev-host.py), reached through
 `validation.py windows`. HOME configuration owns machine/session/client locations;
 the project owns artifact admission, exact-case execution and revision-bound evidence.
+[Orphaned data preparation](../../scripts/windows-dev-profile.py) preserves complete
+backups after explicit user authorization; it does not establish a product scenario.
+[Native Desktop session actions](../../scripts/windows-desktop-session.py) admit
+the installed NSIS member and collect actual Windows UI Automation/screenshot
+evidence. Public CLI readback is distinguished from a UI action, and a cross-build
+replacement is distinguished from a newer-version update.
+The [Windows uninstall restore plan](../../crates/cli/src/service/restore_plan.rs)
+keeps Codex root collaboration separate from its model-profile projection; its
+portable unit cases cover owner selection and refusal, while the actual NSIS
+uninstall remains the native evidence for restoring Agent files.
 
 Choose a user promise, then the layer that can observe its failure. Keep tests
 beside that owner and preserve independent assertions. A focused filesystem
@@ -53,6 +63,40 @@ The publication fixture leases its listener address across daemon restarts; do
 not substitute a released `bind(0)` probe. Its protected-input channel cannot be
 attached to an existing Desktop. Prepare that instance first, then use real UI
 mutations. Main-Agent delegation must separately invoke the actual public CLI.
+
+The [shared product session](../../crates/product-session/src) owns confirmation,
+exact-digest authority and command orchestration tests. The
+[console composition cases](../../crates/daemon/src/console/tests.rs) exercise the
+real role-all dispatcher while preserving the external Local Control Released
+gate. [Authentication cases](../../crates/daemon/src/console/auth/tests.rs) cover
+launch replay, revocation, hash-only storage and rate limits. Browser scenarios
+run through both host transports; their production CSS screenshots include the
+console and Windows startup/update pages, without establishing native effects.
+
+The [Rust installation journal](../../crates/host-runtime/src/standalone_install/journal/tests.rs)
+covers current-schema interruption recovery. Package tests verify x64 and ARM64
+inventories and reject a target/executable mismatch. There is no released Windows
+Python producer to preserve. The
+[frozen release reader](../../crates/host-runtime/tests/release_catalog_compatibility.rs)
+proves that the V2 projection remains consumable by supported macOS Desktop.
+Windows shell origin/handoff tests live in
+[the shell library](../../apps/shell/src-tauri/src/lib.rs); installed NSIS, WebView,
+Task and upgrade effects require the separate
+[native acceptance inventory](../../scripts/windows-desktop-cases.json), bound to
+the actual standard-user OS, candidate and installer hash.
+The [shell transaction regression](../../apps/shell/src-tauri/src/runtime/install_transaction.rs)
+uses real Windows file sharing to verify backup handles close before hash admission;
+the native installer candidate build runs it before exporting the measured bundle.
+The [bounded NSIS journey](../../crates/daemon/tests/windows_desktop.rs) uses the
+verified development bundle and configured existing standard session to check
+silent defaults, repeat install, console/Gateway readiness and uninstall with
+data retained. It verifies the installed shell against the NSIS member image hash
+after install, repeat and passive update. Its result does not establish WebView, Agent restore or upgrade
+recovery acceptance; see the [execution entry](../validation-routing.md#windows-iteration-and-release-validation).
+The [Windows package inspector](../../scripts/package-windows-shell.py) extracts the
+actual NSIS shell member with 7-Zip for its SHA-256 and CRT audit. The native case
+compares that measurement with installed bytes; the workspace executable is not
+the artifact identity source.
 
 Keep borrowed user resources, writable native acceptance configuration, fresh
 product storage and per-run materials separate. Each product instance needs a
@@ -141,7 +185,9 @@ requires the reusable native Windows matrix before package builds; PR/main pushe
 do not start that expensive matrix.
 The [Windows CI entry](../../scripts/windows-headless-ci.ps1) requires nonempty
 native inventories for primitives, shared libraries, installed foreground and
-Task/SCM business paths, and fixed upstream clients. The
+Task business paths, retained low-level SCM tests, and fixed upstream clients.
+The Windows 11 ARM install job builds a native ARM64 package and invokes the Rust
+transaction; the other Windows 11 jobs retain their explicit x64 replay boundary. The
 [canonical native link configuration](../../scripts/build-release.py) also owns
 the Debug checks' static CRT; [captured-source inputs](../../scripts/windows-native-artifacts.py)
 bind its CMake toolchain, and the [PE import gate](../../scripts/windows-native-runtime-audit.py)

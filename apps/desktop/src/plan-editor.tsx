@@ -1,3 +1,4 @@
+import { randomId } from './random-id.ts';
 import { candidateUnavailableMessage, type UnavailableCandidate } from './plan-candidate-availability';
 import type { OpenDecisionConnection } from './features/decision-services/presentation';
 import { BranchRoutingEditor } from './features/decision-services/BranchRoutingEditor';
@@ -18,7 +19,7 @@ import { PlanRuntimeSettings } from './features/PlanRuntimeSettings';
 import { confirmSaveDraftOrDiscard, useDiscardGuard } from './ui/discard-guard';
 import { resolvePersistedEditor, type PersistedEditor, type PersistenceIdentity, type PlanOperation } from './plan-editor-persistence';
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './host';
 export type Selection = { binding_id: string; reasoning?: { kind: 'profile'; profile: string } | { kind: 'toggle'; enabled: boolean } | { kind: 'budget'; tokens: number } };
 type Mode = 'fixed_model' | 'smart_saving' | 'free_first' | 'custom_branches';
 type Work = { harness: 'codex_cli' | 'claude_code' | 'qoder_cli' | 'pi' | 'deepseek_harness'; protocol: 'responses' | 'messages' };
@@ -111,7 +112,7 @@ function activePlanQualityModels(plan: Plan, candidates: Candidate[]): PlanQuali
 export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Draft; creating?: boolean; initialBindingId?: string; editingMemory?: PlanEditorMemory; language: 'zh' | 'en'; active?: boolean; refreshVersion?: number; usedBy?: { id: string; name: string; brand: 'codex' | 'claude-code' | 'qoder' | 'pi' | 'dsh' | 'agent'; isDefault: boolean }[]; onOpenAgent?: (agentId: string) => void; onOpenSession?: (sessionId: string, requestId: string) => void; onOpenServices?: OpenDecisionConnection; onDone: () => Promise<void>; onClose: () => void; onDirty?: (dirty: boolean) => void; onEdit?: () => void; onBusyChange?: (busy: boolean) => void; onOperation?: (operation: PlanOperation | null) => void; onPersisted?: (editor: PersistedEditor<Plan, Draft> | null, action: 'save_draft' | 'publish', identity: PersistenceIdentity, operation: PlanOperation | null) => void }>(function PlanEditor({ plan, draft, creating = false, initialBindingId, editingMemory, language, active = true, refreshVersion = 0, usedBy = [], onOpenAgent, onOpenSession, onOpenServices, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted }, ref) {
   const en = language === 'en', text = (zh: string, eng: string) => en ? eng : zh;
   const [editor, setEditor] = useState<Editor>(() => structuredClone(draft?.editor ?? (plan ? reopen(plan) : emptyEditor())));
-  const [draftId] = useState(() => draft?.draft_id ?? 'draft/' + crypto.randomUUID());
+  const [draftId] = useState(() => draft?.draft_id ?? 'draft/' + randomId());
   const [base, setBase] = useState(() => ({ expected_head_revision: draft ? draft.base_head_revision ?? null : plan?.head.head_revision ?? null, expected_draft_revision: draft?.revision ?? null }));
   const [options, setOptions] = useState<Options | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [baseline, setBaseline] = useState(() => JSON.stringify(editor));
@@ -305,7 +306,7 @@ export const PlanEditor = forwardRef<PlanEditorHandle, { plan?: Plan; draft?: Dr
         } else onClose();
         return true;
       }
-    } catch (e) { if (planErrorCode(e) === 'PLAN_UNCHANGED') setNotice(planErrorMessage(e, language)); else reportError(e); }
+    } catch (e) { if (['REVISION_CONFLICT', 'PLAN_HEAD_STALE', 'DRAFT_REVISION_STALE'].includes(planErrorCode(e))) await onDone(); if (planErrorCode(e) === 'PLAN_UNCHANGED') setNotice(planErrorMessage(e, language)); else reportError(e); }
     finally { setBusy(false); }
     return false;
   }

@@ -148,7 +148,10 @@ const scenarios = [
     const previousNative = Object.getOwnPropertyDescriptor(window, 'isTauri');
     const copied = [];
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { async writeText() { throw new Error('NotAllowedError'); } } });
-    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => { throw new Error('Browser clipboard is unavailable'); } });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => {
+      if (window.fixtureTransport !== 'console') throw new Error('Browser clipboard is unavailable');
+      copied.push(document.querySelector('textarea').value); return true;
+    } });
     Object.defineProperty(window, 'isTauri', { configurable: true, value: true });
     try {
       c().handlers['plugin:clipboard-manager|write_text'] = payload => { copied.push(payload.text); };

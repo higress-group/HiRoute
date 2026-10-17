@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, hostCapabilities } from '../host/index.ts';
 import { useEffect, useState } from 'react';
 import { safeDiagnosticCode } from '../error-code';
 import type { Language } from '../ui/preferences';
@@ -66,7 +66,7 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
       </div>
     </div>
     {view?.available && !busy && <div className="gateway-risk">{view.available.notes[language]}</div>}
-    {view?.phase === 'ready' && <div className="gateway-risk">{text('安装前会等待现有调用和任务结束。安装与首次启动期间，Agent 路由会暂时不可用；需要时可按备份目录中的说明恢复旧 App 和旧数据。', 'Installation waits for current calls and tasks. Agent routing is temporarily unavailable during installation and first startup. If needed, follow the backup instructions to restore the previous App and data.')}</div>}
+    {view?.phase === 'ready' && <div className="gateway-risk">{hostCapabilities().host === 'shell-console' ? text('安装前会等待现有调用和任务结束，可以取消等待。安装期间 Agent 路由会暂时不可用；失败时会尝试恢复旧版本，启动页会显示需要处理的恢复问题。', 'Installation waits for current calls and tasks; you can cancel the wait. Agent routing pauses during installation. A failed update attempts to restore the previous version; the startup page shows any recovery that needs attention.') : text('安装前会等待现有调用和任务结束。安装与首次启动期间，Agent 路由会暂时不可用；需要时可按备份目录中的说明恢复旧 App 和旧数据。', 'Installation waits for current calls and tasks. Agent routing is temporarily unavailable during installation and first startup. If needed, follow the backup instructions to restore the previous App and data.')}</div>}
     {recovery === 'service_available' && <div className="gateway-risk">{text('升级未完成，旧版本服务已恢复，可继续使用或重试安装。', 'The upgrade did not complete. The previous service is available; continue using HiRoute or retry installation.')}</div>}
     {recovery === 'stop_pending' && <div className="settings-inline-error" role="status">{text('服务仍在停止，尚未替换应用。请等待服务退出后，完全退出并重新打开 HiRoute。', 'The service is still stopping and the App has not been replaced. Wait for the service to exit, then fully quit and reopen HiRoute.')}</div>}
     {recovery === 'restart_required' && <div className="settings-inline-error" role="status">{text('尚未替换应用，旧版本服务未能恢复。请完全退出并重新打开 HiRoute，并查看启动页的恢复说明。', 'The App has not been replaced, but the previous service could not be restored. Fully quit and reopen HiRoute and follow the startup recovery instructions.')}</div>}

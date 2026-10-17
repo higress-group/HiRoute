@@ -1,6 +1,6 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, isTauriHost } from '../host/index.ts';
 import { useEffect, useRef, useState } from 'react';
-import { BrandIcon, Disclosure, UiIcon } from '../ui';
+import { BrandIcon, Disclosure, UiIcon, copyText } from '../ui';
 import type { PlanOperation } from '../plan-editor-persistence';
 import {
   recommendedWorkerDependencies,
@@ -174,7 +174,7 @@ export function WorkerDependencies({
   async function copyCommand(command: string) {
     setError('');
     try {
-      await navigator.clipboard.writeText(command);
+      await copyText(command);
       setNotice(text('安装命令已复制。请在终端执行后返回重新检测。', 'Installation command copied. Run it in a terminal, then return and detect again.'));
     } catch {
       setError(text('无法写入剪贴板，请手动复制命令。', 'Could not write to the clipboard. Copy the command manually.'));
@@ -182,7 +182,7 @@ export function WorkerDependencies({
   }
 
   async function openInstallationGuide(event: React.MouseEvent<HTMLAnchorElement>) {
-    if (!("__TAURI_INTERNALS__" in window)) return;
+    if (!isTauriHost()) return;
     event.preventDefault();
     try {
       await invoke('open_external_url', { url: event.currentTarget.href });

@@ -1,3 +1,4 @@
+@import './styles/console.css';
 /* Shared product styles. */
 @import './styles/tokens.css';
 @import './styles/shell.css';

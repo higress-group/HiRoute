@@ -220,6 +220,42 @@ macro_rules! command {
 // projected into manifest.v1.json.
 const COMMANDS: &[StaticCommandDescriptor] = &[
     command!(
+        "console.open",
+        ["console", "open"],
+        "CreateConsoleLaunch",
+        [],
+        Released,
+        Action,
+        "Create a single-use owner console launch link."
+    ),
+    command!(
+        "console.token.create",
+        ["console", "token", "create"],
+        "CreateConsoleToken",
+        [],
+        Released,
+        Action,
+        "Create a named owner console access token, shown once."
+    ),
+    command!(
+        "console.token.list",
+        ["console", "token", "list"],
+        "ListConsoleTokens",
+        [],
+        Released,
+        Query,
+        "List console token metadata without credential secrets."
+    ),
+    command!(
+        "console.token.revoke",
+        ["console", "token", "revoke"],
+        "RevokeConsoleToken",
+        [],
+        Released,
+        Action,
+        "Revoke a console access token and its sessions."
+    ),
+    command!(
         "schema.list",
         ["schema", "list"],
         "ListSchemas",

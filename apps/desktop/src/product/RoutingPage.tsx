@@ -1,6 +1,7 @@
+import { randomId } from '../random-id.ts';
 import type { OpenDecisionConnection } from '../features/decision-services/presentation';
 import { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../host/index.ts';
 import { PlanEditor, type Draft, type Plan, type PlanEditorHandle, type PlanEditorMemory } from '../plan-editor';
 import { persistenceTargetWasSuperseded, resolvePersistedEditor, type PersistenceIdentity } from '../plan-editor-persistence';
 import { requestEditorReplacement } from '../ui/discard-guard';
@@ -111,7 +112,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
     setDirty(false);
     setPendingPersistence(null);
     setPersistedNotice('');
-    setEditor({ key: crypto.randomUUID(), editingMemory: {} });
+    setEditor({ key: randomId(), editingMemory: {} });
     setShowList(false);
   }
   const usedBy = editor?.plan ? (agentSnapshot?.agents ?? []).flatMap(agent => {

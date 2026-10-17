@@ -1,5 +1,6 @@
 import { scenario, scenarioCatalog, runScenarios } from './scenario-selection.mjs';
 import { productShellRequired } from './scenario-requirements.mjs';
+import { presentationScenarios } from './presentation-interactions.mjs';
 const c = () => window.productShell;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -55,6 +56,27 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  ...presentationScenarios,
+  scenario('desktop.routing.two-context-conflict', ['routing-editor'], 'A rival context revision refuses stale publication and preserves the current draft', async () => {
+    await fresh(); await routing();
+    const name = document.querySelector('.plan-identity-fields input');
+    const draftName = 'Retained after another tab changes the route';
+    setInput(name, draftName); await pause(40);
+    const rival = structuredClone(c().desktop);
+    const plan = rival.catalog.plans[0]; plan.head.head_revision += 1;
+    plan.desired.display_name = 'Saved by a second context';
+    c().handlers.desktop_snapshot = () => structuredClone(rival);
+    c().handlers.preview_plan_editor = ({ input }) => {
+      assert(input.expected_head_revision !== undefined, 'Revision was omitted from the draft');
+      throw { kind: 'native', code: 'REVISION_CONFLICT' };
+    };
+    const reads = calls('desktop_snapshot').length;
+    await click('保存草稿');
+    await until(() => text().includes('保留') && text().includes('另一会话'), 'revision conflict copy');
+    assert(calls('desktop_snapshot').length > reads, 'Conflict did not reload current facts');
+    assert(document.querySelector('.plan-identity-fields input').value === draftName, 'Rival revision discarded the local draft');
+    assert(calls('preview_plan_editor').length === 1, 'Stale publication was retried automatically');
+  }),
   scenario('desktop.models.subscription-scan.append-to-login', ['subscription-proxy', 'subscription-login'], 'Independent sign-in from an append scan creates a new connection instead of retaining the previous append target', async () => {
     let previous;
     await fresh(() => {
@@ -896,6 +918,12 @@ const scenarios = [
     setInput(key, 'synthetic-input-preserved'); await pause(40);
     const link = all('[role="dialog"] a').find(item => item.textContent.includes('获取 API Key'));
     assert(link?.target === '_blank' && link.rel.includes('noreferrer') && link.href.startsWith('https://'), 'Web documentation link is unavailable');
+    if (window.fixtureTransport === 'console') {
+      const prevent = event => { assert(!event.defaultPrevented, 'Browser anchor was intercepted'); event.preventDefault(); };
+      document.addEventListener('click', prevent, { once: true }); link.click(); await pause(30);
+      assert(key.value === 'synthetic-input-preserved' && calls('open_external_url').length === 0, 'Browser documentation navigation lost input or invoked native IPC');
+      return;
+    }
     c().handlers.open_external_url = () => { throw new Error('BROWSER_UNAVAILABLE'); };
     link.click(); await until(() => text().includes('当前表单内容已保留'), 'native browser failure feedback');
     assert(calls('open_external_url').at(-1)?.payload.url === link.href, 'Native command did not receive the displayed documentation URL');
@@ -931,6 +959,15 @@ const scenarios = [
     await click('自定义分支 · 分类并评分');
     assert(all('.classifier-protocol pre')[0].textContent.includes('"from": 0'), 'Assessment request has no prior stage');
     assert(all('.classifier-protocol pre')[1].textContent.includes('review') && text().includes('这里评分属于上一写稿阶段'), 'Assessment targets the new branch');
+    if (window.fixtureTransport === 'console') {
+      await click('保存 OpenAPI'); await until(() => text().includes('已开始下载') || text().includes('保存失败'), 'browser download outcome');
+      if (text().includes('保存失败')) await c().callHost('save_classifier_openapi');
+      assert(c().downloads.length === 1, 'Browser did not produce exactly one Blob download');
+      const document = JSON.parse(await c().downloads[0].text());
+      assert(document.openapi === '3.1.0' && document.paths['/v1/decisions'], 'Browser download differs from the canonical OpenAPI');
+      assert(calls('save_classifier_openapi').length === 0, 'Browser requested a native save command');
+      return;
+    }
     let finish;
     c().handlers.save_classifier_openapi = () => new Promise(resolve => { finish = resolve; });
     await click('保存 OpenAPI');

@@ -364,6 +364,18 @@ fn value_query_schema() -> Value {
 pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
     let mut files = BTreeMap::from([
         (
+            "console-token-create.v1.schema.json",
+            pretty_json(
+                &json!({"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"hiroute://contracts/cli/console-token-create.v1.schema.json","type":"object","additionalProperties":false,"required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":80},"expires_days":{"type":["integer","null"],"minimum":1,"maximum":3650}}}),
+            ),
+        ),
+        (
+            "console-token-revoke.v1.schema.json",
+            pretty_json(
+                &json!({"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"hiroute://contracts/cli/console-token-revoke.v1.schema.json","type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"type":"string","pattern":"^[a-f0-9]{64}$"}}}),
+            ),
+        ),
+        (
             "subscription-login-request.v1.schema.json",
             pretty_json(&subscription_login::request()),
         ),
@@ -569,6 +581,8 @@ mod tests {
                 "agent-check-request.v1.schema.json",
                 "agent-launch-descriptor-request.v1.schema.json",
                 "agent-plan-catalog-query.v2.schema.json",
+                "console-token-create.v1.schema.json",
+                "console-token-revoke.v1.schema.json",
                 "contract-set.v1.json",
                 "coverage-manifest.v1.json",
                 "delegation-cancel-request.v1.schema.json",

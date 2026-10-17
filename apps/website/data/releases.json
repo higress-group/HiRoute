@@ -1,5 +1,5 @@
 {
-  "schema": "hiroute.website.releases/v2",
+  "schema": "hiroute.website.releases/v3",
   "releases": [
     {
       "version": "0.3.1",

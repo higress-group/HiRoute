@@ -8,6 +8,7 @@ import test from 'node:test';
 import {
   artifactAssets, artifactKey, artifactManifestUrl, artifactUrl, latestRelease, validateReleaseManifest,
   verifyDesktopIdentity,
+  projectReleaseManifest, LEGACY_RELEASE_SCHEMA,
 } from '../src/lib/releases.mjs';
 
 const revision = 'a'.repeat(40);
@@ -25,7 +26,24 @@ const manifest = { schema: 'hiroute.website.releases/v2', releases: [release] };
 test('Desktop update endpoint publishes the same validated website catalog', () => {
   const generated = JSON.parse(fs.readFileSync(new URL('../public/releases.json', import.meta.url), 'utf8'));
   const source = JSON.parse(fs.readFileSync(new URL('../data/releases.json', import.meta.url), 'utf8'));
-  assert.deepEqual(generated, validateReleaseManifest(source));
+  assert.deepEqual(generated, projectReleaseManifest(source, LEGACY_RELEASE_SCHEMA));
+  const current = JSON.parse(fs.readFileSync(new URL('../public/releases-v3.json', import.meta.url), 'utf8'));
+  assert.deepEqual(current, projectReleaseManifest(source));
+});
+
+test('Windows Desktop uses V3 and can never enter the released macOS V2 projection', () => {
+  const value = structuredClone(manifest); value.schema = 'hiroute.website.releases/v3';
+  const windows = { kind: 'desktop', platform: 'Windows', architecture: 'x86_64', format: 'nsis', distribution: 'unsigned',
+    filename: 'HiRoute-1.2.3-aaaaaaaaaaaa-windows-x86_64-setup.exe', sha256: 'c'.repeat(64), size: 512 };
+  value.releases[0].artifacts.push(windows);
+  assert.equal(validateReleaseManifest(value), value);
+  assert.deepEqual(projectReleaseManifest(value, LEGACY_RELEASE_SCHEMA), manifest);
+  for (const [field, entry] of [['architecture', 'aarch64'], ['format', 'exe'], ['distribution', 'self-signed'], ['minimum_os', 'any'], ['filename', '../setup.exe']]) {
+    const invalid = structuredClone(value); invalid.releases[0].artifacts[1][field] = entry;
+    assert.throws(() => validateReleaseManifest(invalid), field);
+  }
+  const onlyWindows = structuredClone(value); onlyWindows.releases[0].artifacts = [windows];
+  assert.equal(projectReleaseManifest(onlyWindows, LEGACY_RELEASE_SCHEMA).releases.length, 0);
 });
 const standalone = {
   kind: 'standalone', platform: 'Linux', architecture: 'x86_64', target: 'x86_64-unknown-linux-gnu',
@@ -105,14 +123,14 @@ test('standalone artifacts reject target, filename, and companion-manifest drift
   }
 });
 
-test('Windows standalone targets retain architecture and immutable companion identity', () => {
+test('Windows standalone packages are rejected for both architectures', () => {
   for (const architecture of ['x86_64', 'aarch64']) {
     const target = `${architecture}-pc-windows-msvc`;
     const candidate = { ...standalone, platform: 'Windows', architecture, target,
       filename: `hiroute-1.2.3-aaaaaaaaaaaa-${target}.tar.gz`,
       manifest_filename: `hiroute-1.2.3-aaaaaaaaaaaa-${target}.tar.gz.json` };
     const value = { ...structuredClone(manifest), releases: [{ ...structuredClone(release), artifacts: [candidate] }] };
-    assert.equal(validateReleaseManifest(value), value);
+    assert.throws(() => validateReleaseManifest(value), /invalid public artifact/);
     for (const drift of [
       { platform: 'Linux' }, { architecture: architecture === 'aarch64' ? 'x86_64' : 'aarch64' },
       { target: `${architecture}-unknown-linux-gnu` }, { target: `${architecture}-pc-windows-gnu` },

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../../host/index.ts';
 import { Dialog } from '../../ui';
 import type { ManagedModel, ManagedSource, ManagementChange, ManagementSnapshot, SavePreview } from './types';
 

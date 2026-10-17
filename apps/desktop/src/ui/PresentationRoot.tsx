@@ -21,7 +21,6 @@ export function PresentationRoot({
       data-theme={theme}
       data-text-scale={String(textScale)}
       lang={language === 'zh' ? 'zh-CN' : 'en'}
-      style={{ '--hr-text-scale': textScale } as React.CSSProperties}
     >
       {children}
     </div>

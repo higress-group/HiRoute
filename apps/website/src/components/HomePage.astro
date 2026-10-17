@@ -9,10 +9,11 @@ const path = en ? '/en/' : '/';
 const alternatePath = en ? '/' : '/en/';
 const featuredPost = posts[0];
 const release = latestRelease('stable');
-const preferredArtifact = release?.artifacts.find(item => item.kind === 'desktop' && item.architecture === 'arm64')
-  ?? release?.artifacts.find(item => item.kind === 'desktop');
-const linuxArtifact = release?.artifacts.find(item => item.kind === 'standalone');
-const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Desktop'), linuxArtifact && t('Linux 无界面版', 'Linux headless')].filter(Boolean).join(' / ');
+const preferredArtifact = release?.artifacts.find(item => item.kind === 'desktop' && item.platform === 'macOS' && item.architecture === 'arm64')
+  ?? release?.artifacts.find(item => item.kind === 'desktop' && item.platform === 'macOS');
+const windowsArtifact = release?.artifacts.find(item => item.kind === 'desktop' && item.platform === 'Windows');
+const linuxArtifact = release?.artifacts.find(item => item.kind === 'standalone' && item.platform === 'Linux');
+const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Desktop'), windowsArtifact && t('Windows 桌面应用', 'Windows Desktop'), linuxArtifact && t('Linux 无界面版', 'Linux headless')].filter(Boolean).join(' / ');
 ---
 <SiteLayout language={language}
   title={t('HiRoute · 长程 Agent 智能路由引擎', 'HiRoute · Intelligent routing for long-horizon agents')}

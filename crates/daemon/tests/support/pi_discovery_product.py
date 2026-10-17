@@ -59,7 +59,10 @@ def use_imported_route(product, binary, source, saved):
             providers = next(r['config']['providers'] for r in read_patch(
                 Path(product.env['DSH_HOME'])/'profiles/web/cordis.patch.yml') if r['id']=='llm-pi-ai')
         else:
-            providers = json.loads((Path(product.env['DSH_HOME' if HARNESS=='dsh' else 'PI_CODING_AGENT_DIR']) / 'models.json').read_text().removeprefix(NATIVE_PREFIX))['providers']
+            text = (Path(product.env['PI_CODING_AGENT_DIR']) / 'models.json').read_text()
+            if text.startswith(NATIVE_PREFIX):
+                text = text[len(NATIVE_PREFIX):]
+            providers = json.loads(text)['providers']
         ids = [name for name, provider in providers.items() if name.startswith(namespace + '-') and any(m.get('id') == plan['model_alias'] for m in provider.get('models', []))]
         assert len(ids) == 1
         selector = ids[0] + '/' + plan['model_alias']

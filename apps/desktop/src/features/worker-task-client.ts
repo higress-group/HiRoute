@@ -1,3 +1,4 @@
+import { randomId } from '../random-id.ts';
 import type { AgentTask } from './AgentTasks';
 
 type WorkerRun = {
@@ -77,7 +78,7 @@ export type WorkerTaskListRead = {
 export type WorkerInvoke = <T>(command: string, args: { input: unknown }) => Promise<T>;
 
 async function nativeInvoke<T>(command: string, args: { input: unknown }): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core');
+  const { invoke } = await import('../host/index.ts');
   return invoke<T>(command, args);
 }
 
@@ -273,7 +274,7 @@ export async function cancelWorkerTask(
   onAccepted?: (status: AgentTask['status']) => void,
   invokeWorker: WorkerInvoke = nativeInvoke,
 ): Promise<AgentTask['status']> {
-  const idempotencyKey = `desktop-cancel:${crypto.randomUUID()}`;
+  const idempotencyKey = `desktop-cancel:${randomId()}`;
   const input = { run_id: task.runId, idempotency_key: idempotencyKey, reason: 'user_requested' };
   let envelope: WorkerEnvelope<WorkerCancel>;
   try {
@@ -304,7 +305,7 @@ export async function confirmWorkerTaskResidual(
   }
   const input = {
     run_id: task.runId, expected_revision: task.stateRevision,
-    idempotency_key: `desktop-residual:${crypto.randomUUID()}`, user_confirmed: true,
+    idempotency_key: `desktop-residual:${randomId()}`, user_confirmed: true,
   };
   let envelope: WorkerEnvelope<WorkerRun>;
   try {

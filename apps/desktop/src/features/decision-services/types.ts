@@ -1,3 +1,4 @@
+import { randomId } from '../../random-id.ts';
 import type { Selection } from '../../plan-editor';
 
 export type AuthHeader = { name: string; value_secret_ref: string };
@@ -32,7 +33,7 @@ export const defaultJudgment: Judgment = { competence: defaultCompetence, degree
   simple: defaultConditions[0], complex: defaultConditions[1],
 } };
 export function newBranch(name: string, condition = ''): RouteBranch {
-  return { id: 'branch-' + crypto.randomUUID(), name, condition, candidates: [], primary_candidates: [] };
+  return { id: 'branch-' + randomId(), name, condition, candidates: [], primary_candidates: [] };
 }
 export function branchRouting(service?: DecisionService): BranchRouting {
   const branches = [newBranch('分支 1'), newBranch('分支 2')];
@@ -47,7 +48,7 @@ export const providers = [
   { id: 'compatible', name: 'System One 兼容', endpoint: '', model: '' },
 ];
 export function emptyService(): DecisionService {
-  return { id: 'decision-' + crypto.randomUUID(), revision: 1, name: '', connection: {
+  return { id: 'decision-' + randomId(), revision: 1, name: '', connection: {
     kind: 'system_one', provider: providers[0].id, endpoint: providers[0].endpoint, model: providers[0].model,
     timeout_ms: 10000, auth_header: { name: 'Authorization', value_secret_ref: '' },
   } };

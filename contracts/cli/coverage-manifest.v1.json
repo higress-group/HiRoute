@@ -1,6 +1,62 @@
 {
   "commands": [
     {
+      "command_id": "console.open",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.console.open.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.console.open.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "console.token.create",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.console.token.create.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.console.token.create.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "console.token.list",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.console.token.list.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.console.token.list.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "console.token.revoke",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.console.token.revoke.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.console.token.revoke.positive",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "schema.list",
       "lifecycle": "released",
       "negative": {
@@ -1219,7 +1275,7 @@
       }
     }
   ],
-  "descriptor_digest": "sha256:3ae32fc9b7da19b9d8b23ffefd8a25bc221dc86adc3bdbaca761f176928508b9",
+  "descriptor_digest": "sha256:36ebce38db8984e669ea9f4ae240bc0623cc12461eb5a9274896e74a106f2731",
   "schema_version": {
     "major": 1,
     "minor": 0

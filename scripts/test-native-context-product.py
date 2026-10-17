@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -243,6 +244,40 @@ with patch('publication_product.secrets.SystemRandom') as chooser:
 
     def test_messages_native_wire_has_typed_terminal_frames(self):
         self.assert_native_wire('claude', 'messages')
+
+    def test_length_terminal_waits_for_the_stream_prefix_witness(self):
+        (self.root / 'native-context.json').write_text('{}')
+        server = fixture.NativeContextUpstream(self.root)
+        connection = http.client.HTTPConnection(*server.server.server_address, timeout=3)
+        entered, release = threading.Event(), threading.Event()
+        server.reply = lambda *_: dict(kind='text', text='incomplete attempt',
+                                      recoverable_length=True, input_tokens=10000)
+
+        def before_incomplete():
+            entered.set()
+            assert release.wait(3), 'stream prefix witness was never released'
+
+        server.before_incomplete = before_incomplete
+        try:
+            connection.request('POST', '/v1/responses', json.dumps({'model': server.model}),
+                               {'Authorization': 'Bearer ' + server.token})
+            response = connection.getresponse()
+            prefix = []
+            while True:
+                line = response.readline().decode()
+                self.assertTrue(line, 'stream ended before the text prefix')
+                prefix.append(line)
+                if line.startswith('data: ') and 'response.output_text.delta' in line:
+                    break
+            self.assertIn('incomplete attempt', ''.join(prefix))
+            self.assertNotIn('response.incomplete', ''.join(prefix))
+            self.assertTrue(entered.wait(1), 'length terminal did not wait for its witness')
+            release.set()
+            self.assertIn('response.incomplete', response.read().decode())
+        finally:
+            release.set()
+            connection.close()
+            server.close()
 
     def test_loopback_server_rejects_wrong_route_and_records_old_context_red(self):
         value = self.context('codex')

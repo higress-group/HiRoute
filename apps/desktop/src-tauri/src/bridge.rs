@@ -1,23 +1,25 @@
-//! WebView supplies explicit intent and renders prompts; native preview and typed policy own submission.
+use hiroute_application_api::*;
+use hiroute_product_session::commands::{
+    ClassifierDecisionTestInput, ClassifierHeaderSecretSaveInput, DecisionServiceSaveInput,
+    ObservationDeleteInput, ProtectedModelInputRegistration, WebComputeCandidateViewV2,
+    WebComputeConnectionApplyRequestV1, WebComputeDiscoveryRefV1, WebComputeManagementChangeV2,
+    WebComputeSavePreviewV2, WebComputeSaveResultV2, WebComputeScanResultV1,
+    WebComputeSubscriptionCandidatesV2, WebComputeSubscriptionCheckResultV2, WebValidationRefV2,
+    WorkerDependencyConfirmationInput, WorkerDependencyConfirmationState,
+    WorkerDependencyConfirmationV1,
+};
+use tauri::Emitter;
+// WebView supplies explicit intent and renders prompts; native preview and typed policy own submission.
 use crate::failure::DesktopFailure;
 use crate::session::{
-    AgentCheckCompletion, AgentCheckConfirmation, AgentCheckDispatch, AgentCheckInput,
-    AgentConfirmation, AgentOutcome, AgentPreparation, AgentSettingsInput, AgentSnapshot,
-    Confirmation, DesktopSnapshot, EditorInput, ModelSaveAccepted, ModelSaveConfirmation,
-    MutationOutcome, PriceConfirmation, PriceDisplayResult, PriceEditInput, RenameInput,
-    RestoreInput, Session, SubscriptionCheckConfirmation,
+    AgentCheckCompletion, AgentCheckInput, AgentOutcome, AgentSettingsInput, AgentSnapshot,
+    DesktopSnapshot, EditorInput, ModelSaveAccepted, MutationOutcome, PriceDisplayResult,
+    PriceEditInput, RenameInput, RestoreInput, Session,
 };
 use hiroute_application_api::{
     ClientOperationViewV1, GetEffectivePricesV2, ModelCatalogQueryV1, ModelCatalogResultV1,
 };
-use hiroute_diagnostics::context::{DiagnosticContext, DiagnosticHandle};
-use hiroute_diagnostics::correlation::CorrelationDomain;
-use hiroute_diagnostics::error::EventErrorCode;
-use hiroute_diagnostics::event::{
-    ActionEnd, ActionOperation, ActionResult, ApplyEvent, ApplyPhase, ConfirmationEvent,
-    ConfirmationPhase, DiagnosticEvent, PreviewEvent, PreviewPhase,
-};
-use hiroute_diagnostics::identity::CorrelationToken;
+use hiroute_diagnostics::context::DiagnosticHandle;
 use serde_json::Value;
 use std::sync::{
     Arc,
@@ -25,7 +27,6 @@ use std::sync::{
 };
 use tauri::{Manager, State, WebviewWindow};
 use tokio::sync::Mutex;
-mod model_connection_web;
 mod model_connections;
 use model_connections::*;
 mod subscription_login;
@@ -64,15 +65,6 @@ pub struct DesktopState(
     pub DiagnosticHandle,
 );
 
-async fn confirmation_session(
-    state: &DesktopState,
-    epoch: u64,
-) -> Result<tokio::sync::MutexGuard<'_, Option<Session>>, DesktopFailure> {
-    crate::confirmation::lock_current_session(&state.0, &state.2, epoch)
-        .await
-        .map_err(Into::into)
-}
-
 fn desktop_data_root(handle: &tauri::AppHandle) -> Result<std::path::PathBuf, ()> {
     let root = handle.path().app_local_data_dir().map_err(|_| ())?;
     #[cfg(debug_assertions)]
@@ -90,171 +82,36 @@ fn main_window(window: &WebviewWindow) -> Result<(), String> {
     }
 }
 
-/// Diagnostics for one protected native action. Carries the operation family, the real
-/// revision and stable results; never confirmation text, payloads, digests or grants.
-struct ActionDiagnostics {
-    context: DiagnosticContext,
-    operation: ActionOperation,
-    started: std::time::Instant,
-}
-
-impl ActionDiagnostics {
-    fn begin(handle: &DiagnosticHandle, operation: ActionOperation) -> Self {
-        Self {
-            context: handle.context(),
-            operation,
-            started: std::time::Instant::now(),
-        }
-    }
-
-    fn preview(&self, phase: PreviewPhase, revision: Option<u64>) {
-        self.context.emit(DiagnosticEvent::Preview(PreviewEvent {
-            operation: self.operation,
-            phase,
-            revision,
-        }));
-    }
-
-    fn confirmation(&self, phase: ConfirmationPhase, accepted: Option<bool>) {
-        self.context
-            .emit(DiagnosticEvent::Confirmation(ConfirmationEvent {
-                operation: self.operation,
-                phase,
-                accepted,
-            }));
-    }
-
-    fn apply(&self, phase: ApplyPhase, revision: Option<u64>, result: Option<ActionResult>) {
-        self.context.emit(DiagnosticEvent::Apply(ApplyEvent {
-            operation: self.operation,
-            phase,
-            revision,
-            result,
-        }));
-    }
-
-    /// The exact operation this action created, when the product reported one.
-    fn token(&self, operation_id: Option<&str>) -> Option<CorrelationToken> {
-        operation_id.and_then(|id| self.context.token(CorrelationDomain::Operation, id))
-    }
-
-    fn end(&self, result: ActionResult, operation_token: Option<CorrelationToken>) {
-        self.context.emit(DiagnosticEvent::ActionEnd(ActionEnd {
-            operation: self.operation,
-            result,
-            operation_token,
-            elapsed_ms: self.started.elapsed().as_millis() as u64,
-        }));
-    }
-}
-
-impl NativeOutcome {
-    /// The stable result of this action; a denial is not a failure and vice versa. A
-    /// non-terminal product state is reported as a failure instead of "applied".
-    fn action_result(&self, accepted: bool) -> ActionResult {
-        if !accepted {
-            return ActionResult::Denied;
-        }
-        match self {
-            Self::Rename(mutation) => mutation_outcome_result(mutation),
-            Self::Agent(agent) => match &agent.mutation {
-                Some(mutation) => mutation_outcome_result(mutation),
-                None => ActionResult::Failed {
-                    code: EventErrorCode::ExternalError,
-                },
-            },
-            Self::Check(completion) => {
-                if completion.passed() {
-                    ActionResult::Applied
-                } else {
-                    ActionResult::Failed {
-                        code: EventErrorCode::ExternalError,
-                    }
-                }
-            }
-            Self::ModelSave(accepted) => mutation_result(&accepted.result.state),
-            Self::SubscriptionCheck(result) => match result.status {
-                hiroute_application_api::ComputeSubscriptionCheckStatusV2::Verified => {
-                    ActionResult::Applied
-                }
-                hiroute_application_api::ComputeSubscriptionCheckStatusV2::SourceChanged => {
-                    ActionResult::Failed {
-                        code: EventErrorCode::Conflict,
-                    }
-                }
-                hiroute_application_api::ComputeSubscriptionCheckStatusV2::NeedsAuth => {
-                    ActionResult::Failed {
-                        code: EventErrorCode::Authorization,
-                    }
-                }
-                hiroute_application_api::ComputeSubscriptionCheckStatusV2::Unavailable => {
-                    ActionResult::Failed {
-                        code: EventErrorCode::Unavailable,
-                    }
-                }
-                _ => ActionResult::Failed {
-                    code: EventErrorCode::ExternalError,
-                },
-            },
-        }
-    }
-
-    /// The exact product operation this action produced, when it reported one.
-    fn operation_id(&self) -> Option<&str> {
-        match self {
-            Self::Rename(mutation) => mutation
-                .operation
-                .as_ref()
-                .map(|operation| operation.operation_id.as_str()),
-            Self::Agent(agent) => agent
-                .mutation
-                .as_ref()
-                .and_then(|mutation| mutation.operation.as_ref())
-                .map(|operation| operation.operation_id.as_str()),
-            Self::ModelSave(accepted) => Some(accepted.operation.operation_id.as_str()),
-            Self::SubscriptionCheck(result) => {
-                Some(result.approval_operation.operation_id.as_str())
-            }
-            Self::Check(_) => None,
-        }
-    }
-}
-
-fn mutation_outcome_result(mutation: &MutationOutcome) -> ActionResult {
-    mutation.operation.as_ref().map_or_else(
-        || mutation_result(&mutation.state),
-        |operation| mutation_result(&operation.state),
-    )
-}
-
-fn mutation_result(state: &str) -> ActionResult {
-    match state {
-        "succeeded" => ActionResult::Applied,
-        "needs_attention" => ActionResult::Failed {
-            code: EventErrorCode::Recovery,
-        },
-        _ => ActionResult::Failed {
-            code: EventErrorCode::ExternalError,
-        },
-    }
-}
 #[tauri::command]
 pub async fn desktop_snapshot(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
 ) -> Result<DesktopSnapshot, DesktopFailure> {
     main_window(&window)?;
-    let mut guard = state.0.lock().await;
-    let session = guard.as_mut().ok_or_else(|| {
-        state
-            .1
-            .error
-            .get()
-            .cloned()
-            .unwrap_or("RESIDENT_UNAVAILABLE".into())
-    })?;
-    session.resume_observing();
-    session.snapshot().await
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::desktop_snapshot(&context, &product_state).await
 }
 #[tauri::command]
 pub async fn refresh_route_references(
@@ -263,25 +120,31 @@ pub async fn refresh_route_references(
     language: String,
 ) -> Result<MutationOutcome, DesktopFailure> {
     main_window(&window)?;
-    let epoch = state.2.load(Ordering::SeqCst);
-    let action = ActionDiagnostics::begin(&state.3, ActionOperation::PlanEditor);
-    action.preview(PreviewPhase::Begin, None);
-    let context = confirmation_session(&state, epoch)
-        .await?
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .preview_reference_refresh(language)
-        .await?;
-    action.preview(PreviewPhase::End, Some(context.revision()));
-    confirm(
-        &window,
-        &state,
-        ActionOperation::PlanEditor,
-        NativeConfirmation::Rename(Box::new(context)),
-        epoch,
-    )
-    .await?
-    .mutation()
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::refresh_route_references(&context, &product_state, language)
+        .await
 }
 #[tauri::command]
 pub async fn preview_plan_editor(
@@ -290,25 +153,30 @@ pub async fn preview_plan_editor(
     input: EditorInput,
 ) -> Result<MutationOutcome, DesktopFailure> {
     main_window(&window)?;
-    let epoch = state.2.load(Ordering::SeqCst);
-    let action = ActionDiagnostics::begin(&state.3, ActionOperation::PlanEditor);
-    action.preview(PreviewPhase::Begin, None);
-    let context = confirmation_session(&state, epoch)
-        .await?
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .preview_editor(input)
-        .await?;
-    action.preview(PreviewPhase::End, Some(context.revision()));
-    confirm(
-        &window,
-        &state,
-        ActionOperation::PlanEditor,
-        NativeConfirmation::Rename(Box::new(context)),
-        epoch,
-    )
-    .await?
-    .mutation()
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::preview_plan_editor(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn plan_editor_options(
@@ -317,9 +185,30 @@ pub async fn plan_editor_options(
     input: hiroute_application_api::PlanEditorOptionsRequestV1,
 ) -> Result<hiroute_application_api::PlanEditorOptionsV1, DesktopFailure> {
     main_window(&window)?;
-    let guard = state.0.lock().await;
-    let session = guard.as_ref().ok_or("RESIDENT_UNAVAILABLE")?;
-    crate::session::query(&session.client, "GetPlanEditorOptions", &input).await
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::plan_editor_options(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn preview_rename(
@@ -328,27 +217,30 @@ pub async fn preview_rename(
     input: RenameInput,
 ) -> Result<MutationOutcome, DesktopFailure> {
     main_window(&window)?;
-    let epoch = state.2.load(Ordering::SeqCst);
-    let action = ActionDiagnostics::begin(&state.3, ActionOperation::Rename);
-    action.preview(PreviewPhase::Begin, None);
-    let context = {
-        let mut guard = confirmation_session(&state, epoch).await?;
-        guard
-            .as_mut()
-            .ok_or("RESIDENT_UNAVAILABLE")?
-            .preview(input)
-            .await?
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
     };
-    action.preview(PreviewPhase::End, Some(context.revision()));
-    confirm(
-        &window,
-        &state,
-        ActionOperation::Rename,
-        NativeConfirmation::Rename(Box::new(context)),
-        epoch,
-    )
-    .await?
-    .mutation()
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::preview_rename(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn preview_restore_name(
@@ -357,93 +249,30 @@ pub async fn preview_restore_name(
     input: RestoreInput,
 ) -> Result<MutationOutcome, DesktopFailure> {
     main_window(&window)?;
-    let epoch = state.2.load(Ordering::SeqCst);
-    let action = ActionDiagnostics::begin(&state.3, ActionOperation::RestoreName);
-    action.preview(PreviewPhase::Begin, None);
-    let context = confirmation_session(&state, epoch)
-        .await?
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .preview_restore(input)
-        .await?;
-    action.preview(PreviewPhase::End, Some(context.revision()));
-    confirm(
-        &window,
-        &state,
-        ActionOperation::RestoreName,
-        NativeConfirmation::Rename(Box::new(context)),
-        epoch,
-    )
-    .await?
-    .mutation()
-}
-enum NativeConfirmation {
-    Rename(Box<Confirmation>),
-    Price(Box<PriceConfirmation>),
-    Agent(Box<AgentConfirmation>),
-    Check(Box<AgentCheckConfirmation>),
-    ModelSave(Box<ModelSaveConfirmation>),
-    SubscriptionCheck(Box<SubscriptionCheckConfirmation>),
-}
-enum NativeOutcome {
-    Rename(MutationOutcome),
-    Agent(Box<AgentOutcome>),
-    Check(AgentCheckCompletion),
-    ModelSave(ModelSaveAccepted),
-    SubscriptionCheck(Box<hiroute_application_api::ComputeSubscriptionCheckResultV2>),
-}
-impl NativeOutcome {
-    fn mutation(self) -> Result<MutationOutcome, DesktopFailure> {
-        match self {
-            Self::Rename(value) => Ok(value),
-            _ => Err("CONFIRMATION_KIND_MISMATCH".into()),
-        }
-    }
-}
-impl NativeConfirmation {
-    /// The exact revision this action was previewed against, from the real confirmation
-    /// context rather than from any WebView-provided value.
-    fn revision(&self) -> u64 {
-        match self {
-            Self::Rename(context) => context.revision(),
-            Self::Price(context) => context.revision(),
-            Self::Agent(context) => context.revision(),
-            Self::Check(context) => context.revision(),
-            Self::ModelSave(context) => context.revision(),
-            Self::SubscriptionCheck(context) => context.revision(),
-        }
-    }
-
-    fn requires_confirmation(&self) -> bool {
-        match self {
-            Self::Rename(c) => c.requires_confirmation(),
-            Self::Price(_) => false,
-            Self::Check(c) => c.requires_confirmation(),
-            Self::Agent(c) => c.requires_confirmation(),
-            Self::ModelSave(c) => c.requires_confirmation(),
-            Self::SubscriptionCheck(c) => c.requires_confirmation(),
-        }
-    }
-    fn english(&self) -> bool {
-        match self {
-            Self::Rename(c) => c.english(),
-            Self::Price(c) => c.english(),
-            Self::Agent(c) => c.english(),
-            Self::Check(c) => c.english(),
-            Self::ModelSave(c) => c.english(),
-            Self::SubscriptionCheck(c) => c.english(),
-        }
-    }
-    fn message(&self) -> String {
-        match self {
-            Self::Rename(c) => c.message(),
-            Self::Price(c) => c.message(),
-            Self::Agent(c) => c.message(),
-            Self::Check(c) => c.message(),
-            Self::ModelSave(c) => c.message(),
-            Self::SubscriptionCheck(c) => c.message(),
-        }
-    }
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::preview_restore_name(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn preview_price_change(
@@ -452,25 +281,30 @@ pub async fn preview_price_change(
     input: PriceEditInput,
 ) -> Result<MutationOutcome, DesktopFailure> {
     main_window(&window)?;
-    let epoch = state.2.load(Ordering::SeqCst);
-    let action = ActionDiagnostics::begin(&state.3, ActionOperation::PriceChange);
-    action.preview(PreviewPhase::Begin, None);
-    let context = confirmation_session(&state, epoch)
-        .await?
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .preview_price(input)
-        .await?;
-    action.preview(PreviewPhase::End, Some(context.revision()));
-    confirm(
-        &window,
-        &state,
-        ActionOperation::PriceChange,
-        NativeConfirmation::Price(Box::new(context)),
-        epoch,
-    )
-    .await?
-    .mutation()
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::preview_price_change(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn model_reference_query(
@@ -479,9 +313,30 @@ pub async fn model_reference_query(
     input: ModelCatalogQueryV1,
 ) -> Result<ModelCatalogResultV1, DesktopFailure> {
     main_window(&window)?;
-    let guard = state.0.lock().await;
-    let session = guard.as_ref().ok_or("RESIDENT_UNAVAILABLE")?;
-    crate::session::query(&session.client, "ShowModel", &input).await
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::model_reference_query(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn effective_price_query(
@@ -490,27 +345,61 @@ pub async fn effective_price_query(
     input: GetEffectivePricesV2,
 ) -> Result<PriceDisplayResult, DesktopFailure> {
     main_window(&window)?;
-    let guard = state.0.lock().await;
-    let session = guard.as_ref().ok_or("RESIDENT_UNAVAILABLE")?;
-    Ok(PriceDisplayResult::new(
-        crate::session::query(&session.client, "GetEffectivePrices", &input).await?,
-    ))
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::effective_price_query(&context, &product_state, input).await
 }
-
 #[tauri::command]
 pub async fn agent_snapshot(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
 ) -> Result<AgentSnapshot, DesktopFailure> {
     main_window(&window)?;
-    state
-        .0
-        .lock()
-        .await
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .agent_snapshot()
-        .await
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::agent_snapshot(&context, &product_state).await
 }
 #[tauri::command]
 pub async fn retry_agent_settings(
@@ -519,14 +408,30 @@ pub async fn retry_agent_settings(
     input: hiroute_application_api::AgentSettingsRetryV1,
 ) -> Result<Value, DesktopFailure> {
     main_window(&window)?;
-    state
-        .0
-        .lock()
-        .await
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .retry_agent_settings(input)
-        .await
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::retry_agent_settings(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn preview_agent_settings(
@@ -535,45 +440,30 @@ pub async fn preview_agent_settings(
     input: AgentSettingsInput,
 ) -> Result<AgentOutcome, DesktopFailure> {
     main_window(&window)?;
-    let epoch = state.2.load(Ordering::SeqCst);
-    let action = ActionDiagnostics::begin(&state.3, ActionOperation::AgentSettings);
-    action.preview(PreviewPhase::Begin, None);
-    let prepared = confirmation_session(&state, epoch)
-        .await?
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .preview_agent_settings(input)
-        .await?;
-    match prepared {
-        AgentPreparation::Blocked(preview) => {
-            action.preview(PreviewPhase::End, None);
-            action.end(
-                ActionResult::Failed {
-                    code: EventErrorCode::ActionRequired,
-                },
-                None,
-            );
-            Ok(AgentOutcome {
-                preview: *preview,
-                mutation: None,
-            })
-        }
-        AgentPreparation::Ready(context) => {
-            action.preview(PreviewPhase::End, Some(context.revision()));
-            match confirm(
-                &window,
-                &state,
-                ActionOperation::AgentSettings,
-                NativeConfirmation::Agent(context),
-                epoch,
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
             )
-            .await?
-            {
-                NativeOutcome::Agent(value) => Ok(*value),
-                _ => unreachable!(),
-            }
-        }
-    }
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::preview_agent_settings(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn check_agent_authentication(
@@ -582,30 +472,32 @@ pub async fn check_agent_authentication(
     input: AgentCheckInput,
 ) -> Result<bool, DesktopFailure> {
     main_window(&window)?;
-    let epoch = state.2.load(Ordering::SeqCst);
-    let action = ActionDiagnostics::begin(&state.3, ActionOperation::AgentCheck);
-    action.preview(PreviewPhase::Begin, None);
-    let context = confirmation_session(&state, epoch)
-        .await?
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .prepare_agent_check(input)
-        .await?;
-    action.preview(PreviewPhase::End, Some(context.revision()));
-    match confirm(
-        &window,
-        &state,
-        ActionOperation::AgentCheck,
-        NativeConfirmation::Check(Box::new(context)),
-        epoch,
-    )
-    .await?
-    {
-        NativeOutcome::Check(result) => Ok(result.passed()),
-        _ => unreachable!(),
-    }
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::check_agent_authentication(&context, &product_state, input)
+        .await
 }
-
 #[tauri::command]
 pub async fn check_agent_live(
     window: WebviewWindow,
@@ -613,197 +505,30 @@ pub async fn check_agent_live(
     input: AgentCheckInput,
 ) -> Result<AgentCheckCompletion, DesktopFailure> {
     main_window(&window)?;
-    if input.scope.as_deref() != Some("live") {
-        return Err("AGENT_INPUT_INVALID".into());
-    }
-    let epoch = state.2.load(Ordering::SeqCst);
-    let action = ActionDiagnostics::begin(&state.3, ActionOperation::AgentCheck);
-    action.preview(PreviewPhase::Begin, None);
-    let context = confirmation_session(&state, epoch)
-        .await?
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .prepare_agent_check(input)
-        .await?;
-    action.preview(PreviewPhase::End, Some(context.revision()));
-    match confirm(
-        &window,
-        &state,
-        ActionOperation::AgentCheck,
-        NativeConfirmation::Check(Box::new(context)),
-        epoch,
-    )
-    .await?
-    {
-        NativeOutcome::Check(result) => Ok(result),
-        _ => unreachable!(),
-    }
-}
-
-async fn confirm(
-    window: &WebviewWindow,
-    state: &DesktopState,
-    operation: ActionOperation,
-    context: NativeConfirmation,
-    epoch: u64,
-) -> Result<NativeOutcome, DesktopFailure> {
-    let action = ActionDiagnostics::begin(&state.3, operation);
-    if state.2.load(Ordering::SeqCst) != epoch || !window.is_visible().unwrap_or(false) {
-        let mut guard = state.0.lock().await;
-        // Recovery may have installed another Session while this callback waited.
-        if state.2.load(Ordering::SeqCst) == epoch {
-            guard
-                .as_mut()
-                .ok_or("RESIDENT_UNAVAILABLE")?
-                .invalidate_confirmation();
-        }
-        action.confirmation(ConfirmationPhase::Expired, None);
-        action.end(ActionResult::Stale, None);
-        return Err("CONFIRMATION_STALE".into());
-    }
-    let revision = context.revision();
-    let accepted = if context.requires_confirmation() {
-        action.confirmation(ConfirmationPhase::Shown, None);
-        let english = context.english();
-        let checking = matches!(&context, NativeConfirmation::Check(_));
-        let live_checking = matches!(&context, NativeConfirmation::Check(c) if c.is_live());
-        let title = if live_checking {
-            if english {
-                "HiRoute · Verify model access"
-            } else {
-                "HiRoute · 验证模型接入"
-            }
-        } else if checking {
-            if english {
-                "HiRoute · Check compatibility"
-            } else {
-                "HiRoute · 检查兼容性"
-            }
-        } else if english {
-            "HiRoute · Confirm change"
-        } else {
-            "HiRoute · 确认更改"
-        };
-        let confirm_label = if live_checking {
-            if english {
-                "Run live check"
-            } else {
-                "开始真实验证"
-            }
-        } else if checking {
-            if english {
-                "Start check"
-            } else {
-                "开始检查"
-            }
-        } else if let NativeConfirmation::Rename(plan) = &context {
-            plan.action_label()
-        } else if english {
-            "Apply change"
-        } else {
-            "应用更改"
-        };
-        let accepted = request_web_confirmation(
-            window,
-            WebConfirmationPrompt {
-                title: title.into(),
-                message: context.message(),
-                confirm_label: confirm_label.into(),
-                cancel_label: if english { "Cancel" } else { "取消" }.into(),
-            },
-        )
-        .await;
-        action.confirmation(ConfirmationPhase::Result, Some(accepted));
-        accepted
-    } else {
-        // This context was freshly validated for an explicit action that needs no extra prompt.
-        true
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
     };
-    if state.2.load(Ordering::SeqCst) != epoch || !window.is_visible().unwrap_or(false) {
-        let mut guard = state.0.lock().await;
-        if state.2.load(Ordering::SeqCst) == epoch {
-            guard
-                .as_mut()
-                .ok_or("RESIDENT_UNAVAILABLE")?
-                .invalidate_confirmation();
-        }
-        action.confirmation(ConfirmationPhase::Expired, None);
-        action.end(ActionResult::Stale, None);
-        return Err("CONFIRMATION_STALE".into());
-    }
-    action.apply(ApplyPhase::Begin, Some(revision), None);
-    let outcome = if let NativeConfirmation::SubscriptionCheck(context) = context {
-        let pending = {
-            let mut guard = confirmation_session(state, epoch).await?;
-            guard
-                .as_mut()
-                .ok_or("RESIDENT_UNAVAILABLE")?
-                .begin_subscription_check_confirmation(*context, accepted)
-                .await?
-        };
-        // Operation A performs connector I/O. Keep native close/recovery commands responsive while
-        // it runs so close can submit cancellation rather than waiting behind this command.
-        let completion = pending.execute().await;
-        // Completion belongs to the Session that submitted it, not the window's prompt epoch.
-        // Window close must still release an A resource created after the close-time sweep.
-        crate::session::complete_subscription_check(&state.0, completion)
-            .await
-            .map(Box::new)
-            .map(NativeOutcome::SubscriptionCheck)
-    } else if let NativeConfirmation::Check(context) = context {
-        let dispatch = {
-            let mut guard = confirmation_session(state, epoch).await?;
-            guard
-                .as_mut()
-                .ok_or("RESIDENT_UNAVAILABLE")?
-                .begin_agent_check(*context, accepted)?
-        };
-        match dispatch {
-            AgentCheckDispatch::Cancelled(result) => Ok(NativeOutcome::Check(result)),
-            AgentCheckDispatch::Pending(pending) => {
-                pending.execute().await.map(NativeOutcome::Check)
-            }
-        }
-    } else {
-        let mut guard = confirmation_session(state, epoch).await?;
-        let session = guard.as_mut().ok_or("RESIDENT_UNAVAILABLE")?;
-        match context {
-            NativeConfirmation::Agent(context) => session
-                .finish_agent_confirmation(*context, accepted)
-                .await
-                .map(|value| NativeOutcome::Agent(Box::new(value))),
-            NativeConfirmation::Check(_) => unreachable!(),
-            NativeConfirmation::Rename(context) => session
-                .finish_native_confirmation(*context, accepted)
-                .await
-                .map(NativeOutcome::Rename),
-            NativeConfirmation::Price(context) => session
-                .finish_price_confirmation(*context, accepted)
-                .await
-                .map(NativeOutcome::Rename),
-            NativeConfirmation::ModelSave(context) => session
-                .finish_model_save_confirmation(*context, accepted)
-                .await
-                .map(NativeOutcome::ModelSave),
-            NativeConfirmation::SubscriptionCheck(_) => unreachable!(),
-        }
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
     };
-    match &outcome {
-        Ok(value) => {
-            let result = value.action_result(accepted);
-            let token = action.token(value.operation_id());
-            action.apply(ApplyPhase::End, Some(revision), Some(result));
-            action.end(result, token);
-        }
-        Err(failure) => {
-            let result = ActionResult::Failed {
-                code: failure.event_code(),
-            };
-            action.apply(ApplyPhase::End, Some(revision), Some(result));
-            action.end(result, None);
-        }
-    }
-    outcome
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::check_agent_live(&context, &product_state, input).await
 }
 #[tauri::command]
 pub async fn observe_operation(
@@ -811,14 +536,30 @@ pub async fn observe_operation(
     state: State<'_, DesktopState>,
 ) -> Result<Option<ClientOperationViewV1>, DesktopFailure> {
     main_window(&window)?;
-    state
-        .0
-        .lock()
-        .await
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .observe()
-        .await
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::observe_operation(&context, &product_state).await
 }
 #[tauri::command]
 pub async fn stop_observing(
@@ -826,14 +567,30 @@ pub async fn stop_observing(
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
     main_window(&window)?;
-    state
-        .0
-        .lock()
-        .await
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .stop_observing();
-    Ok(())
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::stop_observing(&context, &product_state).await
 }
 /// How the main window may be presented at launch. The window is created hidden; only a
 /// normal foreground launch shows it, and only after the native launch reason is known.
@@ -857,6 +614,11 @@ impl LaunchPresentation {
             && !window.is_visible().unwrap_or(false)
         {
             let _ = window.show();
+            // Bare Pilot launches need foreground presentation for WebView polling.
+            #[cfg(all(feature = "desktop-pilot", debug_assertions))]
+            if std::env::var_os("HIROUTE_DESKTOP_TEST_ROOT").is_some() {
+                let _ = window.set_focus();
+            }
         }
     }
 }
@@ -961,13 +723,15 @@ pub fn run() {
                         .with_file_name("hirouted");
                     #[cfg(unix)]
                     {
-                        Ok(Session::new(crate::bootstrap::Resident::open_resident(
-                            &root,
-                            &binary,
-                            cancelled,
-                            diagnostics,
-                            preacquired,
-                        )?))
+                        Ok(crate::session_from_resident(
+                            crate::bootstrap::Resident::open_resident(
+                                &root,
+                                &binary,
+                                cancelled,
+                                diagnostics,
+                                preacquired,
+                            )?,
+                        ))
                     }
                     #[cfg(not(unix))]
                     {
@@ -1140,14 +904,30 @@ pub async fn observation_read(
     request: hiroute_application_api::ObservationReadRequestV2,
 ) -> Result<serde_json::Value, DesktopFailure> {
     main_window(&window)?;
-    state
-        .0
-        .lock()
-        .await
-        .as_mut()
-        .ok_or("RESIDENT_UNAVAILABLE")?
-        .observation_read(request)
-        .await
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::observation_read(&context, &product_state, request).await
 }
 
 #[cfg(test)]

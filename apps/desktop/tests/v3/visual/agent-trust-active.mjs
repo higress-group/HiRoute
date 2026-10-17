@@ -6,6 +6,10 @@ import { connectPage, evaluate, navigate, waitFor } from './cdp-client.mjs';
 
 const port = Number(process.argv[2]);
 const baseUrl = process.argv[3];
+const hostTransport = process.env.HIROUTE_BROWSER_TRANSPORT ?? 'tauri';
+if (!['tauri', 'console'].includes(hostTransport)) throw new Error('Unknown browser host transport');
+const fixtureUrl = relative => { const url = new URL(relative, baseUrl); if (hostTransport === 'console') url.searchParams.set('transport', 'console'); return url.href; };
+
 const outputRoot = path.resolve(process.argv[4]);
 const subscriptionProxyOnly = process.argv[5] === '--subscription-proxy-only';
 const shellOnly = process.argv[5] === '--shell-only' || subscriptionProxyOnly;
@@ -21,9 +25,15 @@ try {
   await mkdir(outputRoot, { recursive: true });
   const client = await connectPage(port);
   try {
+    if (process.argv[5] === '--shell-host-only') {
+      await (await import('./shell-host-scenarios.mjs')).runShellHostScenarios(client, baseUrl, outputRoot);
+    } else if (process.argv[5] === '--console-only') {
+      await (await import('./console-scenarios.mjs')).runConsoleScenarios(client, baseUrl, outputRoot);
+      process.exitCode = 0;
+    } else {
     const checks = [];
     if (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !routeOptionsOnly) {
-      await navigate(client, new URL('agent-trust.html', baseUrl).href, { width: 1280, height: 900 });
+      await navigate(client, fixtureUrl('agent-trust.html'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.agentTrust)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/agent-trust-scenarios.mjs').then(module => module.agentTrustScenarioCatalog)");
       const selected = selectScenarios(catalog, claudeCollaborationOnly
@@ -42,7 +52,7 @@ try {
       checks.push(...results);
     }
     if (!shellOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
-      await navigate(client, new URL('?page=routing&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
+      await navigate(client, fixtureUrl('?page=routing&scenario=ready'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/routing-worker-scenarios.mjs').then(module => module.routingWorkerScenarioCatalog)");
       const capability = routeSaveOnly ? 'route-save' : workerReplacementOnly ? 'worker-replacement' : undefined;
@@ -56,7 +66,7 @@ try {
       }
     }
     if (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly) {
-      await navigate(client, new URL('?page=models&scenario=ready', baseUrl).href, { width: 1280, height: 900 });
+      await navigate(client, fixtureUrl('?page=models&scenario=ready'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.__HIRouteFixtureTrace)', { timeout: 7000 });
       const fromModel = await evaluate(client, "import('/model-to-route-scenarios.mjs').then(module => module.runModelToRouteScenarios())");
       if (fromModel.tests !== 1 || fromModel.results?.length !== 1 || !['green', 'red'].includes(fromModel.results[0].state)) {
@@ -68,7 +78,7 @@ try {
       }
     }
     if (routeOptionsOnly || (!shellOnly && !routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly)) {
-      await navigate(client, new URL('plan-editor-ux.html?checks=availability', baseUrl).href, { width: 1280, height: 900 });
+      await navigate(client, fixtureUrl('plan-editor-ux.html?checks=availability'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(document.querySelector("button")?.textContent?.includes("运行智能路由交互检查"))', { timeout: 7000 });
       await evaluate(client, 'document.querySelector("button").click()');
       await waitFor(client, 'Boolean(document.querySelector("[data-ux-results]")?.textContent)', { timeout: 20000 });
@@ -84,15 +94,16 @@ try {
       for (const item of result.results) process.stdout.write(`${item.state}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
     }
     if (shellOnly || (!routeSaveOnly && !workerReplacementOnly && !claudeCollaborationOnly && !routeOptionsOnly)) {
-      await navigate(client, new URL('product-shell.html', baseUrl).href, { width: 1280, height: 900 });
+      await navigate(client, fixtureUrl('product-shell.html'), { width: 1280, height: 900 });
       await waitFor(client, 'Boolean(window.productShell)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/product-shell-scenarios.mjs').then(module => module.productShellScenarioCatalog)");
       const selected = selectScenarios(catalog, subscriptionProxyOnly
         ? { capability: 'subscription-proxy', requiredIds: focusedRequirements['subscription-proxy'] }
-        : { requiredIds: productShellRequired });
+        : { ids: process.env.HIROUTE_BROWSER_SCENARIOS?.split(','), requiredIds: process.env.HIROUTE_BROWSER_SCENARIOS?.split(',') ?? productShellRequired });
       const results = [];
       for (const { id } of selected) {
         const viewport = ['desktop.models.subscription-scan.recommended-login',
+          'desktop.models.view-switch', 'desktop.presentation.control-layout',
           'desktop.routing.additional-budget-consumers'].includes(id)
           ? { width: 755, height: 600 } : { width: 1280, height: 900 };
         await client.send('Emulation.setDeviceMetricsOverride', { ...viewport, deviceScaleFactor: 1, mobile: false });
@@ -112,6 +123,7 @@ try {
     };
     await writeFile(path.join(outputRoot, 'agent-trust-report.json'), `${JSON.stringify(report, null, 2)}\n`);
     if (report.summary.red > 0) process.exitCode = 1;
+    }
   } finally {
     client.close();
   }

@@ -5,9 +5,192 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:3ae32fc9b7da19b9d8b23ffefd8a25bc221dc86adc3bdbaca761f176928508b9",
+  "descriptor_digest": "sha256:36ebce38db8984e669ea9f4ae240bc0623cc12461eb5a9274896e74a106f2731",
   "visibility": "release",
   "commands": [
+    {
+      "command_id": "console.open",
+      "path": [
+        "console",
+        "open"
+      ],
+      "operation_id": "CreateConsoleLaunch",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "action",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.console-launch/v1",
+      "effect": "typed_action",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Create a single-use owner console launch link.",
+        "usage": "hiroute console open [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Application-owned typed operation; side effects are recorded by the Operation and external ledgers.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute console open --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id console.open"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.console.open.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.console.open.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "console.token.create",
+      "path": [
+        "console",
+        "token",
+        "create"
+      ],
+      "operation_id": "CreateConsoleToken",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "action",
+      "request_schema": "hiroute.console-token-create/v1",
+      "response_schema": "hiroute.console-token-result/v1",
+      "effect": "typed_action",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Create a named owner console access token, shown once.",
+        "usage": "hiroute console token create [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Application-owned typed operation; side effects are recorded by the Operation and external ledgers.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute console token create --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id console.token.create"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.console.token.create.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.console.token.create.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "console.token.list",
+      "path": [
+        "console",
+        "token",
+        "list"
+      ],
+      "operation_id": "ListConsoleTokens",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.console-token-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "List console token metadata without credential secrets.",
+        "usage": "hiroute console token list [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute console token list --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id console.token.list"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.console.token.list.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.console.token.list.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "console.token.revoke",
+      "path": [
+        "console",
+        "token",
+        "revoke"
+      ],
+      "operation_id": "RevokeConsoleToken",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "action",
+      "request_schema": "hiroute.console-token-revoke/v1",
+      "response_schema": "hiroute.console-token-result/v1",
+      "effect": "typed_action",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Revoke a console access token and its sessions.",
+        "usage": "hiroute console token revoke [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Application-owned typed operation; side effects are recorded by the Operation and external ledgers.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute console token revoke --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id console.token.revoke"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.console.token.revoke.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.console.token.revoke.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
     {
       "command_id": "schema.list",
       "path": [

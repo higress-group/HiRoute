@@ -50,7 +50,8 @@ def run_main_agent(product, binary, upstream, fixture):
         stdout,_ = prompt(product,[str(binary),'--profile','acp','--patch',str(patch)],
             fixture['main_marker']+': Read hiroute-collaboration and delegate the native receipt task.',
             'hiroute-main-acceptance/'+upstream.model,
-            env=dict(product.env,HIROUTE_DSH_MAIN_TOKEN=upstream.token))
+            env=dict(product.env,HIROUTE_DSH_MAIN_TOKEN=upstream.token,
+                     DSH_PERMISSION_MODE='danger-full-access'))
         assert ('MAIN-AGENT-COMPLETED-'+fixture['artifact']['receipt']).encode() in stdout
         return
     if HARNESS == 'pi':

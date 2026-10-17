@@ -51,6 +51,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-integrations", "pre_gateway_compute"),
         ("hiroute-integrations", "release_facts"),
         ("hiroute-local-storage", "canonical_compat"),
+        ("hiroute-host-runtime", "release_catalog_compatibility"),
     },
     "integration-daemon": {
         ("hiroute-daemon", "discovered_model_product"),
@@ -59,6 +60,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-daemon", "subscription_management_product"),
         ("hiroute-daemon", "windows_headless"),
         ("hiroute-daemon", "windows_background"),
+        ("hiroute-daemon", "windows_desktop"),
     },
     "integration-gateway": {
         ("hiroute-gateway-core", "attempt_exchange"),

@@ -12,8 +12,12 @@ use zeroize::Zeroizing;
 
 use super::ServiceFailure;
 
+mod install;
 mod logs;
 mod scm_owner;
+pub(crate) fn install_hidden(verb: &str, args: &[std::ffi::OsString]) -> u8 {
+    install::run(verb, args)
+}
 pub(crate) fn scm_owner_helper_verb() -> &'static str {
     scm_owner::VERB
 }

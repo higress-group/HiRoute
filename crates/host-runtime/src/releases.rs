@@ -282,7 +282,11 @@ mod tests {
     #[test]
     fn current_website_catalog_is_the_upgrade_reader_contract() {
         let bytes = include_bytes!("../../../apps/website/data/releases.json");
-        let catalog = WebsiteReleasesV2::parse(bytes).unwrap();
+        let projection = crate::WebsiteReleasesV3::parse(bytes)
+            .unwrap()
+            .v2_projection()
+            .unwrap();
+        let catalog = WebsiteReleasesV2::parse(&projection).unwrap();
         let original: serde_json::Value = serde_json::from_slice(bytes).unwrap();
         for architecture in ["arm64", "x86_64"] {
             let update = catalog

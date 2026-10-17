@@ -123,6 +123,28 @@ journal CAS bind stable input. One current core model receives strictly validate
 supported legacy data at its conversion boundary. Reader removal requires explicit
 support retirement with a viable upgrade/recovery path and registry/test updates.
 
+### Requirement: Console mutations keep confirmation, secret and conflict semantics
+
+Console mutations SHALL use the existing Preview/admission, idempotency, revision and recovery contracts. A destructive or authority-changing action that requires confirmation SHALL use a daemon-issued single-use challenge bound to the session, the exact previewed intent and an expiry; expired, reused or mismatched challenges SHALL be rejected without effect. Secrets submitted through the console SHALL enter the existing protected input path, SHALL NOT be echoed in responses, logs, diagnostics or browser storage, and SHALL be released when the request ends. Several console sessions, the CLI and a host shell MAY manage the same instance concurrently; a stale revision SHALL produce a conflict that identifies the changed object instead of overwriting it.
+
+#### Scenario: Confirmation replay
+
+- **WHEN** a confirmed deletion challenge is submitted a second time or after the target changed
+- **THEN** the second submission is rejected and the current state is unchanged.
+
+#### Scenario: Secret custody
+
+- **WHEN** the owner saves an API connection key through the console
+- **THEN** the connection becomes usable, and the key does not appear in any console response, daemon log, diagnostic bundle or browser storage.
+
+#### Scenario: Concurrent edit
+
+- **WHEN** two browser tabs edit the same plan and the second saves after the first
+- **THEN** the second save reports a revision conflict and the first saved content remains.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/132#issuecomment-6219729524
+
 ## Implementation references
 
 - [Application operation workflows](../../../crates/application/src/operations) and

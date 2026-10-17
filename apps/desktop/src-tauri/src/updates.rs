@@ -328,9 +328,11 @@ async fn resident_call<T: Send + 'static>(
     sessions: &Sessions,
     call: impl FnOnce(&mut crate::bootstrap::Resident) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
-    let mut session = sessions.clone().lock_owned().await;
+    let session = sessions.clone().lock_owned().await;
     tokio::task::spawn_blocking(move || {
-        call(&mut session.as_mut().ok_or("RESIDENT_UNAVAILABLE")?.resident)
+        call(&mut *crate::bootstrap::resident(
+            session.as_ref().ok_or("RESIDENT_UNAVAILABLE")?,
+        )?)
     })
     .await
     .map_err(|_| "UPGRADE_RESIDENT_UNAVAILABLE")?
@@ -417,17 +419,19 @@ async fn recover_precommit(
     let mut session = sessions.clone().lock_owned().await;
     let result = tokio::task::spawn_blocking(move || {
         let current = session.as_mut().ok_or("RESIDENT_UNAVAILABLE")?;
-        if !current.resident.upgrade_stop_requested() {
-            current.resident.upgrade_status(UpgradeAction::Cancel)?;
+        let mut native = crate::bootstrap::resident(current)?;
+        if !native.upgrade_stop_requested() {
+            native.upgrade_status(UpgradeAction::Cancel)?;
         } else {
             crate::bridge::expire_window_confirmations(&handle, "main");
-            current.invalidate_confirmation();
-            let resident = current.resident.replacement_after_upgrade_stop(
+            let resident = native.replacement_after_upgrade_stop(
                 &root,
                 &executable.with_file_name("hirouted"),
                 &diagnostics,
             )?;
-            *session = Some(crate::session::Session::new(resident));
+            drop(native);
+            current.invalidate_confirmation();
+            *session = Some(crate::session_from_resident(resident));
         }
         Ok::<_, String>(())
     })

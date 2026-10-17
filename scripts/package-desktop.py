@@ -37,11 +37,15 @@ def validate_release_versions(version):
     # ProcessStart uses the diagnostics library's compiled package version.
     for relative in ("crates/application-api/Cargo.toml", "crates/cli/Cargo.toml",
                      "crates/daemon/Cargo.toml", "apps/desktop/src-tauri/Cargo.toml",
-                     "crates/diagnostics/Cargo.toml"):
+                     "crates/diagnostics/Cargo.toml", "apps/shell/src-tauri/Cargo.toml"):
         section = re.search(r"(?ms)^\[package\]\s*\n(.*?)(?=^\[|\Z)",
                             (REPO / relative).read_text())
         declared = re.search(r'^version\s*=\s*"([^"]+)"\s*$', section[1], re.M) if section else None
         actual = declared[1] if declared else None
+        if actual != version:
+            raise ValueError(f"release version mismatch: {relative} is {actual}, expected {version}")
+    for relative in ("apps/shell/package.json", "apps/shell/src-tauri/tauri.conf.json"):
+        actual = json.loads((REPO / relative).read_text())["version"]
         if actual != version:
             raise ValueError(f"release version mismatch: {relative} is {actual}, expected {version}")
 

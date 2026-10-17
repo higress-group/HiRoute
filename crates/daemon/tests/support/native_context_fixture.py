@@ -337,6 +337,7 @@ class NativeContextUpstream:
         self.controls = Path(controls)
         self.lock = threading.Lock()
         self.reply = decision
+        self.before_incomplete = None
         self.requests = 0
         self.rejected_requests = 0
         self.proxy_trap = None
@@ -390,7 +391,9 @@ class NativeContextUpstream:
                 self.send_header('Content-Type', 'text/event-stream')
                 self.send_header('Content-Length', str(sum(map(len, encoded))))
                 self.end_headers()
-                for frame in encoded:
+                for (kind, _), frame in zip(frames, encoded):
+                    if kind == 'response.incomplete' and owner.before_incomplete is not None:
+                        owner.before_incomplete()
                     self.wfile.write(frame)
                     self.wfile.flush()
 

@@ -1,10 +1,9 @@
-import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { invoke } from '../host/index.ts';
+import { listenForHostConfirmations } from '../host/index.ts';
 import { useEffect, useState } from 'react';
 import {
   enqueueWebConfirmation,
   isWebConfirmationRequest,
-  listenForWebConfirmations,
   removeWebConfirmation,
   type WebConfirmationRequest,
 } from '../features/web-confirmation';
@@ -21,7 +20,7 @@ export function WebConfirmationHost() {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     let polling = false;
-    void listenForWebConfirmations(getCurrentWebview(), request => {
+    void listenForHostConfirmations(request => {
       if (disposed) return;
       setError('');
       setQueue(items => enqueueWebConfirmation(items, request));

@@ -5,7 +5,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::Instant;
 
 use hiroute_platform::local_record::{self, Channel, Direction};
-use hiroute_platform::windows::lifecycle::{MAXIMUM, Request, Response, SCHEMA};
+use hiroute_platform::windows::lifecycle::{MAXIMUM, Request, Response, SCHEMA, UpgradeResponse};
 use hiroute_platform::windows::pipe::{Listener, Stream};
 
 pub(super) struct LifecycleServer {
@@ -33,9 +33,9 @@ impl LifecycleServer {
         Ok(Self { listener })
     }
 
-    pub(super) fn poll_stop(&self) -> Result<bool, String> {
+    pub(super) fn poll_stop(&self, role: &hiroute_daemon::RoleAllHandle) -> Result<bool, String> {
         match self.listener.accept() {
-            Ok((stream, _)) => Ok(handle_connection(stream).unwrap_or(false)),
+            Ok((stream, _)) => Ok(handle_connection(stream, role).unwrap_or(false)),
             Err(error)
                 if matches!(
                     error.kind(),
@@ -49,7 +49,10 @@ impl LifecycleServer {
     }
 }
 
-fn handle_connection(mut stream: Stream) -> Result<bool, String> {
+fn handle_connection(
+    mut stream: Stream,
+    role: &hiroute_daemon::RoleAllHandle,
+) -> Result<bool, String> {
     // Listener verifies the client's actual process SID before returning this stream.
     stream
         .set_deadline(Some(Instant::now() + super::IO_TIMEOUT))
@@ -58,16 +61,40 @@ fn handle_connection(mut stream: Stream) -> Result<bool, String> {
         .map_err(|_| "standalone lifecycle request read failed")?;
     let request: Request =
         serde_json::from_slice(&body).map_err(|_| "standalone lifecycle request is invalid")?;
-    if request.schema != SCHEMA || !matches!(request.action.as_str(), "status" | "stop") {
+    if request.schema != SCHEMA
+        || !matches!(
+            request.action.as_str(),
+            "status" | "stop" | "upgrade-prepare" | "upgrade-status" | "upgrade-cancel"
+        )
+    {
         return Err("standalone lifecycle request is invalid".into());
     }
     let stop = request.action == "stop";
-    let response = serde_json::to_vec(&Response {
-        schema: SCHEMA.into(),
-        action: request.action,
-        pid: std::process::id(),
-        accepted: true,
-    })
+    let response = if request.action.starts_with("upgrade-") {
+        use hiroute_host_runtime::UpgradeAction;
+        let action = match request.action.as_str() {
+            "upgrade-prepare" => UpgradeAction::Prepare,
+            "upgrade-status" => UpgradeAction::Status,
+            _ => UpgradeAction::Cancel,
+        };
+        let status = role.upgrade_status(action, "windows-install".into())?;
+        serde_json::to_vec(&UpgradeResponse {
+            schema: SCHEMA.into(),
+            action: request.action,
+            pid: std::process::id(),
+            accepted: true,
+            paused: status.paused,
+            active_calls: status.active_calls,
+            active_tasks: status.active_tasks,
+        })
+    } else {
+        serde_json::to_vec(&Response {
+            schema: SCHEMA.into(),
+            action: request.action,
+            pid: std::process::id(),
+            accepted: true,
+        })
+    }
     .map_err(|_| "standalone lifecycle response is invalid")?;
     local_record::write(
         &mut stream,

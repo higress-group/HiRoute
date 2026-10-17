@@ -140,7 +140,7 @@ fn standalone_private_directory(_path: &std::path::Path) -> Result<(), String> {
 #[cfg(any(unix, windows))]
 pub(crate) fn run_all_standalone(
     arguments: Arguments,
-    diagnostics: &DiagnosticRuntime,
+    diagnostics: &std::sync::Arc<DiagnosticRuntime>,
     #[cfg(windows)] service: Option<hiroute_platform::windows::service::ServiceShutdown>,
 ) -> Result<(), StartupError> {
     diagnostics.stage_begin(StartupStage::RootValidate);
@@ -223,9 +223,22 @@ pub(crate) fn run_all_standalone(
         outcome: StartupOutcome::Success,
         elapsed_ms: diagnostics_elapsed_ms(diagnostics),
     }));
+    let assets = hiroute_host_runtime::read_standalone_install_record(&layout.marker_path)
+        .map(|installation| installation.install_root.join("console"))
+        .unwrap_or_default();
+    #[cfg(debug_assertions)]
+    let assets = arguments.console_assets.unwrap_or(assets);
+    let console = hiroute_daemon::console::ConsoleService::start(
+        &role,
+        layout.clone(),
+        assets,
+        Some(diagnostics.clone()),
+    )
+    .ok();
     server
         .run(
             role,
+            console,
             #[cfg(windows)]
             service,
         )

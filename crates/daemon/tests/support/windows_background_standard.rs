@@ -32,6 +32,7 @@ pub(super) fn current_owner(request: fixture::Request, bound: Duration) -> Value
     let stage = match request.action.as_str() {
         "layout" => "layout",
         "command" => "command",
+        "install" | "uninstall" => "maintenance",
         "inspect" => "inspect",
         "crash" => "crash",
         "forced-stop" => "forced-stop",
@@ -439,14 +440,12 @@ impl Cleanup<'_> {
             "standard Task cleanup refuses a changed or missing candidate marker"
         );
         accepted(
-            command(
-                &self.input.python,
-                vec![
-                    self.input.installer.to_string_lossy().into_owned(),
-                    "uninstall".into(),
-                    "--cli".into(),
-                    self.cli.to_string_lossy().into_owned(),
-                ],
+            current_owner(
+                fixture::Request {
+                    action: "uninstall".into(),
+                    program: Some(self.input.admin_cli.clone()),
+                    arguments: vec![],
+                },
                 Duration::from_secs(90),
             ),
             "uninstall",
@@ -556,13 +555,7 @@ fn task_real_standard_logged_on_owner_installs_runs_recovers_and_uninstalls() {
     .name;
     task_absent(fresh_name.clone(), "initial-task");
     let installed = accepted(
-        command(
-            &input.python,
-            std::iter::once(input.installer.to_string_lossy().into_owned())
-                .chain(input.install_arguments(false))
-                .collect(),
-            Duration::from_secs(90),
-        ),
+        current_owner(input.install_request("install"), Duration::from_secs(90)),
         "install",
     );
     assert!(
@@ -576,7 +569,7 @@ fn task_real_standard_logged_on_owner_installs_runs_recovers_and_uninstalls() {
     let manifest: Value = serde_json::from_slice(&std::fs::read(&input.manifest).unwrap()).unwrap();
     assert!(
         record.install_root == cli_path.parent().unwrap()
-            && record.target == "x86_64-pc-windows-msvc"
+            && record.target == hiroute_platform::windows::install::native_target().unwrap()
             && Some(record.version.as_str()) == manifest["version"].as_str()
             && record.service_definition
                 == layout.data_root.join("service/windows-background.json")
@@ -785,9 +778,7 @@ fn task_real_standard_logged_on_owner_installs_runs_recovers_and_uninstalls() {
     status(cli_path, false);
     let uninstalled = cleanup.uninstall();
     assert!(
-        uninstalled["uninstalled"] == true
-            && uninstalled["state_preserved"].as_str().map(Path::new)
-                == Some(cleanup.layout.state_root.as_path()),
+        uninstalled["uninstalled"] == true && uninstalled["state_preserved"] == true,
         "uninstall must succeed while preserving user state"
     );
     cleanup.armed = false;
@@ -819,7 +810,13 @@ fn assert_gui_daemon(path: &Path) {
     file.read_exact(&mut pe).unwrap();
     assert_eq!(&pe[..4], b"PE\0\0");
     assert!(u16::from_le_bytes(pe[20..22].try_into().unwrap()) >= 70);
-    assert_eq!(u16::from_le_bytes(pe[4..6].try_into().unwrap()), 0x8664);
+    assert_eq!(
+        u16::from_le_bytes(pe[4..6].try_into().unwrap()),
+        hiroute_host_runtime::standalone_install::windows_machine(
+            hiroute_platform::windows::install::native_target().unwrap()
+        )
+        .unwrap()
+    );
     assert_eq!(u16::from_le_bytes(pe[24..26].try_into().unwrap()), 0x20b);
     assert_eq!(
         u16::from_le_bytes(pe[92..94].try_into().unwrap()),

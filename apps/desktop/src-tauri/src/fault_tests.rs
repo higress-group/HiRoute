@@ -5,25 +5,9 @@ use crate::{
     session::{RenameInput, Session},
 };
 use hiroute_application_api::*;
-use std::{cell::Cell, path::Path};
+use std::path::Path;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Fault {
-    None,
-    LoseApplyResponseAndDisconnect,
-    LoseBeforeApply,
-}
-thread_local! { static FAULT: Cell<Fault> = const { Cell::new(Fault::None) }; }
-pub(crate) fn take(fault: Fault) -> bool {
-    FAULT.with(|current| {
-        if current.get() == fault {
-            current.set(Fault::None);
-            true
-        } else {
-            false
-        }
-    })
-}
+use hiroute_product_session::fault::{FAULT, Fault};
 fn prepare() -> tempfile::TempDir {
     let root = tempfile::Builder::new()
         .prefix("hr02-")
@@ -50,7 +34,7 @@ fn open(root: &Path) -> Session {
         .parent()
         .unwrap()
         .join("hirouted");
-    Session::new(Resident::open(root, &binary).unwrap())
+    crate::session_from_resident(Resident::open(root, &binary).unwrap())
 }
 async fn plan(session: &mut Session) -> AgentPlanStatusV2 {
     session.snapshot().await.unwrap().catalog.plans.remove(0)

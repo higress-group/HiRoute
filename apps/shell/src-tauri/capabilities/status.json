@@ -1,0 +1,7 @@
+{
+  "identifier": "status",
+  "description": "Bundled startup progress only; never product operations.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["allow-shell-status", "allow-shell-retry-startup", "allow-shell-capabilities"]
+}

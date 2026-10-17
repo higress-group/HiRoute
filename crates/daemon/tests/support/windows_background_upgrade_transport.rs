@@ -71,48 +71,24 @@ impl Owner<'_> {
         if let Self::Token(token) = self {
             return input.install(token, false);
         }
-        let result = self.python(input, input.install_arguments(false));
+        let result = self.request(input.install_request("install"), Duration::from_secs(90));
         accepted(&result, "install").clone()
     }
 
     pub(in super::super) fn transaction_install(self, input: &Inputs, action: &str) -> Value {
-        if let Self::Token(token) = self {
-            return input.transaction_install(token, action);
-        }
-        self.request(
+        self.request(input.install_request(action), Duration::from_secs(90))
+    }
+
+    pub(in super::super) fn uninstall(self, input: &Inputs, _cli: &Path) -> Value {
+        let result = self.request(
             fixture::Request {
-                action: action.into(),
-                program: Some(input.python.clone()),
-                arguments: std::iter::once(input.installer.to_string_lossy().into_owned())
-                    .chain(input.install_arguments(false))
-                    .collect(),
+                action: "uninstall".into(),
+                program: Some(input.admin_cli.clone()),
+                arguments: vec![],
             },
             Duration::from_secs(90),
-        )
-    }
-
-    pub(in super::super) fn uninstall(self, input: &Inputs, cli: &Path) -> Value {
-        if let Self::Token(token) = self {
-            return input.uninstall(token, cli, false);
-        }
-        let result = self.python(
-            input,
-            vec![
-                "uninstall".into(),
-                "--cli".into(),
-                cli.to_string_lossy().into_owned(),
-            ],
         );
         accepted(&result, "uninstall").clone()
-    }
-
-    fn python(self, input: &Inputs, arguments: Vec<String>) -> Value {
-        self.command(
-            &input.python,
-            std::iter::once(input.installer.to_string_lossy().into_owned())
-                .chain(arguments)
-                .collect(),
-        )
     }
 }
 
@@ -140,7 +116,6 @@ impl<'a> Cleanup<'a> {
                 inputs: input,
                 token,
                 cli,
-                account: None,
                 armed: true,
             }),
             Owner::Current => {
@@ -190,7 +165,7 @@ fn verified_record(
             && record.install_root.file_name().unwrap() == input.version_directory.as_str()
             && record.service_definition
                 == layout.data_root.join("service/windows-background.json")
-            && record.target == "x86_64-pc-windows-msvc",
+            && record.target == hiroute_platform::windows::install::native_target().unwrap(),
         "standard upgrade cleanup requires its exact selected package root and definition"
     );
     record

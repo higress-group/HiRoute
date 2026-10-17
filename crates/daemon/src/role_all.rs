@@ -164,6 +164,32 @@ impl ClassifierDiagnosticPort for GatewayClassifierDiagnostic {
 }
 
 impl RoleAllHandle {
+    pub(crate) fn console_client(&self) -> hiroute_client_core::Client {
+        hiroute_client_core::Client::in_process(
+            "console",
+            Arc::new(crate::control::InProcessControl {
+                daemon: self.control.daemon.clone(),
+                budgets: self.control.budgets.clone(),
+            }),
+        )
+    }
+    pub(crate) fn console_authority(&self) -> Arc<dyn hiroute_product_session::HostAuthority> {
+        Arc::new(crate::console::authority::ConsoleAuthority(
+            self._runtime.protected_authority(),
+        ))
+    }
+
+    pub fn set_console_control(
+        &self,
+        console: Arc<crate::console::control::ConsoleControl>,
+    ) -> Result<(), String> {
+        self.control
+            .daemon
+            .console
+            .set(console)
+            .map_err(|_| "CONSOLE_ALREADY_STARTED".to_owned())
+    }
+
     pub fn control_endpoint(&self) -> &crate::ControlEndpoint {
         self.control.endpoint()
     }

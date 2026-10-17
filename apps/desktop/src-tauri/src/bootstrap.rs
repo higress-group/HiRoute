@@ -508,39 +508,6 @@ impl Resident {
         };
         self.register_operation(digest, revisions, operation)
     }
-    pub(crate) fn register_observation(
-        &mut self,
-        request: &hiroute_application_api::ObservationReadRequestV2,
-        revisions: &RevisionSetV1,
-    ) -> Result<Zeroizing<String>, String> {
-        let digest = CanonicalDigest::of(request).map_err(|_| "OBSERVATION_REQUEST_INVALID")?;
-        self.register_operation(&digest, revisions, request.protected_operation())
-    }
-    pub(crate) fn register_classifier_diagnostic(
-        &mut self,
-        request: &hiroute_application_api::ClassifierDecisionTestRequestV1,
-        revisions: &RevisionSetV1,
-    ) -> Result<Zeroizing<String>, String> {
-        let digest = CanonicalDigest::of(request).map_err(|_| "CLASSIFIER_TEST_INVALID")?;
-        self.register_operation(&digest, revisions, "TestClassifierDecision")
-    }
-    #[cfg(feature = "desktop-runtime")]
-    pub(crate) fn register_retention(
-        &mut self,
-        digest: &CanonicalDigest,
-        revisions: &RevisionSetV1,
-        apply: bool,
-    ) -> Result<Zeroizing<String>, String> {
-        self.register_operation(
-            digest,
-            revisions,
-            if apply {
-                "ApplySessionDeletionV2"
-            } else {
-                "PreviewSessionDeletionV2"
-            },
-        )
-    }
     pub fn register_agent_settings(
         &mut self,
         restore: bool,
@@ -1008,5 +975,6 @@ pub(crate) fn acquire_host_lock(root: &Path) -> Result<File, String> {
 
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-pub(crate) use tests::session_resident;
+
+mod authority;
+pub use authority::{NativeAuthority, resident};

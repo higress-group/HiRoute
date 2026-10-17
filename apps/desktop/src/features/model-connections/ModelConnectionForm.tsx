@@ -1,7 +1,8 @@
+import { SecretTransportWarning } from '../../host/ConsoleUi';
 import { connectionName, connectionTemplate } from '../../ui/provider-identity';
 import { ProviderIcon } from '../../ui/ProviderIcon';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, isTauriHost } from '../../host/index.ts';
 
 import { Dialog } from '../../ui/Dialog';
 import { Disclosure } from '../../ui/Disclosure';
@@ -637,7 +638,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   }
 
   async function openDocumentation(event: React.MouseEvent<HTMLAnchorElement>, url?: string) {
-    if (!("__TAURI_INTERNALS__" in window)) return;
+    if (!isTauriHost()) return;
     event.preventDefault();
     setExternalLinkError(false);
     if (!url) {
@@ -693,7 +694,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           <fieldset className="connection-fields" disabled={!props.mutable || Boolean(props.appendTo)}>
             <div className="connection-config-heading"><ProviderIcon optionId={custom ? draft.display_template_id : registeredOption?.connection_option_id} language={language} /><div><h3>{custom ? (zh ? '自定义 API' : 'Custom API') : productName}</h3><p>{custom ? (zh ? '填写服务地址，连接兼容的模型服务' : 'Connect a compatible model service') : connectionTemplate(registeredOption?.connection_option_id)?.description[language]}</p></div></div>
             <label className="field"><span className="field-label">{zh ? '连接名称' : 'Connection name'}</span><input className="input" maxLength={60} data-autofocus={screen === 'connection' || undefined} value={draft.display_name} placeholder={zh ? '例如：团队模型服务' : 'e.g. Team models'} onChange={event => invalidate(current => ({ ...current, display_name: event.target.value }), false, 'connection')} /><span className="field-help">{zh ? '用于区分不同账号或用途，保存后可在模型列表中看到。' : 'Distinguish accounts or purposes. This name appears in your model list.'}</span></label>
-            {draft.authentication.kind !== 'none' && <label className="field"><span className="field-label">API Key</span><input className="input" disabled={!custom && (optionsLoading || !registeredOption)} ref={password} type="password" autoComplete="off" spellCheck={false} placeholder={protectedInputRef.current ? '••••••••••••••••' : draft.existing_source_id ? (zh ? '留空使用已保存的 Key' : 'Leave blank to use the saved key') : (zh ? '粘贴此产品的 API Key' : 'Paste this product’s API key')} onChange={() => invalidate(current => ({ ...current, candidate_ref: null }), true, 'connection')} /></label>}
+            {draft.authentication.kind !== 'none' && <label className="field"><SecretTransportWarning language={props.language} /><span className="field-label">API Key</span><input className="input" disabled={!custom && (optionsLoading || !registeredOption)} ref={password} type="password" autoComplete="off" spellCheck={false} placeholder={protectedInputRef.current ? '••••••••••••••••' : draft.existing_source_id ? (zh ? '留空使用已保存的 Key' : 'Leave blank to use the saved key') : (zh ? '粘贴此产品的 API Key' : 'Paste this product’s API key')} onChange={() => invalidate(current => ({ ...current, candidate_ref: null }), true, 'connection')} /></label>}
             {!custom && registeredOption && <div className="connection-key-help"><span className="field-help">{zh ? '请使用上方产品对应的 Key。' : 'Use the key for the product shown above.'}</span>{connectionTemplate(registeredOption.connection_option_id)?.documentation_url && <a href={connectionTemplate(registeredOption.connection_option_id)?.documentation_url} target="_blank" rel="noreferrer" onClick={event => void openDocumentation(event, connectionTemplate(registeredOption.connection_option_id)?.documentation_url)}>{zh ? '获取 API Key' : 'Get an API key'}<UiIcon name="arrow" /></a>}{externalLinkError && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{zh ? '无法打开默认浏览器；当前表单内容已保留。' : 'The default browser could not be opened. Your form input is retained.'}</span></div>}</div>}
             {custom ? <>
               {!optionsLoading && metadataPrefills.length > 0 && <Disclosure className="connection-details" language={language} label={zh ? '使用接入资料预填（可选）' : 'Use connection prefill (optional)'}><div className="connection-fields metadata-prefill-fields">

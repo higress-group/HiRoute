@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../host/index.ts';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { safeDiagnosticCode } from '../error-code';
 import { clearSubscriptionProxyReturn, requestSubscriptionProxyReturn } from './subscription-proxy-return';
@@ -90,7 +90,7 @@ export function SubscriptionProxySettings({ editing, language, writable, onCance
           </label>
           {mode === 'manual' && <>
             <label className="field-label">{text('HTTP / HTTPS 代理地址', 'HTTP / HTTPS proxy URL')}<input className="input" type="url" required maxLength={2048} aria-label={text('订阅代理地址', 'Subscription proxy URL')} placeholder={text('http://127.0.0.1:端口', 'http://127.0.0.1:port')} value={url} disabled={busy || !writable} onChange={event => setUrl(event.target.value)} /></label>
-            <label className="field-label">{text('绕过代理的地址（可选）', 'Proxy bypass list (optional)')}<input className="input" maxLength={4096} aria-label={text('订阅代理绕过列表', 'Subscription proxy bypass list')} placeholder="example.com,192.168.0.0/16" value={bypass} disabled={busy || !writable} onChange={event => setBypass(event.target.value)} /></label>
+            <label className="field-label">{text('绕过代理的地址（可选）', 'Proxy bypass list (optional)')}<input className="input" maxLength={4096} aria-label={text('订阅代理绕过列表', 'Subscription proxy bypass list')} placeholder="example.com,198.51.100.0/24" value={bypass} disabled={busy || !writable} onChange={event => setBypass(event.target.value)} /></label>
             <span className="field-help">{text('多个地址用逗号分隔；本机地址自动绕过。代理地址暂不支持用户名或密码。', 'Separate entries with commas; local addresses always bypass the proxy. Proxy URLs do not support usernames or passwords.')}</span>
           </>}
           {mode === 'inherit' && <span className="field-help">{text('使用 HiRoute 启动时已有的代理设置。', 'Uses the proxy settings available when HiRoute starts.')}</span>}

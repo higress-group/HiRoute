@@ -78,6 +78,7 @@ function Get-WindowsRequiredRecipes {
     'core' { return @(Get-WindowsCorePackages | ForEach-Object { $_ -replace '^hiroute-','core-' }) }
     'background' { return @((Get-WindowsBackgroundDisposition).Keys) }
     'upgrade' { return @('upgrade') }
+    'install' { return @('native-install') }
     'accounts' { return @(Get-WindowsQoderAccountRecipes | ForEach-Object { $_.name }) }
     'agents' {
       return @('agent-private-root','agent-private-node','agent-path-identity','agent-managed-path','agent-account-fixture','agent-pi-sdk',

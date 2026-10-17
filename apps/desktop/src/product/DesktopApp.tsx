@@ -1,9 +1,12 @@
+import { randomId } from '../random-id.ts';
+import { hostCapabilities } from '../host/index.ts';
+import { HostNotices } from '../host/ConsoleUi';
 import type { DecisionIntent, OpenDecisionConnection } from '../features/decision-services/presentation';
 import type { DecisionService } from '../features/decision-services/types';
 import { DecisionServicesPage } from '../features/decision-services/DecisionServicesPage';
 import { requestEditorReplacement } from '../ui/discard-guard';
 import { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../host/index.ts';
 import { Agents } from '../agents';
 import type { AgentTask, AgentTaskRead } from '../features/AgentTasks';
 import { Sessions } from '../features/Sessions';
@@ -347,7 +350,7 @@ export function DesktopApp() {
     if (!await requestEditorReplacement('decisions')) return;
     decisionReturn.current = select;
     setReturningToRoute(true);
-    setDecisionIntent({ key: crypto.randomUUID(), kind });
+    setDecisionIntent({ key: randomId(), kind });
     setModelTab('decisions');
     openPage('models');
   };
@@ -409,14 +412,14 @@ export function DesktopApp() {
     setNotice('');
     if (modelTab === 'decisions' && !await requestEditorReplacement('models')) return;
     setModelTab('general');
-    setModelIntent({ key: `models/${crypto.randomUUID()}`, ...intent });
+    setModelIntent({ key: `models/${randomId()}`, ...intent });
     openPage('models');
   }
 
   async function showRouting(editor?: RoutingEditorIntent | null, routingNotice?: string) {
     if (!await allowPageChange('routing', true)) return;
     setNotice('');
-    setRoutingIntent({ key: `routing/${crypto.randomUUID()}`, editor, notice: routingNotice });
+    setRoutingIntent({ key: `routing/${randomId()}`, editor, notice: routingNotice });
     openPage('routing');
   }
 
@@ -483,7 +486,7 @@ export function DesktopApp() {
     const generation = ++taskReadGeneration.current;
     taskPager.current = null;
     setTaskRead({ status: 'loading' });
-    setAgentIntent({ key: `agents/${crypto.randomUUID()}`, tab: 'tasks', taskId });
+    setAgentIntent({ key: `agents/${randomId()}`, tab: 'tasks', taskId });
     openPage('agents');
     const locator: WorkerTaskLocator = { taskId, runId };
     try {
@@ -517,19 +520,19 @@ export function DesktopApp() {
     }
     if (action.kind === 'view-agents') {
       if (!await allowPageChange('agents', true)) return;
-      setAgentIntent({ key: `agents/${crypto.randomUUID()}` });
+      setAgentIntent({ key: `agents/${randomId()}` });
       openPage('agents');
       return;
     }
     if (action.kind === 'create-plan') {
-      showRouting({ key: crypto.randomUUID() });
+      showRouting({ key: randomId() });
       return;
     }
     if (action.kind === 'configure-agent') {
       if (!await allowPageChange('agents', true)) return;
       setNotice('');
       setAgentIntent({
-        key: `agents/${crypto.randomUUID()}`,
+        key: `agents/${randomId()}`,
         agentId: action.agentId,
         facet: action.facet ?? 'model',
       });
@@ -558,14 +561,14 @@ export function DesktopApp() {
     if (action.kind === 'open-session') {
       if (!await allowPageChange('sessions')) return;
       setNotice('');
-      setSessionIntent({ key: `sessions/${crypto.randomUUID()}`, sessionId: action.sessionId });
+      setSessionIntent({ key: `sessions/${randomId()}`, sessionId: action.sessionId });
       openPage('sessions');
       return;
     }
     if (action.kind === 'view-all-sessions') {
       if (!await allowPageChange('sessions')) return;
       setNotice('');
-      setSessionIntent({ key: `sessions/${crypto.randomUUID()}`, sessionId: null });
+      setSessionIntent({ key: `sessions/${randomId()}`, sessionId: null });
       openPage('sessions');
       return;
     }
@@ -576,7 +579,7 @@ export function DesktopApp() {
     if (action.kind === 'view-all-tasks') {
       if (!await allowPageChange('agents', true)) return;
       setNotice('');
-      setAgentIntent({ key: `agents/${crypto.randomUUID()}`, tab: 'tasks' });
+      setAgentIntent({ key: `agents/${randomId()}`, tab: 'tasks' });
       openPage('agents');
       void loadTaskHistory(true);
       return;
@@ -605,9 +608,9 @@ export function DesktopApp() {
     theme={preferences.resolvedTheme}
     textScale={preferences.textScale}
   >
-    <div className="app-window">
+    <div className={`app-window host-${hostCapabilities().host}`}>
       <header className="titlebar" data-tauri-drag-region="deep" onMouseDown={event => {
-        if (event.button !== 0 || event.detail !== 2) return;
+        if (!hostCapabilities().titlebar || event.button !== 0 || event.detail !== 2) return;
         event.preventDefault();
         event.stopPropagation();
         void invoke('perform_titlebar_double_click');
@@ -629,6 +632,7 @@ export function DesktopApp() {
         onOpenSettings={() => void openPageSafely('settings')}
       />
       <main className="main">
+        <HostNotices language={language} />
         {notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="info" /><span>{notice}</span></div></div>}
         {upgradePhaseText && <div className="callout" role="status" aria-live="polite"><UiIcon name="info" /><div><strong>{upgradePhaseText}</strong><p>{language === 'zh' ? '请等待升级完成；请保留原数据与完整安装包。' : 'Wait for the upgrade to finish. Keep the original data and complete installation package.'}</p></div></div>}
         {startupFailure && <div className="callout bad" role="alert" data-error-code={startupFailure.code}>
@@ -674,7 +678,7 @@ export function DesktopApp() {
               const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId);
               if (plan) void showRouting({ key: plan.agent_plan_id, plan });
             }}
-            onCreatePlan={bindingId => void showRouting({ key: `routing/${crypto.randomUUID()}`, initialBindingId: bindingId })}
+            onCreatePlan={bindingId => void showRouting({ key: `routing/${randomId()}`, initialBindingId: bindingId })}
           /></div>}
         {visited.has('models') && <div hidden={page !== 'models' || modelTab !== 'decisions'}><DecisionServicesPage
           language={language} active={page === 'models' && modelTab === 'decisions'}
@@ -700,8 +704,8 @@ export function DesktopApp() {
             initialEditor={routingIntent.editor}
             notice={routingIntent.notice}
             onRefresh={async () => { setObserving(true); await home.refreshDesktop(); setRefreshVersion(v => v + 1); }}
-            onOpenAgent={agentId => { void (async () => { if (!await allowPageChange('agents')) return; setAgentIntent({ key: `agents/${crypto.randomUUID()}`, agentId }); openPage('agents'); })(); }}
-            onOpenSession={(sessionId, requestId) => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${crypto.randomUUID()}`, sessionId, requestId, returnToQuality: true }); openPage('sessions'); })(); }}
+            onOpenAgent={agentId => { void (async () => { if (!await allowPageChange('agents')) return; setAgentIntent({ key: `agents/${randomId()}`, agentId }); openPage('agents'); })(); }}
+            onOpenSession={(sessionId, requestId) => { void (async () => { if (!await allowPageChange('sessions')) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId, requestId, returnToQuality: true }); openPage('sessions'); })(); }}
             onOperation={value => acceptOperation(value, { kind: 'routing' })}
           /></div>}
         {visited.has('agents') && <div hidden={page !== 'agents'}><Agents
@@ -728,11 +732,11 @@ export function DesktopApp() {
             onLoadMoreTasks={() => loadTaskHistory(false)}
             onReadTask={hydrateTask}
             onLoadTaskResult={readWorkerTaskResultPage}
-            onCreatePlan={() => void showRouting({ key: `routing/${crypto.randomUUID()}` })}
+            onCreatePlan={() => void showRouting({ key: `routing/${randomId()}` })}
             onOpenTaskSession={sessionId => {
               void (async () => {
                 if (!await allowPageChange('sessions')) return;
-                setSessionIntent({ key: `sessions/${crypto.randomUUID()}`, sessionId });
+                setSessionIntent({ key: `sessions/${randomId()}`, sessionId });
                 openPage('sessions');
               })();
             }}
@@ -760,7 +764,7 @@ export function DesktopApp() {
           onOpenSessions={() => {
             void (async () => {
               if (!await allowPageChange('sessions')) return;
-              setSessionIntent({ key: `sessions/${crypto.randomUUID()}`, sessionId: null });
+              setSessionIntent({ key: `sessions/${randomId()}`, sessionId: null });
               openPage('sessions');
             })();
           }}

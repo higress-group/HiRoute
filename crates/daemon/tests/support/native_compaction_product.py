@@ -10,6 +10,7 @@ import secrets
 import shlex
 import subprocess
 import sys
+import time
 
 from delegation_product import configure_worker_installation, wait_for_worker_result, worker_cli
 from native_context_boundaries import source_events
@@ -120,6 +121,25 @@ def assert_pi_compaction(path, receipt, recovery=False):
     return [{'pre_tokens':compact[0]['tokensBefore'],'summary_preserved':True}]
 
 
+def wait_for_length_prefix(product, fixture, timeout=10):
+    """Exercise accepted-stream recovery, independent of TCP frame coalescing."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        run_id = fixture.get('compaction_run_id')
+        if run_id:
+            code, response = worker_cli(product,
+                'worker read --run ' + run_id + ' --max-bytes 16384 --output json', success=False)
+            if code == 0:
+                content = response['data']
+                if content['content_state'] == 'available' and 'incomplete attempt' in content.get('text', ''):
+                    fixture['length_prefix_observed'] = True
+                    return
+            else:
+                assert response.get('error', {}).get('code') == 'OBSERVATION_UNAVAILABLE', response
+        time.sleep(.05)
+    raise AssertionError('real Worker did not expose the length-recovery prefix before its terminal frame')
+
+
 def run(repository, candidate):
     harness = os.environ.get('HIROUTE_PRODUCT_WORKER_HARNESS','qoder')
     recovery = os.environ.get('HIROUTE_PRODUCT_PI_RECOVERY') == '1'
@@ -162,6 +182,8 @@ def run(repository, candidate):
         protect_configuration(fixture, [script])
         (product.root / 'native-context.json').write_text(json.dumps(fixture))
         upstream.reply = oracle.reply
+        if recovery:
+            upstream.before_incomplete = lambda: wait_for_length_prefix(product, fixture)
         stage = 'automatic-compaction-in-real-worker'
         command = ('worker exec --plan ' + product.plan_id + ' --cwd ' + str(product.project) +
                    ' --run-timeout 120 --no-wait --submission-key qoder-compaction --file - --output json')
@@ -169,12 +191,16 @@ def run(repository, candidate):
             fixture['compaction_prompt'] + ': Execute the requested read-only receipt tool, then finish the task.')
         first = accepted['data']
         fixture['task_id'] = first['task_id']
+        fixture['compaction_run_id'] = first['run_id']
         result = wait_for_worker_result(product, first['run_id'], timeout=150)
         assert 'compacted-' + fixture['receipt'] in result['result'], 'missing compacted Worker result'
         wait_for_resumable_task(product, first['task_id'], first['run_id'])
         history = exact_history(fixture)
         report['native_compaction_boundaries'] = (assert_pi_compaction(history[0], oracle.summary_receipt, recovery) if harness == 'pi' else assert_native_compaction(history[0], oracle.summary_receipt))
         report['recovery_context_edit'] = recovery
+        if recovery:
+            assert fixture.get('length_prefix_observed'), 'length stop was not an accepted Worker stream'
+            report['length_prefix_observed_through_public_cli'] = True
         stage = 'continue-native-compacted-history'
         command = ('worker continue --task ' + first['task_id'] + ' --expected-latest-run ' + first['run_id'] +
                    ' --run-timeout 120 --no-wait --submission-key qoder-compaction-continue --file - --output json')

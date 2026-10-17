@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
+import { consoleFixture, mockIPC, mockWindows } from './host-mock';
+import { invoke } from '../../../src/host/index.ts';
 import { DesktopApp } from '../../../src/product/DesktopApp';
 import { mockProductInvoke, readyAgents, readyDesktop, readyManagement } from './product-fixtures';
 import '../../../src/occami/styles.css';
@@ -15,6 +16,8 @@ const control = {
   management: structuredClone(readyManagement),
   commands: [] as { command: string; payload: Record<string, unknown> }[],
   clipboard: [] as string[],
+  downloads: [] as Blob[],
+  callHost: invoke,
   handlers: {} as Record<string, (payload: Record<string, unknown>) => unknown>,
   fixtureResponse: (command: string, payload: Record<string, unknown>) => mockProductInvoke(command, payload, 'ready'),
   remount: () => root.render(<DesktopApp key={++generation} />),
@@ -24,6 +27,7 @@ const control = {
     control.management = structuredClone(readyManagement);
     control.commands = [];
     control.clipboard = [];
+    control.downloads = [];
     control.handlers = {};
     localStorage.setItem('hiroute.language', 'zh');
     localStorage.setItem('hiroute.text-scale', '1');
@@ -32,6 +36,10 @@ const control = {
   },
 };
 Object.assign(window, { productShell: control });
+if (consoleFixture()) {
+  const create = URL.createObjectURL.bind(URL);
+  URL.createObjectURL = value => { if (value instanceof Blob) control.downloads.push(value); return create(value); };
+}
 Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
   writeText: async (value: string) => { control.clipboard.push(value); },
 } });

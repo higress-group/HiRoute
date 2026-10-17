@@ -272,6 +272,7 @@ button.list-row { width: 100%; border-top: 0; border-right: 0; border-left: 0; c
 .source-tabs { display: flex; gap: 4px; overflow-x: auto; }
 .source-tab { min-height: calc(30px * var(--hr-text-scale)); padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); font-size:calc(12px * var(--hr-text-scale)); font-weight: 620; white-space: nowrap; }
 .source-tab.active { background: var(--bg-active); color: var(--text); }
+.model-view-switch { justify-self: start; max-width: 100%; }
 
 .score-stars { color: var(--yellow); letter-spacing: 1px; }
 .price-unknown { color: var(--yellow); }

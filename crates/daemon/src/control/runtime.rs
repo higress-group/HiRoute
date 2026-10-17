@@ -778,15 +778,10 @@ impl ProductionControlRuntime {
     /// Application receives this registrar or can mint a capability.
     pub(crate) fn register_apply_capability(
         &self,
-        registration: ApplyCapabilityRegistrationV1,
+        registration: hiroute_local_storage::ApplyCapabilityRegistrationV1,
     ) -> Result<(), String> {
-        self.adapter
-            .stores
-            .lock()
-            .map_err(|_| "capability registrar is unavailable".to_owned())?
-            .apply_capability_registrar()
-            .register(registration)
-            .map_err(|error| error.to_string())
+        self.protected_authority()
+            .register_apply_capability(registration)
     }
 }
 
@@ -1509,3 +1504,19 @@ mod worker_dependencies_tests;
 #[cfg(test)]
 #[path = "runtime_early_cancel_tests.rs"]
 mod early_cancel_tests;
+
+pub(crate) use protected_inputs::RuntimeAuthority;
+impl RuntimeAuthority {
+    pub(crate) fn register_apply_capability(
+        &self,
+        registration: ApplyCapabilityRegistrationV1,
+    ) -> Result<(), String> {
+        self.adapter
+            .stores
+            .lock()
+            .map_err(|_| "capability registrar is unavailable".to_owned())?
+            .apply_capability_registrar()
+            .register(registration)
+            .map_err(|error| error.to_string())
+    }
+}

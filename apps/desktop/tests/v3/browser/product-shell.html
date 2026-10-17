@@ -1,3 +1,23 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>DesktopApp behavior fixture</title></head>
-<body><div id="root"></div><script type="module" src="./product-shell.tsx"></script></body></html>
+<body><div id="root"></div><script type="module" src="./product-shell.tsx"></script>
+<script type="module">
+  if (new URLSearchParams(location.search).get('checks') === 'presentation') {
+    const run = document.createElement('button');
+    run.className = 'btn'; run.textContent = 'Run presentation checks';
+    run.style.cssText = 'position:fixed;top:4px;right:8px;z-index:1000';
+    document.body.append(run);
+    run.onclick = async () => {
+      run.remove();
+      const output = document.createElement('pre');
+      output.dataset.presentationResults = '';
+      try {
+        const { runProductShellScenarios } = await import('./product-shell-scenarios.mjs');
+        const ids = ['desktop.models.view-switch', 'desktop.presentation.control-layout'];
+        output.textContent = JSON.stringify(await runProductShellScenarios({ ids, requiredIds: ids }));
+      } catch (error) { output.textContent = JSON.stringify({ state: 'red', error: String(error) }); }
+      output.style.cssText = 'position:fixed;inset:40px 8px auto;max-height:45vh;overflow:auto;z-index:1000;background:var(--panel-high);padding:12px;white-space:pre-wrap';
+      document.body.append(output);
+    };
+  }
+</script></body></html>

@@ -9,6 +9,12 @@ rust-version.workspace = true
 integration-test-hooks = []
 
 [dependencies]
+bytes.workspace = true
+hyper = { version = "=1.11.1", features = ["server", "http1"] }
+hyper-util = { version = "=0.1.20", features = ["tokio"] }
+http-body-util = "=0.1.5"
+hiroute-product-session = { path = "../product-session" }
+hiroute-client-core = { path = "../client-core" }
 hiroute-platform = { path = "../platform" }
 agent-client-protocol = "=2.1.0"
 arc-swap.workspace = true

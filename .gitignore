@@ -30,6 +30,7 @@
 *.profraw
 __pycache__/
 *.pyc
+/apps/shell/src-tauri/resources/
 # Local iteration assessments and stage-review working notes (not product contracts).
 /docs/acp-mvp-roi-review.md
 /docs/stage-product-integration-review.md

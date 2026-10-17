@@ -922,7 +922,7 @@ fn public_headless_business(include_claude: bool) {
             .unwrap()
             .starts_with("sha256:")
     );
-    assert_eq!(manifest["commands"].as_array().unwrap().len(), 51);
+    assert_eq!(manifest["commands"].as_array().unwrap().len(), 55);
     let descriptor = product.cli(&["schema", "show", "--command-id", "compute.connection.login"]);
     assert_eq!(descriptor["data"]["command_id"], "compute.connection.login");
     assert_eq!(descriptor["data"]["lifecycle"], "released");

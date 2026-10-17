@@ -54,6 +54,42 @@ def expected_files(target):
     return (EXPECTED_FILES - {"bin/hiroute", "bin/hirouted", "libexec/cliproxyapi"}) | set(names.values())
 
 
+def console_name(name):
+    return (isinstance(name, str) and len(name) <= 240 and name.startswith("console/")
+            and all(re.fullmatch(r"[A-Za-z0-9_@.-]+", part) and part not in {".", ".."}
+                    for part in name.split("/")))
+
+
+def valid_inventory(names, target):
+    base = expected_files(target)
+    extra = set(names) - base
+    # V1 archives without console files remain readable during upgrades.
+    return (base <= set(names) and len(extra) <= 2048
+            and (not extra or "console/index.html" in extra)
+            and all(console_name(name) for name in extra))
+
+
+def console_payload(directory):
+    if directory.is_symlink() or not directory.is_dir():
+        raise ValueError("console assets must be a real directory")
+    result = {}
+    for path in sorted(directory.rglob("*")):
+        if path.is_symlink():
+            raise ValueError("console assets cannot contain links")
+        if path.is_dir():
+            continue
+        name = "console/" + path.relative_to(directory).as_posix()
+        if not console_name(name) or len(result) >= 2048:
+            raise ValueError("console asset inventory is invalid")
+        source = checked_source(path)
+        if source.stat().st_size > 16 * 1024 * 1024:
+            raise ValueError("console asset exceeds its size bound")
+        result[name] = source
+    if "console/index.html" not in result or sum(path.stat().st_size for path in result.values()) > 64 * 1024 * 1024:
+        raise ValueError("console assets are incomplete or too large")
+    return result
+
+
 def verify_windows_image(path, target):
     with Path(path).open("rb") as stream:
         verify_windows_stream(stream, target)
@@ -94,7 +130,7 @@ def digest(path):
 
 
 def host_target():
-    machine = {"AMD64": "x86_64", "arm64": "aarch64"}.get(
+    machine = {"AMD64": "x86_64", "ARM64": "aarch64", "arm64": "aarch64"}.get(
         platform.machine(), platform.machine()
     )
     system = {"Linux": "unknown-linux-gnu", "Darwin": "apple-darwin", "Windows": "pc-windows-msvc"}.get(
@@ -159,6 +195,8 @@ def payload(args, notices):
     }
     for name in sorted(NOTICE_FILES):
         files[f"licenses/{name}"] = checked_source(notices / name)
+    if getattr(args, "console_assets", None) is not None:
+        files.update(console_payload(args.console_assets))
     if args.target.endswith("-pc-windows-msvc"):
         for key in names.values():
             verify_windows_image(files[key], args.target)
@@ -261,7 +299,6 @@ def safe_members(archive, expected):
 def verify(manifest_path, archive_path):
     manifest = load_json_bytes(Path(manifest_path).read_bytes())
     archive = Path(archive_path)
-    inventory = expected_files(manifest.get("target", ""))
     if (
         not isinstance(manifest, dict)
         or set(manifest)
@@ -276,7 +313,7 @@ def verify(manifest_path, archive_path):
         or len(manifest["revision"]) > 128
         or manifest.get("distribution") != "integration-candidate"
         or not isinstance(manifest.get("files"), dict)
-        or set(manifest["files"]) != inventory
+        or not valid_inventory(manifest["files"], manifest["target"])
         or not isinstance(manifest.get("archive"), dict)
         or set(manifest["archive"]) != {"filename", "sha256", "size"}
         or not isinstance(manifest.get("cpa"), dict)
@@ -356,6 +393,7 @@ def parser():
     create.add_argument("--cpa-version", required=True)
     create.add_argument("--cpa-license", type=Path, required=True)
     create.add_argument("--notices", type=Path, required=True)
+    create.add_argument("--console-assets", type=Path, required=True)
     create.add_argument("--output", type=Path, required=True)
     check = sub.add_parser("verify")
     check.add_argument("manifest", type=Path)

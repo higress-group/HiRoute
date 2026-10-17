@@ -80,7 +80,7 @@ def project_agent_tooling(path):
 
 WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/release.yml"}
 RELEASE_BUILD_TESTS = ("test-build-cpa.py", "test-build-release.py", "test-linux-release.py", "test-package-desktop.py",
-                       "test-standalone-install.py", "test-standalone-windows.py", "test-windows-ci-package.py", "test-third-party-licenses.py")
+                       "test-standalone-install.py", "test-windows-ci-package.py", "test-third-party-licenses.py")
 RELEASE_BUILD_TOOLING = {"scripts/linux-release-abi.py", "scripts/linux-release-runtime.py",
                          "scripts/linux-release-container.py", "scripts/linux-release-baseline.json",
                          "scripts/linux-release.Dockerfile", ".github/workflows/build-release.yml",
@@ -89,7 +89,7 @@ RELEASE_BUILD_TOOLING = {"scripts/linux-release-abi.py", "scripts/linux-release-
                          ".github/workflows/windows-headless.yml", "scripts/build-release.py",
                          "scripts/build-cpa.py", "scripts/package-desktop.py",
                          "scripts/package-standalone.py", "scripts/install-standalone.py",
-                         "scripts/install-standalone-windows.py", "scripts/windows-ci-package.py",
+                         "scripts/windows-ci-package.py",
                          "scripts/collect-third-party-licenses.py",
                          *("scripts/" + name for name in RELEASE_BUILD_TESTS)}
 WEBSITE_PREFIXES = ("apps/website/", ".github/scripts/", "news/", "experiments/")
@@ -103,6 +103,7 @@ HOSTED_BACKEND_EXECUTION = {
 }
 VALIDATION_TOOLING = {"scripts/validation.py", "scripts/validation-host.py", "scripts/test-validation.py",
                       "scripts/windows-dev.py", "scripts/windows-dev-host.py", "scripts/test-windows-dev.py",
+                      "scripts/windows-desktop-session.py", "scripts/windows-dev-profile.py",
                       "scripts/validation-report.py", "scripts/test-validation-report.py",
                       "scripts/ci-run.py", "scripts/test-ci-run.py",
                       "scripts/ci-shards.py", "scripts/test-ci-shards.py",

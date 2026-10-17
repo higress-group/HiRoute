@@ -19,6 +19,7 @@ if (release && channelIndex >= 0 && release.channel !== args[channelIndex + 1]) 
 function expectedFilename(artifact) {
   if (!release || !revision) throw new Error('--tag and --revision are required');
   if (artifact.kind === 'desktop') {
+    if (artifact.platform === 'Windows') return `HiRoute-${release.version}-${revision.slice(0, 12)}-windows-x86_64-setup.exe`;
     const suffix = artifact.distribution === 'self-signed' ? 'trial' : 'developer-id';
     return `HiRoute-${release.version}-${revision.slice(0, 12)}-macos-${artifact.architecture}-${suffix}.dmg`;
   }

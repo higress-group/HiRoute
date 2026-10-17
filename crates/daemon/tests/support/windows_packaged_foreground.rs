@@ -225,7 +225,7 @@ impl Packaged {
         let manifest: Value = serde_json::from_slice(&bytes).unwrap();
         assert!(manifest["schema"] == "hiroute.standalone-package/v1");
         assert!(manifest["distribution"] == "integration-candidate");
-        assert!(manifest["target"] == "x86_64-pc-windows-msvc");
+        assert!(manifest["target"] == hiroute_platform::windows::install::native_target().unwrap());
         let Some(compiled) = option_env!("HIROUTE_BUILD_SOURCE_SHA") else {
             panic!("complete-package gate requires its compiled candidate revision")
         };
@@ -239,7 +239,7 @@ impl Packaged {
         verify_file(&mut archive, &manifest["archive"], MAX_ARCHIVE);
         let prepared_cli = required("HIROUTE_WINDOWS_ADMIN_CLI");
         assert!(prepared_cli.file_name().unwrap() == "hiroute.exe");
-        let prepared = prepared_cli.parent().unwrap().parent().unwrap();
+        let prepared = prepared_cli.parent().unwrap();
         let layout = StandaloneLayout::from_environment().unwrap();
         let stable = hiroute_host_runtime::standalone_cli_binary(&layout.home.join(".local/bin"));
         let stable_daemon =
@@ -279,7 +279,8 @@ impl Packaged {
         );
         for (name, facts) in files {
             let relative = portable_member(name);
-            let mut source = held_input(&prepared.join(&relative));
+            let mut source =
+                held_input(&prepared.join(relative.strip_prefix("bin").unwrap_or(&relative)));
             verify_file(&mut source, facts, MAX_FILE);
             if matches!(
                 name.as_str(),
@@ -455,7 +456,12 @@ fn verify_pe(file: &mut File) {
     let mut pe = [0; 6];
     file.read_exact(&mut pe).unwrap();
     assert!(
-        &pe[..4] == b"PE\0\0" && u16::from_le_bytes(pe[4..6].try_into().unwrap()) == 0x8664,
+        &pe[..4] == b"PE\0\0"
+            && u16::from_le_bytes(pe[4..6].try_into().unwrap())
+                == hiroute_host_runtime::standalone_install::windows_machine(
+                    hiroute_platform::windows::install::native_target().unwrap()
+                )
+                .unwrap(),
         "packaged executable is not the actual x64 PE target"
     );
 }
