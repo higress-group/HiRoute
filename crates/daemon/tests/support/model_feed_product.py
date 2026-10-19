@@ -70,7 +70,8 @@ class FeedUpstream:
                     connection, address = super().get_request()
                 except ssl.SSLError as error:
                     # Report stable TLS error codes, never arbitrary exception text or credentials.
-                    owner.tls_failures.append({'library': error.library, 'reason': error.reason})
+                    owner.tls_failures.append({'kind': type(error).__name__, 'errno': error.errno,
+                                               'library': error.library, 'reason': error.reason})
                     raise
                 owner.tls_connections += 1
                 return connection, address
@@ -78,6 +79,8 @@ class FeedUpstream:
         self.server = Server(('127.0.0.1', 0), Handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(cert, key)
+        # This fixture implements HTTP/1.1 only; advertise it during TLS negotiation.
+        context.set_alpn_protocols(['http/1.1'])
         self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
