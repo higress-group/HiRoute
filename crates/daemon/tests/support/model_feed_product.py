@@ -26,6 +26,8 @@ OPTION = 'bailian.payg.cn.v1'
 class FeedUpstream:
     def __init__(self, root):
         self.requests = []
+        self.tls_failures = []
+        self.tls_connections = 0
         cert, key = root / 'ca.pem', root / 'key.pem'
         result = subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
             '-keyout', str(key), '-out', str(cert), '-days', '1', '-subj', '/CN=dashscope.aliyuncs.com',
@@ -62,7 +64,18 @@ class FeedUpstream:
                 self.end_headers()
                 self.wfile.write(raw)
 
-        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        class Server(http.server.ThreadingHTTPServer):
+            def get_request(self):
+                try:
+                    connection, address = super().get_request()
+                except ssl.SSLError as error:
+                    # Report stable TLS error codes, never arbitrary exception text or credentials.
+                    owner.tls_failures.append({'library': error.library, 'reason': error.reason})
+                    raise
+                owner.tls_connections += 1
+                return connection, address
+
+        self.server = Server(('127.0.0.1', 0), Handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(cert, key)
         self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
@@ -155,7 +168,8 @@ def preserve_failure_diagnostics(product, stage, upstream):
     """Retain safe daemon JSONL before the installed fixture removes its state."""
     report = {'scenario': 'installed-signed-feed-lifecycle', 'state': 'red',
               'candidate': product.sha, 'stage': stage,
-              'upstream_calls': len(upstream.requests)}
+              'upstream_calls': len(upstream.requests),
+              'tls_connections': upstream.tls_connections, 'tls_failures': upstream.tls_failures}
     try:
         product.stop()
         destination = product.repo / 'target/product-e2e-evidence' / ('model-feed-' + str(os.getpid()))
