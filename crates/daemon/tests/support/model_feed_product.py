@@ -29,7 +29,11 @@ class FeedUpstream:
         self.tls_failures = []
         self.tls_connections = 0
         cert, key = root / 'ca.pem', root / 'key.pem'
-        result = subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+        # OpenSSL 1.1.1 appends -addext to system x509_extensions, which can
+        # duplicate basicConstraints and produce a certificate Rustls rejects.
+        config = root / 'openssl.cnf'
+        config.write_text('[req]\ndistinguished_name=subject\n[subject]\n')
+        result = subprocess.run(['openssl', 'req', '-config', str(config), '-x509', '-newkey', 'rsa:2048', '-nodes',
             '-keyout', str(key), '-out', str(cert), '-days', '1', '-subj', '/CN=dashscope.aliyuncs.com',
             '-addext', 'basicConstraints=critical,CA:FALSE', '-addext', 'subjectAltName=DNS:dashscope.aliyuncs.com'], capture_output=True, timeout=30)
         assert result.returncode == 0, 'test TLS certificate generation failed'
