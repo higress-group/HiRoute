@@ -36,7 +36,8 @@ export function apply(ctx) {
   ctx.on("llm/stream", (options, next) => {
     let context;
     try {
-      if (/^hiroute-(main-|worker(?:$|-))/.test(options.provider) && id(options.sessionId)) {
+      if (/^hiroute-(main-|worker(?:$|-))/.test(options.provider) && id(options.sessionId)
+          && [undefined, "main", "compaction", "session-title"].includes(options.purpose)) {
         // Read the native event log by bounded index: compacted surface messages
         // may contain only a synthetic checkpoint and omit the real user's ID.
         const session = ctx.sessions?.get(options.sessionId);

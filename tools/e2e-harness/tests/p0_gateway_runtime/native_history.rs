@@ -483,6 +483,7 @@ fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_share
         "deepseek-harness/0.2.0-rc.2",
         "opencode/1.19.3",
         "codex_cli_rs/0.147.0",
+        "claude-cli/2.1.287 (external,cli)",
         "qodercli/1.1.72",
     ] {
         let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);

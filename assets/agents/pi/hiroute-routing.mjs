@@ -1,5 +1,6 @@
 // Native Pi core routing metadata; no tools, credentials or network clients.
 const managed = (model) => /^hiroute-(main-|worker(?:$|-))/.test(model?.provider ?? "");
+const identity = (value) => typeof value === "string" && /^[\x20-\x7e]{1,128}$/.test(value);
 export default function hirouteRouting(pi) {
   const compacting = new Set();
   let healthy = true;
@@ -18,14 +19,15 @@ export default function hirouteRouting(pi) {
     try {
       if (!healthy || !managed(event.model ?? ctx.model)) return;
       const session = ctx.sessionManager.getSessionId();
+      if (!identity(session)) return;
       const entries = ctx.sessionManager.getBranch();
       const checkpoint = entries.findLast((entry) => entry.type === "compaction");
       const user = entries.findLast((entry) => entry.type === "message" && entry.message?.role === "user");
       const context = {
         version: 1, agent: "pi", session_id: session,
         purpose: compacting.has(session) ? "compaction" : "main",
-        ...(user?.id ? { turn_id: user.id } : {}),
-        ...(checkpoint?.id ? { checkpoint: checkpoint.id } : {}),
+        ...(identity(user?.id) ? { turn_id: user.id } : {}),
+        ...(identity(checkpoint?.id) ? { checkpoint: checkpoint.id } : {}),
       };
       const encoded = JSON.stringify(context);
       if (Buffer.byteLength(encoded) > 4096) return;

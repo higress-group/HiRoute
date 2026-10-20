@@ -89,6 +89,12 @@ pub(super) fn facts(
             Some("dsh")
         }
         _ if user_agent.starts_with("opencode/") => Some("opencode"),
+        _ if user_agent.starts_with("claude-cli/")
+            || user_agent.starts_with("claude-code/")
+            || headers.contains_key("x-claude-code-request-class") =>
+        {
+            Some("claude")
+        }
         _ if user_agent.contains("qoder") => Some("qoder"),
         _ if headers.contains_key("x-codex-turn-metadata")
             || document
@@ -111,9 +117,25 @@ pub(super) fn facts(
         return RoutingFacts::detached();
     }
     if agent == "codex" {
+        if worker.is_none()
+            && !matches!(
+                native_kind,
+                Some("codex_session" | "codex_thread" | "codex_thread_session")
+            )
+        {
+            return RoutingFacts::detached();
+        }
         return codex(headers, document);
     }
     if agent == "claude" {
+        if worker.is_none()
+            && !matches!(
+                native_kind,
+                Some("claude_metadata_session" | "claude_native_agent")
+            )
+        {
+            return RoutingFacts::detached();
+        }
         let purpose = header_value(headers, "x-claude-code-request-class");
         if !matches!(&purpose, Field::Value(value) if matches!(value.as_str(), "main" | "subagent"))
         {
