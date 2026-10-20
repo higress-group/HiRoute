@@ -70,7 +70,9 @@ pub(super) fn confirm_root(
         }
         if option == "--show-toplevel" {
             let top = PathBuf::from(value);
-            if !top.is_absolute() || std::fs::canonicalize(top).map_err(|_| unavailable())? != root
+            if !top.is_absolute()
+                || std::fs::canonicalize(top).map_err(|_| unavailable())?
+                    != std::fs::canonicalize(root).map_err(|_| unavailable())?
             {
                 return Err(unavailable());
             }

@@ -650,6 +650,14 @@ mod tests {
                 project_ancestry(&native, &workspace, &search_path).unwrap(),
                 [workspace.clone(), project.to_owned()]
             );
+            #[cfg(windows)]
+            {
+                // The production workspace owner uses ordinary Win32 spelling;
+                // Rust canonicalize returns a verbatim spelling of the same root.
+                let text = workspace.to_str().unwrap();
+                let ordinary = Path::new(text.strip_prefix(r"\\?\").unwrap_or(text));
+                assert!(project_ancestry(&native, ordinary, &search_path).is_ok());
+            }
             assert_eq!(std::fs::read(&foreign_config).unwrap(), foreign_bytes);
             assert!(!native.database.exists());
         }
