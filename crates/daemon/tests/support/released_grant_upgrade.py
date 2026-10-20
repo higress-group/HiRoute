@@ -97,7 +97,7 @@ def run(repository, archive):
         upstream_fixture(product, (
             Path(repository) / "crates/daemon/tests/support/cpa_upstream.py"
         ).read_bytes())
-        product.env["HIROUTE_RECOVERY_PACKAGE"] = str(archive)
+        product.env["HIROUTE_RECOVERY_PACKAGE"] = str(released)
         for restart in range(2):
             product.start()
             for path, original in native_before.items():
