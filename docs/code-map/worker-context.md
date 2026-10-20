@@ -24,6 +24,11 @@ report the actual installed consumers; [safe conflict facts](../../crates/domain
 retain rejection identity through compensation and client observation.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
+[Native routing resources](../../crates/integrations/src/agents/routing_adapters.rs)
+use the same protected artifact journal as model settings. The
+[request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
+main/child history and detaches auxiliary or uncertain calls; [listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
+cover interleaving and semantic compaction independently of provider affinity.
 OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)

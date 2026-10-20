@@ -39,6 +39,7 @@ fn headers(
             "pi" => "x-session-affinity",
             "dsh" => "x-deepseek-harness-session-id",
             "opencode" => "x-opencode-session-id",
+            "hermes" => "x-hermes-session-id",
             _ => unreachable!(),
         };
         headers.extend([
@@ -50,6 +51,18 @@ fn headers(
         }
     }
     headers
+}
+fn native_fixture(agent: &str, providers: &[&NativeProvider]) -> RuntimeFixture {
+    let fixture = RuntimeFixture::launch_rest_classified(providers, 1);
+    if agent == "hermes" {
+        let mut publication = fixture.publication();
+        publication.grants.iter_mut().for_each(|grant| {
+            grant.consumer = Some(hiroute_domain::AgentModelConsumerV1::Hermes);
+        });
+        publication.publication_revision += 1;
+        fixture.publish(&mut publication);
+    }
+    fixture
 }
 fn send(address: std::net::SocketAddr, headers: &[(String, String)], input: Value) -> WireResponse {
     request(
@@ -76,7 +89,7 @@ fn accepted(response: &WireResponse) {
 
 #[test]
 fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history() {
-    for agent in ["codex", "claude", "pi", "dsh", "opencode"] {
+    for agent in ["codex", "claude", "pi", "dsh", "opencode", "hermes"] {
         for fault in [false, true] {
             let simple = NativeProvider::start(vec![
                 reply(RESPONSES_TOOL_CALL),
@@ -89,8 +102,7 @@ fn real_listener_native_auxiliary_and_adapter_failures_never_enter_main_history(
                 reply(CLASSIFIER_COMPLEX),
                 reply(CLASSIFIER_SIMPLE),
             ]);
-            let fixture =
-                RuntimeFixture::launch_rest_classified(&[&simple, &complex, &classifier], 1);
+            let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
             let main = headers(agent, "main", "main", "turn-1", "checkpoint-1");
             let user = json!({"role":"user","content":"MAIN_USER"});
             let first = send(fixture.address, &main, json!([user]));
@@ -176,7 +188,7 @@ impl Drop for Release {
 
 #[test]
 fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_history() {
-    for agent in ["codex", "claude", "pi", "dsh", "opencode"] {
+    for agent in ["codex", "claude", "pi", "dsh", "opencode", "hermes"] {
         let barrier = ProviderBodyBarrier::default();
         let simple = NativeProvider::start(vec![
             ProviderReply::BodyReadBarrier {
@@ -193,7 +205,7 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
             reply(CLASSIFIER_COMPLEX),
             reply(CLASSIFIER_COMPLEX),
         ]);
-        let fixture = RuntimeFixture::launch_rest_classified(&[&simple, &complex, &classifier], 1);
+        let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
         let main = headers(agent, "parent", "main", "turn-1", "checkpoint-1");
         let user = json!({"role":"user","content":"PARENT_USER"});
         let first = std::thread::scope(|scope| {
@@ -251,7 +263,7 @@ fn real_listener_native_children_and_auxiliary_can_overlap_main_without_sharing_
 
 #[test]
 fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_prefix_affinity() {
-    for agent in ["codex", "claude", "pi", "dsh", "opencode"] {
+    for agent in ["codex", "claude", "pi", "dsh", "opencode", "hermes"] {
         let simple = NativeProvider::start(vec![
             reply(RESPONSES_OK),
             reply(RESPONSES_OK),
@@ -263,7 +275,7 @@ fn real_listener_native_compaction_reuses_semantic_decision_without_reusing_pref
             reply(CLASSIFIER_COMPLEX),
             reply(CLASSIFIER_SIMPLE),
         ]);
-        let fixture = RuntimeFixture::launch_rest_classified(&[&simple, &complex, &classifier], 1);
+        let fixture = native_fixture(agent, &[&simple, &complex, &classifier]);
         accepted(&send(
             fixture.address,
             &headers(agent, "main", "main", "original-turn", "before"),
@@ -333,4 +345,110 @@ fn real_listener_restart_and_qoder_degradation_never_recover_an_unproven_history
         assert_ne!(send(fixture.address, &qoder, json!("denied")).status, 200);
         assert_eq!((simple.calls(), classifier.calls()), (2, 2));
     }
+}
+
+fn hermes_lineage(session: &str, turn: &str, ids: &[&str]) -> Vec<(String, String)> {
+    let mut result = headers("hermes", session, "main", turn, "native-checkpoint");
+    let stamp =
+        json!({"observer_id":"native-profile","sequence":1,"observed_at_ms":1000,"age_ms":0});
+    result.push((
+        "x-hermes-compression-lineage".into(),
+        json!({
+            "version":1,"ids":ids,"complete":true,"proof_observation":stamp,
+            "current_state":{"value":"open","observation":stamp}
+        })
+        .to_string(),
+    ));
+    result
+}
+
+#[test]
+fn real_listener_hermes_rotating_compression_and_gateway_restart_keep_only_proven_history() {
+    for _restart in 0..2 {
+        let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
+        let complex = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+        let classifier = NativeProvider::start(vec![
+            reply(CLASSIFIER_SIMPLE),
+            reply(CLASSIFIER_COMPLEX),
+            reply(CLASSIFIER_SIMPLE),
+        ]);
+        let fixture = native_fixture("hermes", &[&simple, &complex, &classifier]);
+        accepted(&send(
+            fixture.address,
+            &hermes_lineage("root", "turn-1", &["root"]),
+            json!("ORIGINAL_MAIN_TASK"),
+        ));
+        assert_eq!(
+            classifier_body(&classifier, 0)["visible_conversation"],
+            json!([])
+        );
+        // Native auxiliary clients have authorization but no selected-conversation hook.
+        accepted(&send(
+            fixture.address,
+            &[("X-HiRoute-Token".into(), TOKEN.into())],
+            json!("AUXILIARY_CALCULATION"),
+        ));
+        let summary = json!({"role":"user","content":"accepted compacted transcript"});
+        accepted(&send(
+            fixture.address,
+            &hermes_lineage("compressed", "turn-1", &["root", "compressed"]),
+            json!([summary]),
+        ));
+        assert_eq!(
+            classifier.calls(),
+            2,
+            "rotating native compaction lost its decision"
+        );
+        accepted(&send(
+            fixture.address,
+            &hermes_lineage("compressed", "turn-2", &["root", "compressed"]),
+            json!([
+                summary, {"role":"assistant","content":"ok"}, {"role":"user","content":"NEW_MAIN_TASK"}
+            ]),
+        ));
+        let history = classifier_body(&classifier, 2).to_string();
+        assert!(history.contains("ORIGINAL_MAIN_TASK"), "{history}");
+        assert!(!history.contains("AUXILIARY_CALCULATION"), "{history}");
+        assert_eq!(
+            (simple.calls(), complex.calls(), classifier.calls()),
+            (3, 1, 3)
+        );
+    }
+}
+
+#[test]
+fn real_listener_auxiliary_provider_failure_cannot_change_main_tool_continuation() {
+    let simple = NativeProvider::start(vec![reply(RESPONSES_TOOL_CALL), reply(RESPONSES_OK)]);
+    let complex = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 400,
+        error_kind: None,
+        body: PERMANENT_ERROR,
+    }]);
+    let classifier =
+        NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_COMPLEX)]);
+    let fixture = native_fixture("opencode", &[&simple, &complex, &classifier]);
+    let main = headers("opencode", "parent", "main", "turn", "before");
+    let user = json!({"role":"user","content":"main task"});
+    let response = send(fixture.address, &main, json!([user]));
+    accepted(&response);
+    assert_ne!(
+        send(
+            fixture.address,
+            &headers("opencode", "parent", "compaction", "turn", "before"),
+            json!("FAILED_AUXILIARY")
+        )
+        .status,
+        200
+    );
+    let response: Value = serde_json::from_slice(&response.body).unwrap();
+    let call = &response["output"][0]["call_id"];
+    accepted(&send(
+        fixture.address,
+        &main,
+        json!([user,
+            {"type":"function_call","call_id":call,"namespace":"tools","name":"lookup","arguments":"{}"},
+            {"type":"function_call_output","call_id":call,"output":"found"}
+        ]),
+    ));
+    assert_eq!(classifier.calls(), 2);
 }

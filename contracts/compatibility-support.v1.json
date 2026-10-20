@@ -1904,6 +1904,18 @@
         "crates/domain/src/observation/execution_validation.rs",
         "crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs"
       ]
+    },
+    {
+      "contract": "hiroute.observation.native-continuation/v1",
+      "field": "Hermes 0.20 public SessionDB row and unique-live-child API producer",
+      "mode": "legacy_adapter",
+      "owner": "agent-integrations/hermes",
+      "reason": "Compatible installed Hermes 0.20 exposes get_compression_lineage with unbounded descendant enumeration. The optional producer instead verifies at most 32 ancestor rows, compression closures, non-fork child provenance and the unique live child through public read-only SDK methods. Current SDKs use their bounded canonical chain API. Missing or failed native reads suppress continuity without failing model calls.",
+      "removal_condition": "Remove only when the supported native Hermes interface floor deliberately excludes the 0.20 row API, with updated connection guidance and native compression acceptance.",
+      "allowed_paths": [
+        "assets/agents/hermes/__init__.py",
+        "scripts/tests/test_hermes_lineage.py"
+      ]
     }
   ]
 }

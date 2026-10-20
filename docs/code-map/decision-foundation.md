@@ -98,7 +98,9 @@ capacity pressure and stale optional writes degrade to independent routing witho
 an inherited decision or assessment target. The [listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
 also verifies that the live main request can finish and continue its tools while
 observation failures leave delivered model output intact. Native identity parsing
-remains a separate boundary; this fallback does not prove subdialog isolation. Message-prefix continuity is
+remains a separate boundary. [Native routing evidence](../../crates/gateway/src/context_hold/routing.rs)
+admits independent main/child branches and detaches auxiliary or uncertain requests.
+Its semantic compaction continuity preserves decisions without claiming byte-prefix affinity. Message-prefix continuity is
 separate from system-instruction validity: [history entry](../../crates/gateway/src/context_hold/store.rs)
 distinguishes continuing, shortened, otherwise rewritten and unavailable checkpoints. [Turn history](../../crates/gateway/src/agent_turn_history/store.rs)
 records the opening cause on completion; [timeline projection](../../crates/observation/src/query_v2/routing_timeline/projection.rs)

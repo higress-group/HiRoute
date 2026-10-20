@@ -335,6 +335,47 @@ HiRoute SHALL accept the managed Hermes main conversation and its model/tool con
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/119#issuecomment-6165296920
 
+### Requirement: Native auxiliary calls cannot change conversation routing history
+
+The Gateway SHALL admit reusable routing history only after authenticating the
+request and resolving its conversation branch. Known native auxiliary requests
+(including title, summary, warming, memory and compaction calculation) and missing,
+contradictory, malformed or unsupported native routing evidence SHALL use independent
+empty partial history, without a history lease, inherited decision, assessment
+target or checkpoint mutation. Native children with a distinct native identity
+SHALL have independent branch state, including within a verified Worker task.
+These headers are optimization evidence, never authorization or a route override.
+
+Codex uses coherent native turn metadata; Claude uses request-class, prompt and
+native child identities. Managed Pi, DSH and ordinary OpenCode install reversible
+native adapters that convey request purpose, session, logical turn and available
+durable compaction checkpoint. Hermes uses its selected conversation middleware
+and validated compression lineage. Unsupported Qoder purposes remain independent
+for every request. Generic API callers retain their existing identity behavior.
+
+Native same-turn evidence MAY preserve the logical routing decision across a
+rewritten compacted transcript. A new native turn after a proven compaction SHALL
+obtain a fresh judgment while retaining accepted prior execution history. Semantic
+continuity SHALL NOT establish byte-prefix, provider-cache, instruction or opaque
+response affinity. Missing evidence permits an optimization miss, never invented
+continuity. Restarts rebuild only state for which the native client supplies
+evidence; Gateway in-memory history is not reconstructed from equal summaries.
+
+#### Scenario: A native summary overlaps its parent
+
+- **WHEN** a main tool call is in flight and a same-session auxiliary request arrives
+- **THEN** the auxiliary request can execute independently, its output cannot enter
+  main routing history, and main output and subsequent tool routing remain valid.
+
+#### Scenario: Optional adaptation or history storage fails
+
+- **WHEN** native metadata reads time out, a hook fails, a lease conflicts, history
+  capacity is insufficient or an optional checkpoint write becomes stale
+- **THEN** the affected optimization degrades without changing delivered model
+  bytes or committing partial history; subsequent admitted main requests retain
+  their valid history. Authentication, actual provider failures, cancellation and
+  required native compaction retain their existing errors.
+
 ## Implementation references
 
 - [Request adapters](../../../crates/gateway/src/adapters/request),

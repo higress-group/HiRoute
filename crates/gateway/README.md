@@ -99,7 +99,15 @@ with empty partial history and no inherited decision or assessment target. It
 cannot overwrite the live request's hold. Optional write/observation failures do
 not reject or replace the model response; authorization, Replay integrity and
 source cancellation/deadlines still apply. This is best-effort context degradation,
-not a native subdialog identity guarantee.
+not a substitute for native purpose evidence.
+[Native routing admission](src/context_hold/routing.rs) applies bounded native turn,
+purpose and checkpoint evidence before holds/history. Known auxiliary requests and
+uncertain known-client metadata have no history lease or write. Main/child scopes
+remain independent; verified same-turn compaction can retain logical decisions but
+cannot restore provider/KV affinity. Qoder routes conservatively detach. Hermes
+compression roots require a complete native proof and fresh current-state evidence.
+[Native listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/native_history.rs)
+cover these boundaries; the managed producer hooks live in `assets/agents/`.
 [history_bypass.rs](../../tools/e2e-harness/tests/p0_gateway_runtime/history_bypass.rs)
 covers same-identity overlap across the supported native identity families, main
 tool continuation, capacity exhaustion and observation faults through the listener.

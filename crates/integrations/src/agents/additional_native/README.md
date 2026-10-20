@@ -14,10 +14,21 @@ See the [Agent map](../../../../../docs/code-map/README.md) before changing owne
 | Ordinary Gateway authentication | Dedicated `/_hiroute/qoder/v1` bearer channel | `/v1`, fixed `X-HiRoute-Token` header; saved native auth may override ordinary Bearer | Fixed `X-HiRoute-Token` header; Responses base ends in `/v1`, Messages base does not | Both SDKs use `/v1` and fixed `X-HiRoute-Token`; inert SDK API-key placeholder |
 | Actual native acceptance | [Qoder journeys](../../../../../tools/product-e2e/tests/QODER_DELEGATION.md) | [Pi journeys](../../../../../tools/product-e2e/tests/PI_INTEGRATION.md) | [DSH journeys](../../../../../tools/product-e2e/tests/DSH_INTEGRATION.md) | [OpenCode journeys](../../../../../tools/product-e2e/tests/OPENCODE_INTEGRATION.md) |
 
-Main-Agent configuration adds only selected Plan aliases. It leaves native defaults,
-purpose routing, extensions, hooks, MCP and Skills to their existing owners. The
+Main-Agent configuration adds selected Plan aliases and, for Pi/DSH/OpenCode, one
+bundled routing adapter. It preserves native defaults, MCP and unrelated Skills. The
 Worker uses a different transient profile with one frozen route and exact budgets.
 A native provider name alone never grants ownership of an existing user entry.
+
+[Routing adapters](../routing_adapters.rs) use protected file effects with exact
+content ownership, borrowing, rollback and restore. Pi auto-loads its user extension;
+DSH inserts a public Cordis middleware next to the selected patch; OpenCode loads
+the plugin from its selected resource root. The hooks only annotate managed model
+calls. Missing evidence makes Gateway history request-scoped. Pi managed-provider
+warming is disabled because it lacks a separate native request purpose. DSH reads
+at most 512 existing event positions, and OpenCode's optional session lookup has a
+50 ms deadline and a 128-message bound. Huge/unknown native histories may therefore
+lose optimization. Restart/reload is needed for an existing process to load new
+resources; installed files alone are not proof of live activation.
 
 ## Shared transaction and native leaves
 
@@ -124,6 +135,8 @@ Disabled/replaced modules, unsupported composition and relative/tilde paths fail
 without guessing from HiRoute's working directory or HOME. Only the effective
 credential file is validated/read. Prepared evidence binds configuration, active
 credential path/bytes and the selected environment secret; Save rechecks it.
+The single exact bundled routing insert is recognized passively by path and bytes;
+other executable composition remains outside this reader's proven boundary.
 
 The [shared Agent/Worker map](../../../../../docs/code-map/worker-context.md#deepseek-harness)
 locates collaboration and execution separately. The

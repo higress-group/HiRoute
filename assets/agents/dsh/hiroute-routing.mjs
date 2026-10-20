@@ -1,5 +1,6 @@
 // Cordis llm/stream middleware: request-local native metadata, independent of pi-ai caching.
 import { AsyncLocalStorage } from "node:async_hooks";
+export const inject = ["sessions"];
 const symbol = Symbol.for("hiroute.dsh.routing-context.v1");
 const id = (value) => typeof value === "string" && value.length > 0 &&
   Buffer.byteLength(value) <= 128 && !/[\x00-\x1f\x7f-\x9f]/.test(value);

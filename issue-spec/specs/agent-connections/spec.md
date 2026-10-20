@@ -456,6 +456,30 @@ all configured Agents or future service state. Verification uses isolated config
 rather than altering a live user's environment, and cannot substitute for ordinary
 native saved-route or real main-Agent delegation acceptance.
 
+### Requirement: Routing adapters share native configuration ownership
+
+Applying managed Pi, DSH or ordinary OpenCode model settings SHALL install the
+bundled native routing adapter through the existing protected artifact transaction.
+Reconfiguration, activation, drift detection, interrupted-operation retry and
+restore SHALL verify the adapter's exact owned bytes. A conflicting foreign file
+SHALL be preserved. Identical pre-existing files MAY be borrowed and SHALL survive
+restore. Published operations without adapter effects retain their original
+recovery contract; explicit reconfiguration can add the current adapter.
+
+Pi uses its extension hooks and disables managed-provider cache warming, whose
+purpose is otherwise indistinguishable. DSH attaches one public Cordis middleware
+insert and preserves unrelated patch rows. OpenCode uses its native per-call hook
+with a bounded optional session read. OpenCode Workers retain pure mode and split
+main and auxiliary provider declarations within the same authorized frozen Plan;
+they do not enable arbitrary external plugins to obtain routing evidence.
+
+Hermes optional compression evidence SHALL support both the bounded current SDK
+chain API and the compatible 0.20 public row/unique-live-child APIs. The legacy
+unbounded lineage enumeration SHALL NOT run. Missing, locked, ambiguous, corrupt,
+replaced or unsupported native state SHALL suppress optional continuity evidence
+without preventing the model request or changing its authorization. Ordinary
+children and forks SHALL NOT be reported as compression continuations.
+
 ### Requirement: Reversible Hermes profile connection and activation guidance
 
 Desktop SHALL show Hermes alongside other supported Agents before a profile is
