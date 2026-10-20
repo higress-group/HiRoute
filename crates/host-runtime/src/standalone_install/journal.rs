@@ -206,6 +206,11 @@ impl Journal {
         if self.phase == Phase::Committed {
             return self.finish(layout);
         }
+        if self.operation == Operation::Install
+            && crate::storage_upgrade_started(&layout.storage_root())?
+        {
+            return Err(io::Error::other("STORAGE_UPGRADE_RECOVERY_REQUIRED"));
+        }
         for entry in &self.files {
             entry.check_current()?;
         }
@@ -248,6 +253,31 @@ impl Journal {
             }
         }
         self.finish_backups(layout)
+    }
+
+    /// The native leaf must independently match the accepted complete package
+    /// before calling this forward-only path. Never register the older daemon.
+    pub fn reapply_install(
+        &self,
+        layout: &StandaloneLayout,
+        host: &mut impl ManagerHost,
+    ) -> io::Result<()> {
+        self.validate(layout)?;
+        if self.operation != Operation::Install || self.phase != Phase::Prepared {
+            return Err(invalid());
+        }
+        for entry in &self.files {
+            entry.check_current()?;
+        }
+        let mut definitions = vec![&self.new_definition];
+        if let Some(old) = &self.old_definition {
+            definitions.push(old);
+        }
+        host.quiesce(&definitions)?;
+        self.apply_files()?;
+        write_json(&layout.marker_path, &self.new_marker)?;
+        host.register(&self.new_definition, self.old_definition.as_ref())?;
+        write_json(&self.new_marker.service_definition, &self.new_definition)
     }
 }
 impl Entry {

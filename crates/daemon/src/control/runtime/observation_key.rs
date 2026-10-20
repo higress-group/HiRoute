@@ -56,17 +56,35 @@ pub(super) fn observation_workspace_key(
     Err(INVALID.into())
 }
 
-pub(super) fn validate_existing_authority(storage_root: &Path) -> Result<(), String> {
-    if storage_root.join("observation/activity.db").exists()
-        || storage_root.join("observation.upgrade.json").exists()
-        || storage_root.join("observation-source-backup.json").exists()
-    {
-        let mut file = open_key(&storage_root.join("observation-hmac-key")).map_err(|_| INVALID)?;
-        if file.metadata().map_err(|_| INVALID)?.len() != 32 {
-            return Err(INVALID.into());
+pub(super) fn validate_existing_authority(
+    storage_root: &Path,
+) -> Result<(), hiroute_local_storage::LocalStorageError> {
+    use hiroute_local_storage::LocalStorageError as Error;
+    let mut required = false;
+    for name in [
+        "observation/activity.db",
+        "observation.upgrade.json",
+        "observation-source-backup.json",
+    ] {
+        match std::fs::symlink_metadata(storage_root.join(name)) {
+            Ok(_) => required = true,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(Error::Io(error)),
+        }
+    }
+    if required {
+        let mut file = open_key(&storage_root.join("observation-hmac-key")).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Error::Locked
+            } else {
+                Error::Io(error)
+            }
+        })?;
+        if file.metadata()?.len() != 32 {
+            return Err(Error::Locked);
         }
         let mut key = Zeroizing::new([0u8; 32]);
-        file.read_exact(&mut *key).map_err(|_| INVALID)?;
+        file.read_exact(&mut *key)?;
     }
     Ok(())
 }

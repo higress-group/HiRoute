@@ -34,10 +34,16 @@ Open **Settings → Updates**. The shell downloads a newer stable installer from
 
 A manually downloaded newer installer uses the same drain and transaction path. An older daemon that cannot drain requires an explicit interactive confirmation before it can be stopped; a passive update refuses it. If an update fails, the startup page or Updates shows the failure and recovery status. Keep the logs and retained backups. Starting the shell after an interrupted installer attempts journal recovery and resumes paused admission; changed or foreign files require repair and are preserved.
 
+This is the first supported Windows release. Generic complete-group recovery remains available when verified material is required; this does not promise compatibility with an unpublished development build. Development historical-upgrade matrices are outside this change. Current-format installation/repair does not export Task/Apps registration or duplicate the complete Desktop unnecessarily.
+
+Before a storage-format change, configuration, credentials and routing continue, while old HiRoute observations are sealed with the matching old program. Current history/statistics start at cutover; old-period continuation/history references require complete-group matching-version recovery. Native Agent history is unchanged. Read this notice before unattended `/S` installation too; silent mode has no notice page.
+
+If startup fails, use the bundled page's specific cause and next action. A missing key or unverified package cannot be repaired by repeated retries or an arbitrary older installer. For verified complete recovery, first preserve newer data and its matching program separately. Follow the exact batch's `RECOVERY.md` or Chinese guide and `PROGRAM-LOCATIONS.md`: restore the entire old data group, Desktop/uninstaller, standalone programs, command entries and native files, then the recorded current-user Apps registration and Task. Use the same ordinary account without elevation. Confirm Control/Gateway readiness, old configuration/routing/history and a real request before treating service as restored.
+
 ## Uninstall
 
 Use **Installed apps → HiRoute → Uninstall**. Before removing the service, HiRoute restores its supported Agent configuration. If restoration needs a decision, uninstall stops and reports the Agent IDs; resolve them in HiRoute and retry. It removes only its recorded application files, Task, shell login entry and any CLI PATH entry it added. Data is retained unless you explicitly select its removal. The separate headless state directory is never used as the NSIS install directory.
 
 If the service is unavailable, interactive recovery or uninstall offers a separate confirmation with **No** selected by default. Continuing may interrupt active work and leave configured Agents needing manual restoration; all HiRoute data is kept. Unattended mode refuses this exception, and a known restoration conflict still blocks removal. A failed first install with no Agent data can roll back without starting the service.
 
-After an upgrade commits, obsolete verified package files are removed. Uninstall removes the current verified package too; changed or foreign files are preserved.
+After an upgrade commits, obsolete verified package files may be removed. Material still required by storage recovery remains protected. Uninstall removes the current verified package too; changed or foreign files are preserved.

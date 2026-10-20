@@ -18,6 +18,7 @@ mod current_storage;
 mod observation_source;
 mod recovery_package;
 mod startup_format;
+pub(crate) mod startup_recovery;
 pub(crate) use startup_format::validate_startup_format;
 #[cfg(test)]
 mod stopped_read_tests;

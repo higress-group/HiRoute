@@ -171,7 +171,13 @@ native Quit menu item, then requires that process to exit. It does not kill a
 process or stop the background service; an unavailable or ambiguous icon/menu
 is an observation failure that must be inspected before retrying.
 
-`--action install` runs the measured NSIS `/S` entry. For a different installed
+`--action install` runs the measured NSIS `/S` entry. Its specific 720-second
+whole-installer watchdog includes the product adapter's 600-second install request
+and NSIS extraction/hooks; CLI/UI watchdogs and product request deadlines stay
+unchanged. `installer-process.json` records elapsed time, bounded transaction
+phase changes and the actual installer exit. A committed marker without that exit
+does not pass installation. On timeout inspect the retained transaction and any
+remaining product children before recovery or another attempt. For a different installed
 candidate, `--from-product OLD_BUNDLE_ID` verifies the old images before invoking
 the new installer. Preserve existing data and identify both packages in the
 result. Different source revisions carrying the same semantic version prove a
@@ -183,6 +189,8 @@ Administrators SID, including deny-only membership. All native observations and
 screenshots remain in ignored, private evidence.
 `native-files` captures the fixed Codex/Claude configuration files and inventories
 both collaboration and management Skill directories for restoration readback.
+It also fingerprints Codex sessions/history without copying their contents; compare
+immediately around installation/restoration, with no Codex call in between.
 `scroll` uses a recent screenshot's window geometry and pointer coordinates, plus
 an explicit `--scroll-direction up|down`; it sends a bounded native mouse wheel
 event to that foreground window. `codex-call` runs the configured real Codex CLI
@@ -241,6 +249,24 @@ the measured window to be foreground and use only its visible native controls.
 Content-addressed validator helpers are verified and published once by atomic
 rename. Wait/status/collection never overwrite helper files that a running
 standard-user task may be importing.
+
+The generic complete-source, matching-program and native-state recovery design
+remains in production. A Windows development-build historical upgrade/restore
+matrix is not required first-release acceptance and does not establish a supported
+released predecessor. Preserve prior simulation evidence; do not mutate an
+existing installation to extend that deferred matrix.
+
+`recovery-lock-ui` requires a recent inspection of the currently installed product
+and an accessible existing input desktop. It starts from actual Gateway readiness,
+stops the owned service, holds only an owned startup-lock file handle and opens the
+real bundled failure page. It observes both languages through the visible language
+button, releases its handle, quits and reopens the same installed Desktop, then
+checks actual Control/Gateway readiness. It never corrupts databases, changes keys,
+manufactures recovery reports or launches an older program. Its screenshots and
+native UI observations remain private evidence, separate from fixture parser tests.
+`recovery-file-use-ui` uses the same bounded sequence against the current
+Control file using only the admitted current installation. Both lock cases require offline current-version
+retry advice rather than borrowing a retained source as a reason to restore old data.
 
 Stage separate product and harness bundles when reusing an unchanged product for
 a test-only repair. Results record both full revisions, binary hashes, driver hash,

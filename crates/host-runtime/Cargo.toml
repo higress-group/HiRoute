@@ -9,6 +9,7 @@ rust-version.workspace = true
 getrandom.workspace = true
 fs2.workspace = true
 hiroute-platform = { path = "../platform" }
+hiroute-diagnostics = { path = "../diagnostics" }
 nix.workspace = true
 serde.workspace = true
 serde_json.workspace = true

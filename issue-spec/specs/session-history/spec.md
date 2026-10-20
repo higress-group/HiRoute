@@ -56,7 +56,7 @@ Source SPEC comments:
 
 New observation writes SHALL associate a session with an Agent only through the exact authenticated workspace, grant ID and generation mapped to a server-resolved Agent connection. The product SHALL persist that mapping from a verified connection transaction and matching publication before admitting its traffic. It SHALL remain available across reconfiguration, grant rotation, native-setting restoration and restart, so retained sessions keep their recorded Agent. Registration and receipt rebuilding SHALL NOT backfill old observations without attribution evidence. User-Agent strings, shared Plans, model aliases and client-supplied session IDs SHALL NOT establish Agent ownership.
 
-Startup attribution recovery SHALL require verifiable ownership for each managed Agent grant in the current publication. A current authenticated service-completion receipt may prove that ownership while the transaction's native-file tail remains pending; the exact journal and grant proofs still apply. Unverifiable historical connection operations that do not provide required current ownership SHALL be skipped with bounded diagnostics; they SHALL NOT block startup or backfill unlinked historical sessions. Publication activation SHALL retain strict transaction and grant validation.
+Startup attribution recovery SHALL register only verifiable ownership. Missing proof for a managed Agent grant in the current publication SHALL leave new observations unlinked and produce bounded diagnostics without blocking startup or journal recovery. A current authenticated service-completion receipt may prove ownership while the transaction's native-file tail remains pending; the exact journal and grant proofs still apply. After journal recovery completes the operation, publication restoration SHALL register the now-verifiable ownership for new sessions. Unverifiable historical connection operations SHALL be skipped with bounded diagnostics. Recovery SHALL NOT backfill unlinked historical sessions. Publication activation SHALL retain strict transaction and grant validation.
 
 A session receiving mapped grants from different Agents SHALL retain an attribution conflict and display as unlinked. Repeated or later matching evidence cannot clear the conflict. Missing mappings remain unknown. Full fact deletion or retention expiry SHALL erase the session attribution evidence with those facts; content-only deletion preserves it. Worker run relations retain their existing verified authority and semantics.
 
@@ -73,12 +73,17 @@ A session receiving mapped grants from different Agents SHALL retain an attribut
 #### Scenario: Released connections survive startup recovery
 
 - **WHEN** a data directory created by supported v0.3.1 with Claude Code and Codex connected starts the current build, including an unrelated historical operation that cannot be verified
-- **THEN** startup succeeds, new sessions use the verified current grants to identify their Agents, and unlinked old sessions remain unlinked; missing proof for a current managed grant still prevents admission.
+- **THEN** startup succeeds, new sessions use the verified current grants to identify their Agents, and unlinked old sessions remain unlinked; missing current-grant proof produces bounded diagnostics and leaves observations unlinked without blocking startup.
+
+#### Scenario: Agent settings interrupted before service completion
+
+- **WHEN** Agent settings activation is interrupted after the target installation or active-publication commit but before its service-completion receipt is saved
+- **THEN** startup remains available to complete journal recovery, missing proof does not fabricate attribution, and subsequent restoration associates new sessions once ownership is verified; accepted managed settings complete exactly, unrelated user native files remain unchanged, and previously unlinked observations remain unlinked.
 
 #### Scenario: Committed service with a pending native-file tail
 
 - **WHEN** the service publication is committed but an independent user edit leaves the Agent's native-file tail pending
-- **THEN** startup accepts only the exact authenticated current-service receipt and journal as grant provenance, preserves the user file and pending-tail state, and does not export the unfinished connection grant; a pending operation without that proof cannot satisfy attribution recovery.
+- **THEN** startup accepts only the exact authenticated current-service receipt and journal as grant provenance, preserves the user file and pending-tail state, and does not export the unfinished connection grant; without that proof startup still permits journal recovery while attribution remains unknown.
 
 #### Scenario: Old observations and Worker relations remain unchanged
 
@@ -87,6 +92,9 @@ A session receiving mapped grants from different Agents SHALL retain an attribut
 
 Source Issue:
 - https://github.com/higress-group/HiRoute/issues/182
+
+Source SPEC comment:
+- https://github.com/higress-group/HiRoute/issues/182#issuecomment-6292812078
 
 ### Requirement: Captured content preserves actual request and response attribution
 

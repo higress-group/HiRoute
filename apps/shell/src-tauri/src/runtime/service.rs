@@ -1,4 +1,4 @@
-use super::ShellState;
+use super::{ShellState, startup_failure};
 use crate::ConsoleOrigin;
 use hiroute_application_api::{
     ConsoleLaunchRequestV1, ConsoleLaunchV1, ErrorCode, MachineEnvelopeV2, SystemStatusV1,
@@ -94,10 +94,7 @@ pub(super) fn execute(
     timeout: Duration,
 ) -> Result<Value, &'static str> {
     let (success, value) = execute_reply(cli, args, stdin, timeout)?;
-    if !success || value.get("status").is_some_and(|s| s != "succeeded") {
-        return Err("SERVICE_COMMAND_FAILED");
-    }
-    Ok(value.get("data").cloned().unwrap_or(value))
+    startup_failure::command_result(success, value)
 }
 pub(super) fn manager(args: &[&str]) -> Result<Value, &'static str> {
     execute(&cli()?, args, None, Duration::from_secs(45))
@@ -138,20 +135,24 @@ fn launch_reply(
 }
 pub(super) async fn ready_launch(
     state: &ShellState,
-) -> Result<(ConsoleOrigin, url::Url), &'static str> {
+) -> Result<(ConsoleOrigin, url::Url), startup_failure::Failure> {
     let status = tauri::async_runtime::spawn_blocking(|| {
         manager(&["service", "status", "--output", "json"])
     })
     .await
     .map_err(|_| "SERVICE_STATUS_UNAVAILABLE")??;
+    let layout = StandaloneLayout::from_environment().map_err(|_| "INSTALLATION_UNAVAILABLE")?;
+    let attempt =
+        startup_failure::Attempt::begin(&layout.storage_root(), &layout.diagnostics_root());
     if status["manager_active"] != true {
         tauri::async_runtime::spawn_blocking(|| manager(&["service", "start", "--output", "json"]))
             .await
-            .map_err(|_| "SERVICE_START_FAILED")??;
+            .map_err(|_| "SERVICE_START_FAILED")?
+            .map_err(|code| attempt.failed(code))?;
     }
     state.phase("waiting", None);
-    wait_ready().await?;
-    launch().await
+    wait_ready().await.map_err(|code| attempt.failed(code))?;
+    launch().await.map_err(Into::into)
 }
 pub(super) async fn wait_ready() -> Result<(), &'static str> {
     let deadline = Instant::now() + Duration::from_secs(45);

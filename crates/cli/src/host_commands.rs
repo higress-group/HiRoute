@@ -36,6 +36,16 @@ pub(crate) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExec
         });
     }
     let request_id = globals.request_id.clone();
+    if arguments == ["service", "recovery"]
+        && globals.output == OutputMode::Text
+        && globals.agent.is_none()
+        && !globals.has_capability()
+    {
+        return Some(match service::recovery() {
+            Ok(value)=>CliExecution {exit_code:0,stdout:format!("HiRoute startup recovery\n\n{}\n\nStartup diagnostics: {}\n",value["instructions"].as_str().unwrap_or("No verified startup recovery report is available. Keep all data and inspect startup diagnostics; this does not establish service readiness or permission to downgrade."),value["diagnostics_root"].as_str().unwrap_or("unavailable")),stderr:String::new()},
+            Err(error)=>failure(map(error),request_id),
+        });
+    }
     if globals.agent.is_some() || globals.has_capability() || globals.output != OutputMode::Json {
         return Some(failure(ErrorCode::InvalidArguments, request_id));
     }
@@ -46,16 +56,27 @@ pub(crate) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExec
         "protected-input" => protected_input_command(&arguments[1..], globals),
         _ => unreachable!(),
     };
-    Some(match result {
+    let mut execution = match result {
         Ok(value) => success(value, request_id),
         Err(error) => failure(error, request_id),
-    })
+    };
+    if execution.exit_code == 6
+        && family == "service"
+        && matches!(
+            arguments.get(1).map(String::as_str),
+            Some("start" | "restart")
+        )
+        && service::recovery().is_ok_and(|report| report["recovery"].is_object())
+    {
+        execution.stderr.push_str("Storage startup needs attention. Run `hiroute service recovery --output text` for the cause, safe next action and diagnostic location. Keep all data and packages.\n");
+    }
+    Some(execution)
 }
 
 fn host_help(family: &str) -> &'static str {
     match family {
         "service" => {
-            "Usage\n  hiroute service start|stop|restart|status|logs|doctor --output json\n  hiroute service autostart enable|disable|status --output json\n  hiroute service run\n  hiroute service layout --output json\n"
+            "Usage\n  hiroute service start|stop|restart|status|logs|doctor|recovery --output json\n  hiroute service autostart enable|disable|status --output json\n  hiroute service recovery [--output text|json]\n  hiroute service run\n  hiroute service layout --output json\n"
         }
         "gateway" => {
             "Usage\n  hiroute gateway show --output json\n  hiroute gateway set --address <IPV4> --port auto|<PORT> [--accept-remote-risk] --output json\n  hiroute gateway recover --output json\n"
@@ -96,6 +117,7 @@ fn service_command(
         [verb] if verb == "restart" => json_value(service::restart(timeout).map_err(map)?)?,
         [verb] if verb == "status" => json_value(service::status().map_err(map)?)?,
         [verb] if verb == "logs" => service::logs().map_err(map)?,
+        [verb] if verb == "recovery" => service::recovery().map_err(map)?,
         [verb] if verb == "doctor" => service::doctor(),
         [verb] if verb == "layout" => service::windows_layout().map_err(map)?,
         [verb, manager_flag, manager, daemon_flag, daemon]

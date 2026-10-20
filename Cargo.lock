@@ -2510,6 +2510,7 @@ version = "0.1.0"
 dependencies = [
  "fs2",
  "getrandom 0.3.4",
+ "hiroute-diagnostics",
  "hiroute-platform",
  "nix",
  "semver",
@@ -2677,6 +2678,7 @@ dependencies = [
  "fs2",
  "hiroute-application-api",
  "hiroute-client-core",
+ "hiroute-diagnostics",
  "hiroute-host-runtime",
  "hiroute-platform",
  "reqwest",
@@ -2687,6 +2689,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
+ "tempfile",
  "tokio",
  "url",
 ]

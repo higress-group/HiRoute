@@ -12,6 +12,7 @@ integration-test-hooks = [
 ]
 
 [dependencies]
+fs2.workspace = true
 bytes.workspace = true
 hyper = { version = "=1.11.1", features = ["server", "http1"] }
 hyper-util = { version = "=0.1.20", features = ["tokio"] }

@@ -53,6 +53,11 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
     result
 }
 pub(super) fn prepare(root: &Path, update: &PreparedUpdate) -> Result<PathBuf, String> {
+    hiroute_host_runtime::run_upgrade_preflight(
+        &update.staged.join("Contents/MacOS/hirouted"),
+        &root.join("storage"),
+        &update.current,
+    )?;
     let id = crate::random_id()?;
     let directory = update.download_root.join(format!("install-{id}"));
     crate::bootstrap::private_dir(&directory)?;

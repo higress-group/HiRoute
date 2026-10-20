@@ -32,6 +32,27 @@ desktop = load('windows-desktop-session')
 
 
 class Runner(unittest.TestCase):
+    def test_incomplete_installation_page_requires_exact_repair_and_no_storage_retry_in_both_languages(self):
+        (self.root/'window.png').write_bytes(b'captured native image placeholder')
+        (self.root/'ui.json').write_text('{}')
+        button=dict(name='English',type='ControlType.Button',offscreen=False,runtime_id='42.1')
+        zh=dict(nodes=[dict(name='安装尚未完成'),dict(name='SHELL_INSTALL_RECOVERY_REQUIRED'),
+                       dict(name='相同版本及构建；缺包时寻求支持'),button])
+        en=dict(nodes=[dict(name='Installation is incomplete'),dict(name='SHELL_INSTALL_RECOVERY_REQUIRED'),
+                       dict(name='same version and build; obtain support if missing')])
+        with patch.object(desktop,'ui_action',side_effect=[zh,en]) as action:
+            self.assertEqual(desktop.failure_page_languages(self.root,Path('shell.exe'),42,'installer_recovery'),['zh','en'])
+        self.assertEqual(action.call_args_list[1].args[-1],button,
+                         'Native invocation needs the entire observed element for identity recheck')
+        for extra in [dict(name='RECOVERY.md'),dict(name='重试',offscreen=False)]:
+            with self.subTest(extra=extra),patch.object(desktop,'ui_action',return_value=dict(nodes=zh['nodes']+[extra])), \
+                    self.assertRaisesRegex(ValueError,'borrowed storage advice'):
+                desktop.failure_page_languages(self.root,Path('shell.exe'),42,'installer_recovery')
+        with patch.object(desktop,'ui_action',return_value=dict(nodes=[n for n in zh['nodes'] if '相同版本' not in n['name']])), \
+                self.assertRaisesRegex(ValueError,'exact repair/support'):
+            desktop.failure_page_languages(self.root,Path('shell.exe'),42,'installer_recovery')
+
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -99,10 +120,84 @@ class Runner(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'binary changed'):
                 desktop.installed(profiles, self.root, manifest)
 
+    def test_nsis_waits_for_exit_past_cli_watchdog_and_records_transaction_phases(self):
+        locations = {name: self.root / name for name in ('data', 'shell_state')}
+        for path in locations.values():
+            path.mkdir()
+        pending = locations['shell_state'] / 'install-pending.json'
+        pending.write_text(json.dumps(dict(phase='prepared')))
+        clock = [0.0]
+        child = unittest.mock.Mock(pid=42)
+        child.poll.side_effect = [None, None, 0]
+        def advance(_):
+            clock[0] += 80
+            if clock[0] == 160:
+                pending.unlink()
+                (locations['shell_state'] / 'update-outcome.json').write_text(json.dumps(dict(status='succeeded')))
+        with patch.object(desktop.subprocess, 'Popen', return_value=child), \
+             patch.object(desktop.time, 'monotonic', side_effect=lambda: clock[0]), \
+             patch.object(desktop.time, 'sleep', side_effect=advance):
+            result = desktop.nsis_install(self.root / 'installer.exe', self.root, locations)
+        self.assertEqual(result['elapsed_seconds'], 160)
+        self.assertEqual(result['exit_code'], 0)
+        self.assertFalse(result['timed_out'])
+        self.assertEqual(result['events'][0]['changes']['shell']['phase'], 'prepared')
+        self.assertEqual(result['events'][-1]['changes']['outcome']['status'], 'succeeded')
+        child.kill.assert_not_called()
+        self.assertEqual(json.loads((self.root / 'installer-process.json').read_text()), result)
+
+    def test_nsis_watchdog_records_failure_and_stops_only_the_held_child(self):
+        locations = {name: self.root / name for name in ('data', 'shell_state')}
+        clock = [0.0]
+        child = unittest.mock.Mock(pid=42)
+        child.poll.return_value = None
+        def advance(_):
+            clock[0] += 1
+        with patch.object(desktop, 'NSIS_INSTALL_TIMEOUT', 2), \
+             patch.object(desktop.subprocess, 'Popen', return_value=child), \
+             patch.object(desktop.time, 'monotonic', side_effect=lambda: clock[0]), \
+             patch.object(desktop.time, 'sleep', side_effect=advance), \
+             self.assertRaises(desktop.subprocess.TimeoutExpired):
+            desktop.nsis_install(self.root / 'installer.exe', self.root, locations)
+        child.kill.assert_called_once_with()
+        child.wait.assert_called_once_with(timeout=30)
+        result = json.loads((self.root / 'installer-process.json').read_text())
+        self.assertTrue(result['timed_out'])
+        self.assertNotIn('exit_code', result)
+
+
     def test_desktop_refuses_filtered_administrator_before_native_actions(self):
         with self.assertRaisesRegex(ValueError, 'filtered administrator'), patch.object(desktop.subprocess, 'run') as run:
             desktop.execute({}, self.root, self.root, {}, profiles, {'administrator_groups': True}, host.manifest, self.root)
         run.assert_not_called()
+
+
+    def test_native_lock_ui_requires_current_inspection_before_stopping_any_service(self):
+        with patch.object(desktop.subprocess,'run') as run,patch.object(desktop,'installed') as admit:
+            with self.assertRaisesRegex(ValueError,'recent current-product inspection'):
+                desktop.locked_startup_ui({},self.root,self.root,{},profiles,{},self.root)
+        run.assert_not_called();admit.assert_not_called()
+
+
+    def test_startup_fixture_refuses_foreign_activity_before_desktop_or_service_mutation(self):
+        observed='a'*32;folder=self.root/'runs'/observed;folder.mkdir(parents=True)
+        config=dict(user='owner',session_id=3)
+        request=dict(product='current',observation_run=observed,config=config)
+        (folder/'request.json').write_text(json.dumps(dict(operation='inspect',product='current',config=config)))
+        (folder/'result.json').write_text(json.dumps(dict(passed=True,administrator=False)))
+        install=self.root/'version';shell=self.root/'desktop/hiroute-shell.exe'
+        facts=dict(marker=dict(record=dict(install_root=str(install))),
+                   definition=dict(text=json.dumps(dict(name='HiRoute-'+'b'*64))))
+        for activity in [dict(processes=[dict(ExecutablePath=str(self.root/'foreign/hirouted.exe'))]),
+                         dict(tasks=[dict(TaskName='unrelated-task')])]:
+            with patch.object(desktop,'installed',return_value=({},facts,shell)), \
+                    patch.object(desktop,'desktop_state') as state,patch.object(desktop.subprocess,'run') as run:
+                with self.assertRaisesRegex(ValueError,'unrelated product activity'):
+                    desktop.startup_ui_context(request,self.root,{},profiles,activity,self.root)
+            state.assert_not_called();run.assert_not_called()
+
+
+
 
     def test_desktop_helper_requires_the_exact_committed_hash(self):
         path = self.root / 'desktop.py'
@@ -342,6 +437,37 @@ class Runner(unittest.TestCase):
             desktop.installer_resume({}, self.root, {}, profiles, {}, host.manifest, self.root)
         self.assertEqual(run.call_args.args[0], [str(shell), '--installer-install', '--no-login-start', '--no-tray'])
         self.assertEqual((self.root / 'installer-resume.stdout').read_bytes(), b'installed')
+
+    def test_prepared_repair_accepts_only_the_measured_old_or_current_marker(self):
+        home=self.root/'home';namespace=home/'.local/lib/hiroute'
+        old=namespace/('0.3.1-'+'a'*12);current=namespace/('0.3.1-'+'b'*12)
+        programs=home/'local/Programs/HiRoute';(programs/'standalone').mkdir(parents=True)
+        prior=dict(source_revision='a'*40,files={});pm=dict(source_revision='b'*40,files={})
+        for folder,record,prefix in [(old,prior,b'old'),(current,pm,b'current')]:
+            folder.mkdir(parents=True)
+            for name in ['hiroute.exe','hirouted.exe']:
+                (folder/name).write_bytes(prefix+name.encode());record['files'][name]=dict(sha256=profiles.digest(folder/name))
+                if folder==current:(programs/'standalone'/name).write_bytes((folder/name).read_bytes())
+        shell=programs/'hiroute-shell.exe';shell.write_bytes(b'current measured shell');pm['shell_sha256']=profiles.digest(shell)
+        pending=dict(schema='hiroute.windows-shell-transaction/v1',phase='prepared',previous_package=str(old),new={'hiroute-shell.exe':pm['shell_sha256']})
+        facts={'marker':dict(sha256='marker',record=dict(install_root=str(old))),
+               'install-pending.json':dict(sha256='pending',record=pending),'programs':dict(path=str(programs))}
+        observation='f'*32;run=self.root/'runs'/observation;run.mkdir(parents=True)
+        new_bundle='b'*12+'-'+'d'*12;old_bundle='a'*12+'-'+'c'*12
+        request=dict(product=new_bundle,from_product=old_bundle,observation_run=observation,config=dict(session_id=3))
+        (run/'request.json').write_text(json.dumps(dict(product=new_bundle,config=dict(session_id=3))))
+        (run/'result.json').write_text(json.dumps(dict(passed=True,assessment='inspection_only',installation=facts)))
+        with patch.object(desktop.Path,'home',return_value=home),patch.dict(os.environ,LOCALAPPDATA=str(home/'local')), \
+                patch.object(profiles,'inspect_installation',return_value=facts):
+            for accepted in [old,current]:
+                facts['marker']['record']['install_root']=str(accepted)
+                self.assertEqual(desktop.prepared_installer_replacement(request,pm,profiles,dict(processes=[]),lambda _:prior,self.root)[2],shell)
+            foreign=namespace/('0.3.1-'+'e'*12);facts['marker']['record']['install_root']=str(foreign)
+            with self.assertRaisesRegex(ValueError,'outside the admitted'):
+                desktop.prepared_installer_replacement(request,pm,profiles,dict(processes=[]),lambda _:prior,self.root)
+            facts['marker']['record']['install_root']=str(current);(current/'hiroute.exe').write_bytes(b'substituted current CLI')
+            with self.assertRaisesRegex(ValueError,'substituted product'):
+                desktop.prepared_installer_replacement(request,pm,profiles,dict(processes=[]),lambda _:prior,self.root)
 
     def test_nsis_retry_admits_the_exact_interrupted_product_before_normal_install(self):
         interrupted = 'b' * 12 + '-' + 'c' * 12
@@ -728,7 +854,10 @@ class Runner(unittest.TestCase):
             if len(controller.powershell(script)) > 6000:
                 self.assertEqual(base64.b64decode(payload).decode('utf-8'), script)
                 bridge = base64.b64decode(command.split()[-1]).decode('utf-16le')
-                self.assertIn('[Console]::In.ReadToEnd()', bridge)
+                self.assertIn('[Console]::In.ReadLine()', bridge)
+                self.assertNotIn('ReadToEnd', bridge)
+                self.assertTrue(payload.endswith('\n'))
+                self.assertIn('$line.Length -ne ' + str(len(payload) - 1), bridge)
             else:
                 self.assertIsNone(payload)
                 self.assertEqual(base64.b64decode(command.split()[-1]).decode('utf-16le'), script)

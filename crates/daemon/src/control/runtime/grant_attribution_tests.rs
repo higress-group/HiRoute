@@ -1,4 +1,4 @@
-//! Current startup authority is strict; unrelated historical attribution is best effort.
+//! Attribution recovery is best effort; publication activation remains strict.
 use super::*;
 use hiroute_domain::{ContentMode, ObservationQueryPort, PortErrorCode, SessionId};
 
@@ -81,6 +81,26 @@ fn invalidate_operation(root: &std::path::Path, id: &OperationId) {
             [id.as_str()],
         )
         .unwrap();
+}
+
+fn clear_grant_mappings(root: &std::path::Path) {
+    rusqlite::Connection::open(root.join("observation/activity.db"))
+        .unwrap()
+        .execute("DELETE FROM observation_agent_grants_v1", [])
+        .unwrap();
+}
+
+fn assert_unlinked_session(runtime: &ProductionControlRuntime, suffix: &str) {
+    let session = runtime
+        .adapter
+        .delegation_observation
+        .get_session(
+            &WorkspaceId::default(),
+            &SessionId::parse(format!("session-{suffix}")).unwrap(),
+            ContentMode::None,
+        )
+        .unwrap();
+    assert!(session.summary.agent_id.is_empty());
 }
 
 #[test]
@@ -175,13 +195,13 @@ fn startup_skips_unverifiable_history_without_backfilling_old_sessions() {
 }
 
 #[test]
-fn current_grant_and_activation_stay_strict_when_provenance_is_missing() {
+fn startup_missing_provenance_is_unlinked_while_activation_stays_strict() {
     if crate::test_support::isolated_agent_home(
-        "control::runtime::native_model::tests::settings_entry_tests::grant_attribution_tests::current_grant_and_activation_stay_strict_when_provenance_is_missing",
+        "control::runtime::native_model::tests::settings_entry_tests::grant_attribution_tests::startup_missing_provenance_is_unlinked_while_activation_stays_strict",
     ) {
         return;
     }
-    let (root, runtime, historical, current, _, _) = configured();
+    let (root, runtime, historical, current, grant, plan) = configured();
     let (operation, publication) = {
         let stores = runtime.adapter.stores_lock().unwrap();
         (
@@ -198,17 +218,52 @@ fn current_grant_and_activation_stay_strict_when_provenance_is_missing() {
     assert!(runtime.adapter.register_operation_agent_grants(
         &WorkspaceId::default(), &operation, &[], &publication,
     ).is_err(), "activation must reject a missing ensure effect");
+    let journal = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
+    let original: Vec<(String, String)> = [&historical, &current]
+        .into_iter()
+        .map(|id| {
+            let encoded = journal
+                .query_row(
+                    "SELECT operation_json FROM operations WHERE operation_id=?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            (id.as_str().to_owned(), encoded)
+        })
+        .collect();
+    drop(journal);
     invalidate_operation(root.path(), &historical);
     invalidate_operation(root.path(), &current);
-    assert_eq!(
-        runtime
-            .adapter
-            .restore_active_publication()
-            .unwrap_err()
-            .code,
-        PortErrorCode::InvalidData,
-        "a persisted mapping is not a substitute for current publication proof",
-    );
+    clear_grant_mappings(root.path());
+    let scanner = runtime.adapter.scanner.clone();
+    drop(runtime);
+    let runtime = open_with_scanner(root.path(), scanner);
+    runtime.adapter.restore_active_publication().unwrap();
+    runtime.adapter.reconcile_startup_and_open().unwrap();
+    runtime
+        .adapter
+        .finish_startup_publication_recovery()
+        .unwrap();
+    record_attributed_session(&runtime, &grant, "missing-current-proof", &plan);
+    assert_unlinked_session(&runtime, "missing-current-proof");
+
+    // Restore the exact original completed proof bytes in this isolated fixture.
+    // This models proof becoming available, not a production journal repair.
+    let journal = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
+    for (id, encoded) in original {
+        journal
+            .execute(
+                "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
+                rusqlite::params![id, encoded],
+            )
+            .unwrap();
+    }
+    drop(journal);
+    runtime.adapter.restore_active_publication().unwrap();
+    record_attributed_session(&runtime, &grant, "new-current-proof", &plan);
+    assert_attributed_session(&runtime, "new-current-proof");
+    assert_unlinked_session(&runtime, "missing-current-proof");
 }
 
 #[test]
@@ -249,8 +304,8 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
     record_attributed_session(&runtime, &grant, "parked-service-proof", &plan);
     assert_attributed_session(&runtime, "parked-service-proof");
 
-    // A pending operation alone is not proof; the sealed current-service receipt is
-    // required even if the attribution mapping was already persisted.
+    // A crash before the receipt cannot prove ownership yet, but cannot prevent
+    // the journal from completing. Remove the mapping to test absence of evidence.
     operation
         .step_mut(OperationStepKind::Activate)
         .terminal_result = None;
@@ -261,12 +316,40 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
         .control()
         .save_operation(&mut operation)
         .unwrap();
+    // Unlike a parked file tail, a real crash before the service receipt still
+    // holds the writer claim. Recreate that part of the isolated crash fixture.
+    runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .reclaim_operation_writer(&current)
+        .unwrap();
+    clear_grant_mappings(root.path());
+    let scanner = runtime.adapter.scanner.clone();
+    drop(runtime);
+    let runtime = open_with_scanner(root.path(), scanner);
+    runtime.adapter.restore_active_publication().unwrap();
+    record_attributed_session(&runtime, &grant, "before-service-recovery", &plan);
+    assert_unlinked_session(&runtime, "before-service-recovery");
+    runtime.adapter.reconcile_startup_and_open().unwrap();
+    runtime
+        .adapter
+        .finish_startup_publication_recovery()
+        .unwrap();
     assert_eq!(
         runtime
             .adapter
-            .restore_active_publication()
-            .unwrap_err()
-            .code,
-        PortErrorCode::InvalidData,
+            .stores_lock()
+            .unwrap()
+            .control()
+            .load_operation(&current)
+            .unwrap()
+            .unwrap()
+            .state,
+        hiroute_domain::OperationState::Succeeded,
     );
+    record_attributed_session(&runtime, &grant, "after-service-recovery", &plan);
+    assert_attributed_session(&runtime, "after-service-recovery");
+    assert_unlinked_session(&runtime, "before-service-recovery");
 }

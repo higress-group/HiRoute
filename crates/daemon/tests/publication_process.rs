@@ -64,6 +64,16 @@ fn real_process_recovery_preserves_independent_agent_edits() {
 }
 
 #[test]
+fn agent_settings_recover_after_target_before_service_receipt() {
+    run_script_case("publication_agent_recovery.py", Some("after_target"));
+}
+
+#[test]
+fn agent_settings_recover_after_active_before_service_receipt() {
+    run_script_case("publication_agent_recovery.py", Some("after_active"));
+}
+
+#[test]
 fn real_process_v2_plan_content_and_alias_recover_exactly() {
     run_script("plan_content_process.py");
 }

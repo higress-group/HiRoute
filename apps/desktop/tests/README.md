@@ -16,7 +16,9 @@ language/theme/size matrix. Native origin ACLs, NSIS, Task/login effects and rea
 upgrades keep their [installed gates](../../../docs/windows-desktop-installation.md#evidence-and-release-claims).
 It also distinguishes an unavailable Windows update catalog from installation
 recovery, and checks the bundled local-listener recovery instructions and usable
-Recheck action at both supported window sizes.
+Recheck action at both supported window sizes. Incomplete installation has a
+neutral heading and exact version/build installer repair, without storage retry
+or an unrelated recovery location.
 
 Start with the user capability, then choose the smallest layer that can observe its
 contract. Node state tests explain decision rules; browser scenarios exercise the
@@ -27,6 +29,7 @@ proves native authorization, persistence, process cleanup or real model calls.
 
 | User capability | Representative tests | Unique guarantee |
 | --- | --- | --- |
+| Recover after a storage upgrade refuses startup | [Recovery presentation](storage-recovery.test.mjs), [production-style scenarios](v3/visual/storage-recovery-scenarios.mjs), [storage owner proof](../../../crates/local-storage/src/migrations/startup_recovery.rs) | Original-program reinstall requires the authoritative admitted unchanged group; unknown causes never grant downgrade. Verified source guidance names the exact batch, source directory and guides; long names wrap in both languages/themes. Windows supplies a route from the displayed log folder; macOS offers the preserved-material action. Missing/unsafe locations grant neither located recovery nor resume. Native installed upgrade, complete restoration and real requests remain separate acceptance. |
 | Search session content and continue reading matches | [Session scenarios](v3/browser/session-window-scenarios.mjs), [session layout captures](v3/visual/session-window-active.mjs) | Results represent distinct matching sessions; keyword edits discard stale pages, failed continuation withdraws its cursor, and clearing search resumes automatic selection after an in-flight detail read. Pending indexing and complete empty results remain distinct. Chinese/English searching, results, empty, pending and retry states stay readable at 1200×813 and 755×600 using production styles. Real lookup, fresh authorization and Worker activity require native acceptance. |
 | Connect an API through the service directory | [Connection flow scenarios](v3/visual/connection-flow-active.mjs), [directory and draft rules](connection-directory.test.mjs) | Full branded directory, separate product drafts and keys, checked source name, cancellation, explicit model selection and inherited append behavior. Uses production styles; native save and live calls need separate acceptance. |
 | Enable or edit Codex routing | `codex.enable.draft-cancel`, `codex.routing.fixed-binding`, `codex.routing.mixed-native-default` in [Agent scenarios](v3/browser/agent-trust-scenarios.mjs) | Cancelling never applies; configured fixed overrides, native reasoning and the chosen default survive save; service responsibility is explained. |

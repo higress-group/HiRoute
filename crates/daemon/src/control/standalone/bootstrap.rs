@@ -9,7 +9,7 @@ use hiroute_diagnostics::event::{
 use hiroute_diagnostics::runtime::DiagnosticRuntime;
 
 use super::super::{
-    Arguments, StartupError, classify_role_all_error, diagnostics_elapsed_ms, write_ready,
+    Arguments, StartupError, diagnostics_elapsed_ms, startup_recovery, write_ready,
 };
 use super::ProtectedInputServer;
 
@@ -183,10 +183,7 @@ pub(crate) fn run_all_standalone(
         Ok(role) => role,
         Err(error) => {
             let _ = store.mark_failed("GATEWAY_START_FAILED");
-            return Err(StartupError::new(
-                classify_role_all_error(&error),
-                error.to_string(),
-            ));
+            return Err(startup_recovery::role_failure(error));
         }
     };
     let server = match ProtectedInputServer::bind(&layout) {

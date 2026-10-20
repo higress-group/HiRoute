@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 
@@ -105,6 +106,7 @@ def inspect_installation(native_home, local_app_data):
                         pass  # A concurrently written or clipped first/last record is incomplete.
                 tails[str(path.relative_to(diagnostics))] = dict(bytes=size, records=records)
     facts['diagnostics_tail'] = tails
+    # Pre-replacement refusal may precede the transaction journal. Inspect only
     expected = facts.get('shell-package.json', {}).get('record', {}).get('files', {})
     mismatches = []
     for name, wanted in expected.items():
@@ -118,6 +120,8 @@ def inspect_installation(native_home, local_app_data):
     backups = plain(local_app_data / 'HiRoute/shell/install-backups')
     if backups.is_dir():
         facts['shell_backup_entries'] = sorted(str(p.relative_to(backups)) for p in backups.rglob('*') if p.is_file())[:100]
+        facts['shell_backup_mismatches'] = [name for name, wanted in expected.items()
+                                           if (path := plain(backups / name)).is_file() and digest(path) != wanted]
     return facts
 
 
@@ -244,3 +248,14 @@ def archive_orphaned_data(native_home, local_app_data, destination, inspected, a
         outcome='archived_and_verified', manifest_sha256=digest(manifest))), encoding='utf-8')
     return dict(archived=[str(t) for _, t in moved], backup_manifest='profile-backup.json',
                 native_configuration='unchanged', assessment='preparation_only')
+
+
+def bounded_json(path, maximum=1024 * 1024):
+    path = plain(path)
+    if not path.is_file() or path.stat().st_size > maximum:
+        raise ValueError('Missing or oversized recovery metadata')
+    with path.open('rb') as stream:
+        content = stream.read(maximum + 1)
+    if len(content) > maximum:
+        raise ValueError('Recovery metadata changed while reading')
+    return json.loads(content)

@@ -109,6 +109,23 @@ normal user's preference, business parameters, security gates, or success criter
 Failure/cancellation retains available safe logs and evidence gaps with normal
 owned-process cleanup. Logging success is not a substitute for the real smoke path.
 
+### Requirement: Startup recovery guidance remains available before service readiness
+
+Storage startup SHALL retain bounded typed cause/action facts through its existing local startup channels without requiring a functioning console. The CLI and native failure surfaces SHALL use the storage-owned action rather than infer downgrade permission from a raw error, generic code or backup-directory presence. Unknown reasons, unsupported records and stale original-state bindings SHALL receive a conservative preserve-and-diagnose presentation. Diagnostic exports SHALL exclude complete private recovery backups, credential bytes and arbitrary native error output.
+
+#### Scenario: Admission cannot write a recovery report
+
+- **WHEN** root access, an existing writer lock or an unavailable authority key refuses startup before the storage writer barrier
+- **THEN** the current attempt carries its closed cause through the startup failure channel and diagnostics without writing or replacing a report owned by another writer. Offline consumers may explain that cause with preserve-and-diagnose only; diagnostic records never authorize downgrade, resume or restoration. A later successful/unfinished/unknown startup cannot borrow an earlier admission reason.
+
+#### Scenario: Storage refusal while the server is unavailable
+
+- **WHEN** startup refuses missing recovery material, unavailable keys, low space or an unknown upgrade state
+- **THEN** the installed failure surface and offline CLI can explain the safely established cause and next action without contacting the failed daemon; service availability is not fabricated from manager-command success.
+
+Source Issue:
+- https://github.com/higress-group/HiRoute/issues/176
+
 ## Implementation references
 
 - [Typed events and records](../../../crates/diagnostics/src/record.rs),

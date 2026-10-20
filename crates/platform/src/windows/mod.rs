@@ -17,5 +17,6 @@ pub mod security;
 pub mod service;
 pub mod shell_login;
 pub mod shell_open;
+pub mod shell_registration;
 pub mod task;
 pub mod user_path;
