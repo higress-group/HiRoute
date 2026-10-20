@@ -110,6 +110,103 @@ recovery succeeded. The next shell start reads the private outcome and can recov
 an interrupted transaction after the installer is no longer active. An unresolved
 file or service conflict stays on the bundled failure page with a diagnostics path.
 
+When starting a stopped service, the shell also handles a failed CLI readiness wait.
+It captures a diagnostic watermark before the start request and accepts only a new
+failed startup record. Old, incomplete or unreadable diagnostics leave the manager
+error intact. The typed current cause can explain a lock, missing key or upgrade
+refusal without borrowing an earlier batch's advice.
+
+## Windows support and acceptance scope
+
+This is the first supported Windows release, with no supported released Windows
+predecessor. General complete-group recovery, matching programs/native-state
+preservation and the existing transaction safety boundaries remain available.
+Their presence is not a historical compatibility promise. Development builds and
+simulated cross-build replacements are not released-version upgrade evidence;
+expanding their historical upgrade/restore matrix is separate follow-up work.
+
+Current installation, failure/interruption repair, actionable errors and data
+protection remain required. Ordinary current-format repair does not duplicate the
+complete Desktop or export Task/Apps registration merely to support a historical
+simulation. Those complete-source operations are used when authoritative candidate
+preflight actually requires a format-changing history cutover. Retained recovery
+material is never deleted to narrow acceptance.
+
+## Storage-format failure and whole-group recovery
+
+Before NSIS replaces installed files, its verified candidate daemon checks the
+stopped-source requirements. When an actual history cutover is required,
+preparation retains both the complete previous
+Desktop (including shell, uninstaller and inventory) and standalone version root,
+the native transaction's CLI/daemon/Skill/documentation file map, owned native Task XML and definition,
+login choices and the fixed current-user HiRoute Apps registration. The protected
+handoff binds this material to the storage root and new daemon image. Space checks
+combine simultaneous allocations on the same native volume and check separate
+program/data volumes separately. Candidate preflight runs before replacement; startup
+revalidates under the storage writer barrier. Package cleanup retains the old
+source while its handoff is needed. This does not use macOS App discovery or
+assume that a PowerShell variable is inherited by the logged-on Task.
+
+The bundled failure page displays the storage-owned reason and recovery action
+even when the daemon and console cannot start. It distinguishes missing/invalid
+packages, low space, unavailable keys and unknown state. Fix a stated prerequisite
+before retrying. After a completed readiness wait, it uses the latest typed daemon
+startup failure; a dependency or Gateway failure cannot borrow an old storage
+report. Installer, manager-command and console failures have their own guidance.
+An incomplete installation is identified independently of service readiness and
+offers the exact installer repair path, without an unproven storage retry or old
+batch location. A verified resumable/restorable source shows its original batch
+ID and relative source directory, including long names without clipping. From the
+parent of the displayed local log directory, open that source directory and read
+`RECOVERY.md` or `恢复说明.md`, then `PROGRAM-LOCATIONS.md` where present. Missing,
+unsafe or unverified batch locations must not be presented as verified material.
+Resume an admitted batch with the current program; never start
+an old program against newer/mixed data. Shell rollback checks storage cutover
+facts before reinstalling or starting an old service. An uncommitted shell journal
+is not proof that business data is unchanged.
+
+If an upgrade starts the new service but cannot finish installation, keep both
+complete program versions, all data and the installation journals. Close files
+reported as in use and check access and free space, then rerun the **same complete
+current installer**. Its early recovery verifies the accepted payload before a
+forward repair; it does not replace the original recovery batch or launch the old
+daemon over current data. A changed package or native file is refused. If repair
+still cannot be verified, preserve the material and use the verified batch's
+whole-group guide or obtain support. Check actual service/Gateway readiness and a
+request after repair; do not infer recovery from installer or Task exit alone.
+
+When complete restoration is required and the source is verified, stop the owned Task/daemon and automatic starts, keep
+newer storage with its matching program separately, and follow the exact verified
+batch's Chinese/English generated guide. Restore all stores, keys, Observation and
+recorded auxiliary locations together, then the matching full package and Task
+registration through the platform installation path. Verify actual service and
+Gateway readiness and a request. Missing keys or a substituted/incomplete source
+cannot be repaired by blind retry or choosing another old release. Inspect safe
+startup diagnostics and obtain support while retaining every generation.
+
+Use `hiroute service recovery --output json` for an offline report. Verified
+resume/restore guidance includes the exact batch and absolute source directory,
+derived from the actual storage root. Windows Server
+and Windows 11, ordinary-user and administrator sessions, and released versus
+development packages retain separate evidence boundaries.
+
+### Chinese recovery quick guide
+
+本次是 Windows 首个受支持版本，没有已发布旧版的历史兼容承诺。通用完整恢复能力和数据保护仍保留；开发构建模拟不等于正式升级支持。
+安装或启动失败时，先保留完整程序、全部数据、密钥、安装记录与恢复包。
+文件占用、权限或空间问题应按当前提示处理后再试；不要清空历史、批量修改权限或删除安装记录。
+如果新服务已启动但安装尚未完成，解除占用并核对权限、空间后，重新运行**同一当前版的完整安装器**。
+安装器会核对原先接受的程序包与任务注册，再继续完成安装；程序或记录不符时会拒绝，不能换任意旧安装器覆盖。
+修复之后检查 `hiroute system status --output json` 中的服务与 Gateway 实际就绪状态，并完成一次真实请求。
+
+服务与控制台无法启动时，使用安装包自带的故障页面，或离线运行 `hiroute service recovery --output json`。
+已验证的恢复材料会给出原批次 ID、源目录与说明文件名；从页面所示日志目录的上级目录定位该源目录，
+先读该批次的 `恢复说明.md` 或 `RECOVERY.md`，再读 `PROGRAM-LOCATIONS.md`。
+整组恢复前停止当前账户的 Task、守护进程、CPA 与自动启动，将新版完整数据和配套程序另存，
+再按记录的位置与权限还原旧数据、全部密钥、历史、完整程序和原 Task 注册，并核对原登录启动选择。
+不要逐库覆盖、混用不同批次，或让旧程序读取新版数据。恢复后仍需检查旧配置、路由、历史与一次真实请求。
+缺少密钥、完整原版程序、有效批次，或无法核对文件归属时，保留现场与诊断并联系支持；反复重试或任意降级不能补齐这些材料。
+
 ## Uninstall boundaries
 
 Agent restoration uses production Preview/Apply and waits for the resulting

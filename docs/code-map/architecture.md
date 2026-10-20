@@ -30,7 +30,12 @@ host IPC, startup/reconnect, tray/login preference and NSIS hooks. The
 [Rust standalone transaction](../../crates/host-runtime/src/standalone_install)
 owns architecture-matched Task installation and current-schema journal recovery; the shell's separate
 inventory/finisher owns its program files and update outcome. Neither owns business
-transactions or exposes Local Control to WebView. The
+transactions or exposes Local Control to WebView.
+The native [current-package repair](../../crates/host-runtime/src/standalone_install/windows/repair.rs)
+matches the complete accepted package and owned Task before reapplying a prepared
+core journal forward. Generic rollback refuses possible storage writes before any
+manager effect. NSIS supplies the candidate to early shell recovery, preserving
+the original batch instead of forcing an older-program rollback. The
 [release catalog](../../apps/website/src/lib/releases.mjs) emits V3 and the registered
 Windows-free V2 projection for supported macOS readers. Public Windows artifacts
 are x64 NSIS installers only; headless x64/ARM64 archives stay internal. The
@@ -158,7 +163,7 @@ The shared product-session layer in `crates/product-session` owns Preview compos
 | Reference refresh | A checkpoint copies verified installed routing authority at the next revision through the normal publication writer. Preview pins revisions and content; disabled routes, drafts and held versions remain deletion blockers. | [Strict checkpoint](../../crates/domain/src/operation/publication_checkpoint.rs), [shared entry](../../crates/application/src/control_plane/publication_checkpoint.rs), [installed-state facts](../../crates/daemon/src/control/runtime/routing.rs) |
 | Profile deletion | Untouched proof binds the current store instance and exact marker; a stage directory alone cannot prove deletion never began. | [Profile lifecycle](../../crates/daemon/src/control/runtime/settings_profile_tests.rs) |
 | Worker/content lifetime | Result completion, process stop, body availability and permission to Continue are separate facts; cleanup requires exact ownership. | [Worker map](worker-context.md#state-and-lifetime), [managed-text contract](../../crates/observation/src/managed_text/README.md) |
-| Recovery and compatibility | Current producers have one ingestion contract. Registered legacy revoke tails retain their own ordering; frozen fixtures alone do not establish production upgrade support. | [Startup admission](../../crates/local-storage/src/migrations/startup_format.rs), [legacy-tail tests](../../crates/daemon/src/control/runtime/settings_profile_legacy_tests.rs), [compatibility registry](../../contracts/compatibility-support.v1.json) |
+| Recovery and compatibility | Current producers have one ingestion contract. Startup presenters prefer the current attempt's typed facts over an older writer's report; the Windows shell binds manager-start failures to a diagnostic boot/sequence watermark captured before startup. Registered legacy revoke tails retain their own ordering; frozen fixtures alone do not establish production upgrade support. | [Startup admission](../../crates/local-storage/src/migrations/startup_format.rs), [upgrade recovery action](../../crates/local-storage/src/migrations/startup_recovery.rs), [host failure facts](../../crates/host-runtime/src/storage_recovery.rs), [daemon failure projection](../../crates/daemon/src/control/startup_recovery.rs), [legacy-tail tests](../../crates/daemon/src/control/runtime/settings_profile_legacy_tests.rs), [compatibility registry](../../contracts/compatibility-support.v1.json) |
 
 ## Observation and conversation boundaries
 
@@ -212,6 +217,14 @@ primitives for managed files. The [borrowed native reader](../../crates/cpa-brid
 retains external file identity and permission facts through access-lease admission;
 it preserves readable native ACLs instead of adopting managed-file permissions.
 Follow these owners for elevated-account defaults or third-party file creation.
+The [Windows Apps registration exporter](../../crates/platform/src/windows/shell_registration.rs)
+admits a controlled `reg.exe` export under a held private temporary directory;
+the existing child Job gives that process private user-SID defaults. Its explicit
+environment binds both temporary-directory variables to the same private stage,
+so standard-user export never depends on the Windows-directory scratch fallback. It
+then publishes complete bytes with protected private permissions. A repeated
+preparation must match the retained export; changed material is preserved and
+refused. Unpublished system output never occupies a final recovery filename.
 Native client gates select the installed, pinned producer through
 [Windows acceptance](../../scripts/windows-headless-ci.ps1). Ordinary Agent
 recipes and official Qoder account recipes have separate inventories; the latter

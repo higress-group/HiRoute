@@ -60,30 +60,48 @@ manually.
 
 ## Manual upgrade and removal
 
-1. Explicitly quit HiRoute and confirm that this service instance and its tasks have stopped.
-   Closing the window only hides the application. Full lifecycle acceptance is tracked
-   separately; a vanished window alone is not stop evidence.
-2. Preserve the complete previous App before replacing `/Applications/HiRoute.app`; keep
-   application data, then launch the new App. A fixed location keeps the per-user symlink
-   target stable. If startup asks for a recovery package, select the preserved matching App;
-   HiRoute validates the full package before converting data.
-3. If the app moved or integration checks report an invalid path, use the integration Preview
-   and confirmation in Settings. Resolve user-configuration drift instead of overwriting it.
-   Check and, if needed, disable/re-enable the login item.
+Prefer **Settings → Updates**. The updater verifies the complete DMG/App, asks the
+verified candidate to check storage/recovery prerequisites before replacement,
+waits for current calls/tasks, and retains the complete previous App and handoff.
+Waiting can be cancelled. Storage startup repeats admission under its writer lock.
 
-Settings → Updates checks the official release catalog and validates the full DMG and App.
-Installation pauses new work, waits for existing calls and tasks, and can be cancelled while
-waiting. Both the owned daemon and Desktop exit before replacement. The previous complete
-App remains alongside the installation; storage migration uses the same startup path as a
-manual upgrade.
+If you must replace an App manually, fully quit HiRoute and stop its owned service
+and tasks, keep the complete original App, and preserve the data directory. There
+is no recovery-package picker. A missing-package failure does not authorize
+program-only reinstallation or downgrade. Keep every data generation, key,
+complete App and upgrade journal. Open diagnostics and obtain support to verify
+the matching recovery material and supported upgrade route. Do not infer safety
+from a generic error or the absence of a backup directory.
 
-When a storage conversion is required, startup preserves a complete private source backup
-at `storage.upgrade-backups/migration-set/source` under the application data root. If startup
-fails, use the backup button and follow `恢复说明.md`: fully stop HiRoute, retain the current
-data directory, restore the whole recorded set to its original locations, and install the
-exact previous complete App named in the guide. Do not combine databases, keys or individual
-binaries from different versions. Manual restoration discards changes made after the backup.
-HiRoute does not automatically roll back data after the migration has completed.
+If startup reports a resumable original batch, reopen the current version. For a
+mixed, modified, unsupported or uncertain group, do not launch an older App.
+Preserve every generation and follow the identified batch's `RECOVERY.md` or
+`恢复说明.md`. Stop HiRoute, preserve newer data with its matching program
+separately, and restore the complete recorded old group and matching complete
+App at their original locations. Never replace individual databases or mix
+WAL/SHM, keys or backup batches. Newer records remain in the separately preserved
+group; they do not appear in the restored old group. Invalid/missing material or
+keys need correction/support, not repeated retries or data deletion.
+
+Recovery instructions remain available on the startup failure page while the
+service is down. A verified resumable/restorable source shows its original batch
+ID and source directory. Use the preserved-material action, match the batch and
+read `RECOVERY.md` or `恢复说明.md` before restoration. Unknown or unverified
+locations cannot authorize recovery. Offline `hiroute service recovery --output json`
+also names the verified batch and absolute source directory.
+Insufficient-space errors require freeing unrelated files;
+retain sealed history and recovery packages. A format-changing update keeps
+configuration, credentials and routing, seals old HiRoute observations, and starts
+current history/statistics at cutover. Native Agent history is unchanged.
+
+The updater shipped by v0.3.1 launches its own installation helper. New preflight
+code cannot retrofit that helper. Use only the transition sequence validated for
+the source release; if no verified route is offered, keep the working installation
+and obtain support rather than bypassing a refusal with manual replacement.
+
+If moving the App invalidates integration paths, use the integration Preview and
+confirmation in Settings, resolve user-configuration drift, and check the login
+item. Window disappearance alone does not establish service/task shutdown.
 
 Before removal, Preview and restore managed model/Agent integration from Settings, disable
 background launch at login, explicitly quit, and delete the app. App deletion preserves data

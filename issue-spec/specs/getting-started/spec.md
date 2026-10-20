@@ -308,6 +308,16 @@ The Windows shell SHALL select a newer stable Windows x64 Desktop release from t
 - **WHEN** recovery reported an earlier replacement failure and a subsequent manual installer commits the verified new core and shell
 - **THEN** the persisted startup and Settings outcome reflects the committed installation instead of claiming that the prior version was restored, and interrupted committed-phase reporting completes idempotently through recovery.
 
+#### Scenario: Same-current-installer repair after storage cutover
+
+- **WHEN** storage may have changed and a prepared Windows installation is retried with the same complete accepted current package
+- **THEN** early installer recovery verifies that candidate before generic rollback, preserves existing data/recovery material and continues the current installation. A prepared standalone journal can proceed only after the complete current package, target namespace and owned Task definition match; it never registers the older daemon. Reapplication preserves current data and retained recovery material, commits idempotently and checks actual service/Gateway readiness. This is current-installation repair, not support for an unpublished historical Windows source.
+
+#### Scenario: An interrupted installation cannot be safely matched
+
+- **WHEN** the candidate, current files, native registration or prepared journal cannot be verified for safe current-version repair
+- **THEN** recovery preserves both program versions, all data and journals, refuses automatic old-program launch and explains preservation, correction of stated prerequisites, exact-current-installer repair where admitted, and diagnostic/support guidance when repair remains unavailable. Installer exit alone does not establish restored service.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/132#issuecomment-6219734656
 

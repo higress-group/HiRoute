@@ -55,8 +55,6 @@ for line in sys.stdin:
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as i64;
-            request.deadline_unix_ms = now_ms as u64 + 5_000;
-            input.deadline = Instant::now() + Duration::from_secs(5);
             if continued {
                 input.session = AcpSessionStart::Load(AcpSessionBinding {
                     acp_session_id: "native-session".into(),
@@ -85,6 +83,14 @@ for line in sys.stdin:
                 ))),
             ));
             let private_root = request.profile.private_root.clone();
+            // The adapter owns this five-second budget; observation fixture
+            // initialization under a busy test host must not consume it.
+            request.deadline_unix_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64
+                + 5_000;
+            input.deadline = Instant::now() + Duration::from_secs(5);
             let result = execute(
                 &LocalWorkerPlatform::default(),
                 request,

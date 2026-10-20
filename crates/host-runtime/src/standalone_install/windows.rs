@@ -15,6 +15,9 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
+mod repair;
+mod space;
+pub use space::{ReplacementSpaceFailure, preflight_desktop_space};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -215,6 +218,9 @@ pub fn recover_pending() -> io::Result<()> {
 }
 fn cleanup_locked(layout: &StandaloneLayout) -> io::Result<PackageCleanup> {
     let mut retained = vec![];
+    if let Some(package) = crate::RetainedRecoveryPackage::read(&layout.storage_root())? {
+        retained.push(package.package_root);
+    }
     if let Some(marker) = read_json::<StandaloneInstallRecordV1>(&layout.marker_path, MAX_RECORD)? {
         marker.validate().map_err(|_| invalid())?;
         retained.push(marker.install_root);
@@ -308,6 +314,29 @@ fn entries(
     ));
     entries
 }
+/// The installed transaction owns the complete native file map. Snapshot callers
+/// may retain these admitted bytes, but cannot supply filesystem destinations.
+pub fn recovery_files() -> io::Result<Vec<(PathBuf, String, String)>> {
+    let layout = layout()?;
+    let (marker, _, package) = current(&layout)?.ok_or_else(invalid)?;
+    let mut output = vec![];
+    for (index, (destination, source, _, _)) in entries(&marker.install_root, &layout, &package)
+        .into_iter()
+        .enumerate()
+    {
+        let expected = digest(&source)?.ok_or_else(invalid)?;
+        if digest(&destination)?.as_deref() != Some(expected.as_str()) {
+            return Err(invalid());
+        }
+        output.push((
+            destination,
+            format!("installation/entry-{index}.bin"),
+            expected,
+        ));
+    }
+    Ok(output)
+}
+
 fn publish_package(source: &Path, root: &Path, package: &Package) -> io::Result<()> {
     if root.try_exists()? {
         return package.verify_directory(root);
@@ -328,6 +357,41 @@ fn publish_package(source: &Path, root: &Path, package: &Package) -> io::Result<
     package.verify_directory(&stage)?;
     hiroute_platform::durable::rename(&stage, root)
 }
+fn retained_source(
+    layout: &StandaloneLayout,
+    previous: &(StandaloneInstallRecordV1, Value, Package),
+    target: &std::path::Path,
+) -> io::Result<PathBuf> {
+    if let Some(retained) = crate::RetainedRecoveryPackage::read(&layout.storage_root())?
+        && digest(target)?.as_deref() == Some(retained.target_daemon_sha256.as_str())
+    {
+        retained.verify(target)?;
+        if retained.package_root == previous.0.install_root {
+            return Ok(retained.package_root);
+        }
+        // The NSIS owner retained both program namespaces. Bind its original
+        // standalone payload, marker and Task to this exact installation, rather
+        // than accepting any same-version directory from the handoff.
+        if Package::read(&retained.package_root.join("program"))?.canonical()?
+            != previous.2.canonical()?
+            || read_json::<Value>(
+                &retained.package_root.join("installation/standalone.json"),
+                MAX_RECORD,
+            )? != Some(serde_json::to_value(&previous.0).map_err(|_| invalid())?)
+            || read_json::<Value>(
+                &retained
+                    .package_root
+                    .join("installation/windows-background.json"),
+                MAX_RECORD,
+            )? != Some(previous.1.clone())
+        {
+            return Err(invalid());
+        }
+        return Ok(retained.package_root);
+    }
+    Ok(previous.0.install_root.clone())
+}
+
 pub fn install(request: InstallRequest) -> io::Result<Value> {
     if request.schema != "hiroute.windows-install-request/v1" {
         return Err(invalid());
@@ -346,14 +410,35 @@ pub fn install(request: InstallRequest) -> io::Result<Value> {
         allow_unavailable_stop: false,
     };
     if let Some(journal) = Journal::read(&layout)? {
+        if journal.operation == journal::Operation::Install
+            && journal.phase == journal::Phase::Prepared
+            && crate::storage_upgrade_started(&layout.storage_root())?
+        {
+            repair::resume(journal, &package, &layout, &mut host, request.autostart)?;
+            return repair::finish(&layout, &package, &request);
+        }
         journal.recover(&layout, &mut host)?;
     }
     let old = current(&layout)?;
+    if let Some(previous) = &old {
+        previous.2.verify_directory(&previous.0.install_root)?;
+    }
     let root = layout
         .home
         .join(".local/lib/hiroute")
         .join(package.directory_name());
     publish_package(&request.package_directory, &root, &package)?;
+    let recovery_root = if let Some(previous) = &old
+        && root != previous.0.install_root
+    {
+        let target = root.join("hirouted.exe");
+        let source = retained_source(&layout, previous, &target)?;
+        let report = crate::checked_upgrade_preflight(&target, &layout.storage_root(), &source)
+            .map_err(io::Error::other)?;
+        report.history_cutover_required.then_some(source)
+    } else {
+        None
+    };
     let native = Definition::new(Manager::Task, root.join("hirouted.exe"))?;
     let marker = StandaloneInstallRecordV1 {
         schema_version: crate::STANDALONE_INSTALL_SCHEMA_V1.into(),
@@ -418,6 +503,14 @@ pub fn install(request: InstallRequest) -> io::Result<Value> {
             &journal.new_definition,
         )?;
         task::set_autostart(&native, request.autostart)?;
+        if let Some(source) = &recovery_root {
+            crate::RetainedRecoveryPackage::capture(
+                &layout.storage_root(),
+                source,
+                &journal.new_marker.install_root.join("hirouted.exe"),
+            )?
+            .store()?;
+        }
         journal.commit(&layout)?;
         journal.finish(&layout)
     })();
@@ -430,19 +523,7 @@ pub fn install(request: InstallRequest) -> io::Result<Value> {
         }
         return Err(error);
     }
-    if request.console_loopback {
-        ConsoleListenerStore::new(layout.gateway_config_root())
-            .configure(ConsoleListenerDesiredV1::loopback())
-            .map_err(|_| invalid())?;
-    }
-    let cleanup = if request.defer_package_cleanup {
-        None
-    } else {
-        Some(PackageCleanup::best_effort(cleanup_locked(&layout)))
-    };
-    Ok(
-        json!({"schema":"hiroute.windows-install-result/v1","installed":true,"version":package.version,"manager":"task","cli":layout.home.join(".local/bin/hiroute.exe"),"started":false,"package_cleanup":cleanup}),
-    )
+    repair::finish(&layout, &package, &request)
 }
 pub fn uninstall(
     request: UninstallRequest,

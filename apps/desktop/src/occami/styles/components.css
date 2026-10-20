@@ -439,6 +439,9 @@
 .callout.warn .icon { color: var(--yellow); }
 .callout.bad { border-color: color-mix(in srgb, var(--red) 22%, transparent); background: var(--red-soft); }
 .callout.bad .icon { color: var(--red); }
+.main > div.startup-recovery:not([hidden]) { height: auto; min-height: auto; flex: 0 0 auto; }
+.startup-recovery .recovery-location { margin-block: 8px; }
+.startup-recovery .recovery-location code { white-space: normal; overflow-wrap: anywhere; user-select: text; }
 
 .toast-stack {
   position: fixed;

@@ -338,11 +338,20 @@ impl ProductionControlRuntime {
         recover: bool,
         overrides: RuntimeOpenOverrides,
     ) -> Result<Self, String> {
-        observation_key::validate_existing_authority(storage_root)?;
+        observation_key::validate_existing_authority(storage_root).map_err(|error| {
+            overrides.storage_startup.report_failure(error.recovery());
+            error.to_string()
+        })?;
         let mut startup = overrides.storage_startup.clone();
         startup.preserve_observation_source =
             LocalObservationStore::legacy_history_requires_seal(storage_root.join("observation"))
-                .map_err(|error| format!("{error}; preserve all storage generations and use the original whole-group recovery guide"))?
+                .map_err(|error| {
+                    startup.report_failure(hiroute_host_runtime::StorageRecovery::new(
+                        hiroute_host_runtime::StorageRecoveryCause::UnsupportedFormat,
+                        hiroute_host_runtime::StorageRecoveryAction::PreserveAndDiagnose,
+                    ));
+                    format!("{error}; preserve all storage generations and use the original whole-group recovery guide")
+                })?
                 || LocalStorageSet::observation_cutover_pending(storage_root);
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress
@@ -574,7 +583,13 @@ impl ProductionControlRuntime {
             } else {
                 LocalObservationStore::open(observation_root, digest_authority.clone())
             }
-            .map_err(|error| error.to_string())?,
+            .map_err(|error| {
+                startup.report_failure(stores.record_observation_startup_failure(
+                    storage_root,
+                    hiroute_host_runtime::StorageRecoveryCause::MigrationFailed,
+                ));
+                error.to_string()
+            })?,
         );
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress

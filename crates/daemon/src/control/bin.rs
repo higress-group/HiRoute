@@ -26,6 +26,8 @@ use zeroize::{Zeroize, Zeroizing};
 mod ready;
 #[cfg(any(unix, windows))]
 mod standalone;
+mod startup_recovery;
+mod upgrade_preflight;
 #[cfg(windows)]
 mod windows_task;
 use ready::{write_ready_frame, write_startup_failure_frame};
@@ -63,6 +65,9 @@ struct Arguments {
 }
 
 fn main() {
+    if let Some(code) = upgrade_preflight::run_if_requested() {
+        std::process::exit(code);
+    }
     #[cfg(windows)]
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("app-server"))
         && std::env::var_os("HIROUTE_NATIVE_LAUNCH_DESCRIPTOR").is_some()
@@ -208,6 +213,7 @@ fn run_daemon(
         level_override,
     }));
     hiroute_diagnostics::panic::install_panic_hook(diagnostics.handle().clone());
+    let recovery_root = arguments.storage_root.clone();
     let result = match arguments.role.as_deref() {
         Some("control") => run_control(arguments, &diagnostics),
         Some("all") => run_all(
@@ -226,6 +232,13 @@ fn run_daemon(
         if managed_role {
             let _ = write_startup_failure_frame(error.code);
         }
+        if let Some(recovery) = startup_recovery::failure_report(
+            error.code,
+            recovery_root.as_deref(),
+            error.recovery.as_deref(),
+        ) {
+            eprintln!("{}", recovery.operator_guidance());
+        }
         diagnostics.shutdown();
         return Err(error.message);
     }
@@ -238,6 +251,7 @@ fn run_daemon(
 struct StartupError {
     code: StartupFailureCode,
     message: String,
+    recovery: Option<Box<hiroute_host_runtime::StorageRecovery>>,
 }
 
 impl From<String> for StartupError {
@@ -257,6 +271,7 @@ impl StartupError {
         Self {
             code,
             message: message.into(),
+            recovery: None,
         }
     }
 }
@@ -278,6 +293,22 @@ fn diagnostics_elapsed_ms(diagnostics: &DiagnosticRuntime) -> u64 {
 
 fn classify_role_all_error(error: &RoleAllError) -> StartupFailureCode {
     match error {
+        RoleAllError::StorageRecovery(recovery) => match recovery.cause {
+            hiroute_host_runtime::StorageRecoveryCause::AccessDenied => {
+                StartupFailureCode::StorageAccessDenied
+            }
+            hiroute_host_runtime::StorageRecoveryCause::Locked => StartupFailureCode::StorageLocked,
+            hiroute_host_runtime::StorageRecoveryCause::MissingKey => {
+                StartupFailureCode::StorageKeyUnavailable
+            }
+            hiroute_host_runtime::StorageRecoveryCause::UnsupportedFormat => {
+                StartupFailureCode::UpgradeSourceUnsupported
+            }
+            hiroute_host_runtime::StorageRecoveryCause::UnknownState => {
+                StartupFailureCode::StorageUnavailable
+            }
+            _ => StartupFailureCode::UpgradeStorageFailed,
+        },
         RoleAllError::InvalidConfiguration => StartupFailureCode::InvalidConfiguration,
         RoleAllError::StandaloneProxyUnavailable => StartupFailureCode::DependencyUnavailable,
         RoleAllError::JoinTimeout(_) => StartupFailureCode::Internal,
@@ -429,8 +460,7 @@ fn run_all(
             )
         })?
         .map_err(|error| StartupError::new(StartupFailureCode::ReadyChannelFailed, error))?;
-    let mut role = result
-        .map_err(|error| StartupError::new(classify_role_all_error(&error), error.to_string()))?;
+    let mut role = result.map_err(startup_recovery::role_failure)?;
     #[cfg(unix)]
     let protected_inputs = match standalone::ProtectedInputServer::bind_path(protected_input_path) {
         Ok(server) => server,
