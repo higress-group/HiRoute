@@ -16,6 +16,8 @@ pub(super) fn confirm_root(
     let mut selected = None;
     for directory in std::env::split_paths(search_path) {
         if !directory.is_absolute() {
+            #[cfg(test)]
+            eprintln!("OpenCode Git boundary stage=search-path reason=relative-component");
             return Err(unavailable());
         }
         #[cfg(windows)]
@@ -38,7 +40,11 @@ pub(super) fn confirm_root(
             break;
         }
     }
-    let git = selected.ok_or_else(unavailable)?;
+    let git = selected.ok_or_else(|| {
+        #[cfg(test)]
+        eprintln!("OpenCode Git boundary stage=search-path reason=missing-executable");
+        unavailable()
+    })?;
     // Match Git.repo.discover at OpenCode 1.19.3. Any failure is a scoped
     // capability refusal; it never licenses stopping at an unverified .git.
     for option in ["--show-toplevel", "--git-dir", "--git-common-dir"] {
@@ -61,7 +67,11 @@ pub(super) fn confirm_root(
         }
         let output =
             super::native_probe_process::capture(command, false, Duration::from_secs(2), 16 * 1024)
-                .map_err(|_| unavailable())?;
+                .map_err(|_reason| {
+                    #[cfg(test)]
+                    eprintln!("OpenCode Git boundary stage={option} reason={_reason:?}");
+                    unavailable()
+                })?;
         let value = std::str::from_utf8(&output)
             .map_err(|_| unavailable())?
             .trim_end_matches(['\r', '\n']);
@@ -74,6 +84,8 @@ pub(super) fn confirm_root(
                 || std::fs::canonicalize(top).map_err(|_| unavailable())?
                     != std::fs::canonicalize(root).map_err(|_| unavailable())?
             {
+                #[cfg(test)]
+                eprintln!("OpenCode Git boundary stage=root reason=unconfirmed-root");
                 return Err(unavailable());
             }
         }

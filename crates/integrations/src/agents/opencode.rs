@@ -549,7 +549,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let base = root.path().canonicalize().unwrap();
         let native = OpenCodeNativeContext::from_lookup(&base, |_| None).unwrap();
-        let search_path = std::env::var("PATH").unwrap();
+        let search_path = super::super::native_ingress_probe::native_probe_path()
+            .into_string()
+            .unwrap();
         git(&native, &base, &["init", "-q"], &search_path);
         let at_limit = (0..63).fold(base.clone(), |path, _| path.join("d"));
         std::fs::create_dir_all(&at_limit).unwrap();
@@ -565,7 +567,11 @@ mod tests {
     }
 
     fn git(native: &OpenCodeNativeContext, cwd: &Path, args: &[&str], path: &str) {
-        let binary = super::super::executable::resolve(Path::new("git"))
+        let candidate = std::env::split_paths(std::ffi::OsStr::new(path))
+            .map(|dir| dir.join(if cfg!(windows) { "git.exe" } else { "git" }))
+            .find(|path| path.is_file())
+            .unwrap();
+        let binary = super::super::executable::resolve(&candidate)
             .unwrap()
             .unwrap();
         let mut command = std::process::Command::new(binary);
@@ -596,7 +602,9 @@ mod tests {
         std::fs::create_dir(&home).unwrap();
         std::fs::create_dir(&repository).unwrap();
         let native = OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
-        let search_path = std::env::var("PATH").unwrap();
+        let search_path = super::super::native_ingress_probe::native_probe_path()
+            .into_string()
+            .unwrap();
         git(&native, &repository, &["init", "-q"], &search_path);
         git(
             &native,
@@ -710,5 +718,33 @@ mod tests {
                 .contains(&home.join(".config/opencode/config.json"))
         );
         assert!(OpenCodeNativeContext::from_lookup(&home, |_| Some("relative".into())).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opencode_git_fixtures_filter_relative_host_paths_in_an_isolated_child() {
+        let inherited = std::env::var_os("PATH").unwrap();
+        let path = std::env::join_paths(
+            [PathBuf::from("."), PathBuf::from("relative/bin")]
+                .into_iter()
+                .chain(std::env::split_paths(&inherited)),
+        )
+        .unwrap();
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", "agents::opencode::tests::opencode_real_git_and_linked_worktree_stop_before_foreign_ancestor_config_and_tools"])
+            .env("PATH", path);
+        let output = super::super::native_probe_process::capture(
+            command,
+            true,
+            std::time::Duration::from_secs(15),
+            16 * 1024,
+        )
+        .unwrap();
+        assert!(
+            std::str::from_utf8(&output)
+                .unwrap()
+                .contains("1 passed; 0 failed")
+        );
     }
 }

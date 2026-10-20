@@ -107,13 +107,14 @@ fn opencode_discovers_the_official_home_entry_without_executing_or_replacing_a_s
 #[test]
 fn opencode_dynamic_configuration_keys_are_scoped_out_of_models_workers_and_import() {
     let root = tempfile::tempdir().unwrap();
+    let search_path = crate::agents::native_ingress_probe::native_probe_path();
     assert!(
         std::process::Command::new("git")
             .args(["init", "-q"])
             .arg(root.path())
             .env_clear()
             .env("HOME", root.path())
-            .env("PATH", std::env::var_os("PATH").unwrap())
+            .env("PATH", &search_path)
             .status()
             .unwrap()
             .success()
@@ -140,7 +141,7 @@ fn opencode_dynamic_configuration_keys_are_scoped_out_of_models_workers_and_impo
             native,
             &config,
             root.path(),
-            &std::env::var("PATH").unwrap(),
+            search_path.to_str().unwrap(),
         )
         .is_err();
         let sources = scanner.opencode_api_sources().unwrap();
