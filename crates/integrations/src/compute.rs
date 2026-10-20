@@ -27,6 +27,7 @@ pub struct TrustedReleaseCatalog {
     pub(crate) release_facts: hiroute_domain::ReleaseFactsManifestV2,
     pub(crate) current_release_model_data: hiroute_domain::ReleaseModelDataBundleV2,
     pub(crate) feed_facts: Option<Box<crate::model_feed::FeedCatalogFacts>>,
+    pub(crate) official_snapshot: Option<Box<hiroute_domain::OfficialModelSnapshotV1>>,
 }
 
 impl TrustedReleaseCatalog {
@@ -48,6 +49,9 @@ impl TrustedReleaseCatalog {
 
     /// Broad metadata is loaded from the one client-bundled Release Model Data catalog.
     pub fn model_metadata(&self) -> &hiroute_domain::ModelMetadataCatalogV1 {
+        if let Some(snapshot) = &self.official_snapshot {
+            return &snapshot.data.metadata_catalog;
+        }
         &self.current_release_model_data.metadata_catalog
     }
 
@@ -79,10 +83,16 @@ impl TrustedReleaseCatalog {
 
     /// Exact-native references from digest-validated, client-bound bytes.
     pub fn rating_snapshot(&self) -> &hiroute_domain::RatingSnapshotV2 {
+        if let Some(snapshot) = &self.official_snapshot {
+            return &snapshot.data.rating_snapshot;
+        }
         &self.current_release_model_data.rating_snapshot
     }
 
     pub fn native_reasoning(&self) -> &[hiroute_domain::ModelNativeReasoningV1] {
+        if let Some(snapshot) = &self.official_snapshot {
+            return &snapshot.data.rating_snapshot.models;
+        }
         if let Some(feed) = &self.feed_facts {
             return &feed.native_reasoning;
         }

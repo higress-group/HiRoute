@@ -2,14 +2,15 @@ use super::*;
 use hiroute_integrations::model_feed::{FeedPayload, MODEL_FEED_SCHEMA};
 
 fn payload(sequence: u64) -> Vec<u8> {
-    publication_bytes(&FeedPayload {
-        schema: MODEL_FEED_SCHEMA.into(),
+    let mut snapshot = crate::release_catalog::current_fixture_catalog().official_snapshot();
+    snapshot.data_revision = sequence.max(1);
+    publication_bytes(&FeedPayload::from_snapshot(
+        snapshot,
         sequence,
-        issued_at: "2026-10-18T00:00:00Z".into(),
-        source_revision: "0123456789abcdef0123456789abcdef01234567".into(),
-        records: vec![],
-        featured: vec![],
-    })
+        "2026-10-18T00:00:00Z".into(),
+        "0123456789abcdef0123456789abcdef01234567".into(),
+        vec![],
+    ))
 }
 fn publication_bytes(payload: &FeedPayload) -> Vec<u8> {
     serde_json::to_vec(payload).unwrap()

@@ -1,12 +1,7 @@
-use std::collections::BTreeSet;
-
-use hiroute_domain::{
-    MetadataCanonicalModelV1, ModelDefinitionV1, ModelEndpointCapabilityV1, ModelNativeReasoningV1,
-    OfferV1, PriceRateV1,
-};
-use serde::{Deserialize, Serialize};
-
 use super::{FeedError, MODEL_FEED_SCHEMA};
+use hiroute_domain::{CanonicalDigest, OfficialModelDataV1, OfficialModelSnapshotV1};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -15,42 +10,10 @@ pub struct FeedPayload {
     pub sequence: u64,
     pub issued_at: String,
     pub source_revision: String,
-    pub records: Vec<FeedRecord>,
+    pub data_revision: u64,
+    pub data_digest: CanonicalDigest,
+    pub data: OfficialModelDataV1,
     pub featured: Vec<FeaturedModel>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum FeedRecord {
-    Model {
-        min_client_version: String,
-        included_on: String,
-        record: Box<FeedModel>,
-    },
-    ModelEndpointCapability {
-        min_client_version: String,
-        included_on: String,
-        record: ModelEndpointCapabilityV1,
-    },
-    Offer {
-        min_client_version: String,
-        included_on: String,
-        record: OfferV1,
-    },
-    PriceRate {
-        min_client_version: String,
-        included_on: String,
-        record: PriceRateV1,
-    },
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct FeedModel {
-    pub definition: ModelDefinitionV1,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_reasoning: Option<ModelNativeReasoningV1>,
-    pub canonical: MetadataCanonicalModelV1,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -79,58 +42,32 @@ pub struct FeaturedModel {
     pub included_on: String,
 }
 
-impl FeedRecord {
-    pub fn minimum_client(&self) -> &str {
-        match self {
-            Self::Model {
-                min_client_version, ..
-            }
-            | Self::ModelEndpointCapability {
-                min_client_version, ..
-            }
-            | Self::Offer {
-                min_client_version, ..
-            }
-            | Self::PriceRate {
-                min_client_version, ..
-            } => min_client_version,
-        }
-    }
-    pub fn included_on(&self) -> &str {
-        match self {
-            Self::Model { included_on, .. }
-            | Self::ModelEndpointCapability { included_on, .. }
-            | Self::Offer { included_on, .. }
-            | Self::PriceRate { included_on, .. } => included_on,
-        }
-    }
-    pub fn id(&self) -> &str {
-        match self {
-            Self::Model { record, .. } => &record.definition.model_configuration_id,
-            Self::ModelEndpointCapability { record, .. } => &record.capability_id,
-            Self::Offer { record, .. } => &record.offer_id,
-            Self::PriceRate { record, .. } => &record.price_rate_id,
-        }
-    }
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Model { .. } => "model",
-            Self::ModelEndpointCapability { .. } => "model_endpoint_capability",
-            Self::Offer { .. } => "offer",
-            Self::PriceRate { .. } => "price_rate",
-        }
-    }
-    pub fn model_id(&self) -> Option<&str> {
-        match self {
-            Self::Model { record, .. } => Some(&record.definition.model_configuration_id),
-            Self::ModelEndpointCapability { record, .. } => Some(&record.model_configuration_id),
-            Self::PriceRate { record, .. } => Some(&record.model_configuration_id),
-            Self::Offer { .. } => None,
-        }
-    }
-}
-
 impl FeedPayload {
+    pub fn snapshot(&self) -> OfficialModelSnapshotV1 {
+        OfficialModelSnapshotV1 {
+            data_revision: self.data_revision,
+            data_digest: self.data_digest.clone(),
+            data: self.data.clone(),
+        }
+    }
+    pub fn from_snapshot(
+        snapshot: OfficialModelSnapshotV1,
+        sequence: u64,
+        issued_at: String,
+        source_revision: String,
+        featured: Vec<FeaturedModel>,
+    ) -> Self {
+        Self {
+            schema: MODEL_FEED_SCHEMA.into(),
+            sequence,
+            issued_at,
+            source_revision,
+            data_revision: snapshot.data_revision,
+            data_digest: snapshot.data_digest,
+            data: snapshot.data,
+            featured,
+        }
+    }
     pub fn validate(&self) -> Result<(), FeedError> {
         if self.schema != MODEL_FEED_SCHEMA {
             return Err(FeedError::new(
@@ -138,67 +75,52 @@ impl FeedPayload {
                 "unsupported payload schema",
             ));
         }
-        if self.sequence == 0
-            || !valid_utc_timestamp(&self.issued_at)
-            || self.source_revision.len() != 40
-            || !self.source_revision.bytes().all(|b| b.is_ascii_hexdigit())
-            || self.records.len() > 8192
-            || self.featured.len() > 128
-        {
-            return Err(FeedError::validation(
-                "invalid publication identity or bounds",
-            ));
-        }
-        let mut ids = BTreeSet::new();
-        for entry in &self.records {
-            if !ids.insert((entry.kind(), entry.id()))
-                || !valid_id(entry.id())
-                || semver::Version::parse(entry.minimum_client()).is_err()
-                || !valid_date(entry.included_on())
-            {
-                return Err(FeedError::validation(
-                    "invalid or duplicate record identity, version or date",
-                ));
-            }
-            if let FeedRecord::Model { record, .. } = entry {
-                if !matches!(
-                    record.canonical.identity_stability.as_str(),
-                    "immutable-or-provider-stable" | "rolling-alias" | "dynamic-route" | "unknown"
-                ) || record.canonical.model_key.is_empty()
-                    || record.canonical.upstream_ids.is_empty()
-                    || record.canonical.evidence_refs.is_empty()
-                {
-                    return Err(FeedError::validation(
-                        "model identity/evidence is not closed",
-                    ));
-                }
-                if let Some(reasoning) = &record.native_reasoning
-                    && (reasoning.model_configuration_id
-                        != record.definition.model_configuration_id
-                        || reasoning.validate().is_err())
-                {
-                    return Err(FeedError::validation("invalid native reasoning"));
-                }
-            }
-        }
-        ids.clear();
-        for item in &self.featured {
-            if !ids.insert(("featured", item.id.as_str()))
-                || !valid_id(&item.id)
-                || !valid_id(&item.model_configuration_id)
-                || !valid_date(&item.included_on)
-                || !valid_text(&item.headline.en, 160)
-                || !valid_text(&item.headline.zh, 160)
-                || !valid_text(&item.note.en, 1000)
-                || !valid_text(&item.note.zh, 1000)
-                || item.links.len() > 4
-                || item.links.iter().any(|url| !valid_featured_url(url))
-            {
-                return Err(FeedError::validation("invalid featured entry"));
-            }
-        }
+        validate_publication_fields(
+            self.sequence,
+            &self.issued_at,
+            &self.source_revision,
+            &self.featured,
+        )?;
+        self.snapshot()
+            .validate()
+            .map_err(|_| FeedError::validation("invalid complete model data"))?;
         Ok(())
     }
+}
+
+pub fn validate_publication_fields(
+    sequence: u64,
+    issued_at: &str,
+    source_revision: &str,
+    featured: &[FeaturedModel],
+) -> Result<(), FeedError> {
+    if sequence == 0
+        || !valid_utc_timestamp(&issued_at)
+        || source_revision.len() != 40
+        || !source_revision.bytes().all(|b| b.is_ascii_hexdigit())
+        || featured.len() > 128
+    {
+        return Err(FeedError::validation(
+            "invalid publication identity or bounds",
+        ));
+    }
+    let mut ids = BTreeSet::new();
+    for item in featured {
+        if !ids.insert(item.id.as_str())
+            || !valid_id(&item.id)
+            || !valid_id(&item.model_configuration_id)
+            || !valid_date(&item.included_on)
+            || !valid_text(&item.headline.en, 160)
+            || !valid_text(&item.headline.zh, 160)
+            || !valid_text(&item.note.en, 1000)
+            || !valid_text(&item.note.zh, 1000)
+            || item.links.len() > 4
+            || item.links.iter().any(|url| !valid_featured_url(url))
+        {
+            return Err(FeedError::validation("invalid featured entry"));
+        }
+    }
+    Ok(())
 }
 
 pub fn valid_featured_url(url: &str) -> bool {

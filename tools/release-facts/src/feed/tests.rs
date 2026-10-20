@@ -12,7 +12,7 @@ fn current() -> TrustedReleaseCatalog {
     .unwrap()
 }
 #[test]
-fn model_feed_projection_keeps_embedded_models_editorial_only() {
+fn model_feed_projection_includes_complete_existing_models() {
     let current = current();
     let clients = vec![SupportedFeedClient {
         version: "0.3.2".into(),
@@ -28,7 +28,9 @@ fn model_feed_projection_keeps_embedded_models_editorial_only() {
         None,
     )
     .unwrap();
-    assert!(payload.records.is_empty());
+    assert_eq!(payload.data.models, current.model_data().models);
+    assert_eq!(payload.data.metadata_catalog, *current.model_metadata());
+    assert!(!payload.data.pricing_facts.is_empty());
     assert_eq!(payload.sequence, 3);
     assert_eq!(
         project(
@@ -145,30 +147,23 @@ fn model_feed_projection_closes_a_real_model_graph_and_preserves_first_inclusion
     .unwrap();
     assert!(
         first
-            .records
+            .data
+            .models
             .iter()
-            .any(|r| r.kind() == "model" && r.id() == id)
+            .any(|m| m.model_configuration_id == id)
     );
-    assert!(
-        first
-            .records
-            .iter()
-            .any(|r| r.kind() == "model_endpoint_capability")
-    );
-    assert!(first.records.iter().any(|r| r.kind() == "offer"));
     let admission = admit(&clients[0].catalog, &first, "0.3.2").unwrap();
-    assert_eq!(admission.counts.unresolved, 0);
     let effective = clients[0].catalog.with_feed(&admission).unwrap();
     assert_eq!(
         effective.model_data().model(&id),
         current.model_data().model(&id)
     );
-    assert!(
+    assert_eq!(
         admit(&clients[1].catalog, &first, "0.3.3")
             .unwrap()
-            .records
-            .iter()
-            .all(|r| r.outcome == RecordAdmission::IgnoredEmbedded)
+            .counts
+            .ignored_embedded,
+        0
     );
     let second = project(
         &current,
@@ -180,22 +175,14 @@ fn model_feed_projection_closes_a_real_model_graph_and_preserves_first_inclusion
         Some(&first),
     )
     .unwrap();
-    assert!(
-        second
-            .records
-            .iter()
-            .all(|r| r.included_on() == "2026-10-18")
-    );
+    assert_eq!(first.data_digest, second.data_digest);
     validate_transition(&first, &second).unwrap();
     let mut changed = second.clone();
-    if let FeedRecord::Model { included_on, .. } = changed
-        .records
-        .iter_mut()
-        .find(|r| r.kind() == "model")
-        .unwrap()
-    {
-        *included_on = "2026-10-19".into();
-    }
+    changed.data.models[0].capabilities.context_tokens += 1;
+    changed.data.rating_snapshot.model_catalog_digest =
+        CanonicalDigest::of(&changed.data.models).unwrap();
+    changed.data.rating_snapshot.digest = changed.data.rating_snapshot.computed_digest().unwrap();
+    changed.data_digest = CanonicalDigest::of(&changed.data).unwrap();
     assert!(validate_transition(&first, &changed).is_err());
     changed = second;
     changed.sequence = first.sequence;
@@ -231,6 +218,8 @@ fn feed_payload_check_survives_a_bundle_changing_squash_merge() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     for relative in [
+        "assets/release-facts/current/bundle/official-model-data.json",
+        "crates/integrations/src/model_feed/mod.rs",
         "assets/release-facts/current/bundle/manifest.json",
         "assets/release-facts/current/bundle/connector-registry.json",
         "assets/release-facts/current/bundle/model-data.json",

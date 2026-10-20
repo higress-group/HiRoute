@@ -34,16 +34,7 @@ pub(crate) fn catalog(catalog: TrustedReleaseCatalog) -> Result<TrustedReleaseCa
         .rating_snapshot
         .computed_digest()
         .map_err(|e| e.to_string())?;
-    for record in &payload.records {
-        if let FeedRecord::Model { record, .. } = record {
-            data.metadata_catalog
-                .canonical_models
-                .push(record.canonical.clone());
-        }
-    }
-    data.metadata_catalog
-        .canonical_models
-        .sort_by(|a, b| a.model_key.cmp(&b.model_key));
+    data.metadata_catalog = payload.data.metadata_catalog.clone();
     let registry = serde_json::to_vec(catalog.registry()).map_err(|e| e.to_string())?;
     let model_data = serde_json::to_vec(&data).map_err(|e| e.to_string())?;
     let mut manifest = catalog.release_facts_manifest().clone();

@@ -365,6 +365,7 @@ def outputs():
         "cross_reference_digest": cross_reference_digest,
     }
     return {
+        BUNDLE / "official-model-data.json": compact(official_snapshot(value["model_data"])) + b"\n",
         HERE / "compiler-input.json": (
             json.dumps(value, ensure_ascii=False, indent=2) + "\n"
         ).encode(),
@@ -373,6 +374,27 @@ def outputs():
         BUNDLE / "model-data.json": model_data_bytes,
         BUNDLE / "manifest.json": compact(manifest, sort_keys=False) + b"\n",
     }
+
+
+def official_snapshot(model_data):
+    """One public body for the installed fallback and the fixed website endpoint."""
+    source = json.loads((ROOT / "assets/model-data/current/inputs/metadata-catalog.json").read_bytes())
+    revision = json.loads((ROOT / "assets/model-data/current/inputs/official-data-revision.json").read_bytes())
+    if revision["schema"] != "hiroute.official-model-data-revision/v1" or type(revision["data_revision"]) is not int or revision["data_revision"] <= 0:
+        raise ValueError("invalid official data revision")
+    runtime = model_data["data"]
+    data = {
+        "schema": "hiroute.official-model-data/v1",
+        **{key: runtime[key] for key in ("models", "model_endpoint_capabilities", "offers", "price_rates")},
+        "rating_snapshot": model_data["rating_snapshot"],
+        "metadata_catalog": model_data["metadata_catalog"],
+        "pricing_facts": sorted(source["pricing_facts"], key=lambda p: p["pricing_key"]),
+        "connection_hints": sorted([
+            {key: template[key] for key in ("connection_option_id", "provider_id", "name", "description", "documentation_url")}
+            for template in source["connection_templates"]
+        ], key=lambda hint: hint["connection_option_id"]),
+    }
+    return {"data_revision": revision["data_revision"], "data_digest": digest_value(data), "data": data}
 
 
 def main():
