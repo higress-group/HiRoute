@@ -48,7 +48,7 @@ impl Session {
         // second Preview here races ordinary control-head changes and can reject an otherwise
         // valid first save before Apply has a chance to perform its authoritative CAS.
         let change =
-            serde_json::from_value::<ComputeManagementChangeV2>(request.spec.desired_state.clone())
+            hiroute_application_api::saved_compute_change(request.spec.desired_state.clone())
                 .map_err(|_| "REQUEST_INVALID")?;
         change.validate_shape().map_err(|_| "REQUEST_INVALID")?;
         let input_candidates = change
@@ -329,3 +329,7 @@ fn operation_reference(operation: &ClientOperationViewV1) -> OperationReferenceV
         cancellable: operation.cancellable,
     }
 }
+
+#[cfg(test)]
+#[path = "model_save_tests.rs"]
+mod tests;

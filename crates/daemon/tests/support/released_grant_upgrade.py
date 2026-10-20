@@ -8,6 +8,10 @@ connection transactions, grant issuance, upgrade and requests use real binaries.
 import hashlib
 import http.client
 import json
+import signal
+import sqlite3
+import threading
+from types import SimpleNamespace
 from pathlib import Path
 import subprocess
 import sys
@@ -15,7 +19,8 @@ import tarfile
 import time
 
 from publication_product import Product, encoded
-from publication_process import bootstrap, configure_model_settings_v2
+from publication_process import (bootstrap, configure_model_settings_v2, prepare_discovered_source, save_compute_candidate)
+from model_connections_product import save_native_source
 from publication_requests import request
 
 RELEASE_REVISION = "13856abd873da5b4373d39322493b4cc105c4867"
@@ -53,6 +58,69 @@ def upstream_fixture(product, contents):
     ]
 
 
+def source_rows(product):
+    path = product.storage / 'live/control.db'
+    with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as connection:
+        return dict(connection.execute('SELECT source_id,source_json FROM compute_management_sources'))
+
+
+def park_released_source_edit(product, source_id):
+    """Stop the real released process only after observing its committed unfinished journal.
+
+    SQLite is read-only. No hook, current serializer or database repair creates old inputs.
+    A fast completed edit is retained and the next ordinary rename uses fresh revisions.
+    """
+    terminal = {'succeeded', 'failed', 'rolled_back', 'cancelled'}
+    for attempt in range(5):
+        snapshot = product.control('ListCompute', {})['data']
+        source = next(row for row in snapshot['sources'] if row['source_id'] == source_id)
+        change = {'schema':'hiroute.compute-management-change/v2',
+            'subject':{'kind':'saved_source','source_id':source_id},
+            'expected_revisions':snapshot['revisions'],'selected_model_refs':[],
+            'intent':'save_ready','key_edits':[],
+            'edit':{'action':'rename','display_name':'Released source recovery ' + str(attempt)}}
+        preview = product.control('PreviewComputeSave', {'change':change})['data']
+        key = 'released-source-interruption-' + str(attempt)
+        request = {'spec':preview['spec'],'accept_digest':preview['accept_digest'],
+            'expected_revisions':preview['expected_revisions'],'idempotency_key':key}
+        outcomes = []
+        def apply():
+            try:
+                outcomes.append(product.control('ApplyComputeSave', request))
+            except (OSError, ValueError, AssertionError) as error:
+                outcomes.append(type(error).__name__)
+        writer = threading.Thread(target=apply, daemon=True)
+        with sqlite3.connect((product.storage / 'live/control.db').as_uri() + '?mode=ro', uri=True, timeout=1) as connection:
+            writer.start()
+            deadline = time.monotonic() + 5
+            parked = None
+            while writer.is_alive() and time.monotonic() < deadline:
+                row = connection.execute('SELECT operation_id,state,operation_json FROM operations WHERE idempotency_key=?',(key,)).fetchone()
+                if row and row[1] not in terminal:
+                    product.process.send_signal(signal.SIGSTOP)
+                    row = connection.execute('SELECT operation_id,state,operation_json FROM operations WHERE idempotency_key=?',(key,)).fetchone()
+                    if row and row[1] not in terminal:
+                        parked = row
+                        break
+                    product.process.send_signal(signal.SIGCONT)
+                time.sleep(.0001)
+            if parked:
+                operation = json.loads(parked[2])
+                mutation = operation['plan']['control']['compute_management_mutation']
+                assert mutation['schema'] == 'hiroute.compute-management-mutation/v2', mutation['schema']
+                product.process.kill()
+                product.stop(diagnostic_failure=True)
+                writer.join(timeout=16)
+                assert not writer.is_alive(), 'old apply connection did not terminate'
+                return {'operation_id':parked[0],'observed_state':parked[1],
+                    'plan_digest':hashlib.sha256(encoded(operation['plan'])).hexdigest(),
+                    'source_id':source_id,'desired':mutation['desired']}
+        writer.join(timeout=16)
+        assert not writer.is_alive(), 'ordinary released edit did not finish'
+        assert outcomes and isinstance(outcomes[0],dict), outcomes
+    raise AssertionError('could not observe an unfinished released source edit; no upgrade claim')
+
+
 def run(repository, archive):
     archive = Path(archive).resolve()
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == PACKAGE_SHA256, "wrong released package"
@@ -78,6 +146,15 @@ def run(repository, archive):
             "git", "show", RELEASE_REVISION + ":crates/daemon/tests/support/cpa_upstream.py",
         ], cwd=repository))
         bootstrap(product)
+        # The released producer creates registered, manual and unknown-provenance source facts.
+        registered_candidate, validation = prepare_discovered_source(product)
+        registered = save_compute_candidate(product, registered_candidate, 'released-registered', validation)
+        manual = save_native_source(product, SimpleNamespace(base_url='https://gateway.invalid/v1'),
+            token='not-a-live-api-key', variant='released-manual', context_tokens=23456,
+            inventory_path=None, cli_input=True, source_display_name='Released manual source')
+        unknown = save_native_source(product, SimpleNamespace(base_url='https://gateway.invalid/v1'),
+            token='not-a-live-api-key', variant='released-unknown', unknown=True,
+            inventory_path=None, cli_input=True)
         connections = {"agent_codex_default": product.agent_connection}
         product.agent_context_id = None
         configure_model_settings_v2(
@@ -92,7 +169,10 @@ def run(repository, archive):
         assert len(sessions(product)) == 2, "released requests did not persist"
         native_before = {path: path.read_bytes() for path in
                          (product.settings, product.codex_settings)}
-        product.stop()
+        sources_before = source_rows(product)
+        pending = park_released_source_edit(product, manual['source_id'])
+        expected_sources = {source_id:json.loads(raw) for source_id,raw in sources_before.items()}
+        expected_sources[manual['source_id']] = pending['desired']
         product.bin = current_bin
         upstream_fixture(product, (
             Path(repository) / "crates/daemon/tests/support/cpa_upstream.py"
@@ -100,6 +180,15 @@ def run(repository, archive):
         product.env["HIROUTE_RECOVERY_PACKAGE"] = str(released)
         for restart in range(2):
             product.start()
+            actual_sources = {source_id:json.loads(raw) for source_id,raw in source_rows(product).items()}
+            assert actual_sources == expected_sources, 'upgrade changed source facts or replayed the old edit twice'
+            operation = product.control('GetOperation', {'operation_id':pending['operation_id']})['data']
+            assert operation['state'] == 'succeeded', operation
+            for saved in [manual, unknown]:
+                defaults = product.control('GetComputeDefaults', {'source_id':saved['source_id']})['data']
+                fields = next(model for model in defaults['models'] if model['binding_id'] == saved['binding_id'])['fields']
+                assert all(field['intent'] == 'preserve_saved' and field['effective_value'] == field['saved_value'] for field in fields.values()), fields
+            assert expected_sources[manual['source_id']]['models'][0]['capabilities']['context_tokens']['value'] == 23456
             for path, original in native_before.items():
                 assert path.read_bytes() == original, "startup rewrote native settings"
             for agent, old_token in tokens.items():
