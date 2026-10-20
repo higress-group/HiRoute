@@ -242,6 +242,45 @@ mod tests {
     use super::super::tests::{FakePlugin, enable, fixture};
     use super::*;
     #[test]
+    fn omarchy_concurrent_launch_failures_wait_for_notification_state_and_are_not_lost() {
+        let (_temp, context, assets) = fixture();
+        enable(&context, &assets, &FakePlugin::ready());
+        let held = files::lock(&context).unwrap();
+        let barrier = std::sync::Barrier::new(9);
+        std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..8)
+                .map(|_| {
+                    let barrier = &barrier;
+                    let context = &context;
+                    scope.spawn(move || {
+                        barrier.wait();
+                        context.queue_launch_failure("codex", "service_unavailable")
+                    })
+                })
+                .collect();
+            barrier.wait();
+            // Hold the real state lock across concurrent queue attempts, as a
+            // notify process does while committing its delivery decisions.
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            drop(held);
+            for worker in workers {
+                worker.join().unwrap().unwrap();
+            }
+        });
+        let due = context.take_notifications(false, &[]).unwrap();
+        assert_eq!(due.len(), 8);
+        let ids: BTreeSet<_> = due
+            .iter()
+            .map(|notice| match notice {
+                Notice::LaunchFailure { id, .. } => id,
+                _ => panic!("expected a queued launch failure"),
+            })
+            .collect();
+        assert_eq!(ids.len(), 8);
+        assert!(context.take_notifications(false, &[]).unwrap().is_empty());
+    }
+
+    #[test]
     fn omarchy_notifications_are_sent_once_across_reopen_and_state_transitions() {
         let (_temp, context, assets) = fixture();
         enable(&context, &assets, &FakePlugin::ready());
