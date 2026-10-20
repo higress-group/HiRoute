@@ -84,6 +84,11 @@ pub(super) fn facts(
         Some("deepseek_harness_session") => Some("dsh"),
         Some("opencode_session") => Some("opencode"),
         Some("hermes_session") if hermes => Some("hermes"),
+        _ if user_agent.starts_with("pi (") || user_agent.starts_with("pi/") => Some("pi"),
+        _ if user_agent.starts_with("deepseek-harness/") || user_agent.starts_with("dsh/") => {
+            Some("dsh")
+        }
+        _ if user_agent.starts_with("opencode/") => Some("opencode"),
         _ if user_agent.contains("qoder") => Some("qoder"),
         _ if headers.contains_key("x-codex-turn-metadata")
             || document

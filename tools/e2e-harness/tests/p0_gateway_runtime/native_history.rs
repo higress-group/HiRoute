@@ -475,3 +475,40 @@ fn real_listener_native_new_turn_does_not_reuse_a_decision_for_identical_content
         );
     }
 }
+
+#[test]
+fn real_listener_known_native_clients_without_loaded_adapters_cannot_infer_shared_history() {
+    for user_agent in [
+        "pi (linux; x64)",
+        "deepseek-harness/0.2.0-rc.2",
+        "opencode/1.19.3",
+        "codex_cli_rs/0.147.0",
+        "qodercli/1.1.72",
+    ] {
+        let simple = NativeProvider::start(vec![reply(RESPONSES_OK); 2]);
+        let complex = NativeProvider::start(vec![]);
+        let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
+        let fixture = native_fixture("unknown", &[&simple, &complex, &classifier]);
+        let unadapted = [
+            ("X-HiRoute-Token".into(), TOKEN.into()),
+            ("User-Agent".into(), user_agent.into()),
+        ];
+        for _ in 0..2 {
+            accepted(&send(
+                fixture.address,
+                &unadapted,
+                json!("identical native input"),
+            ));
+        }
+        for index in 0..2 {
+            let history = classifier_body(&classifier, index);
+            assert_eq!(
+                history["visible_conversation"],
+                json!([]),
+                "{user_agent}: {history}"
+            );
+            assert!(history["assessment_target"].is_null());
+        }
+        assert_eq!(classifier.calls(), 2, "{user_agent}");
+    }
+}
