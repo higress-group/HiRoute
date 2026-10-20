@@ -28,6 +28,10 @@ pub(super) fn documented_prices<'a>(
                 && cap.connector_revision == resolved.connector.revision
                 && cap.endpoint_profile_id == resolved.endpoint_profile.endpoint_profile_id
                 && cap.endpoint_profile_revision == resolved.endpoint_profile.revision
+                && binding
+                    .protocol_endpoint_id
+                    .as_ref()
+                    .is_none_or(|id| &cap.protocol_endpoint_id == id)
         });
     let scopes = capabilities
         .flat_map(|cap| hiroute_integrations::compute::matching_endpoint_metadata(catalog, cap))

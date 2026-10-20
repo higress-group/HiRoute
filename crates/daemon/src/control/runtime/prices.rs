@@ -210,6 +210,10 @@ impl LocalControlAdapter {
                     source_identity_digest: source.lineage_digest.clone(),
                     source_origin,
                     connection_option_id: connection_option_id.clone(),
+                    protocol_endpoint_id: super::model_connections::defaults::scoped_capability(
+                        catalog, source, model,
+                    )
+                    .map(|cap| cap.protocol_endpoint_id.clone()),
                     binding_id: model.binding_id.clone(),
                     binding_revision: model.revision,
                     model_configuration_id,
@@ -249,6 +253,7 @@ impl LocalControlAdapter {
                 source_identity_digest: source.identity_digest,
                 source_origin: source.origin,
                 connection_option_id: Some(source.connection_option_id),
+                protocol_endpoint_id: None,
                 binding_id: binding.binding_id,
                 binding_revision: binding.revision,
                 model_configuration_id: binding.model_configuration_id,

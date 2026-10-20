@@ -213,6 +213,101 @@ def preserve_failure_diagnostics(product, stage, upstream):
     print(json.dumps(report), flush=True)
 
 
+def effective_price(product, binding, kind='usage_estimate'):
+    result = product.cli('prices', 'effective', '--request-stdin', payload={'targets': [{
+        'query_id': 'price', 'target_locator': {'kind': 'binding', 'binding_id': binding},
+        'currency': 'USD', 'valuation_kind': kind}]})['data']
+    assert not result['pending_activation'], result
+    return result['items'][0]
+
+
+def preserve_vision(product, source, binding):
+    defaults = product.cli('compute', 'defaults', 'get', '--request-stdin',
+        payload={'source_id': source['source_id']})['data']
+    preview = product.cli('compute', 'defaults', 'preview', '--request-stdin', payload={'change': {
+        'schema': 'hiroute.compute-management-change/v3',
+        'change': {'schema': 'hiroute.compute-management-change/v2',
+            'subject': {'kind': 'saved_source', 'source_id': source['source_id']},
+            'expected_revisions': defaults['revisions'], 'selected_model_refs': [],
+            'intent': 'save_ready', 'key_edits': [],
+            'edit': {'action': 'rename', 'display_name': source['display_name']}},
+        'default_preferences': {binding: {'vision': {'intent': 'preserve_saved'}}}}})['data']
+    applied = product.cli('compute', 'connection', 'apply', '--request-stdin', payload={
+        'spec': preview['spec'], 'accept_digest': preview['accept_digest'],
+        'expected_revisions': preview['expected_revisions'], 'idempotency_key': 'feed-preserve-vision'})
+    assert applied['operation']['state'] == 'succeeded', applied
+    return next(m for m in defaults['models'] if m['binding_id'] == binding)['fields']
+
+
+def complete_metadata_pages(product):
+    cursor, count, seen = None, 0, set()
+    while True:
+        page = product.cli('models', 'metadata', 'list', '--request-stdin',
+            payload={'page_size': 100, 'cursor': cursor})['data']
+        count += len(page['records'])
+        for row in page['records']:
+            assert (row['kind'], row['key']) not in seen, row
+            seen.add((row['kind'], row['key']))
+        if page['complete']:
+            assert count == page['total'] and page['next_cursor'] is None, page
+            return count
+        assert page['next_cursor'], page
+        cursor = page['next_cursor']
+
+
+def correct_saved_model(product, fixture, source, binding, included):
+    before = preserve_vision(product, source, binding)
+    corrected = copy.deepcopy(included)
+    corrected.update(sequence=18, data_revision=18)
+    data = corrected['data']
+    model = next(m for m in data['models'] if m['model_configuration_id'] == MODEL)
+    model['capabilities']['context_tokens'] += 4096
+    model['capabilities']['vision'] = not before['vision']['saved_value']
+    context = model['capabilities']['context_tokens']
+    for endpoint in data['metadata_catalog']['endpoint_bindings']:
+        if endpoint['upstream_model_id'] == UPSTREAM:
+            endpoint['capability_overrides'].update(context_tokens=context, vision=model['capabilities']['vision'])
+    next(p for p in data['price_rates'] if p['model_configuration_id'] == MODEL)['input_micros_per_million'] = 2345678
+    next(p for p in data['pricing_facts'] if p['upstream_model_id'] == UPSTREAM)['schedules'][0]['rates']['input'] = '2.345678'
+    rating = data['rating_snapshot']
+    rating['model_catalog_digest'] = digest(data['models'])
+    rating['digest'] = digest([rating[key] for key in ['schema', 'version', 'scale_version', 'model_catalog_digest', 'models', 'records']])
+    corrected['data_digest'] = digest(data)
+    (fixture / 'publication.json').write_bytes(wire(corrected))
+    status = product.cli('models', 'feed', 'refresh')['data']
+    assert status['selected']['data_revision'] == 18, status
+    defaults = product.cli('compute', 'defaults', 'get', '--request-stdin', payload={'source_id': source['source_id']})['data']
+    fields = next(m for m in defaults['models'] if m['binding_id'] == binding)['fields']
+    assert fields['context_tokens']['effective_value'] == context, fields
+    assert fields['vision']['effective_value'] == before['vision']['saved_value'] and fields['vision']['intent'] == 'preserve_saved', fields
+    assert effective_price(product, binding)['quote']['rates']['input_uncached'] == {'state': 'known', 'micros_per_million_tokens': 2345678}
+    # Removal includes changes to default values, even when no model disappears from the source.
+    cursor, impact, removal = None, [], None
+    while True:
+        removal = product.cli('models', 'feed', 'remove', 'preview', '--request-stdin',
+            payload={'page_size': 1, 'cursor': cursor})['data']
+        assert len(wire(removal)) <= 1024 * 1024
+        impact.extend(removal['impact'])
+        if removal['complete']:
+            assert len(impact) == removal['total']
+            break
+        cursor = removal['next_cursor']
+    assert any('context_tokens' in row['changes'] for row in impact), impact
+    assert not any('vision' in row['changes'] for row in impact if row['binding_id'] == binding), impact
+    announcement = copy.deepcopy(corrected)
+    announcement['sequence'] = 19
+    announcement['featured'] = [{'id':'fixture-update','kind':'model_update','model_configuration_id':MODEL,
+        'headline':{'en':'Model update','zh':'模型更新'},'note':{'en':'Official information','zh':'官方资料'},
+        'links':['https://hiroute.ai/en/docs/'],'included_on':'2026-10-18'}]
+    (fixture / 'publication.json').write_bytes(wire(announcement))
+    after = product.cli('models', 'feed', 'refresh')['data']
+    assert after['selected'] == status['selected'] and after['held']['sequence'] == 19, after
+    count = complete_metadata_pages(product)
+    print(json.dumps({'scenario':'installed-complete-metadata-defaults-prices','state':'green',
+        'metadata_records':count,'removal_rows':len(impact),'preserved_vision':True,'announcement_generation_unchanged':True}),flush=True)
+    return removal['digest']
+
+
 def run(repository):
     product = InstalledProduct(repository)
     fixture = product.root / 'feed-fixture'
@@ -302,18 +397,33 @@ def run(repository):
         main_session(product)
         prior = worker(product, plan, 'feed-before')
         prior = worker(product, plan, 'feed-before-continue', prior)
+        reviewed_removal = correct_saved_model(product, fixture, source, binding, included)
+        # A manual four-component price remains addressable after whole-body withdrawal.
+        item = effective_price(product, binding)
+        manual_rates = {key: {'state':'known','micros_per_million_tokens':7654321}
+                        for key in ['input_uncached','output','cache_read','cache_write']}
+        price_preview = product.cli('prices','override','preview','--request-stdin',payload={
+            **item['edit_context'],'currency':'USD','valuation_kind':'usage_estimate',
+            'action':{'kind':'set','rates':manual_rates}})['data']
+        product.cli('prices','override','apply','--request-stdin',payload={
+            'spec':price_preview['spec'],'accept_digest':price_preview['change_digest'],
+            'expected_revisions':price_preview['expected_revisions'],'idempotency_key':'feed-manual-usage'})
         new_draft = {'change': plan_change('update', editor, plan, frozen['head']['head_revision'])}
         assert product.cli('routing', 'preview', '--request-stdin', payload=new_draft)['status'] == 'succeeded'
         stage = 'withdraw-remove-restart'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
-        withdrawn = publication(product, 18, False)
+        withdrawn = publication(product, 20, False)
         (fixture / 'publication.json').write_bytes(wire(withdrawn))
-        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 18
+        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 20
+        stale = raw(product, 'models', 'feed', 'remove', 'apply', payload={
+            'accepted_digest': reviewed_removal, 'also_disable_retrieval': False})
+        assert stale['status'] != 'succeeded', stale
+        assert effective_price(product, binding)['quote']['rates'] == manual_rates
         removal = product.cli('models', 'feed', 'remove', 'preview')['data']
         product.cli('models', 'feed', 'remove', 'apply', '--request-stdin', payload={
             'accepted_digest': removal['digest'], 'also_disable_retrieval': True})
         restart(product)
-        assert product.cli('models', 'feed', 'status')['data']['highest_accepted_sequence'] == 18
+        assert product.cli('models', 'feed', 'status')['data']['highest_accepted_sequence'] == 20
         stage = 'frozen-execution-after-withdrawal'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
         main_session(product)
@@ -349,15 +459,15 @@ def run(repository):
         status = product.cli('models', 'feed', 'refresh')['data']
         assert status['last_attempt']['reason'] == 'older_sequence' and status['held'] is None, status
         (fixture / 'publication.json').write_bytes(wire(withdrawn))
-        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 18
-        conflicting = publication(product, 18)
+        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 20
+        conflicting = publication(product, 20)
         (fixture / 'publication.json').write_bytes(wire(conflicting))
         assert product.cli('models', 'feed', 'refresh')['data']['last_attempt']['reason'] == 'same_sequence_conflicting_digest'
         stage = 'embedded-absorption'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
-        restored = publication(product, 19)
+        restored = publication(product, 21)
         (fixture / 'publication.json').write_bytes(wire(restored))
-        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 19
+        assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 21
         (fixture / 'absorbed.json').write_bytes(wire(restored))
         restart(product)
         absorbed = product.cli('models', 'feed', 'status')['data']

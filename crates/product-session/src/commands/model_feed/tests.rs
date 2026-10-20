@@ -129,7 +129,9 @@ async fn refresh_with_concurrent_reads(replace_session: bool) {
         };
         let outcome = tokio::time::timeout(std::time::Duration::from_secs(1), reads).await;
         if replace_session {
-            sessions.lock().await.as_mut().unwrap().authority = Arc::new(Authority);
+            let mut guard = sessions.lock().await;
+            let client = guard.as_ref().unwrap().client.clone();
+            *guard = Some(Session::new(client, Arc::new(Authority)));
         }
         release.notify_one();
         assert!(
