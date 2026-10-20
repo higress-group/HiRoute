@@ -557,20 +557,25 @@ impl ProductionGatewayRuntime {
                 return write_typed_error_phase(session, status, code, "canonical_request").await;
             }
             let parse_started = Instant::now();
-            let mut canonical_request =
-                match adapters::decode_ingress_request(protocol, &document).map(Box::new) {
-                    Ok(request) => request,
-                    Err(error) => {
-                        let error = adapters::ProtocolAdapterError::from(error);
-                        return write_typed_error_phase(
-                            session,
-                            StatusCode::BAD_REQUEST,
-                            error.code(),
-                            "canonical_request",
-                        )
-                        .await;
-                    }
-                };
+            let mut canonical_request = match adapters::decode_ingress_request_with_replay(
+                protocol,
+                &document,
+                Some(&replay),
+            )
+            .map(Box::new)
+            {
+                Ok(request) => request,
+                Err(error) => {
+                    let error = adapters::ProtocolAdapterError::from(error);
+                    return write_typed_error_phase(
+                        session,
+                        StatusCode::BAD_REQUEST,
+                        error.code(),
+                        "canonical_request",
+                    )
+                    .await;
+                }
+            };
             let parse_elapsed = parse_started.elapsed();
             let (identity, mut prepared_hold) = prepare_context(
                 &self.context_holds,

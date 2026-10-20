@@ -15,6 +15,7 @@ pub(crate) use continuation::{
     with_active_response_delivery,
 };
 pub use ingress::decode_ingress_request;
+pub(crate) use ingress::decode_ingress_request_with_replay;
 pub use request::{
     PreparedNativeRequest, PreparedNativeTemplate, project_candidate_request,
     project_candidate_request_template, sequential_attempt_body,

@@ -102,7 +102,12 @@ remains a separate boundary; this fallback does not prove subdialog isolation. M
 separate from system-instruction validity: [history entry](../../crates/gateway/src/context_hold/store.rs)
 distinguishes continuing, shortened, otherwise rewritten and unavailable checkpoints. [Turn history](../../crates/gateway/src/agent_turn_history/store.rs)
 records the opening cause on completion; [timeline projection](../../crates/observation/src/query_v2/routing_timeline/projection.rs)
-prefers it over legacy ledger inference.
+prefers it over legacy ledger inference. [Boundary regressions](../../crates/observation/src/store/tests/plan_quality/timeline_boundaries.rs)
+cover persistence, unknown evidence and old canonical bytes.
+The [ingress adapters](../../crates/gateway/src/adapters/ingress.rs) normalize
+supported protocol history into the same representation before prefix checks;
+Chat reasoning aliases share one state while their native fields remain intact.
+
 
 The planner always prefers a valid held candidate within the newly selected group,
 including an in-group backup; retired follow-up fields survive only at serialized

@@ -2,6 +2,9 @@ use super::*;
 use hiroute_gateway::server::publication::ModelRouteV2;
 use serde_json::{Value, json};
 
+#[path = "decision_branches/chat_history.rs"]
+mod chat_history;
+
 fn reply(body: &'static [u8]) -> ProviderReply {
     ProviderReply::Complete {
         status: 200,

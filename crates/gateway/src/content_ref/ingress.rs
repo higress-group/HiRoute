@@ -910,6 +910,10 @@ fn whole_json_field(protocol: IngressProtocol, field: &str, depth: usize, value:
         // validate and retain summary before the sealed Plan replaces effort.
         // Other protocols still use backing for their native reasoning shapes.
         || (depth == 1 && field == "reasoning" && protocol != IngressProtocol::Responses)
+        || (protocol == IngressProtocol::ChatCompletions
+            && depth > 1
+            && field == "reasoning"
+            && value.is_string())
         || (field == "reasoning_content" && !value.is_null())
 }
 
