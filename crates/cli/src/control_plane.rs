@@ -85,6 +85,14 @@ pub(crate) fn command_payload(
         "agents.previous-routing.preview" => Some(request::<
             hiroute_application_api::AgentPreviousRoutingQueryV1,
         >(options)),
+        "models.metadata.list" => Some(if options.is_empty() {
+            empty::<hiroute_application_api::ListModelMetadataV1>(options)
+        } else {
+            request::<hiroute_application_api::ListModelMetadataV1>(options)
+        }),
+        "models.metadata.get" => Some(request::<hiroute_application_api::GetModelMetadataV1>(
+            options,
+        )),
         "models.show" => Some(request::<hiroute_application_api::ModelCatalogQueryV1>(
             options,
         )),

@@ -861,5 +861,27 @@
     "args": [],
     "result": "Result<(), DesktopFailure>",
     "host_only": true
+  },
+  {
+    "name": "list_model_metadata",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::ListModelMetadataV1"
+      }
+    ],
+    "result": "Result<hiroute_application_api::ModelMetadataPageV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "get_model_metadata",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::GetModelMetadataV1"
+      }
+    ],
+    "result": "Result<hiroute_application_api::ModelMetadataDetailV1, DesktopFailure>",
+    "host_only": false
   }
 ]

@@ -1,3 +1,4 @@
+import { readCurrentCatalog } from '../model-feed/catalog-read';
 import { randomId } from '../../random-id.ts';
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
@@ -58,12 +59,12 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     if (inFlight.current) return;
     inFlight.current = true; setLoading(true); setError('');
     try {
-      const [availability, options, management, agents, decisions] = await Promise.all([
+      const [availability, options, management, agents, decisions] = await readCurrentCatalog(() => Promise.all([
         invoke<ModelAvailabilityResult>('model_availability'),
         invoke<Options>('plan_editor_options', { input: { authoring: {}, requirements: {}, native_selections: {}, suggest_free: false } }),
         invoke<ManagementSnapshot>('compute_management_snapshot'), invoke<AgentSnapshot>('agent_snapshot'),
         invoke<{ services: DecisionService[] }>('decision_services'),
-      ]);
+      ]));
       setData({ availability, options, management, agents }); setServices(decisions.services);
       if (!initialized.current) {
         initialized.current = true;

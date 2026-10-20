@@ -99,3 +99,21 @@ pub async fn preview_agent_previous_routing(
 ) -> Result<AgentPreviousRoutingPreviewV1, DesktopFailure> {
     query(window, state, "PreviewAgentPreviousRouting", &input).await
 }
+
+pub async fn list_model_metadata(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: ListModelMetadataV1,
+) -> Result<ModelMetadataPageV1, DesktopFailure> {
+    query(window, state, "ListModelMetadata", &input).await
+}
+pub async fn get_model_metadata(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: GetModelMetadataV1,
+) -> Result<ModelMetadataDetailV1, DesktopFailure> {
+    query(window, state, "GetModelMetadata", &input).await
+}
+
+#[cfg(all(test, unix))]
+mod tests;

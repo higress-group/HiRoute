@@ -359,7 +359,7 @@ impl LocalControlAdapter {
             || {
                 let catalog = self
                     .current_catalog()
-                    .ok_or(ControlReadError::Unavailable)?;
+                    .ok_or(ControlReadError::SnapshotChanged)?;
                 let provenance = catalog
                     .compute_catalog_provenance()
                     .map_err(|_| ControlReadError::Corrupt)?;

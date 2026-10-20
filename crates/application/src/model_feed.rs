@@ -4,6 +4,18 @@ use hiroute_application_api::*;
 use serde_json::Value;
 
 pub trait ModelFeedPort: Send + Sync {
+    fn list_model_metadata(
+        &self,
+        _request: ListModelMetadataV1,
+    ) -> Result<ModelMetadataPageV1, ErrorCode> {
+        Err(ErrorCode::DaemonUnavailable)
+    }
+    fn get_model_metadata(
+        &self,
+        _request: GetModelMetadataV1,
+    ) -> Result<ModelMetadataDetailV1, ErrorCode> {
+        Err(ErrorCode::DaemonUnavailable)
+    }
     fn feed_status(&self) -> Result<ModelFeedStatusV1, ErrorCode>;
     fn feed_refresh(&self) -> Result<ModelFeedStatusV1, ErrorCode>;
     fn feed_settings(
@@ -33,6 +45,14 @@ pub(crate) fn dispatch(
         return failed(ErrorCode::DaemonUnavailable, request.request_id);
     };
     let result = match request.operation_id.as_str() {
+        "ListModelMetadata" => serde_json::from_value(request.payload)
+            .map_err(|_| ErrorCode::InvalidArguments)
+            .and_then(|payload| port.list_model_metadata(payload))
+            .and_then(value),
+        "GetModelMetadata" => serde_json::from_value(request.payload)
+            .map_err(|_| ErrorCode::InvalidArguments)
+            .and_then(|payload| port.get_model_metadata(payload))
+            .and_then(value),
         "ApplyModelFeedSettings" => serde_json::from_value(request.payload)
             .map_err(|_| ErrorCode::InvalidArguments)
             .and_then(|payload| port.feed_settings(payload))

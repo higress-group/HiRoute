@@ -41,10 +41,11 @@ pub(crate) fn publication(sequence: u64) -> FeedPayload {
     data.models
         .sort_by(|a, b| a.model_configuration_id.cmp(&b.model_configuration_id));
     data.model_endpoint_capabilities.push(capability);
+    let offer_id = offer.offer_id.clone();
     *data
         .offers
         .iter_mut()
-        .find(|o| o.offer_id == offer.offer_id)
+        .find(|o| o.offer_id == offer_id)
         .unwrap() = offer;
     data.rating_snapshot.models.push(reasoning);
     data.rating_snapshot

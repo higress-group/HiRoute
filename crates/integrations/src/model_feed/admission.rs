@@ -166,6 +166,9 @@ pub fn admit(
 }
 
 impl TrustedReleaseCatalog {
+    pub fn official_data_from_feed(&self) -> bool {
+        self.feed_facts.is_some()
+    }
     pub fn official_snapshot(&self) -> hiroute_domain::OfficialModelSnapshotV1 {
         self.official_snapshot
             .as_deref()

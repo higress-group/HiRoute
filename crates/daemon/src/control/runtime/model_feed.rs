@@ -35,11 +35,14 @@ impl LocalControlAdapter {
 
     fn refresh_model_feed(&self) -> Result<(), String> {
         let feed = self.model_feed.as_ref().ok_or("feed_unavailable")?;
+        let before = feed.current().generation;
         let result = feed
             .refresh(|generation, sequence| self.activate_feed_generation(generation, sequence));
         // Catalog activation and default price projection use the same captured generation.
         // A failed projection does not authorize a stale price override or change frozen ledgers.
-        let _ = self.rebuild_price_snapshot();
+        if feed.current().generation != before {
+            let _ = self.rebuild_price_snapshot();
+        }
         result
     }
 }
@@ -76,7 +79,21 @@ fn feed_error(reason: String) -> ErrorCode {
     }
 }
 
+mod metadata;
 impl ModelFeedPort for LocalControlAdapter {
+    fn list_model_metadata(
+        &self,
+        request: ListModelMetadataV1,
+    ) -> Result<ModelMetadataPageV1, ErrorCode> {
+        metadata::list(self, request)
+    }
+    fn get_model_metadata(
+        &self,
+        request: GetModelMetadataV1,
+    ) -> Result<ModelMetadataDetailV1, ErrorCode> {
+        metadata::get(self, request)
+    }
+
     fn feed_status(&self) -> Result<ModelFeedStatusV1, ErrorCode> {
         let status = self
             .model_feed
@@ -299,7 +316,7 @@ fn availability(adapter: &LocalControlAdapter) -> Result<ModelAvailabilityResult
     use hiroute_integrations::model_feed::ModelFactOrigin;
     let catalog = adapter
         .current_catalog()
-        .ok_or(ErrorCode::DaemonUnavailable)?;
+        .ok_or(ErrorCode::ChangePreviewStale)?;
     let stores = adapter
         .stores_lock()
         .map_err(|_| ErrorCode::DaemonUnavailable)?;

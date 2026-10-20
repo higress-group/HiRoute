@@ -1,3 +1,4 @@
+import { readCurrentCatalog } from '../model-feed/catalog-read';
 import { useEffect, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import type { Plan } from '../../plan-editor';
@@ -18,7 +19,7 @@ export function NewModels({ language, active, plans, refreshVersion, onTry, onOp
   useEffect(() => {
     if (!active) return;
     let current = true;
-    void invoke<ModelAvailabilityResult>('model_availability').then(result => { if (current) { setData(result); setError(false); } }).catch(() => { if (current) setError(true); });
+    void readCurrentCatalog(() => invoke<ModelAvailabilityResult>('model_availability')).then(result => { if (current) { setData(result); setError(false); } }).catch(() => { if (current) setError(true); });
     return () => { current = false; };
   }, [active, refreshVersion, retry]);
   const users = new Map<string, Plan[]>();

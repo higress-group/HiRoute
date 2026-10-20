@@ -40,6 +40,8 @@ fn main() {
             "model_feed_remove_preview",
             "model_feed_remove_apply",
             "model_availability",
+            "list_model_metadata",
+            "get_model_metadata",
             "effective_price_query",
             "compute_management_snapshot",
             "compute_key_masks",

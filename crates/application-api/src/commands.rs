@@ -958,6 +958,24 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Show model origins, announcements and current local availability."
     ),
     command!(
+        "models.metadata.list",
+        ["models", "metadata", "list"],
+        "ListModelMetadata",
+        ["CLI-070", "APP-070"],
+        Released,
+        Query,
+        "Read a bounded page of complete official model metadata, including descriptive-only records."
+    ),
+    command!(
+        "models.metadata.get",
+        ["models", "metadata", "get"],
+        "GetModelMetadata",
+        ["CLI-071", "APP-071"],
+        Released,
+        Query,
+        "Read an exact scoped metadata record from the selected snapshot."
+    ),
+    command!(
         "models.show",
         ["models", "show"],
         "ShowModel",

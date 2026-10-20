@@ -3,8 +3,8 @@ import { appendFile, lstat, mkdir, open, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const FEED_URL = 'https://hiroute.ai/model-feed/v1.json';
-export const MAX_FEED_BYTES = 2 * 1024 * 1024;
+export const FEED_URL = 'https://hiroute.ai/model-feed/v2.json';
+export const MAX_FEED_BYTES = 16 * 1024 * 1024;
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const U64_MAX = (1n << 64n) - 1n;
 const recordIdFields = {
@@ -55,19 +55,23 @@ function rejectDuplicateKeys(source) {
 }
 
 function parseJson(bytes, label) {
-  requireThat(bytes.length <= MAX_FEED_BYTES, `${label}: exceeds 2 MiB`);
+  requireThat(bytes.length <= MAX_FEED_BYTES, `${label}: exceeds 16 MiB`);
   let source;
   try { source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { throw new Error(`${label}: invalid UTF-8`); }
   try {
     const parsed = JSON.parse(source, (key, value, context) => {
       // Preserve the entire u64 range, including sequences beyond JS safe integers.
-      if (key === 'sequence') {
+      if (key === 'sequence' || key === 'data_revision') {
         requireThat(typeof value === 'number' && context?.source?.length <= 20
           && /^[1-9]\d*$/.test(context.source), 'invalid sequence');
         const sequence = BigInt(context.source);
         requireThat(sequence <= U64_MAX, 'invalid sequence');
         return sequence;
+      }
+      if (typeof value === 'number' && Number.isInteger(value) && !Number.isSafeInteger(value)) {
+        requireThat(/^-?\d+$/.test(context.source), 'unsafe numeric literal');
+        return BigInt(context.source);
       }
       return value;
     });
@@ -124,33 +128,83 @@ function featuredEntries(entries) {
 
 // These checks complement the Rust producer's shared admission validation. Nested
 // model facts and release compatibility remain owned by that production validator.
+export function canonicalData(value) {
+  if (value === null || typeof value !== 'object') return typeof value === 'bigint' ? value.toString() : JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalData).join(',')}]`;
+  const keys = Object.keys(value).sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+  return `{${keys.map(k => `${JSON.stringify(k)}:${canonicalData(value[k])}`).join(',')}}`;
+}
+
+function structural(value, depth = 0) {
+  requireThat(depth <= 64, 'JSON exceeds depth bound');
+  if (typeof value === 'string') requireThat(Buffer.byteLength(value) <= 16 * 1024, 'string exceeds bound');
+  else if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (entry && typeof entry === 'object' && !Array.isArray(entry)) requireThat(Buffer.byteLength(canonicalData(entry)) <= 256 * 1024, 'record exceeds bound');
+      structural(entry, depth + 1);
+    }
+  } else if (value && typeof value === 'object') {
+    for (const [key, entry] of Object.entries(value)) {
+      requireThat(Buffer.byteLength(key) <= 256, 'field key exceeds bound');
+      structural(entry, depth + 1);
+    }
+  }
+}
+
+function identities(values, key, maximum) {
+  requireThat(Array.isArray(values) && values.length <= maximum, `${key}: collection exceeds bound`);
+  const ids = new Set();
+  for (const entry of values) {
+    object(entry, key);
+    text(entry[key], key, 256);
+    requireThat(!ids.has(entry[key]), `${key}: duplicate identity`);
+    ids.add(entry[key]);
+  }
+  return ids;
+}
+
 export function checkPayload(bytes) {
   const payload = parseJson(bytes, 'payload');
   if (payload === null) return null;
-  fields(payload, ['schema', 'sequence', 'issued_at', 'source_revision', 'records', 'featured'], [], 'payload');
-  requireThat(payload.schema === 'hiroute.model-feed/v1', 'payload: unsupported schema');
+  fields(payload, ['schema', 'sequence', 'issued_at', 'source_revision', 'data_revision', 'data_digest', 'data', 'featured'], [], 'payload');
+  requireThat(payload.schema === 'hiroute.model-feed/v2', 'payload: unsupported schema');
   publication(payload);
   requireThat(typeof payload.source_revision === 'string' && /^[0-9a-f]{40}$/.test(payload.source_revision), 'payload: invalid source_revision');
-  requireThat(Array.isArray(payload.records), 'records: expected an array');
-  const ids = new Set();
-  for (const entry of payload.records) {
-    fields(entry, ['kind', 'min_client_version', 'included_on', 'record'], [], 'record');
-    requireThat(Object.hasOwn(recordIdFields, entry.kind), 'record: forbidden or unknown kind');
-    version(entry.min_client_version, 'record min_client_version');
-    date(entry.included_on, 'record included_on');
-    object(entry.record, 'record facts');
-    if (entry.kind === 'model') {
-      fields(entry.record, ['definition', 'canonical'], ['native_reasoning'], 'model facts');
-      object(entry.record.definition, 'model definition');
-      object(entry.record.canonical, 'model canonical metadata');
+  requireThat(typeof payload.data_revision === 'bigint' && payload.data_revision > 0n && payload.data_revision <= U64_MAX, 'invalid data revision');
+  const data = payload.data;
+  fields(data, ['schema','models','model_endpoint_capabilities','offers','price_rates','rating_snapshot','metadata_catalog','pricing_facts','connection_hints'], [], 'complete data');
+  requireThat(data.schema === 'hiroute.official-model-data/v1', 'unsupported data schema');
+  const models = identities(data.models, 'model_configuration_id', 16384);
+  identities(data.model_endpoint_capabilities, 'capability_id', 16384);
+  const offers = identities(data.offers, 'offer_id', 16384);
+  identities(data.price_rates, 'price_rate_id', 50000);
+  for (const c of data.model_endpoint_capabilities) requireThat(models.has(c.model_configuration_id), 'missing capability model');
+  for (const o of data.offers) requireThat(Array.isArray(o.model_configuration_ids) && o.model_configuration_ids.length && o.model_configuration_ids.every(id => models.has(id)), 'invalid offer membership');
+  for (const p of data.price_rates) requireThat(models.has(p.model_configuration_id) && offers.has(p.offer_ref), 'invalid price references');
+  const metadata = data.metadata_catalog;
+  requireThat(metadata.schema === 'hiroute.model-metadata-catalog/v1', 'unsupported metadata schema');
+  const collections = [
+    ['evidence_sources','source_key',1000], ['client_runs','source_key',64], ['access_products','product_key',1000],
+    ['canonical_models','model_key',10000], ['endpoint_bindings','binding_key',50000], ['dynamic_routes','route_key',1000],
+    ['inference_rules','rule_key',10000], ['provider_records','provider_record_key',10000], ['model_records','model_record_key',100000],
+  ];
+  const sets = new Map(collections.map(([name,key,max]) => [name, identities(metadata[name], key, max)]));
+  identities(data.pricing_facts, 'pricing_key', 50000);
+  identities(data.connection_hints, 'connection_option_id', 1000);
+  for (const price of data.pricing_facts) {
+    requireThat(sets.get('access_products').has(price.product_key) && sets.get('canonical_models').has(price.model_key)
+      && price.evidence_refs.every(ref => sets.get('evidence_sources').has(ref)), 'invalid documented price scope/evidence');
+    identities(price.schedules, 'schedule_key', 64);
+    for (const schedule of price.schedules) {
+      object(schedule.condition, 'price condition'); text(schedule.condition.kind, 'price condition kind');
+      object(schedule.rates, 'price rates');
+      requireThat(Object.values(schedule.rates).every(rate => typeof rate === 'string' && /^\d+(?:\.\d+)?$/.test(rate) && rate.length <= 64), 'invalid decimal price');
     }
-    const id = (entry.kind === 'model' ? entry.record.definition : entry.record)[recordIdFields[entry.kind]];
-    text(id, 'record id');
-    const identity = `${entry.kind}:${id}`;
-    requireThat(!ids.has(identity), 'records: duplicate id');
-    ids.add(identity);
   }
+  requireThat(typeof payload.data_digest === 'string' && payload.data_digest === `sha256:${createHash('sha256').update(canonicalData(data)).digest('hex')}`, 'semantic data digest mismatch');
+  structural(payload);
   featuredEntries(payload.featured);
+  requireThat(payload.featured.length <= 128, 'featured exceeds bound');
   return payload;
 }
 
@@ -168,7 +222,7 @@ async function readBounded(filename) {
       if (bytesRead === 0) break;
       total += bytesRead;
     }
-    requireThat(total <= MAX_FEED_BYTES, 'feed input: exceeds 2 MiB');
+    requireThat(total <= MAX_FEED_BYTES, 'feed input: exceeds 16 MiB');
     return bytes.subarray(0, total);
   } finally { await file.close(); }
 }
@@ -202,7 +256,7 @@ async function servedFeed(fetchImpl) {
   }
   requireThat(response.status === 200 && !response.redirected, `served feed: unexpected HTTP status ${response.status}`);
   const length = response.headers.get('content-length');
-  requireThat(length === null || (/^\d+$/.test(length) && BigInt(length) <= BigInt(MAX_FEED_BYTES)), 'served feed: exceeds 2 MiB or invalid content length');
+  requireThat(length === null || (/^\d+$/.test(length) && BigInt(length) <= BigInt(MAX_FEED_BYTES)), 'served feed: exceeds 16 MiB or invalid content length');
   requireThat(response.body, 'served feed: missing body');
   const reader = response.body.getReader();
   const chunks = [];
@@ -212,7 +266,7 @@ async function servedFeed(fetchImpl) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.length;
-      requireThat(total <= MAX_FEED_BYTES, 'served feed: exceeds 2 MiB');
+      requireThat(total <= MAX_FEED_BYTES, 'served feed: exceeds 16 MiB');
       chunks.push(value);
     }
   } finally { await reader.cancel(); }
@@ -230,6 +284,7 @@ async function assertMissing(filename) {
 
 function resultFor(status, checked) {
   return { status, sequence: checked.payload?.sequence.toString() ?? null,
+    data_revision: checked.payload?.data_revision.toString() ?? null, data_digest: checked.payload?.data_digest ?? null,
     payload_digest: checked.payload ? checked.digest : null, source_revision: checked.payload?.source_revision ?? null };
 }
 
@@ -237,7 +292,7 @@ export async function publishFeed({ sourceDirectory, payloadPath, distDirectory 
   env = process.env, fetchImpl = fetch } = {}) {
   requireThat(env.GITHUB_EVENT_NAME === 'push' || env.GITHUB_EVENT_NAME === 'workflow_dispatch', 'publication: only a production push or dispatch may publish');
   requireThat(env.GITHUB_REF === 'refs/heads/main', 'publication: only main may publish');
-  const destination = path.join(distDirectory, 'model-feed/v1.json');
+  const destination = path.join(distDirectory, 'model-feed/v2.json');
   await assertMissing(destination);
   const checked = await checkFeed({ sourceDirectory, payloadPath });
   let result;
@@ -249,6 +304,9 @@ export async function publishFeed({ sourceDirectory, payloadPath, distDirectory 
     else {
       requireThat(!served || checked.payload.sequence > served.payload.sequence,
         'publication: proposed sequence must exceed the served sequence when payload content differs');
+      requireThat(!served || checked.payload.data_revision > served.payload.data_revision
+        || (checked.payload.data_revision === served.payload.data_revision && checked.payload.data_digest === served.payload.data_digest),
+        'publication: semantic data revision cannot roll back or change content at the same revision');
       outputBytes = checked.payloadBytes;
       result = resultFor(served ? 'published' : 'first_publication', checked);
     }
