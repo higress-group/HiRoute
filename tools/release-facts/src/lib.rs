@@ -9,8 +9,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use hiroute_domain::{
-    CanonicalDigest, ComputeContractError, ConnectorRegistryBundleV1, RELEASE_FACTS_SCHEMA_V2,
-    RELEASE_FACTS_TOOL_VERSION_V2, ReleaseFactsManifestV2, ReleaseModelDataBundleV2,
+    CanonicalDigest, ComputeContractError, ConnectorRegistryBundleV1, DocumentedModelPriceV1,
+    OfficialConnectionHintV1, OfficialModelDataV1, OfficialModelSnapshotV1,
+    RELEASE_FACTS_SCHEMA_V2, RELEASE_FACTS_TOOL_VERSION_V2, ReleaseFactsManifestV2,
+    ReleaseModelDataBundleV2,
 };
 use hiroute_integrations::builtin_agent_profiles_artifact;
 use serde::{Deserialize, Serialize};
@@ -21,6 +23,7 @@ pub const CONNECTOR_REGISTRY_FILE: &str = "connector-registry.json";
 pub const MODEL_DATA_FILE: &str = "model-data.json";
 pub const RELEASE_FACTS_MANIFEST_FILE: &str = "manifest.json";
 pub const AGENT_PROFILES_FILE: &str = "agent-profiles.json";
+pub const OFFICIAL_MODEL_DATA_FILE: &str = "official-model-data.json";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -32,6 +35,40 @@ pub struct ReleaseFactsCompilerInputV2 {
     pub sequence: u64,
     pub connector_registry: ConnectorRegistryBundleV1,
     pub model_data: ReleaseModelDataBundleV2,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub official_model_data: Option<CompleteModelDataInputV1>,
+}
+
+/// Extra maintained facts; shared model/rating metadata comes from `model_data` exactly once.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompleteModelDataInputV1 {
+    pub data_revision: u64,
+    pub pricing_facts: Vec<DocumentedModelPriceV1>,
+    pub connection_hints: Vec<OfficialConnectionHintV1>,
+}
+
+impl CompleteModelDataInputV1 {
+    fn snapshot(
+        &self,
+        shared: &ReleaseModelDataBundleV2,
+    ) -> Result<OfficialModelSnapshotV1, ReleaseFactsCompilerError> {
+        let mut data = OfficialModelDataV1::from_release(shared);
+        data.pricing_facts = self.pricing_facts.clone();
+        data.connection_hints = self.connection_hints.clone();
+        data.pricing_facts
+            .sort_by(|a, b| a.pricing_key.cmp(&b.pricing_key));
+        data.connection_hints
+            .sort_by(|a, b| a.connection_option_id.cmp(&b.connection_option_id));
+        let snapshot = OfficialModelSnapshotV1 {
+            data_revision: self.data_revision,
+            data_digest: CanonicalDigest::of(&data)
+                .map_err(|_| ReleaseFactsCompilerError::InvalidInput)?,
+            data,
+        };
+        snapshot.validate()?;
+        Ok(snapshot)
+    }
 }
 
 impl ReleaseFactsCompilerInputV2 {
@@ -48,6 +85,9 @@ impl ReleaseFactsCompilerInputV2 {
         }
         self.model_data
             .cross_reference_digest(&self.connector_registry)?;
+        if let Some(complete) = &self.official_model_data {
+            complete.snapshot(&self.model_data)?;
+        }
         Ok(())
     }
 }
@@ -79,7 +119,7 @@ pub fn compile_release_facts(
     let cross_reference_digest = normalized
         .model_data
         .cross_reference_digest(&normalized.connector_registry)?;
-    compile_normalized_release_facts(
+    let mut compiled = compile_normalized_release_facts(
         normalized.product_release,
         normalized.sequence,
         normalized.catalog_id,
@@ -87,7 +127,14 @@ pub fn compile_release_facts(
         model_data_bytes,
         cross_reference_digest,
         MODEL_DATA_FILE,
-    )
+    )?;
+    if let Some(snapshot) = normalized.official_model_data {
+        compiled.files.insert(
+            OFFICIAL_MODEL_DATA_FILE.to_owned(),
+            canonical_sorted_json_line(&snapshot.snapshot(&normalized.model_data)?)?,
+        );
+    }
+    Ok(compiled)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -375,9 +422,26 @@ mod tests {
         let first = compile_release_facts(&input).unwrap();
         let second = compile_release_facts(&input).unwrap();
         assert_eq!(first, second);
-        assert_eq!(first.files.len(), 4);
+        assert_eq!(first.files.len(), 5);
         assert!(first.files[CONNECTOR_REGISTRY_FILE].ends_with(b"\n"));
         assert!(first.files[MODEL_DATA_FILE].ends_with(b"\n"));
+        assert!(first.files[OFFICIAL_MODEL_DATA_FILE].ends_with(b"\n"));
+    }
+
+    #[test]
+    fn retained_compiler_input_without_complete_snapshot_keeps_legacy_outputs() {
+        let mut input = read_compiler_input(&current_input_path()).unwrap();
+        input.official_model_data = None;
+        let compiled = compile_release_facts(&input).unwrap();
+        assert_eq!(compiled.files.len(), 4);
+        assert!(!compiled.files.contains_key(OFFICIAL_MODEL_DATA_FILE));
+    }
+
+    #[test]
+    fn complete_snapshot_rejects_invalid_semantic_revision() {
+        let mut input = read_compiler_input(&current_input_path()).unwrap();
+        input.official_model_data.as_mut().unwrap().data_revision = 0;
+        assert!(compile_release_facts(&input).is_err());
     }
 
     #[test]

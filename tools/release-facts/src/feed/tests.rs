@@ -98,6 +98,8 @@ fn without_model(id: &str) -> TrustedReleaseCatalog {
     let mut input =
         crate::read_compiler_input(&root.join("assets/release-facts/current/compiler-input.json"))
             .unwrap();
+    // This fixture models a released client that predates the complete snapshot.
+    input.official_model_data = None;
     let data = &mut input.model_data.data;
     data.models.retain(|m| m.model_configuration_id != id);
     data.model_endpoint_capabilities

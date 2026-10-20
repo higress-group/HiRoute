@@ -336,6 +336,7 @@ def compiler_input():
         "sequence": SEQUENCE,
         "connector_registry": registry,
         "model_data": model_data,
+        "official_model_data": complete_model_data_input(),
     }
 
 
@@ -365,7 +366,7 @@ def outputs():
         "cross_reference_digest": cross_reference_digest,
     }
     return {
-        BUNDLE / "official-model-data.json": compact(official_snapshot(value["model_data"])) + b"\n",
+        BUNDLE / "official-model-data.json": compact(official_snapshot(value["model_data"], value["official_model_data"])) + b"\n",
         HERE / "compiler-input.json": (
             json.dumps(value, ensure_ascii=False, indent=2) + "\n"
         ).encode(),
@@ -376,25 +377,34 @@ def outputs():
     }
 
 
-def official_snapshot(model_data):
-    """One public body for the installed fallback and the fixed website endpoint."""
+def complete_model_data_input():
+    """Only additional maintained facts; shared release facts are not duplicated."""
     source = json.loads((ROOT / "assets/model-data/current/inputs/metadata-catalog.json").read_bytes())
     revision = json.loads((ROOT / "assets/model-data/current/inputs/official-data-revision.json").read_bytes())
     if revision["schema"] != "hiroute.official-model-data-revision/v1" or type(revision["data_revision"]) is not int or revision["data_revision"] <= 0:
         raise ValueError("invalid official data revision")
-    runtime = model_data["data"]
-    data = {
-        "schema": "hiroute.official-model-data/v1",
-        **{key: runtime[key] for key in ("models", "model_endpoint_capabilities", "offers", "price_rates")},
-        "rating_snapshot": model_data["rating_snapshot"],
-        "metadata_catalog": model_data["metadata_catalog"],
+    return {
+        "data_revision": revision["data_revision"],
         "pricing_facts": sorted(source["pricing_facts"], key=lambda p: p["pricing_key"]),
         "connection_hints": sorted([
             {key: template[key] for key in ("connection_option_id", "provider_id", "name", "description", "documentation_url")}
             for template in source["connection_templates"]
         ], key=lambda hint: hint["connection_option_id"]),
     }
-    return {"data_revision": revision["data_revision"], "data_digest": digest_value(data), "data": data}
+
+
+def official_snapshot(model_data, complete):
+    """One public body for the installed fallback and the fixed website endpoint."""
+    runtime = model_data["data"]
+    data = {
+        "schema": "hiroute.official-model-data/v1",
+        **{key: runtime[key] for key in ("models", "model_endpoint_capabilities", "offers", "price_rates")},
+        "rating_snapshot": model_data["rating_snapshot"],
+        "metadata_catalog": model_data["metadata_catalog"],
+        "pricing_facts": complete["pricing_facts"],
+        "connection_hints": complete["connection_hints"],
+    }
+    return {"data_revision": complete["data_revision"], "data_digest": digest_value(data), "data": data}
 
 
 def main():

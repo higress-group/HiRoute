@@ -227,10 +227,16 @@ pub(super) fn get(
     adapter: &LocalControlAdapter,
     request: GetModelMetadataV1,
 ) -> Result<ModelMetadataDetailV1, ErrorCode> {
-    if request.kind.len() > 64 || request.key.len() > 256 {
+    detail(capture(adapter)?, request)
+}
+fn detail(
+    catalog: Arc<ReleaseCatalogSnapshot>,
+    request: GetModelMetadataV1,
+) -> Result<ModelMetadataDetailV1, ErrorCode> {
+    // Rating identities include a bounded model ID and the native-configuration digest.
+    if request.kind.len() > 64 || request.key.len() > 512 {
         return Err(ErrorCode::InvalidArguments);
     }
-    let catalog = capture(adapter)?;
     let snapshot = identity(&catalog);
     if request
         .snapshot
@@ -358,5 +364,98 @@ mod tests {
         .unwrap();
         assert!(second.complete);
         assert_eq!(first.records.len() + second.records.len(), first.total);
+    }
+    #[test]
+    fn model_metadata_detail_accepts_full_compound_rating_identities() {
+        let base = crate::release_catalog::current_fixture_catalog();
+        let mut snapshot = base.official_snapshot();
+        let old = snapshot.data.rating_snapshot.records[0]
+            .model_configuration_id
+            .clone();
+        let long = format!("model.{}", "x".repeat(245));
+        for model in &mut snapshot.data.models {
+            if model.model_configuration_id == old {
+                model.model_configuration_id = long.clone();
+            }
+        }
+        snapshot
+            .data
+            .models
+            .sort_by(|a, b| a.model_configuration_id.cmp(&b.model_configuration_id));
+        for cap in &mut snapshot.data.model_endpoint_capabilities {
+            if cap.model_configuration_id == old {
+                cap.model_configuration_id = long.clone();
+            }
+        }
+        for price in &mut snapshot.data.price_rates {
+            if price.model_configuration_id == old {
+                price.model_configuration_id = long.clone();
+            }
+        }
+        for offer in &mut snapshot.data.offers {
+            for id in &mut offer.model_configuration_ids {
+                if id == &old {
+                    *id = long.clone();
+                }
+            }
+            offer.model_configuration_ids.sort();
+        }
+        for native in &mut snapshot.data.rating_snapshot.models {
+            if native.model_configuration_id == old {
+                native.model_configuration_id = long.clone();
+            }
+        }
+        for rating in &mut snapshot.data.rating_snapshot.records {
+            if rating.model_configuration_id == old {
+                rating.model_configuration_id = long.clone();
+            }
+        }
+        snapshot
+            .data
+            .rating_snapshot
+            .models
+            .sort_by(|a, b| a.model_configuration_id.cmp(&b.model_configuration_id));
+        snapshot
+            .data
+            .rating_snapshot
+            .records
+            .sort_by(|a, b| a.model_configuration_id.cmp(&b.model_configuration_id));
+        snapshot.data.rating_snapshot.model_catalog_digest =
+            CanonicalDigest::of(&snapshot.data.models).unwrap();
+        snapshot.data.rating_snapshot.digest =
+            snapshot.data.rating_snapshot.computed_digest().unwrap();
+        snapshot.data_revision += 1;
+        snapshot.data_digest = CanonicalDigest::of(&snapshot.data).unwrap();
+        let payload = hiroute_integrations::model_feed::FeedPayload::from_snapshot(
+            snapshot,
+            2,
+            "2026-10-21T00:00:00Z".into(),
+            "1".repeat(40),
+            vec![],
+        );
+        let admitted =
+            hiroute_integrations::model_feed::admit(&base, &payload, env!("CARGO_PKG_VERSION"))
+                .unwrap();
+        let catalog = Arc::new(ReleaseCatalogSnapshot {
+            catalog: base.with_feed(&admitted).unwrap(),
+            generation: 2,
+            accepted_sequence: 2,
+        });
+        let row = records(&catalog)
+            .unwrap()
+            .into_iter()
+            .find(|r| r.kind == "rating" && r.key.starts_with(&long))
+            .unwrap();
+        assert!(row.key.len() > 256);
+        let response = detail(
+            catalog.clone(),
+            GetModelMetadataV1 {
+                kind: row.kind.clone(),
+                key: row.key.clone(),
+                snapshot: Some(identity(&catalog)),
+            },
+        )
+        .unwrap();
+        assert_eq!(response.record, row);
     }
 }
