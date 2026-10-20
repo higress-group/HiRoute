@@ -727,3 +727,61 @@ fn deleting_saved_connection_keeps_managed_login_and_does_not_restart_provider()
         assert_eq!(fixture.spawns(), spawns);
     }
 }
+
+#[test]
+fn current_default_save_keeps_subscription_handoff_and_retained_presentation() {
+    if isolated("current_default_save_keeps_subscription_handoff_and_retained_presentation") {
+        return;
+    }
+    let fixture = Fixture::new();
+    let session = fixture.authorize(SubscriptionLoginProviderV1::Codex);
+    let checked = fixture.check(&session);
+    let old_request = fixture.candidate_request(&checked, "current-save-template");
+    let change =
+        hiroute_application_api::saved_compute_change(old_request.spec.desired_state).unwrap();
+    let preview = fixture
+        .adapter()
+        .preview_compute_save_v3(hiroute_application_api::ComputeManagementChangeV3 {
+            schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+            change,
+            default_preferences: Default::default(),
+        })
+        .unwrap();
+    fixture.save(ComputeConnectionApplyRequestV1 {
+        spec: preview.spec,
+        accept_digest: preview.accept_digest,
+        expected_revisions: preview.expected_revisions,
+        idempotency_key: "current-default-save".into(),
+    });
+    let source = fixture.snapshot().sources.remove(0);
+    let record = fixture
+        .adapter()
+        .stores_lock()
+        .unwrap()
+        .control()
+        .compute_subscription_validation(
+            &hiroute_domain::OperationId::parse(
+                &checked
+                    .validation
+                    .as_ref()
+                    .unwrap()
+                    .approval_operation
+                    .operation_id,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        record.state,
+        hiroute_local_storage::ComputeSubscriptionValidationStateV1::Retained
+    );
+    assert!(
+        fixture
+            .adapter()
+            .retained_subscription_candidate_for_source(&source)
+            .unwrap()
+            .is_some()
+    );
+    assert!(fixture.credential_path(&session.login_ref).exists());
+}
