@@ -2,10 +2,9 @@
 //! join used to install managed native model settings, before traffic is admitted.
 use super::LocalControlAdapter;
 use hiroute_domain::{
-    AgentAccessGrantMutationKindV1, AgentAccessGrantRefV1, AgentOperationRead,
-    CanonicalDigest, ControlRepositoryPort, GatewayPublicationV1, OperationStepKind,
-    OwnedEffectV1, PortError, PortErrorCode, PortResult, WorkspaceId,
-    is_agent_access_grant_effect,
+    AgentAccessGrantMutationKindV1, AgentAccessGrantRefV1, AgentOperationRead, CanonicalDigest,
+    ControlRepositoryPort, GatewayPublicationV1, OperationStepKind, OwnedEffectV1, PortError,
+    PortErrorCode, PortResult, WorkspaceId, is_agent_access_grant_effect,
 };
 use std::collections::BTreeSet;
 
