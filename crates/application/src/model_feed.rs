@@ -22,7 +22,10 @@ pub trait ModelFeedPort: Send + Sync {
         &self,
         request: ModelFeedSettingsRequestV1,
     ) -> Result<ModelFeedStatusV2, ErrorCode>;
-    fn feed_remove_preview(&self) -> Result<ModelFeedRemovalPreviewV2, ErrorCode>;
+    fn feed_remove_preview(
+        &self,
+        query: ModelFeedRemovalQueryV2,
+    ) -> Result<ModelFeedRemovalPreviewV2, ErrorCode>;
     fn feed_remove(
         &self,
         request: ModelFeedRemoveRequestV1,
@@ -49,6 +52,10 @@ pub(crate) fn dispatch(
             .map_err(|_| ErrorCode::InvalidArguments)
             .and_then(|payload| port.list_model_metadata(payload))
             .and_then(value),
+        "PreviewModelFeedRemoval" => serde_json::from_value(request.payload)
+            .map_err(|_| ErrorCode::InvalidArguments)
+            .and_then(|payload| port.feed_remove_preview(payload))
+            .and_then(value),
         "GetModelMetadata" => serde_json::from_value(request.payload)
             .map_err(|_| ErrorCode::InvalidArguments)
             .and_then(|payload| port.get_model_metadata(payload))
@@ -68,7 +75,6 @@ pub(crate) fn dispatch(
             match operation {
                 "GetModelFeedStatus" => port.feed_status().and_then(value),
                 "RefreshModelFeed" => port.feed_refresh().and_then(value),
-                "PreviewModelFeedRemoval" => port.feed_remove_preview().and_then(value),
                 "GetModelAvailability" => port.model_availability().and_then(value),
                 _ => Err(ErrorCode::UnknownCommand),
             }

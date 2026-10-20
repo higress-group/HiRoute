@@ -191,7 +191,12 @@
   },
   {
     "name": "model_feed_remove_preview",
-    "args": [],
+    "args": [
+      {
+        "name": "input",
+        "type": "Option<hiroute_application_api::ModelFeedRemovalQueryV2>"
+      }
+    ],
     "result": "Result<ModelFeedRemovalPreviewV1, DesktopFailure>",
     "host_only": false
   },

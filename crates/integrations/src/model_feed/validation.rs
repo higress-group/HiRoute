@@ -74,10 +74,10 @@ impl<'de> serde::Deserialize<'de> for StrictValue {
             fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
                 Ok(StrictValue(v.into()))
             }
-            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Self::Value, E> {
-                serde_json::Number::from_f64(v)
-                    .map(|n| StrictValue(n.into()))
-                    .ok_or_else(|| E::custom("invalid number"))
+            fn visit_f64<E: serde::de::Error>(self, _v: f64) -> Result<Self::Value, E> {
+                Err(E::custom(
+                    "numbers must be signed/unsigned 64-bit integer literals; decimal rates are strings",
+                ))
             }
             fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
                 Ok(StrictValue(serde_json::Value::Null))
@@ -116,4 +116,29 @@ fn bounded(value: &serde_json::Value, depth: usize) -> Result<(), FeedError> {
         _ => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod canonical_tests {
+    use super::*;
+    #[test]
+    fn model_feed_cross_language_canonical_goldens() {
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/model-feed/canonical-data.v1.json"
+        ))
+        .unwrap();
+        for case in fixtures["valid"].as_array().unwrap() {
+            let value: StrictValue = serde_json::from_str(case["wire"].as_str().unwrap()).unwrap();
+            assert_eq!(
+                CanonicalDigest::of(&value.0).unwrap().as_str(),
+                case["digest"].as_str().unwrap()
+            );
+        }
+        for wire in fixtures["invalid"].as_array().unwrap() {
+            assert!(
+                serde_json::from_str::<StrictValue>(wire.as_str().unwrap()).is_err(),
+                "{wire}"
+            );
+        }
+    }
 }

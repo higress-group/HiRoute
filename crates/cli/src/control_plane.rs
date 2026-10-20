@@ -72,12 +72,16 @@ pub(crate) fn command_payload(
         )),
         "decision.services.apply" => Some(preview_or_apply(options)),
         "decision.services.test" => Some(classifier_request(options)),
-        "models.feed.status"
-        | "models.feed.refresh"
-        | "models.feed.remove.preview"
-        | "models.availability" => Some(empty::<hiroute_application_api::ClientEmptyRequestV1>(
-            options,
-        )),
+        "models.feed.status" | "models.feed.refresh" | "models.availability" => {
+            Some(empty::<hiroute_application_api::ClientEmptyRequestV1>(
+                options,
+            ))
+        }
+        "models.feed.remove.preview" => Some(if options.is_empty() {
+            empty::<hiroute_application_api::ModelFeedRemovalQueryV2>(options)
+        } else {
+            request::<hiroute_application_api::ModelFeedRemovalQueryV2>(options)
+        }),
         "models.feed.settings.apply" => Some(feed_settings(options)),
         "models.feed.remove.apply" => {
             Some(request::<hiroute_application_api::ModelFeedRemoveRequestV1>(options))

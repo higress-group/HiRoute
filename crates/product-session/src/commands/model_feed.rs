@@ -61,12 +61,13 @@ pub async fn model_feed_settings_apply(
 pub async fn model_feed_remove_preview(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
+    input: Option<ModelFeedRemovalQueryV2>,
 ) -> Result<ModelFeedRemovalPreviewV2, DesktopFailure> {
     query(
         window,
         state,
         "PreviewModelFeedRemoval",
-        &ClientEmptyRequestV1::default(),
+        &input.unwrap_or_default(),
     )
     .await
 }

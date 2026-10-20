@@ -22,6 +22,8 @@ export type AvailableModel = { model_configuration_id: string; display_name: str
 export type ModelAnnouncement = { id: string; kind: 'new_model' | 'model_update'; model_configuration_id: string; headline: { en: string; zh: string }; note: { en: string; zh: string }; links: string[]; included_on: string };
 export type ModelAvailabilityResult = { featured: ModelAnnouncement[]; models: AvailableModel[] };
 export type FeedRemovalPreview = {
+  impact: {source_id:string;source_name:string;binding_id:string;model_configuration_id:string;changes:Record<string,{current:unknown;fallback:unknown}>}[];
+  total:number;next_cursor:string|null;complete:boolean;published_plan_count:number;
   sources: { source_id: string; display_name: string; model_configuration_ids: string[]; published_revisions: { plan_id: string; content_revision: number }[] }[];
   published_revisions: { plan_id: string; content_revision: number }[];
   retained_sequence: number | null;

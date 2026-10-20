@@ -105,10 +105,13 @@
     "hiroute.compute-discovery-evidence/v1",
     "hiroute.compute-management-binding/v2",
     "hiroute.compute-management-change/v2",
+    "hiroute.compute-management-change/v3",
     "hiroute.compute-management-key/v2",
     "hiroute.compute-management-lineage/v3",
     "hiroute.compute-management-mutation/v2",
+    "hiroute.compute-management-mutation/v3",
     "hiroute.compute-management-preview/v2",
+    "hiroute.compute-management-preview/v3",
     "hiroute.compute-management-query/v2",
     "hiroute.compute-management-snapshot/v2",
     "hiroute.compute-management-snapshot/v3",
@@ -257,17 +260,19 @@
     "hiroute.managed-launch-warning/v1",
     "hiroute.materialized-route-digest/v1",
     "hiroute.migration-store/v1",
-    "hiroute.model-availability/v1",
+    "hiroute.model-availability/v2",
     "hiroute.model-catalog-query/v1",
     "hiroute.model-catalog-view/v1",
     "hiroute.model-data/v1",
-    "hiroute.model-feed-removal-preview/v1",
+    "hiroute.model-feed-removal-preview/v2",
     "hiroute.model-feed-remove/v1",
     "hiroute.model-feed-settings/v1",
-    "hiroute.model-feed-status/v1",
+    "hiroute.model-feed-status/v2",
     "hiroute.model-feed.acceptance/v1",
+    "hiroute.model-feed.acceptance/v2",
     "hiroute.model-feed.state/v1",
-    "hiroute.model-feed/v1",
+    "hiroute.model-feed.state/v2",
+    "hiroute.model-feed/v2",
     "hiroute.model-metadata-catalog/v1",
     "hiroute.model-request-ir/v1",
     "hiroute.model-stream-event/v1",
@@ -297,6 +302,7 @@
     "hiroute.observation.serialization-failure/v1",
     "hiroute.observation.valuation-summary/v2",
     "hiroute.observation.value-report/v2",
+    "hiroute.official-model-data/v1",
     "hiroute.opencode-additional-model/v1",
     "hiroute.opencode-collaboration/v1",
     "hiroute.opencode-native-restore/v2",
@@ -1142,8 +1148,11 @@
       ],
       "current_contracts": [
         "hiroute.compute-management-change/v2",
+        "hiroute.compute-management-change/v3",
         "hiroute.compute-management-mutation/v2",
+        "hiroute.compute-management-mutation/v3",
         "hiroute.compute-management-preview/v2",
+        "hiroute.compute-management-preview/v3",
         "hiroute.compute-management-source/v3"
       ],
       "legacy_support": [
@@ -1240,6 +1249,51 @@
         "hiroute.opencode-native-restore/v2"
       ],
       "legacy_support": []
+    },
+    {
+      "subject": "official_model_cache_state",
+      "audited_prefixes": [
+        "hiroute.model-feed.state",
+        "hiroute.model-feed.acceptance"
+      ],
+      "current_contracts": [
+        "hiroute.model-feed.state/v2",
+        "hiroute.model-feed.acceptance/v2"
+      ],
+      "legacy_support": [
+        {
+          "contract": "hiroute.model-feed.state/v1",
+          "mode": "recovery_read_only",
+          "owner": "model-feed",
+          "reason": "Retained pre-release settings use v1 state. Preserve the original bytes and user retrieval/disclosure choices while clearing the v1 held delta and namespacing its transport floor away from complete v2 snapshots. This is a bounded settings transition, not a second served feed.",
+          "removal_condition": "Remove when retained v1 settings and their original-state backups have been explicitly retired after verified restart/recovery coverage.",
+          "allowed_paths": [
+            "crates/daemon/src/model_feed/store.rs",
+            "crates/daemon/src/model_feed/tests.rs"
+          ]
+        },
+        {
+          "contract": "hiroute.model-feed.acceptance/v1",
+          "mode": "recovery_read_only",
+          "owner": "model-feed",
+          "reason": "Read the retained v1 checkpoint only to validate the settings transition; never copy its sequence floor into the v2 namespace or adopt its old payload.",
+          "removal_condition": "Remove together with the registered v1 settings transition after retained checkpoints are retired.",
+          "allowed_paths": [
+            "crates/daemon/src/model_feed/store.rs",
+            "crates/daemon/src/model_feed/tests.rs"
+          ]
+        },
+        {
+          "contract": "hiroute.model-feed.state/v99",
+          "mode": "rejection_fixture",
+          "owner": "model-feed",
+          "reason": "Explicitly refuse an unknown future retained-state schema without overwriting its bytes or checkpoint.",
+          "removal_condition": "Remove only with the unknown-schema preservation regression; never admit it as current state.",
+          "allowed_paths": [
+            "crates/daemon/src/model_feed/tests.rs"
+          ]
+        }
+      ]
     }
   ],
   "forbidden_contracts": [
@@ -1315,7 +1369,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",

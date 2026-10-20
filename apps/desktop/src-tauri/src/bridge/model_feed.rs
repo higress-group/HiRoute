@@ -104,6 +104,7 @@ pub(super) async fn model_feed_settings_apply(
 pub(super) async fn model_feed_remove_preview(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
+    input: Option<ModelFeedRemovalQueryV2>,
 ) -> Result<ModelFeedRemovalPreviewV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -129,7 +130,8 @@ pub(super) async fn model_feed_remove_preview(
         &state.2,
         &state.3,
     );
-    hiroute_product_session::commands::model_feed_remove_preview(&context, &product_state).await
+    hiroute_product_session::commands::model_feed_remove_preview(&context, &product_state, input)
+        .await
 }
 
 #[tauri::command]

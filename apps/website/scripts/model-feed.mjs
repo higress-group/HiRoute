@@ -54,7 +54,7 @@ function rejectDuplicateKeys(source) {
   }
 }
 
-function parseJson(bytes, label) {
+export function parseJson(bytes, label) {
   requireThat(bytes.length <= MAX_FEED_BYTES, `${label}: exceeds 16 MiB`);
   let source;
   try { source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
@@ -69,13 +69,16 @@ function parseJson(bytes, label) {
         requireThat(sequence <= U64_MAX, 'invalid sequence');
         return sequence;
       }
-      if (typeof value === 'number' && Number.isInteger(value) && !Number.isSafeInteger(value)) {
-        requireThat(/^-?\d+$/.test(context.source), 'unsafe numeric literal');
-        return BigInt(context.source);
+      if (typeof value === 'number') {
+        requireThat(/^-?\d+$/.test(context.source), 'decimal rates must be strings');
+        const integer = BigInt(context.source);
+        requireThat(integer >= -(1n << 63n) && integer <= U64_MAX, 'integer exceeds contract bounds');
+        return Number.isSafeInteger(value) ? value : integer;
       }
       return value;
     });
     rejectDuplicateKeys(source);
+    structural(parsed);
     return parsed;
   } catch { throw new Error(`${label}: invalid JSON or sequence`); }
 }
@@ -137,7 +140,7 @@ export function canonicalData(value) {
 
 function structural(value, depth = 0) {
   requireThat(depth <= 64, 'JSON exceeds depth bound');
-  if (typeof value === 'string') requireThat(Buffer.byteLength(value) <= 16 * 1024, 'string exceeds bound');
+  if (typeof value === 'string') requireThat(value.isWellFormed() && Buffer.byteLength(value) <= 16 * 1024, 'string exceeds bound or is not Unicode');
   else if (Array.isArray(value)) {
     for (const entry of value) {
       if (entry && typeof entry === 'object' && !Array.isArray(entry)) requireThat(Buffer.byteLength(canonicalData(entry)) <= 256 * 1024, 'record exceeds bound');
@@ -145,7 +148,7 @@ function structural(value, depth = 0) {
     }
   } else if (value && typeof value === 'object') {
     for (const [key, entry] of Object.entries(value)) {
-      requireThat(Buffer.byteLength(key) <= 256, 'field key exceeds bound');
+      requireThat(key.isWellFormed() && Buffer.byteLength(key) <= 256, 'field key exceeds bound or is not Unicode');
       structural(entry, depth + 1);
     }
   }

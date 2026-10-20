@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -208,4 +209,15 @@ test('exact payload size is accepted; invalid UTF-8 and BOM bytes are refused', 
   assert.equal(checkPayload(Buffer.concat([bytes, Buffer.alloc(MAX_FEED_BYTES - bytes.length, ' ')])).sequence, 2n);
   assert.throws(() => checkPayload(Buffer.from([0xff])), /invalid UTF-8/);
   assert.throws(() => checkPayload(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), json(payload())])), /invalid JSON/);
+});
+
+test('canonical data identity matches the Rust goldens without integer or Unicode loss', async () => {
+  const {canonicalData,parseJson} = await import('../scripts/model-feed.mjs');
+  const fixtures = JSON.parse(readFileSync(new URL('../../../contracts/model-feed/canonical-data.v1.json',import.meta.url)));
+  for (const entry of fixtures.valid) {
+    const value = parseJson(Buffer.from(entry.wire),'golden');
+    assert.equal(canonicalData(value),entry.canonical);
+    assert.equal(`sha256:${createHash('sha256').update(canonicalData(value)).digest('hex')}`,entry.digest);
+  }
+  for (const wire of fixtures.invalid) assert.throws(() => parseJson(Buffer.from(wire),'golden'));
 });

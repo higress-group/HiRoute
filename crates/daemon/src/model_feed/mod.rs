@@ -207,6 +207,9 @@ impl ModelFeedService {
     pub(crate) fn is_embedded_model(&self, id: &str) -> bool {
         self.embedded.model_data().model(id).is_some()
     }
+    pub fn embedded_catalog(&self) -> &Arc<TrustedReleaseCatalog> {
+        &self.embedded
+    }
     pub fn current(&self) -> Arc<ReleaseCatalogSnapshot> {
         self.current.load_full()
     }
@@ -289,7 +292,10 @@ impl ModelFeedService {
             expected,
             disable,
             |_| Ok(()),
-            |catalog, ()| install(catalog.generation, catalog.accepted_sequence),
+            |catalog, (), commit| {
+                commit()?;
+                install(catalog.generation, catalog.accepted_sequence)
+            },
         )
     }
     pub fn remove_prepared<P>(
@@ -297,7 +303,11 @@ impl ModelFeedService {
         expected: &CanonicalDigest,
         disable: bool,
         prepare: impl FnOnce(&ReleaseCatalogSnapshot) -> Result<P, String>,
-        install: impl FnOnce(&ReleaseCatalogSnapshot, P) -> Result<(), String>,
+        install: impl FnOnce(
+            &ReleaseCatalogSnapshot,
+            P,
+            &mut dyn FnMut() -> Result<(), String>,
+        ) -> Result<(), String>,
     ) -> Result<(), String> {
         let mut candidate = ReleaseCatalogSnapshot {
             catalog: (*self.embedded).clone(),
@@ -331,28 +341,43 @@ impl ModelFeedService {
         if disable {
             next.retrieval_enabled = false;
         }
-        if guard.recovery_available {
-            self.store.quarantine_state()?;
-        }
         if candidate.generation != next.generation {
             return Err("feed_retrieval_superseded".into());
         }
         candidate.accepted_sequence = accepted_sequence(&next);
-        self.store.commit(&next)?;
+        let mut committed = false;
+        self.active.store(false, Ordering::Release);
+        let mut commit = || {
+            if committed {
+                return Err("feed_duplicate_commit".into());
+            }
+            if guard.recovery_available {
+                self.store.quarantine_state()?;
+            }
+            self.store.commit(&next)?;
+            committed = true;
+            Ok(())
+        };
+        let result = install(&candidate, prepared, &mut commit);
+        if let Err(error) = result {
+            if committed {
+                guard.state = next;
+                guard.refused = Some("feed_activation_requires_restart".into());
+                guard.recovery_available = false;
+            }
+            self.active.store(true, Ordering::Release);
+            return Err(error);
+        }
+        if !committed {
+            self.active.store(true, Ordering::Release);
+            return Err("feed_missing_commit".into());
+        }
         guard.state = next;
         guard.counts = FeedCounts::default();
         guard.next_attempt = guard
             .state
             .retrieval_enabled
             .then(|| now_ms() + startup_delay_ms());
-        self.active.store(false, Ordering::Release);
-        if let Err(error) = install(&candidate, prepared) {
-            guard.refused = Some("feed_activation_requires_restart".into());
-            guard.recovery_available = false;
-            // The control transaction failed atomically; its previous snapshot is still valid.
-            self.active.store(true, Ordering::Release);
-            return Err(error);
-        }
         self.current.store(Arc::new(candidate));
         self.active.store(true, Ordering::Release);
         guard.refused = None;

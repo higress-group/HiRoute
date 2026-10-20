@@ -635,10 +635,13 @@ pub async fn dispatch(
         "model_feed_remove_preview" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
-            struct Arguments {}
-            let _: Arguments = serde_json::from_value(args)
+            struct Arguments {
+                #[serde(default)]
+                input: Option<ModelFeedRemovalQueryV2>,
+            }
+            let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
-            let value = model_feed_remove_preview(window, state).await?;
+            let value = model_feed_remove_preview(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "model_feed_remove_apply" => {

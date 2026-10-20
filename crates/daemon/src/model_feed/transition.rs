@@ -13,7 +13,11 @@ impl ModelFeedService {
     pub fn refresh_prepared<P>(
         &self,
         prepare: impl FnOnce(&ReleaseCatalogSnapshot) -> Result<P, String>,
-        install: impl FnOnce(&ReleaseCatalogSnapshot, P) -> Result<(), String>,
+        install: impl FnOnce(
+            &ReleaseCatalogSnapshot,
+            P,
+            &mut dyn FnMut() -> Result<(), String>,
+        ) -> Result<(), String>,
     ) -> Result<(), String> {
         #[cfg(feature = "integration-test-hooks")]
         if let Some(root) = product_fixture::root() {
@@ -41,7 +45,10 @@ impl ModelFeedService {
         self.refresh_using_prepared(
             retrieve,
             |_| Ok(()),
-            |catalog, ()| install(catalog.generation, catalog.accepted_sequence),
+            |catalog, (), commit| {
+                commit()?;
+                install(catalog.generation, catalog.accepted_sequence)
+            },
         )
     }
     pub(super) fn refresh_using_prepared<P>(
@@ -51,7 +58,11 @@ impl ModelFeedService {
         )
             -> Result<FeedDownload, hiroute_integrations::model_feed::FeedError>,
         prepare: impl FnOnce(&ReleaseCatalogSnapshot) -> Result<P, String>,
-        install: impl FnOnce(&ReleaseCatalogSnapshot, P) -> Result<(), String>,
+        install: impl FnOnce(
+            &ReleaseCatalogSnapshot,
+            P,
+            &mut dyn FnMut() -> Result<(), String>,
+        ) -> Result<(), String>,
     ) -> Result<(), String> {
         let (generation, epoch, selected, etag) = {
             let mut guard = self.mutable.lock().map_err(|_| "feed_lock")?;
@@ -166,7 +177,11 @@ impl ModelFeedService {
         &self,
         guard: &mut MutableFeed,
         prepared: PreparedPublication<P>,
-        install: impl FnOnce(&ReleaseCatalogSnapshot, P) -> Result<(), String>,
+        install: impl FnOnce(
+            &ReleaseCatalogSnapshot,
+            P,
+            &mut dyn FnMut() -> Result<(), String>,
+        ) -> Result<(), String>,
     ) -> Result<&'static str, String> {
         let PreparedPublication {
             validated,
@@ -224,19 +239,41 @@ impl ModelFeedService {
         });
         next.etag = etag;
         next.last_success_at_ms = Some(now_ms());
+        // Content-addressed bytes grant no authority until the checkpoint/state is committed.
         self.store.persist_blob(&bytes, &validated.payload_digest)?;
-        self.store.commit(&next)?;
-        guard.state = next;
-        guard.counts = counts;
+        let mut committed = false;
         self.active.store(false, Ordering::Release);
-        if let Some(price) = price {
-            if let Err(error) = install(&catalog, price) {
+        let result = if let Some(price) = price {
+            let mut commit = || {
+                if committed {
+                    return Err("feed_duplicate_commit".into());
+                }
+                self.store.commit(&next)?;
+                committed = true;
+                Ok(())
+            };
+            install(&catalog, price, &mut commit)
+        } else {
+            self.store.commit(&next).map(|()| {
+                committed = true;
+            })
+        };
+        if let Err(error) = result {
+            if committed {
+                guard.state = next;
+                guard.counts = counts;
                 guard.refused = Some("feed_activation_requires_restart".into());
                 guard.recovery_available = false;
-                self.active.store(true, Ordering::Release);
-                return Err(error);
             }
+            self.active.store(true, Ordering::Release);
+            return Err(error);
         }
+        if !committed {
+            self.active.store(true, Ordering::Release);
+            return Err("feed_missing_commit".into());
+        }
+        guard.state = next;
+        guard.counts = counts;
         self.current.store(Arc::new(catalog));
         self.active.store(true, Ordering::Release);
         self.store.retire_unreferenced(guard.state.held.as_ref());

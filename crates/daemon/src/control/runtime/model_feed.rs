@@ -29,7 +29,7 @@ impl LocalControlAdapter {
             .ok_or("feed_unavailable")?
             .refresh_prepared(
                 |catalog| self.prepare_catalog_prices(catalog),
-                |catalog, prepared| self.activate_catalog_prices(catalog, prepared),
+                |catalog, prepared, commit| self.activate_catalog_prices(catalog, prepared, commit),
             )
     }
 }
@@ -67,6 +67,7 @@ fn feed_error(reason: String) -> ErrorCode {
 }
 
 mod metadata;
+mod removal;
 impl ModelFeedPort for LocalControlAdapter {
     fn list_model_metadata(
         &self,
@@ -193,14 +194,18 @@ impl ModelFeedPort for LocalControlAdapter {
             .map_err(feed_error)?;
         self.feed_status()
     }
-    fn feed_remove_preview(&self) -> Result<ModelFeedRemovalPreviewV2, ErrorCode> {
-        self.feed_removal_context().map(|(preview, _)| preview)
+    fn feed_remove_preview(
+        &self,
+        query: ModelFeedRemovalQueryV2,
+    ) -> Result<ModelFeedRemovalPreviewV2, ErrorCode> {
+        self.feed_removal_context(query).map(|(preview, _)| preview)
     }
     fn feed_remove(
         &self,
         request: ModelFeedRemoveRequestV1,
     ) -> Result<ModelFeedStatusV2, ErrorCode> {
-        let (preview, state_digest) = self.feed_removal_context()?;
+        let (preview, state_digest) =
+            self.feed_removal_context(ModelFeedRemovalQueryV2::default())?;
         if preview.digest != request.accepted_digest {
             return Err(ErrorCode::ChangePreviewStale);
         }
@@ -211,7 +216,7 @@ impl ModelFeedPort for LocalControlAdapter {
                 &state_digest,
                 request.also_disable_retrieval,
                 |catalog| self.prepare_catalog_prices(catalog),
-                |catalog, prepared| self.activate_catalog_prices(catalog, prepared),
+                |catalog, prepared, commit| self.activate_catalog_prices(catalog, prepared, commit),
             )
             .map_err(feed_error)?;
         self.feed_status()
@@ -224,84 +229,9 @@ impl ModelFeedPort for LocalControlAdapter {
 impl LocalControlAdapter {
     fn feed_removal_context(
         &self,
+        query: ModelFeedRemovalQueryV2,
     ) -> Result<(ModelFeedRemovalPreviewV2, CanonicalDigest), ErrorCode> {
-        let feed = self
-            .model_feed
-            .as_ref()
-            .ok_or(ErrorCode::DaemonUnavailable)?;
-        // Capture feed before the storage lock; feed activation takes locks in that order.
-        let before = feed.removal_digest().map_err(feed_error)?;
-        let status = feed.status().map_err(feed_error)?;
-        let catalog = self.current_catalog().ok_or(ErrorCode::DaemonUnavailable)?;
-        let stores = self
-            .stores_lock()
-            .map_err(|_| ErrorCode::DaemonUnavailable)?;
-        let management = stores
-            .control()
-            .compute_management_snapshot(&WorkspaceId::default())
-            .map_err(|_| ErrorCode::DaemonUnavailable)?;
-        let versions = stores
-            .control()
-            .published_plan_versions(&WorkspaceId::default())
-            .map_err(|_| ErrorCode::DaemonUnavailable)?;
-        let mut sources = Vec::new();
-        let mut published_revisions = Vec::new();
-        for source in &management.sources {
-            let models = source
-                .models
-                .iter()
-                .filter(|model| {
-                    model.catalog_configuration_id.as_ref().is_some_and(|id| {
-                        !feed.is_embedded_model(id) && catalog.model_data().model(id).is_some()
-                    })
-                })
-                .collect::<Vec<_>>();
-            if models.is_empty() {
-                continue;
-            }
-            let references = versions
-                .iter()
-                .filter(|version| {
-                    candidates(version).any(|candidate| {
-                        models
-                            .iter()
-                            .any(|model| model.binding_id == candidate.binding_id)
-                    })
-                })
-                .map(|version| version.reference.clone())
-                .collect::<Vec<_>>();
-            for reference in &references {
-                if !published_revisions.contains(reference) {
-                    published_revisions.push(reference.clone());
-                }
-            }
-            sources.push(ModelFeedAffectedSourceV1 {
-                source_id: source.source_id.clone(),
-                display_name: source.display_name.clone(),
-                model_configuration_ids: models
-                    .iter()
-                    .filter_map(|m| m.catalog_configuration_id.clone())
-                    .collect(),
-                published_revisions: references,
-            });
-        }
-        let revisions = management.revisions;
-        drop(stores);
-        if before != feed.removal_digest().map_err(feed_error)? {
-            return Err(ErrorCode::ChangePreviewStale);
-        }
-        let digest = CanonicalDigest::of(&(&before, &revisions, &sources, &published_revisions))
-            .map_err(|_| ErrorCode::Internal)?;
-        Ok((
-            ModelFeedRemovalPreviewV2 {
-                sources,
-                published_revisions,
-                retained_sequence: status.highest_accepted_sequence,
-                retrieval_enabled: status.retrieval_enabled,
-                digest,
-            },
-            before,
-        ))
+        removal::preview(self, query)
     }
 }
 

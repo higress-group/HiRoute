@@ -85,7 +85,7 @@ impl LocalControlAdapter {
             .ok_or(ControlReadError::Unavailable)?;
         self.price_facts_for(stores, deadline, &catalog)
     }
-    fn price_facts_for(
+    pub(super) fn price_facts_for(
         &self,
         stores: &hiroute_local_storage::LocalStorageSet,
         deadline: Option<std::time::Instant>,
@@ -420,6 +420,7 @@ impl LocalControlAdapter {
         &self,
         catalog: &crate::model_feed::ReleaseCatalogSnapshot,
         prepared: PreparedCatalogPrices,
+        commit: &mut dyn FnMut() -> Result<(), String>,
     ) -> Result<(), String> {
         let stores = self.stores_lock().map_err(|e| e.to_string())?;
         if stores
@@ -435,6 +436,7 @@ impl LocalControlAdapter {
         {
             return Err("prices.candidate.dependencies_changed".into());
         }
+        commit()?;
         stores
             .control()
             .activate_model_feed_generation(

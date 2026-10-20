@@ -617,7 +617,7 @@ fn model_feed_failed_preparation_keeps_previous_catalog_and_durable_selection() 
                     etag: None
                 }),
                 |_| Err::<(), _>("prices.candidate.unavailable".into()),
-                |_, ()| panic!("failed candidate must never activate"),
+                |_, (), _| panic!("failed candidate must never activate"),
             )
             .is_err()
     );
@@ -647,7 +647,7 @@ fn model_feed_slow_preparation_does_not_hold_feed_lock_and_superseded_candidate_
                 resume_rx.recv().unwrap();
                 Ok(())
             },
-            |_, ()| panic!("superseded candidate must never activate"),
+            |_, (), _| panic!("superseded candidate must never activate"),
         )
     });
     entered_rx
