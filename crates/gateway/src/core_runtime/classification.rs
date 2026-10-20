@@ -30,6 +30,9 @@ pub use c_capability::CClassifierDiagnosticOutcome;
 mod group_policy;
 #[path = "classification/protocol.rs"]
 mod protocol;
+#[cfg(test)]
+#[path = "classification/resource_tests.rs"]
+mod resource_tests;
 #[path = "classification/system_one.rs"]
 mod system_one;
 pub(super) use group_policy::{apply as apply_group_policy, execution_position};
