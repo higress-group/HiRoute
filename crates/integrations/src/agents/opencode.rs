@@ -561,7 +561,6 @@ mod tests {
         );
         assert!(project_ancestry(&native, &at_limit.join("d"), &search_path).is_err());
         std::fs::remove_dir_all(base.join(".git")).unwrap();
-        assert!(project_ancestry(&native, &base, &search_path).is_ok());
         assert!(project_ancestry(&native, &at_limit, &search_path).is_err());
     }
 

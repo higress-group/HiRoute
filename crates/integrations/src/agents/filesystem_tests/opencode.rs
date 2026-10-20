@@ -107,6 +107,17 @@ fn opencode_discovers_the_official_home_entry_without_executing_or_replacing_a_s
 #[test]
 fn opencode_dynamic_configuration_keys_are_scoped_out_of_models_workers_and_import() {
     let root = tempfile::tempdir().unwrap();
+    assert!(
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .arg(root.path())
+            .env_clear()
+            .env("HOME", root.path())
+            .env("PATH", std::env::var_os("PATH").unwrap())
+            .status()
+            .unwrap()
+            .success()
+    );
     let scanner = scanner(root.path());
     for (section, dynamic_key) in [
         ("root", "{env:CONFIG_SECTION}"),

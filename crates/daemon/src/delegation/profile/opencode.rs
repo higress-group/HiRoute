@@ -246,6 +246,20 @@ fn validate_database(path: &Path, expected: &[&str]) -> Result<(), DelegationErr
 mod tests {
     use super::*;
 
+    fn git_workspace(home: &Path) -> String {
+        let path = worker_path(&home.join("opencode"), None, None).unwrap();
+        let status = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .arg(home)
+            .env_clear()
+            .env("HOME", home)
+            .env("PATH", &path)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        path
+    }
+
     #[test]
     fn opencode_startup_rejects_rewritable_schema_without_touching_borrowed_files() {
         let root = tempfile::tempdir().unwrap();
@@ -253,7 +267,7 @@ mod tests {
         let native =
             hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
         std::fs::create_dir_all(&native.config_root).unwrap();
-        let search_path = worker_path(&home.join("opencode"), None, None).unwrap();
+        let search_path = git_workspace(&home);
         for schema in [
             "",
             "{env:HIROUTE_UNSET_SCHEMA}",
@@ -294,7 +308,7 @@ mod tests {
             std::fs::write(&tool, content).unwrap();
             let native =
                 hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
-            let search_path = worker_path(&home.join("opencode"), None, None).unwrap();
+            let search_path = git_workspace(&home);
             let config = native.read_config(Some((&home, &search_path))).unwrap();
             let admission = StartupAdmission {
                 native: native.clone(),
@@ -406,7 +420,7 @@ mod tests {
         let home = root.path().canonicalize().unwrap();
         let native =
             hiroute_integrations::OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
-        let search_path = worker_path(&home.join("opencode"), None, None).unwrap();
+        let search_path = git_workspace(&home);
         let config = native.read_config(Some((&home, &search_path))).unwrap();
         let admission = StartupAdmission {
             native: native.clone(),
