@@ -112,6 +112,9 @@ fn startup_skips_unverifiable_history_without_backfilling_old_sessions() {
         .execute("DELETE FROM observation_agent_grants_v1", [])
         .unwrap();
     record_attributed_session(&runtime, &grant, "unmapped-before-recovery", &plan);
+    let scanner = runtime.adapter.scanner.clone();
+    drop(runtime);
+    let runtime = open_with_scanner(root.path(), scanner);
     let diagnostics = hiroute_diagnostics::runtime::DiagnosticRuntime::start(
         hiroute_diagnostics::runtime::RuntimeConfig {
             root: root.path().join("diagnostic-fixture"),
@@ -122,7 +125,14 @@ fn startup_skips_unverifiable_history_without_backfilling_old_sessions() {
         },
     );
     runtime.set_diagnostics(diagnostics.port());
+    // Match the production startup sequence. Coordinator reconciliation alone
+    // does not restore the publication or register its observation ownership.
+    runtime.adapter.restore_active_publication().unwrap();
     runtime.adapter.reconcile_startup_and_open().unwrap();
+    runtime
+        .adapter
+        .finish_startup_publication_recovery()
+        .unwrap();
     record_attributed_session(&runtime, &grant, "mapped-after-recovery", &plan);
     assert_attributed_session(&runtime, "mapped-after-recovery");
     let old = runtime
