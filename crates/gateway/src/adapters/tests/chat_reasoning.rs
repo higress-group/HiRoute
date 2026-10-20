@@ -149,7 +149,7 @@ fn replay_backed_chat_aliases_compare_bytes_instead_of_reference_locations() {
     ));
     let manager = ReplayManager::open(ReplayConfig {
         root: root.clone(),
-        memory_threshold_bytes: 128,
+        memory_threshold_bytes: 4096,
         record_bytes: 4096,
         orphan_ttl: std::time::Duration::from_secs(60),
     })
