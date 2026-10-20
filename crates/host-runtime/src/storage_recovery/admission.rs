@@ -229,9 +229,15 @@ mod tests {
             }
             runtime.shutdown();
         };
+        let first_attempt = StartupFailureBoundary::capture(&diagnostics);
         emit(Some(StartupOutcome::Failure {
             code: StartupFailureCode::StorageLocked,
         }));
+        let (code, report) = first_attempt
+            .read_failure(directory.path(), &diagnostics)
+            .unwrap();
+        assert_eq!(code, "DAEMON_STORAGE_LOCKED");
+        assert_eq!(report.unwrap().action, StorageRecoveryAction::RetryCurrent);
         let boundary = StartupFailureBoundary::capture(&diagnostics);
         assert!(
             boundary
