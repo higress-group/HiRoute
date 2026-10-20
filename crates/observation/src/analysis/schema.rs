@@ -147,6 +147,17 @@ fn install_dirty_triggers(db: &Connection) -> rusqlite::Result<()> {
                 END;"))?;
         }
     }
+    // A newly authenticated grant or an Agent conflict changes every request's
+    // attribution in this session, including already projected requests.
+    db.execute_batch("CREATE TRIGGER IF NOT EXISTS analysis_dirty_session_agent_v1
+        AFTER UPDATE OF agent_id ON sessions WHEN OLD.agent_id!=NEW.agent_id
+        BEGIN
+          UPDATE observation_analysis_meta_v1 SET value=CAST(value AS INTEGER)+1 WHERE key='dirty_sequence';
+          INSERT INTO observation_analysis_dirty_v1(workspace_id,request_id,sequence)
+            SELECT workspace_id,request_id,(SELECT CAST(value AS INTEGER) FROM observation_analysis_meta_v1 WHERE key='dirty_sequence')
+            FROM logical_requests WHERE workspace_id=NEW.workspace_id AND session_id=NEW.session_id
+            ON CONFLICT(workspace_id,request_id) DO UPDATE SET sequence=excluded.sequence;
+        END;")?;
     // Preserve an actually observed typed deletion, including a later old
     // writer clearing the original tombstone. Absence is not deletion evidence.
     db.execute_batch("CREATE TRIGGER IF NOT EXISTS analysis_typed_delete_v1 AFTER INSERT ON observation_tombstones
