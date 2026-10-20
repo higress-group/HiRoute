@@ -328,6 +328,7 @@ class RecoveryRetentionTests(StandaloneFixture):
             data = paths["state"] / "storage/keep"
             data.parent.mkdir()
             data.write_bytes(b"business data")
+            self.preflight.side_effect = ValueError("old package has no preflight protocol")
             with patch.object(installer.shutil, "disk_usage", return_value=SimpleNamespace(free=200 * 1024 * 1024)):
                 for _ in range(2):
                     installer.install(args)
@@ -335,6 +336,18 @@ class RecoveryRetentionTests(StandaloneFixture):
             self.assertEqual(handoff.read_bytes(), original)
             self.assertEqual((retained / "keep").read_bytes(), b"existing recovery material")
             self.assertEqual(data.read_bytes(), b"business data")
+
+    def test_changed_writer_without_cutover_skips_archival_after_preflight(self):
+        with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            args, paths = self.install_original()
+            self.sources["hirouted"].write_bytes(b"changed writer, same storage format")
+            manifest, archive = self.build("0.2.0")
+            with patch.object(installer.shutil, "disk_usage", return_value=SimpleNamespace(free=200 * 1024 * 1024)):
+                installer.install(self.install_args(manifest, archive))
+            self.preflight.assert_called_once()
+            self.assertFalse((paths["state"] / "upgrade-packages").exists())
+            self.assertFalse((paths["state"] / "upgrade-package.json").exists())
+            self.assertEqual((paths["lib"] / "0.2.0/hirouted").read_bytes(), self.sources["hirouted"].read_bytes())
 
     def test_refused_cutover_discards_only_this_unpublished_copy(self):
         with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
@@ -345,6 +358,9 @@ class RecoveryRetentionTests(StandaloneFixture):
             (retained / "keep").write_bytes(b"retained original")
             handoff = paths["state"] / "upgrade-package.json"
             handoff.write_bytes(b"prior handoff")
+            self.sources["hirouted"].write_bytes(b"changed candidate writer")
+            manifest, archive = self.build("0.2.0")
+            args = self.install_args(manifest, archive)
             for _ in range(2):
                 self.preflight.side_effect = [{"history_cutover_required": True}, ValueError("final preflight refused")]
                 with self.assertRaisesRegex(ValueError, "final preflight refused"):
@@ -357,6 +373,9 @@ class RecoveryRetentionTests(StandaloneFixture):
     def test_copy_failure_discards_the_new_private_archive(self):
         with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
             args, paths = self.install_original()
+            self.sources["hirouted"].write_bytes(b"changed candidate writer")
+            manifest, archive = self.build("0.2.0")
+            args = self.install_args(manifest, archive)
             self.preflight.return_value = {"history_cutover_required": True}
             with patch.object(installer.os, "read", side_effect=OSError("copy interrupted")):
                 with self.assertRaisesRegex(OSError, "copy interrupted"):
@@ -370,6 +389,10 @@ class RecoveryRetentionTests(StandaloneFixture):
             marker = paths["marker"].read_bytes()
             handoff = paths["state"] / "upgrade-package.json"
             handoff.write_bytes(b"prior handoff")
+            original_program = (paths["lib"] / "0.1.0/hirouted").read_bytes()
+            self.sources["hirouted"].write_bytes(b"changed candidate writer")
+            manifest, archive = self.build("0.2.0")
+            args = self.install_args(manifest, archive)
             self.preflight.return_value = {"history_cutover_required": True}
             replace = installer.os.replace
             def fail_marker(source, destination):
@@ -383,7 +406,7 @@ class RecoveryRetentionTests(StandaloneFixture):
             self.assertEqual(handoff.read_bytes(), b"prior handoff")
             copies = list((paths["state"] / "upgrade-packages").iterdir())
             self.assertEqual(len(copies), 1)
-            self.assertEqual((copies[0] / "program/hirouted").read_bytes(), self.sources["hirouted"].read_bytes())
+            self.assertEqual((copies[0] / "program/hirouted").read_bytes(), original_program)
 
 
 @unittest.skipUnless(os.name == "posix" and os.uname().sysname == "Linux", "Linux layout test")

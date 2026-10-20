@@ -732,7 +732,7 @@ def candidate_preflight(program, storage, package):
 
 
 @contextmanager
-def retain_recovery_package(paths, current, target_daemon):
+def retain_recovery_package(paths, current, target_daemon, version):
     """Preserve the complete installed program/resources before replacement.
 
     This handoff goes to the daemon through its private state directory, so
@@ -742,6 +742,13 @@ def retain_recovery_package(paths, current, target_daemon):
         yield None
         return
     old_program, old_resources, _service = validate_marker(paths, current)
+    # Repeating the exact installed writer introduces no new format boundary.
+    # Older packages need not implement this candidate's provisional protocol.
+    # This grants no data compatibility advice and leaves every handoff intact;
+    # the daemon still performs its normal authoritative startup admission.
+    if current["version"] == version and digest(target_daemon) == digest(old_program / "hirouted"):
+        yield None
+        return
     # This provisional call determines cutover before allocating any archive.
     # A cutover repeats preflight with the complete retained program/resources.
     report = candidate_preflight(target_daemon, paths["state"] / "storage", old_program)
@@ -922,7 +929,7 @@ def install(args):
                     (staged_link(entry, version_root / name), entry)
                 )
 
-            with retain_recovery_package(paths, current, staged_bin / "hirouted") as handoff:
+            with retain_recovery_package(paths, current, staged_bin / "hirouted", version) as handoff:
                 if handoff is not None:
                     staged_components.insert(0, (handoff, paths["state"] / "upgrade-package.json"))
                 if current is not None:

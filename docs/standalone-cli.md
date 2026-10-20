@@ -107,7 +107,10 @@ Before replacing an installed program, the verified candidate performs read-only
 preflight. When a history-format cutover is required, the installer retains the
 complete original program/resources and installation records in private service
 state; the daemon receives that handoff directly, including under systemd.
-Current-format repair skips this archival copy and its extra space reserve. Failed
+Current-format repair skips this archival copy and its extra space reserve.
+Repeating the exact same-version installed daemon also preserves existing handoffs
+without requiring a newer preflight helper from an older package; normal storage
+admission still runs when the service starts. Failed
 preparation removes only its unpublished copy; once the handoff may have been
 consumed, its material is retained even after later installation rollback.
 Do not delete `upgrade-packages`, `upgrade-package.json`, sealed history or
