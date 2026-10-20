@@ -4,6 +4,23 @@ use hiroute_application_api::ClientServiceStatusV1;
 use std::os::unix::net::UnixStream;
 
 fn daemon() -> PathBuf {
+    let build = Command::new("cargo")
+        .args([
+            "build",
+            "--locked",
+            "-p",
+            "hiroute-daemon",
+            "--bin",
+            "hirouted",
+        ])
+        .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."))
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "daemon prerequisite: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
     std::env::current_exe()
         .unwrap()
         .parent()
@@ -57,7 +74,11 @@ fn slow_local_input_cannot_starve_protected_registration() {
         let after = status();
         assert_eq!(after.revisions, before.revisions);
         assert!(after.recovery_ready);
-        assert!(registered.is_ok(), "launcher registration: {:?}", registered.err());
+        assert!(
+            registered.is_ok(),
+            "launcher registration: {:?}",
+            registered.err()
+        );
         assert!(resident.has_authority());
     });
 }
