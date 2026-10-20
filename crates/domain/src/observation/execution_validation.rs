@@ -79,20 +79,20 @@ impl ExecutionFactEnvelopeV1 {
         }
         self.trust.validate()?;
         self.fact.validate()?;
-        if (current || persisted_pre_shortening || persisted_pre_opening)
+        if (current || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
             if route.complexity.as_ref().is_some_and(|d| d.decision_protocol.is_none()
                 || (d.decision_protocol != Some(DecisionProtocolV1::SystemOneC) && d.routing_observation.is_some())))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_shortening || persisted_pre_opening)
+        if !(current || persisted_pre_opening)
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
                 if route.complexity.as_ref().is_some_and(|decision| decision.routing_observation.is_some()))
         {
             return Err(ExecutionFactError::InvalidFact);
         }
-        if !(current || persisted_pre_shortening || persisted_pre_opening || persisted_pre_c)
+        if !(current || persisted_pre_opening || persisted_pre_c)
             && matches!(
                 &self.fact,
                 ExecutionFactV1::RouteDecision(route)
@@ -112,11 +112,7 @@ impl ExecutionFactEnvelopeV1 {
             return Err(ExecutionFactError::InvalidFact);
         }
         if let Some(pricing) = &self.pricing {
-            if !(current
-                || persisted_pre_shortening
-                || persisted_pre_opening
-                || persisted_function_only
-                || persisted_pre_c)
+            if !(current || persisted_pre_opening || persisted_function_only || persisted_pre_c)
                 || !matches!(self.fact, ExecutionFactV1::AttemptStarted { .. })
             {
                 return Err(ExecutionFactError::InvalidFact);
