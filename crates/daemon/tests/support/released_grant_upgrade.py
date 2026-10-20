@@ -45,6 +45,14 @@ def sessions(product):
         time.sleep(.1)
 
 
+def upstream_fixture(product, contents):
+    binary = product.cpa_fixture / "cpa_upstream.py"
+    binary.write_bytes(contents)
+    product.cpa_args = [
+        "--cpa-binary", str(binary), "--cpa-sha256", hashlib.sha256(contents).hexdigest(),
+    ]
+
+
 def run(repository, archive):
     archive = Path(archive).resolve()
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == PACKAGE_SHA256, "wrong released package"
@@ -63,6 +71,12 @@ def run(repository, archive):
             package.extractall(released)
         product.bin = released / "bin"
         product.enable_cpa()
+        # Each daemon pins its own external-component version. Use that release's
+        # exact fixture before upgrade, then the candidate fixture after replacing
+        # the daemon; do not weaken either component handshake.
+        upstream_fixture(product, subprocess.check_output([
+            "git", "show", RELEASE_REVISION + ":crates/daemon/tests/support/cpa_upstream.py",
+        ], cwd=repository))
         bootstrap(product)
         connections = {"agent_codex_default": product.agent_connection}
         product.agent_context_id = None
@@ -80,6 +94,9 @@ def run(repository, archive):
                          (product.settings, product.codex_settings)}
         product.stop()
         product.bin = current_bin
+        upstream_fixture(product, (
+            Path(repository) / "crates/daemon/tests/support/cpa_upstream.py"
+        ).read_bytes())
         product.env["HIROUTE_RECOVERY_PACKAGE"] = str(archive)
         for restart in range(2):
             product.start()
