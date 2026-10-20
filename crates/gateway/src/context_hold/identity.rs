@@ -138,6 +138,9 @@ fn base_identity_facts(
             "codex" if headers.contains_key("x-codex-parent-thread-id") => {
                 header_value(headers, "thread-id")
             }
+            "dsh" if headers.contains_key("x-deepseek-harness-parent-session-id") => {
+                header_value(headers, "x-deepseek-harness-session-id")
+            }
             "opencode" if headers.contains_key("x-opencode-parent-session-id") => {
                 header_value(headers, "x-opencode-session-id")
             }

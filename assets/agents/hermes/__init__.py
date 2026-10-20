@@ -28,7 +28,7 @@ def _native_row(row, session):
 class _LineageReader:
     """One bounded/coalescing worker per selected profile, using public SDK reads.
 
-    Contract pinned to Hermes d923a5eb: SessionDB(read_only=True), get_session,
+    Contracts: Hermes 0.20 bounded ancestry and d923a5eb: SessionDB(read_only=True), get_session,
     get_compression_chain (native forward cap 1000), find_live_compression_child.
     Missing APIs disable this optional metadata, never the model adapter.
     """
@@ -224,6 +224,8 @@ def _compression_child(row):
         return False
     config = row.get("model_config")
     try:
+        if isinstance(config, str) and len(config) > 16384:
+            return False
         config = json.loads(config) if isinstance(config, str) else (config or {})
     except (ValueError, TypeError):
         return False
@@ -318,8 +320,10 @@ def _adapter(config):
         session = context.get("session_id")
         if _identity(session):
             headers["X-Hermes-Session-Id"] = session
+            turn = context.get("turn_id")
             headers["X-HiRoute-Routing-Context"] = json.dumps({
-                "version": 1, "agent": "hermes", "session_id": session, "purpose": "main"
+                "version": 1, "agent": "hermes", "session_id": session, "purpose": "main",
+                **({"turn_id": turn} if _identity(turn) else {})
             }, separators=(",", ":"))
             lineage = _lineage_header(session)
             if lineage:

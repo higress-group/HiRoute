@@ -70,6 +70,44 @@ class LineageTests(unittest.TestCase):
             time.sleep(.001)
         self.assertFalse(manager.worker.is_alive())
 
+    def test_020_compatibility_never_enumerates_unbounded_lineage_and_survives_restart(self):
+        class LegacyReader(NativeReader):
+            get_compression_chain = None
+
+            def get_compression_lineage(self, _session):
+                raise AssertionError("unbounded legacy SDK method must never run")
+
+        rows = {"a": {"ended_at": 1, "end_reason": "compression"},
+                "b": {"parent_session_id": "a", "ended_at": 2, "end_reason": "compression"},
+                "c": {"parent_session_id": "b", "model_config": "{}"}}
+        for _ in range(2):
+            reader = LegacyReader(rows, [], "c")
+            manager = self.manager(reader)
+            self.warm(manager, "c")
+            with manager.lock:
+                self.assertEqual(manager.cache["c"]["ids"], ["a", "b", "c"])
+                self.assertTrue(manager.cache["c"]["complete"])
+            self.assertEqual(reader.chain_calls, 0)
+            self.assertLessEqual(reader.get_calls, 6)
+
+    def test_020_ordinary_children_forks_and_ambiguous_compression_never_join_main(self):
+        class LegacyReader(NativeReader):
+            get_compression_chain = None
+            get_compression_lineage = lambda *args: []
+
+        for fields, live_child in (({"source": "tool"}, "b"),
+                                   ({"model_config": '{"_branched_from":"a"}'}, "b"),
+                                   ({"model_config": '{"_delegate_from":"a"}'}, "b"),
+                                   ({"model_config": "{"}, "b"),
+                                   ({"model_config": "x" * 16385}, "b"), ({}, None)):
+            rows = {"a": {"ended_at": 1, "end_reason": "compression"},
+                    "b": {"parent_session_id": "a", **fields}}
+            manager = self.manager(LegacyReader(rows, [], live_child))
+            self.warm(manager, "b")
+            with manager.lock:
+                self.assertEqual(manager.cache["b"]["ids"], ["b"])
+                self.assertFalse(manager.cache["b"]["complete"])
+
     def test_missing_native_schema_does_not_invent_an_open_root(self):
         reader = NativeReader({"root": {}}, ["root"])
         reader.rows["root"].pop("parent_session_id")

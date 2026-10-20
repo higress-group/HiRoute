@@ -313,7 +313,7 @@ fn bundled_routing_insert(row: &Value) -> bool {
     }
     let Some(uri) = entry["name"]
         .as_str()
-        .and_then(|name| url::Url::parse(name).ok())
+        .and_then(|name| reqwest::Url::parse(name).ok())
     else {
         return false;
     };

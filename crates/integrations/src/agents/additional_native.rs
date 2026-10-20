@@ -368,7 +368,7 @@ pub(super) fn attach_routing_adapter(
     path: &std::path::Path,
     original: Option<&[u8]>,
 ) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
-    let uri = url::Url::from_file_path(
+    let uri = reqwest::Url::from_file_path(
         path.parent()
             .ok_or_else(|| qoder_error("DSH adapter parent"))?
             .join("hiroute-routing.mjs"),

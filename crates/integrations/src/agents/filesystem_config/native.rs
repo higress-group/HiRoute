@@ -98,8 +98,8 @@ pub(in crate::agents) fn rebase_claude_change_bytes(
         .map(|field| {
             let after = if field.after.is_none()
                 && field.path.strip_prefix("env.").is_some_and(|key| {
-                    (key == "CLAUDE_CODE_GATEWAY_HINT_HEADERS"
-                        || hiroute_domain::CLAUDE_CONTEXT_ENVIRONMENT.contains(&key))
+                    key == "CLAUDE_CODE_GATEWAY_HINT_HEADERS"
+                        || hiroute_domain::CLAUDE_CONTEXT_ENVIRONMENT.contains(&key)
                 }) {
                 base.fields.get(&field.path).cloned()
             } else {

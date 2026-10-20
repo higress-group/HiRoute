@@ -16,7 +16,9 @@ function transport() {
       // Touch only the exact admitted provider call, identified by its existing managed grant.
       if (context && headers.get("x-hiroute-agent") === "dsh" && (headers.has("x-hiroute-token") || headers.has("authorization"))) {
         headers.set("x-deepseek-harness-session-id", context.session_id);
-        headers.set("x-hiroute-routing-context", JSON.stringify(context));
+        const { parent, ...wire } = context;
+        headers.set("x-hiroute-routing-context", JSON.stringify(wire));
+        if (id(parent)) headers.set("x-deepseek-harness-parent-session-id", parent);
         next = { ...init, headers };
       }
     } catch {
@@ -34,11 +36,22 @@ export function apply(ctx) {
     let context;
     try {
       if (/^hiroute-(main-|worker(?:$|-))/.test(options.provider) && id(options.sessionId)) {
-        const user = options.messages.findLast((message) => message.role === "user");
-        const turn = user?.id ?? user?.messageId;
+        // Read the native event log by bounded index: compacted surface messages
+        // may contain only a synthetic checkpoint and omit the real user's ID.
+        const session = ctx.sessions?.get(options.sessionId);
+        let turn;
+        if (session && Number.isSafeInteger(session.seq)) {
+          for (let i = session.seq - 1, floor = Math.max(0, session.seq - 512); i >= floor; --i) {
+            const event = session.eventAt(i);
+            if (event?.type === "turn/start") { turn = String(event.data.turn); break; }
+          }
+        }
+        const checkpoint = options.messages.findLast((message) => message.source?.kind === "compact-checkpoint")?.source.compactionId;
         context = {
           version: 1, agent: "dsh", session_id: String(options.sessionId),
-          purpose: options.purpose ?? "main", ...(id(turn) ? { turn_id: String(turn) } : {}),
+          ...(id(session?.header?.parentSession) ? { parent: session.header.parentSession } : {}),
+          purpose: options.purpose ?? "main", ...(id(turn) ? { turn_id: turn } : {}),
+          ...(id(checkpoint) ? { checkpoint } : {}),
         };
       }
     } catch { /* Missing metadata keeps the static route conservative. */ }

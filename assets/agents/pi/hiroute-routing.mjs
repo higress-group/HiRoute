@@ -3,13 +3,15 @@ const managed = (model) => /^hiroute-(main-|worker(?:$|-))/.test(model?.provider
 export default function hirouteRouting(pi) {
   const compacting = new Set();
   pi.on("cache_warming_decision", (event, ctx) => {
-    if (managed(event.model ?? ctx.model)) return { action: "stop" };
+    try { if (managed(event.model ?? ctx.model)) return { action: "stop" }; } catch {}
   });
   pi.on("session_before_compact", (_event, ctx) => {
-    if (managed(ctx.model)) compacting.add(ctx.sessionManager.getSessionId());
+    try { if (managed(ctx.model)) compacting.add(ctx.sessionManager.getSessionId()); } catch {}
   });
   for (const name of ["session_compact", "session_compact_failed"]) {
-    pi.on(name, (_event, ctx) => compacting.delete(ctx.sessionManager.getSessionId()));
+    pi.on(name, (_event, ctx) => {
+      try { compacting.delete(ctx.sessionManager.getSessionId()); } catch {}
+    });
   }
   pi.on("before_provider_headers", (event, ctx) => {
     try {
