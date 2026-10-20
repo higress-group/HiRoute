@@ -64,7 +64,7 @@ pub(super) fn confirm_root(
                 .map_err(|_| unavailable())?;
         let value = std::str::from_utf8(&output)
             .map_err(|_| unavailable())?
-            .trim();
+            .trim_end_matches(['\r', '\n']);
         if value.is_empty() || value.contains(['\0', '\r', '\n']) {
             return Err(unavailable());
         }

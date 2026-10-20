@@ -590,7 +590,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let base = root.path().canonicalize().unwrap();
         let home = base.join("home");
-        let repository = base.join("repository");
+        let repository = base.join("repository space'Ω ");
         std::fs::create_dir(&home).unwrap();
         std::fs::create_dir(&repository).unwrap();
         let native = OpenCodeNativeContext::from_lookup(&home, |_| None).unwrap();
@@ -654,6 +654,21 @@ mod tests {
             assert_eq!(std::fs::read(&foreign_config).unwrap(), foreign_bytes);
             assert!(!native.database.exists());
         }
+        // Git can report a different worktree through local configuration. Do
+        // not trim its trailing space into the nearest marker's directory.
+        let redirected = PathBuf::from(format!("{} ", repository.display()));
+        std::fs::create_dir(&redirected).unwrap();
+        git(
+            &native,
+            &repository,
+            &["config", "core.worktree", redirected.to_str().unwrap()],
+            &search_path,
+        );
+        assert!(
+            native
+                .read_config(Some((&repository, &search_path)))
+                .is_err()
+        );
     }
 
     #[test]
