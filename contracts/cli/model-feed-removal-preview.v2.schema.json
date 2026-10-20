@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "ModelFeedAffectedSourceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "model_configuration_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "published_revision_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "display_name",
+        "model_configuration_ids",
+        "published_revision_count"
+      ],
+      "type": "object"
+    },
+    "ModelFeedDefaultImpactV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "type": "string"
+        },
+        "changes": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "model_configuration_id": {
+          "type": "string"
+        },
+        "model_display_name": {
+          "type": "string"
+        },
+        "published_revision_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "source_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_name",
+        "binding_id",
+        "model_configuration_id",
+        "model_display_name",
+        "changes",
+        "published_revision_count"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "hiroute://contracts/cli/model-feed-removal-preview.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "complete": {
+      "type": "boolean"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "impact": {
+      "items": {
+        "$ref": "#/$defs/ModelFeedDefaultImpactV2"
+      },
+      "type": "array"
+    },
+    "next_cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "published_revision_count": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "retained_sequence": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "retrieval_enabled": {
+      "type": "boolean"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/ModelFeedAffectedSourceV2"
+      },
+      "type": "array"
+    },
+    "total": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "impact",
+    "total",
+    "complete",
+    "published_revision_count",
+    "sources",
+    "retrieval_enabled",
+    "digest"
+  ],
+  "title": "ModelFeedRemovalPreviewV2",
+  "type": "object"
+}

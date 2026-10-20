@@ -63,8 +63,10 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
     if index.schema != "hiroute.release-contract-index/v1" {
         return Err("unsupported release index".into());
     }
-    let current =
-        load_catalog(|file| read(&format!("assets/release-facts/current/bundle/{file}")))?;
+    let current = load_catalog(
+        |file| read(&format!("assets/release-facts/current/bundle/{file}")),
+        true,
+    )?;
     // Validate the complete candidate before release gating, including bootstrap builds.
     let candidate = FeedPayload::from_snapshot(
         current.official_snapshot(),
@@ -125,18 +127,21 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
         if resolved.trim() != release.revision {
             return Err(format!("recorded release tag moved: {}", release.tag));
         }
-        let catalog = load_catalog(|file| {
-            git_bytes(
-                root,
-                &[
-                    "show",
-                    &format!(
-                        "{}:assets/release-facts/current/bundle/{file}",
-                        release.revision
-                    ),
-                ],
-            )
-        })?;
+        let catalog = load_catalog(
+            |file| {
+                git_bytes(
+                    root,
+                    &[
+                        "show",
+                        &format!(
+                            "{}:assets/release-facts/current/bundle/{file}",
+                            release.revision
+                        ),
+                    ],
+                )
+            },
+            true,
+        )?;
         clients.push(SupportedFeedClient {
             version: version.to_string(),
             catalog,
@@ -278,6 +283,7 @@ fn validate_transition(previous: &FeedPayload, next: &FeedPayload) -> Result<(),
 
 fn load_catalog(
     mut read: impl FnMut(&str) -> Result<Vec<u8>, String>,
+    require_complete: bool,
 ) -> Result<TrustedReleaseCatalog, String> {
     let catalog = TrustedReleaseCatalog::load_release_facts(
         &read("manifest.json")?,
@@ -291,6 +297,7 @@ fn load_catalog(
                 serde_json::from_slice(&bytes).map_err(|_| "invalid official model snapshot")?,
             )
             .map_err(|e| e.to_string()),
+        Err(error) if require_complete => Err(error),
         Err(_) => Ok(catalog),
     }
 }

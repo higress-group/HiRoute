@@ -1,14 +1,17 @@
 use super::*;
 
 fn current() -> TrustedReleaseCatalog {
-    load_catalog(|file| {
-        std::fs::read(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../assets/release-facts/current/bundle")
-                .join(file),
-        )
-        .map_err(|e| e.to_string())
-    })
+    load_catalog(
+        |file| {
+            std::fs::read(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../assets/release-facts/current/bundle")
+                    .join(file),
+            )
+            .map_err(|e| e.to_string())
+        },
+        true,
+    )
     .unwrap()
 }
 #[test]
@@ -111,13 +114,16 @@ fn without_model(id: &str) -> TrustedReleaseCatalog {
     ratings.model_catalog_digest = CanonicalDigest::of(&data.models).unwrap();
     ratings.digest = ratings.computed_digest().unwrap();
     let output = crate::compile_release_facts(&input).unwrap();
-    load_catalog(|file| {
-        output
-            .files
-            .get(file)
-            .cloned()
-            .ok_or_else(|| "no complete snapshot in this released fixture".into())
-    })
+    load_catalog(
+        |file| {
+            output
+                .files
+                .get(file)
+                .cloned()
+                .ok_or_else(|| "no complete snapshot in this released fixture".into())
+        },
+        false,
+    )
     .unwrap()
 }
 
@@ -310,4 +316,22 @@ fn feed_payload_check_survives_a_bundle_changing_squash_merge() {
         .unwrap(),
         std::fs::read(root.join("assets/release-facts/current/bundle/model-data.json")).unwrap()
     );
+}
+
+#[test]
+fn model_feed_current_and_recorded_v2_sources_require_the_complete_snapshot() {
+    let bundle =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/release-facts/current/bundle");
+    for require_complete in [false, true] {
+        let result = load_catalog(
+            |file| {
+                if file == "official-model-data.json" {
+                    return Err("complete snapshot missing".into());
+                }
+                std::fs::read(bundle.join(file)).map_err(|e| e.to_string())
+            },
+            require_complete,
+        );
+        assert_eq!(result.is_err(), require_complete);
+    }
 }

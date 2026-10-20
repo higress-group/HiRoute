@@ -1,0 +1,360 @@
+{
+  "$defs": {
+    "AvailableModelFactsV1": {
+      "additionalProperties": false,
+      "description": "Catalog facts for presenting a model before it is connected.",
+      "properties": {
+        "context_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "publisher_id": {
+          "type": "string"
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AvailableModelReasoningV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool": {
+          "type": "boolean"
+        },
+        "vision": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "publisher_id",
+        "context_tokens",
+        "tool",
+        "vision"
+      ],
+      "type": "object"
+    },
+    "AvailableModelReasoningV1": {
+      "description": "Selection-time reasoning shape. Native parameter names stay internal.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "toggle",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "profiles",
+              "type": "string"
+            },
+            "profiles": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "profiles"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "budget",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AvailableModelV2": {
+      "additionalProperties": false,
+      "properties": {
+        "availability": {
+          "$ref": "#/$defs/ModelAvailabilityV2"
+        },
+        "binding_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "facts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AvailableModelFactsV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Absent for models known only from published Plans."
+        },
+        "identity_stability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_configuration_id": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/ModelFactOriginV2"
+        },
+        "published_plan_references": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model_configuration_id",
+        "display_name",
+        "origin",
+        "availability",
+        "binding_ids",
+        "published_plan_references"
+      ],
+      "type": "object"
+    },
+    "ModelAnnouncementV1": {
+      "additionalProperties": false,
+      "properties": {
+        "headline": {
+          "$ref": "#/$defs/ModelFeedTextV1"
+        },
+        "id": {
+          "type": "string"
+        },
+        "included_on": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "links": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "model_configuration_id": {
+          "type": "string"
+        },
+        "note": {
+          "$ref": "#/$defs/ModelFeedTextV1"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "model_configuration_id",
+        "headline",
+        "note",
+        "links",
+        "included_on"
+      ],
+      "type": "object"
+    },
+    "ModelAvailabilityV2": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "executable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "needs_connection",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "descriptive_only",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "needs_newer_client",
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "used_by_published_plans",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "count"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModelFactOriginV2": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "client_version": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "embedded",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "client_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "as_of": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "feed",
+              "type": "string"
+            },
+            "sequence": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "sequence",
+            "as_of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "published",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModelFeedTextV1": {
+      "additionalProperties": false,
+      "properties": {
+        "en": {
+          "type": "string"
+        },
+        "zh": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "en",
+        "zh"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "hiroute://contracts/cli/model-availability.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "featured": {
+      "items": {
+        "$ref": "#/$defs/ModelAnnouncementV1"
+      },
+      "type": "array"
+    },
+    "models": {
+      "items": {
+        "$ref": "#/$defs/AvailableModelV2"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "featured",
+    "models"
+  ],
+  "title": "ModelAvailabilityResultV2",
+  "type": "object"
+}

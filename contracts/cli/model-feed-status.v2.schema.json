@@ -1,0 +1,242 @@
+{
+  "$defs": {
+    "ModelFeedAttemptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "result"
+      ],
+      "type": "object"
+    },
+    "ModelFeedCountsV2": {
+      "additionalProperties": false,
+      "properties": {
+        "descriptive_records": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "qualified_models": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "restricted_models": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "descriptive_records",
+        "qualified_models",
+        "restricted_models"
+      ],
+      "type": "object"
+    },
+    "ModelFeedHeldV1": {
+      "additionalProperties": false,
+      "properties": {
+        "issued_at": {
+          "type": "string"
+        },
+        "retrieved_at": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "issued_at",
+        "retrieved_at"
+      ],
+      "type": "object"
+    },
+    "ModelFeedVerificationV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "validated",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "discarded",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModelMetadataSnapshotRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "data_digest": {
+          "type": "string"
+        },
+        "data_revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "generation": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "generation",
+        "data_revision",
+        "data_digest"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "hiroute://contracts/cli/model-feed-status.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "counts": {
+      "$ref": "#/$defs/ModelFeedCountsV2"
+    },
+    "disclosure": {
+      "type": "string"
+    },
+    "disclosure_acknowledged": {
+      "type": "boolean"
+    },
+    "held": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelFeedHeldV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "highest_accepted_data_revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "highest_accepted_sequence": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "last_attempt": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelFeedAttemptV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "last_success_at": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "next_automatic_attempt_at": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "recovery_available": {
+      "default": false,
+      "type": "boolean"
+    },
+    "retrieval_enabled": {
+      "type": "boolean"
+    },
+    "selected": {
+      "$ref": "#/$defs/ModelMetadataSnapshotRefV1"
+    },
+    "selected_origin": {
+      "type": "string"
+    },
+    "verification": {
+      "$ref": "#/$defs/ModelFeedVerificationV1"
+    }
+  },
+  "required": [
+    "selected",
+    "selected_origin",
+    "retrieval_enabled",
+    "verification",
+    "counts",
+    "disclosure",
+    "disclosure_acknowledged"
+  ],
+  "title": "ModelFeedStatusV2",
+  "type": "object"
+}
